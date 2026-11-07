@@ -287,7 +287,7 @@ test('ZRS month and staff search contracts stay wired', () => {
     assert.match(hrSource, /!lockKnown \|\| isLocked/);
     assert.ok(hrSource.includes(TXT.salaryUnavailable));
     assert.match(hrSource, /function canManageZrsAdjustments/);
-    assert.match(hrSource, /return hrCanUsePayrollAction\('manage_payroll_accrual'\)/);
+    assert.match(hrSource, /return canUseHrCapability\('hr\.payroll\.manage'\) && hrCanUsePayrollAction\('manage_payroll_accrual'\)/);
     assert.match(hrSource, /addBtn\.hidden = !canWriteZrs/);
     assert.match(hrSource, /const canVoid = canWriteZrs && lockKnown && !isLocked && active/);
     assert.match(hrSource, /return status === 'applied'/);

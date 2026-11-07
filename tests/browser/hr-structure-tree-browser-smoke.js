@@ -52,7 +52,7 @@ function extractDivMarkup(source, id) {
 const HR_HTML = readRepo('hr.html');
 const STRUCTURE_MARKUP = extractDivMarkup(HR_HTML, 'tab-structure');
 const UI_CODE = readRepo('js', 'ui.js');
-const HR_CODE = readRepo('js', 'hr-page.js');
+const HR_CODE = require('../helpers/hr-page-source')();
 const CSS_BUNDLE = [
     readRepo('css', 'base.css'),
     readRepo('css', 'modals.css'),

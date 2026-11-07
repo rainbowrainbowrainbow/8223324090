@@ -1303,11 +1303,11 @@ function productMenuEmoji(product = {}) {
     return getKitchenType(product) === 'cake' ? '🎂' : '🍽️';
 }
 
-function renderKitchenCardVisual(product = {}) {
+function renderKitchenCardVisual(product = {}, { thumbnail = true } = {}) {
     const imageUrl = productMenuImageUrl(product);
     const title = productMenuTitle(product) || 'Позиція меню';
     const visual = `<div class="kitchen-product-media${imageUrl ? ' has-image' : ''}" data-photo-state="${imageUrl ? 'loading' : 'absent'}" data-photo-url="${escapeHtml(imageUrl)}" title="${escapeHtml(title)}">
-        ${renderMenuPhotoImage(imageUrl, getKitchenType(product) === 'menu' ? title : '')}
+        ${renderMenuPhotoImage(imageUrl, getKitchenType(product) === 'menu' ? title : '', { thumbnail })}
         <span aria-hidden="true">${escapeHtml(productMenuEmoji(product))}</span>
         <small class="menu-photo-state" data-photo-status role="status">${imageUrl ? 'Фото завантажується…' : 'Фото не задане'}</small>
     </div>`;
@@ -1319,8 +1319,24 @@ function renderKitchenMenuPhotoButton(imageUrl, title, content) {
     return `<button type="button" class="kitchen-menu-photo-open" data-menu-photo-url="${escapeHtml(imageUrl)}" data-menu-photo-title="${escapeHtml(title)}" aria-label="Відкрити фото: ${escapeHtml(title)}" onclick="openKitchenMenuPhoto(this)">${content}</button>`;
 }
 
-function renderMenuPhotoImage(imageUrl, title = '') {
-    return imageUrl ? `<img loading="lazy" decoding="async" src="${escapeHtml(imageUrl)}" alt="${escapeHtml(title)}" onload="productMenuCardHandleImageLoad(this)" onerror="productMenuCardHandleImageError(this)">` : '';
+function productMenuCardThumbnailUrl(imageUrl, width = 384) {
+    try {
+        const location = new URL(window.location.href);
+        const source = new URL(imageUrl, location);
+        if (source.origin !== location.origin || ![384, 768].includes(width)) return '';
+        const match = /^\/uploads\/catalog-images\/items\/([^/]+)$/.exec(source.pathname);
+        const filename = match ? decodeURIComponent(match[1]) : '';
+        if (!/^[a-zA-Z0-9_.-]+\.(?:png|jpe?g|webp)$/.test(filename) || filename.includes('..')) return '';
+        return `/uploads/catalog-images/cards/${width}/${encodeURIComponent(filename)}`;
+    } catch { return ''; }
+}
+
+function renderMenuPhotoImage(imageUrl, title = '', { thumbnail = false } = {}) {
+    if (!imageUrl) return '';
+    const small = thumbnail ? productMenuCardThumbnailUrl(imageUrl, 384) : '';
+    const large = small ? productMenuCardThumbnailUrl(imageUrl, 768) : '';
+    const variants = small ? ` srcset="${escapeHtml(small)} 384w, ${escapeHtml(large)} 768w" sizes="(max-width: 600px) 50vw, 320px" data-original-photo-src="${escapeHtml(imageUrl)}"` : '';
+    return `<img loading="lazy" decoding="async" src="${escapeHtml(small || imageUrl)}"${variants} alt="${escapeHtml(title)}" onload="productMenuCardHandleImageLoad(this)" onerror="productMenuCardHandleImageError(this)">`;
 }
 
 function productMenuCardHandleImageLoad(img) {
@@ -1333,6 +1349,17 @@ function productMenuCardHandleImageLoad(img) {
 function productMenuCardHandleImageError(img) {
     const media = img?.closest?.('[data-photo-state]');
     if (!img || !media) return;
+    const original = img.dataset.originalPhotoSrc;
+    if (original && img.dataset.originalPhotoRetried !== 'true') {
+        img.dataset.originalPhotoRetried = 'true';
+        media.dataset.photoState = 'loading';
+        media.classList.remove('is-image-missing');
+        media.querySelector('[data-photo-status]').textContent = 'Фото завантажується…';
+        img.hidden = false;
+        img.removeAttribute('srcset');
+        img.src = original;
+        return;
+    }
     media.dataset.photoState = 'error';
     media.classList.add('is-image-missing');
     media.querySelector('[data-photo-status]').textContent = 'Фото не вдалося завантажити';
@@ -2595,7 +2622,7 @@ function renderProductDetailsContent(product) {
         return `<div class="product-details-content kitchen-menu-details-content">
             <header class="kitchen-menu-details-head"><div><h3>${escapeHtml(productMenuTitle(product))}</h3><p>${renderKitchenPrice(product)}</p></div>
                 <button type="button" class="kitchen-menu-image-close" aria-label="Закрити перегляд страви" onclick="closeKitchenMenuViewer(this)">×</button></header>
-            <div class="kitchen-menu-details-layout">${renderKitchenCardVisual(product)}
+            <div class="kitchen-menu-details-layout">${renderKitchenCardVisual(product, { thumbnail: false })}
                 <div class="product-detail-copy">${descriptions.map(value => `<p>${escapeHtml(value)}</p>`).join('') || '<p>Опис ще не додано</p>'}${renderKitchenDetailPanel(product, true)}</div>
             </div></div>`;
     }

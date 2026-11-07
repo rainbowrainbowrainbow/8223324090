@@ -58,7 +58,7 @@ function createHarness() {
     window.getLegacyBusinessSurfaceContextKey = () => window.__hrStructureContext;
 
     const uiCode = fs.readFileSync(path.join(ROOT, 'js', 'ui.js'), 'utf8');
-    const hrCode = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
+    const hrCode = require('./helpers/hr-page-source')();
     vm.runInContext(uiCode, dom.getInternalVMContext());
 
     const originalDocumentAddEventListener = window.document.addEventListener.bind(window.document);
@@ -291,7 +291,7 @@ function createStaffProfileHarness() {
     window.requestAnimationFrame = callback => callback();
 
     const uiCode = fs.readFileSync(path.join(ROOT, 'js', 'ui.js'), 'utf8');
-    const hrCode = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
+    const hrCode = require('./helpers/hr-page-source')();
     vm.runInContext(uiCode, dom.getInternalVMContext());
 
     const originalDocumentAddEventListener = window.document.addEventListener.bind(window.document);
@@ -489,7 +489,7 @@ function createTeamBucketHarness() {
     };
 
     const uiCode = fs.readFileSync(path.join(ROOT, 'js', 'ui.js'), 'utf8');
-    const hrCode = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
+    const hrCode = require('./helpers/hr-page-source')();
     vm.runInContext(uiCode, dom.getInternalVMContext());
 
     const originalDocumentAddEventListener = window.document.addEventListener.bind(window.document);
@@ -1194,7 +1194,7 @@ test('HR staff edit modal uses the shared modal layer and viewport-safe scrollin
         fs.readFileSync(path.join(ROOT, 'hr.html'), 'utf8'),
         fs.readFileSync(path.join(ROOT, 'css', 'hr-page.css'), 'utf8')
     ].join('\n');
-    const js = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
+    const js = require('./helpers/hr-page-source')();
     const overlayCss = html.match(/\.hr-modal-overlay\s*\{[\s\S]*?\n\s*\}/)?.[0] || '';
     const dialogCss = html.match(/\.hr-modal\s*\{[\s\S]*?\n\s*\}/)?.[0] || '';
     const showModalFn = js.slice(js.indexOf('function showHrEditableModal'), js.indexOf('async function closeHrEditableModal'));
@@ -1215,7 +1215,7 @@ test('HR staff edit modal uses the shared modal layer and viewport-safe scrollin
 
 test('HR staff profile declares one production tab panel per profile section', () => {
     const html = fs.readFileSync(path.join(ROOT, 'hr.html'), 'utf8');
-    const js = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
+    const js = require('./helpers/hr-page-source')();
     const dom = new JSDOM(html);
     const document = dom.window.document;
     const body = document.querySelector('#staffEditModal .hr-staff-profile-body');
@@ -1294,7 +1294,7 @@ test('HR staff profile drawer uses a single body scroll root and timeline-style 
 });
 
 test('HR staff profile save actions isolate payloads and expose modal action states', () => {
-    const js = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
+    const js = require('./helpers/hr-page-source')();
     const profileCss = fs.readFileSync(path.join(ROOT, 'css', 'hr-page.css'), 'utf8');
     const foundationCss = fs.readFileSync(path.join(ROOT, 'css', 'pages-hr-foundation.css'), 'utf8');
     const mainBuilder = js.slice(js.indexOf('function buildStaffMainPayload'), js.indexOf('function buildStaffWorkPayload'));
@@ -1333,7 +1333,7 @@ test('HR staff profile save actions isolate payloads and expose modal action sta
 });
 
 test('HR staff destructive actions use the shared dynamic confirmation and fail closed without it', () => {
-    const js = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
+    const js = require('./helpers/hr-page-source')();
     const confirmHelper = js.slice(js.indexOf('async function confirmHrAction'), js.indexOf('// ==========================================', js.indexOf('async function confirmHrAction')));
     const archiveAction = js.slice(js.indexOf('async function archiveStaffDocument'), js.indexOf('async function saveStaffMedicalBook'));
     const offboardingAction = js.slice(js.indexOf('async function completeStaffOffboarding'), js.indexOf('function staffEditRestoreFocusTarget'));
@@ -1349,7 +1349,7 @@ test('HR staff destructive actions use the shared dynamic confirmation and fail 
 
 test('HR staff documents and resources expose persisted archive/history workspaces', () => {
     const html = fs.readFileSync(path.join(ROOT, 'hr.html'), 'utf8');
-    const js = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
+    const js = require('./helpers/hr-page-source')();
     const routes = fs.readFileSync(path.join(ROOT, 'routes', 'hr.js'), 'utf8');
 
     assert.match(html, /data-staff-workspace-view="documents:archive"/);
@@ -1378,7 +1378,7 @@ test('HR staff documents and resources expose persisted archive/history workspac
 
 test('HR staff drawer exposes 44px controls, focus rings, and live lazy-tab status', () => {
     const html = fs.readFileSync(path.join(ROOT, 'hr.html'), 'utf8');
-    const js = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
+    const js = require('./helpers/hr-page-source')();
     const profileCss = fs.readFileSync(path.join(ROOT, 'css', 'hr-page.css'), 'utf8');
     const foundationCss = fs.readFileSync(path.join(ROOT, 'css', 'pages-hr-foundation.css'), 'utf8');
 

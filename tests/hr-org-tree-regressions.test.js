@@ -50,7 +50,7 @@ function createHarness({ editable = true, mobile = false } = {}) {
     };
 
     const uiCode = fs.readFileSync(path.join(ROOT, 'js', 'ui.js'), 'utf8');
-    const hrCode = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
+    const hrCode = require('./helpers/hr-page-source')();
     vm.runInContext(uiCode, dom.getInternalVMContext());
 
     const originalDocumentAddEventListener = window.document.addEventListener.bind(window.document);

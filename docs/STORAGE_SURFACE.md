@@ -214,3 +214,12 @@ object storage and production secrets are not needed. Retain blobs on rollback.
 Inbound URL downloads resolve and pin public IPv4, reject redirects and private
 addresses, bound response size/time, and validate file signatures before storing.
 Evidence: `tests/omni-completion.test.js`, `tests/integration/omni-completion-postgres.test.js`.
+
+## Catalog card derivatives
+
+The fixed `/uploads/catalog-images/cards/:width/:filename` route reads existing
+public catalog blobs and keeps only bounded disposable derivatives under the
+operating-system temporary directory. It creates no upload storage surface,
+remote bucket, schema or original-data mutation. See
+[CATALOG_IMAGE_THUMBNAILS.md](CATALOG_IMAGE_THUMBNAILS.md) for codec/queue/cache
+bounds, original fallback and rollback.

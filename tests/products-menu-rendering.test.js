@@ -300,7 +300,8 @@ test('current and draft photo zoom remain separate and available while the studi
             h.w.closeKitchenMenuViewer(viewer);
             assert.equal(h.w.document.activeElement, button);
         }
-        assert.equal(h.card(product.id).querySelector('img').getAttribute('src'), product.iconUrl);
+        assert.equal(h.card(product.id).querySelector('img').getAttribute('src'), '/uploads/catalog-images/cards/384/current.jpg');
+        assert.equal(h.card(product.id).querySelector('[data-menu-photo-url]').dataset.menuPhotoUrl, product.iconUrl);
         assert.equal(h.calls.product, 0);
     } finally { h.close(); }
 });
@@ -341,5 +342,27 @@ test('AI actions live only in the menu editor and keep unsaved form values', asy
         assert.equal(name.value, 'Unsaved menu name');
         h.w.setKitchenFormVisibility('kitchen', 'cake');
         assert.ok(groups[0].closest('.menu-ai-entry').classList.contains('hidden'));
+    } finally { h.close(); }
+});
+
+test('card variants keep original-view identity and fall back only once without changing approved product data', () => {
+    const product = menu(), before = JSON.stringify(product), h = harness([product]);
+    try {
+        const card = h.card(product.id), image = card.querySelector('img');
+        assert.equal(image.getAttribute('src'), '/uploads/catalog-images/cards/384/current.jpg');
+        assert.match(image.getAttribute('srcset'), /cards\/768\/current\.jpg 768w/);
+        assert.equal(card.querySelector('[data-menu-photo-url]').dataset.menuPhotoUrl, product.iconUrl);
+        h.w.productMenuCardHandleImageError(image);
+        assert.equal(image.getAttribute('src'), product.iconUrl);
+        assert.equal(image.hasAttribute('srcset'), false);
+        assert.equal(image.closest('[data-photo-state]').dataset.photoState, 'loading');
+        h.w.productMenuCardHandleImageError(image);
+        assert.equal(image.closest('[data-photo-state]').dataset.photoState, 'error');
+        assert.equal(image.hasAttribute('src'), false);
+        assert.equal(JSON.stringify(product), before);
+        assert.equal(h.calls.product, 0);
+        assert.equal(h.w.productMenuCardThumbnailUrl('https://other.example/uploads/catalog-images/items/a.png'), '');
+        assert.equal(h.w.productMenuCardThumbnailUrl('/uploads/designs/private.png'), '');
+        assert.equal(h.w.productMenuCardThumbnailUrl('/uploads/catalog-images/items/a%2fsecret.png'), '');
     } finally { h.close(); }
 });

@@ -80,6 +80,8 @@ test('transport loading/ready/error states survive unrelated partial updates and
     const h=harness(); try {
         const card=h.card('burger-1'), media=card.querySelector('.kitchen-product-media'), image=media.querySelector('img');
         assert.equal(media.dataset.photoState,'loading'); h.w.productMenuCardHandleImageLoad(image); assert.equal(media.dataset.photoState,'ready');
+        h.w.productMenuCardHandleImageError(image); assert.equal(media.dataset.photoState,'loading');
+        assert.equal(image.getAttribute('src'), menu().iconUrl); assert.equal(image.getAttribute('srcset'), null);
         h.w.productMenuCardHandleImageError(image); assert.equal(media.dataset.photoState,'error'); assert.match(media.textContent,/не вдалося завантажити/);
         h.w.fixtureUpdate={...menu(),price:999};h.w.eval("updateProductInState(fixtureUpdate);refreshProductCard('burger-1');");
         assert.equal(card.querySelector('.kitchen-product-media'),media); assert.equal(media.dataset.photoState,'error'); assert.equal(image.getAttribute('src'),null);

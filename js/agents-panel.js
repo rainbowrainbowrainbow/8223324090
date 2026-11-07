@@ -59,7 +59,14 @@
 
         // Refresh every 2 minutes
         const _agentInterval = setInterval(loadAgentStatus, 120000);
-        window.addEventListener('beforeunload', () => clearInterval(_agentInterval));
+        const refreshWhenVisible = () => {
+            if (_statusBarVisible && document.visibilityState !== 'hidden') void loadAgentStatus();
+        };
+        document.addEventListener('visibilitychange', refreshWhenVisible);
+        window.addEventListener('beforeunload', () => {
+            clearInterval(_agentInterval);
+            document.removeEventListener('visibilitychange', refreshWhenVisible);
+        });
     }
 
     // ==========================================
@@ -67,6 +74,7 @@
     // ==========================================
 
     async function loadAgentStatus() {
+        if (document.visibilityState === 'hidden') return;
         try {
             const token = localStorage.getItem('pzp_token') || sessionStorage.getItem('pzp_token');
             const resp = await fetch('/api/agents/status', {

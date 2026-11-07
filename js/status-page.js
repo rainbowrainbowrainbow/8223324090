@@ -42,6 +42,7 @@
     };
 
     async function loadStatus() {
+        if (document.visibilityState === 'hidden') return;
         try {
             const resp = await fetch('/api/status/public');
             if (!resp.ok) throw new Error('API error');
@@ -160,5 +161,12 @@
 
     // Auto-refresh every 60 seconds
     const _statusInterval = setInterval(loadStatus, 60000);
-    window.addEventListener('beforeunload', () => clearInterval(_statusInterval));
+    const refreshWhenVisible = () => {
+        if (document.visibilityState !== 'hidden') void loadStatus();
+    };
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    window.addEventListener('beforeunload', () => {
+        clearInterval(_statusInterval);
+        document.removeEventListener('visibilitychange', refreshWhenVisible);
+    });
 })();

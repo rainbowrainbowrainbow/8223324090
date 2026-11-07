@@ -28,6 +28,7 @@ const { ensureReportBotWebhook, REPORT_BOT_TOKEN } = require('./services/report-
 const { buildDesignBlobFallbackHandler } = require('./services/designStorage');
 const { buildProfileAvatarBlobFallbackHandler } = require('./services/profileAvatarStorage');
 const { buildCatalogImageBlobFallbackHandler } = require('./services/imageStorage');
+const { buildCatalogImageThumbnailHandler } = require('./services/catalogImageThumbnails');
 const { buildChatUploadBlobFallbackHandler } = require('./services/chatUploadStorage');
 const { buildSoundUploadBlobFallbackHandler } = require('./services/audioStorage');
 const { recordCompatibilityTelemetrySafe } = require('./services/businessCutover');
@@ -175,6 +176,9 @@ app.use(cacheControl);
 app.use(apiVersionRewrite);
 app.use(staticDocGuard);
 const catalogImageBlobHandler = buildCatalogImageBlobFallbackHandler(pool, log);
+const catalogImageThumbnailHandler = buildCatalogImageThumbnailHandler(pool);
+app.get('/uploads/catalog-images/cards/:width/:filename', catalogImageThumbnailHandler);
+app.head('/uploads/catalog-images/cards/:width/:filename', catalogImageThumbnailHandler);
 app.get('/uploads/catalog-images/items/:filename', catalogImageBlobHandler);
 app.head('/uploads/catalog-images/items/:filename', catalogImageBlobHandler);
 app.use('/uploads/catalog-images/items', express.static(path.join(__dirname, 'uploads', 'catalog-images', 'items')));

@@ -31,6 +31,11 @@ let staffScheduleRangeLoadSeq = 0;
 let staffScheduleRangeAbortController = null;
 let scheduleCellHistoryAbortController = null;
 let staffProfessionCatalogRequestSeq = 0;
+let staffRosterRequestSeq = 0;
+let staffScheduleAccessGeneration = 0;
+let staffScheduleAccessFingerprint = '';
+let staffScheduleAccessBlocked = false;
+let staffScheduleHostMode = 'standalone';
 let staffScheduleLayoutMediaQuery = null;
 
 function staffScheduleMode(options = {}) {
@@ -3493,21 +3498,22 @@ function applyScheduleReadAccess(data) {
 
 async function fetchHrProfessions() {
     const seq = ++staffProfessionCatalogRequestSeq;
-    const context = scheduleHrDraftContext();
+    const context = staffScheduleRequestContext();
     StaffState.professionsLoadState = 'loading';
     try {
         const res = await staffApiFetch('/api/hr/professions');
-        if (seq !== staffProfessionCatalogRequestSeq || context !== scheduleHrDraftContext()) return { success: false, stale: true };
-        if (res.status === 403) { StaffState.professionsLoadState = 'restricted'; return { success: false, status: 403 }; }
+        if (seq !== staffProfessionCatalogRequestSeq || context !== staffScheduleRequestContext()) return { success: false, stale: true };
+        if (!res) return { success: false, stale: true };
+        if ([401, 403].includes(res.status)) { StaffState.professionsLoadState = 'restricted'; return { success: false, status: res.status }; }
         if (!res.ok) throw new Error('Profession catalog unavailable');
         const data = await res.json();
-        if (seq !== staffProfessionCatalogRequestSeq || context !== scheduleHrDraftContext()) return { success: false, stale: true };
+        if (seq !== staffProfessionCatalogRequestSeq || context !== staffScheduleRequestContext()) return { success: false, stale: true };
         if (!data.success || !Array.isArray(data.data)) throw new Error('Invalid profession catalog');
         StaffState.professions = data.data;
         StaffState.professionsLoadState = 'ready';
         return data;
     } catch (err) {
-        if (seq !== staffProfessionCatalogRequestSeq || context !== scheduleHrDraftContext()) return { success: false, stale: true };
+        if (seq !== staffProfessionCatalogRequestSeq || context !== staffScheduleRequestContext()) return { success: false, stale: true };
         console.error('fetchHrProfessions error:', err);
         StaffState.professionsLoadState = 'error';
         return { success: false };
@@ -3515,11 +3521,16 @@ async function fetchHrProfessions() {
 }
 
 async function fetchStaff() {
+    const seq = ++staffRosterRequestSeq;
+    const context = staffScheduleRequestContext();
     try {
         const res = await staffApiFetch('/api/staff?active=true');
+        if (!res || seq !== staffRosterRequestSeq || context !== staffScheduleRequestContext()) return { success: false, stale: true };
         const data = await res.json();
+        if (seq !== staffRosterRequestSeq || context !== staffScheduleRequestContext()) return { success: false, stale: true };
         if (!res.ok) return { ...data, success: false, status: res.status };
         if (data.success) {
+            staffScheduleAccessBlocked = false;
             applyScheduleReadAccess(data);
             StaffState.displayGroups = normalizeScheduleDisplayGroups(data.displayGroups || data.display_groups || StaffState.displayGroups);
             StaffState.scheduleCategoryContract = normalizeScheduleCategoryContract(
@@ -3530,6 +3541,7 @@ async function fetchStaff() {
         }
         return data;
     } catch (err) {
+        if (seq !== staffRosterRequestSeq || context !== staffScheduleRequestContext()) return { success: false, stale: true };
         console.error('fetchStaff error:', err);
         showNotification('Помилка завантаження персоналу', 'error');
         return { success: false };
@@ -3562,11 +3574,13 @@ async function parseScheduleReadResponse(response, fallbackError) {
 }
 
 async function fetchSchedule(from, to, options = {}) {
+    const context = staffScheduleRequestContext();
     try {
         const res = await staffApiFetch(`/api/staff/schedule?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, {
             signal: options.signal
         });
         const parsed = await parseScheduleReadResponse(res, 'Не вдалося завантажити графік');
+        if (context !== staffScheduleRequestContext()) return { success: false, stale: true };
         if (!parsed.success) return parsed;
         applyScheduleReadAccess(parsed.data);
 
@@ -3671,31 +3685,34 @@ async function fetchStaffingForecastBookings(from, to) {
 }
 
 async function postAttendanceAction(action, staffId) {
-    const token = localStorage.getItem('pzp_token');
-    const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
+    const context = staffScheduleRequestContext();
+    const headers = { 'Content-Type': 'application/json' };
     if (action === 'clock-in') {
-        const res = await fetch('/api/hr/clock-in', {
+        const res = await staffApiFetch('/api/hr/clock-in', {
             method: 'POST',
             headers,
             body: JSON.stringify({ staff_id: staffId })
         });
-        return await res.json();
+        const data = res ? await res.json() : null;
+        return context === staffScheduleRequestContext() && data ? data : { success: false, stale: true };
     }
     if (action === 'clock-out') {
-        const res = await fetch('/api/hr/clock-out', {
+        const res = await staffApiFetch('/api/hr/clock-out', {
             method: 'POST',
             headers,
             body: JSON.stringify({ staff_id: staffId })
         });
-        return await res.json();
+        const data = res ? await res.json() : null;
+        return context === staffScheduleRequestContext() && data ? data : { success: false, stale: true };
     }
     if (action === 'excused') {
-        const res = await fetch('/api/hr/mark-absent', {
+        const res = await staffApiFetch('/api/hr/mark-absent', {
             method: 'POST',
             headers,
             body: JSON.stringify({ staff_id: staffId, status: 'day_off', notes: 'Excused from schedule attendance panel' })
         });
-        return await res.json();
+        const data = res ? await res.json() : null;
+        return context === staffScheduleRequestContext() && data ? data : { success: false, stale: true };
     }
     return { success: false, error: 'Unknown attendance action' };
 }
@@ -3986,7 +4003,15 @@ async function handleAttendanceAction(button) {
         return;
     }
     button.disabled = true;
-    const result = await postAttendanceAction(action, staffId);
+    let result;
+    try {
+        result = await postAttendanceAction(action, staffId);
+    } catch (error) {
+        button.disabled = false;
+        showNotification(error.message || 'Не вдалося оновити attendance', 'error');
+        return;
+    }
+    if (result.stale) { button.disabled = false; return; }
     if (result.success) {
         const range = scheduleCurrentRange();
         const mode = StaffState.rangeMode || 'custom';
@@ -7289,6 +7314,7 @@ async function goToScheduleRange(startValue, endValue, mode = 'custom') {
 
     const target = scheduleRangeCandidate(validation.start, validation.end, mode);
     const requestSeq = ++staffScheduleRangeLoadSeq;
+    const requestContext = staffScheduleRequestContext();
     if (staffScheduleRangeAbortController) staffScheduleRangeAbortController.abort();
     const controller = typeof AbortController === 'function' ? new AbortController() : null;
     staffScheduleRangeAbortController = controller;
@@ -7308,11 +7334,15 @@ async function goToScheduleRange(startValue, endValue, mode = 'custom') {
                 : Promise.resolve({ success: true, data: null })
         ]);
 
-        if (requestSeq !== staffScheduleRangeLoadSeq || controller?.signal.aborted) return false;
+        if (requestSeq !== staffScheduleRangeLoadSeq || controller?.signal.aborted || requestContext !== staffScheduleRequestContext()) return false;
 
         const failedResult = [scheduleResult, attendanceResult, hoursResult].find(result => !result?.success);
         if (failedResult) {
             if (failedResult.aborted) return false;
+            if ([401, 403].includes(failedResult.status)) {
+                clearStaffScheduleAccessState();
+                return false;
+            }
             StaffState.rangePending = null;
             StaffState.rangeRetry = target;
             restoreScheduleCommittedRangeUi();
@@ -7351,7 +7381,7 @@ async function goToScheduleRange(startValue, endValue, mode = 'custom') {
         }
         return true;
     } catch (err) {
-        if (requestSeq !== staffScheduleRangeLoadSeq || controller?.signal.aborted || isScheduleAbortError(err)) return false;
+        if (requestSeq !== staffScheduleRangeLoadSeq || controller?.signal.aborted || requestContext !== staffScheduleRequestContext() || isScheduleAbortError(err)) return false;
         console.error('goToScheduleRange error:', err);
         StaffState.rangePending = null;
         StaffState.rangeRetry = target;
@@ -8791,6 +8821,9 @@ function handlePrint() {
 
 // v39.11: Add staff modal
 async function openAddStaffModal() {
+    syncStaffScheduleCapabilities();
+    if (!StaffState.canManageStaff) return;
+    const context = staffScheduleRequestContext();
     const DEPTS = getDepartmentOptionsFromStaffState();
     const defaultDepartment = DEPTS[0]?.value || 'animators';
     const roleOptionsByDepartment = staffRoleOptionsByDepartment();
@@ -8817,12 +8850,13 @@ async function openAddStaffModal() {
         { key: 'phone', label: 'Телефон', placeholder: '+380...' },
         { key: 'address', label: 'Адреса', placeholder: 'Місто, вулиця, будинок' }
     ], { icon: '👤', okText: 'Додати' });
-    if (!result) return;
+    if (!result || context !== staffScheduleRequestContext()) return;
+    syncStaffScheduleCapabilities();
+    if (!StaffState.canManageStaff) return;
     try {
-        const token = localStorage.getItem('pzp_token');
-        const res = await fetch('/api/staff', {
+        const res = await staffApiFetch('/api/staff', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 name: result.name.trim(),
                 department: result.department,
@@ -8833,6 +8867,7 @@ async function openAddStaffModal() {
                 address: result.address || ''
             })
         });
+        if (!res || context !== staffScheduleRequestContext()) return;
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
             if (typeof showNotification === 'function') showNotification(err.error || 'Помилка додавання', 'error');
@@ -8849,6 +8884,95 @@ async function openAddStaffModal() {
 // ==========================================
 // INIT
 // ==========================================
+
+function staffScheduleCapabilityFingerprint() {
+    return JSON.stringify(['hr.schedule.view', 'hr.schedule.manage', 'hr.staff.view', 'hr.staff.manage', 'export_data']
+        .map(action => typeof canAccess === 'function' && canAccess(action)));
+}
+
+function staffScheduleRequestContext() {
+    const sessionGeneration = typeof ensureApiAuthSessionGeneration === 'function'
+        ? ensureApiAuthSessionGeneration() : localStorage.getItem('pzp_auth_session_generation') || '';
+    return JSON.stringify([scheduleHrDraftContext(), staffScheduleAccessGeneration,
+        sessionGeneration, staffScheduleCapabilityFingerprint()]);
+}
+
+function syncStaffScheduleCapabilities() {
+    const canUseStaffCapability = action => typeof canAccess === 'function' && canAccess(action);
+    const writable = !staffScheduleAccessBlocked && !StaffState.recoveryReadOnly;
+    const staffWrites = window.getLegacyBusinessSurfaceAvailability?.('staff')?.available === true;
+    StaffState.canViewSchedule = canUseStaffCapability('hr.schedule.view');
+    StaffState.canManageSchedule = canUseStaffCapability('hr.schedule.manage') && StaffState.canViewSchedule && writable;
+    StaffState.canViewStaff = canUseStaffCapability('hr.staff.view');
+    StaffState.canExportSchedule = StaffState.canViewSchedule && canUseStaffCapability('export_data') && writable;
+    StaffState.canManageStaff = canUseStaffCapability('hr.staff.manage') && staffWrites && writable;
+    const user = typeof AppState !== 'undefined' ? AppState.currentUser : null;
+    const isAdmin = ['creator', 'director'].includes(user?.role);
+    const controls = {
+        addStaffBtn: StaffState.canManageStaff,
+        copyWeekBtn: StaffState.canManageSchedule,
+        fillWeekBtn: StaffState.canManageSchedule,
+        bulkCreateBtn: StaffState.canManageStaff && isAdmin && staffScheduleHostMode !== 'hr',
+        importExcelBtn: StaffState.canManageStaff && isAdmin,
+        excelImportInput: StaffState.canManageStaff && isAdmin,
+        exportExcelBtn: StaffState.canExportSchedule
+    };
+    for (const [id, available] of Object.entries(controls)) {
+        const control = document.getElementById(id);
+        if (!control) continue;
+        control.hidden = !available;
+        control.disabled = !available;
+        control.style.display = available ? '' : 'none';
+        control.setAttribute('aria-disabled', available ? 'false' : 'true');
+    }
+    syncScheduleRangeActionAvailability();
+    initScheduleOcrUi();
+}
+
+function clearStaffScheduleAccessState() {
+    staffScheduleAccessBlocked = true;
+    staffScheduleRangeLoadSeq++;
+    staffProfessionCatalogRequestSeq++;
+    staffRosterRequestSeq++;
+    staffScheduleRangeAbortController?.abort();
+    staffScheduleRangeAbortController = null;
+    // Invalidate the old editor before closing; its old context cannot authorize a close callback.
+    if (StaffState.editingCell) StaffState.editingCell.dayPay = null;
+    StaffState.editingCell = null;
+    StaffState.scheduleModalSessionSeq++;
+    const editor = document.getElementById('schModalOverlay');
+    editor?.classList.remove('visible');
+    editor?.classList.add('hidden');
+    void closeEditModal(true);
+    void closeFillWeekModal(true);
+    closeLinkModal();
+    closeBulkResults();
+    Object.assign(StaffState, {
+        staff: [], professions: [], departments: {}, displayGroups: [], scheduleCategoryContract: null,
+        schedule: {}, scheduleRawEntries: [], scheduleLoadedRange: null, attendance: {}, attendanceSummary: null,
+        attendanceUnavailable: true, hoursData: null, scheduleHistory: {}, shiftPreferences: {},
+        linkData: [], linkStats: null, allUsers: [], bulkResults: null,
+        staffingForecast: null, staffingForecastBookings: {}, staffingForecastAvailable: false,
+        managerAccountability: null, rangePending: null, rangeRetry: null
+    });
+    syncStaffScheduleCapabilities();
+    renderDeptFilter();
+    renderSchedule();
+    if (StaffState.showLoadView) renderLoadView();
+    setScheduleRangeLoadState('error', { error: 'Доступ або бізнес змінився. Оновіть дані графіка.' });
+}
+
+function handleStaffScheduleAccessChanged(event) {
+    if (!staffScheduleInitialized) return;
+    const fingerprint = staffScheduleRequestContext();
+    if (staffScheduleAccessFingerprint === fingerprint && event?.type !== 'permissions:lifecycle') return;
+    staffScheduleAccessGeneration++;
+    staffScheduleAccessFingerprint = staffScheduleRequestContext();
+    clearStaffScheduleAccessState();
+    if (StaffState.canViewSchedule) {
+        return refreshStaffSchedulePage({ reloadRange: true }).catch(error => console.warn('Schedule access refresh:', error));
+    }
+}
 
 function captureStaffScheduleRefreshState() {
     return {
@@ -8886,6 +9010,12 @@ async function performStaffScheduleRefresh(options = {}) {
         return { success: false, skipped: true, reason: 'not_initialized' };
     }
 
+    syncStaffScheduleCapabilities();
+    if (!StaffState.canViewSchedule) {
+        clearStaffScheduleAccessState();
+        return { success: false, status: 403 };
+    }
+    const context = staffScheduleRequestContext();
     const changedStaffId = normalizeScheduleFocusStaffId(options.staffId || options.changedStaffId);
     const preservedState = captureStaffScheduleRefreshState();
     const previousData = {
@@ -8901,6 +9031,15 @@ async function performStaffScheduleRefresh(options = {}) {
         fetchStaff()
     ]);
 
+    if (context !== staffScheduleRequestContext()) {
+        clearStaffScheduleAccessState();
+        return { success: false, stale: true };
+    }
+    if ([professionsResult, staffResult].some(result => [401, 403].includes(result?.status))) {
+        clearStaffScheduleAccessState();
+        return { success: false, restricted: true, professions: professionsResult, staff: staffResult };
+    }
+    if (professionsResult?.stale || staffResult?.stale) return { success: false, stale: true };
     if (!professionsResult?.success) StaffState.professions = previousData.professions;
     if (!staffResult?.success) {
         StaffState.staff = previousData.staff;
@@ -8910,9 +9049,14 @@ async function performStaffScheduleRefresh(options = {}) {
     }
     if (changedStaffId) delete StaffState.shiftPreferences[changedStaffId];
     restoreStaffScheduleRefreshState(preservedState);
+    syncStaffScheduleCapabilities();
     renderDeptFilter();
     renderSchedule();
     if (StaffState.showLoadView) renderLoadView();
+    if (options.reloadRange && professionsResult?.success && staffResult?.success) {
+        const range = scheduleCurrentRange();
+        await goToScheduleRange(range.start, range.end, StaffState.rangeMode);
+    }
 
     return {
         success: Boolean(professionsResult?.success && staffResult?.success),
@@ -8936,9 +9080,22 @@ function refreshStaffSchedulePage(options = {}) {
 }
 
 async function initStaffSchedulePage(options = {}) {
-    if (staffScheduleInitPromise) return staffScheduleInitPromise;
+    if (staffScheduleInitPromise) {
+        await staffScheduleInitPromise;
+        if (staffScheduleInitialized) {
+            const accessRefresh = handleStaffScheduleAccessChanged();
+            if (accessRefresh) await accessRefresh;
+            syncStaffScheduleCapabilities();
+            renderSchedule();
+            if (!accessRefresh && staffScheduleAccessBlocked && StaffState.canViewSchedule) {
+                return refreshStaffSchedulePage({ reloadRange: true });
+            }
+        }
+        return;
+    }
     staffScheduleInitPromise = (async () => {
         const mode = staffScheduleMode(options);
+        staffScheduleHostMode = mode;
         const initialFocusStaffId = normalizeScheduleFocusStaffId(options.focusStaffId) || scheduleFocusStaffIdFromLocation();
         applyStaffScheduleHostMode(mode);
         hydrateScheduleExpandedGroups();
@@ -8985,40 +9142,19 @@ async function initStaffSchedulePage(options = {}) {
             if (typeof bindLogoutButton === 'function') bindLogoutButton();
         }
 
-        const canUseStaffCapability = action => typeof canAccess === 'function' && canAccess(action);
-        StaffState.canViewSchedule = canUseStaffCapability('hr.schedule.view');
-        StaffState.canManageSchedule = canUseStaffCapability('hr.schedule.manage');
-        StaffState.canViewStaff = canUseStaffCapability('hr.staff.view');
-        StaffState.canExportSchedule = StaffState.canViewSchedule && canUseStaffCapability('export_data');
-        StaffState.canManageStaff = canUseStaffCapability('hr.staff.manage');
-        initScheduleOcrUi();
-        const ADMIN_ROLES = ['creator', 'director'];
-        const isAdmin = ADMIN_ROLES.includes(user.role);
-        const addBtn = document.getElementById('addStaffBtn');
-        if (addBtn) addBtn.style.display = StaffState.canManageStaff ? '' : 'none';
-
-        // Schedule mutations use their own capability and stay independent from staff profile management.
-        const copyBtn = document.getElementById('copyWeekBtn');
-        const fillBtn = document.getElementById('fillWeekBtn');
-        if (copyBtn) copyBtn.style.display = StaffState.canManageSchedule ? '' : 'none';
-        if (fillBtn) fillBtn.style.display = StaffState.canManageSchedule ? '' : 'none';
-
-        // v39.1: Show bulk create and import buttons only for creator/director
-        const bulkBtn = document.getElementById('bulkCreateBtn');
-        const importBtn = document.getElementById('importExcelBtn');
-        if (bulkBtn) bulkBtn.style.display = isAdmin && mode !== 'hr' ? '' : 'none';
-        const exportBtn = document.getElementById('exportExcelBtn');
-        if (exportBtn) {
-            exportBtn.hidden = !StaffState.canExportSchedule;
-            exportBtn.disabled = true;
-            exportBtn.setAttribute('aria-disabled', 'true');
-        }
-
-        if (importBtn) importBtn.style.display = isAdmin ? '' : 'none';
+        syncStaffScheduleCapabilities();
 
         // Load data
-        await fetchHrProfessions();
-        await fetchStaff();
+        const initialContext = staffScheduleRequestContext();
+        const professionsResult = await fetchHrProfessions();
+        const staffResult = await fetchStaff();
+        if (initialContext !== staffScheduleRequestContext() || professionsResult?.stale || staffResult?.stale
+            || [professionsResult, staffResult].some(result => [401, 403].includes(result?.status))) {
+            clearStaffScheduleAccessState();
+            staffScheduleInitPromise = null;
+            return;
+        }
+        syncStaffScheduleCapabilities();
         if (initialFocusStaffId) focusScheduleStaff(initialFocusStaffId, { render: false });
         renderDeptFilter();
 
@@ -9027,6 +9163,11 @@ async function initStaffSchedulePage(options = {}) {
         const draft = readScheduleHrDraft(new URLSearchParams(window.location.search).get('scheduleDraft') || '');
         if (draft?.range?.from && draft?.range?.to) await goToScheduleRange(draft.range.from, draft.range.to, draft.rangeMode);
         else await goToWeek(getScheduleFocusStart(new Date()));
+        if (initialContext !== staffScheduleRequestContext()) {
+            clearStaffScheduleAccessState();
+            staffScheduleInitPromise = null;
+            return;
+        }
 
         // Event listeners
         bindScheduleRangeControls();
@@ -9117,6 +9258,7 @@ async function initStaffSchedulePage(options = {}) {
         });
 
         staffScheduleInitialized = true;
+        staffScheduleAccessFingerprint = staffScheduleRequestContext();
         restoreScheduleHrDraft(draft);
         window.addEventListener('pageshow', event => {
             if (event.persisted && StaffState.editingCell) void refreshScheduleProfessionRates('schedule');
@@ -9137,6 +9279,12 @@ window.StaffSchedulePage = {
     openDayPlan: openScheduleDayPlan,
     renderSchedule
 };
+
+for (const eventName of ['app:user-changed', 'crmBusinessContextChanged', 'crmBusinessScopeChanged',
+    'crmBusinessContextHydrated', 'crmBusinessProfileChanged', 'timeline:business-context-changed',
+    'permissions:lifecycle', 'roleSwitched', 'workingRoleChanged', 'rolePreviewChanged', 'crm:auth-cleared']) {
+    window.addEventListener?.(eventName, handleStaffScheduleAccessChanged);
+}
 
 document.addEventListener('DOMContentLoaded', () => {
     if (shouldAutoInitStaffSchedulePage()) initStaffSchedulePage({ mode: 'standalone' });

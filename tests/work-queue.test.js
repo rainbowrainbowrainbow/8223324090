@@ -1543,6 +1543,11 @@ describe('work queue endpoint', () => {
             renderFilterSummary: () => '<div>queue explainability</div>',
             setRegion: (target, html) => { target.innerHTML = html; }
         };
+        // Shared client scope/auth integration is covered by business-split-followup-ui.test.js.
+        dom.window.apiFetchWithAuthRetry = (url, options = {}) => dom.window.fetch(url, {
+            ...options,
+            headers: { ...options.headers, Authorization: 'Bearer ' + dom.window.localStorage.getItem('pzp_token') }
+        });
         dom.window.fetch = async (url, options = {}) => {
             const value = String(url);
             if (value.startsWith('/api/dashboard/config')) {

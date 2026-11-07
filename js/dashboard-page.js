@@ -9626,21 +9626,45 @@ ${focusButton}
         badge.textContent = `Тестовий режим: ${roleName}`;
     }
 
+    let dashboardTaskOpenSeq = 0;
+    let dashboardTaskContextGeneration = 0;
+
+    function invalidateDashboardTaskDetails() {
+        dashboardTaskOpenSeq++;
+        dashboardTaskContextGeneration++;
+        document.getElementById('dashTaskModal')?.remove();
+    }
+
+    function dashboardTaskFetch(path, options = {}) {
+        if (typeof apiFetchWithAuthRetry !== 'function') throw new Error('API-клієнт ще не готовий. Оновіть сторінку.');
+        return apiFetchWithAuthRetry(dashboardScopedApiUrl(path), options);
+    }
+
+    function dashboardTaskContext() {
+        if (typeof ensureApiAuthSessionGeneration === 'function') ensureApiAuthSessionGeneration();
+        return JSON.stringify([dashboardContextFingerprint(), dashboardTaskContextGeneration]);
+    }
+
     async function openTask(taskId) {
-        // Fetch full task details
+        const id = Number(taskId);
+        if (!Number.isSafeInteger(id) || id <= 0) return;
+        const seq = ++dashboardTaskOpenSeq;
+        const context = dashboardTaskContext();
+        const isCurrent = () => seq === dashboardTaskOpenSeq && context === dashboardTaskContext();
         try {
-            const resp = await fetch(`/api/tasks/${taskId}`, {
-                headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') }
-            });
+            const resp = await dashboardTaskFetch(`/api/tasks/${id}`);
+            if (!isCurrent()) return;
+            if (!resp) return;
             if (!resp.ok) throw new Error('HTTP ' + resp.status);
             const task = await resp.json();
+            if (!isCurrent()) return;
             if (!task || !task.id) throw new Error('Task not found');
 
             showTaskModal(task);
         } catch (err) {
+            if (!isCurrent()) return;
             console.error('Open task error:', err);
-            // Fallback: navigate to tasks page
-            window.location.href = '/tasks';
+            window.location.href = dashboardScopedApiUrl(dashboardHrefWithParams('/tasks', { open: id }));
         }
     }
 
@@ -9934,6 +9958,8 @@ ${focusButton}
         if (!token) throw new Error('Немає активної сесії');
         const previousItemId = options.previousItemId || _workQueueSelectedItemId || null;
         const actionLabel = options.actionLabel || 'Дію по задачі виконано.';
+        const context = dashboardTaskContext();
+        const isCurrent = () => context === dashboardTaskContext();
 
         if (button) {
             button.disabled = true;
@@ -9942,24 +9968,28 @@ ${focusButton}
         setExecutionFeedback('Виконуємо збережену дію по задачі...', '');
         renderTriageWorkspaceOnly(false);
         try {
-            const resp = await fetch(path, {
+            if (!isCurrent()) return { success: false, stale: true };
+            const resp = await dashboardTaskFetch(path, {
                 method,
                 headers: {
-                    'Authorization': 'Bearer ' + token,
                     'Content-Type': 'application/json'
                 },
                 body: payload ? JSON.stringify(payload) : undefined
             });
+            if (!isCurrent() || !resp) return { success: false, stale: true };
             const data = await resp.json().catch(() => ({}));
+            if (!isCurrent()) return { success: false, stale: true };
             if (!resp.ok || data.success === false) {
                 throw new Error(data.error || `HTTP ${resp.status}`);
             }
             await refetchQueueAfterDurableExecution(previousItemId, actionLabel);
+            if (!isCurrent()) return { success: false, stale: true };
             window.dispatchEvent(new CustomEvent('crm:tasks-updated', {
                 detail: { source: 'dashboard_work_queue', path, method }
             }));
             return data;
         } catch (err) {
+            if (!isCurrent()) return { success: false, stale: true };
             console.error('Task queue action error:', err);
             setExecutionFeedback(err.message || 'Не вдалося виконати дію по задачі; фокус черги не змінено.', 'error');
             renderTriageWorkspaceOnly(true);
@@ -10769,6 +10799,7 @@ ${focusButton}
     function handleDashboardContextChanged() {
         const fingerprint = dashboardContextFingerprint();
         if (_dashboardContextFingerprint === fingerprint) return Promise.resolve([]);
+        invalidateDashboardTaskDetails();
         const previous = _dashboardContextFingerprint ? JSON.parse(_dashboardContextFingerprint) : null;
         const previousOwner = previous?.configOwner;
         _dashboardContextFingerprint = fingerprint;
@@ -10788,6 +10819,7 @@ ${focusButton}
     }
 
     function handleDashboardLegacyContextChanged() {
+        invalidateDashboardTaskDetails();
         const previousOwner = _dashboardContextFingerprint
             ? JSON.parse(_dashboardContextFingerprint).configOwner : null;
         // Invalidate both scopes before either refresh can capture its request key.
@@ -10879,6 +10911,7 @@ ${focusButton}
         refreshAlertRelatedWidgets();
     });
     window.addEventListener('app:user-changed', () => {
+        invalidateDashboardTaskDetails();
         handleDashboardContextChanged();
     });
     window.addEventListener('timeline:business-context-changed', () => {

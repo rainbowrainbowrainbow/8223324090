@@ -9,7 +9,10 @@ const {
     MAX_VALIDITY_MS,
     PROTECTED_WORKFLOWS,
     PERFORMANCE_CI_WORKFLOW_HASHES,
+    PERFORMANCE_CI_FAILED_SHA,
+    PERFORMANCE_CI_FAILED_RUN,
     assertPerformanceCiWorkflowHashes,
+    assertPerformanceCiRecovery,
     isPreparedProtectedRelease,
     migrationSqlHash,
     validateProtectedWorkflow,
@@ -347,6 +350,11 @@ function assertPreparedProductionBase(manifest, live, remoteSha) {
     if (!isPreparedProtectedRelease(manifest)) return;
     fail(live.sourceBranch === TARGET.branch && live.commitSha === manifest.baseLiveSha,
         'Live production changed after exact release preparation', 'PRODUCTION_BLOCK_LIVE_BASE_DRIFT');
+    if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE) {
+        fail(remoteSha === PERFORMANCE_CI_FAILED_SHA || remoteSha === manifest.initialHeadSha,
+            'Performance CI remote differs from its failed predecessor or corrected SHA', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
+        return;
+    }
     if (manifest.renewalFrom) {
         fail(remoteSha === manifest.renewalFrom.headSha || remoteSha === manifest.initialHeadSha,
             'Renewed production branch differs from its exact failed or corrected candidate', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
@@ -379,6 +387,8 @@ function defaultRuntime() {
             const currentBranch = git(['rev-parse', '--abbrev-ref', 'HEAD']);
             const live = await liveVersion();
             const paths = changedPaths(live.commitSha, head);
+            const performanceCi = options.protectedWorkflow === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE;
+            if (performanceCi) assertPerformanceCiRecoveryBase();
             return {
                 head,
                 currentBranch,
@@ -387,14 +397,15 @@ function defaultRuntime() {
                 descendsFromLive: gitIsAncestor(live.commitSha, head),
                 changedPaths: paths,
                 migrations: loadMigrations(paths),
-                workflowHashes: options.protectedWorkflow === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE
-                    ? performanceCiWorkflowHashes(paths) : undefined
+                workflowHashes: performanceCi ? performanceCiWorkflowHashes(paths) : undefined,
+                performanceCiRecovery: performanceCi ? performanceCiRecoveryFacts(head) : undefined
             };
         },
         async drift(manifest) {
             fail(!git(['status', '--porcelain']), 'Execute requires a clean worktree', 'PRODUCTION_BLOCK_DIRTY_WORKTREE');
             const head = git(['rev-parse', 'HEAD']).toLowerCase();
             const paths = changedPaths(manifest.baseLiveSha, head);
+            const performanceCi = manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE;
             return {
                 head,
                 descendsFromBase: gitIsAncestor(manifest.baseLiveSha, head),
@@ -404,8 +415,8 @@ function defaultRuntime() {
                 migrations: loadMigrations(paths).map(item => item.file).sort(),
                 migrationHashes: Object.fromEntries(loadMigrations(paths).map(item => [item.file, migrationSqlHash(item.sql)])),
                 changedPaths: paths,
-                workflowHashes: manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE
-                    ? performanceCiWorkflowHashes(paths) : undefined
+                workflowHashes: performanceCi ? performanceCiWorkflowHashes(paths) : undefined,
+                performanceCiRecovery: performanceCi ? performanceCiRecoveryFacts(head) : undefined
             };
         },
         plan(manifest) {
@@ -422,6 +433,9 @@ function defaultRuntime() {
         async preflightExecution(manifest) {
             if (isPreparedProtectedRelease(manifest)) {
                 assertPreparedProductionBase(manifest, await liveVersion(), remoteProductionSha());
+            }
+            if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE) {
+                assertPerformanceCiRecoveryBase();
             }
             const previousBinding = manifest.retryFrom || manifest.renewalFrom;
             if (previousBinding) {
@@ -466,6 +480,10 @@ function defaultRuntime() {
             const migrationFiles = loadMigrations(changedPaths(manifest.baseLiveSha, releaseSha)).map(item => item.file).sort();
             fail(JSON.stringify(migrationFiles) === JSON.stringify(manifest.allowedMigrationFiles),
                 'Migration set drifted after authorization', 'PRODUCTION_BLOCK_MIGRATION_DRIFT');
+            if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE) {
+                assertPreparedProductionBase(manifest, await liveVersion(), remoteProductionSha());
+                assertPerformanceCiRecoveryBase();
+            }
             runAuthorizedReleaseStage(manifest, blockFile,
                 'git', ['push', 'origin', `HEAD:refs/heads/${manifest.allowedBranch}`], { inherit: true });
             const exact = findExactCiRun(releaseSha, { strictProduction: isPreparedProtectedRelease(manifest) });
@@ -487,7 +505,11 @@ function defaultRuntime() {
                     assertHrPayrollCiResult(ci, releaseSha);
                 }
                 // CI can take minutes; check foreign live/remote drift again immediately before upload.
-                assertPreparedProductionBase(manifest, await liveVersion(), remoteProductionSha());
+                const remote = remoteProductionSha();
+                assertPreparedProductionBase(manifest, await liveVersion(), remote);
+                fail(manifest.allowedProtectedWorkflow.kind !== PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE
+                    || remote === releaseSha,
+                'Corrected performance CI SHA is not on the production ref', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
             }
             runAuthorizedReleaseStage(manifest, blockFile, 'npm', ['run', 'release:railway-up', '--',
                 '--branch', manifest.allowedBranch,
@@ -531,6 +553,34 @@ function performanceCiWorkflowHashes(changedPaths) {
     const workflows = Object.keys(PERFORMANCE_CI_WORKFLOW_HASHES);
     if (!workflows.every(file => changedPaths.includes(file))) return undefined;
     return Object.fromEntries(workflows.map(file => [file, migrationSqlHash(fs.readFileSync(path.join(ROOT, file), 'utf8'))]));
+}
+
+function performanceCiRecoveryFacts(head) {
+    const [, parent, ...otherParents] = git(['rev-list', '--parents', '-n', '1', head]).split(/\s+/);
+    return {
+        parent: otherParents.length ? null : parent,
+        changedPaths: changedPaths(PERFORMANCE_CI_FAILED_SHA, head)
+    };
+}
+
+function assertFailedPerformanceCiRun(run) {
+    const job = run?.jobs?.[0];
+    fail(String(run?.databaseId) === PERFORMANCE_CI_FAILED_RUN
+        && run.headSha === PERFORMANCE_CI_FAILED_SHA && run.headBranch === TARGET.branch
+        && run.workflowName === 'Runtime artifact smoke' && run.event === 'push'
+        && run.status === 'completed' && run.conclusion === 'failure'
+        && run.jobs?.length === 1 && job?.name === 'runtime-artifact'
+        && job.steps?.some(step => step.name === 'Build and smoke-test clean release export'
+            && step.status === 'completed' && step.conclusion === 'failure'),
+    'Performance CI recovery requires its exact failed production artifact run', 'PRODUCTION_BLOCK_CI_IDENTITY_INVALID');
+}
+
+function assertPerformanceCiRecoveryBase() {
+    fail(remoteProductionSha() === PERFORMANCE_CI_FAILED_SHA,
+        'Production branch no longer points at the failed performance CI candidate', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
+    const run = JSON.parse(commandResult('gh', ['run', 'view', PERFORMANCE_CI_FAILED_RUN, '--json',
+        'databaseId,headSha,headBranch,workflowName,event,status,conclusion,jobs']));
+    assertFailedPerformanceCiRun(run);
 }
 
 function isReleaseArtifact(file) {
@@ -916,6 +966,7 @@ async function assertExecuteDrift(manifest, runtime) {
     }
     if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE) {
         assertPerformanceCiWorkflowHashes(drift.workflowHashes);
+        assertPerformanceCiRecovery(drift.performanceCiRecovery);
     }
     if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA) {
         const expectedHashes = Object.fromEntries(manifest.migrationClassifications.map(item => [item.file, item.sqlHash]));
@@ -1095,6 +1146,7 @@ module.exports = {
     assertFailedFinanceRetryCi,
     assertHrPayrollCiResult,
     assertPerformanceCiResult,
+    assertFailedPerformanceCiRun,
     selectHrPayrollCiRun,
     defaultBlockFile,
     decodeQaScope,

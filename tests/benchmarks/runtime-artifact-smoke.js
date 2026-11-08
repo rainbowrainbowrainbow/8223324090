@@ -7,7 +7,7 @@ const { encodeInChild } = require('./services/catalogImageThumbnails');
 const { buildBanquetSummaryPdfBuffer } = require('./services/banquetSummaryPdf');
 
 const base = 'http://127.0.0.1:3000';
-const fixtureDatabase = /^eventgenix_artifact_(before|after)_test$/;
+const fixtureDatabase = /^eventgenix_artifact_candidate_test$/;
 assert.match(process.env.PGDATABASE || '', fixtureDatabase);
 assert.match(process.env.PGHOST || '', /^eventgenix-artifact-db-\d+-\d+$/);
 assert.equal(process.env.BOOTSTRAP_CREATOR_USERNAME, 'artifact_smoke');

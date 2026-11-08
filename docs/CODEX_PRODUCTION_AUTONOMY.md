@@ -354,6 +354,12 @@ The controller requires successful production-push CI for all 13 main jobs
 and the actual Railpack build and smoke step for the same SHA before upload.
 For routine runs the packaging probe skips image builds for version markers
 alone and builds one candidate image for packaging or dependency changes.
+The first candidate c5204dfb failed the artifact smoke database-name guard
+in production-push CI run 42490074963 before upload. A fresh owner-approved
+block may prepare one direct corrective commit on that exact failed SHA while
+live remains at 8e5c312d. The controller verifies the failed run and exact
+correction inventory, requires the failed SHA on the remote before push, and
+requires the corrected SHA on the remote before upload. Both CI gates run again.
 
 The `finance-manual-qa` protected workflow is limited to the exact reviewed finance
 inventory and the canonical-LF SHA-256 hashes of migrations 381 and 382 in

@@ -26,6 +26,15 @@ const PROTECTED_WORKFLOWS = Object.freeze({
     FINANCE_MANUAL_QA: 'finance-manual-qa'
 });
 const PERFORMANCE_CI_BASE = '8e5c312d73e9e92f9b81b0e233678b5e0d542238';
+const PERFORMANCE_CI_FAILED_SHA = 'c5204dfb508a0fea8fb52be0075349015b925e24';
+const PERFORMANCE_CI_FAILED_RUN = '42490074963';
+const PERFORMANCE_CI_RECOVERY_PATHS = Object.freeze(normalizePathList([
+    'docs/CODEX_PRODUCTION_AUTONOMY.md',
+    'scripts/production-block-controller.js',
+    'scripts/production-block-policy.js',
+    'tests/benchmarks/runtime-artifact-smoke.js',
+    'tests/production-block-controller.test.js'
+]));
 const PERFORMANCE_CI_WORKFLOW_HASHES = Object.freeze({
     '.github/workflows/ci.yml': 'cabaccf5d3589b42c47204c82bbc040fc2afd2737bc3e53538b9f7d074279610',
     '.github/workflows/runtime-artifact.yml': '4ccc691cd13e2bb70429ca1630fb2cc7aa332b549df8c91ff464fc9a762c0b65'
@@ -384,6 +393,13 @@ function assertPerformanceCiWorkflowHashes(hashes = {}) {
         'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
 }
 
+function assertPerformanceCiRecovery({ parent, changedPaths } = {}) {
+    fail(parent === PERFORMANCE_CI_FAILED_SHA
+        && stableJson(normalizePathList(changedPaths)) === stableJson(PERFORMANCE_CI_RECOVERY_PATHS),
+    'Performance CI recovery must be one direct correction of the exact failed candidate',
+    'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+}
+
 function validatePerformanceCiScope(baseSha, baseVersion, version, qa, migrations, attempts) {
     fail(baseSha === PERFORMANCE_CI_BASE && baseVersion === '0.83.22' && version === '0.83.23',
         'Performance CI release requires the reviewed base and prepared patch',
@@ -653,6 +669,7 @@ function buildManifest(facts, options = {}) {
         validatePerformanceCiScope(baseLiveSha, facts.live?.version, facts.releaseVersion,
             qaScope, migrations, maxReleaseAttempts);
         assertPerformanceCiWorkflowHashes(facts.workflowHashes);
+        assertPerformanceCiRecovery(facts.performanceCiRecovery);
     }
     if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.HR_PAYROLL) {
         validateHrPayrollScope(qaScope, migrations);
@@ -705,7 +722,11 @@ function buildManifest(facts, options = {}) {
         },
         changedPaths: changed,
         ...(isPreparedProtectedWorkflow(protectedWorkflow.kind) ? {
-            preparedRelease: { sha: head, version: facts.releaseVersion, baseVersion: facts.live.version }
+            preparedRelease: {
+                sha: head, version: facts.releaseVersion, baseVersion: facts.live.version,
+                ...(protectedWorkflow.kind === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE
+                    ? { failedPredecessorSha: PERFORMANCE_CI_FAILED_SHA, failedArtifactRun: PERFORMANCE_CI_FAILED_RUN } : {})
+            }
         } : {}),
         runtimeState: {
             releaseAttempts: 0,
@@ -776,7 +797,9 @@ function validateManifest(manifest, options = {}) {
     if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE) {
         validatePerformanceCiScope(manifest.baseLiveSha, manifest.preparedRelease?.baseVersion,
             manifest.preparedRelease?.version, qaScope, manifest.migrationClassifications, manifest.maxReleaseAttempts);
-        fail(manifest.preparedRelease?.sha === manifest.initialHeadSha && manifest.allowedMigrationFiles.length === 0,
+        fail(manifest.preparedRelease?.sha === manifest.initialHeadSha && manifest.allowedMigrationFiles.length === 0
+            && manifest.preparedRelease.failedPredecessorSha === PERFORMANCE_CI_FAILED_SHA
+            && manifest.preparedRelease.failedArtifactRun === PERFORMANCE_CI_FAILED_RUN,
             'Performance CI requires its exact prepared SHA and empty migration inventory',
             'PRODUCTION_BLOCK_RELEASE_NOT_PREPARED');
     }
@@ -888,6 +911,10 @@ module.exports = {
     PROTECTED_WORKFLOWS,
     PERFORMANCE_CI_CHANGED_PATHS,
     PERFORMANCE_CI_WORKFLOW_HASHES,
+    PERFORMANCE_CI_FAILED_SHA,
+    PERFORMANCE_CI_FAILED_RUN,
+    PERFORMANCE_CI_RECOVERY_PATHS,
+    assertPerformanceCiRecovery,
     assertPerformanceCiWorkflowHashes,
     RED_PATH_PATTERNS,
     SCHEMA_VERSION,

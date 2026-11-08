@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const vm = require('node:vm');
 const {
     buildManifest,
     classifyMigration,
@@ -13,6 +14,9 @@ const {
     migrationSqlHash,
     PERFORMANCE_CI_CHANGED_PATHS,
     PERFORMANCE_CI_WORKFLOW_HASHES,
+    PERFORMANCE_CI_FAILED_SHA,
+    PERFORMANCE_CI_FAILED_RUN,
+    PERFORMANCE_CI_RECOVERY_PATHS,
     sanitize,
     validateManifest,
     validateQaScope,
@@ -24,6 +28,7 @@ const {
     assertPreparedProductionBase,
     assertHrPayrollCiResult,
     assertPerformanceCiResult,
+    assertFailedPerformanceCiRun,
     selectHrPayrollCiRun,
     executeAction,
     findUnexpiredQaBlocker,
@@ -844,7 +849,8 @@ test('performance CI release pins the workflows and its single prepared release 
         live: { commitSha: '8e5c312d73e9e92f9b81b0e233678b5e0d542238', version: '0.83.22' },
         releaseVersion: '0.83.23',
         changedPaths: PERFORMANCE_CI_CHANGED_PATHS,
-        workflowHashes: PERFORMANCE_CI_WORKFLOW_HASHES
+        workflowHashes: PERFORMANCE_CI_WORKFLOW_HASHES,
+        performanceCiRecovery: { parent: PERFORMANCE_CI_FAILED_SHA, changedPaths: PERFORMANCE_CI_RECOVERY_PATHS }
     };
     const value = manifest(options, scope);
     assert.equal(validateManifest(value).preparedRelease.sha, HEAD_SHA);
@@ -854,6 +860,8 @@ test('performance CI release pins the workflows and its single prepared release 
         { changedPaths: scope.changedPaths.filter(file => file !== 'tests/payment-readiness.test.js') },
         { live: { ...scope.live, commitSha: LIVE_SHA } },
         { releaseVersion: '0.83.24' },
+        { performanceCiRecovery: { ...scope.performanceCiRecovery, parent: LIVE_SHA } },
+        { performanceCiRecovery: { ...scope.performanceCiRecovery, changedPaths: ['routes/customers.js'] } },
         { migrations: [{ file: 'db/migrations/999_new.sql', sql: 'CREATE TABLE test(id int);' }] },
         { workflowHashes: { ...scope.workflowHashes, '.github/workflows/ci.yml': 'f'.repeat(64) } }
     ]) assert.throws(() => manifest(options, { ...scope, ...override }));
@@ -862,10 +870,41 @@ test('performance CI release pins the workflows and its single prepared release 
     const file = blockFile(t, value);
     const execute = drift => executeAction({ blockFile: file, confirmation: confirmationValue(value), dryRun: true },
         dryRuntime({ drift: async () => ({ head: HEAD_SHA, changedPaths: scope.changedPaths, descendsFromBase: true,
-            migrations: [], workflowHashes: scope.workflowHashes, ...drift }) }));
+            migrations: [], workflowHashes: scope.workflowHashes, performanceCiRecovery: scope.performanceCiRecovery, ...drift }) }));
     assert.equal((await execute()).success, true);
     await assert.rejects(execute({ head: RELEASE_SHA }), error => error.code === 'PRODUCTION_BLOCK_SHA_DRIFT');
     await assert.rejects(execute({ workflowHashes: {} }), error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
+});
+
+test('performance CI recovery requires the exact failed production artifact run', () => {
+    const step = { name: 'Build and smoke-test clean release export', status: 'completed', conclusion: 'failure' };
+    const job = { name: 'runtime-artifact', steps: [step] };
+    const run = { databaseId: PERFORMANCE_CI_FAILED_RUN, headSha: PERFORMANCE_CI_FAILED_SHA,
+        headBranch: 'codex/eventgenix-production', workflowName: 'Runtime artifact smoke',
+        event: 'push', status: 'completed', conclusion: 'failure', jobs: [job] };
+    assert.doesNotThrow(() => assertFailedPerformanceCiRun(run));
+    for (const override of [{ databaseId: '123' }, { headSha: HEAD_SHA }, { event: 'pull_request' },
+        { conclusion: 'success' }, { jobs: [{ ...job, steps: [] }] }]) {
+        assert.throws(() => assertFailedPerformanceCiRun({ ...run, ...override }),
+            error => error.code === 'PRODUCTION_BLOCK_CI_IDENTITY_INVALID');
+    }
+});
+
+test('runtime artifact workflow database matches the disposable smoke guard', () => {
+    const root = path.join(__dirname, '..');
+    const workflow = fs.readFileSync(path.join(root, '.github/workflows/runtime-artifact.yml'), 'utf8');
+    const database = workflow.match(/^\s+pgdatabase="([^"]+)"\s*$/m)?.[1];
+    const smoke = fs.readFileSync(path.join(root, 'tests/benchmarks/runtime-artifact-smoke.js'), 'utf8');
+    const boundary = smoke.indexOf('async function read(');
+    assert.ok(boundary > 0);
+    const verify = env => vm.runInNewContext(smoke.slice(0, boundary), {
+        require: name => name === 'node:assert/strict' ? assert : {},
+        process: { env: { PGDATABASE: database, PGHOST: 'eventgenix-artifact-db-123-1',
+            BOOTSTRAP_CREATOR_USERNAME: 'artifact_smoke', ...env } }
+    });
+    assert.doesNotThrow(() => verify({}));
+    assert.throws(() => verify({ PGDATABASE: 'eventgenix_production' }), { code: 'ERR_ASSERTION' });
+    assert.throws(() => verify({ RAILWAY_PROJECT_ID: 'production' }), { code: 'ERR_ASSERTION' });
 });
 
 test('performance CI release requires all main jobs and an executed artifact build for the same SHA', () => {

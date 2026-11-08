@@ -11,6 +11,8 @@ const {
     confirmationValue,
     manifestHash,
     migrationSqlHash,
+    PERFORMANCE_CI_CHANGED_PATHS,
+    PERFORMANCE_CI_WORKFLOW_HASHES,
     sanitize,
     validateManifest,
     validateQaScope,
@@ -21,6 +23,7 @@ const {
     assertHrPayrollProductionBase,
     assertPreparedProductionBase,
     assertHrPayrollCiResult,
+    assertPerformanceCiResult,
     selectHrPayrollCiRun,
     executeAction,
     findUnexpiredQaBlocker,
@@ -37,6 +40,7 @@ const {
     resumeAuthorizedQa,
     writeBlockFile
 } = require('../scripts/production-block-controller');
+const { inputs: artifactInputs, requiresBuild } = require('../scripts/runtime-artifact-inputs');
 
 const LIVE_SHA = '1'.repeat(40);
 const HEAD_SHA = '2'.repeat(40);
@@ -833,6 +837,80 @@ function successfulHrPayrollCi() {
             'HR and payroll PostgreSQL integration', 'My Day PostgreSQL integration', 'My Day browser interactions'
         ].map(name => ({ name, status: 'completed', conclusion: 'success' })) };
 }
+
+test('performance CI release pins the workflows and its single prepared release scope', async t => {
+    const options = { protectedWorkflow: 'performance-ci-release', maxReleaseAttempts: 1 };
+    const scope = {
+        live: { commitSha: '8e5c312d73e9e92f9b81b0e233678b5e0d542238', version: '0.83.22' },
+        releaseVersion: '0.83.23',
+        changedPaths: PERFORMANCE_CI_CHANGED_PATHS,
+        workflowHashes: PERFORMANCE_CI_WORKFLOW_HASHES
+    };
+    const value = manifest(options, scope);
+    assert.equal(validateManifest(value).preparedRelease.sha, HEAD_SHA);
+    for (const override of [
+        { changedPaths: [...scope.changedPaths, '.github/workflows/unreviewed.yml'] },
+        { changedPaths: [...scope.changedPaths, 'routes/customers.js'] },
+        { changedPaths: scope.changedPaths.filter(file => file !== 'tests/payment-readiness.test.js') },
+        { live: { ...scope.live, commitSha: LIVE_SHA } },
+        { releaseVersion: '0.83.24' },
+        { migrations: [{ file: 'db/migrations/999_new.sql', sql: 'CREATE TABLE test(id int);' }] },
+        { workflowHashes: { ...scope.workflowHashes, '.github/workflows/ci.yml': 'f'.repeat(64) } }
+    ]) assert.throws(() => manifest(options, { ...scope, ...override }));
+    assert.throws(() => manifest({ ...options, maxReleaseAttempts: 2 }, scope));
+    assert.throws(() => manifest({}, scope), error => error.code === 'PRODUCTION_BLOCK_RED_PATHS');
+    const file = blockFile(t, value);
+    const execute = drift => executeAction({ blockFile: file, confirmation: confirmationValue(value), dryRun: true },
+        dryRuntime({ drift: async () => ({ head: HEAD_SHA, changedPaths: scope.changedPaths, descendsFromBase: true,
+            migrations: [], workflowHashes: scope.workflowHashes, ...drift }) }));
+    assert.equal((await execute()).success, true);
+    await assert.rejects(execute({ head: RELEASE_SHA }), error => error.code === 'PRODUCTION_BLOCK_SHA_DRIFT');
+    await assert.rejects(execute({ workflowHashes: {} }), error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
+});
+
+test('performance CI release requires all main jobs and an executed artifact build for the same SHA', () => {
+    const main = successfulHrPayrollCi();
+    main.jobs.push(...[
+        'Education shard chromium-core (chromium)', 'Education shard chromium-lifecycle (chromium)',
+        'Education shard chromium-journey (chromium)', 'Education shard webkit-flow (webkit)',
+        'Education shard webkit-responsive (webkit)'
+    ].map(name => ({ name, status: 'completed', conclusion: 'success' })));
+    const step = { name: 'Build and smoke-test clean release export', status: 'completed', conclusion: 'success' };
+    const job = { name: 'runtime-artifact', status: 'completed', conclusion: 'success', steps: [step] };
+    const artifact = { ...main, workflowName: 'Runtime artifact smoke', jobs: [job] };
+    assert.equal(selectHrPayrollCiRun([main, artifact], HEAD_SHA, 'Runtime artifact smoke'), artifact);
+    assert.doesNotThrow(() => assertPerformanceCiResult(main, artifact, HEAD_SHA));
+    assert.throws(() => assertPerformanceCiResult({ ...main, jobs: main.jobs.slice(0, -1) }, artifact, HEAD_SHA));
+    assert.throws(() => assertPerformanceCiResult(main, { ...artifact, headSha: RELEASE_SHA }, HEAD_SHA));
+    assert.throws(() => assertPerformanceCiResult(main, {
+        ...artifact, jobs: [{ ...job, steps: [{ ...step, conclusion: 'skipped' }] }]
+    }, HEAD_SHA));
+});
+
+test('runtime artifact probe ignores version metadata and builds when packaging inputs differ', () => {
+    const before = {
+        'package.json': { version: '1.2.3', eventGenix: { releaseLabel: 'old' }, scripts: { start: 'node server.js' } },
+        'package-lock.json': { version: '1.2.3', packages: { '': { version: '1.2.3' }, 'node_modules/pg': { version: '8.1.0' } } }
+    };
+    const after = structuredClone(before);
+    after['package.json'].version = after['package-lock.json'].version = after['package-lock.json'].packages[''].version = '1.2.4';
+    after['package.json'].eventGenix.releaseLabel = 'new';
+    const compare = (files, next = after) => requiresBuild(LIVE_SHA, HEAD_SHA, ([command, arg]) => {
+        if (command === 'diff') return files.join('\0');
+        const [sha, file] = arg.split(':');
+        return JSON.stringify((sha === LIVE_SHA ? before : next)[file]);
+    });
+    assert.equal(compare(Object.keys(before)), false);
+    assert.equal(compare([]), false);
+    const changed = structuredClone(after);
+    changed['package-lock.json'].packages['node_modules/pg'].version = '8.2.0';
+    assert.equal(compare(Object.keys(before), changed), true);
+    changed['package.json'].scripts.start = 'node other.js';
+    assert.equal(compare(['package.json'], changed), true);
+    for (const file of artifactInputs.filter(file => !Object.hasOwn(before, file))) assert.equal(compare([file]), true);
+    assert.equal(requiresBuild(LIVE_SHA, HEAD_SHA, () => { throw new Error('Missing shallow history'); }), true);
+    assert.equal(requiresBuild('not-a-sha', HEAD_SHA), true);
+});
 
 test('HR/payroll selects only the latest exact production push CI', () => {
     const valid = successfulHrPayrollCi();

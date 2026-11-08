@@ -21,9 +21,39 @@ const PROTECTED_WORKFLOWS = Object.freeze({
     CERTIFICATE_QA_ISOLATION: 'certificate-qa-isolation',
     CERTIFICATE_CI_GATE: 'certificate-ci-gate',
     LEAD_UI_CI_GATE: 'lead-ui-ci-gate',
+    PERFORMANCE_CI_RELEASE: 'performance-ci-release',
     HR_PAYROLL: 'hr-payroll',
     FINANCE_MANUAL_QA: 'finance-manual-qa'
 });
+const PERFORMANCE_CI_BASE = '8e5c312d73e9e92f9b81b0e233678b5e0d542238';
+const PERFORMANCE_CI_WORKFLOW_HASHES = Object.freeze({
+    '.github/workflows/ci.yml': 'cabaccf5d3589b42c47204c82bbc040fc2afd2737bc3e53538b9f7d074279610',
+    '.github/workflows/runtime-artifact.yml': '4ccc691cd13e2bb70429ca1630fb2cc7aa332b549df8c91ff464fc9a762c0b65'
+});
+const PERFORMANCE_CI_CHANGED_PATHS = Object.freeze(normalizePathList([
+    ...Object.keys(PERFORMANCE_CI_WORKFLOW_HASHES),
+    'docs/CODEX_PRODUCTION_AUTONOMY.md',
+    'scripts/production-block-controller.js',
+    'scripts/production-block-policy.js',
+    'scripts/runtime-artifact-inputs.js',
+    'tests/benchmarks/runtime-artifact-smoke.js',
+    'tests/browser/education-close-ux-browser.js',
+    'tests/payment-readiness.test.js',
+    'tests/production-block-controller.test.js',
+    // Exact generated release markers for the prepared 0.83.23 patch.
+    'CHANGELOG.md', 'accounting-deposits.html', 'afisha.html', 'art-director.html',
+    'attendance-upload.html', 'booking-summary.html', 'cashier-payments.html', 'center.html',
+    'certificates.html', 'chat-settings.html', 'chat.html', 'checkin.html', 'content.html',
+    'copilot.html', 'css/assistant-rail.css', 'css/pages-shell.css', 'css/pages.css',
+    'css/sidebar-aurora.css', 'customers.html', 'dashboard.html', 'data-deletion.html',
+    'demo.html', 'designer.html', 'designs.html', 'docs/integrations/checkbox/IMPLEMENTATION_STATUS.md',
+    'finance.html', 'game.html', 'graduation.html', 'guardian-ops.html', 'hermes-studio.html',
+    'hr.html', 'index.html', 'invite.html', 'js/designs-page.js', 'landing/index.html', 'leads.html',
+    'omni.html', 'package-lock.json', 'package.json', 'privacy-policy.html', 'profile.html',
+    'programs.html', 'quiz.html', 'report-agent.html', 'reports.html', 'room.html', 'server.js',
+    'shop.html', 'sound.html', 'staff.html', 'status.html', 'sw.js', 'tasks.html',
+    'terms-of-service.html', 'tests/ui-check.js', 'timeline-settings.html', 'training.html', 'warehouse.html'
+]));
 const CERTIFICATE_QA_RED_PATHS = Object.freeze(['routes/auth.js', 'routes/finance.js']);
 const CERTIFICATE_QA_MIGRATION = 'db/migrations/371_trusted_qa_certificate_lookup.sql';
 const CERTIFICATE_CI_RED_PATHS = Object.freeze(['.github/workflows/ci.yml']);
@@ -339,9 +369,28 @@ function migrationSqlHash(sql) {
     return crypto.createHash('sha256').update(String(sql).replace(/\r\n/g, '\n'), 'utf8').digest('hex');
 }
 
+function isPreparedProtectedWorkflow(kind) {
+    return [PROTECTED_WORKFLOWS.HR_PAYROLL, PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA,
+        PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE].includes(kind);
+}
+
 function isPreparedProtectedRelease(manifest) {
-    return [PROTECTED_WORKFLOWS.HR_PAYROLL, PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA]
-        .includes(manifest.allowedProtectedWorkflow?.kind);
+    return isPreparedProtectedWorkflow(manifest.allowedProtectedWorkflow?.kind);
+}
+
+function assertPerformanceCiWorkflowHashes(hashes = {}) {
+    fail(stableJson(hashes) === stableJson(PERFORMANCE_CI_WORKFLOW_HASHES),
+        'Performance CI workflow contents differ from the reviewed files',
+        'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
+}
+
+function validatePerformanceCiScope(baseSha, baseVersion, version, qa, migrations, attempts) {
+    fail(baseSha === PERFORMANCE_CI_BASE && baseVersion === '0.83.22' && version === '0.83.23',
+        'Performance CI release requires the reviewed base and prepared patch',
+        'PRODUCTION_BLOCK_RELEASE_NOT_PREPARED');
+    fail(qa.enabled === false && migrations.length === 0 && attempts === 1,
+        'Performance CI release permits one attempt without migrations or QA records',
+        'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
 }
 
 function migrationHeader(sql, name) {
@@ -408,6 +457,14 @@ function validateProtectedWorkflow(workflow, changedPaths = [], redPaths = []) {
     }
     fail(Object.values(PROTECTED_WORKFLOWS).includes(workflow),
         'Unsupported protected production workflow', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_INVALID');
+    if (workflow === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE) {
+        const expected = Object.keys(PERFORMANCE_CI_WORKFLOW_HASHES);
+        fail(stableJson(redPaths) === stableJson(expected), 'Performance CI permits only its two reviewed workflows',
+            'PRODUCTION_BLOCK_RED_PATHS', { paths: redPaths });
+        fail(stableJson(normalizePathList(changedPaths)) === stableJson(PERFORMANCE_CI_CHANGED_PATHS),
+            'Performance CI release file inventory differs', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+        return { enabled: true, kind: workflow, protectedChangedPaths: expected };
+    }
     if (workflow === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA) {
         const changed = normalizePathList(changedPaths);
         fail(redPaths.includes('routes/finance.js') && redPaths.every(file => FINANCE_MANUAL_RED_PATHS.includes(file)),
@@ -579,6 +636,7 @@ function buildManifest(facts, options = {}) {
     const redPaths = redChangedPaths(changed);
     const protectedWorkflow = validateProtectedWorkflow(options.protectedWorkflow || 'none', changed, redPaths);
     const qaScope = validateQaScope(options.qaScope || { enabled: false });
+    const maxReleaseAttempts = Number(options.maxReleaseAttempts || DEFAULT_MAX_ATTEMPTS);
     fail(qaScope.kind !== 'finance' || protectedWorkflow.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA,
         'Finance QA scope requires the dedicated finance workflow', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
     if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.CERTIFICATE_CI_GATE) {
@@ -590,6 +648,11 @@ function buildManifest(facts, options = {}) {
         fail(qaScope.enabled === false && migrations.length === 0,
             'Lead UI CI release cannot include migrations or production QA records',
             'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+    }
+    if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE) {
+        validatePerformanceCiScope(baseLiveSha, facts.live?.version, facts.releaseVersion,
+            qaScope, migrations, maxReleaseAttempts);
+        assertPerformanceCiWorkflowHashes(facts.workflowHashes);
     }
     if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.HR_PAYROLL) {
         validateHrPayrollScope(qaScope, migrations);
@@ -629,7 +692,7 @@ function buildManifest(facts, options = {}) {
         allowedProtectedWorkflow: protectedWorkflow,
         releaseLabel: String(options.releaseLabel || 'Autonomy Hardening').trim().slice(0, 120),
         releaseNotes: validateReleaseNotes(options.releaseNotes || []),
-        maxReleaseAttempts: Number(options.maxReleaseAttempts || DEFAULT_MAX_ATTEMPTS),
+        maxReleaseAttempts,
         realDataMutationAllowed: false,
         settingsMutationAllowed: false,
         secretsMutationAllowed: false,
@@ -641,7 +704,7 @@ function buildManifest(facts, options = {}) {
             migrations: Object.fromEntries(migrations.map(item => [item.file, item.rollback || 'No automatic rollback documented']))
         },
         changedPaths: changed,
-        ...([PROTECTED_WORKFLOWS.HR_PAYROLL, PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA].includes(protectedWorkflow.kind) ? {
+        ...(isPreparedProtectedWorkflow(protectedWorkflow.kind) ? {
             preparedRelease: { sha: head, version: facts.releaseVersion, baseVersion: facts.live.version }
         } : {}),
         runtimeState: {
@@ -709,6 +772,13 @@ function validateManifest(manifest, options = {}) {
             && manifest.migrationClassifications.length === 0,
             'Lead UI CI release cannot include migrations or production QA records',
             'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+    }
+    if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE) {
+        validatePerformanceCiScope(manifest.baseLiveSha, manifest.preparedRelease?.baseVersion,
+            manifest.preparedRelease?.version, qaScope, manifest.migrationClassifications, manifest.maxReleaseAttempts);
+        fail(manifest.preparedRelease?.sha === manifest.initialHeadSha && manifest.allowedMigrationFiles.length === 0,
+            'Performance CI requires its exact prepared SHA and empty migration inventory',
+            'PRODUCTION_BLOCK_RELEASE_NOT_PREPARED');
     }
     if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.HR_PAYROLL) {
         validateHrPayrollScope(qaScope, manifest.migrationClassifications);
@@ -816,6 +886,9 @@ module.exports = {
     MAX_VALIDITY_MS,
     ProductionBlockError,
     PROTECTED_WORKFLOWS,
+    PERFORMANCE_CI_CHANGED_PATHS,
+    PERFORMANCE_CI_WORKFLOW_HASHES,
+    assertPerformanceCiWorkflowHashes,
     RED_PATH_PATTERNS,
     SCHEMA_VERSION,
     TARGET,

@@ -1,0 +1,118 @@
+name: Runtime artifact smoke
+
+on:
+  push:
+    paths:
+      - .gitattributes
+      - .node-version
+      - railpack.json
+      - package.json
+      - package-lock.json
+      - .github/workflows/runtime-artifact.yml
+      - scripts/railway-release-up.js
+      - scripts/runtime-artifact-inputs.js
+      - services/releaseDeploymentManifest.js
+      - tests/benchmarks/runtime-artifact-smoke.js
+      - tests/fixtures/booking-summary-layout-compact.fixture.json
+  pull_request:
+    paths:
+      - .gitattributes
+      - .node-version
+      - railpack.json
+      - package.json
+      - package-lock.json
+      - .github/workflows/runtime-artifact.yml
+      - scripts/railway-release-up.js
+      - scripts/runtime-artifact-inputs.js
+      - services/releaseDeploymentManifest.js
+      - tests/benchmarks/runtime-artifact-smoke.js
+      - tests/fixtures/booking-summary-layout-compact.fixture.json
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-artifact:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .node-version
+      - name: Check packaging inputs
+        id: inputs
+        shell: bash
+        run: node scripts/runtime-artifact-inputs.js >> "$GITHUB_OUTPUT"
+      - name: Build and smoke-test clean release export
+        if: steps.inputs.outputs.build == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          archive="railpack-v0.43.0-x86_64-unknown-linux-musl.tar.gz"
+          curl --fail --silent --show-error --location \
+            "https://github.com/railwayapp/railpack/releases/download/v0.43.0/$archive" -o "$work/$archive"
+          echo "248a8f60f36854aabed6124113631078a802de3461660855fc4de9c26065c1fb  $work/$archive" | sha256sum -c
+          tar -xzf "$work/$archive" -C "$work" railpack
+          "$work/railpack" --version
+
+          source_dir="$(node -e "console.log(require('./scripts/railway-release-up').createCleanExport(process.env.GITHUB_SHA, process.env.GITHUB_REF_NAME, {}).sourceDir)")"
+          test ! -e "$source_dir/tests"
+          test -f "$source_dir/db/migrate.js"
+          test -f "$source_dir/eventgenix-release-deployment.json"
+
+          network="eventgenix-artifact-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          database="eventgenix-artifact-db-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          app="eventgenix-artifact-app-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          cleanup() {
+            docker rm -f "$app" "$database" >/dev/null 2>&1 || true
+            docker network rm "$network" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker network create --internal "$network"
+          docker run --detach --name "$database" --network "$network" \
+            -e POSTGRES_HOST_AUTH_METHOD=trust postgres:17
+          for attempt in {1..45}; do
+            if docker exec "$database" pg_isready -h 127.0.0.1 -U postgres; then break; fi
+            sleep 1
+          done
+          docker exec "$database" pg_isready -h 127.0.0.1 -U postgres
+
+          tag="eventgenix-artifact:candidate"
+          plan="$work/candidate-plan.json"
+          "$work/railpack" prepare --plan-out "$plan" --error-missing-start "$source_dir"
+          jq -e '.steps[] | select(.name == "install") | .variables.NPM_CONFIG_PRODUCTION == "true"' "$plan"
+          echo "Source file bytes: $(du -sb "$source_dir" | cut -f1)"
+          time docker buildx build --load --progress plain --tag "$tag" \
+            --build-arg BUILDKIT_SYNTAX=ghcr.io/railwayapp/railpack-frontend:v0.43.0 \
+            --build-arg "cache-key=eventgenix-artifact-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            --file "$plan" "$source_dir"
+          echo "Image bytes: $(docker image inspect --format '{{.Size}}' "$tag")"
+          docker run --rm --network none --entrypoint sh "$tag" -ec '
+            du -sb /app
+            du -sb /app/node_modules
+            test ! -e /app/tests
+            test ! -e /app/node_modules/jsdom
+            test ! -e /app/node_modules/jsqr'
+
+          pgdatabase="eventgenix_artifact_candidate_test"
+          docker exec "$database" createdb -U postgres "$pgdatabase"
+          BOOTSTRAP_CREATOR_PASSWORD="$(openssl rand -hex 24)"
+          JWT_SECRET="$(openssl rand -hex 48)"
+          echo "::add-mask::$BOOTSTRAP_CREATOR_PASSWORD"
+          echo "::add-mask::$JWT_SECRET"
+          export BOOTSTRAP_CREATOR_PASSWORD JWT_SECRET
+          docker run --detach --name "$app" --network "$network" \
+            -e "PGHOST=$database" -e PGUSER=postgres -e "PGDATABASE=$pgdatabase" -e PORT=3000 \
+            -e BOOTSTRAP_CREATOR_USERNAME=artifact_smoke -e BOOTSTRAP_CREATOR_PASSWORD -e JWT_SECRET \
+            -e BACKUP_OUTBOUND_HOLD=true -e PAYMENT_OUTBOX_WAKEUP_DISABLED=true \
+            -e SKIP_TELEGRAM_BOT_STARTUP_CONFIG=true "$tag"
+          docker cp tests/fixtures/booking-summary-layout-compact.fixture.json "$app:/tmp/artifact-pdf-fixture.json"
+          docker exec --interactive --workdir /app \
+            -e "EXPECTED_COMMIT=$GITHUB_SHA" -e "EXPECTED_BRANCH=$GITHUB_REF_NAME" \
+            "$app" node - < tests/benchmarks/runtime-artifact-smoke.js
+          docker stats --no-stream --format '{{.Name}} {{.MemUsage}}' "$app" "$database"

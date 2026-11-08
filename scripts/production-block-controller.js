@@ -8,6 +8,8 @@ const {
     ProductionBlockError,
     MAX_VALIDITY_MS,
     PROTECTED_WORKFLOWS,
+    PERFORMANCE_CI_WORKFLOW_HASHES,
+    assertPerformanceCiWorkflowHashes,
     isPreparedProtectedRelease,
     migrationSqlHash,
     validateProtectedWorkflow,
@@ -371,7 +373,7 @@ function runAuthorizedReleaseStage(manifest, blockFile, command, args, options =
 
 function defaultRuntime() {
     const runtime = {
-        async facts() {
+        async facts(options = {}) {
             fail(!git(['status', '--porcelain']), 'Prepare requires a clean worktree', 'PRODUCTION_BLOCK_DIRTY_WORKTREE');
             const head = git(['rev-parse', 'HEAD']).toLowerCase();
             const currentBranch = git(['rev-parse', '--abbrev-ref', 'HEAD']);
@@ -384,7 +386,9 @@ function defaultRuntime() {
                 live,
                 descendsFromLive: gitIsAncestor(live.commitSha, head),
                 changedPaths: paths,
-                migrations: loadMigrations(paths)
+                migrations: loadMigrations(paths),
+                workflowHashes: options.protectedWorkflow === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE
+                    ? performanceCiWorkflowHashes(paths) : undefined
             };
         },
         async drift(manifest) {
@@ -399,7 +403,9 @@ function defaultRuntime() {
                 descendsFromRenewal: !manifest.renewalFrom || gitIsAncestor(manifest.renewalFrom.headSha, head),
                 migrations: loadMigrations(paths).map(item => item.file).sort(),
                 migrationHashes: Object.fromEntries(loadMigrations(paths).map(item => [item.file, migrationSqlHash(item.sql)])),
-                changedPaths: paths
+                changedPaths: paths,
+                workflowHashes: manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE
+                    ? performanceCiWorkflowHashes(paths) : undefined
             };
         },
         plan(manifest) {
@@ -468,7 +474,18 @@ function defaultRuntime() {
             if (isPreparedProtectedRelease(manifest)) {
                 const ci = JSON.parse(commandResult('gh', ['run', 'view', String(exact.databaseId), '--json',
                     'headSha,headBranch,workflowName,event,status,conclusion,jobs']));
-                assertHrPayrollCiResult(ci, releaseSha);
+                if (manifest.allowedProtectedWorkflow.kind === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE) {
+                    const artifactRun = findExactCiRun(releaseSha, {
+                        strictProduction: true, workflowFile: 'runtime-artifact.yml', workflowName: 'Runtime artifact smoke'
+                    });
+                    fail(Boolean(artifactRun), 'Exact-SHA runtime artifact CI run was not found', 'PRODUCTION_BLOCK_CI_NOT_FOUND');
+                    commandResult('gh', ['run', 'watch', String(artifactRun.databaseId), '--exit-status'], { inherit: true });
+                    const artifact = JSON.parse(commandResult('gh', ['run', 'view', String(artifactRun.databaseId), '--json',
+                        'headSha,headBranch,workflowName,event,status,conclusion,jobs']));
+                    assertPerformanceCiResult(ci, artifact, releaseSha);
+                } else {
+                    assertHrPayrollCiResult(ci, releaseSha);
+                }
                 // CI can take minutes; check foreign live/remote drift again immediately before upload.
                 assertPreparedProductionBase(manifest, await liveVersion(), remoteProductionSha());
             }
@@ -508,6 +525,12 @@ function defaultRuntime() {
         }
     };
     return runtime;
+}
+
+function performanceCiWorkflowHashes(changedPaths) {
+    const workflows = Object.keys(PERFORMANCE_CI_WORKFLOW_HASHES);
+    if (!workflows.every(file => changedPaths.includes(file))) return undefined;
+    return Object.fromEntries(workflows.map(file => [file, migrationSqlHash(fs.readFileSync(path.join(ROOT, file), 'utf8'))]));
 }
 
 function isReleaseArtifact(file) {
@@ -715,10 +738,33 @@ const HR_PAYROLL_REQUIRED_CI_JOBS = Object.freeze([
     'My Day browser interactions'
 ]);
 
-function selectHrPayrollCiRun(runs, releaseSha) {
+function selectHrPayrollCiRun(runs, releaseSha, workflowName = 'CI') {
     return runs.filter(run => run.headSha === releaseSha && run.headBranch === TARGET.branch
-        && run.workflowName === 'CI' && run.event === 'push')
+        && run.workflowName === workflowName && run.event === 'push')
         .sort((left, right) => Number(right.databaseId) - Number(left.databaseId))[0] || null;
+}
+
+function assertPerformanceCiResult(main, artifact, releaseSha) {
+    assertHrPayrollCiResult(main, releaseSha);
+    const education = [
+        'Education shard chromium-core (chromium)', 'Education shard chromium-lifecycle (chromium)',
+        'Education shard chromium-journey (chromium)', 'Education shard webkit-flow (webkit)',
+        'Education shard webkit-responsive (webkit)'
+    ];
+    const jobs = Array.isArray(main.jobs) ? main.jobs : [];
+    fail(jobs.length === HR_PAYROLL_REQUIRED_CI_JOBS.length + education.length
+        && education.every(name => jobs.filter(job => job.name === name && job.status === 'completed'
+            && job.conclusion === 'success').length === 1),
+    'Performance CI requires all 13 main jobs, including every Education shard', 'PRODUCTION_BLOCK_CI_REQUIRED_JOB_FAILED');
+    fail(artifact?.headSha === releaseSha && artifact.headBranch === TARGET.branch
+        && artifact.workflowName === 'Runtime artifact smoke' && artifact.event === 'push'
+        && artifact.status === 'completed' && artifact.conclusion === 'success',
+    'Performance CI requires successful production artifact CI for the exact SHA', 'PRODUCTION_BLOCK_CI_IDENTITY_INVALID');
+    const job = artifact.jobs?.[0];
+    fail(artifact.jobs?.length === 1 && job.name === 'runtime-artifact' && job.status === 'completed'
+        && job.conclusion === 'success' && job.steps?.some(step => step.name === 'Build and smoke-test clean release export'
+            && step.status === 'completed' && step.conclusion === 'success'),
+    'Performance CI requires an executed artifact build and smoke check', 'PRODUCTION_BLOCK_CI_REQUIRED_JOB_FAILED');
 }
 
 function assertHrPayrollCiResult(run, releaseSha) {
@@ -741,10 +787,10 @@ function findExactCiRun(releaseSha, options = {}) {
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
         const runs = JSON.parse(commandResult('gh', [
             'run', 'list', '--commit', releaseSha, '--limit', '10',
-            ...(strictProduction ? ['--workflow', 'ci.yml', '--branch', TARGET.branch, '--event', 'push'] : []),
+            ...(strictProduction ? ['--workflow', options.workflowFile || 'ci.yml', '--branch', TARGET.branch, '--event', 'push'] : []),
             '--json', 'databaseId,headSha,headBranch,workflowName,event,status,conclusion,url'
         ]));
-        const exact = strictProduction ? selectHrPayrollCiRun(runs, releaseSha) : runs.find(run => run.headSha === releaseSha);
+        const exact = strictProduction ? selectHrPayrollCiRun(runs, releaseSha, options.workflowName) : runs.find(run => run.headSha === releaseSha);
         if (exact) return exact;
         if (attempt < attempts) childProcess.spawnSync(process.execPath, ['-e', `setTimeout(() => {}, ${delayMs})`], {
             cwd: ROOT, windowsHide: true, stdio: 'ignore'
@@ -776,7 +822,7 @@ function releaseCommandPlan(manifest) {
 async function prepareAction(options, runtime) {
     fail(!(options.retryFrom && options.renewalFrom),
         'Retry and separately approved renewal are mutually exclusive', 'PRODUCTION_BLOCK_RENEWAL_BINDING_INVALID');
-    const facts = await runtime.facts();
+    const facts = await runtime.facts(options);
     const manifest = buildManifest(facts, {
         ...options,
         releaseNotes: options.releaseNotes || releaseNotesFromFile(options.releaseNotesFile)
@@ -867,6 +913,9 @@ async function assertExecuteDrift(manifest, runtime) {
         fail(JSON.stringify([...(drift.changedPaths || [])].sort()) === JSON.stringify([...manifest.changedPaths].sort()),
             'Protected release file inventory drifted', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
         validateProtectedWorkflow(manifest.allowedProtectedWorkflow.kind, drift.changedPaths, redChangedPaths(drift.changedPaths));
+    }
+    if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE) {
+        assertPerformanceCiWorkflowHashes(drift.workflowHashes);
     }
     if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA) {
         const expectedHashes = Object.fromEntries(manifest.migrationClassifications.map(item => [item.file, item.sqlHash]));
@@ -1045,6 +1094,7 @@ module.exports = {
     assertPreparedProductionBase,
     assertFailedFinanceRetryCi,
     assertHrPayrollCiResult,
+    assertPerformanceCiResult,
     selectHrPayrollCiRun,
     defaultBlockFile,
     decodeQaScope,

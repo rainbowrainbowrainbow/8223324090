@@ -344,6 +344,17 @@ rejects even descendant SHA drift. Execute does not bump or commit another versi
 Only read-only production QA is permitted; synthetic mutation tests run in isolated
 PostgreSQL. See `docs/HR_PAY_PROTECTED_RELEASE.md` for remaining readiness gates.
 
+The `performance-ci-release` protected workflow is exclusive to the reviewed
+CI follow-up from production `8e5c312d` to the prepared `0.83.23` patch. It pins
+the exact file inventory and canonical-LF hashes of the two workflow files.
+Prepare only after an explicit owner authorization for this protected scope.
+The manifest binds the exact prepared SHA and one attempt. It permits no
+migrations, QA records, settings changes, or unrelated protected paths.
+The controller requires successful production-push CI for all 13 main jobs
+and the actual Railpack build and smoke step for the same SHA before upload.
+For routine runs the packaging probe skips image builds for version markers
+alone and builds one candidate image for packaging or dependency changes.
+
 The `finance-manual-qa` protected workflow is limited to the exact reviewed finance
 inventory and the canonical-LF SHA-256 hashes of migrations 381 and 382 in
 `scripts/production-block-policy.js`. The generic migration classifier still marks

@@ -3,9 +3,9 @@
 const { BUSINESS_SCOPE_SINGLE, DEFAULT_BUSINESS_CONTEXT, resolveBusinessScope } = require('./businessContext');
 const { userBusinessModuleState } = require('./businessModuleRegistry');
 const { recordCompatibilityTelemetrySafe } = require('./businessCutover');
-const { canUseParkStaffSchedule, parkStaffScheduleRoutePath } = require('./parkStaffScheduleAccess');
+const { canCreateParkStaff, canUseParkStaffSchedule, parkStaffScheduleRoutePath } = require('./parkStaffScheduleAccess');
 const { projectParkStaffSchedulePayload } = require('./parkStaffScheduleProjection');
-const { isParkHrStaffCardRoute, canReadParkHrStaffCard, canEditParkHrStaffCard,
+const { isParkHrStaffCardRoute, canReadParkHrStaffCard, parkHrStaffCardEditCapability,
     projectParkHrStaffCardPayload } = require('./parkHrStaffCardRead');
 const { isParkHrMonthlyReportRoute, canReadParkHrMonthlyReport, projectParkHrMonthlyReport } = require('./parkHrMonthlyReportRead');
 const { canReadParkCheckinJournal, projectParkCheckinJournal } = require('./parkStaffCheckinJournalRead');
@@ -14,6 +14,7 @@ const { isParkHrCompanyStructureRoute, canReadParkHrCompanyStructure,
     projectParkHrCompanyStructurePayload } = require('./parkHrCompanyStructureRead');
 const { canUseParkLegacySurface } = require('./parkLegacyModuleAccess');
 const { resolveCapability } = require('./accountAccessPolicy');
+const { resolveStaffOperation } = require('./staffOperationAccess');
 
 const SURFACES = Object.freeze({
     catalogs: { code: 'catalogs_not_migrated', label: 'Спільні каталоги' },
@@ -49,7 +50,7 @@ function parkScheduleAccessMetadata(req) {
         businessContext: DEFAULT_BUSINESS_CONTEXT,
         owner: 'park',
         source: 'park_staff_schedule_ownership',
-        ...(resolveCapability(req.user, 'hr.staff.create', { type: 'action' }).allowed ? { canCreateStaff: true } : {})
+        ...(resolveStaffOperation(req.user, 'hr.staff.create') ? { canCreateStaff: true } : {})
     };
 }
 
@@ -195,13 +196,19 @@ function requireLegacyBusinessSurface(surface, { parkScheduleRouter = null, park
             return next();
         }
         if (access.code === 'staff_not_migrated' && parkHrStaffCardRead
-            && (canReadParkHrStaffCard(req) || (req.method === 'PUT' && canEditParkHrStaffCard(req)))) {
+            && (canReadParkHrStaffCard(req) || (req.method === 'PUT' && parkHrStaffCardEditCapability(req)))) {
             const routePath = parkStaffScheduleRoutePath(req);
             const sendJson = res.json.bind(res);
-            res.json = payload => sendJson(projectParkHrStaffCardPayload(routePath, payload, {
-                includePayroll: req.method === 'GET' && resolveCapability(req.user, 'hr.payroll.view', { type: 'action' }).allowed,
-                canEditProfile: canEditParkHrStaffCard(req)
-            }));
+            res.json = payload => {
+                const projected = projectParkHrStaffCardPayload(routePath, payload, {
+                    includePayroll: req.method === 'GET' && resolveCapability(req.user, 'hr.payroll.view', { type: 'action' }).allowed,
+                    editCapability: parkHrStaffCardEditCapability(req)
+                });
+                if (routePath === '/staff' && projected?.success) {
+                    projected.staffCardAccess = { canCreate: canCreateParkStaff(req) };
+                }
+                return sendJson(projected);
+            };
             return next();
         }
         return res.status(access.status).json({ success: false, code: access.code, error: access.message });

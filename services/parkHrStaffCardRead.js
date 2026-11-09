@@ -3,6 +3,7 @@
 const { resolveCapability } = require('./accountAccessPolicy');
 const { resolveBusinessScope } = require('./businessContext');
 const { hasCurrentParkScheduleMembership, parkStaffScheduleRoutePath } = require('./parkStaffScheduleAccess');
+const { resolveStaffOperation } = require('./staffOperationAccess');
 
 const DETAIL_PATH = /^\/staff\/[1-9]\d*$/;
 const PARK_STAFF_PROFILE_FIELD_LIMITS = Object.freeze({
@@ -40,15 +41,15 @@ function canReadParkHrStaffCard(req) {
         && resolveCapability(req.user, 'hr.staff.view', { type: 'action' }).allowed;
 }
 
-function canEditParkHrStaffCard(req) {
-    return DETAIL_PATH.test(parkStaffScheduleRoutePath(req))
+function parkHrStaffCardEditCapability(req) {
+    const canAccess = DETAIL_PATH.test(parkStaffScheduleRoutePath(req))
         && hasCurrentParkScheduleMembership(req)
         && resolveBusinessScope(req).canWrite === true
-        && resolveCapability(req.user, 'hr.staff.view', { type: 'action' }).allowed
-        && resolveCapability(req.user, 'hr.staff.profile.edit', { type: 'action' }).allowed;
+        && resolveCapability(req.user, 'hr.staff.view', { type: 'action' }).allowed;
+    return canAccess ? resolveStaffOperation(req.user, 'hr.staff.profile.edit') : null;
 }
 
-function projectParkHrStaffCardPayload(path, payload, { includePayroll = false, canEditProfile = false } = {}) {
+function projectParkHrStaffCardPayload(path, payload, { includePayroll = false, editCapability = null } = {}) {
     if (payload?.success !== true) return payload;
     if (path === '/staff') {
         return { success: true, data: Array.isArray(payload.data)
@@ -72,13 +73,16 @@ function projectParkHrStaffCardPayload(path, payload, { includePayroll = false, 
         }
         return {
             success: true, data: projected,
-            staffCardAccess: { editableFields: canEditProfile ? Object.keys(PARK_STAFF_PROFILE_FIELD_LIMITS) : [] }
+            staffCardAccess: {
+                editableFields: editCapability === 'hr.staff.manage' ? null
+                    : editCapability === 'hr.staff.profile.edit' ? Object.keys(PARK_STAFF_PROFILE_FIELD_LIMITS) : []
+            }
         };
     }
     return payload;
 }
 
 module.exports = {
-    isParkHrStaffCardRoute, canReadParkHrStaffCard, canEditParkHrStaffCard,
+    isParkHrStaffCardRoute, canReadParkHrStaffCard, parkHrStaffCardEditCapability,
     projectParkHrStaffCardPayload, PARK_STAFF_PROFILE_FIELD_LIMITS
 };

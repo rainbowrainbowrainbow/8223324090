@@ -521,7 +521,7 @@ const ACTION_PERMISSIONS = Object.freeze([
     action({
         key: 'hr.staff.profile.edit', label: 'Редагування основних даних картки співробітника', group: 'hr', risk: 'high',
         frontendConsumers: [source('js/hr-page.js', "canUseHrCapability('hr.staff.profile.edit')", { enforces: true })],
-        backendConsumers: [source('services/parkHrStaffCardRead.js', 'function canEditParkHrStaffCard', { enforces: true })],
+        backendConsumers: [source('services/parkHrStaffCardRead.js', 'function parkHrStaffCardEditCapability', { enforces: true })],
         apiConsumers: [api('routes/hr.js', 'PUT /api/hr/staff/:id', null, 'Park membership and an allowlist of profile fields are required.')]
     }),
     action({

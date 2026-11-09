@@ -2,6 +2,7 @@
 
 const { BUSINESS_SCOPE_SINGLE, DEFAULT_BUSINESS_CONTEXT, resolveBusinessScope } = require('./businessContext');
 const { resolveCapability } = require('./accountAccessPolicy');
+const { resolveStaffOperation } = require('./staffOperationAccess');
 
 const STAFF_READ_PATHS = new Set(['/', '/departments', '/display-groups', '/schedule', '/schedule/hours', '/attendance']);
 const STAFF_HISTORY_PATH = /^\/schedule\/history\/[1-9]\d*\/\d{4}-\d{2}-\d{2}$/;
@@ -24,7 +25,6 @@ function parkStaffScheduleCapabilities(req, routerId) {
         }
         return null;
     }
-    if (method === 'POST' && path === '/') return ['hr.schedule.view', 'hr.staff.create'];
     if (method === 'POST' && path === '/schedule/export-xlsx') return ['hr.schedule.view', 'export_data'];
     if (method === 'PUT' && (path === '/schedule' || STAFF_SHIFT_PREFERENCES_PATH.test(path))) {
         return ['hr.schedule.manage'];
@@ -67,12 +67,21 @@ function hasCurrentParkScheduleMembership(req) {
 }
 
 function canUseParkStaffSchedule(req, routerId) {
+    const method = String(req.method || 'GET').toUpperCase();
+    if (routerId === 'staff' && method === 'POST' && parkStaffScheduleRoutePath(req) === '/') {
+        return canCreateParkStaff(req);
+    }
     const capabilities = parkStaffScheduleCapabilities(req, routerId);
     if (!capabilities || !hasCurrentParkScheduleMembership(req)) return false;
-    const method = String(req.method || 'GET').toUpperCase();
     const scope = resolveBusinessScope(req);
     if (!['GET', 'HEAD'].includes(method) && scope.canWrite === false) return false;
     return capabilities.every(capability => resolveCapability(req.user, capability, { type: 'action' }).allowed);
+}
+
+function canCreateParkStaff(req) {
+    return hasCurrentParkScheduleMembership(req) && resolveBusinessScope(req).canWrite === true
+        && Boolean(resolveStaffOperation(req.user, 'hr.staff.create'))
+        && ['hr.schedule.view', 'hr.staff.view'].some(key => resolveCapability(req.user, key, { type: 'action' }).allowed);
 }
 
 function canReadParkStaffSchedule(req, routerId) {
@@ -81,6 +90,7 @@ function canReadParkStaffSchedule(req, routerId) {
 }
 
 module.exports = {
+    canCreateParkStaff,
     canReadParkStaffSchedule,
     canUseParkStaffSchedule,
     hasCurrentParkScheduleMembership,

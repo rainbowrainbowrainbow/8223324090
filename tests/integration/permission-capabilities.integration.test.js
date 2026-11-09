@@ -564,7 +564,8 @@ describe('disposable token-backed permission capability contract', { skip: !enab
         );
         const businessId = Number(business.rows[0].id);
         const staffCreator = accounts.staffCreator;
-        for (const account of [reader, accounts.admin, staffCreator]) {
+        const fullManager = accounts.manager;
+        for (const account of [reader, accounts.admin, staffCreator, fullManager]) {
             await schemaPool.query(
                 `INSERT INTO organization_memberships (organization_id, user_id, role, is_active)
                  VALUES ($1, $2, 'member', true)
@@ -592,6 +593,8 @@ describe('disposable token-backed permission capability contract', { skip: !enab
                 'animator', '+380000000001', 12345]
         );
         const staffId = Number(fixture.rows[0].id);
+        let fullCreatedId;
+        let delegatedCreatedId;
         try {
             const list = await request('GET', '/api/hr/staff', null, reader.token);
             assert.equal(list.status, 200, JSON.stringify(list.data));
@@ -637,6 +640,22 @@ describe('disposable token-backed permission capability contract', { skip: !enab
                 'revoked membership cannot read company structure');
 
             const draft = { name: 'Disposable Park Creation QA', department: 'admin', position: 'Administrator', phone: '+380000000001' };
+            const fullToken = await login(fullManager.username, fullManager.password);
+            const fullCreation = await request('POST', '/api/staff', { ...draft, name: 'Disposable Park Full Manager QA' }, fullToken);
+            assert.equal(fullCreation.status, 200, JSON.stringify(fullCreation.data));
+            fullCreatedId = fullCreation.data.data.id;
+            const fullCard = `/api/hr/staff/${fullCreatedId}`;
+            assert.equal((await request('PUT', fullCard, { position: 'Full profile edit' }, fullToken)).status, 200);
+            await schemaPool.query(
+                "UPDATE business_memberships SET action_allowlist = ARRAY['hr.staff.profile.edit'] WHERE business_id = $1 AND user_id = $2",
+                [businessId, fullManager.id]
+            );
+            const combinedEdit = await request('PUT', fullCard, { telegram_username: 'qa_full_manager' }, fullToken);
+            assert.equal(combinedEdit.status, 200, JSON.stringify(combinedEdit.data));
+            const fullRow = await schemaPool.query('SELECT position, telegram_username FROM staff WHERE id = $1', [fullCreatedId]);
+            assert.deepEqual(fullRow.rows, [{ position: 'Full profile edit', telegram_username: 'qa_full_manager' }]);
+            assert.equal((await request('PUT', fullCard, { hourly_rate: 300 }, fullToken)).status, 403);
+
             const memberToken = await login(staffCreator.username, staffCreator.password);
             assert.equal((await request('POST', '/api/staff', draft, memberToken)).status, 403);
             await schemaPool.query(
@@ -664,6 +683,7 @@ describe('disposable token-backed permission capability contract', { skip: !enab
             const saved = await schemaPool.query('SELECT name, department, position, phone FROM staff WHERE name = $1', [draft.name]);
             assert.deepEqual(saved.rows, [draft]);
             const createdId = created.data.data.id;
+            delegatedCreatedId = createdId;
             assert.equal((await request('PUT', `/api/staff/${createdId}`, { name: 'Forbidden edit' }, memberToken)).status, 403);
             assert.equal((await request('DELETE', `/api/staff/${createdId}`, null, memberToken)).status, 403);
 
@@ -706,7 +726,9 @@ describe('disposable token-backed permission capability contract', { skip: !enab
                 'UPDATE business_memberships SET is_active = true WHERE business_id = $1 AND user_id = $2',
                 [businessId, reader.id]
             );
-            await schemaPool.query('DELETE FROM staff WHERE id = $1', [staffId]);
+            const fixtureIds = [staffId, fullCreatedId, delegatedCreatedId].filter(Boolean);
+            await schemaPool.query('DELETE FROM hr_audit_log WHERE staff_id = ANY($1::int[])', [fixtureIds]);
+            await schemaPool.query('DELETE FROM staff WHERE id = ANY($1::int[])', [fixtureIds]);
         }
     });
 });

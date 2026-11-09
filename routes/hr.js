@@ -29,7 +29,7 @@ const {
     resolveBusinessScope
 } = require('../services/businessContext');
 const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
-const { canEditParkHrStaffCard, PARK_STAFF_PROFILE_FIELD_LIMITS } = require('../services/parkHrStaffCardRead');
+const { parkHrStaffCardEditCapability, PARK_STAFF_PROFILE_FIELD_LIMITS } = require('../services/parkHrStaffCardRead');
 const { requireParkHrPayrollAccess } = require('../services/parkHrPayrollAccess');
 const { parkMonthlyPeriod, loadParkHrMonthlyReport } = require('../services/parkHrMonthlyReportRead');
 const { reportAttendanceByStaff } = require('../services/hrMonthlyReportDetails');
@@ -337,7 +337,10 @@ const HR_SHIFT_COPY_WEEK_MAX_STAFF = 500;
 function hrCapabilityCandidates(req) {
     const routePath = String(req.path || '/');
     const isRead = req.method === 'GET' || req.method === 'HEAD';
-    if (req.method === 'PUT' && canEditParkHrStaffCard(req)) return ['hr.staff.profile.edit'];
+    if (req.method === 'PUT') {
+        const profileEdit = parkHrStaffCardEditCapability(req);
+        if (profileEdit) return [profileEdit];
+    }
     if (routePath === '/report/export' || routePath.startsWith('/attendance-document')) return ['hr.reports.export'];
     if (routePath.startsWith('/report/') || routePath === '/role-assignments/report') return ['hr.reports.view'];
     const payrollPreview = req.method === 'POST' && (
@@ -4735,6 +4738,11 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
         const hasBodyField = field => Object.prototype.hasOwnProperty.call(req.body || {}, field);
         const hasSecondaryProfessions = hasBodyField('secondary_professions') || hasBodyField('secondaryProfessions');
         const hasProfessionRates = hasBodyField('profession_rates') || hasBodyField('professionRates');
+        if (parkHrStaffCardEditCapability(req) === 'hr.staff.manage'
+            && ['hourly_rate', 'rate_unit', 'rateUnit', 'profession_rates', 'professionRates'].some(hasBodyField)
+            && !canUseAction(req.user, 'hr.payroll.manage')) {
+            return res.status(403).json({ success: false, error: 'Insufficient payroll permissions' });
+        }
         const secondaryInput = hasBodyField('secondary_professions')
             ? req.body.secondary_professions
             : req.body.secondaryProfessions;

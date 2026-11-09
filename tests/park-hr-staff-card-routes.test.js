@@ -118,6 +118,9 @@ async function withActualHrRouter(run) {
         installMock('../middleware/auth', { ...actualAuth, authenticateToken: authenticateFixture });
         const app = express();
         app.use(express.json());
+        const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
+        app.use('/api/staff', authenticateFixture, requireLegacyBusinessSurface('staff', { parkScheduleRouter: 'staff' }));
+        app.post('/api/staff', (_req, res) => res.json({ reached: true }));
         app.use('/api/hr', authenticateFixture, require('../routes/hr'));
         server = await new Promise(resolve => {
             const instance = app.listen(0, '127.0.0.1', () => resolve(instance));
@@ -145,6 +148,34 @@ async function withActualHrRouter(run) {
 
 test('Park HR staff list and base detail use exact GET and membership boundaries on the real Express router', async t => {
     await withActualHrRouter(async ({ state, calls, request }) => {
+        await t.test('full management includes Park staff creation without a delegated grant', async () => {
+            state.actor = { role: 'creator' };
+            const method = 'POST';
+            assert.equal((await request('/api/staff', { method })).status, 200);
+            state.actor.deny = ['hr.staff.create'];
+            assert.equal((await request('/api/staff', { method })).status, 403);
+            state.actor = { role: 'creator', revoked: true };
+            assert.equal((await request('/api/staff', { method })).status, 403);
+        });
+
+        await t.test('full management retains full card editing with or without a delegated grant', async () => {
+            const path = `/api/hr/staff/${STAFF_ID}`;
+            state.actor = { role: 'creator' };
+            const full = await request(path);
+            assert.equal(full.status, 200);
+            assert.equal(full.body.staffCardAccess?.editableFields, null);
+
+            state.actor.allow = ['hr.staff.profile.edit'];
+            const combined = await request(path);
+            assert.equal(combined.status, 200);
+            assert.equal(combined.body.staffCardAccess?.editableFields, null);
+
+            state.actor.deny = ['hr.staff.profile.edit'];
+            const denied = await request(path);
+            assert.deepEqual(denied.body.staffCardAccess?.editableFields, []);
+            assert.equal((await request(path, { method: 'PUT' })).status, 403);
+        });
+
         await t.test('current Park staff viewer receives a minimal list and permitted detail', async () => {
             state.actor = { deny: ['hr.schedule.view', 'hr.payroll.view'] };
             const list = await request('/api/hr/staff');
@@ -232,7 +263,7 @@ test('Park HR staff list and base detail use exact GET and membership boundaries
         });
 
         await t.test('card-only access does not inherit the separate payroll lane, child writes or HEAD', async () => {
-            state.actor = { deny: ['hr.payroll.view'] };
+            state.actor = { deny: ['hr.payroll.view', 'hr.staff.manage'] };
             for (const [method, path] of [
                 ['GET', `/api/hr/staff/${STAFF_ID}/documents`],
                 ['GET', `/api/hr/staff/${STAFF_ID}/medical-book`],

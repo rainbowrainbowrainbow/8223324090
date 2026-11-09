@@ -4,6 +4,13 @@
 
 ---
 
+## v0.83.26 - Додавання співробітників у HR
+
+### Release / Versioning / (09.11.2026) [codex]
+- **Додавання співробітників у HR** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.83.25 - Редагування карток співробітників
 
 ### Release / Versioning / (09.11.2026) [codex]

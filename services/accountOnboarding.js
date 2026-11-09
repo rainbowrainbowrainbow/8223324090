@@ -34,6 +34,7 @@ const {
     saveStaffProfessionCondition
 } = require('./professions');
 const { normalizeStaffCompanyStructurePayload } = require('./staffDisplayGroups');
+const { insertStaffRecord } = require('./staffCreation');
 
 const SYSTEM_ACCOUNT_USERNAMES = Object.freeze(['guardian', 'system']);
 const SYSTEM_ACCOUNT_USERNAME = SYSTEM_ACCOUNT_USERNAMES;
@@ -627,28 +628,22 @@ async function loadAndLockStaff(client, normalized) {
 }
 
 async function createStaff(client, normalized) {
-    const secondary = normalized.professions.filter(item => !item.isPrimary).map(item => item.key);
-    const result = await client.query(
-        `INSERT INTO staff
-            (name, department, position, phone, hire_date, is_active, role_type,
-             secondary_professions, company_structure_node_id, hourly_rate, rate_unit)
-         VALUES ($1, $2, $3, $4, $5, true, $6, $7::jsonb, $8, $9, $10)
-         RETURNING id, name, department, position, phone, hire_date, role_type,
-                   secondary_professions, company_structure_node_id, hourly_rate, rate_unit, is_active`,
-        [
-            normalized.personal.name,
-            normalized.staff.department,
-            normalized.staff.position,
-            normalized.personal.phone,
-            normalized.staff.hireDate,
-            normalized.primaryProfessionKey,
-            JSON.stringify(secondary),
-            normalized.structureNodeId,
-            normalized.staff.fallbackRateProvided ? normalized.staff.fallbackHourlyRate : 0,
-            normalized.staff.rateUnit || 'hour'
-        ]
-    );
-    return result.rows[0];
+    const staff = await insertStaffRecord(client, {
+        name: normalized.personal.name,
+        department: normalized.staff.department,
+        position: normalized.staff.position,
+        phone: normalized.personal.phone,
+        hireDate: normalized.staff.hireDate,
+        primaryProfession: normalized.primaryProfessionKey,
+        secondaryProfessions: normalized.professions.filter(item => !item.isPrimary).map(item => item.key),
+        structureNodeId: normalized.structureNodeId,
+        hourlyRate: normalized.staff.fallbackRateProvided ? normalized.staff.fallbackHourlyRate : 0,
+        rateUnit: normalized.staff.rateUnit || 'hour'
+    });
+    const { id, name, department, position, phone, hire_date, role_type, secondary_professions,
+        company_structure_node_id, hourly_rate, rate_unit, is_active } = staff;
+    return { id, name, department, position, phone, hire_date, role_type, secondary_professions,
+        company_structure_node_id, hourly_rate, rate_unit, is_active };
 }
 
 async function updateExistingStaffSetup(client, staff, normalized, secondaryProfessionKeys = []) {

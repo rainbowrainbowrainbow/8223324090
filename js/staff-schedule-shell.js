@@ -27,7 +27,6 @@
             </section>
 
             <div class="workspace-command-bar staff-schedule-command-bar" aria-label="Керування періодом і діями графіка">
-                <button type="button" id="createStaffBtn" class="btn-page-primary staff-schedule-add-staff-btn" hidden disabled aria-disabled="true">Додати співробітника</button>
                 <div class="schedule-controls">
                     <div class="week-nav">
                         <button type="button" id="prevWeekBtn" title="Попередній період" aria-label="Показати попередній період">‹</button>

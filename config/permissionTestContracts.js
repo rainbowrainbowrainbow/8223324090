@@ -124,11 +124,11 @@ const ACTION_PERMISSION_TEST_CONTRACTS = Object.freeze({
         testFiles: ['tests/account-center-contract.test.js', 'tests/hr-staff-medical-book.test.js']
     }),
     'hr.staff.create': actionContract('hr.staff.create', {
-        frontendScenario: 'Staff creation button requires a personal grant',
+        frontendScenario: 'HR Team creation uses server-authorized full or delegated staff access',
         backendScenario: 'POST /api/staff with a creation-only grant and denied management',
         mutation: true,
         sensitive: true,
-        testFiles: ['tests/business-split-followup-ui.test.js', 'tests/integration/permission-capabilities.integration.test.js']
+        testFiles: ['tests/browser/hr-staff-creation-browser-smoke.js', 'tests/integration/permission-capabilities.integration.test.js']
     }),
     'hr.staff.profile.edit': actionContract('hr.staff.profile.edit', {
         frontendScenario: 'Park staff card edits only fields enabled by its server response',

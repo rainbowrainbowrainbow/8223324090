@@ -120,6 +120,9 @@ const MODES = {
     'park-manager-browser': [
         'tests/browser/park-manager-actual-app-browser-smoke.js'
     ],
+    'hr-staff-browser': [
+        'tests/browser/hr-staff-creation-browser-smoke.js'
+    ],
     'redirect-auth': [
         'tests/browser/redirect-auth-postgres-browser-smoke.js'
     ],

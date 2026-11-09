@@ -514,7 +514,7 @@ const ACTION_PERMISSIONS = Object.freeze([
     }),
     action({
         key: 'hr.staff.create', label: 'Додавання співробітників', group: 'hr', risk: 'high',
-        frontendConsumers: [source('js/staff-page.js', "canUseStaffCapability('hr.staff.create')", { enforces: true })],
+        frontendConsumers: [source('js/hr-page.js', 'data.staffCardAccess?.canCreate === true', { enforces: true })],
         backendConsumers: [source('routes/staff.js', 'function requireStaffCreation', { enforces: true })],
         apiConsumers: [api('routes/staff.js', 'POST /api/staff', null, 'Enforced by requireStaffCreation.')]
     }),

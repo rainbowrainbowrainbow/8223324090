@@ -330,7 +330,7 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(staffSurface, /sch-profession/);
         assert.match(staffPage, /async function fetchHrProfessions/);
         assert.match(staffPage, /StaffState\.professions/);
-        assert.match(staffPage, /function professionCatalogOptions/);
+        assert.match(hrPage, /const catalog = await ensureProfessionsLoaded\(\{ silent: true \}\)/);
         assert.match(staffPage, /await fetchHrProfessions\(\)/);
         assert.match(staffPage, /function staffProfessionOptions/);
         assert.match(staffPage, /function schedulePlanProfessionOptions/);

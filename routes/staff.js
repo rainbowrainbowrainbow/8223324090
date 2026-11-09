@@ -127,6 +127,7 @@ const { buildStaffScheduleWorkbookBuffer } = require('../services/staffScheduleW
 
 const { requireAction, requireRole, authenticateToken, ROLE_LEVEL, canUseAction } = require('../middleware/auth');
 const { resolveStaffOperation } = require('../services/staffOperationAccess');
+const { insertStaffRecord } = require('../services/staffCreation');
 const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
 const { checkinJournalDate } = require('../services/parkStaffCheckinJournalRead');
 const log = createLogger('Staff');
@@ -2170,14 +2171,12 @@ router.post('/', requireStaffCreation, async (req, res) => {
         if (!name || !department || !position) {
             return res.status(400).json({ success: false, error: 'Обов\'язкові поля: ім\'я, відділ, посада' });
         }
-        const primaryRole = role_type || roleType || null;
-        const secondaryRoles = normalizeSecondaryProfessions(secondary_professions ?? secondaryProfessions, primaryRole);
-        const result = await pool.query(
-            `INSERT INTO staff (name, department, position, phone, hire_date, color, telegram_username, role_type, address, secondary_professions)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb) RETURNING *`,
-            [name, department, position, phone || null, hireDate || null, color || null, telegramUsername || null, primaryRole, address || null, JSON.stringify(secondaryRoles)]
-        );
-        res.json({ success: true, data: result.rows[0] });
+        const staff = await insertStaffRecord(pool, {
+            name, department, position, phone, hireDate, color, telegramUsername, address,
+            primaryProfession: role_type || roleType,
+            secondaryProfessions: secondary_professions ?? secondaryProfessions
+        });
+        res.json({ success: true, data: staff });
     } catch (err) {
         log.error('POST /staff error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });

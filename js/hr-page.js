@@ -2732,6 +2732,7 @@ function initHrPrintDocuments() {
 // ==========================================
 
 async function initPage() {
+    bindHrStaffCreation();
     try {
     initDarkMode();
     const user = await apiVerifyToken();
@@ -7055,6 +7056,8 @@ function invalidateTeamContext({ force = false, reload = true } = {}) {
         staffProfileContextKey = '';
     }
     if (!force && teamLoadState.context === context) return;
+    document.getElementById('hrCreateStaffDialog')?.close();
+    setTeamCreateAccess(false);
     teamLoadRequestSeq++;
     teamLoadAbortController?.abort();
     teamStaff = [];
@@ -7075,6 +7078,7 @@ function invalidateTeamContext({ force = false, reload = true } = {}) {
 }
 
 function setTeamLoadFailure(status, message, context) {
+    setTeamCreateAccess(false);
     teamStaff = [];
     teamLoadState = { status, context, message };
     renderPeopleBucketState(message, status);
@@ -7089,6 +7093,7 @@ async function loadTeam() {
     teamLoadAbortController = controller;
     const timeout = setTimeout(() => controller.abort(), teamLoadTimeoutMs);
     const context = teamAccessContext();
+    setTeamCreateAccess(false);
     const grid = document.getElementById('teamGrid');
     teamRetryRestoreFocus = grid?.querySelector('.hr-people-retry') === document.activeElement;
     teamStaff = [];
@@ -7115,6 +7120,7 @@ async function loadTeam() {
         }
         teamStaff = data.data;
         teamLoadState = { status: teamStaff.length ? 'success' : 'empty', context, message: '' };
+        setTeamCreateAccess(data.staffCardAccess?.canCreate === true);
         filterAndRenderTeam();
         if (teamRetryRestoreFocus) document.getElementById('teamSearch')?.focus({ preventScroll: true });
         teamRetryRestoreFocus = false;
@@ -7131,6 +7137,108 @@ async function loadTeam() {
             setTeamLoadFailure('error', 'Не вдалося завантажити команду. Повторіть спробу.', context);
         }
     }
+}
+
+function mountNewStaffFields(container, prefix, fieldNames) {
+    const template = document.getElementById('hrNewStaffFields');
+    if (!container || !template || container.childElementCount) return;
+    const fields = template.content.cloneNode(true);
+    for (const field of fields.querySelectorAll('[data-staff-field]')) {
+        const name = field.dataset.staffField;
+        if (fieldNames.includes(name)) field.querySelector('input').id = prefix + name;
+        else field.remove();
+    }
+    container.append(fields);
+}
+
+function setTeamCreateAccess(allowed) {
+    const button = document.getElementById('hrCreateStaffBtn');
+    if (button) button.hidden = !allowed;
+}
+
+function bindHrStaffCreation() {
+    const button = document.getElementById('hrCreateStaffBtn');
+    const dialog = document.getElementById('hrCreateStaffDialog');
+    const form = document.getElementById('hrCreateStaffForm');
+    if (!button || !dialog || !form || form.dataset.bound === 'true') return;
+    form.dataset.bound = 'true';
+    mountNewStaffFields(document.getElementById('hrCreateStaffFields'), 'hrCreateStaff',
+        ['Name', 'Phone', 'Department', 'Position', 'HireDate', 'Address']);
+    const status = document.getElementById('hrCreateStaffStatus');
+    const submit = form.querySelector('[type="submit"]');
+    const cancel = document.getElementById('hrCreateStaffCancel');
+    const profession = document.getElementById('hrCreateStaffProfession');
+    const secondaryProfessions = document.getElementById('hrCreateStaffSecondaryProfessions');
+    let openContext;
+    let dialogOpening;
+    let saving = false;
+    button.addEventListener('click', async () => {
+        if (saving || button.hidden || dialog.open) return;
+        const context = teamAccessContext();
+        const opening = Symbol();
+        dialogOpening = opening;
+        form.reset();
+        status.textContent = 'Завантаження професій…';
+        submit.disabled = true;
+        profession.options.length = 1;
+        secondaryProfessions.options.length = 0;
+        openContext = context;
+        dialog.showModal();
+        const catalog = await ensureProfessionsLoaded({ silent: true }).catch(() => []);
+        if (!dialog.open || dialogOpening !== opening || context !== teamAccessContext()) return;
+        for (const item of catalog) {
+            if (item.key && item.is_active !== false && item.isActive !== false) {
+                const label = item.title || item.label || item.name || item.key;
+                profession.add(new Option(label, item.key));
+                secondaryProfessions.add(new Option(label, item.key));
+            }
+        }
+        submit.disabled = false;
+        status.textContent = professionCatalogLoadState === 'error' ? 'Довідник професій недоступний. Професію можна додати пізніше.' : '';
+    });
+    cancel?.addEventListener('click', () => dialog.close());
+    dialog.addEventListener('cancel', event => {
+        if (saving) event.preventDefault();
+    });
+    form.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (saving || submit.disabled || !dialog.open || button.hidden || openContext !== teamAccessContext()) return;
+        const formData = new FormData(form);
+        const body = Object.fromEntries(Array.from(formData, ([key, value]) => [key, String(value).trim()]));
+        body.secondary_professions = formData.getAll('secondary_professions');
+        if (!body.name || !body.department || !body.position) {
+            status.textContent = 'Заповніть імʼя, відділ і посаду.';
+            return;
+        }
+        const context = openContext;
+        saving = true;
+        submit.disabled = true;
+        if (cancel) cancel.disabled = true;
+        status.textContent = 'Збереження…';
+        try {
+            const result = await crmApiFetch('/api/staff', { method: 'POST', body }).catch(() => null);
+            if (context !== teamAccessContext() || !dialog.open) return;
+            if (!result?.success || !result.data?.id) {
+                if (result?.status >= 400 && result.status < 500 && result.status !== 408) {
+                    status.textContent = result.error;
+                    submit.disabled = false;
+                } else {
+                    status.textContent = 'Результат збереження невідомий. Перевірте список команди перед повторною спробою.';
+                    await loadTeam();
+                }
+                return;
+            }
+            dialog.close();
+            await loadTeam();
+            if (context === teamAccessContext()) {
+                showNotification('Співробітника додано', 'success');
+                await openStaffEdit(result.data.id);
+            }
+        } finally {
+            saving = false;
+            if (cancel) cancel.disabled = false;
+        }
+    });
 }
 
 function clearTeamSearchOnBucketChange(nextBucket) {
@@ -9460,6 +9568,8 @@ function bindAccountOnboardingControls() {
     const overlay = accountOnboardingEl('accountOnboardingOverlay');
     if (!overlay || overlay.dataset.bound === 'true') return;
     if (overlay.parentElement !== document.body) document.body.appendChild(overlay);
+    mountNewStaffFields(accountOnboardingEl('accountOnboardingPersonalFields'), 'accountOnboarding', ['Name', 'Phone']);
+    mountNewStaffFields(accountOnboardingEl('accountOnboardingNewStaffFields'), 'accountOnboarding', ['Department', 'Position', 'HireDate']);
     overlay.dataset.bound = 'true';
     accountOnboardingEl('accountOnboardingClose')?.addEventListener('click', closeAccountOnboardingWizard);
     accountOnboardingEl('accountOnboardingBack')?.addEventListener('click', () => showAccountOnboardingStep(accountOnboardingState.step - 1));

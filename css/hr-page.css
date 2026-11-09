@@ -5354,6 +5354,16 @@ button.hr-team-onboarding-compact:focus-visible {
     background: #fff;
     box-shadow: 0 28px 80px rgba(15,23,42,0.34);
 }
+#hrCreateStaffDialog {
+    width: min(540px, 94vw);
+    padding: 20px;
+    overflow: auto;
+    color: var(--text-primary, #1e293b);
+    background: var(--surface, #fff);
+}
+#hrCreateStaffDialog:not([open]) { display: none; }
+#hrCreateStaffDialog::backdrop { background: rgba(15, 23, 42, 0.58); }
+#hrCreateStaffBtn[hidden] { display: none !important; }
 .hr-account-onboarding-head {
     display: flex;
     align-items: flex-start;

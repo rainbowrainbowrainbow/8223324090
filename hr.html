@@ -170,10 +170,34 @@
                     <div class="hr-team-filter-row">
                         <input type="text" id="teamSearch" class="hr-team-search" aria-label="Пошук по ПІБ, професії, телефону або структурі" placeholder="Пошук: ПІБ, професія, телефон, структура...">
                         <div id="teamFilterInfo" class="hr-team-filter-info" aria-live="polite"></div>
+                        <button type="button" id="hrCreateStaffBtn" class="btn-add" hidden>Додати співробітника</button>
                     </div>
                 </div>
                 <div id="teamGrid" class="hr-team-grid"></div>
             </div>
+            <template id="hrNewStaffFields">
+                <label data-staff-field="Name"><span>Імʼя та прізвище *</span><input name="name" maxlength="100" autocomplete="name" required></label>
+                <label data-staff-field="Phone"><span>Телефон</span><input name="phone" type="tel" maxlength="30" autocomplete="tel"></label>
+                <label data-staff-field="Department"><span>Відділ *</span><input name="department" maxlength="50" required></label>
+                <label data-staff-field="Position"><span>Посада *</span><input name="position" maxlength="100" required></label>
+                <label data-staff-field="HireDate"><span>Дата найму</span><input name="hireDate" type="date"></label>
+                <label data-staff-field="Address"><span>Адреса</span><input name="address" maxlength="1000" autocomplete="street-address"></label>
+            </template>
+            <dialog id="hrCreateStaffDialog" class="hr-account-onboarding" aria-labelledby="hrCreateStaffTitle">
+                <form id="hrCreateStaffForm" class="hr-account-onboarding-form">
+                    <h3 id="hrCreateStaffTitle">Додати співробітника</h3>
+                    <div id="hrCreateStaffFields" class="hr-account-form-grid"></div>
+                    <div class="hr-account-form-grid">
+                        <label><span>Професія</span><select name="role_type" id="hrCreateStaffProfession"><option value="">Без професії</option></select></label>
+                        <label><span>Додаткові професії</span><select name="secondary_professions" id="hrCreateStaffSecondaryProfessions" multiple size="4"></select></label>
+                    </div>
+                    <p id="hrCreateStaffStatus" role="status" aria-live="polite"></p>
+                    <div class="hr-account-onboarding-actions">
+                        <button type="button" class="hr-account-toggle" id="hrCreateStaffCancel">Скасувати</button>
+                        <button type="submit" class="hr-account-primary">Створити</button>
+                    </div>
+                </form>
+            </dialog>
 
             <!-- TAB 3A: PROFESSIONS -->
             <div id="tab-professions" class="hr-tab-content">
@@ -375,9 +399,8 @@
                         <section data-account-onboarding-step="1" class="hr-account-onboarding-panel">
                             <div class="hr-account-onboarding-panel-head"><h4>Особисті дані</h4><p>Імʼя для CRM та незмінний username для входу.</p></div>
                             <div class="hr-account-form-grid">
-                                <label><span>Імʼя в CRM *</span><input id="accountOnboardingName" name="name" maxlength="100" autocomplete="name" required></label>
+                                <div id="accountOnboardingPersonalFields" class="hr-account-form-grid is-wide"></div>
                                 <label><span>Username *</span><input id="accountOnboardingUsername" name="username" maxlength="50" pattern="[a-zA-Z0-9._-]{3,50}" autocomplete="off" required><small>Після створення username не змінюється.</small></label>
-                                <label><span>Телефон</span><input id="accountOnboardingPhone" name="phone" maxlength="30" autocomplete="tel"></label>
                             </div>
                         </section>
                         <section data-account-onboarding-step="2" class="hr-account-onboarding-panel" hidden>
@@ -389,11 +412,7 @@
                             <div id="accountOnboardingExistingStaffFields" class="hr-account-form-grid">
                                 <label class="is-wide"><span>Staff-профіль *</span><select id="accountOnboardingStaffId"><option value="">Оберіть staff</option></select><small>Вже зайняті профілі недоступні для вибору.</small></label>
                             </div>
-                            <div id="accountOnboardingNewStaffFields" class="hr-account-form-grid" hidden>
-                                <label><span>Відділ *</span><input id="accountOnboardingDepartment" maxlength="50"></label>
-                                <label><span>Посада *</span><input id="accountOnboardingPosition" maxlength="100"></label>
-                                <label><span>Дата найму</span><input id="accountOnboardingHireDate" type="date"></label>
-                            </div>
+                            <div id="accountOnboardingNewStaffFields" class="hr-account-form-grid" hidden></div>
                         </section>
                         <section data-account-onboarding-step="3" class="hr-account-onboarding-panel" hidden>
                             <div class="hr-account-onboarding-panel-head"><h4>Структура та професії</h4><p>Оберіть вузол і щонайменше одну професію; одна має бути основною.</p></div>

@@ -38,7 +38,7 @@ function loadSchedule(fetchImpl, businessContext = 'event_genix', role = 'direct
         ['pzp_current_user', JSON.stringify(user)]
     ]);
     const elements = new Map();
-    for (const id of ['createStaffBtn', 'copyWeekBtn', 'fillWeekBtn', 'bulkCreateBtn', 'importExcelBtn', 'excelImportInput', 'exportExcelBtn', 'printBtn']) {
+    for (const id of ['copyWeekBtn', 'fillWeekBtn', 'bulkCreateBtn', 'importExcelBtn', 'excelImportInput', 'exportExcelBtn', 'printBtn']) {
         elements.set(id, { style: {}, hidden: false, disabled: false, setAttribute() {} });
     }
     const context = {
@@ -211,7 +211,6 @@ for (const name of ['fetchStaff', 'fetchSchedule']) {
         assert.equal(result.success, true);
         assert.equal(api.state.canManageSchedule, false);
         assert.equal(api.state.canManageStaff, false);
-        assert.equal(api.state.canCreateStaff, false);
         assert.equal(api.state.canExportSchedule, false);
         assert.equal(api.state.recoveryReadOnly, true);
         assert.equal(api.state.canViewSchedule, true);

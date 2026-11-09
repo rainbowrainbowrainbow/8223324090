@@ -112,8 +112,6 @@ const StaffState = {
     canExportSchedule: false,
     canViewStaff: false,
     canManageStaff: false,
-    canCreateStaff: false,
-    parkStaffCreationAllowed: false,
     recoveryReadOnly: false,
     linkData: [],           // v39.1: link-status data
     linkStats: null,        // v39.1: { total, linked, unlinked, freelance }
@@ -321,17 +319,6 @@ const STAFF_ROLE_OPTIONS = [
     { value: 'it_specialist', label: 'IT / техпідтримка' }
 ];
 
-const STAFF_ROLE_OPTIONS_BY_DEPT = {
-    animators: STAFF_ROLE_OPTIONS.filter(r => ['animator', 'host'].includes(r.value)),
-    trampoline: STAFF_ROLE_OPTIONS.filter(r => ['trampoline_instructor', 'senior_instructor'].includes(r.value)),
-    admin: STAFF_ROLE_OPTIONS.filter(r => ['admin', 'reception', 'manager', 'senior_manager', 'hr'].includes(r.value)),
-    cafe: STAFF_ROLE_OPTIONS.filter(r => ['barista', 'cook', 'pizzaiolo', 'waiter', 'pastry_chef', 'confectioner', 'pastry_assistant', 'dishwasher'].includes(r.value)),
-    tech: STAFF_ROLE_OPTIONS.filter(r => ['maintenance', 'it_specialist'].includes(r.value)),
-    cleaning: STAFF_ROLE_OPTIONS.filter(r => ['cleaner', 'wardrobe'].includes(r.value)),
-    security: STAFF_ROLE_OPTIONS.filter(r => r.value === 'security'),
-    __default: STAFF_ROLE_OPTIONS
-};
-
 function normalizeProfessionKey(value) {
     return String(value || '')
         .trim()
@@ -486,42 +473,6 @@ function renderStaffCardBadges(staff = {}) {
         ? '<span class="staff-card-badge neutral freelance" title="Фріланс-слот: показано тільки в explicit режимі">ФР</span>'
         : '';
     return `${accountBadge}${faceBadge}${renderStaffCardReadinessBadge(staff)}${poolBadge}${freelanceBadge}`;
-}
-
-function professionCatalogOptions() {
-    return (StaffState.professions || [])
-        .filter(item => item.is_active !== false)
-        .map(item => ({
-            value: normalizeProfessionKey(item.key),
-            label: `${item.title || item.key}${item.department ? ' · ' + item.department : ''}`
-        }))
-        .filter(item => item.value)
-        .sort((a, b) => a.label.localeCompare(b.label, 'uk'));
-}
-
-function staffRoleOptions() {
-    const catalog = professionCatalogOptions();
-    return catalog.length ? catalog : STAFF_ROLE_OPTIONS;
-}
-
-function staffRoleOptionsByDepartment() {
-    const catalog = professionCatalogOptions();
-    const professionRules = StaffState.scheduleCategoryContract?.professionRules || {};
-    if (!catalog.length || !Object.keys(professionRules).length) return STAFF_ROLE_OPTIONS_BY_DEPT;
-
-    const optionsByDepartment = { __default: catalog };
-    for (const department of Object.keys(STAFF_ROLE_OPTIONS_BY_DEPT)) {
-        if (department === '__default') continue;
-        optionsByDepartment[department] = catalog.filter(option => {
-            const professionKey = normalizeProfessionKey(option.value);
-            const displayGroup = scheduleProfessionDisplayGroupKey(professionKey);
-            if (department === 'security') return professionKey === 'security';
-            if (department === 'tech') return displayGroup === 'tech' && professionKey !== 'security';
-            if (department === 'admin') return displayGroup === 'admin' || displayGroup === 'reception';
-            return displayGroup === department;
-        });
-    }
-    return optionsByDepartment;
 }
 
 function staffProfessionOptions(staff = {}, current = '') {
@@ -3477,8 +3428,6 @@ function focusScheduleStaff(staffId, options = {}) {
 // ==========================================
 
 function applyScheduleReadAccess(data) {
-    StaffState.parkStaffCreationAllowed = data?.scheduleAccess?.source === 'park_staff_schedule_ownership'
-        && data.scheduleAccess.readOnly === false && data.scheduleAccess.canCreateStaff === true;
     if (!data?.scheduleAccess) return;
     if (data.scheduleAccess.readOnly !== true) {
         StaffState.recoveryReadOnly = false;
@@ -3489,9 +3438,8 @@ function applyScheduleReadAccess(data) {
     StaffState.recoveryReadOnly = true;
     StaffState.canManageSchedule = false;
     StaffState.canManageStaff = false;
-    StaffState.canCreateStaff = false;
     StaffState.canExportSchedule = false;
-    ['createStaffBtn', 'copyWeekBtn', 'fillWeekBtn', 'bulkCreateBtn', 'importExcelBtn', 'excelImportInput', 'exportExcelBtn'].forEach(id => {
+    ['copyWeekBtn', 'fillWeekBtn', 'bulkCreateBtn', 'importExcelBtn', 'excelImportInput', 'exportExcelBtn'].forEach(id => {
         const control = document.getElementById(id);
         if (!control) return;
         control.hidden = true;
@@ -3504,11 +3452,6 @@ function applyScheduleReadAccess(data) {
 async function fetchHrProfessions() {
     const seq = ++staffProfessionCatalogRequestSeq;
     const context = staffScheduleRequestContext();
-    if (!StaffState.canViewStaff && typeof canAccess === 'function' && canAccess('hr.staff.create')) {
-        StaffState.professions = [];
-        StaffState.professionsLoadState = 'restricted';
-        return { success: true, data: [] };
-    }
     StaffState.professionsLoadState = 'loading';
     try {
         const res = await staffApiFetch('/api/hr/professions');
@@ -8829,66 +8772,6 @@ function handlePrint() {
     return true;
 }
 
-// v39.11: Add staff modal
-async function openAddStaffModal() {
-    syncStaffScheduleCapabilities();
-    if (!StaffState.canCreateStaff) return;
-    const context = staffScheduleRequestContext();
-    const DEPTS = getDepartmentOptionsFromStaffState();
-    const defaultDepartment = DEPTS[0]?.value || 'animators';
-    const roleOptionsByDepartment = staffRoleOptionsByDepartment();
-    if (typeof formModal !== 'function') return;
-    const result = await formModal('Додати співробітника', [
-        { key: 'name', label: 'ПІБ', required: true, placeholder: 'Прізвище Ім\'я По батькові' },
-        { key: 'department', label: 'Відділ', type: 'select', options: DEPTS, defaultValue: defaultDepartment, required: true },
-        { key: 'position', label: 'Посада', placeholder: 'Аніматор, Менеджер...', required: true },
-        {
-            key: 'role_type',
-            label: 'Роль',
-            type: 'select',
-            options: roleOptionsByDepartment[defaultDepartment] || staffRoleOptions(),
-            optionsBy: roleOptionsByDepartment,
-            dependsOn: 'department'
-        },
-        {
-            key: 'secondary_professions',
-            label: 'Додаткові професії',
-            type: 'textarea',
-            placeholder: 'host, trampoline_instructor',
-            hint: 'Основна роль лишається джерелом групування графіка.'
-        },
-        { key: 'phone', label: 'Телефон', placeholder: '+380...' },
-        { key: 'address', label: 'Адреса', placeholder: 'Місто, вулиця, будинок' }
-    ], { icon: '👤', okText: 'Додати' });
-    if (!result || context !== staffScheduleRequestContext()) return;
-    syncStaffScheduleCapabilities();
-    if (!StaffState.canCreateStaff) return;
-    try {
-        const res = await staffApiFetch('/api/staff', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                name: result.name.trim(),
-                department: result.department,
-                position: result.position || '',
-                role_type: result.role_type || staffRoleOptions()[0]?.value || 'animator',
-                secondary_professions: String(result.secondary_professions || '').split(/[\n,;]+/).map(item => item.trim()).filter(Boolean),
-                phone: result.phone || '',
-                address: result.address || ''
-            })
-        });
-        if (!res || context !== staffScheduleRequestContext()) return;
-        if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            if (typeof showNotification === 'function') showNotification(err.error || 'Помилка додавання', 'error');
-            return;
-        }
-        if (typeof showNotification === 'function') showNotification('Співробітника додано!', 'success');
-        await fetchStaff();
-        renderSchedule();
-    } catch (e) { if (typeof showNotification === 'function') showNotification(e.message, 'error'); }
-}
-
 // Dark mode: handled by shared initDarkMode() from config.js
 
 // ==========================================
@@ -8896,7 +8779,7 @@ async function openAddStaffModal() {
 // ==========================================
 
 function staffScheduleCapabilityFingerprint() {
-    return JSON.stringify(['hr.schedule.view', 'hr.schedule.manage', 'hr.staff.view', 'hr.staff.manage', 'hr.staff.create', 'export_data']
+    return JSON.stringify(['hr.schedule.view', 'hr.schedule.manage', 'hr.staff.view', 'hr.staff.manage', 'export_data']
         .map(action => typeof canAccess === 'function' && canAccess(action)));
 }
 
@@ -8916,12 +8799,9 @@ function syncStaffScheduleCapabilities() {
     StaffState.canViewStaff = canUseStaffCapability('hr.staff.view');
     StaffState.canExportSchedule = StaffState.canViewSchedule && canUseStaffCapability('export_data') && writable;
     StaffState.canManageStaff = canUseStaffCapability('hr.staff.manage') && staffWrites && writable;
-    StaffState.canCreateStaff = canUseStaffCapability('hr.staff.create') && StaffState.canViewSchedule && writable
-        && (staffWrites || StaffState.parkStaffCreationAllowed);
     const user = typeof AppState !== 'undefined' ? AppState.currentUser : null;
     const isAdmin = ['creator', 'director'].includes(user?.role);
     const controls = {
-        createStaffBtn: StaffState.canCreateStaff,
         copyWeekBtn: StaffState.canManageSchedule,
         fillWeekBtn: StaffState.canManageSchedule,
         bulkCreateBtn: StaffState.canManageStaff && isAdmin && staffScheduleHostMode !== 'hr',
@@ -8960,7 +8840,6 @@ function clearStaffScheduleAccessState() {
     closeLinkModal();
     closeBulkResults();
     Object.assign(StaffState, {
-        parkStaffCreationAllowed: false,
         staff: [], professions: [], departments: {}, displayGroups: [], scheduleCategoryContract: null,
         schedule: {}, scheduleRawEntries: [], scheduleLoadedRange: null, attendance: {}, attendanceSummary: null,
         attendanceUnavailable: true, hoursData: null, scheduleHistory: {}, shiftPreferences: {},
@@ -9239,9 +9118,6 @@ async function initStaffSchedulePage(options = {}) {
         document.getElementById('exportExcelBtn')?.addEventListener('click', handleExcelExport);
         document.getElementById('printBtn')?.addEventListener('click', handlePrint);
         document.getElementById('scheduleRangeRetryBtn')?.addEventListener('click', retryScheduleRangeLoad);
-
-        // v39.11: Add staff button
-        document.getElementById('createStaffBtn')?.addEventListener('click', openAddStaffModal);
 
         // Link modal
         document.getElementById('linkConfirmBtn')?.addEventListener('click', confirmLinkAccount);

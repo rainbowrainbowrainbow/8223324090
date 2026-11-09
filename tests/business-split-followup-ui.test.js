@@ -14,7 +14,7 @@ function response(status, body) {
 }
 
 function harness(t, page = 'staff') {
-    const dom = new JSDOM('<body><button id="createStaffBtn"></button><button id="copyWeekBtn"></button><button id="fillWeekBtn"></button><button id="exportExcelBtn"></button><div id="scheduleWrapper"></div></body>', {
+    const dom = new JSDOM('<body><button id="copyWeekBtn"></button><button id="fillWeekBtn"></button><button id="exportExcelBtn"></button><div id="scheduleWrapper"></div></body>', {
         url: `https://fixture.local/${page}?businessContext=event_genix`, runScripts: 'outside-only'
     });
     t.after(() => dom.window.close());
@@ -40,7 +40,7 @@ function harness(t, page = 'staff') {
         win.getLegacyBusinessSurfaceAvailability = () => ({ available: win.__staffWrites === true });
         win.eval(code('js/staff-page.js').replace('window.StaffSchedulePage = {', `
             window.__followup = { state: StaffState, postAttendanceAction, fetchStaff, fetchHrProfessions,
-                syncStaffScheduleCapabilities, performStaffScheduleRefresh, openAddStaffModal, goToScheduleRange,
+                syncStaffScheduleCapabilities, performStaffScheduleRefresh, goToScheduleRange,
                 context: staffScheduleRequestContext,
                 markInitialized() { staffScheduleInitialized = true; staffScheduleInitPromise = Promise.resolve(); staffScheduleAccessFingerprint = staffScheduleRequestContext(); },
                 resetInitialization() { staffScheduleInitialized = false; staffScheduleInitPromise = null; },
@@ -250,34 +250,6 @@ test('an old roster cannot repopulate state after business or capability changes
     pending.resolve(response(200, { success: true, data: [{ id: 97002, name: 'Old Park row' }] }));
     assert.equal((await request).stale, true);
     assert.equal(h.api.state.staff.length, 0);
-});
-
-test('unsupported staff creation stays hidden and never opens or submits its form', async t => {
-    const h = harness(t);
-    h.win.__allowed.add('hr.staff.create');
-    let opened = 0;
-    h.win.formModal = async () => { opened++; return { name: 'Synthetic' }; };
-    h.api.syncStaffScheduleCapabilities();
-    assert.equal(h.api.state.canManageSchedule, true, 'schedule lane remains independent');
-    assert.equal(h.win.document.getElementById('createStaffBtn').hidden, true);
-    await h.api.openAddStaffModal();
-    assert.equal(opened, 0);
-    assert.equal(h.requests.length, 0);
-});
-
-test('staff creation drops an open form after its context changes', async t => {
-    const h = harness(t);
-    h.win.__staffWrites = true;
-    h.win.__allowed = new Set(['hr.schedule.view', 'hr.staff.create']);
-    const form = deferred();
-    h.win.formModal = () => form.promise;
-    const request = h.api.openAddStaffModal();
-    assert.equal(h.api.state.canManageStaff, false);
-    assert.equal(h.win.document.getElementById('createStaffBtn').hidden, false);
-    h.switchBusiness('dar');
-    form.resolve({ name: 'Synthetic' });
-    await request;
-    assert.equal(h.requests.length, 0);
 });
 
 test('cached initialization rechecks canonical permissions without binding a second initializer', async t => {

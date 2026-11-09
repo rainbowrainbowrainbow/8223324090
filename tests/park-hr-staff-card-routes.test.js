@@ -129,6 +129,7 @@ async function withActualHrRouter(run) {
         async function request(path, options = {}) {
             const response = await fetch(origin + path, {
                 method: options.method || 'GET',
+                body: options.body === undefined ? undefined : JSON.stringify(options.body),
                 headers: { 'X-Business-Context': options.context || 'event_genix', 'Content-Type': 'application/json' }
             });
             const text = await response.text();
@@ -156,6 +157,19 @@ test('Park HR staff list and base detail use exact GET and membership boundaries
             assert.equal((await request('/api/staff', { method })).status, 403);
             state.actor = { role: 'creator', revoked: true };
             assert.equal((await request('/api/staff', { method })).status, 403);
+        });
+
+        await t.test('the full Park profile lane rejects mixed payroll and profile writes before SQL', async () => {
+            state.actor = { role: 'creator' };
+            const count = calls.length;
+            for (const body of [
+                { hourly_rate: 101, hr_pool_status: 'terminated' },
+                { rateUnit: 'hour', name: 'Synthetic mixed write' }
+            ]) {
+                const result = await request(`/api/hr/staff/${STAFF_ID}`, { method: 'PUT', body });
+                assert.equal(result.status, 403);
+            }
+            assert.equal(calls.length, count);
         });
 
         await t.test('full management retains full card editing with or without a delegated grant', async () => {

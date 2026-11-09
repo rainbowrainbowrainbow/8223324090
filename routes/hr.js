@@ -30,7 +30,7 @@ const {
 } = require('../services/businessContext');
 const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
 const { parkHrStaffCardEditCapability, PARK_STAFF_PROFILE_FIELD_LIMITS } = require('../services/parkHrStaffCardRead');
-const { requireParkHrPayrollAccess } = require('../services/parkHrPayrollAccess');
+const { parkHrPayrollCapabilities, requireParkHrPayrollAccess } = require('../services/parkHrPayrollAccess');
 const { parkMonthlyPeriod, loadParkHrMonthlyReport } = require('../services/parkHrMonthlyReportRead');
 const { reportAttendanceByStaff } = require('../services/hrMonthlyReportDetails');
 const {
@@ -4740,7 +4740,7 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
         const hasProfessionRates = hasBodyField('profession_rates') || hasBodyField('professionRates');
         if (parkHrStaffCardEditCapability(req) === 'hr.staff.manage'
             && ['hourly_rate', 'rate_unit', 'rateUnit', 'profession_rates', 'professionRates'].some(hasBodyField)
-            && !canUseAction(req.user, 'hr.payroll.manage')) {
+            && (!parkHrPayrollCapabilities(req, 'hr') || !canUseAction(req.user, 'hr.payroll.manage'))) {
             return res.status(403).json({ success: false, error: 'Insufficient payroll permissions' });
         }
         const secondaryInput = hasBodyField('secondary_professions')

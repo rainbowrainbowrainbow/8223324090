@@ -542,7 +542,7 @@ describe('disposable token-backed permission capability contract', { skip: !enab
         assert.equal(afterRelogin.capabilities['action:hr.reports.export'].allowed, false);
     });
 
-    it('reads and creates disposable Park staff through the actual app with separate permissions', async () => {
+    it('reads, creates and edits disposable Park staff through the actual app with separate permissions', async () => {
         const reader = accounts.staffReader;
         const readerAccess = await permissions(reader.token);
         assert.equal(readerAccess.capabilities['action:hr.staff.view']?.allowed, true);
@@ -666,6 +666,41 @@ describe('disposable token-backed permission capability contract', { skip: !enab
             const createdId = created.data.data.id;
             assert.equal((await request('PUT', `/api/staff/${createdId}`, { name: 'Forbidden edit' }, memberToken)).status, 403);
             assert.equal((await request('DELETE', `/api/staff/${createdId}`, null, memberToken)).status, 403);
+
+            const card = `/api/hr/staff/${createdId}`;
+            const details = { name: 'Updated Park Staff', position: 'Reception administrator', phone: null, address: 'Disposable address' };
+            assert.equal((await request('PUT', card, details, memberToken)).status, 403);
+            await schemaPool.query(
+                'UPDATE business_memberships SET action_allowlist = $3 WHERE business_id = $1 AND user_id = $2',
+                [businessId, staffCreator.id, ['hr.staff.create', 'hr.staff.profile.edit']]
+            );
+            assert.equal((await request('PUT', card, details, memberToken)).status, 403, 'editing requires card read access');
+            await schemaPool.query(
+                "UPDATE business_memberships SET action_allowlist = array_append(action_allowlist, 'hr.staff.view') WHERE business_id = $1 AND user_id = $2",
+                [businessId, staffCreator.id]
+            );
+            const beforeEdit = await request('GET', card, null, memberToken);
+            assert.equal(beforeEdit.status, 200);
+            assert.deepEqual(beforeEdit.data.staffCardAccess.editableFields,
+                ['name', 'position', 'phone', 'photo_url', 'address', 'emergency_contact', 'emergency_phone', 'notes']);
+            for (const forbidden of [{ hourly_rate: 99 }, { role_type: 'director' }, { hr_pool_status: 'blacklisted' }, { telegram_id: '123' }]) {
+                assert.equal((await request('PUT', card, { ...details, ...forbidden }, memberToken)).status, 400);
+            }
+            const unchanged = await request('GET', card, null, memberToken);
+            assert.equal(unchanged.data.data.name, draft.name, 'a forbidden mixed payload must not update any field');
+            const foreignEdit = await fetch(`${BASE_URL}${card}`, {
+                method: 'PUT',
+                headers: { Authorization: `Bearer ${memberToken}`, 'X-Business-Context': 'dar', 'Content-Type': 'application/json' },
+                body: JSON.stringify(details)
+            });
+            assert.equal(foreignEdit.status, 403);
+            const edited = await request('PUT', card, details, memberToken);
+            assert.equal(edited.status, 200, JSON.stringify(edited.data));
+            assert.equal(edited.data.data.hourly_rate, undefined);
+            const editedRows = await schemaPool.query('SELECT name, position, phone, address FROM staff WHERE id = $1', [createdId]);
+            assert.deepEqual(editedRows.rows, [details]);
+            assert.equal((await request('DELETE', card, { confirmation: 'DELETE' }, memberToken)).status, 403);
+            assert.equal((await request('PUT', `${card}/status`, { isActive: false }, memberToken)).status, 403);
         } finally {
             await schemaPool.query(
                 'UPDATE business_memberships SET is_active = true WHERE business_id = $1 AND user_id = $2',

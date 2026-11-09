@@ -519,6 +519,12 @@ const ACTION_PERMISSIONS = Object.freeze([
         apiConsumers: [api('routes/staff.js', 'POST /api/staff', null, 'Enforced by requireStaffCreation.')]
     }),
     action({
+        key: 'hr.staff.profile.edit', label: 'Редагування основних даних картки співробітника', group: 'hr', risk: 'high',
+        frontendConsumers: [source('js/hr-page.js', "canUseHrCapability('hr.staff.profile.edit')", { enforces: true })],
+        backendConsumers: [source('services/parkHrStaffCardRead.js', 'function canEditParkHrStaffCard', { enforces: true })],
+        apiConsumers: [api('routes/hr.js', 'PUT /api/hr/staff/:id', null, 'Park membership and an allowlist of profile fields are required.')]
+    }),
+    action({
         key: 'hr.reports.view', label: 'Перегляд HR-звітів', group: 'hr', defaultRoles: HR_PAGE_ACCESS, risk: 'critical',
         backendConsumers: [source('routes/hr.js', 'function requireHrCapabilityContract', { enforces: true })],
         frontendConsumers: [source('js/hr-page.js', "'hr.reports.view'", { enforces: true }), source('js/hr-pulse-switcher.js', "'hr.reports.view'", { enforces: true })], apiConsumers: [api('routes/hr.js', '/api/hr/report', null, 'Enforced by requireHrCapabilityContract.')]

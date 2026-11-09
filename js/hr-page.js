@@ -709,7 +709,7 @@ const STAFF_PROFILE_SCOPE_LABELS = {
     offboarding: 'Завершення співпраці'
 };
 const STAFF_PROFILE_SCOPE_SELECTORS = {
-    main: ['#editStaffName', '#editPhone', '#editPhotoUrl'],
+    main: ['#editStaffName', '#editStaffPosition', '#editPhone', '#editPhotoUrl'],
     work: [
         '#editBirthDate', '#editAddress', '#editEmergencyContact', '#editEmergencyPhone',
         '#editRoleType', '#editSecondaryProfessions', '#editCompanyStructureNode',
@@ -741,6 +741,7 @@ let staffProfileTabLoadPromises = new Map();
 let staffProfileTabLoadSeq = new Map();
 let staffProfileScopeBaselines = new Map();
 let staffProfileContextKey = '';
+let parkStaffProfileEditableFields = null;
 let staffEditOpenAbortController = null;
 let staffProfileRequestTimeoutMs = 15000;
 let staffDocumentListView = 'active';
@@ -7510,6 +7511,8 @@ function toggleTeamCardMenu(staffId, button) {
 
 function renderTeamCards(staff, options = {}) {
     ensureTeamCardMenuHandlers();
+    const canOpenProfile = canManage || (window.CrmBusinessContext?.current?.() === 'event_genix'
+        && canUseHrCapability('hr.staff.view') && canUseHrCapability('hr.staff.profile.edit'));
     return staff.map(s => {
         const bucketId = bucketForStaff(s);
         const initials = s.name.split(' ').map(w => w[0]).join('').substring(0, 2);
@@ -7537,7 +7540,7 @@ function renderTeamCards(staff, options = {}) {
         const profileClick = `openStaffEdit(${Number(s.id)})`;
         const avatarNode = `<div class="hr-team-avatar" style="${s.color ? 'background:' + s.color + '30;color:' + s.color : ''}">${avatar}</div>`;
         const nameNode = `<div class="hr-team-name">${escapeHtml(s.name)}</div>`;
-        const profileTopAction = canManage
+        const profileTopAction = canOpenProfile
             ? `<button type="button" class="hr-team-open" onclick="${profileClick}" aria-label="Відкрити профіль: ${escapeHtml(s.name)}">Відкрити</button>`
             : '';
         const overflowMenu = renderTeamCardOverflowMenu(s);
@@ -14173,10 +14176,14 @@ function setStaffProfileCatalogState(modal, state, message = '') {
     if (!modal) return;
     modal.dataset.catalogState = state;
     const blocked = state !== 'ready';
+    const scoped = modal.dataset.parkProfileEditMode === 'true';
     ['editRoleType', 'editSecondaryProfessions', 'editSecondaryProfessionSearch', 'editCompanyStructureNode', 'editRoleAssignmentsSave']
-        .forEach(id => { const field = modal.querySelector(`#${id}`); if (field) field.disabled = blocked; });
+        .forEach(id => {
+            const field = modal.querySelector(`#${id}`);
+            if (field) field.disabled = blocked || scoped;
+        });
     const saveWork = modal.querySelector('#editSaveWork');
-    if (saveWork) saveWork.disabled = state === 'loading' || state === 'error';
+    if (saveWork) saveWork.disabled = !scoped && (state === 'loading' || state === 'error');
     let status = modal.querySelector('#staffProfileCatalogState');
     if (!status) {
         status = document.createElement('div');
@@ -14215,7 +14222,10 @@ async function loadStaffProfileCatalogs(staffId, openSeq) {
     clearTimeout(timeoutId);
     if (openSeq !== staffEditOpenSeq || !isActiveStaffEditLoad(staffId)) return;
     if (!settled || professionCatalogLoadState !== 'ready' || !['ready', 'empty'].includes(companyStructureLoadState)) {
-        setStaffProfileCatalogState(modal, 'error', 'Довідники професій або структури недоступні. Редагування робочих даних призупинено.');
+        const message = modal?.dataset?.parkProfileEditMode !== 'true'
+            ? 'Довідники професій або структури недоступні. Редагування робочих даних призупинено.'
+            : 'Довідники професій або структури недоступні.';
+        setStaffProfileCatalogState(modal, 'error', message);
         return;
     }
     const staff = teamStaff.find(item => Number(item.id) === Number(staffId));
@@ -14304,6 +14314,7 @@ async function openStaffEdit(staffId, options = {}) {
     staffEditOpenAbortController = controller;
     prepareStaffProfileDrawerLayout();
     resetStaffProfileLazyState(null);
+    setParkStaffProfileEditFields(modal, null);
     document.getElementById('editStaffId').value = '';
     syncStaffProfileHeaderName('Завантаження…', {});
     setStaffProfileCardState(modal, 'loading');
@@ -14331,6 +14342,8 @@ async function openStaffEdit(staffId, options = {}) {
     document.getElementById('editStaffId').value = numericStaffId;
     const editStaffName = document.getElementById('editStaffName');
     if (editStaffName) editStaffName.value = s.name || '';
+    const editStaffPosition = document.getElementById('editStaffPosition');
+    if (editStaffPosition) editStaffPosition.value = s.position || '';
     syncStaffProfileHeaderName(s.name || '', s);
     void loadStaffEducationTargets(numericStaffId, openSeq);
     populateStaffProfessionControlsPending(s);
@@ -14399,6 +14412,10 @@ async function openStaffEdit(staffId, options = {}) {
     staffOffboardingLifecycle = null;
     updateStaffOffboardingActionState();
 
+    const editableFields = profileData.staffCardAccess?.editableFields;
+    if (Array.isArray(editableFields)) {
+        setParkStaffProfileEditFields(modal, canUseHrCapability('hr.staff.profile.edit') ? editableFields : []);
+    }
     setStaffProfileCatalogState(modal, 'loading');
     markStaffProfileScopesClean(Object.keys(STAFF_PROFILE_SCOPE_LABELS));
     setStaffProfileCardState(modal, 'ready');
@@ -14417,6 +14434,7 @@ async function openStaffEdit(staffId, options = {}) {
 function buildStaffMainPayload() {
     return {
         name: document.getElementById('editStaffName')?.value || null,
+        position: document.getElementById('editStaffPosition')?.value || null,
         phone: document.getElementById('editPhone')?.value || null,
         photo_url: document.getElementById('editPhotoUrl')?.value?.trim() || null
     };
@@ -14447,6 +14465,7 @@ function buildStaffWorkPayload() {
 
 const STAFF_MAIN_PAYLOAD_FIELDS = {
     name: ['editStaffName'],
+    position: ['editStaffPosition'],
     phone: ['editPhone'],
     photo_url: ['editPhotoUrl']
 };
@@ -14466,6 +14485,32 @@ const STAFF_WORK_PAYLOAD_FIELDS = {
     notes: ['editNotes'],
     hr_pool_status: ['editPoolStatus']
 };
+
+function setParkStaffProfileEditFields(modal, fields) {
+    if (parkStaffProfileEditableFields === null && fields === null) return;
+    const allowed = fields === null ? null : new Set(fields);
+    parkStaffProfileEditableFields = allowed;
+    modal.dataset.parkProfileEditMode = allowed === null ? 'false' : 'true';
+    for (const [mapping, buttonId] of [[STAFF_MAIN_PAYLOAD_FIELDS, 'editSave'], [STAFF_WORK_PAYLOAD_FIELDS, 'editSaveWork']]) {
+        const allowedIds = new Set(Object.entries(mapping)
+            .filter(([key]) => allowed === null || allowed.has(key))
+            .flatMap(([, ids]) => ids));
+        for (const id of new Set(Object.values(mapping).flat())) {
+            const field = modal.querySelector(`#${id}`);
+            if (field) field.disabled = !allowedIds.has(id);
+        }
+        const button = modal.querySelector(`#${buttonId}`);
+        if (button) button.hidden = allowedIds.size === 0;
+    }
+    const clearPhoto = modal.querySelector('#editPhotoClear');
+    if (clearPhoto) clearPhoto.disabled = allowed !== null && !allowed.has('photo_url');
+    const professionPicker = modal.querySelector('#editSecondaryProfessionPicker');
+    if (professionPicker) professionPicker.inert = allowed !== null;
+    const hint = modal.querySelector('#editStaffWorkSaveHint');
+    if (hint) hint.textContent = allowed === null
+        ? 'Зберігає професії, структуру, Telegram, контракт, навички й нотатки.'
+        : allowed.size ? 'Зберігає адресу, екстрений контакт і нотатки.' : 'Лише перегляд.';
+}
 
 function buildChangedStaffPayload(scope, fullPayload, payloadFields) {
     const body = {};
@@ -14500,17 +14545,27 @@ async function updateStaffProfileFields(staffId, body) {
 async function saveStaffEdit(options = {}) {
     const staffId = activeEditStaffId();
     const scope = (typeof options === 'string' ? options : options?.scope) === 'work' ? 'work' : 'main';
-    if (scope === 'work' && !['ready', 'deferred'].includes(document.getElementById('staffEditModal')?.dataset.catalogState)) {
+    const editableFields = parkStaffProfileEditableFields;
+    if (editableFields && (!editableFields.size || !canUseHrCapability('hr.staff.profile.edit')
+        || !isActiveStaffEditLoad(Number(staffId)))) {
+        return { success: false, error: 'staff_profile_edit_unavailable' };
+    }
+    if (!editableFields && scope === 'work' && !['ready', 'deferred'].includes(document.getElementById('staffEditModal')?.dataset.catalogState)) {
         showNotification('Довідники для редагування робочих даних ще недоступні.', 'error');
         return { success: false, error: 'staff_catalog_unavailable' };
     }
     const button = typeof options === 'object' ? options?.button : null;
     const fullPayload = scope === 'work' ? buildStaffWorkPayload() : buildStaffMainPayload();
+    const payloadFields = scope === 'work' ? STAFF_WORK_PAYLOAD_FIELDS : STAFF_MAIN_PAYLOAD_FIELDS;
     const { body, submittedFields } = buildChangedStaffPayload(
         scope,
         fullPayload,
-        scope === 'work' ? STAFF_WORK_PAYLOAD_FIELDS : STAFF_MAIN_PAYLOAD_FIELDS
+        editableFields ? Object.fromEntries(Object.entries(payloadFields).filter(([key]) => editableFields.has(key))) : payloadFields
     );
+    if (editableFields && Object.keys(body).length === 0) {
+        showNotification('Змін для збереження немає', 'info');
+        return { success: true, skipped: true };
+    }
     const labels = scope === 'work'
         ? { loadingLabel: 'Збереження…', successLabel: 'Збережено', errorLabel: 'Помилка' }
         : { loadingLabel: 'Збереження…', successLabel: 'Збережено', errorLabel: 'Помилка' };

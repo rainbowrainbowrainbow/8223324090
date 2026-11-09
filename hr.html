@@ -1130,6 +1130,10 @@
                         <span>Телефон</span>
                         <input type="tel" id="editPhone" aria-label="+380..." placeholder="+380...">
                     </label>
+                    <label>
+                        <span>Посада</span>
+                        <input type="text" id="editStaffPosition" maxlength="100">
+                    </label>
                 </div>
             <div class="form-group hr-staff-photo-field">
                 <label for="editPhotoUrl">Фото профілю</label>
@@ -1139,7 +1143,7 @@
                         <input type="text" id="editPhotoUrl" maxlength="500" inputmode="url" autocomplete="off" placeholder="/uploads/... або https://..." oninput="updateStaffPhotoPreview()">
                         <div class="hr-staff-photo-actions">
                             <small class="form-hint">Використовується як аватар у картці та пульсі. Це не Face ID; Камера / Face ID реєструється окремо через модуль Камера / check-in. Дозволено https, /uploads або /images.</small>
-                            <button type="button" class="btn-secondary" onclick="clearStaffPhotoUrl()">Очистити фото</button>
+                            <button type="button" id="editPhotoClear" class="btn-secondary" onclick="clearStaffPhotoUrl()">Очистити фото</button>
                         </div>
                     </div>
                 </div>
@@ -1305,7 +1309,7 @@
                 <textarea id="editNotes" rows="3"></textarea>
             </div>
             <div class="hr-staff-profile-save-scope">
-                <span>Зберігає професії, структуру, Telegram, контракт, навички й нотатки.</span>
+                <span id="editStaffWorkSaveHint">Зберігає професії, структуру, Telegram, контракт, навички й нотатки.</span>
                 <button type="button" id="editSaveWork" class="btn-primary" onclick="saveStaffEdit({ scope: 'work' })">Зберегти робочі дані</button>
             </div>
             </section>

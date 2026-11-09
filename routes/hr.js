@@ -29,6 +29,7 @@ const {
     resolveBusinessScope
 } = require('../services/businessContext');
 const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
+const { canEditParkHrStaffCard, PARK_STAFF_PROFILE_FIELD_LIMITS } = require('../services/parkHrStaffCardRead');
 const { requireParkHrPayrollAccess } = require('../services/parkHrPayrollAccess');
 const { parkMonthlyPeriod, loadParkHrMonthlyReport } = require('../services/parkHrMonthlyReportRead');
 const { reportAttendanceByStaff } = require('../services/hrMonthlyReportDetails');
@@ -336,6 +337,7 @@ const HR_SHIFT_COPY_WEEK_MAX_STAFF = 500;
 function hrCapabilityCandidates(req) {
     const routePath = String(req.path || '/');
     const isRead = req.method === 'GET' || req.method === 'HEAD';
+    if (req.method === 'PUT' && canEditParkHrStaffCard(req)) return ['hr.staff.profile.edit'];
     if (routePath === '/report/export' || routePath.startsWith('/attendance-document')) return ['hr.reports.export'];
     if (routePath.startsWith('/report/') || routePath === '/role-assignments/report') return ['hr.reports.view'];
     const payrollPreview = req.method === 'POST' && (
@@ -4719,7 +4721,17 @@ router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
 // PUT /api/hr/staff/:id — update HR fields
 router.put('/staff/:id', requireHrManage, async (req, res) => {
     try {
-        const { name, phone, emergency_contact, emergency_phone, role_type, hourly_rate, rate_unit, birth_date, photo_url, address, notes, telegram_id, telegram_username, contract_type, skills, hr_pool_status, blacklist_reason, company_structure_node_id } = req.body;
+        const { name, position, phone, emergency_contact, emergency_phone, role_type, hourly_rate, rate_unit, birth_date, photo_url, address, notes, telegram_id, telegram_username, contract_type, skills, hr_pool_status, blacklist_reason, company_structure_node_id } = req.body || {};
+        if (req.hrCapability === 'hr.staff.profile.edit') {
+            const fields = Object.entries(req.body || {});
+            if (fields.length === 0 || fields.some(([key]) => !Object.hasOwn(PARK_STAFF_PROFILE_FIELD_LIMITS, key))) {
+                return res.status(400).json({ success: false, error: 'Можна зберегти лише основні та контактні дані картки' });
+            }
+            if (fields.some(([key, value]) => value !== null
+                && (typeof value !== 'string' || Array.from(value.trim()).length > PARK_STAFF_PROFILE_FIELD_LIMITS[key]))) {
+                return res.status(400).json({ success: false, error: 'Перевірте формат і довжину полів картки' });
+            }
+        }
         const hasBodyField = field => Object.prototype.hasOwnProperty.call(req.body || {}, field);
         const hasSecondaryProfessions = hasBodyField('secondary_professions') || hasBodyField('secondaryProfessions');
         const hasProfessionRates = hasBodyField('profession_rates') || hasBodyField('professionRates');
@@ -4731,6 +4743,7 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
             : req.body.professionRates;
         const fieldPresence = {
             name: hasBodyField('name'),
+            position: hasBodyField('position'),
             phone: hasBodyField('phone'),
             emergency_contact: hasBodyField('emergency_contact'),
             emergency_phone: hasBodyField('emergency_phone'),
@@ -4757,7 +4770,7 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
             `SELECT id, name, phone, emergency_contact, emergency_phone, role_type,
                     COALESCE(secondary_professions, '[]'::jsonb) AS secondary_professions,
                     hourly_rate, COALESCE(rate_unit, 'hour') AS rate_unit, company_structure_node_id, birth_date, photo_url, address, notes, telegram_id, telegram_username,
-                    contract_type, skills, hr_pool_status, blacklist_reason, blacklisted_at
+                    contract_type, skills, hr_pool_status, blacklist_reason, blacklisted_at, position
              FROM staff
              WHERE id = $1`,
             [req.params.id]
@@ -4821,6 +4834,13 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
             const normalizedName = textOrNull(name);
             if (!normalizedName) return res.status(400).json({ success: false, error: 'ПІБ співробітника обовʼязкове' });
             queueStaffUpdate('name', normalizedName);
+        }
+        if (fieldPresence.position) {
+            const normalizedPosition = textOrNull(position);
+            if (!normalizedPosition || Array.from(normalizedPosition).length > 100) {
+                return res.status(400).json({ success: false, error: 'Вкажіть посаду до 100 символів' });
+            }
+            queueStaffUpdate('position', normalizedPosition);
         }
         if (fieldPresence.phone) queueStaffUpdate('phone', textOrNull(phone));
         if (fieldPresence.emergency_contact) queueStaffUpdate('emergency_contact', textOrNull(emergency_contact));
@@ -4908,7 +4928,7 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
         }
         broadcastRosterDates(scheduleCleanup?.dates || [], req.user?.id);
         const changedFields = [
-            'phone', 'emergency_contact', 'emergency_phone', 'role_type', 'secondary_professions',
+            'name', 'position', 'phone', 'emergency_contact', 'emergency_phone', 'role_type', 'secondary_professions',
             'hourly_rate', 'rate_unit', 'company_structure_node_id', 'birth_date', 'photo_url', 'address', 'notes', 'telegram_id', 'telegram_username',
             'contract_type', 'skills', 'hr_pool_status', 'blacklist_reason', 'blacklisted_at'
         ];

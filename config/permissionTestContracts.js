@@ -130,6 +130,13 @@ const ACTION_PERMISSION_TEST_CONTRACTS = Object.freeze({
         sensitive: true,
         testFiles: ['tests/business-split-followup-ui.test.js', 'tests/integration/permission-capabilities.integration.test.js']
     }),
+    'hr.staff.profile.edit': actionContract('hr.staff.profile.edit', {
+        frontendScenario: 'Park staff card edits only fields enabled by its server response',
+        backendScenario: 'PUT /api/hr/staff/:id with a scoped grant, disallowed fields and foreign contexts',
+        mutation: true,
+        sensitive: true,
+        testFiles: ['tests/park-hr-staff-card-routes.test.js', 'tests/integration/permission-capabilities.integration.test.js']
+    }),
     'hr.reports.view': actionContract('hr.reports.view', {
         backendScenario: 'GET /api/hr/report/*',
         sensitive: true,

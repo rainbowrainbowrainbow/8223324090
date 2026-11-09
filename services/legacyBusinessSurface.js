@@ -5,7 +5,8 @@ const { userBusinessModuleState } = require('./businessModuleRegistry');
 const { recordCompatibilityTelemetrySafe } = require('./businessCutover');
 const { canUseParkStaffSchedule, parkStaffScheduleRoutePath } = require('./parkStaffScheduleAccess');
 const { projectParkStaffSchedulePayload } = require('./parkStaffScheduleProjection');
-const { isParkHrStaffCardRoute, canReadParkHrStaffCard, projectParkHrStaffCardPayload } = require('./parkHrStaffCardRead');
+const { isParkHrStaffCardRoute, canReadParkHrStaffCard, canEditParkHrStaffCard,
+    projectParkHrStaffCardPayload } = require('./parkHrStaffCardRead');
 const { isParkHrMonthlyReportRoute, canReadParkHrMonthlyReport, projectParkHrMonthlyReport } = require('./parkHrMonthlyReportRead');
 const { canReadParkCheckinJournal, projectParkCheckinJournal } = require('./parkStaffCheckinJournalRead');
 const { isParkHrOnboardingRoute, canReadParkHrOnboarding, projectParkHrOnboardingPayload } = require('./parkHrOnboardingRead');
@@ -193,11 +194,13 @@ function requireLegacyBusinessSurface(surface, { parkScheduleRouter = null, park
             };
             return next();
         }
-        if (access.code === 'staff_not_migrated' && parkHrStaffCardRead && canReadParkHrStaffCard(req)) {
+        if (access.code === 'staff_not_migrated' && parkHrStaffCardRead
+            && (canReadParkHrStaffCard(req) || (req.method === 'PUT' && canEditParkHrStaffCard(req)))) {
             const routePath = parkStaffScheduleRoutePath(req);
             const sendJson = res.json.bind(res);
             res.json = payload => sendJson(projectParkHrStaffCardPayload(routePath, payload, {
-                includePayroll: resolveCapability(req.user, 'hr.payroll.view', { type: 'action' }).allowed
+                includePayroll: req.method === 'GET' && resolveCapability(req.user, 'hr.payroll.view', { type: 'action' }).allowed,
+                canEditProfile: canEditParkHrStaffCard(req)
             }));
             return next();
         }

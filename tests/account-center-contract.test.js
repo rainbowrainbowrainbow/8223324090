@@ -92,7 +92,8 @@ test('account creation uses the seven-step atomic onboarding workspace', () => {
     assert.match(HR_PAGE_CODE, /async function openAccountOnboardingWizard/);
     assert.match(HR_PAGE_CODE, /function buildAccountOnboardingPayload/);
     assert.match(HR_PAGE_CODE, /crmApiFetch\('\/api\/users\/onboarding\/options'\)/);
-    assert.match(HR_PAGE_CODE, /crmApiFetch\('\/api\/users\/onboarding'/);
+    assert.match(HR_PAGE_CODE, /onboarding: \{ submit: '\/api\/users\/onboarding'/);
+    assert.match(HR_PAGE_CODE, /submitStaffCreation\('onboarding', accountOnboardingState\.payload, isCurrent\)/);
     assert.match(HR_PAGE_CODE, /rateMode !== 'keep'/);
     assert.match(USERS_ROUTE, /router\.post\('\/onboarding', requireAction\('manage_accounts'\), requireAction\('hr\.staff\.manage'\)/);
     assert.match(USERS_ROUTE, /router\.get\('\/onboarding\/options', requireAction\('manage_accounts'\), requireAction\('hr\.staff\.manage'\)/);
@@ -198,15 +199,15 @@ test('account onboarding commits async definitions and restores focus only throu
     assert.match(mobileCloseSource, /isUsableAccountFocusTarget\(portal\?\.returnFocus\)/);
     assert.match(mobileCloseSource, /accountFocusFallback\(\)/);
 
-    const onboardingCloseSource = between(HR_PAGE_CODE, 'function closeAccountOnboardingWizard()', 'function setAccountOnboardingBackgroundInert(');
+    const onboardingCloseSource = between(HR_PAGE_CODE, 'function closeAccountOnboardingWizard(', 'function setAccountOnboardingBackgroundInert(');
     assert.match(onboardingCloseSource, /isUsableAccountFocusTarget\(returnFocus\)/);
     assert.match(onboardingCloseSource, /accountFocusFallback\(\)/);
 });
 
 test('account onboarding recovers from request failures and never logs issued credentials', () => {
-    const submitSource = between(HR_PAGE_CODE, 'async function submitAccountOnboarding()', 'function closeAccountOnboardingWizard()');
+    const submitSource = between(HR_PAGE_CODE, 'async function submitAccountOnboarding()', 'function closeAccountOnboardingWizard(');
     assert.match(submitSource, /try\s*\{/);
-    assert.match(submitSource, /catch\s*\(error\)/);
+    assert.match(submitSource, /catch\s*(?:\(error\)\s*)?\{/);
     assert.match(submitSource, /finally\s*\{/);
     assert.match(submitSource, /accountOnboardingState\.submitting = false/);
     assert.match(submitSource, /submit\.disabled = false/);

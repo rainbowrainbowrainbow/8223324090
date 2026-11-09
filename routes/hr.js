@@ -30,7 +30,8 @@ const {
 } = require('../services/businessContext');
 const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
 const { parkHrStaffCardEditCapability, PARK_STAFF_PROFILE_FIELD_LIMITS } = require('../services/parkHrStaffCardRead');
-const { parkHrPayrollCapabilities, requireParkHrPayrollAccess } = require('../services/parkHrPayrollAccess');
+const { parkHrPayrollCapabilities, requireParkHrPayrollAccess, canManageStaffPayrollRules } = require('../services/parkHrPayrollAccess');
+const { resolveStaffOperation } = require('../services/staffOperationAccess');
 const { parkMonthlyPeriod, loadParkHrMonthlyReport } = require('../services/parkHrMonthlyReportRead');
 const { reportAttendanceByStaff } = require('../services/hrMonthlyReportDetails');
 const {
@@ -3924,7 +3925,8 @@ router.get('/staff/:id', async (req, res) => {
                     company_structure_node_id, photo_url, notes,
                     telegram_id, telegram_username, color, contract_type, skills,
                     hr_pool_status, blacklist_reason, blacklisted_at,
-                    termination_date, termination_reason, termination_recorded_at, termination_recorded_by
+                    termination_date, termination_reason, termination_recorded_at, termination_recorded_by,
+                    xmin::text AS profile_revision
              FROM staff WHERE id = $1`, [req.params.id]
         );
         if (staff.rows.length === 0) return res.status(404).json({ success: false, error: 'Не знайдено' });
@@ -4724,6 +4726,10 @@ router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
 // PUT /api/hr/staff/:id — update HR fields
 router.put('/staff/:id', requireHrManage, async (req, res) => {
     try {
+        if (!resolveStaffOperation(req.user, 'hr.staff.profile.edit')) {
+            return res.status(403).json({ success: false, code: 'STAFF_PROFILE_EDIT_FORBIDDEN',
+                error: 'Немає дозволу на редагування картки співробітника' });
+        }
         const { name, position, phone, emergency_contact, emergency_phone, role_type, hourly_rate, rate_unit, birth_date, photo_url, address, notes, telegram_id, telegram_username, contract_type, skills, hr_pool_status, blacklist_reason, company_structure_node_id } = req.body || {};
         if (req.hrCapability === 'hr.staff.profile.edit') {
             const fields = Object.entries(req.body || {});
@@ -4738,10 +4744,16 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
         const hasBodyField = field => Object.prototype.hasOwnProperty.call(req.body || {}, field);
         const hasSecondaryProfessions = hasBodyField('secondary_professions') || hasBodyField('secondaryProfessions');
         const hasProfessionRates = hasBodyField('profession_rates') || hasBodyField('professionRates');
-        if (parkHrStaffCardEditCapability(req) === 'hr.staff.manage'
-            && ['hourly_rate', 'rate_unit', 'rateUnit', 'profession_rates', 'professionRates'].some(hasBodyField)
-            && (!parkHrPayrollCapabilities(req, 'hr') || !canUseAction(req.user, 'hr.payroll.manage'))) {
+        if (['hourly_rate', 'hourlyRate', 'rate_unit', 'rateUnit', 'profession_rates', 'professionRates'].some(hasBodyField)
+            && (!canManageStaffPayrollRules(req.user)
+                || (parkHrStaffCardEditCapability(req) === 'hr.staff.manage' && !parkHrPayrollCapabilities(req, 'hr')))) {
             return res.status(403).json({ success: false, error: 'Insufficient payroll permissions' });
+        }
+        const expectedRevision = req.get('X-Staff-Profile-Revision');
+        if ((expectedRevision !== undefined && !/^\d{1,10}$/.test(expectedRevision))
+            || (expectedRevision === undefined && parkHrStaffCardEditCapability(req))) {
+            return res.status(428).json({ success: false, code: 'STAFF_PROFILE_REVISION_REQUIRED',
+                error: 'Оновіть сторінку й повторно відкрийте картку перед збереженням.' });
         }
         const secondaryInput = hasBodyField('secondary_professions')
             ? req.body.secondary_professions
@@ -4756,7 +4768,7 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
             emergency_contact: hasBodyField('emergency_contact'),
             emergency_phone: hasBodyField('emergency_phone'),
             role_type: hasBodyField('role_type'),
-            hourly_rate: hasBodyField('hourly_rate'),
+            hourly_rate: hasBodyField('hourly_rate') || hasBodyField('hourlyRate'),
             rate_unit: hasBodyField('rate_unit') || hasBodyField('rateUnit'),
             birth_date: hasBodyField('birth_date'),
             photo_url: hasBodyField('photo_url') || hasBodyField('photoUrl'),
@@ -4778,13 +4790,17 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
             `SELECT id, name, phone, emergency_contact, emergency_phone, role_type,
                     COALESCE(secondary_professions, '[]'::jsonb) AS secondary_professions,
                     hourly_rate, COALESCE(rate_unit, 'hour') AS rate_unit, company_structure_node_id, birth_date, photo_url, address, notes, telegram_id, telegram_username,
-                    contract_type, skills, hr_pool_status, blacklist_reason, blacklisted_at, position
+                    contract_type, skills, hr_pool_status, blacklist_reason, blacklisted_at, position, xmin::text AS profile_revision
              FROM staff
              WHERE id = $1`,
             [req.params.id]
         );
         if (!beforeStaffResult.rows.length) return res.status(404).json({ success: false, error: 'Не знайдено' });
         const beforeStaff = beforeStaffResult.rows[0];
+        const revision = expectedRevision ?? beforeStaff.profile_revision;
+        const conflict = () => res.status(409).json({ success: false, code: 'STAFF_PROFILE_CONFLICT',
+            error: 'Інший оператор змінив картку. Перевірте актуальні дані перед збереженням.' });
+        if (expectedRevision !== undefined && expectedRevision !== beforeStaff.profile_revision) return conflict();
         let effectiveRoleType = fieldPresence.role_type ? role_type : null;
         if (hasSecondaryProfessions && !effectiveRoleType) {
             effectiveRoleType = beforeStaff.role_type;
@@ -4854,7 +4870,7 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
         if (fieldPresence.emergency_contact) queueStaffUpdate('emergency_contact', textOrNull(emergency_contact));
         if (fieldPresence.emergency_phone) queueStaffUpdate('emergency_phone', textOrNull(emergency_phone));
         if (fieldPresence.role_type) queueStaffUpdate('role_type', textOrNull(role_type));
-        if (fieldPresence.hourly_rate) queueStaffUpdate('hourly_rate', numberOrNull(hourly_rate));
+        if (fieldPresence.hourly_rate) queueStaffUpdate('hourly_rate', numberOrNull(hasBodyField('hourly_rate') ? hourly_rate : req.body.hourlyRate));
         if (fieldPresence.rate_unit) queueStaffUpdate('rate_unit', normalizeStaffRateUnit(rate_unit ?? req.body.rateUnit));
         if (fieldPresence.birth_date) queueStaffUpdate('birth_date', birth_date || null);
         if (fieldPresence.photo_url) {
@@ -4894,16 +4910,19 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
             await client.query('BEGIN');
             if (setClauses.length) {
                 values.push(req.params.id);
+                const idParam = values.length;
+                if (revision !== undefined) values.push(revision);
+                const revisionCheck = revision === undefined ? '' : ` AND xmin::text = $${values.length}`;
                 result = await client.query(
-                    `UPDATE staff SET ${setClauses.join(', ')} WHERE id = $${values.length} RETURNING *`,
+                    `UPDATE staff SET ${setClauses.join(', ')} WHERE id = $${idParam}${revisionCheck} RETURNING *, xmin::text AS profile_revision`,
                     values
                 );
             } else {
-                result = await client.query('SELECT * FROM staff WHERE id = $1 FOR UPDATE', [req.params.id]);
+                result = await client.query('SELECT *, xmin::text AS profile_revision FROM staff WHERE id = $1 FOR UPDATE', [req.params.id]);
             }
-            if (result.rows.length === 0) {
+            if (result.rows.length === 0 || (!setClauses.length && revision !== undefined && revision !== result.rows[0].profile_revision)) {
                 await client.query('ROLLBACK');
-                return res.status(404).json({ success: false, error: 'Не знайдено' });
+                return conflict();
             }
             if (hasProfessionRates) {
                 afterRateRows = await applyStaffProfessionRateChanges(client, req.params.id, normalizedProfessionRates);

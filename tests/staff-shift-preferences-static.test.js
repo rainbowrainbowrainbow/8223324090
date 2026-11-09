@@ -89,7 +89,7 @@ describe('staff shift preferences contract', () => {
 
     it('saves card times, refreshes the schedule, and exposes saved-versus-fallback sources', () => {
         assert.match(hrPage, /const shouldSaveShiftPreferences = scope === 'work'/);
-        assert.match(hrPage, /await saveStaffShiftPreferences\(staffId\)/);
+        assert.match(hrPage, /await saveStaffShiftPreferences\(staffId, \{ payload: pendingShiftPreferences, isCurrent \}\)/);
         assert.match(hrPage, /await refreshHrStaffScheduleAfterWorkSave\(staffId\)/);
         assert.match(staffPage, /function fallbackScheduleShiftPreference/);
         assert.match(staffPage, /data-shift-pref-source=/);

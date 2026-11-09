@@ -34,7 +34,15 @@ const {
     saveStaffProfessionCondition
 } = require('./professions');
 const { normalizeStaffCompanyStructurePayload } = require('./staffDisplayGroups');
-const { insertStaffRecord } = require('./staffCreation');
+const {
+    insertStaffRecord, normalizeStaffCreateFields, normalizeStaffHireDate, normalizeStaffCreateText,
+    normalizeDistinctStaffIds, requireDistinctStaffConfirmation
+} = require('./staffCreation');
+const { resolveStaffOperation } = require('./staffOperationAccess');
+const { canManageStaffPayrollRules } = require('./parkHrPayrollAccess');
+const {
+    describeStaffCreationOperation, readStaffCreationOperation, lockStaffCreationOperation, recordStaffCreationOperation
+} = require('./staffCreationOperations');
 
 const SYSTEM_ACCOUNT_USERNAMES = Object.freeze(['guardian', 'system']);
 const SYSTEM_ACCOUNT_USERNAME = SYSTEM_ACCOUNT_USERNAMES;
@@ -117,20 +125,6 @@ function normalizeStringArray(value) {
         result.push(normalized);
     }
     return result;
-}
-
-function normalizeDate(value, fieldName = 'hireDate') {
-    const raw = cleanText(value, 20);
-    if (!raw) return null;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-        throw onboardingError(`${fieldName} має бути у форматі YYYY-MM-DD`, 400, 'ACCOUNT_ONBOARDING_INVALID_DATE', { fieldName });
-    }
-    const [year, month, day] = raw.split('-').map(Number);
-    const parsed = new Date(Date.UTC(year, month - 1, day));
-    if (parsed.getUTCFullYear() !== year || parsed.getUTCMonth() !== month - 1 || parsed.getUTCDate() !== day) {
-        throw onboardingError(`${fieldName} містить неіснуючу дату`, 400, 'ACCOUNT_ONBOARDING_INVALID_DATE', { fieldName });
-    }
-    return raw;
 }
 
 function normalizeRate(value, fieldName = 'hourlyRate', { allowZero = false, max = 1000000 } = {}) {
@@ -470,17 +464,24 @@ function normalizeAccountOnboardingPayload(payload = {}) {
     if (!['existing', 'new'].includes(mode)) {
         throw onboardingError('staff.mode має бути existing або new', 400, 'ACCOUNT_ONBOARDING_INVALID_STAFF_MODE');
     }
+    if (mode === 'new' && rawStaffId !== undefined && rawStaffId !== '') {
+        throw onboardingError('Вибрана картка несумісна зі створенням нової', 400, 'ACCOUNT_ONBOARDING_STAFF_MODE_CONFLICT');
+    }
     const staffId = mode === 'existing' ? normalizePositiveId(rawStaffId, 'staff.id') : null;
-    const department = mode === 'new'
-        ? requiredText(firstDefined(staffSource.department, source.department), 'staff.department', 50)
-        : cleanText(staffSource.department, 50) || null;
-    const position = mode === 'new'
-        ? requiredText(firstDefined(staffSource.position, source.position), 'staff.position', 100)
-        : cleanText(staffSource.position, 100) || null;
     const phoneValue = firstDefined(personalSource.phone, staffSource.phone, source.phone);
-    const phoneProvided = phoneValue !== undefined && phoneValue !== null && String(phoneValue).trim() !== '';
-    const phone = phoneProvided ? cleanText(phoneValue, 30) : null;
-    const hireDate = normalizeDate(firstDefined(staffSource.hireDate, staffSource.hire_date, source.hireDate));
+    const hireDateInput = firstDefined(staffSource.hireDate, staffSource.hire_date, source.hireDate);
+    const newStaff = mode === 'new' ? normalizeStaffCreateFields({
+        name,
+        department: firstDefined(staffSource.department, source.department),
+        position: firstDefined(staffSource.position, source.position),
+        phone: phoneValue,
+        hireDate: hireDateInput
+    }) : null;
+    const department = newStaff?.department ?? (cleanText(staffSource.department, 50) || null);
+    const position = newStaff?.position ?? (cleanText(staffSource.position, 100) || null);
+    const phone = newStaff ? newStaff.phone : normalizeStaffCreateText(phoneValue, 'Телефон', 30);
+    const phoneProvided = phone !== null;
+    const hireDate = newStaff ? newStaff.hireDate : normalizeStaffHireDate(hireDateInput);
     const fallbackRateValue = firstDefined(staffSource.hourlyRate, staffSource.hourly_rate, source.hourlyRate);
     const fallbackRateProvided = fallbackRateValue !== undefined && fallbackRateValue !== null && fallbackRateValue !== '';
     const fallbackHourlyRate = fallbackRateProvided
@@ -521,6 +522,7 @@ function normalizeAccountOnboardingPayload(payload = {}) {
             hireDate,
             fallbackHourlyRate,
             fallbackRateProvided,
+            distinctStaffIds: mode === 'new' ? normalizeDistinctStaffIds(staffSource.distinctStaffIds) : [],
             rateUnit: rawRateUnit || null,
             rateUnitProvided: Boolean(rawRateUnit)
         },
@@ -895,8 +897,52 @@ function normalizeDatabaseError(error) {
     return error;
 }
 
+function requireOnboardingStaffOperation(actor, mode) {
+    const operation = mode === 'new' ? 'hr.staff.create' : 'hr.staff.profile.edit';
+    if (!resolveStaffOperation(actor, operation)) {
+        throw onboardingError('Немає доступу до цієї дії з карткою співробітника', 403, 'ACCOUNT_ONBOARDING_STAFF_FORBIDDEN');
+    }
+}
+
+async function recoverAccountOnboarding(db, saved, actor) {
+    requireOnboardingStaffOperation(actor, saved.staff_created ? 'new' : 'existing');
+    const { rows } = await db.query(
+        `SELECT u.id, u.username, u.name AS account_name, u.default_business_context,
+                u.is_active, s.name AS staff_name,
+                EXISTS (SELECT 1 FROM employee_profiles ep WHERE ep.staff_id = $2 AND ep.user_id = u.id) AS staff_linked
+         FROM users u LEFT JOIN staff s ON s.id = $2 WHERE u.id = $1`,
+        [saved.account_user_id, saved.staff_id]
+    );
+    const row = rows[0];
+    const businessContext = row?.default_business_context || DEFAULT_BUSINESS_CONTEXT;
+    const access = row ? await resolveAccountBusinessAccess(db, row.id, businessContext)
+        : { businessAccessReady: false, accessState: 'unknown' };
+    return {
+        ...access,
+        replayed: true,
+        credential: null,
+        receipt: {
+            account: { id: saved.account_user_id, username: row?.username, name: row?.account_name, active: row?.is_active === true },
+            staff: { id: saved.staff_id, name: row?.staff_name, created: saved.staff_created, linked: row?.staff_linked === true },
+            access: { ...access, defaultBusinessContext: businessContext }
+        }
+    };
+}
+
+async function findCommittedAccountOnboarding(req, key, db = pool) {
+    const operation = describeStaffCreationOperation(req, 'onboarding', undefined, key);
+    const saved = await readStaffCreationOperation(db, operation);
+    return saved ? recoverAccountOnboarding(db, saved, req.user) : null;
+}
+
 async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = {}) {
     const normalized = normalizeAccountOnboardingPayload(payload);
+    requireOnboardingStaffOperation(actor, normalized.staff.mode);
+    const operation = describeStaffCreationOperation(req, 'onboarding', normalized);
+    if ((normalized.staff.fallbackRateProvided || normalized.staff.rateUnitProvided || normalized.conditions.length)
+        && !canManageStaffPayrollRules(actor)) {
+        throw onboardingError('Немає доступу до зміни зарплатних умов', 403, 'ACCOUNT_ONBOARDING_PAYROLL_FORBIDDEN');
+    }
     if (!actorCanManageRoleSet(actor, normalized.access.role, normalized.access.extraRoles)) {
         throw onboardingError('Недостатньо прав для створення акаунта з таким рівнем доступу', 403, 'ACCOUNT_ONBOARDING_ROLE_FORBIDDEN');
     }
@@ -919,6 +965,12 @@ async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = 
     const savedConditions = [];
     try {
         await client.query('BEGIN');
+        const saved = await lockStaffCreationOperation(client, operation);
+        if (saved) {
+            await client.query('COMMIT');
+            committed = true;
+            return await recoverAccountOnboarding(client, saved, actor);
+        }
         await lockUsernameIdentity(client, normalized.personal.username);
         const structureNode = await validateStructureNode(client, normalized);
         await lockAndValidateProfessions(client, normalized);
@@ -948,6 +1000,9 @@ async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = 
                 existingAssignments
             );
         } else {
+            await requireDistinctStaffConfirmation(client, {
+                ...normalized.personal, distinctStaffIds: normalized.staff.distinctStaffIds
+            });
             staff = await createStaff(client, normalized);
             staffCreated = true;
             savedAssignments = await replaceAuthoritativeAssignments(
@@ -1063,6 +1118,7 @@ async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = 
             strict: true
         });
         await insertStrictHrAudit(client, actor, staff.id, safeAuditDetails, req);
+        await recordStaffCreationOperation(client, operation, { staffId: staff.id, accountUserId: user.id, staffCreated });
         await client.query('COMMIT');
         committed = true;
     } catch (error) {
@@ -1176,5 +1232,6 @@ module.exports = {
     normalizeAccountOnboardingPayload,
     mergeExistingProfessionAssignments,
     legacySecondaryProfessionKeys,
-    createAccountOnboarding
+    createAccountOnboarding,
+    findCommittedAccountOnboarding
 };

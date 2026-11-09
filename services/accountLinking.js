@@ -203,7 +203,8 @@ async function linkUserToStaffProfile(client, {
     reason = 'account_management',
     eventType = 'account_staff_linked',
     details = {},
-    allowInactiveStaff = false
+    allowInactiveStaff = false,
+    allowReassign = true
 } = {}) {
     const safeUserId = normalizePositiveInt(userId, 'userId');
     const safeStaffId = normalizePositiveInt(staffId, 'staffId');
@@ -212,6 +213,35 @@ async function linkUserToStaffProfile(client, {
     }
 
     const user = await getUserForUpdate(client, safeUserId);
+    const parkMembership = req?.user?.activeBusinessMembership;
+    if (parkMembership?.businessContext === 'event_genix') {
+        const { rows: [access] } = await client.query(
+            `SELECT COUNT(*)::int AS total,
+                    COUNT(*) FILTER (WHERE bm.business_id = $2 AND bm.organization_id = $3)::int AS park
+             FROM business_memberships bm
+             JOIN businesses b ON b.id = bm.business_id AND b.organization_id = bm.organization_id AND b.status = 'active'
+             JOIN organization_memberships om ON om.organization_id = bm.organization_id
+                 AND om.user_id = bm.user_id AND om.is_active IS TRUE
+             WHERE bm.user_id = $1 AND bm.is_active IS TRUE`,
+            [safeUserId, parkMembership.businessId, parkMembership.organizationId]
+        );
+        if (access.total > 0 && access.park === 0) {
+            throw appError('Акаунт має активне членство в іншому бізнесі', 403, 'staff_account_outside_park');
+        }
+    }
+    if (!allowReassign) {
+        if (user.is_active === false) {
+            throw appError('Для прив’язки потрібен активний акаунт', 409, 'staff_account_inactive');
+        }
+        const existing = await client.query(
+            'SELECT staff_id FROM employee_profiles WHERE user_id = $1 AND staff_id IS NOT NULL AND staff_id <> $2 LIMIT 1',
+            [safeUserId, safeStaffId]
+        );
+        if (existing.rows.length) {
+            throw appError('Акаунт уже прив’язаний до іншої картки', 409, 'account_already_linked',
+                { staffId: existing.rows[0].staff_id });
+        }
+    }
     const staff = await getStaffForUpdate(client, safeStaffId, { allowInactiveStaff });
 
     const occupied = await client.query(

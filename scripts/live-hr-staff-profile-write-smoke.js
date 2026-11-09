@@ -72,7 +72,7 @@ async function fetchJson(base, route, options = {}) {
     const hasBody = Object.prototype.hasOwnProperty.call(options, 'body');
     const response = await fetch(`${base}${route}`, {
         method: options.method || 'GET',
-        headers: { Accept: 'application/json', ...(hasBody ? { 'Content-Type': 'application/json' } : {}), ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}) },
+        headers: { Accept: 'application/json', ...(hasBody ? { 'Content-Type': 'application/json' } : {}), ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}), ...(options.headers || {}) },
         body: hasBody ? JSON.stringify(options.body) : undefined
     });
     const body = await readBody(response);
@@ -97,6 +97,17 @@ async function loadProfile(base, token) {
     assert.ok(body?.success && body.data, 'QA staff profile loads');
     assert.match([body.data.name, body.data.display_name, body.data.username].filter(Boolean).join(' '), /QA|Codex|Test|Smoke/i, 'target must be visibly marked as QA');
     return body.data;
+}
+
+async function updateLiveStaffProfile(base, token, body) {
+    const current = await loadProfile(base, token);
+    const revision = current.profile_revision;
+    return fetchJson(base, `/api/hr/staff/${QA_STAFF_ID}`, {
+        method: 'PUT',
+        token,
+        headers: revision == null ? {} : { 'X-Staff-Profile-Revision': String(revision) },
+        body
+    });
 }
 
 function nullable(value) { return value === null || value === undefined || value === '' ? null : String(value); }
@@ -161,7 +172,7 @@ async function assertDrawerPersistence(page, field, expected) {
 }
 
 async function restoreField(base, token, field, original) {
-    const body = await fetchJson(base, `/api/hr/staff/${QA_STAFF_ID}`, { method: 'PUT', token, body: { [field.key]: original } });
+    const body = await updateLiveStaffProfile(base, token, { [field.key]: original });
     assert.ok(body?.success, `${field.key} restore is accepted`);
     const restored = await loadProfile(base, token);
     assert.equal(comparable(restored[field.key]), comparable(original), `${field.key} restore persists`);
@@ -254,7 +265,7 @@ async function runOptInScenarios(base, token) {
         }, preferences => fetchJson(base, route, { method: 'PUT', token, body: { preferences } }), preferences => fetchJson(base, route, { method: 'PUT', token, body: { preferences } }), async expected => assert.deepEqual(normalizePreferences((await fetchJson(base, route, { token })).data), normalizePreferences(expected)));
     }
     if (SCENARIOS.has('rates')) {
-        await reversibleApiScenario('rates', async () => normalizeRates(await loadProfile(base, token)), profile => ({ ...profile, hourly_rate: Number(profile.hourly_rate || 0) + 1 }), body => fetchJson(base, `/api/hr/staff/${QA_STAFF_ID}`, { method: 'PUT', token, body }), profile => fetchJson(base, `/api/hr/staff/${QA_STAFF_ID}`, { method: 'PUT', token, body: profile }), async expected => assert.deepEqual(normalizeRates(await loadProfile(base, token)), normalizeRates(expected)));
+        await reversibleApiScenario('rates', async () => normalizeRates(await loadProfile(base, token)), profile => ({ ...profile, hourly_rate: Number(profile.hourly_rate || 0) + 1 }), body => updateLiveStaffProfile(base, token, body), profile => updateLiveStaffProfile(base, token, profile), async expected => assert.deepEqual(normalizeRates(await loadProfile(base, token)), normalizeRates(expected)));
     }
     if (SCENARIOS.has('payroll')) {
         const route = `/api/hr/staff/${QA_STAFF_ID}/payroll-scheme`;
@@ -292,7 +303,7 @@ async function main() {
         if (base && session?.token && originalProfile) {
             const safeSnapshot = Object.fromEntries(FIELD_MATRIX.map(field => [field.key, originalProfile[field.key] ?? null]));
             try {
-                await fetchJson(base, `/api/hr/staff/${QA_STAFF_ID}`, { method: 'PUT', token: session.token, body: safeSnapshot });
+                await updateLiveStaffProfile(base, session.token, safeSnapshot);
                 const restored = await loadProfile(base, session.token);
                 for (const [key, value] of Object.entries(safeSnapshot)) assert.equal(comparable(restored[key]), comparable(value), `defensive restore: ${key}`);
             } catch (error) { defensiveRestoreError = error; }

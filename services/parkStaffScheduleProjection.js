@@ -211,7 +211,7 @@ function projectParkStaffSchedulePayload(routerId, routePath, payload, options =
     const method = String(options.method || 'GET').toUpperCase();
     if (method !== 'GET') {
         if (method === 'POST' && path === '/') {
-            return { success: true, data: projectRoster(payload.data) };
+            return { ...pick(payload, ['success', 'replayed']), data: projectRoster(payload.data) };
         }
         if (method === 'PUT' && path === '/schedule') {
             return { success: true, data: projectSchedule(payload.data) };
@@ -232,6 +232,9 @@ function projectParkStaffSchedulePayload(routerId, routePath, payload, options =
             };
         }
         throw new TypeError('Unknown Park schedule mutation projection route');
+    }
+    if (/^\/creation-operations\/[0-9a-f-]+$/i.test(path)) {
+        return { ...pick(payload, ['success', 'replayed']), data: pick(payload.data, ['id']) };
     }
     const projected = pick(payload, ['success', 'departments', 'displayGroups', 'displayGroupOptions',
         'scheduleCategoryContract', 'from', 'to', 'summary', 'source']);

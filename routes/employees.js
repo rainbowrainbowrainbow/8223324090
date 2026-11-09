@@ -7,12 +7,14 @@ const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { linkUserToStaffProfile, unlinkStaffAccount } = require('../services/accountLinking');
 const { isProtectedSystemAccount } = require('../services/accountOnboarding');
+const { requireParkStaffAccounts } = require('../services/legacyBusinessSurface');
 
 const { requireAction, requireRole, canUseAction, ROLE_LEVEL } = require('../middleware/auth');
 const log = createLogger('Employees');
 
 // RBAC: Employee management — management + HR only
 router.use(requireRole('creator', 'director', 'vice_director', 'senior_manager', 'hr'));
+router.use(requireParkStaffAccounts);
 
 const ACCOUNT_MANAGER_PRIMARY_ROLES = new Set(['creator', 'director']);
 

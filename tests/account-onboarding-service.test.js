@@ -76,6 +76,8 @@ function createOnboardingHarness(options = {}) {
             const text = normalizeSql(sql);
             calls.push({ text, params });
             if (/^(BEGIN|COMMIT|ROLLBACK)$/i.test(text)) return { rows: [], rowCount: 0 };
+            if (/SELECT pg_advisory_xact_lock\(hashtextextended/i.test(text)) return { rows: [{}] };
+            if (/SELECT id, name, department, position, COALESCE\(is_active, true\) AS is_active FROM staff WHERE lower/i.test(text)) return { rows: [] };
             if (/SELECT pg_advisory_xact_lock\(hashtext\(\$1\)\)/i.test(text)) return { rows: [{}] };
             if (/SELECT id, username FROM users WHERE LOWER\(username\) = \$1/i.test(text)) return { rows: [] };
             if (/SELECT id, key, title, is_active FROM hr_professions/i.test(text)) {

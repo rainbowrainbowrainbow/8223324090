@@ -41,7 +41,7 @@ function onboardingPayload(username, name, staff = {}) {
         personal: {
             name,
             username,
-            phone: '+380000000001'
+            phone: '+3800' + String(crypto.createHash('sha256').update(username).digest().readUInt32BE(0) % 100000000).padStart(8, '0')
         },
         staff: {
             mode: staff.mode || 'new',
@@ -597,17 +597,20 @@ describe('transactional account onboarding on isolated PostgreSQL', { skip: !ena
 
     it('rolls the entire transaction back when a later account write fails', async () => {
         const name = `${staffNamePrefix} Rollback`;
+        const operationKey = crypto.randomUUID();
         const statements = [];
         const dbPool = tracingPool(faultingPool(pool, sql => /INSERT\s+INTO\s+users\s*\(/i.test(sql)), statements);
         await assert.rejects(
             createAccountOnboarding({
                 payload: onboardingPayload(usernames.rollback, name),
                 actor,
+                req: { user: actor, headers: { 'idempotency-key': operationKey } },
                 dbPool
             }),
             /forced_account_onboarding_integration_failure/
         );
         assert.ok(statements.includes('ROLLBACK'));
+        assert.equal((await pool.query('SELECT 1 FROM staff_creation_operations WHERE operation_key = $1', [operationKey])).rowCount, 0);
         assert.equal(statements.includes('COMMIT'), false);
         assert.equal(statements.some(sql => /FROM users u LEFT JOIN businesses b/.test(sql)), false, 'rollback skips post-commit readiness');
         assert.equal(statements.some(sql => /(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(organization_memberships|business_memberships)/i.test(sql)), false);

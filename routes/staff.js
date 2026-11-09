@@ -127,8 +127,14 @@ const { buildStaffScheduleWorkbookBuffer } = require('../services/staffScheduleW
 
 const { requireAction, requireRole, authenticateToken, ROLE_LEVEL, canUseAction } = require('../middleware/auth');
 const { resolveStaffOperation } = require('../services/staffOperationAccess');
-const { insertStaffRecord } = require('../services/staffCreation');
+const {
+    insertStaffRecord, normalizeStaffCreateFields, normalizeStaffCreateText, validateNewStaffProfessions,
+    normalizeDistinctStaffIds, requireDistinctStaffConfirmation
+} = require('../services/staffCreation');
 const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
+const {
+    describeStaffCreationOperation, readStaffCreationOperation, lockStaffCreationOperation, recordStaffCreationOperation
+} = require('../services/staffCreationOperations');
 const { checkinJournalDate } = require('../services/parkStaffCheckinJournalRead');
 const log = createLogger('Staff');
 
@@ -2165,27 +2171,65 @@ function requireStaffCreation(req, res, next) {
     return res.status(403).json({ error: 'Insufficient permissions' });
 }
 
-router.post('/', requireStaffCreation, async (req, res) => {
+router.get('/creation-operations/:key', requireStaffCreation, async (req, res) => {
     try {
-        const { name, department, position, phone, hireDate, color, telegramUsername, role_type, roleType, address, secondary_professions, secondaryProfessions } = req.body;
-        if (!name || !department || !position) {
-            return res.status(400).json({ success: false, error: 'Обов\'язкові поля: ім\'я, відділ, посада' });
+        const operation = describeStaffCreationOperation(req, 'staff', undefined, req.params.key);
+        const saved = await readStaffCreationOperation(pool, operation);
+        if (!saved) return res.status(404).json({ success: false, code: 'STAFF_OPERATION_NOT_FOUND' });
+        res.json({ success: true, data: { id: saved.staff_id }, replayed: true });
+    } catch (err) {
+        if (err.statusCode) return res.status(err.statusCode).json({ success: false, code: err.code, error: err.message });
+        log.error('GET /staff creation operation error', err);
+        res.status(500).json({ success: false, error: 'Не вдалося перевірити результат створення' });
+    }
+});
+
+router.post('/', requireStaffCreation, async (req, res) => {
+    let client;
+    try {
+        const { color, telegramUsername, role_type, roleType, address, secondary_professions, secondaryProfessions } = req.body;
+        const fields = {
+            ...normalizeStaffCreateFields(req.body),
+            color: normalizeStaffCreateText(color, 'Колір', 20),
+            telegramUsername: normalizeStaffCreateText(telegramUsername, 'Telegram', 100),
+            address: normalizeStaffCreateText(address, 'Адреса', 1000),
+            distinctStaffIds: normalizeDistinctStaffIds(req.body.distinctStaffIds),
+            primaryProfession: normalizeProfessionKey(role_type || roleType),
+            secondaryProfessions: normalizeSecondaryProfessions(secondary_professions ?? secondaryProfessions, role_type || roleType)
+        };
+        const operation = describeStaffCreationOperation(req, 'staff', fields);
+        client = await pool.connect();
+        await client.query('BEGIN');
+        const saved = await lockStaffCreationOperation(client, operation);
+        if (saved) {
+            await client.query('COMMIT');
+            return res.json({ success: true, data: { id: saved.staff_id }, replayed: true });
         }
-        const staff = await insertStaffRecord(pool, {
-            name, department, position, phone, hireDate, color, telegramUsername, address,
-            primaryProfession: role_type || roleType,
-            secondaryProfessions: secondary_professions ?? secondaryProfessions
-        });
+        await validateNewStaffProfessions(client, fields.primaryProfession, fields.secondaryProfessions);
+        await requireDistinctStaffConfirmation(client, fields);
+        const staff = await insertStaffRecord(client, fields);
+        await recordStaffCreationOperation(client, operation, { staffId: staff.id, staffCreated: true });
+        await client.query('COMMIT');
         res.json({ success: true, data: staff });
     } catch (err) {
+        if (client) await client.query('ROLLBACK').catch(() => {});
+        if (err.statusCode) return res.status(err.statusCode).json({
+            success: false, code: err.code, error: err.message, candidates: err.candidates
+        });
         log.error('POST /staff error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
+    } finally {
+        client?.release();
     }
 });
 
 // PUT /api/staff/:id — update employee
 // LLM HINT: telegramUsername — set to Telegram @username (without @) for schedule notifications
 router.put('/:id', requireAction('hr.staff.manage'), async (req, res) => {
+    if (!resolveStaffOperation(req.user, 'hr.staff.profile.edit')) {
+        return res.status(403).json({ success: false, code: 'STAFF_PROFILE_EDIT_FORBIDDEN',
+            error: 'Немає дозволу на редагування картки співробітника' });
+    }
     const client = await pool.connect();
     try {
         const { name, department, position, phone, hireDate, color, isActive, telegramUsername, role_type, roleType, address, secondary_professions, secondaryProfessions } = req.body;
@@ -2619,6 +2663,7 @@ router.post('/:id/link', requireAction('manage_accounts'), async (req, res) => {
             actor: req.user,
             req,
             eventType: 'staff_overlay_account_linked',
+            allowReassign: false,
             details: { source: 'staff_schedule_overlay' }
         });
         await client.query('COMMIT');

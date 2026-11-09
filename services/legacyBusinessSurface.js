@@ -3,7 +3,7 @@
 const { BUSINESS_SCOPE_SINGLE, DEFAULT_BUSINESS_CONTEXT, resolveBusinessScope } = require('./businessContext');
 const { userBusinessModuleState } = require('./businessModuleRegistry');
 const { recordCompatibilityTelemetrySafe } = require('./businessCutover');
-const { canCreateParkStaff, canUseParkStaffSchedule, parkStaffScheduleRoutePath } = require('./parkStaffScheduleAccess');
+const { canCreateParkStaff, canUseParkStaffSchedule, hasCurrentParkScheduleMembership, parkStaffScheduleRoutePath } = require('./parkStaffScheduleAccess');
 const { projectParkStaffSchedulePayload } = require('./parkStaffScheduleProjection');
 const { isParkHrStaffCardRoute, canReadParkHrStaffCard, parkHrStaffCardEditCapability,
     projectParkHrStaffCardPayload } = require('./parkHrStaffCardRead');
@@ -83,6 +83,17 @@ function legacyBusinessSurfaceAccess(req, surface = 'catalogs') {
     if (access.membershipEnabled !== false
         || (business && (business.accessMode !== 'compatibility' || business.active !== true))) return denied;
     return available();
+}
+
+function canAccessParkStaffAccounts(req, { write = false } = {}) {
+    return (!write || resolveBusinessScope(req).canWrite === true)
+        && (hasCurrentParkScheduleMembership(req) || legacyBusinessSurfaceAccess(req, 'staff').available);
+}
+
+function requireParkStaffAccounts(req, res, next) {
+    if (canAccessParkStaffAccounts(req, { write: !['GET', 'HEAD'].includes(req.method) })) return next();
+    return res.status(403).json({ success: false, code: 'park_staff_context_required',
+        error: 'Дія з картками співробітників доступна лише в ПАРК.' });
 }
 
 function requireLegacyBusinessSurface(surface, { parkScheduleRouter = null, parkHrStaffCardRead = false,
@@ -176,6 +187,10 @@ function requireLegacyBusinessSurface(surface, { parkScheduleRouter = null, park
             res.json = payload => sendJson(projectParkHrOnboardingPayload(routePath, payload));
             return next();
         }
+        if (access.code === 'staff_not_migrated' && parkScheduleRouter === 'staff'
+            && req.method === 'POST' && /^\/[1-9]\d*\/link$/.test(parkStaffScheduleRoutePath(req))
+            && canAccessParkStaffAccounts(req, { write: true })
+            && resolveCapability(req.user, 'manage_accounts', { type: 'action' }).allowed) return next();
         if (access.code === 'staff_not_migrated' && canUseParkStaffSchedule(req, parkScheduleRouter)) {
             const routePath = parkStaffScheduleRoutePath(req);
             const sendJson = res.json.bind(res);
@@ -244,4 +259,7 @@ async function loadLegacyBusinessSurfaceAccess(db, businessContext, surface = 'c
     }
 }
 
-module.exports = { legacyBusinessSurfaceAccess, requireLegacyBusinessSurface, loadLegacyBusinessSurfaceAccess };
+module.exports = {
+    legacyBusinessSurfaceAccess, requireLegacyBusinessSurface, loadLegacyBusinessSurfaceAccess,
+    canAccessParkStaffAccounts, requireParkStaffAccounts
+};

@@ -120,6 +120,7 @@ const MODES = {
     'park-manager-browser': [
         'tests/browser/park-manager-actual-app-browser-smoke.js'
     ],
+    'hr-staff-account': ['tests/integration/staff-account-boundary.integration.test.js'],
     'hr-staff-browser': [
         'tests/browser/hr-staff-creation-browser-smoke.js'
     ],
@@ -160,7 +161,8 @@ const MODES = {
     ],
     backfill: ['tests/integration/hr-legacy-hire-backfill.integration.test.js'],
     'upload-backfill': ['tests/integration/legacy-upload-backfill.integration.test.js'],
-    fullstack: ['tests/browser/hr-onboarding-fullstack-browser-smoke.js', 'tests/browser/hr-pay-actual-app-browser-smoke.js',
+    fullstack: ['tests/integration/staff-account-boundary.integration.test.js', 'tests/browser/hr-staff-creation-browser-smoke.js',
+        'tests/browser/hr-onboarding-fullstack-browser-smoke.js', 'tests/browser/hr-pay-actual-app-browser-smoke.js',
         'tests/browser/hr-attendance-ocr-actual-app-browser-smoke.js', 'tests/browser/finance-money-actual-app-browser-smoke.js'],
     qa: [
         'tests/integration/live-multi-segment-qa.integration.test.js',
@@ -169,7 +171,7 @@ const MODES = {
 };
 
 function usage() {
-    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|attendance-ocr-browser|finance|finance-money|finance-money-browser|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|education-series|education-context-browser|education-navigation-browser|education-group-submit-browser|education-modal-browser|catalog-sale|catalog-sale-local-qa|vitalina-test-cashier|my-day|my-day-browser|omni-links|customer-birthdays|omni-links-browser|park-manager-browser|redirect-auth|redirect-upgrade|cashier-smoke|checkbox-config|checkbox-x-report|checkbox-ui-real|checkbox-ui-testmode-preflight|checkbox-ui-testmode|checkbox-ui-testmode-card-recovery|checkbox-ui-testmode-final-card-close|onboarding|backfill|upload-backfill|fullstack|qa|all>';
+    return `Usage: node scripts/run-isolated-postgres-tests.js <${[...Object.keys(MODES), 'all'].join('|')}>`;
 }
 
 function isCheckboxPaymentAcceptanceEnabledForParent(value) {

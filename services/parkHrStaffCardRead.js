@@ -22,7 +22,7 @@ const DETAIL_FIELDS = [
     'role_type', 'secondary_professions', 'hire_date', 'birth_date', 'address', 'is_active',
     'company_structure_node_id', 'photo_url', 'notes', 'telegram_id', 'telegram_username',
     'color', 'contract_type', 'skills', 'hr_pool_status', 'blacklist_reason', 'blacklisted_at',
-    'termination_date', 'termination_reason', 'termination_recorded_at', 'termination_recorded_by'
+    'termination_date', 'termination_reason', 'termination_recorded_at', 'termination_recorded_by', 'profile_revision'
 ];
 const PAYROLL_FIELDS = ['hourly_rate', 'rate_unit', 'profession_rates'];
 

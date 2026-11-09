@@ -479,7 +479,7 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(hrPage, /function saveStaffShiftPreferences/);
         assert.match(hrPage, /refreshStaffShiftPreferencesFromCurrentForm/);
         assert.match(hrPage, /crmApiFetch\(`\/api\/staff\/\$\{encodeURIComponent\(numericStaffId\)\}\/shift-preferences`/);
-        assert.match(hrPage, /saveStaffShiftPreferences\(staffId\)/);
+        assert.match(hrPage, /saveStaffShiftPreferences\(staffId, \{ payload: pendingShiftPreferences, isCurrent \}\)/);
         assert.match(hrPage, /function initTeamDragAndDrop/);
         assert.match(hrPage, /moveStaffToBucket/);
         assert.match(hrPage, /staffHasProfession\(staff \|\| \{\}, selectedProfession\)/);

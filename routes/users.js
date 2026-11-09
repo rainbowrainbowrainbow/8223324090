@@ -53,10 +53,13 @@ const {
     accountSystemStatus,
     isProtectedSystemAccount,
     assertLastActiveCreatorInvariant,
-    createAccountOnboarding
+    createAccountOnboarding,
+    findCommittedAccountOnboarding
 } = require('../services/accountOnboarding');
 const { normalizeStaffCompanyStructurePayload } = require('../services/staffDisplayGroups');
 const { curateProfessionCatalogRows } = require('../services/professions');
+const { canAccessParkStaffAccounts, requireParkStaffAccounts } = require('../services/legacyBusinessSurface');
+const { canManageStaffPayrollRules } = require('../services/parkHrPayrollAccess');
 const {
     QA_CREATOR_ROLE,
     normalizeQaCreatorLeaseDuration,
@@ -372,12 +375,13 @@ router.get('/', requireAction('manage_accounts'), async (req, res) => {
              LEFT JOIN LATERAL (
                  SELECT profile.id, profile.staff_id, profile.full_name, profile.is_active
                  FROM employee_profiles profile
-                 WHERE profile.user_id = u.id
+                 WHERE profile.user_id = u.id AND $1::boolean
                  ORDER BY COALESCE(profile.is_active, true) DESC, profile.id DESC
                  LIMIT 1
              ) ep ON true
              LEFT JOIN staff s ON s.id = ep.staff_id
-             ORDER BY COALESCE(u.is_active, true) DESC, lower(COALESCE(NULLIF(u.name, ''), u.username)), u.id`
+             ORDER BY COALESCE(u.is_active, true) DESC, lower(COALESCE(NULLIF(u.name, ''), u.username)), u.id`,
+            [canAccessParkStaffAccounts(req)]
         );
         res.json(result.rows.map(row => decorateManagedAccount(row, req.user)));
     } catch (err) {
@@ -421,12 +425,13 @@ router.get('/roles', requireAction('manage_accounts'), async (req, res) => {
 });
 
 // GET /api/users/staff-options — staff profiles available for account linking
-router.get('/staff-options', requireAction('manage_accounts'), async (req, res) => {
+router.get('/staff-options', requireAction('manage_accounts'), requireParkStaffAccounts, async (req, res) => {
     try {
+        const canViewPayroll = canUseAction(req.user, 'hr.payroll.view');
         const result = await pool.query(
             `SELECT s.id, s.name, s.department, s.position, s.phone, s.hire_date,
                     s.role_type, COALESCE(s.secondary_professions, '[]'::jsonb) AS secondary_professions,
-                    s.company_structure_node_id, s.hourly_rate, COALESCE(s.rate_unit, 'hour') AS rate_unit,
+                    s.company_structure_node_id${canViewPayroll ? ", s.hourly_rate, COALESCE(s.rate_unit, 'hour') AS rate_unit" : ''},
                     COALESCE(s.is_active, true) AS staff_active,
                     ep.user_id AS linked_user_id,
                     ep.is_active AS profile_active,
@@ -452,7 +457,7 @@ router.get('/staff-options', requireAction('manage_accounts'), async (req, res) 
 });
 
 // GET /api/users/link-conflicts — account/person/staff linkage health summary
-router.get('/link-conflicts', requireAction('manage_accounts'), async (req, res) => {
+router.get('/link-conflicts', requireAction('manage_accounts'), requireParkStaffAccounts, async (req, res) => {
     try {
         const result = await getAccountLinkConflicts({ limit: req.query.limit || 25 });
         res.json({
@@ -471,13 +476,14 @@ router.get('/link-conflicts', requireAction('manage_accounts'), async (req, res)
 });
 
 // GET /api/users/onboarding/options — aggregate data for the controlled account onboarding wizard
-router.get('/onboarding/options', requireAction('manage_accounts'), requireAction('hr.staff.manage'), async (req, res) => {
+router.get('/onboarding/options', requireAction('manage_accounts'), requireAction('hr.staff.manage'), requireParkStaffAccounts, async (req, res) => {
     try {
+        const canViewPayroll = canUseAction(req.user, 'hr.payroll.view');
         const [staffResult, professionResult, structureResult, conditionResult] = await Promise.all([
             pool.query(
                 `SELECT s.id, s.name, s.department, s.position, s.phone, s.hire_date,
                         s.role_type, COALESCE(s.secondary_professions, '[]'::jsonb) AS secondary_professions,
-                        s.company_structure_node_id, s.hourly_rate, COALESCE(s.rate_unit, 'hour') AS rate_unit,
+                        s.company_structure_node_id${canViewPayroll ? ", s.hourly_rate, COALESCE(s.rate_unit, 'hour') AS rate_unit" : ''},
                         COALESCE(s.is_active, true) AS is_active,
                         COALESCE(assignments.items, '[]'::jsonb) AS role_assignments,
                         ep.user_id AS linked_user_id, ep.is_active AS profile_active,
@@ -515,7 +521,7 @@ router.get('/onboarding/options', requireAction('manage_accounts'), requireActio
                  ORDER BY sort_order, lower(title), id`
             ),
             pool.query("SELECT value FROM settings WHERE key = 'hr_company_structure'"),
-            pool.query(
+            canViewPayroll ? pool.query(
                 `SELECT keys.staff_id, keys.profession_key,
                         rate.hourly_rate AS explicit_rate,
                         COALESCE(
@@ -544,7 +550,7 @@ router.get('/onboarding/options', requireAction('manage_accounts'), requireActio
                    ON pref.staff_id = keys.staff_id AND pref.profession_key = keys.profession_key
                  GROUP BY keys.staff_id, keys.profession_key, rate.hourly_rate
                  ORDER BY keys.staff_id, keys.profession_key`
-            )
+            ) : { rows: [] }
         ]);
         const structure = normalizeStaffCompanyStructurePayload(structureResult.rows[0]?.value || {});
         const conditionsByStaff = new Map();
@@ -571,6 +577,7 @@ router.get('/onboarding/options', requireAction('manage_accounts'), requireActio
                 parentId: node.parentId || null,
                 archived: node.archived === true
             })),
+            canManagePayrollRules: canManageStaffPayrollRules(req.user),
             roleHierarchy: ROLE_HIERARCHY,
             rolePresets: {
                 management: ['senior_manager', 'manager'],
@@ -590,22 +597,40 @@ router.get('/onboarding/options', requireAction('manage_accounts'), requireActio
     }
 });
 
-// POST /api/users/onboarding — atomically create/link account and HR working setup
-router.post('/onboarding', requireAction('manage_accounts'), requireAction('hr.staff.manage'), async (req, res) => {
+router.get('/onboarding/operations/:key', requireAction('manage_accounts'), requireAction('hr.staff.manage'), requireParkStaffAccounts, async (req, res) => {
     try {
+        const result = await findCommittedAccountOnboarding(req, req.params.key);
+        if (!result) return res.status(404).json({ success: false, code: 'STAFF_OPERATION_NOT_FOUND' });
+        res.json({ success: true, ...result });
+    } catch (err) {
+        if (err.statusCode) return res.status(err.statusCode).json({ success: false, code: err.code, error: err.message });
+        log.error('Account onboarding operation lookup error', err);
+        res.status(500).json({ success: false, error: 'Не вдалося перевірити результат створення акаунта' });
+    }
+});
+
+// POST /api/users/onboarding — atomically create/link account and HR working setup
+router.post('/onboarding', requireAction('manage_accounts'), requireAction('hr.staff.manage'), requireParkStaffAccounts, async (req, res) => {
+    try {
+        const canViewPayroll = canUseAction(req.user, 'hr.payroll.view');
         const result = await createAccountOnboarding({
             payload: req.body || {},
             actor: req.user,
             req
         });
         log.info(`User ${req.user.username} completed controlled account onboarding for ${result?.receipt?.account?.username || 'new account'}`);
+        if (!canViewPayroll && result.staff) {
+            const { hourly_rate, rate_unit, ...staff } = result.staff;
+            result.staff = staff;
+        }
         res.json({ success: true, ...result });
     } catch (err) {
         log.error('Controlled account onboarding error', err);
         res.status(err.statusCode || 500).json({
             success: false,
             code: err.code || 'ACCOUNT_ONBOARDING_FAILED',
-            error: err.statusCode ? err.message : 'Не вдалося завершити створення акаунта'
+            error: err.statusCode ? err.message : 'Не вдалося завершити створення акаунта',
+            candidates: err.candidates
         });
     }
 });
@@ -628,13 +653,13 @@ router.get('/:id/workspace', requireAction('manage_accounts'), async (req, res) 
              LEFT JOIN LATERAL (
                  SELECT profile.id, profile.staff_id, profile.full_name, profile.is_active
                  FROM employee_profiles profile
-                 WHERE profile.user_id = u.id
+                 WHERE profile.user_id = u.id AND $2::boolean
                  ORDER BY COALESCE(profile.is_active, true) DESC, profile.id DESC
                  LIMIT 1
              ) ep ON true
              LEFT JOIN staff s ON s.id = ep.staff_id
              WHERE u.id = $1`,
-            [userId]
+            [userId, canAccessParkStaffAccounts(req)]
         );
         if (!result.rows.length) return res.status(404).json({ success: false, error: 'Акаунт не знайдено' });
         const user = decorateManagedAccount(result.rows[0], req.user);
@@ -663,6 +688,10 @@ router.patch('/:id/profile', requireAction('manage_accounts'), async (req, res) 
         const { id } = req.params;
         const { name } = req.body;
         const staffId = normalizeStaffId(req.body.staffId);
+        const changesStaffLink = Object.hasOwn(req.body, 'staffId');
+        if (changesStaffLink && !canAccessParkStaffAccounts(req, { write: true })) {
+            return requireParkStaffAccounts(req, res);
+        }
 
         if (!name || !String(name).trim()) return res.status(400).json({ error: 'Імʼя обовʼязкове' });
         if (Number.isNaN(staffId)) {
@@ -704,22 +733,25 @@ router.patch('/:id/profile', requireAction('manage_accounts'), async (req, res) 
             [String(name).trim(), parseInt(id, 10)]
         );
 
-        const staffLink = staffId
-            ? await linkUserToStaffProfile(client, {
+        let staffLink = null;
+        if (staffId) {
+            staffLink = await linkUserToStaffProfile(client, {
                 userId: parseInt(id, 10),
                 staffId,
                 actor: req.user,
                 req,
                 eventType: 'account_profile_staff_linked',
                 details: { source: 'users_profile_editor' }
-            })
-            : await unlinkUserFromStaffProfiles(client, {
+            });
+        } else if (changesStaffLink) {
+            staffLink = await unlinkUserFromStaffProfiles(client, {
                 userId: parseInt(id, 10),
                 actor: req.user,
                 req,
                 eventType: 'account_profile_staff_unlinked',
                 details: { source: 'users_profile_editor' }
             });
+        }
         await recordAccountSecurityEvent({
             actor: req.user,
             target: target.rows[0],
@@ -1274,6 +1306,9 @@ router.post('/', requireAction('manage_accounts'), async (req, res) => {
         const issueOneTime = req.body?.issueOneTime === true || req.body?.generate === true || !password;
         const username = normalizeUsername(req.body.username);
         const staffId = normalizeStaffId(req.body.staffId);
+        if (staffId && !canAccessParkStaffAccounts(req, { write: true })) {
+            return requireParkStaffAccounts(req, res);
+        }
 
         if (!username || !name) {
             return res.status(400).json({ error: 'username та name обов\'язкові' });

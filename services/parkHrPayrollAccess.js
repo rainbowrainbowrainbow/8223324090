@@ -7,7 +7,7 @@ const { projectParkStaffSchedulePayload } = require('./parkStaffScheduleProjecti
 
 const VIEW = ['hr.payroll.view'];
 const RULES = [...VIEW, 'hr.payroll.manage', 'manage_payroll_rules'];
-const STAFF_PAY_FIELDS = new Set(['hourly_rate', 'rate_unit', 'rateUnit', 'profession_rates', 'professionRates',
+const STAFF_PAY_FIELDS = new Set(['hourly_rate', 'hourlyRate', 'rate_unit', 'rateUnit', 'profession_rates', 'professionRates',
     'role_type', 'secondary_professions', 'secondaryProfessions']);
 
 // These are individual HR conditions and attendance operations, not a grant to
@@ -111,4 +111,8 @@ function requireParkHrPayrollAccess(routerId, legacyGuard, db) {
     };
 }
 
-module.exports = { parkHrPayrollCapabilities, requireParkHrPayrollAccess };
+function canManageStaffPayrollRules(user) {
+    return allowed({ user }, RULES);
+}
+
+module.exports = { parkHrPayrollCapabilities, requireParkHrPayrollAccess, canManageStaffPayrollRules };

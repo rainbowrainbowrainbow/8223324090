@@ -74,7 +74,32 @@ function waitForResponse(page, method, pathname) {
     return page.waitForResponse(response => response.request().method() === method && new URL(response.url()).pathname === pathname);
 }
 
-async function runActor(browser, pool, actor) {
+async function expectDelayedStaffSaveIgnored(page, staffId, switchContext) {
+    let releaseResponse;
+    let resolveCommitted;
+    const held = new Promise(resolve => { releaseResponse = resolve; });
+    const committed = new Promise(resolve => { resolveCommitted = resolve; });
+    const saveRoute = `**/api/hr/staff/${staffId}`;
+    await page.route(saveRoute, async route => {
+        if (route.request().method() !== 'PUT') return route.continue();
+        const response = await route.fetch();
+        resolveCommitted(response.status());
+        await held;
+        await route.fulfill({ response });
+    });
+    try {
+        await page.evaluate(() => { window.qaStaffSave = saveStaffEdit(); });
+        assert.equal(await committed, 200);
+        await switchContext();
+        releaseResponse();
+        assert.equal((await page.evaluate(() => window.qaStaffSave)).stale, true);
+    } finally {
+        releaseResponse();
+        await page.unroute(saveRoute);
+    }
+}
+
+async function runActor(browser, pool, actor, existingAccountId) {
     const session = await login(actor.username, actor.password);
     const context = await browser.newContext({ viewport: { width: actor.width, height: 900 }, serviceWorkers: 'block' });
     await context.addInitScript(session => {
@@ -113,11 +138,23 @@ async function runActor(browser, pool, actor) {
         await dialog.locator('[name="position"]').fill('QA Animator');
         await dialog.locator('[name="role_type"]').selectOption('animator');
         await dialog.screenshot({ path: path.join(output, `${actor.label}-create.png`) });
+        const loseResponse = actor.label === 'mobile';
+        if (loseResponse) {
+            await page.route('**/api/staff', async route => {
+                if (route.request().method() !== 'POST') return route.continue();
+                const committed = await route.fetch();
+                assert.equal(committed.status(), 200);
+                await route.abort('failed');
+            });
+        }
         const [creation] = await Promise.all([
-            waitForResponse(page, 'POST', '/api/staff'),
+            loseResponse
+                ? page.waitForResponse(response => new URL(response.url()).pathname.startsWith('/api/staff/creation-operations/'))
+                : waitForResponse(page, 'POST', '/api/staff'),
             dialog.locator('[type="submit"]').click()
         ]);
-        assert.equal(creation.status(), 200, 'staff created');
+        if (loseResponse) await page.unroute('**/api/staff');
+        assert.equal(creation.status(), 200, loseResponse ? 'committed staff operation recovered' : 'staff created');
         const { data: staff } = await creation.json();
         const profile = page.locator('#staffEditModal');
         await profile.waitFor({ state: 'visible' });
@@ -130,6 +167,8 @@ async function runActor(browser, pool, actor) {
         assert.equal(edit.status(), 200, 'position updated');
         const { rows } = await pool.query('SELECT id, position FROM staff WHERE name = $1', [name]);
         assert.deepEqual(rows, [{ id: staff.id, position: 'QA Updated Position' }]);
+        await page.waitForFunction(() => document.getElementById('editSave').dataset.actionState === 'success');
+        assert.equal(await profile.locator('#editStaffHeaderName').textContent(), name);
         await profile.screenshot({ path: path.join(output, `${actor.label}-edit.png`) });
         await page.locator('#editCloseTop').click();
         await profile.waitFor({ state: 'hidden' });
@@ -161,6 +200,109 @@ async function runActor(browser, pool, actor) {
             );
             assert.equal(binding.staff_id, staff.id);
             assert.equal((await pool.query('SELECT id FROM staff WHERE name = $1', [name])).rowCount, 1);
+            const receipt = page.locator('#accountOnboardingReceipt');
+            await receipt.getByRole('link', { name: 'свій профіль' }).waitFor();
+            assert.match(await receipt.textContent(), /очікує членства.*Призначити доступ акаунту/s);
+            await page.locator('[data-account-onboarding-finish]').click();
+            assert.equal(await page.evaluate(id => openAccountOnboardingWizard(null, { staffId: id }), staff.id), false);
+            assert.match(await page.locator('#accountOnboardingLoading').textContent(), new RegExp(`#${staff.id}.*уже прив’язана`));
+            await page.keyboard.press('Escape');
+
+            const { rows: [otherStaff] } = await pool.query(
+                "INSERT INTO staff (name, department, position, role_type) VALUES ($1, 'animators', 'QA Animator', 'animator') RETURNING id, name",
+                [`QA Other ${runId}`]
+            );
+            await card.getByRole('button', { name: /відкрити/i }).click();
+            await page.waitForFunction(id => Number(document.getElementById('editStaffId').value) === id, staff.id);
+            await profile.locator('#editStaffName').fill('QA Late Response');
+            await expectDelayedStaffSaveIgnored(page, staff.id, () =>
+                page.evaluate(async id => {
+                    await closeHrEditableModal('staffEditModal', true);
+                    await openStaffEdit(id);
+                }, otherStaff.id));
+            assert.equal(await profile.locator('#editStaffHeaderName').textContent(), otherStaff.name);
+            assert.equal(await profile.locator('#editStaffName').inputValue(), otherStaff.name);
+            assert.equal(await profile.locator('#editSave').isEnabled(), true);
+            const currentRevision = await page.evaluate(async id => (await hrFetch(`/staff/${id}`)).data.profile_revision, otherStaff.id);
+            const firstEditor = await page.evaluate(({ id, revision }) => hrFetch(`/staff/${id}`, {
+                method: 'PUT', headers: { 'X-Staff-Profile-Revision': revision }, body: { phone: '+380001112233' }
+            }), { id: otherStaff.id, revision: currentRevision });
+            assert.equal(firstEditor.success, true);
+            await profile.locator('#editPhone').fill('+380009998877');
+            await profile.locator('#editSave').click();
+            const conflict = page.getByRole('dialog').filter({ hasText: 'Картку змінив інший оператор' });
+            await conflict.getByRole('button', { name: 'Залишити чернетку' }).click();
+            assert.equal(await profile.locator('#editPhone').inputValue(), '+380009998877');
+            assert.equal((await pool.query('SELECT phone FROM staff WHERE id = $1', [otherStaff.id])).rows[0].phone, '+380001112233');
+            await profile.locator('#editSave').click();
+            await conflict.getByRole('button', { name: 'Застосувати мої зміни' }).click();
+            await page.waitForFunction(() => document.getElementById('editSave').dataset.actionState === 'success');
+            assert.equal((await pool.query('SELECT phone FROM staff WHERE id = $1', [otherStaff.id])).rows[0].phone, '+380009998877');
+            await page.locator('#editCloseTop').click();
+
+            const otherCard = page.locator('.hr-team-card').filter({ hasText: otherStaff.name });
+            await otherCard.getByRole('button', { name: /дії:/i }).click();
+            await otherCard.getByRole('menuitem', { name: /прив.язати crm/i }).click();
+            await page.locator('.account-link-modal select').selectOption(String(existingAccountId));
+            const [existingLink] = await Promise.all([
+                waitForResponse(page, 'POST', `/api/staff/${otherStaff.id}/link`),
+                page.locator('.account-link-modal').getByRole('button', { name: /прив.язати/i }).click()
+            ]);
+            assert.equal(existingLink.status(), 200);
+            const { rows: existingBindings } = await pool.query(
+                'SELECT staff_id FROM employee_profiles WHERE user_id = $1', [existingAccountId]
+            );
+            assert.deepEqual(existingBindings, [{ staff_id: otherStaff.id }]);
+
+            await page.evaluate(() => openAccountOnboardingWizard(null));
+            const newName = `QA CRM Recovery ${runId}`;
+            const newUsername = `qa_crm_recovery_${runId}`;
+            await page.locator('#accountOnboardingName').fill(newName);
+            await page.locator('#accountOnboardingUsername').fill(newUsername);
+            await page.locator('#accountOnboardingNext').click();
+            await page.locator('input[name="accountOnboardingStaffMode"][value="new"]').check();
+            await page.locator('#accountOnboardingDepartment').fill('animators');
+            await page.locator('#accountOnboardingPosition').fill('QA Animator');
+            await page.locator('#accountOnboardingNext').click();
+            await page.locator('#accountOnboardingProfession-animator').check();
+            await page.locator('#accountOnboardingPrimaryProfession-animator').check();
+            for (let step = 3; step <= 6; step++) await page.locator('#accountOnboardingNext').click();
+            await page.route('**/api/users/onboarding', async route => {
+                if (route.request().method() !== 'POST') return route.continue();
+                const committed = await route.fetch();
+                assert.equal(committed.status(), 200);
+                await route.abort('failed');
+            });
+            const [recovered] = await Promise.all([
+                page.waitForResponse(response => new URL(response.url()).pathname.startsWith('/api/users/onboarding/operations/')),
+                page.locator('#accountOnboardingSubmit').click()
+            ]);
+            await page.unroute('**/api/users/onboarding');
+            assert.equal(recovered.status(), 200);
+            const recovery = await recovered.json();
+            assert.equal(recovery.credential, null);
+            await receipt.getByText('Збережену операцію знайдено.', { exact: false }).waitFor();
+            assert.match(await receipt.textContent(), new RegExp(`#${recovery.receipt.staff.id}`));
+            const { rows: recoveredStaff } = await pool.query('SELECT id FROM staff WHERE name = $1', [newName]);
+            assert.deepEqual(recoveredStaff, [{ id: recovery.receipt.staff.id }]);
+            await page.locator('[data-account-onboarding-finish]').click();
+
+            await otherCard.getByRole('button', { name: /відкрити/i }).click();
+            await profile.locator('#editPhone').fill('+380009998899');
+            await expectDelayedStaffSaveIgnored(page, otherStaff.id, async () => {
+                assert.equal(await page.evaluate(() => setCrmBusinessContext('dar')), 'dar');
+                await profile.waitFor({ state: 'hidden' });
+            });
+            await profile.waitFor({ state: 'hidden' });
+
+            assert.equal(await page.evaluate(() => setCrmBusinessContext('event_genix')), 'event_genix');
+            await otherCard.getByRole('button', { name: /відкрити/i }).click();
+            await profile.locator('#editPhone').fill('+380009998898');
+            await expectDelayedStaffSaveIgnored(page, otherStaff.id, () => page.evaluate(() => {
+                localStorage.setItem('pzp_auth_session_generation', 'qa-session-replaced');
+                window.dispatchEvent(new Event('crm:auth-cleared'));
+            }));
+            await profile.waitFor({ state: 'hidden' });
         } else {
             assert.equal(await card.getByRole('menuitem', { name: 'Створити CRM' }).count(), 0);
         }
@@ -185,7 +327,7 @@ async function main() {
     try {
         const actors = await seed(pool);
         browser = await requirePlaywright().chromium.launch({ headless: true });
-        for (const actor of actors) await runActor(browser, pool, actor);
+        for (const actor of actors) await runActor(browser, pool, actor, actors.find(item => item.label === 'mobile').id);
     } finally {
         await browser?.close();
         await pool.end();

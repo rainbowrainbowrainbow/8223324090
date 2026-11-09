@@ -68,7 +68,9 @@ function hasCurrentParkScheduleMembership(req) {
 
 function canUseParkStaffSchedule(req, routerId) {
     const method = String(req.method || 'GET').toUpperCase();
-    if (routerId === 'staff' && method === 'POST' && parkStaffScheduleRoutePath(req) === '/') {
+    const path = parkStaffScheduleRoutePath(req);
+    if (routerId === 'staff' && ((method === 'POST' && path === '/')
+        || (method === 'GET' && /^\/creation-operations\/[0-9a-f-]+$/i.test(path)))) {
         return canCreateParkStaff(req);
     }
     const capabilities = parkStaffScheduleCapabilities(req, routerId);

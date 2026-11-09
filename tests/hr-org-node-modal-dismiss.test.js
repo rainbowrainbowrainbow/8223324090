@@ -1315,7 +1315,7 @@ test('HR staff profile save actions isolate payloads and expose modal action sta
     assert.doesNotMatch(ratesBuilder, /^\s*(?:name|phone|notes):/m);
     assert.match(payrollSave, /dirtyScopes\.has\('rates'\)/);
     assert.match(payrollSave, /dirtyScopes\.has\('payroll'\)/);
-    assert.match(payrollSave, /saveStaffRates\(staffId\)/);
+    assert.match(payrollSave, /saveStaffRates\(staffId, isCurrent\)/);
     assert.match(js, /button\.dataset\.staffActionPending === 'true'/);
     assert.match(js, /button\.disabled = true/);
     assert.match(js, /setStaffProfileActionState\(button, 'success'/);

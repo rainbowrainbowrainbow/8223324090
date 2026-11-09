@@ -14,7 +14,6 @@ const { isParkHrCompanyStructureRoute, canReadParkHrCompanyStructure,
     projectParkHrCompanyStructurePayload } = require('./parkHrCompanyStructureRead');
 const { canUseParkLegacySurface } = require('./parkLegacyModuleAccess');
 const { resolveCapability } = require('./accountAccessPolicy');
-const { resolveStaffOperation } = require('./staffOperationAccess');
 
 const SURFACES = Object.freeze({
     catalogs: { code: 'catalogs_not_migrated', label: 'Спільні каталоги' },
@@ -50,7 +49,7 @@ function parkScheduleAccessMetadata(req) {
         businessContext: DEFAULT_BUSINESS_CONTEXT,
         owner: 'park',
         source: 'park_staff_schedule_ownership',
-        ...(resolveStaffOperation(req.user, 'hr.staff.create') ? { canCreateStaff: true } : {})
+        ...(canCreateParkStaff(req) ? { canCreateStaff: true } : {})
     };
 }
 

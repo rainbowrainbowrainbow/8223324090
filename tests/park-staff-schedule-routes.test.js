@@ -248,6 +248,7 @@ test('Park schedule ownership through the actual Express staff and HR routers', 
             assert.deepEqual(roster.scheduleAccess, {
                 readOnly: false,
                 editable: true,
+                canCreateStaff: true,
                 businessContext: 'event_genix',
                 owner: 'park',
                 source: 'park_staff_schedule_ownership'
@@ -261,6 +262,7 @@ test('Park schedule ownership through the actual Express staff and HR routers', 
             assert.deepEqual(schedule.scheduleAccess, {
                 readOnly: false,
                 editable: true,
+                canCreateStaff: true,
                 businessContext: 'event_genix',
                 owner: 'park',
                 source: 'park_staff_schedule_ownership'
@@ -324,7 +326,10 @@ test('Park schedule ownership through the actual Express staff and HR routers', 
         });
 
         await t.test('schedule-only principal cannot use payroll or unrelated HR routes', async () => {
-            state.actor = { deny: ['hr.payroll.view'] };
+            state.actor = { deny: ['hr.payroll.view', 'hr.staff.manage', 'hr.staff.view'] };
+            const roster = await request(READ_PATHS[0]);
+            assert.equal(roster.status, 200);
+            assert.equal(roster.body.scheduleAccess.canCreateStaff, undefined);
             const denied = [
                 ['POST', '/api/staff'], ['DELETE', '/api/staff/9701'],
                 ['GET', '/api/staff/face-descriptors'], ['GET', '/api/staff/payroll'],

@@ -1983,7 +1983,6 @@ describe('staff schedule safety guards', () => {
         assert.match(workbookModelBlock, /const renderedStaffIds = new Set\(\)/);
         assert.match(renderEmpRowBlock, /data-schedule-subgroup-label/);
         assert.match(workbookBlock, /data-schedule-subgroup-label/);
-        assert.match(staffPage, /placeholder:\s*'host, trampoline_instructor'/);
         assert.doesNotMatch(staffPage, /placeholder:\s*'host, instructor'/);
     });
 

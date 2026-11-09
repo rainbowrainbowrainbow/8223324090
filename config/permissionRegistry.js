@@ -513,6 +513,12 @@ const ACTION_PERMISSIONS = Object.freeze([
         frontendConsumers: [source('js/hr-page.js', "'hr.staff.manage'", { enforces: true }), source('js/staff-page.js', "canUseStaffCapability('hr.staff.manage')", { enforces: true })], apiConsumers: [api('routes/hr.js', '/api/hr staff mutations', null, 'Enforced by requireHrCapabilityContract.'), api('routes/staff.js', '/api/staff profile mutations', 'hr.staff.manage')]
     }),
     action({
+        key: 'hr.staff.create', label: 'Додавання співробітників', group: 'hr', risk: 'high',
+        frontendConsumers: [source('js/staff-page.js', "canUseStaffCapability('hr.staff.create')", { enforces: true })],
+        backendConsumers: [source('routes/staff.js', 'function requireStaffCreation', { enforces: true })],
+        apiConsumers: [api('routes/staff.js', 'POST /api/staff', null, 'Enforced by requireStaffCreation.')]
+    }),
+    action({
         key: 'hr.reports.view', label: 'Перегляд HR-звітів', group: 'hr', defaultRoles: HR_PAGE_ACCESS, risk: 'critical',
         backendConsumers: [source('routes/hr.js', 'function requireHrCapabilityContract', { enforces: true })],
         frontendConsumers: [source('js/hr-page.js', "'hr.reports.view'", { enforces: true }), source('js/hr-pulse-switcher.js', "'hr.reports.view'", { enforces: true })], apiConsumers: [api('routes/hr.js', '/api/hr/report', null, 'Enforced by requireHrCapabilityContract.')]

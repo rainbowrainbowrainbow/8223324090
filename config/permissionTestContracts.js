@@ -123,6 +123,13 @@ const ACTION_PERMISSION_TEST_CONTRACTS = Object.freeze({
         sensitive: true,
         testFiles: ['tests/account-center-contract.test.js', 'tests/hr-staff-medical-book.test.js']
     }),
+    'hr.staff.create': actionContract('hr.staff.create', {
+        frontendScenario: 'Staff creation button requires a personal grant',
+        backendScenario: 'POST /api/staff with a creation-only grant and denied management',
+        mutation: true,
+        sensitive: true,
+        testFiles: ['tests/business-split-followup-ui.test.js', 'tests/integration/permission-capabilities.integration.test.js']
+    }),
     'hr.reports.view': actionContract('hr.reports.view', {
         backendScenario: 'GET /api/hr/report/*',
         sensitive: true,

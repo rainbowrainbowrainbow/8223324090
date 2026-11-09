@@ -98,8 +98,8 @@ test('registry describes the current page catalog and active action contract', (
     const actionKeys = registry.ACTION_PERMISSIONS.filter(entry => entry.deprecated !== true).map(entry => entry.key);
 
     assert.equal(pageKeys.length, 44);
-    assert.equal(registry.ACTION_PERMISSIONS.length, 52);
-    assert.equal(actionKeys.length, 48);
+    assert.equal(registry.ACTION_PERMISSIONS.length, 53);
+    assert.equal(actionKeys.length, 49);
     assertUnique(pageKeys, 'page permission keys');
     assertUnique(actionKeys, 'action permission keys');
     assert.deepEqual(sorted(pageKeys), sorted(Object.keys(backend.PAGE_ACCESS)), 'unknown or missing page permission key');

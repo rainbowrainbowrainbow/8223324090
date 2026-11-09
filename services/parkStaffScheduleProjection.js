@@ -210,6 +210,9 @@ function projectParkStaffSchedulePayload(routerId, routePath, payload, options =
     if (routerId !== 'staff') throw new TypeError('Unknown Park schedule projection route');
     const method = String(options.method || 'GET').toUpperCase();
     if (method !== 'GET') {
+        if (method === 'POST' && path === '/') {
+            return { success: true, data: projectRoster(payload.data) };
+        }
         if (method === 'PUT' && path === '/schedule') {
             return { success: true, data: projectSchedule(payload.data) };
         }

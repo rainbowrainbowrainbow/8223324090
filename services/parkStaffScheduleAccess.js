@@ -24,6 +24,7 @@ function parkStaffScheduleCapabilities(req, routerId) {
         }
         return null;
     }
+    if (method === 'POST' && path === '/') return ['hr.schedule.view', 'hr.staff.create'];
     if (method === 'POST' && path === '/schedule/export-xlsx') return ['hr.schedule.view', 'export_data'];
     if (method === 'PUT' && (path === '/schedule' || STAFF_SHIFT_PREFERENCES_PATH.test(path))) {
         return ['hr.schedule.manage'];
@@ -41,7 +42,7 @@ function parkStaffScheduleRoutePath(req) {
 
 // Owner confirmed on 2026-09-14 that the existing staff and schedule namespace
 // belongs exclusively to Park. The bounded lane below supports only the existing
-// schedule handlers; it never enables another business's staff or unrelated HR.
+// schedule handlers and delegated staff creation within the same business.
 function hasCurrentParkScheduleMembership(req) {
     if (!req?.user) return false;
     const scope = resolveBusinessScope(req);

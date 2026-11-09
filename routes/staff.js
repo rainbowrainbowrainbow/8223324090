@@ -126,6 +126,7 @@ const {
 const { buildStaffScheduleWorkbookBuffer } = require('../services/staffScheduleWorkbook');
 
 const { requireAction, requireRole, authenticateToken, ROLE_LEVEL, canUseAction } = require('../middleware/auth');
+const { resolveCapability } = require('../services/accountAccessPolicy');
 const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
 const { checkinJournalDate } = require('../services/parkStaffCheckinJournalRead');
 const log = createLogger('Staff');
@@ -2158,7 +2159,15 @@ router.get('/', async (req, res) => {
 
 // POST /api/staff — create new employee
 // LLM HINT: telegramUsername is optional — used for @-mentions in schedule notifications
-router.post('/', requireAction('hr.staff.manage'), async (req, res) => {
+function requireStaffCreation(req, res, next) {
+    const creation = resolveCapability(req.user, 'hr.staff.create', { type: 'action' });
+    if (creation.allowed || (creation.source !== 'explicit_deny' && canUseAction(req.user, 'hr.staff.manage'))) {
+        return next();
+    }
+    return res.status(403).json({ error: 'Insufficient permissions' });
+}
+
+router.post('/', requireStaffCreation, async (req, res) => {
     try {
         const { name, department, position, phone, hireDate, color, telegramUsername, role_type, roleType, address, secondary_professions, secondaryProfessions } = req.body;
         if (!name || !department || !position) {

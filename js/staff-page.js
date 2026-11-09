@@ -112,6 +112,8 @@ const StaffState = {
     canExportSchedule: false,
     canViewStaff: false,
     canManageStaff: false,
+    canCreateStaff: false,
+    parkStaffCreationAllowed: false,
     recoveryReadOnly: false,
     linkData: [],           // v39.1: link-status data
     linkStats: null,        // v39.1: { total, linked, unlinked, freelance }
@@ -3475,6 +3477,8 @@ function focusScheduleStaff(staffId, options = {}) {
 // ==========================================
 
 function applyScheduleReadAccess(data) {
+    StaffState.parkStaffCreationAllowed = data?.scheduleAccess?.source === 'park_staff_schedule_ownership'
+        && data.scheduleAccess.readOnly === false && data.scheduleAccess.canCreateStaff === true;
     if (!data?.scheduleAccess) return;
     if (data.scheduleAccess.readOnly !== true) {
         StaffState.recoveryReadOnly = false;
@@ -3485,8 +3489,9 @@ function applyScheduleReadAccess(data) {
     StaffState.recoveryReadOnly = true;
     StaffState.canManageSchedule = false;
     StaffState.canManageStaff = false;
+    StaffState.canCreateStaff = false;
     StaffState.canExportSchedule = false;
-    ['addStaffBtn', 'copyWeekBtn', 'fillWeekBtn', 'bulkCreateBtn', 'importExcelBtn', 'excelImportInput', 'exportExcelBtn'].forEach(id => {
+    ['createStaffBtn', 'copyWeekBtn', 'fillWeekBtn', 'bulkCreateBtn', 'importExcelBtn', 'excelImportInput', 'exportExcelBtn'].forEach(id => {
         const control = document.getElementById(id);
         if (!control) return;
         control.hidden = true;
@@ -3499,6 +3504,11 @@ function applyScheduleReadAccess(data) {
 async function fetchHrProfessions() {
     const seq = ++staffProfessionCatalogRequestSeq;
     const context = staffScheduleRequestContext();
+    if (!StaffState.canViewStaff && typeof canAccess === 'function' && canAccess('hr.staff.create')) {
+        StaffState.professions = [];
+        StaffState.professionsLoadState = 'restricted';
+        return { success: true, data: [] };
+    }
     StaffState.professionsLoadState = 'loading';
     try {
         const res = await staffApiFetch('/api/hr/professions');
@@ -8822,7 +8832,7 @@ function handlePrint() {
 // v39.11: Add staff modal
 async function openAddStaffModal() {
     syncStaffScheduleCapabilities();
-    if (!StaffState.canManageStaff) return;
+    if (!StaffState.canCreateStaff) return;
     const context = staffScheduleRequestContext();
     const DEPTS = getDepartmentOptionsFromStaffState();
     const defaultDepartment = DEPTS[0]?.value || 'animators';
@@ -8852,7 +8862,7 @@ async function openAddStaffModal() {
     ], { icon: '👤', okText: 'Додати' });
     if (!result || context !== staffScheduleRequestContext()) return;
     syncStaffScheduleCapabilities();
-    if (!StaffState.canManageStaff) return;
+    if (!StaffState.canCreateStaff) return;
     try {
         const res = await staffApiFetch('/api/staff', {
             method: 'POST',
@@ -8886,7 +8896,7 @@ async function openAddStaffModal() {
 // ==========================================
 
 function staffScheduleCapabilityFingerprint() {
-    return JSON.stringify(['hr.schedule.view', 'hr.schedule.manage', 'hr.staff.view', 'hr.staff.manage', 'export_data']
+    return JSON.stringify(['hr.schedule.view', 'hr.schedule.manage', 'hr.staff.view', 'hr.staff.manage', 'hr.staff.create', 'export_data']
         .map(action => typeof canAccess === 'function' && canAccess(action)));
 }
 
@@ -8906,10 +8916,12 @@ function syncStaffScheduleCapabilities() {
     StaffState.canViewStaff = canUseStaffCapability('hr.staff.view');
     StaffState.canExportSchedule = StaffState.canViewSchedule && canUseStaffCapability('export_data') && writable;
     StaffState.canManageStaff = canUseStaffCapability('hr.staff.manage') && staffWrites && writable;
+    StaffState.canCreateStaff = canUseStaffCapability('hr.staff.create') && StaffState.canViewSchedule && writable
+        && (staffWrites || StaffState.parkStaffCreationAllowed);
     const user = typeof AppState !== 'undefined' ? AppState.currentUser : null;
     const isAdmin = ['creator', 'director'].includes(user?.role);
     const controls = {
-        addStaffBtn: StaffState.canManageStaff,
+        createStaffBtn: StaffState.canCreateStaff,
         copyWeekBtn: StaffState.canManageSchedule,
         fillWeekBtn: StaffState.canManageSchedule,
         bulkCreateBtn: StaffState.canManageStaff && isAdmin && staffScheduleHostMode !== 'hr',
@@ -8948,6 +8960,7 @@ function clearStaffScheduleAccessState() {
     closeLinkModal();
     closeBulkResults();
     Object.assign(StaffState, {
+        parkStaffCreationAllowed: false,
         staff: [], professions: [], departments: {}, displayGroups: [], scheduleCategoryContract: null,
         schedule: {}, scheduleRawEntries: [], scheduleLoadedRange: null, attendance: {}, attendanceSummary: null,
         attendanceUnavailable: true, hoursData: null, scheduleHistory: {}, shiftPreferences: {},
@@ -9228,7 +9241,7 @@ async function initStaffSchedulePage(options = {}) {
         document.getElementById('scheduleRangeRetryBtn')?.addEventListener('click', retryScheduleRangeLoad);
 
         // v39.11: Add staff button
-        document.getElementById('addStaffBtn')?.addEventListener('click', openAddStaffModal);
+        document.getElementById('createStaffBtn')?.addEventListener('click', openAddStaffModal);
 
         // Link modal
         document.getElementById('linkConfirmBtn')?.addEventListener('click', confirmLinkAccount);

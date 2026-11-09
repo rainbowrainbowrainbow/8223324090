@@ -111,6 +111,7 @@ describe('disposable token-backed permission capability contract', { skip: !enab
             { key: 'manager', role: 'manager', actionAllowlist: [], actionDenylist: [] },
             { key: 'hr', role: 'hr', actionAllowlist: [], actionDenylist: [] },
             { key: 'staffReader', role: 'hr', actionAllowlist: [], actionDenylist: ['hr.payroll.view'] },
+            { key: 'staffCreator', role: 'animator', actionAllowlist: [], actionDenylist: ['hr.staff.manage', 'hr.schedule.manage'] },
             { key: 'matrix', role: 'waiter', actionAllowlist: [], actionDenylist: [] }
         ];
 
@@ -147,6 +148,45 @@ describe('disposable token-backed permission capability contract', { skip: !enab
 
     after(async () => {
         if (schemaPool) await schemaPool.end();
+    });
+
+    it('allows delegated staff creation independently of HR management', async () => {
+        const creatorToken = await getToken();
+        const account = accounts.staffCreator;
+        const draft = { name: 'Disposable Staff Creation QA', department: 'admin', position: 'Administrator', role_type: 'admin' };
+        assert.equal((await request('POST', '/api/staff', draft, account.token)).status, 403);
+
+        const access = await updateAccess(account, {
+            actionAllowlist: ['hr.staff.create'],
+            actionDenylist: ['hr.staff.manage', 'hr.schedule.manage']
+        }, creatorToken);
+        assert.equal(access.status, 200);
+        const token = await login(account.username, account.password);
+        const snapshot = await permissions(token);
+        assert.equal(snapshot.actions['hr.staff.create'], true);
+        assert.equal(snapshot.actions['hr.staff.manage'], false);
+        assert.equal(snapshot.actions['manage_accounts'], false);
+        assert.equal((await request('POST', '/api/staff', { name: draft.name }, token)).status, 400);
+
+        const created = await request('POST', '/api/staff', draft, token);
+        assert.equal(created.status, 200);
+        const staffId = created.data?.data?.id;
+        assert.ok(staffId);
+        const { rows } = await schemaPool.query(
+            'SELECT name, department, position, role_type FROM staff WHERE id = $1', [staffId]
+        );
+        assert.deepEqual(rows, [draft]);
+        assert.equal((await request('PUT', `/api/staff/${staffId}`, { name: 'Forbidden edit' }, token)).status, 403);
+        assert.equal((await request('DELETE', `/api/staff/${staffId}`, null, token)).status, 403);
+
+        const denied = await updateAccess(account, {
+            actionAllowlist: ['hr.staff.manage'],
+            actionDenylist: ['hr.staff.create']
+        }, creatorToken);
+        assert.equal(denied.status, 200);
+        const deniedToken = await login(account.username, account.password);
+        assert.equal((await request('POST', '/api/staff', draft, deniedToken)).status, 403);
+        assert.equal((await request('POST', '/api/staff', { ...draft, name: 'Disposable Legacy Staff Creation QA' }, accounts.manager.token)).status, 200);
     });
 
     it('keeps a new password login valid after a future cutoff without reviving older sessions', async () => {
@@ -502,7 +542,7 @@ describe('disposable token-backed permission capability contract', { skip: !enab
         assert.equal(afterRelogin.capabilities['action:hr.reports.export'].allowed, false);
     });
 
-    it('reads a disposable Park staff row through the actual app without widening payroll or other HR routes', async () => {
+    it('reads and creates disposable Park staff through the actual app with separate permissions', async () => {
         const reader = accounts.staffReader;
         const readerAccess = await permissions(reader.token);
         assert.equal(readerAccess.capabilities['action:hr.staff.view']?.allowed, true);
@@ -523,7 +563,8 @@ describe('disposable token-backed permission capability contract', { skip: !enab
             [organizationId]
         );
         const businessId = Number(business.rows[0].id);
-        for (const account of [reader, accounts.admin]) {
+        const staffCreator = accounts.staffCreator;
+        for (const account of [reader, accounts.admin, staffCreator]) {
             await schemaPool.query(
                 `INSERT INTO organization_memberships (organization_id, user_id, role, is_active)
                  VALUES ($1, $2, 'member', true)
@@ -594,6 +635,37 @@ describe('disposable token-backed permission capability contract', { skip: !enab
                 'revoked membership is rejected by the next real request');
             assert.equal((await request('GET', '/api/hr/company-structure', null, reader.token)).status, 403,
                 'revoked membership cannot read company structure');
+
+            const draft = { name: 'Disposable Park Creation QA', department: 'admin', position: 'Administrator', phone: '+380000000001' };
+            const memberToken = await login(staffCreator.username, staffCreator.password);
+            assert.equal((await request('POST', '/api/staff', draft, memberToken)).status, 403);
+            await schemaPool.query(
+                "UPDATE business_memberships SET action_allowlist = ARRAY['hr.staff.create'] WHERE business_id = $1 AND user_id = $2",
+                [businessId, staffCreator.id]
+            );
+            const snapshot = await permissions(memberToken);
+            assert.equal(snapshot.actions['hr.staff.create'], true);
+            assert.equal(snapshot.actions['hr.staff.manage'], false);
+            assert.equal(snapshot.actions['hr.schedule.manage'], false);
+            const roster = await request('GET', '/api/staff?active=true', null, memberToken);
+            assert.equal(roster.status, 200);
+            assert.equal(roster.data.scheduleAccess.canCreateStaff, true);
+
+            const foreignCreate = await fetch(`${BASE_URL}/api/staff`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${memberToken}`, 'X-Business-Context': 'dar', 'Content-Type': 'application/json' },
+                body: JSON.stringify(draft)
+            });
+            assert.equal(foreignCreate.status, 403);
+            const created = await request('POST', '/api/staff', draft, memberToken);
+            assert.equal(created.status, 200);
+            assert.ok(created.data?.data?.id);
+            assert.equal(created.data.data.phone, undefined);
+            const saved = await schemaPool.query('SELECT name, department, position, phone FROM staff WHERE name = $1', [draft.name]);
+            assert.deepEqual(saved.rows, [draft]);
+            const createdId = created.data.data.id;
+            assert.equal((await request('PUT', `/api/staff/${createdId}`, { name: 'Forbidden edit' }, memberToken)).status, 403);
+            assert.equal((await request('DELETE', `/api/staff/${createdId}`, null, memberToken)).status, 403);
         } finally {
             await schemaPool.query(
                 'UPDATE business_memberships SET is_active = true WHERE business_id = $1 AND user_id = $2',

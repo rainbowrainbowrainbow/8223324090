@@ -38,7 +38,7 @@ function loadSchedule(fetchImpl, businessContext = 'event_genix', role = 'direct
         ['pzp_current_user', JSON.stringify(user)]
     ]);
     const elements = new Map();
-    for (const id of ['addStaffBtn', 'copyWeekBtn', 'fillWeekBtn', 'bulkCreateBtn', 'importExcelBtn', 'excelImportInput', 'exportExcelBtn', 'printBtn']) {
+    for (const id of ['createStaffBtn', 'copyWeekBtn', 'fillWeekBtn', 'bulkCreateBtn', 'importExcelBtn', 'excelImportInput', 'exportExcelBtn', 'printBtn']) {
         elements.set(id, { style: {}, hidden: false, disabled: false, setAttribute() {} });
     }
     const context = {
@@ -199,6 +199,7 @@ for (const name of ['fetchStaff', 'fetchSchedule']) {
             canViewStaff: false,
             canManageSchedule: true,
             canManageStaff: true,
+            canCreateStaff: true,
             canExportSchedule: true,
             rangeStart: new Date(`${dateRange[0]}T00:00:00`),
             rangeEnd: new Date(`${dateRange[1]}T00:00:00`),
@@ -210,6 +211,7 @@ for (const name of ['fetchStaff', 'fetchSchedule']) {
         assert.equal(result.success, true);
         assert.equal(api.state.canManageSchedule, false);
         assert.equal(api.state.canManageStaff, false);
+        assert.equal(api.state.canCreateStaff, false);
         assert.equal(api.state.canExportSchedule, false);
         assert.equal(api.state.recoveryReadOnly, true);
         assert.equal(api.state.canViewSchedule, true);

@@ -47,7 +47,8 @@ function parkScheduleAccessMetadata(req) {
         editable: resolveCapability(req.user, 'hr.schedule.manage', { type: 'action' }).allowed,
         businessContext: DEFAULT_BUSINESS_CONTEXT,
         owner: 'park',
-        source: 'park_staff_schedule_ownership'
+        source: 'park_staff_schedule_ownership',
+        ...(resolveCapability(req.user, 'hr.staff.create', { type: 'action' }).allowed ? { canCreateStaff: true } : {})
     };
 }
 
@@ -182,7 +183,7 @@ function requireLegacyBusinessSurface(surface, { parkScheduleRouter = null, park
                     method: req.method,
                     includePayroll: resolveCapability(req.user, 'hr.payroll.view', { type: 'action' }).allowed
                 });
-                if (projected?.success === true && parkScheduleRouter === 'staff' && ['/', '/schedule'].includes(routePath)) {
+                if (projected?.success === true && req.method === 'GET' && parkScheduleRouter === 'staff' && ['/', '/schedule'].includes(routePath)) {
                     return sendJson({ ...projected, scheduleAccess: parkScheduleAccessMetadata(req) });
                 }
                 if (projected?.success === true && parkScheduleRouter === 'hr' && routePath === '/today') {

@@ -2442,7 +2442,7 @@ checkPage('staff.html', (doc, html) => {
         && staffCode.includes("document.getElementById('fillWeekBtn')?.addEventListener('click', openFillWeekModal)")
         && staffCode.includes("document.getElementById('copyWeekBtn')?.addEventListener('click', handleCopyWeek)")
         && staffCode.includes("document.getElementById('importExcelBtn')?.addEventListener('click', triggerExcelImport)")
-        && staffCode.includes("document.getElementById('addStaffBtn')?.addEventListener('click', openAddStaffModal)")
+        && staffCode.includes("document.getElementById('createStaffBtn')?.addEventListener('click', openAddStaffModal)")
         && !staffCode.includes("document.getElementById('toggleHoursBtn')?.addEventListener('click', toggleHours)")
         && !staffCode.includes("document.getElementById('toggleLoadViewBtn')?.addEventListener('click', toggleLoadView)")
         && !staffCode.includes("document.getElementById('toggleLinkViewBtn')?.addEventListener('click', toggleLinkView)")

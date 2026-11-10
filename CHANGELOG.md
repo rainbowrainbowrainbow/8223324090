@@ -4,6 +4,13 @@
 
 ---
 
+## v0.83.29 - Контрольоване приймання HR
+
+### Release / Versioning / (10.11.2026) [codex]
+- **Контрольоване приймання HR** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.83.28 - HR ПАРК і CRM-доступ
 
 ### Release / Versioning / (10.11.2026) [codex]

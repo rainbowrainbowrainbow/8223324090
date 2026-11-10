@@ -30,6 +30,7 @@ const {
 } = require('../services/businessContext');
 const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
 const { parkHrStaffCardEditCapability, PARK_STAFF_PROFILE_FIELD_LIMITS } = require('../services/parkHrStaffCardRead');
+const { prepareHrFixtureQa, claimHrFixtureQa, requireHrQaEntity } = require('../services/hrFixtureQa');
 const { parkHrPayrollCapabilities, requireParkHrPayrollAccess, canManageStaffPayrollRules } = require('../services/parkHrPayrollAccess');
 const { resolveStaffOperation } = require('../services/staffOperationAccess');
 const { parkMonthlyPeriod, loadParkHrMonthlyReport } = require('../services/parkHrMonthlyReportRead');
@@ -4908,6 +4909,17 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
+            const qa = await prepareHrFixtureQa(client, req, 'edit', beforeStaff.name);
+            if (qa) {
+                const owned = await requireHrQaEntity(client, qa, 'hr_staff', req.params.id);
+                const allowed = Object.keys(req.body).every(key => ['name', 'position', 'phone'].includes(key));
+                if (!allowed || beforeStaff.name !== owned.name || (name !== undefined && name !== owned.name)) {
+                    throw Object.assign(new Error('QA edits are limited to the registered basic profile'), {
+                        statusCode: 403, code: 'HR_QA_PROFILE_SCOPE_DENIED'
+                    });
+                }
+                await claimHrFixtureQa(client, qa, req);
+            }
             if (setClauses.length) {
                 values.push(req.params.id);
                 const idParam = values.length;
@@ -4976,6 +4988,9 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
         res.json({ success: true, data: result.rows[0], schedule_cleanup: scheduleCleanup });
     } catch (err) {
         log.error('PUT /hr/staff/:id error', err);
+        if (err.code?.startsWith('HR_QA_') || err.code?.startsWith('QA_RUN_')) {
+            return res.status(err.statusCode || 403).json({ success: false, code: err.code, error: err.message });
+        }
         res.status(err.statusCode || 500).json({ success: false, error: err.statusCode === 400 ? 'Перевірте професію та додатну ставку. Видалення ставки потрібно обрати явно.' : 'Помилка сервера' });
     }
 });

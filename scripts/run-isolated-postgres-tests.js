@@ -121,6 +121,7 @@ const MODES = {
         'tests/browser/park-manager-actual-app-browser-smoke.js'
     ],
     'hr-staff-account': ['tests/integration/staff-account-boundary.integration.test.js'],
+    'hr-fixture-qa': ['tests/integration/hr-fixture-qa.integration.test.js'],
     'hr-staff-browser': [
         'tests/browser/hr-staff-creation-browser-smoke.js'
     ],
@@ -161,7 +162,8 @@ const MODES = {
     ],
     backfill: ['tests/integration/hr-legacy-hire-backfill.integration.test.js'],
     'upload-backfill': ['tests/integration/legacy-upload-backfill.integration.test.js'],
-    fullstack: ['tests/integration/staff-account-boundary.integration.test.js', 'tests/browser/hr-staff-creation-browser-smoke.js',
+    fullstack: ['tests/integration/staff-account-boundary.integration.test.js', 'tests/integration/hr-fixture-qa.integration.test.js',
+        'tests/browser/hr-staff-creation-browser-smoke.js',
         'tests/browser/hr-onboarding-fullstack-browser-smoke.js', 'tests/browser/hr-pay-actual-app-browser-smoke.js',
         'tests/browser/hr-attendance-ocr-actual-app-browser-smoke.js', 'tests/browser/finance-money-actual-app-browser-smoke.js'],
     qa: [
@@ -591,6 +593,10 @@ async function runSuite(testDb, testFile, suiteMode) {
         password: crypto.randomBytes(24).toString('base64url')
     };
     const serverEnv = buildServerEnvironment(testDb, port, credentials);
+    if (testFile.includes('hr-fixture-qa.integration')) {
+        serverEnv.RELEASE_DEPLOY_COMMIT = 'a'.repeat(40);
+        serverEnv.RELEASE_DEPLOY_BRANCH = 'codex/isolated-hr-fixture-qa';
+    }
     if (testFile.includes('hr-attendance-ocr-actual-app-browser-smoke')) {
         assertLocalManualMoneyDatabase(testDb);
         Object.assign(serverEnv, {

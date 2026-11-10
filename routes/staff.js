@@ -135,6 +135,9 @@ const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurf
 const {
     describeStaffCreationOperation, readStaffCreationOperation, lockStaffCreationOperation, recordStaffCreationOperation
 } = require('../services/staffCreationOperations');
+const {
+    prepareHrFixtureQa, claimHrFixtureQa, assertHrFixtureCreate, requireHrQaEntity, registerHrQaEntity
+} = require('../services/hrFixtureQa');
 const { checkinJournalDate } = require('../services/parkStaffCheckinJournalRead');
 const log = createLogger('Staff');
 
@@ -2200,14 +2203,25 @@ router.post('/', requireStaffCreation, async (req, res) => {
         const operation = describeStaffCreationOperation(req, 'staff', fields);
         client = await pool.connect();
         await client.query('BEGIN');
+        const qa = await prepareHrFixtureQa(client, req, 'create', fields.name);
+        assertHrFixtureCreate(qa, operation, fields.name, 'staff');
+        if (qa && (fields.telegramUsername || fields.secondaryProfessions.length || fields.distinctStaffIds.length
+            || (fields.primaryProfession && fields.primaryProfession !== 'animator'))) {
+            throw Object.assign(new Error('QA staff creation is limited to a basic test profile'), {
+                statusCode: 400, code: 'HR_QA_STAFF_SCOPE_DENIED'
+            });
+        }
         const saved = await lockStaffCreationOperation(client, operation);
         if (saved) {
+            await requireHrQaEntity(client, qa, 'hr_staff', saved.staff_id);
             await client.query('COMMIT');
             return res.json({ success: true, data: { id: saved.staff_id }, replayed: true });
         }
         await validateNewStaffProfessions(client, fields.primaryProfession, fields.secondaryProfessions);
         await requireDistinctStaffConfirmation(client, fields);
+        await claimHrFixtureQa(client, qa, req);
         const staff = await insertStaffRecord(client, fields);
+        await registerHrQaEntity(client, qa, 'hr_staff', staff.id, { name: fields.name });
         await recordStaffCreationOperation(client, operation, { staffId: staff.id, staffCreated: true });
         await client.query('COMMIT');
         res.json({ success: true, data: staff });
@@ -2655,6 +2669,12 @@ router.post('/:id/link', requireAction('manage_accounts'), async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+        const qa = await prepareHrFixtureQa(client, req, 'link');
+        if (qa) {
+            await requireHrQaEntity(client, qa, 'hr_staff', req.params.id);
+            await requireHrQaEntity(client, qa, 'hr_account', req.body.userId);
+            await claimHrFixtureQa(client, qa, req);
+        }
         const targetAccount = await getAccountForManagement(client, req.body.userId);
         ensureActorCanManageAccount(req.user, targetAccount);
         const link = await linkUserToStaffProfile(client, {
@@ -2665,6 +2685,9 @@ router.post('/:id/link', requireAction('manage_accounts'), async (req, res) => {
             eventType: 'staff_overlay_account_linked',
             allowReassign: false,
             details: { source: 'staff_schedule_overlay' }
+        });
+        await registerHrQaEntity(client, qa, 'hr_profile', link.profile.id, {
+            staffId: link.profile.staffId, userId: link.profile.userId
         });
         await client.query('COMMIT');
 

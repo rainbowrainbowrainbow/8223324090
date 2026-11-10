@@ -6,6 +6,7 @@ const { ACTION_PERMISSIONS: ACTION_PERMISSION_ENTRIES, getPublicPagePermissionMe
 const { normalizeBusinessContext, normalizeKnownBusinessContext, normalizeBusinessScopeMode, BUSINESS_SCOPE_SINGLE } = require('./businessContext');
 const { recordAccountSecurityEvent } = require('./accountSecurity');
 const { lockOrganizationOwnership } = require('./organizationOwnership');
+const { prepareHrQaMembership, prepareHrQaRevocation, registerHrQaEntity } = require('./hrFixtureQa');
 const { validateBusinessModules, businessModuleCatalog, configuredBusinessModuleEnabled } = require('./businessModuleRegistry');
 
 function failure(status, code, message) {
@@ -112,6 +113,7 @@ async function updateBusinessMembership(db, actor, organizationId, targetUserId,
     const userId = positiveId(targetUserId);
     const businessId = positiveId(input.businessId);
     return transaction(db, actor, organizationId, false, async (client, manager, orgId) => {
+        const qa = await prepareHrQaMembership(client, req, orgId, businessId, userId, input);
         const business = await client.query('SELECT id FROM businesses WHERE id = $1 AND organization_id = $2 AND status = \'active\'', [businessId, orgId]);
         if (!business.rows[0]) throw failure(404, 'business_not_found', 'Active business not found in organization');
         const target = await targetState(client, userId, orgId, businessId);
@@ -158,6 +160,7 @@ async function updateBusinessMembership(db, actor, organizationId, targetUserId,
         await recordAccountSecurityEvent({ actor, target: { id: userId }, eventType: 'business_membership_updated',
             details: { organizationId: orgId, businessId, membershipRole: next.role, organizationRole,
                 previousOrganizationRole: target.organization?.role || null, before: current, after: next, sessionsRevoked: false }, req, client, strict: true });
+        await registerHrQaEntity(client, qa, 'hr_membership', userId, { organizationId: orgId, businessId });
         return updated.rows[0];
     });
 }
@@ -166,6 +169,7 @@ async function deactivateBusinessMembership(db, actor, organizationId, targetUse
     const userId = positiveId(targetUserId);
     const id = positiveId(businessId);
     return transaction(db, actor, organizationId, false, async (client, manager, orgId) => {
+        await prepareHrQaRevocation(client, req, orgId, id, userId);
         const target = await targetState(client, userId, orgId, id);
         authorizeTarget(manager, actor, target, target.organization?.role || 'member');
         if (!target.business) throw failure(404, 'business_membership_not_found', 'Business membership not found');

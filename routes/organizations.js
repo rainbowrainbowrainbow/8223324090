@@ -21,8 +21,9 @@ function slug(value) {
 }
 
 function lifecycleError(res, error, fallbackCode) {
-    const status = error.status || (error.code === '23505' ? 409 : 500);
-    return res.status(status).json({ error: error.status ? error.message : 'Organization lifecycle operation failed', code: error.status ? error.code : fallbackCode });
+    const publicStatus = error.status || error.statusCode;
+    const status = publicStatus || (error.code === '23505' ? 409 : 500);
+    return res.status(status).json({ error: publicStatus ? error.message : 'Organization lifecycle operation failed', code: publicStatus ? error.code : fallbackCode });
 }
 
 router.get('/members', async (req, res) => {

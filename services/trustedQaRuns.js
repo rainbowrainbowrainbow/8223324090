@@ -895,7 +895,10 @@ async function registerQaEntity(queryable, qaContext, entityType, entityId, payl
     if (!qaContext?.trusted || !qaContext.run?.id || !entityId) return { registered: false };
     const entity = cleanId(entityId);
     const normalizedType = cleanText(entityType, 80);
-    if (!TRUSTED_QA_ENTITY_TYPES.has(normalizedType)) {
+    const hrQa = require('./hrFixtureQa');
+    const supported = qaContext.run.source === hrQa.SOURCE
+        ? hrQa.TYPES.has(normalizedType) : TRUSTED_QA_ENTITY_TYPES.has(normalizedType);
+    if (!supported) {
         throw new TrustedQaRunError(
             'Unsupported trusted QA entity type',
             'QA_RUN_ENTITY_TYPE_UNSUPPORTED',
@@ -1420,6 +1423,13 @@ async function cleanupTrustedQaRun(queryable, runId, options = {}) {
     const inventory = await loadTrustedQaCleanupInventory(queryable, runId, { forUpdate: options.forUpdate === true });
     const classified = classifyCleanupInventory(inventory);
     if (!inventory) return classified;
+    const hrQa = require('./hrFixtureQa');
+    if (inventory.run.source === hrQa.SOURCE) {
+        if (options.forUpdate !== true) {
+            throw new TrustedQaRunError('HR QA cleanup requires a locked transaction', 'HR_QA_CLEANUP_LOCK_REQUIRED');
+        }
+        return hrQa.cleanupHrFixtureQa(queryable, inventory);
+    }
     if (inventory.run.test_customer_marker === `${inventory.run.run_id}:finance:disposable`
         && classified.status !== 'cleaned') {
         await require('./financeMoneyQa').prepareFinanceQaCleanup(queryable, inventory);

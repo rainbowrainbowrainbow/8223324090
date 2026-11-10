@@ -43,6 +43,9 @@ const { canManageStaffPayrollRules } = require('./parkHrPayrollAccess');
 const {
     describeStaffCreationOperation, readStaffCreationOperation, lockStaffCreationOperation, recordStaffCreationOperation
 } = require('./staffCreationOperations');
+const {
+    prepareHrFixtureQa, claimHrFixtureQa, assertHrQaOnboarding, requireHrQaEntity, registerHrQaEntity
+} = require('./hrFixtureQa');
 
 const SYSTEM_ACCOUNT_USERNAMES = Object.freeze(['guardian', 'system']);
 const SYSTEM_ACCOUNT_USERNAME = SYSTEM_ACCOUNT_USERNAMES;
@@ -958,6 +961,7 @@ async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = 
     let committed = false;
     let user;
     let staff;
+    let qa;
     let staffCreated = false;
     let loginCheck;
     let savedAssignments = [];
@@ -965,13 +969,25 @@ async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = 
     const savedConditions = [];
     try {
         await client.query('BEGIN');
+        const marker = normalized.personal.username.startsWith('hrqa-') ? normalized.personal.username : normalized.personal.name;
+        qa = await prepareHrFixtureQa(client, req, 'onboard', marker);
+        assertHrQaOnboarding(qa, operation, normalized);
         const saved = await lockStaffCreationOperation(client, operation);
         if (saved) {
+            await requireHrQaEntity(client, qa, 'hr_staff', saved.staff_id);
+            await requireHrQaEntity(client, qa, 'hr_account', saved.account_user_id);
             await client.query('COMMIT');
             committed = true;
             return await recoverAccountOnboarding(client, saved, actor);
         }
         await lockUsernameIdentity(client, normalized.personal.username);
+        if (qa && normalized.staff.mode === 'existing') {
+            const ownedStaff = await requireHrQaEntity(client, qa, 'hr_staff', normalized.staff.id);
+            if (ownedStaff.name !== normalized.personal.name) {
+                throw onboardingError('The QA staff marker must match the registered fixture', 403, 'HR_QA_MARKER_REQUIRED');
+            }
+        }
+        await claimHrFixtureQa(client, qa, req);
         const structureNode = await validateStructureNode(client, normalized);
         await lockAndValidateProfessions(client, normalized);
 
@@ -1078,13 +1094,18 @@ async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = 
             throw new Error(`account_onboarding_login_ready_check_failed:${loginCheck.reason}`);
         }
 
-        await linkUserToStaffProfile(client, {
+        const link = await linkUserToStaffProfile(client, {
             userId: user.id,
             staffId: staff.id,
             actor,
             req,
             eventType: 'account_onboarding_staff_linked',
             details: { source: 'account_onboarding', staffCreated }
+        });
+        if (staffCreated) await registerHrQaEntity(client, qa, 'hr_staff', staff.id, { name: staff.name });
+        await registerHrQaEntity(client, qa, 'hr_account', user.id, { username: user.username });
+        await registerHrQaEntity(client, qa, 'hr_profile', link.profile.id, {
+            staffId: link.profile.staffId, userId: link.profile.userId
         });
 
         const safeAuditDetails = {
@@ -1152,7 +1173,7 @@ async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = 
         });
     }
     try {
-        defaultChatMemberships = await addDefaultChatMemberships(dbPool, user.id);
+        if (!qa) defaultChatMemberships = await addDefaultChatMemberships(dbPool, user.id);
     } catch {
         warnings.push({
             code: 'DEFAULT_CHAT_SETUP_FAILED',

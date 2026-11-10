@@ -595,6 +595,23 @@ describe('disposable token-backed permission capability contract', { skip: !enab
         const staffId = Number(fixture.rows[0].id);
         let fullCreatedId;
         let delegatedCreatedId;
+        async function editCurrentCard(card, payload, token) {
+            const current = await request('GET', card, null, token);
+            assert.equal(current.status, 200, JSON.stringify(current.data));
+            const revision = current.data?.data?.profile_revision;
+            assert.match(revision, /^\d+$/);
+            const response = await fetch(`${BASE_URL}${card}`, {
+                method: 'PUT',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'X-Business-Context': 'event_genix',
+                    'Content-Type': 'application/json',
+                    'X-Staff-Profile-Revision': revision
+                },
+                body: JSON.stringify(payload)
+            });
+            return { status: response.status, data: await response.json() };
+        }
         try {
             const list = await request('GET', '/api/hr/staff', null, reader.token);
             assert.equal(list.status, 200, JSON.stringify(list.data));
@@ -639,18 +656,20 @@ describe('disposable token-backed permission capability contract', { skip: !enab
             assert.equal((await request('GET', '/api/hr/company-structure', null, reader.token)).status, 403,
                 'revoked membership cannot read company structure');
 
-            const draft = { name: 'Disposable Park Creation QA', department: 'admin', position: 'Administrator', phone: '+380000000001' };
+            const draft = { name: 'Disposable Park Creation QA', department: 'admin', position: 'Administrator', phone: '+380000000003' };
             const fullToken = await login(fullManager.username, fullManager.password);
-            const fullCreation = await request('POST', '/api/staff', { ...draft, name: 'Disposable Park Full Manager QA' }, fullToken);
+            const fullCreation = await request('POST', '/api/staff', {
+                ...draft, name: 'Disposable Park Full Manager QA', phone: '+380000000002'
+            }, fullToken);
             assert.equal(fullCreation.status, 200, JSON.stringify(fullCreation.data));
             fullCreatedId = fullCreation.data.data.id;
             const fullCard = `/api/hr/staff/${fullCreatedId}`;
-            assert.equal((await request('PUT', fullCard, { position: 'Full profile edit' }, fullToken)).status, 200);
+            assert.equal((await editCurrentCard(fullCard, { position: 'Full profile edit' }, fullToken)).status, 200);
             await schemaPool.query(
                 "UPDATE business_memberships SET action_allowlist = ARRAY['hr.staff.profile.edit'] WHERE business_id = $1 AND user_id = $2",
                 [businessId, fullManager.id]
             );
-            const combinedEdit = await request('PUT', fullCard, { telegram_username: 'qa_full_manager' }, fullToken);
+            const combinedEdit = await editCurrentCard(fullCard, { telegram_username: 'qa_full_manager' }, fullToken);
             assert.equal(combinedEdit.status, 200, JSON.stringify(combinedEdit.data));
             const fullRow = await schemaPool.query('SELECT position, telegram_username FROM staff WHERE id = $1', [fullCreatedId]);
             assert.deepEqual(fullRow.rows, [{ position: 'Full profile edit', telegram_username: 'qa_full_manager' }]);
@@ -714,7 +733,7 @@ describe('disposable token-backed permission capability contract', { skip: !enab
                 body: JSON.stringify(details)
             });
             assert.equal(foreignEdit.status, 403);
-            const edited = await request('PUT', card, details, memberToken);
+            const edited = await editCurrentCard(card, details, memberToken);
             assert.equal(edited.status, 200, JSON.stringify(edited.data));
             assert.equal(edited.data.data.hourly_rate, undefined);
             const editedRows = await schemaPool.query('SELECT name, position, phone, address FROM staff WHERE id = $1', [createdId]);

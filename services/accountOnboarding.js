@@ -40,6 +40,8 @@ const {
 } = require('./staffCreation');
 const { resolveStaffOperation } = require('./staffOperationAccess');
 const { canManageStaffPayrollRules } = require('./parkHrPayrollAccess');
+const { hasCurrentParkScheduleMembership } = require('./parkStaffScheduleAccess');
+const { lockOrganizationOwnership } = require('./organizationOwnership');
 const {
     describeStaffCreationOperation, readStaffCreationOperation, lockStaffCreationOperation, recordStaffCreationOperation
 } = require('./staffCreationOperations');
@@ -900,6 +902,36 @@ function normalizeDatabaseError(error) {
     return error;
 }
 
+const PARK_WORKER_ROLES = Object.freeze(ROLE_HIERARCHY.filter(role => ROLE_LEVEL[role] < ROLE_LEVEL.admin));
+
+function canOnboardParkWorker(req) {
+    return canUseAction(req?.user, 'hr.staff.accounts.onboard') && hasCurrentParkScheduleMembership(req)
+        && canUseAction(req.user, 'hr.staff.manage')
+        && ['hr.staff.create', 'hr.staff.profile.edit'].some(action => resolveStaffOperation(req.user, action));
+}
+
+async function lockParkOnboardingMembership(client, actor, mode) {
+    const membership = actor.activeBusinessMembership;
+    await lockOrganizationOwnership(client);
+    const { rows: [current] } = await client.query(
+        `SELECT bm.role, bm.extra_roles, bm.action_allowlist, bm.action_denylist
+         FROM business_memberships bm
+         JOIN organization_memberships om ON om.user_id=bm.user_id AND om.organization_id=bm.organization_id AND om.is_active
+         JOIN users u ON u.id=bm.user_id AND u.is_active
+         JOIN organizations o ON o.id=bm.organization_id AND o.status='active'
+         JOIN businesses b ON b.id=bm.business_id AND b.organization_id=bm.organization_id
+         WHERE bm.user_id=$1 AND bm.business_id=$2 AND bm.organization_id=$3 AND bm.is_active
+           AND b.context_key=$4 AND b.status='active' AND b.access_mode='membership'
+         FOR SHARE OF bm, om, u, o, b`,
+        [actor.id, membership.businessId, membership.organizationId, DEFAULT_BUSINESS_CONTEXT]
+    );
+    if (!current || !canUseAction(current, 'hr.staff.accounts.onboard') || !canUseAction(current, 'hr.staff.manage')) {
+        throw onboardingError('Немає доступу до оформлення акаунтів у ПАРК', 403, 'ACCOUNT_ONBOARDING_PARK_FORBIDDEN');
+    }
+    requireOnboardingStaffOperation(current, mode);
+    return membership;
+}
+
 function requireOnboardingStaffOperation(actor, mode) {
     const operation = mode === 'new' ? 'hr.staff.create' : 'hr.staff.profile.edit';
     if (!resolveStaffOperation(actor, operation)) {
@@ -942,11 +974,16 @@ async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = 
     const normalized = normalizeAccountOnboardingPayload(payload);
     requireOnboardingStaffOperation(actor, normalized.staff.mode);
     const operation = describeStaffCreationOperation(req, 'onboarding', normalized);
+    const delegated = canOnboardParkWorker(req) && !canUseAction(actor, 'manage_accounts');
     if ((normalized.staff.fallbackRateProvided || normalized.staff.rateUnitProvided || normalized.conditions.length)
-        && !canManageStaffPayrollRules(actor)) {
+        && (delegated || !canManageStaffPayrollRules(actor))) {
         throw onboardingError('Немає доступу до зміни зарплатних умов', 403, 'ACCOUNT_ONBOARDING_PAYROLL_FORBIDDEN');
     }
-    if (!actorCanManageRoleSet(actor, normalized.access.role, normalized.access.extraRoles)) {
+    const { role, extraRoles, pageAllowlist, actionAllowlist, actionDenylist } = normalized.access;
+    const canAssignRole = delegated
+        ? PARK_WORKER_ROLES.includes(role) && !extraRoles.length && !pageAllowlist.length && !actionAllowlist.length && !actionDenylist.length
+        : actorCanManageRoleSet(actor, role, extraRoles);
+    if (!canAssignRole) {
         throw onboardingError('Недостатньо прав для створення акаунта з таким рівнем доступу', 403, 'ACCOUNT_ONBOARDING_ROLE_FORBIDDEN');
     }
     if (!dbPool || typeof dbPool.connect !== 'function') throw new TypeError('Database pool is required');
@@ -969,6 +1006,7 @@ async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = 
     const savedConditions = [];
     try {
         await client.query('BEGIN');
+        const park = delegated ? await lockParkOnboardingMembership(client, actor, normalized.staff.mode) : null;
         const marker = normalized.personal.username.startsWith('hrqa-') ? normalized.personal.username : normalized.personal.name;
         qa = await prepareHrFixtureQa(client, req, 'onboard', marker);
         assertHrQaOnboarding(qa, operation, normalized);
@@ -1085,6 +1123,17 @@ async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = 
             ]
         );
         user = userResult.rows[0];
+        if (park) {
+            await client.query(
+                "INSERT INTO organization_memberships (organization_id, user_id, role, created_by_user_id) VALUES ($1, $2, 'member', $3)",
+                [park.organizationId, user.id, actor.id]
+            );
+            await client.query(
+                `INSERT INTO business_memberships (business_id, organization_id, user_id, role, is_default, created_by_user_id)
+                 VALUES ($1, $2, $3, $4, true, $5)`,
+                [park.businessId, park.organizationId, user.id, role, actor.id]
+            );
+        }
         loginCheck = await verifyIssuedCredential({
             client,
             username: user.username,
@@ -1117,6 +1166,7 @@ async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = 
             actionDenyOverrideCount: normalized.access.actionDenylist.length,
             businessContexts: normalized.access.businessContexts,
             defaultBusinessContext: normalized.access.defaultBusinessContext,
+            ...(park ? { organizationId: park.organizationId, businessId: park.businessId, membershipActivated: true } : {}),
             staffId: staff.id,
             staffCreated,
             structureNodeId: normalized.structureNodeId,
@@ -1173,7 +1223,7 @@ async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = 
         });
     }
     try {
-        if (!qa) defaultChatMemberships = await addDefaultChatMemberships(dbPool, user.id);
+        if (!qa && !delegated) defaultChatMemberships = await addDefaultChatMemberships(dbPool, user.id);
     } catch {
         warnings.push({
             code: 'DEFAULT_CHAT_SETUP_FAILED',
@@ -1238,6 +1288,8 @@ async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = 
 }
 
 module.exports = {
+    canOnboardParkWorker,
+    PARK_WORKER_ROLES,
     SYSTEM_ACCOUNT_USERNAME,
     SYSTEM_ACCOUNT_USERNAMES,
     SYSTEM_ACCOUNT_USERNAME_PREFIXES,

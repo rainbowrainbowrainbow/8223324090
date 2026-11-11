@@ -53,6 +53,8 @@ const {
     accountSystemStatus,
     isProtectedSystemAccount,
     assertLastActiveCreatorInvariant,
+    canOnboardParkWorker,
+    PARK_WORKER_ROLES,
     createAccountOnboarding,
     findCommittedAccountOnboarding
 } = require('../services/accountOnboarding');
@@ -476,9 +478,16 @@ router.get('/link-conflicts', requireAction('manage_accounts'), requireParkStaff
 });
 
 // GET /api/users/onboarding/options — aggregate data for the controlled account onboarding wizard
-router.get('/onboarding/options', requireAction('manage_accounts'), requireAction('hr.staff.manage'), requireParkStaffAccounts, async (req, res) => {
+function requireParkAccountOnboarding(req, res, next) {
+    if (canUseAction(req.user, 'manage_accounts') && canUseAction(req.user, 'hr.staff.manage')) return next();
+    if (canOnboardParkWorker(req)) return next();
+    return res.status(403).json({ success: false, code: 'ACCOUNT_ONBOARDING_FORBIDDEN', error: 'Немає доступу до оформлення CRM-акаунтів' });
+}
+
+router.get('/onboarding/options', requireParkAccountOnboarding, requireParkStaffAccounts, async (req, res) => {
     try {
-        const canViewPayroll = canUseAction(req.user, 'hr.payroll.view');
+        const parkWorkerOnboarding = !canUseAction(req.user, 'manage_accounts');
+        const canViewPayroll = !parkWorkerOnboarding && canUseAction(req.user, 'hr.payroll.view');
         const [staffResult, professionResult, structureResult, conditionResult] = await Promise.all([
             pool.query(
                 `SELECT s.id, s.name, s.department, s.position, s.phone, s.hire_date,
@@ -577,7 +586,9 @@ router.get('/onboarding/options', requireAction('manage_accounts'), requireActio
                 parentId: node.parentId || null,
                 archived: node.archived === true
             })),
-            canManagePayrollRules: canManageStaffPayrollRules(req.user),
+            canManagePayrollRules: !parkWorkerOnboarding && canManageStaffPayrollRules(req.user),
+            parkWorkerOnboarding,
+            allowedAccountRoles: parkWorkerOnboarding ? PARK_WORKER_ROLES : null,
             roleHierarchy: ROLE_HIERARCHY,
             rolePresets: {
                 management: ['senior_manager', 'manager'],
@@ -597,7 +608,7 @@ router.get('/onboarding/options', requireAction('manage_accounts'), requireActio
     }
 });
 
-router.get('/onboarding/operations/:key', requireAction('manage_accounts'), requireAction('hr.staff.manage'), requireParkStaffAccounts, async (req, res) => {
+router.get('/onboarding/operations/:key', requireParkAccountOnboarding, requireParkStaffAccounts, async (req, res) => {
     try {
         const result = await findCommittedAccountOnboarding(req, req.params.key);
         if (!result) return res.status(404).json({ success: false, code: 'STAFF_OPERATION_NOT_FOUND' });
@@ -610,9 +621,9 @@ router.get('/onboarding/operations/:key', requireAction('manage_accounts'), requ
 });
 
 // POST /api/users/onboarding — atomically create/link account and HR working setup
-router.post('/onboarding', requireAction('manage_accounts'), requireAction('hr.staff.manage'), requireParkStaffAccounts, async (req, res) => {
+router.post('/onboarding', requireParkAccountOnboarding, requireParkStaffAccounts, async (req, res) => {
     try {
-        const canViewPayroll = canUseAction(req.user, 'hr.payroll.view');
+        const canViewPayroll = canUseAction(req.user, 'manage_accounts') && canUseAction(req.user, 'hr.payroll.view');
         const result = await createAccountOnboarding({
             payload: req.body || {},
             actor: req.user,

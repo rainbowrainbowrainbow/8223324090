@@ -40,10 +40,17 @@ async function seed(pool) {
         "INSERT INTO users (username, password_hash, name, role) VALUES ($1, $2, 'QA Delegate', 'admin') RETURNING id",
         [username, await bcrypt.hash(password, 10)]
     );
+    const adminUsername = `qa_staff_admin_${runId}`;
+    const { rows: [admin] } = await pool.query(
+        "INSERT INTO users (username, password_hash, name, role) VALUES ($1, $2, 'QA Park Admin', 'admin') RETURNING id",
+        [adminUsername, await bcrypt.hash(password, 10)]
+    );
     const actors = [
         { label: 'desktop', width: 1440, username: process.env.TEST_USER, password: process.env.TEST_PASS, id: creator.user.id, role: 'creator', allow: [], deny: [] },
         { label: 'mobile', width: 390, username, password, id: delegate.id, role: 'admin',
-            allow: ['hr.staff.view', 'hr.staff.create', 'hr.staff.profile.edit'], deny: ['hr.staff.manage'] }
+            allow: ['hr.staff.view', 'hr.staff.create', 'hr.staff.profile.edit'], deny: ['hr.staff.manage'] },
+        { label: 'park-admin', width: 1440, username: adminUsername, password, id: admin.id, role: 'admin',
+            allow: [], deny: [], parkWorker: true }
     ];
     for (const actor of actors) {
         await pool.query(
@@ -196,12 +203,13 @@ async function runActor(browser, pool, actor, existingAccountId) {
         await page.waitForFunction(() => document.getElementById('editStaffPosition').value === 'QA Updated Position');
         await page.locator('#editCloseTop').click();
         await profile.waitFor({ state: 'hidden' });
-        if (actor.role === 'creator') {
+        if (actor.role === 'creator' || actor.parkWorker) {
             await card.getByRole('button', { name: /дії:/i }).click();
             await card.getByRole('menuitem', { name: 'Створити CRM' }).click();
             const wizard = page.locator('#accountOnboardingOverlay');
             await wizard.waitFor({ state: 'visible' });
-            await page.locator('#accountOnboardingUsername').fill(`qa_staff_link_${runId}`);
+            const username = `qa_staff_link_${actor.label}_${runId}`;
+            await page.locator('#accountOnboardingUsername').fill(username);
             await page.locator('#accountOnboardingNext').click();
             assert.equal(await page.locator('#accountOnboardingStaffId').inputValue(), String(staff.id));
             for (let step = 2; step <= 6; step++) {
@@ -215,11 +223,16 @@ async function runActor(browser, pool, actor, existingAccountId) {
             assert.equal(linked.status(), 200, 'CRM account created');
             const { rows: [binding] } = await pool.query(
                 'SELECT ep.staff_id FROM employee_profiles ep JOIN users u ON ep.user_id = u.id WHERE u.username = $1',
-                [`qa_staff_link_${runId}`]
+                [username]
             );
             assert.equal(binding.staff_id, staff.id);
             assert.equal((await pool.query('SELECT id FROM staff WHERE name = $1', [name])).rowCount, 1);
             const receipt = page.locator('#accountOnboardingReceipt');
+            if (actor.parkWorker) {
+                await receipt.getByText('Доступ до вибраного бізнесу активний.', { exact: false }).waitFor();
+                process.stdout.write('[hr-staff] Park admin linked the same staff ID and activated Park access\n');
+                return;
+            }
             await receipt.getByRole('link', { name: 'свій профіль' }).waitFor();
             assert.match(await receipt.textContent(), /очікує членства.*Призначити доступ акаунту/s);
             await page.locator('[data-account-onboarding-finish]').click();

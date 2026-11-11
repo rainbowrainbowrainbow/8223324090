@@ -101,6 +101,50 @@ test('staff account operations enforce Park ownership and payroll/operation perm
         assert.equal((await readStaff()).phone, 'original');
     });
 
+    await t.test('Park admin onboards a worker using the role preset and activates only Park membership', async () => {
+        const admin = await actor('park-admin', 'admin', park);
+        const foreignAdmin = await actor('foreign-admin', 'admin', otherOrg);
+        const deniedAdmin = await actor('denied-admin', 'admin', park, ['hr.staff.accounts.onboard']);
+        for (const principal of [viewer, foreignAdmin, deniedAdmin]) {
+            assert.equal((await api('/api/users/onboarding/options', { actor: principal })).status, 403);
+        }
+        const options = await api('/api/users/onboarding/options', { actor: admin });
+        assert.equal(options.status, 200);
+        assert.equal(options.data.parkWorkerOnboarding, true);
+        assert.ok(options.data.allowedAccountRoles.includes('animator'));
+        assert.ok(!options.data.allowedAccountRoles.includes('admin'));
+        assert.equal(options.data.canManagePayrollRules, false);
+        assert.equal(Object.hasOwn(options.data.staff.find(item => item.id === staff.id), 'hourly_rate'), false);
+        assert.equal((await api('/api/users', { actor: admin })).status, 403);
+        const target = { mode: 'new', department: 'animators', position: 'QA Animator' };
+        const body = payload('park-worker', target, {
+            personal: { name: marker + '-park-worker', username: marker + '-park-worker' }
+        });
+        for (const access of [{ role: 'admin' }, { role: 'animator', extraRoles: ['admin'] }, { role: 'animator', pageAllowlist: ['/hr'] }]) {
+            assert.equal((await onboard(admin, { ...body, access })).status, 403);
+        }
+        assert.equal((await onboard(admin, { ...body, staff: { ...target, hourlyRate: 321 } })).status, 403);
+        assert.equal((await pool.query('SELECT id FROM users WHERE username=$1', [body.personal.username])).rowCount, 0);
+        const key = randomUUID();
+        const submit = () => api('/api/users/onboarding', { actor: admin, method: 'POST', body, headers: { 'Idempotency-Key': key } });
+        const created = await submit();
+        assert.equal(created.status, 200, JSON.stringify(created.data.code));
+        assert.equal(created.data.accessState, 'active');
+        const userId = created.data.receipt.account.id;
+        const staffId = created.data.receipt.staff.id;
+        const replayed = await submit();
+        assert.equal(replayed.status, 200);
+        assert.equal(replayed.data.receipt.account.id, userId);
+        assert.equal(replayed.data.receipt.staff.id, staffId);
+        assert.equal(replayed.data.credential, null);
+        const { rows } = await pool.query(`SELECT bm.business_id, bm.role, om.role AS organization_role, ep.staff_id
+            FROM business_memberships bm JOIN organization_memberships om USING (organization_id,user_id)
+            JOIN employee_profiles ep ON ep.user_id=bm.user_id AND ep.is_active
+            WHERE bm.user_id=$1 AND bm.is_active AND om.is_active`, [userId]);
+        assert.deepEqual(rows, [{ business_id: park.id, role: 'animator', organization_role: 'member', staff_id: staffId }]);
+        assert.equal((await pool.query('SELECT 1 FROM chat_channel_members WHERE user_id=$1', [userId])).rowCount, 0);
+    });
+
     await t.test('payroll-denied account manager gets no rates and cannot write aliases or nested rates', async () => {
         const options = await api('/api/users/onboarding/options', { actor: restricted });
         assert.equal(options.status, 200);

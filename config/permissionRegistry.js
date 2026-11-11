@@ -525,6 +525,13 @@ const ACTION_PERMISSIONS = Object.freeze([
         apiConsumers: [api('routes/hr.js', 'PUT /api/hr/staff/:id', null, 'Park membership and an allowlist of profile fields are required.')]
     }),
     action({
+        key: 'hr.staff.accounts.onboard', label: 'Оформляти CRM-акаунти працівників ПАРК', group: 'hr',
+        defaultRoles: ['admin'], risk: 'critical', delegable: false,
+        frontendConsumers: [source('js/hr-page.js', "canUseHrCapability('hr.staff.accounts.onboard'", { enforces: true })],
+        backendConsumers: [source('services/accountOnboarding.js', 'function canOnboardParkWorker', { enforces: true })],
+        apiConsumers: [api('routes/users.js', 'POST /api/users/onboarding', null, 'Enforced by requireParkAccountOnboarding and the Park worker role allowlist.')]
+    }),
+    action({
         key: 'hr.reports.view', label: 'Перегляд HR-звітів', group: 'hr', defaultRoles: HR_PAGE_ACCESS, risk: 'critical',
         backendConsumers: [source('routes/hr.js', 'function requireHrCapabilityContract', { enforces: true })],
         frontendConsumers: [source('js/hr-page.js', "'hr.reports.view'", { enforces: true }), source('js/hr-pulse-switcher.js', "'hr.reports.view'", { enforces: true })], apiConsumers: [api('routes/hr.js', '/api/hr/report', null, 'Enforced by requireHrCapabilityContract.')]
@@ -974,11 +981,10 @@ const ACTION_PERMISSIONS = Object.freeze([
     action({
         key: 'hermes.staff.manage', label: 'Hermes: керування персоналом', group: 'hermes', defaultRoles: [...MANAGER_UP, 'hr', 'admin'], legacyKeys: ['manage_staff'], risk: 'critical',
         backendConsumers: [
-            source('routes/users.js', "requireAction('hr.staff.manage')", { enforces: true }),
             source('routes/hermes-schedule.js', "canUseAction(req.user, 'hermes.staff.manage')", { enforces: true }),
             source('services/hermesStaffAccountOnboarding.js', "canUseAction(actor, 'hermes.staff.manage')", { enforces: true })
         ],
-        apiConsumers: [api('routes/users.js', '/api/users/onboarding', 'hr.staff.manage'), api('routes/hermes-schedule.js', 'POST /api/hermes/staff', null, 'Enforced by canUseAction granular capability'), api('routes/hermes.js', 'Hermes staff/account onboarding', null, 'Enforced by canUseAction granular capability')]
+        apiConsumers: [api('routes/hermes-schedule.js', 'POST /api/hermes/staff', null, 'Enforced by canUseAction granular capability'), api('routes/hermes.js', 'Hermes staff/account onboarding', null, 'Enforced by canUseAction granular capability')]
     }),
     action({
         key: 'hermes.attendance.manage', label: 'Hermes: імпорт відвідуваності', group: 'hermes', defaultRoles: [...MANAGER_UP, 'hr', 'admin'], legacyKeys: ['manage_staff'], risk: 'critical',

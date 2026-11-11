@@ -6373,7 +6373,8 @@ function canManageAccountSecurity() {
 
 function canRunAccountOnboarding() {
     const canManageStaff = typeof canAccess === 'function' ? canAccess('hr.staff.manage') : false;
-    return canManageAccountSecurity() && canManageStaff;
+    return canManageStaff && (canManageAccountSecurity()
+        || (window.CrmBusinessContext?.current?.() === 'event_genix' && canUseHrCapability('hr.staff.accounts.onboard')));
 }
 
 function canManageAccountProfile() {
@@ -7671,14 +7672,16 @@ function renderTeamCardOverflowMenu(staff = {}) {
     const accountItems = canLinkAccounts()
         ? (staff.has_account
             ? `<button type="button" role="menuitem" class="hr-team-menu-item" onclick="openAccountForStaff(${id}, this)">CRM-акаунт</button>`
-            : `<button type="button" role="menuitem" class="hr-team-menu-item" onclick="openAccountLinkForStaff(${id}, this)">Прив'язати CRM</button>
-               ${canManageAccountSecurity() ? `<button type="button" role="menuitem" class="hr-team-menu-item" onclick="openAccountCreateForStaff(${id}, this)">Створити CRM</button>` : ''}`)
+            : `<button type="button" role="menuitem" class="hr-team-menu-item" onclick="openAccountLinkForStaff(${id}, this)">Прив'язати CRM</button>`)
+        : '';
+    const createAccountItem = !staff.has_account && canRunAccountOnboarding()
+        ? `<button type="button" role="menuitem" class="hr-team-menu-item" onclick="openAccountCreateForStaff(${id}, this)">Створити CRM</button>`
         : '';
     const manageItems = canManage
         ? `<button type="button" role="menuitem" class="hr-team-menu-item hr-team-document" data-ui-contract="hr-staff-document-paperclip" onclick="openStaffDocuments(${id})">Документи</button>
            <button type="button" role="menuitem" class="hr-team-menu-item hr-team-move" onclick="openStaffMoveMenu(${id}, this)">Перемістити</button>`
         : '';
-    const actionSection = [accountItems, manageItems].filter(Boolean).join('');
+    const actionSection = [accountItems, createAccountItem, manageItems].filter(Boolean).join('');
     const dangerSection = canManage
         ? `<div class="hr-team-menu-section hr-team-menu-section--danger">
                 <small>Повне видалення — тільки для дубля.</small>
@@ -9068,7 +9071,7 @@ async function loadAccountOnboardingOptions(force = false, expectedRequestSeq = 
     if (accountOnboardingOptions && !force) return accountOnboardingOptions;
     const [options, roleDefinitions] = await Promise.all([
         crmApiFetch('/api/users/onboarding/options'),
-        fetchAccountRoleDefinitions()
+        canManageAccountSecurity() ? fetchAccountRoleDefinitions() : null
     ]);
     if (!options?.success) throw new Error(options?.error || 'Не вдалося завантажити onboarding');
     if (expectedRequestSeq !== null && expectedRequestSeq !== accountOnboardingRequestSeq) return null;
@@ -9238,10 +9241,30 @@ function renderAccountOnboardingAccessControls(options = {}) {
     if (!roleSelect) return;
     const requestedRole = options.role || roleSelect.value || accountOnboardingSelectedProfessions().find(item => item.isPrimary)?.key || 'animator';
     const mappedRole = accountOnboardingOptions?.professionRoleMap?.[requestedRole] || staffRoleToAccountRole(requestedRole);
-    const roleOptions = getAccountRoleOptions(mappedRole || 'animator');
+    const workerOnboarding = accountOnboardingOptions?.parkWorkerOnboarding === true;
+    const roleOptions = getAccountRoleOptions(mappedRole || 'animator')
+        .filter(option => !workerOnboarding || accountOnboardingOptions.allowedAccountRoles.includes(option.value));
     const allowedRoles = new Set(roleOptions.map(option => option.value));
     const role = allowedRoles.has(options.role || roleSelect.value) ? (options.role || roleSelect.value) : (allowedRoles.has(mappedRole) ? mappedRole : roleOptions[0]?.value || 'animator');
     roleSelect.innerHTML = roleOptions.map(option => `<option value="${escapeHtml(option.value)}" ${option.value === role ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('');
+
+    const businessNote = accountOnboardingEl('accountOnboardingBusinessNote');
+    if (businessNote) businessNote.textContent = workerOnboarding
+        ? 'Після створення акаунт отримає доступ до ПАРК у вибраній ролі.'
+        : 'Вибір бізнесу задає контекст профілю, але сам по собі не створює членство чи доступ до цього бізнесу.';
+    const workerNote = accountOnboardingEl('accountOnboardingWorkerAccessNote');
+    if (workerNote) {
+        workerNote.hidden = !workerOnboarding;
+        workerNote.parentElement.querySelectorAll('details').forEach(element => { element.hidden = workerOnboarding; });
+    }
+
+    if (workerOnboarding) {
+        for (const id of ['accountOnboardingExtraRoles', 'accountOnboardingPages', 'accountOnboardingActionAllow', 'accountOnboardingActionDeny', 'accountOnboardingRolePresets']) {
+            accountOnboardingEl(id).replaceChildren();
+        }
+        renderAccountOnboardingBusinessControls();
+        return;
+    }
 
     const selectedExtras = options.extraRoles || checkedAccountOnboardingValues('accountOnboardingExtraRoles', 'account-onboarding-extra-role');
     renderAccountOnboardingCheckboxList('accountOnboardingExtraRoles', getAccountExtraRoleOptions(role, selectedExtras), selectedExtras, 'account-onboarding-extra-role');
@@ -9535,7 +9558,9 @@ function renderAccountOnboardingReview() {
         ['Професії', professionTitles],
         ['Ставка / час', conditionText],
         ['Роль профілю', `${ROLE_LABELS[payload.access.role] || payload.access.role} · ${payload.access.businessContexts.join(', ')}`],
-        ['Членство бізнесу', 'Цей крок не надає членства; доступ активується окремо'],
+        ['Членство бізнесу', accountOnboardingOptions?.parkWorkerOnboarding
+            ? 'Доступ до ПАРК буде активовано під час створення'
+            : 'Цей крок не надає членства; доступ активується окремо'],
         ['Overrides', `${payload.access.extraRoles.length} дод. ролей · ${payload.access.pageAllowlist.length} сторінок · ${payload.access.actionAllowlist.length}/${payload.access.actionDenylist.length} allow/deny`]
     ].map(([label, value]) => `<div class="hr-account-detail-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || 'Не задано')}</strong></div>`).join('');
 }
@@ -9583,7 +9608,9 @@ function renderAccountOnboardingReceipt(response) {
     const businessAccessMessage = `${loginMessage} ${businessAccessStatusMessage}`;
     const accountId = Number(receipt.account?.id || response?.user?.id || 0);
     const recoveredCredential = response?.replayed
-        ? `<p>Збережену операцію знайдено. Якщо пароль не був отриманий, відкрийте HR → Акаунти, знайдіть акаунт #${accountId} та скористайтеся дією «Тимчасовий пароль».</p>`
+        ? (canManageAccountSecurity()
+            ? `<p>Збережену операцію знайдено. Якщо пароль не був отриманий, відкрийте HR → Акаунти, знайдіть акаунт #${accountId} та скористайтеся дією «Тимчасовий пароль».</p>`
+            : `<p>Збережену операцію знайдено. Якщо пароль не був отриманий, передайте ID акаунта #${accountId} власнику для видачі тимчасового пароля.</p>`)
         : '';
     const membershipNextStep = accessState === 'pending_membership' && accountId > 0
         ? `<p>Для активації доступу власник або адміністратор організації має відкрити <a href="/profile">свій профіль</a>, знайти «Команда та доступи» і натиснути «Призначити доступ акаунту». ID акаунта <strong>#${accountId}</strong>. Бізнес і роль потрібно вибрати явно.</p>`
@@ -9807,7 +9834,7 @@ function bindAccountOnboardingControls() {
 
 async function openAccountOnboardingWizard(button, context = {}) {
     if (!canRunAccountOnboarding()) {
-        showNotification('Для контрольованого onboarding потрібні capability manage_accounts і hr.staff.manage', 'error');
+        showNotification('Немає доступу до оформлення CRM-акаунтів у ПАРК', 'error');
         return false;
     }
     const overlay = accountOnboardingEl('accountOnboardingOverlay');
@@ -9844,7 +9871,7 @@ async function openAccountOnboardingWizard(button, context = {}) {
         const loadedOptions = await loadAccountOnboardingOptions(true, requestSeq);
         if (!accountOnboardingState.open || requestSeq !== accountOnboardingRequestSeq) return false;
         if (!loadedOptions) return false;
-        void ensureAccountOnboardingPayrollProfiles(true);
+        if (!loadedOptions.parkWorkerOnboarding) void ensureAccountOnboardingPayrollProfiles(true);
         renderAccountOnboardingStaffOptions();
         renderAccountOnboardingStructureOptions();
         renderAccountOnboardingProfessions();

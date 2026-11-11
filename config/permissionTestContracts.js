@@ -238,6 +238,13 @@ const ACTION_PERMISSION_TEST_CONTRACTS = Object.freeze({
         allowExpectation: 'primary_role_preset_only',
         testFiles: ['tests/auth-account-lifecycle.test.js', 'tests/account-center-contract.test.js']
     }),
+    'hr.staff.accounts.onboard': actionContract('hr.staff.accounts.onboard', {
+        backendScenario: 'Park administrators create and link a worker account with Park membership',
+        mutation: true,
+        sensitive: true,
+        allowExpectation: 'primary_role_preset_only',
+        testFiles: ['tests/account-center-contract.test.js', 'tests/integration/staff-account-boundary.integration.test.js']
+    }),
     'view_all': actionContract('view_all', {
         backendScenario: 'booking visibility service',
         sensitive: true,

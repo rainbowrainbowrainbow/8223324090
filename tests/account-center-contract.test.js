@@ -95,8 +95,8 @@ test('account creation uses the seven-step atomic onboarding workspace', () => {
     assert.match(HR_PAGE_CODE, /onboarding: \{ submit: '\/api\/users\/onboarding'/);
     assert.match(HR_PAGE_CODE, /submitStaffCreation\('onboarding', accountOnboardingState\.payload, isCurrent\)/);
     assert.match(HR_PAGE_CODE, /rateMode !== 'keep'/);
-    assert.match(USERS_ROUTE, /router\.post\('\/onboarding', requireAction\('manage_accounts'\), requireAction\('hr\.staff\.manage'\)/);
-    assert.match(USERS_ROUTE, /router\.get\('\/onboarding\/options', requireAction\('manage_accounts'\), requireAction\('hr\.staff\.manage'\)/);
+    assert.match(USERS_ROUTE, /router\.post\('\/onboarding', requireParkAccountOnboarding, requireParkStaffAccounts/);
+    assert.match(USERS_ROUTE, /router\.get\('\/onboarding\/options', requireParkAccountOnboarding, requireParkStaffAccounts/);
     assert.match(HR_PAGE_CODE, /function canRunAccountOnboarding/);
     assert.match(HR_HTML, /option value="unchanged"/);
     assert.match(HR_PAGE_CODE, /expectedRequestSeq !== accountOnboardingRequestSeq/);

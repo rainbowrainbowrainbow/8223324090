@@ -132,16 +132,35 @@ async function runHrCrmVisualAudit({ browser, pool, actors, login, target, outpu
                     await capture('account');
                     await next.click();
                     await page.locator('[data-account-onboarding-step="5"]').waitFor({ state: 'visible' });
-                    await page.locator('#accountOnboardingRole').selectOption('animator');
+                    const roleSelect = page.locator('#accountOnboardingRole');
+                    if (!actor.parkWorker && width === 1366) {
+                        await roleSelect.selectOption('director');
+                        const businesses = page.locator('#accountOnboardingBusinesses');
+                        assert.equal(await businesses.isVisible(), true);
+                        await businesses.locator('input[value="dar"]').check();
+                        await page.locator('#accountOnboardingDefaultBusiness').selectOption('dar');
+                        const access = await page.evaluate(() => buildAccountOnboardingPayload().access);
+                        assert.ok(access.businessContexts.includes('dar'));
+                        assert.equal(access.defaultBusinessContext, 'dar');
+                        await capture('multiple-businesses');
+                    }
+                    await roleSelect.selectOption('animator');
                     record.contrast = [...(record.contrast || []), ...await measureContrast('.hr-account-eyebrow, .hr-account-preset-grid button strong, .hr-account-preset-grid button small, [data-account-onboarding-step="5"] .hr-account-onboarding-panel-head p, #accountOnboardingBusinesses > label:not(.is-disabled)')];
                     assert.ok(record.contrast.every(item => item.ratio >= 4.5), JSON.stringify(record.contrast));
                     await assertLayout();
+                    assert.equal(await page.locator('#accountOnboardingSingleBusiness').isVisible(), true);
+                    assert.equal(await page.locator('#accountOnboardingBusinessChoices').isVisible(), false);
+                    assert.equal(await page.locator('#accountOnboardingDefaultBusinessField').isVisible(), false);
+                    assert.match(await page.locator('#accountOnboardingSingleBusiness').innerText(), /Парк/);
                     await capture('access');
                     await page.locator('#accountOnboardingBack').click();
                     assert.equal(await page.locator('#accountOnboardingUsername').inputValue(), username);
                     await next.click();
                     await next.click();
                     await assertLayout();
+                    const review = await page.locator('#accountOnboardingReview').innerText();
+                    assert.match(review, /Результат.*Парк/is);
+                    assert.doesNotMatch(review, /event_genix|0 дод\. ролей|не змінювати наявні умови/);
                     await capture('review');
                     const [response] = await Promise.all([
                         page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/users/onboarding'),
@@ -157,6 +176,12 @@ async function runHrCrmVisualAudit({ browser, pool, actors, login, target, outpu
                     assert.equal((await pool.query('SELECT id FROM staff WHERE name=$1', [name])).rowCount, 1);
                     assert.equal(result.accessState, actor.parkWorker ? 'active' : 'pending_membership');
                     await page.locator('[data-account-onboarding-finish]').waitFor({ state: 'visible' });
+                    const copy = page.locator('[data-account-onboarding-copy]');
+                    assert.ok(await copy.evaluate(button => {
+                        const rect = button.getBoundingClientRect();
+                        return rect.top >= 0 && rect.bottom <= innerHeight
+                            && button.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
+                    }), `${key}: credential action must be reachable without scrolling`);
                     await capture('result');
                     // Keyboard traversal must stay in the modal, including the receipt.
                     await page.locator('[data-account-onboarding-finish]').focus();

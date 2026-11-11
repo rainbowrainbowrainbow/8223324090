@@ -49,13 +49,14 @@ async function install(page) {
     await page.route('**/*', route => route.abort());
     await page.setContent(`<!doctype html><html lang="uk"><head><meta charset="utf-8"><style>${css}</style></head><body data-page-group="hr"><main><button id="receiptTrigger" type="button">Відкрити синтетичну квитанцію</button></main>${onboardingMarkup()}</body></html>`);
     await page.evaluate(() => {
-        window.AppState = { currentUser: { id: 1, role: 'creator', activeBusinessContext: 'event_genix' } };
+        window.AppState = { currentUser: { id: 1, role: 'creator', activeBusinessContext: 'event_genix', businessProfile: { organizations: [{ role: 'owner' }] } } };
         window.__receiptCopies = [];
         window.showNotification = () => {};
         Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async value => window.__receiptCopies.push(value) } });
         window.__receiptAddEventListener = document.addEventListener.bind(document);
         document.addEventListener = (type, listener, options) => type === 'DOMContentLoaded' ? undefined : window.__receiptAddEventListener(type, listener, options);
     });
+    await page.addScriptTag({ content: read('js/business-membership-manager.js') });
     await page.addScriptTag({ content: read('js/hr-page.js') });
     await page.evaluate(() => {
         document.addEventListener = window.__receiptAddEventListener;
@@ -76,7 +77,7 @@ async function install(page) {
 
 async function run(browser) {
     fs.mkdirSync(OUTPUT_DIR, { recursive: true });
-    for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    for (const viewport of [{ width: 1440, height: 900 }, { width: 360, height: 800 }, { width: 390, height: 844 }]) {
         const page = await browser.newPage({ viewport });
         page.setDefaultTimeout(10_000);
         const pageErrors = [];
@@ -117,6 +118,14 @@ async function run(browser) {
                 if (scenario.payload.receipt.warnings.length) assert.match(await receipt.locator('.hr-account-receipt-warnings').innerText(), /Статус членства не підтверджено/);
 
                 const copyButton = receipt.locator('[data-account-onboarding-copy]');
+                assert.ok(await copyButton.evaluate(el => {
+                    const rect = el.getBoundingClientRect();
+                    return rect.top >= 0 && rect.bottom <= innerHeight
+                        && el.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
+                }), 'Copy is reachable before scrolling');
+                const assign = receipt.getByRole('link', { name: 'Призначити доступ акаунту' });
+                assert.equal(await assign.count(), scenario.name === 'pending' ? 1 : 0);
+                if (scenario.name === 'pending') assert.ok(await assign.evaluate(el => el.getBoundingClientRect().bottom <= innerHeight));
                 await copyButton.click();
                 assert.equal(await page.evaluate(() => window.__receiptCopies.at(-1)), 'Username: synthetic.receipt\nPassword: SyntheticReceipt234');
                 assert.equal(await page.evaluate(() => accountOnboardingState.credential.password), 'SyntheticReceipt234');

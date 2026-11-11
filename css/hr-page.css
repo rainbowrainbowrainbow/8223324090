@@ -5609,6 +5609,12 @@ button.hr-team-onboarding-compact:focus-visible {
     font-weight: 900;
     cursor: pointer;
 }
+.hr-account-review-membership {
+    grid-column: 1 / -1;
+}
+#accountOnboardingDefaultBusinessField[hidden] {
+    display: none;
+}
 .hr-account-review {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));

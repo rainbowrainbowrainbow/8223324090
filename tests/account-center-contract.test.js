@@ -113,9 +113,11 @@ test('account creation reuses four panels with three-step existing-card navigati
     assert.match(UI_CODE, /disabled \? ' disabled aria-disabled="true"'/);
 });
 
-function renderReceiptFixture(payload) {
+function renderReceiptFixture(payload, canAssign = true) {
     const root = { innerHTML: '', classList: { add() {}, remove() {} }, setAttribute() {}, focus() {} };
     const context = {
+        window: { BusinessMembershipManager: { canManage: () => canAssign } },
+        AppState: { currentUser: {} },
         accountOnboardingState: { payload: { access: { defaultBusinessContext: 'dar' } } },
         ROLE_LABELS: { animator: 'Аніматор' },
         professionTitle: key => key === 'animator' ? 'Аніматор' : key,
@@ -146,7 +148,7 @@ test('account receipt separates password readiness, profile context, and busines
     }
     assert.match(HR_HTML, /Бізнеси профілю/);
     assert.match(HR_HTML, /Вибір бізнесу задає контекст профілю, але сам по собі не створює членство/);
-    assert.match(HR_PAGE_CODE, /Членство бізнесу/);
+    assert.match(HR_PAGE_CODE, /доступ до бізнесу потрібно призначити окремо/);
 });
 
 test('recovered receipt distinguishes unavailable details from empty data and preserves staff identity', () => {
@@ -170,6 +172,15 @@ test('pending membership receipt offers the canonical profile handoff without gr
     const { html } = renderReceiptFixture({ accessState: 'pending_membership', businessAccessReady: false, receipt: { account: { id: 17 } } });
     assert.match(html, /href="\/profile\?tab=settings&assignAccount=17#profileBusinessMembers"/);
     assert.match(html, /Призначити доступ акаунту/);
+    const response = { accessState: 'pending_membership', businessAccessReady: false, receipt: { account: { id: 17 }, staff: { id: 31 } }, credential: { username: 'qa', password: 'synthetic-only' } };
+    const fresh = renderReceiptFixture(response, false);
+    assert.match(fresh.html, /Передайте ID акаунта #17/);
+    assert.doesNotMatch(fresh.html, /assignAccount=/);
+    assert.match(fresh.html, /data-account-onboarding-copy/);
+    const replay = renderReceiptFixture({ ...response, replayed: true });
+    assert.equal(replay.state.credential, null);
+    assert.match(replay.html, /#31/);
+    assert.doesNotMatch(replay.html, /synthetic-only|data-account-onboarding-copy/);
     assert.doesNotMatch(renderReceiptFixture({ accessState: 'active', businessAccessReady: true, receipt: { account: { id: 17 } } }).html, /assignAccount=/);
 });
 

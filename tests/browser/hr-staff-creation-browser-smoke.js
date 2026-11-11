@@ -54,8 +54,8 @@ async function seed(pool) {
     ];
     for (const actor of actors) {
         await pool.query(
-            "INSERT INTO organization_memberships (organization_id, user_id, role, is_active) VALUES ($1, $2, 'member', true) ON CONFLICT DO NOTHING",
-            [organization.id, actor.id]
+            'INSERT INTO organization_memberships (organization_id, user_id, role, is_active) VALUES ($1, $2, $3, true) ON CONFLICT DO NOTHING',
+            [organization.id, actor.id, actor.role === 'creator' ? 'owner' : 'member']
         );
         await pool.query(
             `INSERT INTO business_memberships
@@ -178,6 +178,10 @@ async function runActor(browser, pool, actor, existingAccountId) {
         assert.equal(await dialog.locator('[name="secondary_professions"][value="animator"]').isDisabled(), true);
         await dialog.screenshot({ path: path.join(output, `${actor.label}-create.png`) });
         await captureSupplement('hr-create');
+        await dialog.locator('#hrCreateStaffProfessionPicker summary').click();
+        const createCardSubmit = dialog.getByRole('button', { name: 'Створити картку', exact: true });
+        await createCardSubmit.scrollIntoViewIfNeeded();
+        await captureSupplement('hr-submit');
         const loseResponse = actor.label === 'mobile';
         if (loseResponse) {
             await page.route('**/api/staff', async route => {
@@ -191,7 +195,7 @@ async function runActor(browser, pool, actor, existingAccountId) {
             loseResponse
                 ? page.waitForResponse(response => new URL(response.url()).pathname.startsWith('/api/staff/creation-operations/'))
                 : waitForResponse(page, 'POST', '/api/staff'),
-            dialog.locator('[type="submit"]').click()
+            createCardSubmit.click()
         ]);
         if (loseResponse) await page.unroute('**/api/staff');
         assert.equal(creation.status(), 200, loseResponse ? 'committed staff operation recovered' : 'staff created');
@@ -199,6 +203,13 @@ async function runActor(browser, pool, actor, existingAccountId) {
         const profile = page.locator('#staffEditModal');
         await profile.waitFor({ state: 'visible' });
         await page.waitForFunction(id => Number(document.getElementById('editStaffId').value) === id, staff.id);
+        const feedback = profile.locator('#staffCreationResult');
+        await feedback.waitFor({ state: 'visible' });
+        assert.match(await feedback.innerText(), new RegExp(`Картку #${staff.id}`));
+        if (actor.label === 'mobile') {
+            assert.equal(await profile.getByRole('button', { name: 'Створити CRM-акаунт' }).count(), 0);
+        }
+        await captureSupplement('hr-created');
         await profile.locator('#editStaffPosition').fill('QA Updated Position');
         const [edit] = await Promise.all([
             waitForResponse(page, 'PUT', `/api/hr/staff/${staff.id}`),

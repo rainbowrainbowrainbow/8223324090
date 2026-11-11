@@ -7325,8 +7325,14 @@ function bindHrStaffCreation() {
         await loadTeam();
         if (context === teamAccessContext()) {
             await openStaffEdit(result.data.id);
-            if (context === teamAccessContext() && activeEditStaffId() === Number(result.data.id)) {
-                announceStaffProfileStatus(`Картку #${result.data.id} ${result.replayed ? 'знайдено за попередньою операцією' : 'створено'}. Можна налаштувати доступ до CRM.`);
+            if (context === teamAccessContext() && isActiveStaffEditLoad(result.data.id)) {
+                const feedback = document.getElementById('staffCreationResult');
+                if (feedback) {
+                    feedback.hidden = false;
+                    feedback.textContent = result.replayed
+                        ? `Картку #${result.data.id} відкрито за попередньою операцією. Доступ до CRM перевіряється окремо.`
+                        : `Картку #${result.data.id} створено. CRM-акаунт цією дією не створювався.`;
+                }
             }
         }
     };
@@ -9382,23 +9388,33 @@ function renderAccountOnboardingAccessControls(options = {}) {
 function renderAccountOnboardingBusinessControls(selectedInput = null, defaultInput = '') {
     const role = accountOnboardingEl('accountOnboardingRole')?.value || 'animator';
     const canSwitch = accountRoleCanSwitchBusinessContext(role);
-    const selected = canSwitch
-        ? normalizeAccountBusinessSelection(selectedInput || checkedAccountOnboardingValues('accountOnboardingBusinesses', 'account-onboarding-business'))
-        : ['event_genix'];
+    const catalog = getAccountBusinessCatalog().filter(item => canSwitch || item.key === 'event_genix');
+    const fixedBusiness = catalog.length === 1 ? catalog[0] : null;
+    const selected = fixedBusiness ? [fixedBusiness.key]
+        : normalizeAccountBusinessSelection(selectedInput || checkedAccountOnboardingValues('accountOnboardingBusinesses', 'account-onboarding-business'));
     renderAccountOnboardingCheckboxList(
         'accountOnboardingBusinesses',
-        getAccountBusinessCatalog().map(item => ({ value: item.key, label: item.label || item.key, disabled: !canSwitch && item.key !== 'event_genix' })),
+        catalog.map(item => ({ value: item.key, label: item.label || item.key })),
         selected,
         'account-onboarding-business'
     );
     const defaultSelect = accountOnboardingEl('accountOnboardingDefaultBusiness');
     if (!defaultSelect) return;
-    const defaultKey = canSwitch ? getAccountDefaultBusinessValue({ defaultBusinessContext: defaultInput || defaultSelect.value }, selected) : 'event_genix';
-    defaultSelect.innerHTML = getAccountBusinessCatalog()
+    const defaultKey = fixedBusiness?.key || getAccountDefaultBusinessValue({ defaultBusinessContext: defaultInput || defaultSelect.value }, selected);
+    defaultSelect.innerHTML = catalog
         .filter(item => selected.includes(item.key))
         .map(item => `<option value="${escapeHtml(item.key)}" ${item.key === defaultKey ? 'selected' : ''}>${escapeHtml(item.label || item.key)}</option>`)
         .join('');
-    defaultSelect.disabled = !canSwitch;
+    defaultSelect.disabled = Boolean(fixedBusiness);
+    const businessChoices = accountOnboardingEl('accountOnboardingBusinessChoices');
+    const defaultField = accountOnboardingEl('accountOnboardingDefaultBusinessField');
+    const singleBusiness = accountOnboardingEl('accountOnboardingSingleBusiness');
+    if (businessChoices) businessChoices.hidden = Boolean(fixedBusiness);
+    if (defaultField) defaultField.hidden = Boolean(fixedBusiness);
+    if (singleBusiness) {
+        singleBusiness.hidden = !fixedBusiness;
+        singleBusiness.textContent = fixedBusiness ? `Бізнес: ${fixedBusiness.label || fixedBusiness.key}` : '';
+    }
 }
 
 function syncAccountOnboardingProfessionDependants(options = {}) {
@@ -9698,21 +9714,44 @@ function renderAccountOnboardingReview() {
         return `${row?.title || item.key}${item.isPrimary ? ' · основна' : ''}`;
     }).join(', ');
     const structure = accountOnboardingOptions?.structureNodes?.find(node => node.id === payload.structureNodeId);
-    const conditionText = payload.conditions
-        ? `${payload.conditions.rateMode === 'explicit' ? `індивідуальна ${payload.conditions.hourlyRate}` : 'базова ставка співробітника'} · ${payload.conditions.professionKey}`
-        : 'не змінювати наявні умови';
-    accountOnboardingEl('accountOnboardingReview').innerHTML = [
-        ['Акаунт', `${payload.personal.name} · ${payload.personal.username}`],
-        ['Картка співробітника', payload.staff.mode === 'existing' ? `${staffRow?.name || `Картка #${payload.staff.id}`} · існуючий` : `${payload.personal.name} · новий`],
-        ['Структура', Object.hasOwn(payload, 'structureNodeId') ? structure?.title || 'Без вузла' : 'Збережена в картці співробітника'],
-        ['Професії', professionTitles || 'Збережені в картці співробітника'],
-        ['Ставка / час', conditionText],
-        ['Роль у CRM', `${ROLE_LABELS[payload.access.role] || payload.access.role} · ${payload.access.businessContexts.join(', ')}`],
-        ['Членство бізнесу', accountOnboardingOptions?.parkWorkerOnboarding
-            ? 'Доступ до ПАРК буде активовано під час створення'
-            : 'Цей крок не надає членства; доступ активується окремо'],
-        ['Додаткові права', `${payload.access.extraRoles.length} дод. ролей · ${payload.access.pageAllowlist.length} сторінок · ${payload.access.actionAllowlist.length}/${payload.access.actionDenylist.length} дозволів/заборон`]
-    ].map(([label, value]) => `<div class="hr-account-detail-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || 'Не задано')}</strong></div>`).join('');
+    const businessCatalog = getAccountBusinessCatalog();
+    const businessNames = payload.access.businessContexts.map(key => businessCatalog.find(item => item.key === key)?.label || 'Невідомий бізнес');
+    const rows = [
+        ['Результат', payload.staff.mode === 'existing' ? 'Створити CRM-акаунт і прив’язати до картки' : 'Створити картку та CRM-акаунт'],
+        ['Співробітник', payload.staff.mode === 'existing' ? `#${payload.staff.id} · ${staffRow?.name || payload.personal.name}` : payload.personal.name],
+        ['Логін', payload.personal.username],
+        ['Роль у CRM', ROLE_LABELS[payload.access.role] || payload.access.role],
+        ['Бізнес', businessNames.join(', ')]
+    ];
+    if (businessNames.length > 1) rows.push(['Бізнес за замовченням', businessCatalog.find(item => item.key === payload.access.defaultBusinessContext)?.label || 'Невідомий бізнес']);
+    if (Object.hasOwn(payload, 'structureNodeId') && (payload.staff.mode === 'existing' || payload.structureNodeId)) {
+        rows.push(['Структура', structure?.title || 'Без вузла']);
+    }
+    if (professionTitles) rows.push(['Професії', professionTitles]);
+    if (payload.conditions) {
+        const { rateMode, hourlyRate, professionKey, shiftPreferences } = payload.conditions;
+        const rate = rateMode === 'explicit' ? `індивідуальна ставка ${hourlyRate} / год`
+            : rateMode === 'fallback'
+                ? `базова ставка${payload.staff.hourlyRate == null ? ' співробітника' : ` ${payload.staff.hourlyRate} / год`}`
+                : '';
+        const shifts = shiftPreferences.filter(item => item.startTime && item.endTime)
+            .map(item => `${item.dayType === 'weekday' ? 'Будні' : 'Вихідні'}: ${item.startTime}–${item.endTime}`);
+        rows.push(['Умови роботи', [professionTitle(professionKey), rate, ...shifts].filter(Boolean).join(' · ')]);
+    }
+    const accessLabels = [
+        ['Додаткові ролі', payload.access.extraRoles, key => ROLE_LABELS[key] || key],
+        ['Додаткові сторінки', payload.access.pageAllowlist, key => key],
+        ['Дозволені дії', payload.access.actionAllowlist, key => key],
+        ['Заборонені дії', payload.access.actionDenylist, key => key]
+    ];
+    accessLabels.forEach(([label, values, format]) => {
+        if (values.length) rows.push([label, values.map(format).join(', ')]);
+    });
+    const membership = accountOnboardingOptions?.parkWorkerOnboarding
+        ? 'Доступ до ПАРК буде активовано під час створення.'
+        : 'Після створення акаунта доступ до бізнесу потрібно призначити окремо.';
+    accountOnboardingEl('accountOnboardingReview').innerHTML = `<p class="hr-account-review-membership hr-account-receipt-access" role="note">${escapeHtml(membership)}</p>` + rows
+        .map(([label, value]) => `<div class="hr-account-detail-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || 'Не задано')}</strong></div>`).join('');
 }
 
 function accountOnboardingSteps() {
@@ -9755,7 +9794,7 @@ function showAccountOnboardingStep(step) {
 
 function renderAccountOnboardingReceipt(response) {
     const receipt = response?.receipt || {};
-    const credential = response?.credential || null;
+    const credential = response?.replayed ? null : response?.credential || null;
     accountOnboardingState.receipt = receipt;
     accountOnboardingState.credential = credential;
     const staffId = Number(receipt.staff?.id || response?.staff?.id || 0);
@@ -9781,8 +9820,14 @@ function renderAccountOnboardingReceipt(response) {
             ? `<p>Збережену операцію знайдено. Якщо пароль не був отриманий, відкрийте HR → Акаунти, знайдіть акаунт #${accountId} та скористайтеся дією «Тимчасовий пароль».</p>`
             : `<p>Збережену операцію знайдено. Якщо пароль не був отриманий, передайте ID акаунта #${accountId} власнику для видачі тимчасового пароля.</p>`)
         : '';
-    const membershipNextStep = accessState === 'pending_membership' && !businessAccessReady && accountId > 0
-        ? `<p>Для активації доступу власник або адміністратор організації має відкрити свій профіль і призначити бізнес та роль акаунту <strong>#${accountId}</strong>.</p><a class="hr-account-primary" href="/profile?tab=settings&assignAccount=${accountId}#profileBusinessMembers">Призначити доступ акаунту</a>`
+    const membershipPending = accessState === 'pending_membership' && !businessAccessReady && accountId > 0;
+    const membershipNextStep = membershipPending
+        ? (window.BusinessMembershipManager?.canManage(AppState.currentUser)
+            ? `<a class="hr-account-primary" href="/profile?tab=settings&assignAccount=${accountId}#profileBusinessMembers">Призначити доступ акаунту</a>`
+            : `<p class="hr-account-field-note">Передайте ID акаунта #${accountId} власнику або адміністратору організації для призначення доступу.</p>`)
+        : '';
+    const copyAction = credential
+        ? '<button type="button" class="hr-account-primary" data-account-onboarding-copy>Скопіювати логін і пароль</button>'
         : '';
     const conditionSummary = (receipt.conditions || []).map(condition => {
         const after = condition.after || condition;
@@ -9804,19 +9849,20 @@ function renderAccountOnboardingReceipt(response) {
     const root = accountOnboardingEl('accountOnboardingReceipt');
     if (!root) return;
     root.setAttribute('tabindex', '-1');
-    root.innerHTML = `<h4>${title}</h4><p class="hr-account-receipt-access" role="status" aria-live="polite">${escapeHtml(businessAccessStatusMessage)}</p>${membershipNextStep}<div class="hr-account-receipt-grid">${[
+    root.innerHTML = `<h4>${title}</h4><p class="hr-account-receipt-access" role="status" aria-live="polite">${escapeHtml(businessAccessStatusMessage)}</p><p class="hr-account-receipt-access" role="status" aria-live="polite">${escapeHtml(loginMessage)}</p><div class="hr-account-detail-actions">${copyAction}${membershipNextStep}</div>${recoveredCredential}<div class="hr-account-receipt-grid">${[
         ['Акаунт', `${receipt.account?.name || response?.user?.name || ''} · ${receipt.account?.username || response?.user?.username || ''}`],
         ['Картка співробітника', `#${staffId || '—'} · ${receipt.staff?.name || response?.staff?.name || '—'} · ${receipt.staff?.linked === false ? 'зв’язок змінено після створення' : (receipt.staff?.created ? 'створено' : 'прив’язано')}`],
         ['Професії', professionSummary],
         ['Ставка / типовий час', conditionsSummary],
         ['Роль у CRM', roleSummary],
         ['Вибраний бізнес', businessLabel]
-    ].map(([label, value]) => `<div class="hr-account-detail-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || 'Не задано')}</strong></div>`).join('')}</div><p class="hr-account-receipt-access" role="status" aria-live="polite">${escapeHtml(loginMessage)}</p>${recoveredCredential}${credential ? `<div class="hr-account-credential"><strong>Тимчасовий пароль, показується один раз</strong><code>Логін: ${escapeHtml(credential.username || '')}</code><code>Тимчасовий пароль: ${escapeHtml(credential.password || '')}</code><button type="button" class="hr-account-toggle" data-account-onboarding-copy>Скопіювати логін і пароль</button></div>` : ''}${warnings.length ? `<div class="hr-account-receipt-warnings"><strong>Створено з попередженнями:</strong><ul>${warnings.map(warning => `<li>${escapeHtml(warning.message || warning.code || '')}</li>`).join('')}</ul></div>` : ''}<div class="hr-account-detail-actions">${staffId ? `<button type="button" class="hr-account-toggle" data-account-onboarding-open-staff="${staffId}">Відкрити картку співробітника</button><button type="button" class="hr-account-toggle" data-account-onboarding-open-documents="${staffId}">Додати документи</button><button type="button" class="hr-account-toggle" data-account-onboarding-open-resources="${staffId}">Видати ресурси</button>` : ''}${professionKey ? `<button type="button" class="hr-account-toggle" data-account-onboarding-open-checklist="${escapeHtml(professionKey)}">Відкрити навчання</button>` : ''}<button type="button" class="hr-account-primary" data-account-onboarding-finish>Готово</button></div>`;
+    ].map(([label, value]) => `<div class="hr-account-detail-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || 'Не задано')}</strong></div>`).join('')}</div>${credential ? `<div class="hr-account-credential"><strong>Тимчасовий пароль, показується один раз</strong><code>Логін: ${escapeHtml(credential.username || '')}</code><code>Тимчасовий пароль: ${escapeHtml(credential.password || '')}</code></div>` : ''}${warnings.length ? `<div class="hr-account-receipt-warnings"><strong>Створено з попередженнями:</strong><ul>${warnings.map(warning => `<li>${escapeHtml(warning.message || warning.code || '')}</li>`).join('')}</ul></div>` : ''}<div class="hr-account-detail-actions">${staffId ? `<button type="button" class="hr-account-toggle" data-account-onboarding-open-staff="${staffId}">Відкрити картку співробітника</button><button type="button" class="hr-account-toggle" data-account-onboarding-open-documents="${staffId}">Додати документи</button><button type="button" class="hr-account-toggle" data-account-onboarding-open-resources="${staffId}">Видати ресурси</button>` : ''}${professionKey ? `<button type="button" class="hr-account-toggle" data-account-onboarding-open-checklist="${escapeHtml(professionKey)}">Відкрити навчання</button>` : ''}<button type="button" class="hr-account-primary" data-account-onboarding-finish>Готово</button></div>`;
     root.classList.remove('hidden');
     accountOnboardingEl('accountOnboardingForm')?.classList.add('hidden');
     accountOnboardingEl('accountOnboardingSteps')?.classList.add('hidden');
     accountOnboardingEl('accountOnboardingActions')?.classList.add('hidden');
     setAccountOnboardingStatus(warnings.length ? 'Основні дані створено. Перевірте попередження у квитанції.' : '', warnings.length ? 'warning' : 'success');
+    root.scrollTop = 0;
     root.focus({ preventScroll: true });
 }
 
@@ -14340,6 +14386,11 @@ function prepareStaffProfileDrawerLayout() {
 }
 
 function resetStaffProfileLazyState(staffId) {
+    const feedback = document.getElementById('staffCreationResult');
+    if (feedback) {
+        feedback.hidden = true;
+        feedback.textContent = '';
+    }
     resetStaffAccountAccess();
     const conditionsDate = document.getElementById('editPayrollConditionsDate');
     if (conditionsDate) conditionsDate.value = todayStr();

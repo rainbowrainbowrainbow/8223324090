@@ -199,7 +199,7 @@
                     <p id="hrCreateStaffStatus" role="status" aria-live="polite"></p>
                     <div class="hr-account-onboarding-actions">
                         <button type="button" class="hr-account-toggle" id="hrCreateStaffCancel">Скасувати</button>
-                        <button type="submit" class="hr-account-primary">Створити</button>
+                        <button type="submit" class="hr-account-primary">Створити картку</button>
                     </div>
                 </form>
             </dialog>
@@ -425,9 +425,10 @@
                             <div id="accountOnboardingRolePresets" class="hr-account-preset-grid" aria-label="Швидкі пакети ролей"></div>
                             <div class="hr-account-form-grid">
                                 <label><span>Основна роль *</span><select id="accountOnboardingRole"></select></label>
-                                <label><span>Бізнес за замовченням</span><select id="accountOnboardingDefaultBusiness"></select></label>
+                                <label id="accountOnboardingDefaultBusinessField"><span>Бізнес за замовченням</span><select id="accountOnboardingDefaultBusiness"></select></label>
+                                <p id="accountOnboardingSingleBusiness" hidden></p>
                             </div>
-                            <div><strong class="hr-account-field-title">Бізнеси профілю</strong><div id="accountOnboardingBusinesses" class="hr-account-option-list is-compact"></div><p id="accountOnboardingBusinessNote" class="hr-account-field-note" role="note">Вибір бізнесу задає контекст профілю, але сам по собі не створює членство чи доступ до цього бізнесу.</p></div>
+                            <div><div id="accountOnboardingBusinessChoices"><strong class="hr-account-field-title">Бізнеси профілю</strong><div id="accountOnboardingBusinesses" class="hr-account-option-list is-compact"></div></div><p id="accountOnboardingBusinessNote" class="hr-account-field-note" role="note">Вибір бізнесу задає контекст профілю, але сам по собі не створює членство чи доступ до цього бізнесу.</p></div>
                         <details id="accountOnboardingConditionsDetails" class="hr-account-advanced"><summary>Умови роботи</summary><label class="hr-account-option"><input id="accountOnboardingEditConditions" type="checkbox"> Змінити ставку або типовий час</label><fieldset disabled id="accountOnboardingConditions" class="hr-account-onboarding-panel">
                             <div class="hr-account-onboarding-panel-head"><h4>Ставка і типовий час</h4><p>Умови для планування роботи співробітника.</p></div>
                             <div class="hr-account-form-grid">
@@ -1139,6 +1140,7 @@
                     <span>Картка співробітника</span>
                     <strong id="editStaffMainName">ПІБ</strong>
                 </div>
+            <p id="staffCreationResult" class="hr-account-receipt-access" role="status" hidden></p>
             <section id="staffAccountAccess" class="hr-staff-foundation-panel" aria-labelledby="staffAccountAccessTitle" hidden>
                 <h3 id="staffAccountAccessTitle">Доступ до CRM</h3>
                 <p class="form-hint">Картка співробітника й акаунт для входу — окремі записи. Тут показано їхній зв’язок; доступ до бізнесу перевіряється окремо.</p>
@@ -1782,6 +1784,7 @@
     <script src="js/account-access-editor.js?v=0.83.34"></script>
     <script src="js/attendance-upload-links.js?v=0.83.34"></script>
     <script src="js/hr-attendance-ocr.js?v=0.83.34"></script>
+    <script src="js/business-membership-manager.js?v=0.83.34"></script>
     <script src="js/hr-page.js?v=0.83.34"></script>
     <script src="js/hr-today-print.js?v=0.83.34"></script>
     <script src="js/alerts.js?v=0.83.34"></script>

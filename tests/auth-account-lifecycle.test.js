@@ -1952,7 +1952,7 @@ test('account action overrides drive final permissions and protect against self-
 
         const creatorRolesMatrix = await request(baseUrl, 'GET', '/api/users/roles', undefined, creatorToken());
         assert.equal(creatorRolesMatrix.status, 200);
-        assert.deepEqual(creatorRolesMatrix.data.nonDelegableActions.sort(), ['fiscal.configure', 'manage_accounts', 'manage_settings'].sort());
+        assert.deepEqual(creatorRolesMatrix.data.nonDelegableActions.sort(), ['fiscal.configure', 'hr.staff.accounts.onboard', 'manage_accounts', 'manage_settings'].sort());
         assert.equal(creatorRolesMatrix.data.actions.find(action => action.key === 'manage_accounts').delegable, false);
 
         const createArtDirector = await request(baseUrl, 'POST', '/api/users', {

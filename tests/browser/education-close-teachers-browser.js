@@ -524,6 +524,7 @@ async function closeChecks(){
         await page.locator('#staffEditModal').waitFor({state:'visible'});
         await page.waitForFunction(()=>document.getElementById('staffEditModal')?.dataset.cardState !== 'loading').catch(()=>{});
         evidence.proofs.hrCardBeforeAssignment=await page.evaluate(()=>({state:document.getElementById('staffEditModal')?.dataset.cardState,profileError:document.getElementById('staffProfileCardState')?.textContent,panelHidden:document.getElementById('staffEducationAssignment')?.hidden,manager:window.canAccess?.('hr.staff.manage'),staffId:document.getElementById('editStaffId')?.value,userRole:window.AppState?.currentUser?.role,active:window.AppState?.currentUser?.activeBusinessContext,url:location.pathname+location.search,scope:typeof getCrmBusinessScope==='function'?getCrmBusinessScope():null,membership:window.AppState?.currentUser?.businessMembershipAccess}));flush();
+        await page.getByRole('tab',{name:'Робота',exact:true}).click();
         await page.locator('#staffEducationAssignment').waitFor({state:'visible'});
         await page.waitForFunction(()=>!document.getElementById('staffEducationBusiness').disabled);
         await page.locator('#staffEducationBusiness').selectOption('dar');
@@ -598,7 +599,9 @@ async function closeChecks(){
             await page.locator('#editCloseTop').click();await page.locator('#staffEditModal').waitFor({state:'hidden'});await page.setViewportSize({width:390,height:844});
             if(await page.evaluate(()=>document.documentElement.dataset.theme)!==theme)await page.locator('#headerThemeToggle').click();await page.waitForFunction(theme=>document.documentElement.dataset.theme===theme,theme);
             await waitTeacherRuntimeReads(page);
-            await page.goto(base+'/hr.html?businessContext=event_genix&employee='+candidate,{waitUntil:'domcontentloaded'});await page.locator('#staffEducationAssignment').waitFor({state:'visible'});await page.waitForFunction(()=>!document.getElementById('staffEducationBusiness').disabled);await page.locator('#staffEducationBusiness').selectOption('dar');
+            await page.goto(base+'/hr.html?businessContext=event_genix&employee='+candidate,{waitUntil:'domcontentloaded'});
+            await page.getByRole('tab',{name:'Робота',exact:true}).click();
+            await page.locator('#staffEducationAssignment').waitFor({state:'visible'});await page.waitForFunction(()=>!document.getElementById('staffEducationBusiness').disabled);await page.locator('#staffEducationBusiness').selectOption('dar');
             await page.locator('#staffEducationAssignment').scrollIntoViewIfNeeded();await measureContrast(page,'hr-education-phone-'+theme);
             const audit=evidence.audits.at(-1);assert.ok(audit.contrast.length>0);assert.deepEqual(audit.contrast.filter(c=>!Number.isFinite(c.ratio)||c.ratio<c.minimum),[],'New HR education controls contrast');
             assert.equal(await page.locator('#staffEducationAssignment').evaluate(el=>el.scrollWidth<=el.clientWidth+1),true);await shot(page,'existing-hr-assignment-phone-'+theme);

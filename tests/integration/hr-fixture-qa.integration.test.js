@@ -170,20 +170,18 @@ test('Park HR QA writes register exact fixtures, suppress chat and retire the ru
         await page.locator('#hrCreateStaffBtn').waitFor({ state: 'visible' });
         await page.waitForFunction(() => typeof canRunAccountOnboarding === 'function' && canRunAccountOnboarding());
         assert.equal(await page.evaluate(() => openAccountOnboardingWizard(null)), true);
-        await page.locator('#accountOnboardingName').fill(staffName(2));
-        await page.locator('#accountOnboardingUsername').fill(`${runId}-account-2`);
-        await page.locator('#accountOnboardingNext').click();
         await page.locator('input[name="accountOnboardingStaffMode"][value="new"]').check();
+        await page.locator('#accountOnboardingName').fill(staffName(2));
         await page.locator('#accountOnboardingDepartment').fill('animators');
         await page.locator('#accountOnboardingPosition').fill('QA Animator');
-        await page.locator('#accountOnboardingNext').click();
         await page.locator('#accountOnboardingProfession-animator').check();
         await page.locator('#accountOnboardingPrimaryProfession-animator').check();
-        for (let step = 3; step <= 6; step++) {
-            if (step === 4) await page.locator('#accountOnboardingRateMode').selectOption('keep');
-            if (step === 5) await page.locator('#accountOnboardingRole').selectOption('animator');
-            await page.locator('#accountOnboardingNext').click();
-        }
+        const next = page.locator('#accountOnboardingNext');
+        await next.click();
+        await page.locator('#accountOnboardingUsername').fill(`${runId}-account-2`);
+        await next.click();
+        await page.locator('#accountOnboardingRole').selectOption('animator');
+        await next.click();
         return clickSubmit(page, '/api/users/onboarding', page.locator('#accountOnboardingSubmit'));
     });
     assert.equal(second.status, 200, JSON.stringify({ code: second.data.code,

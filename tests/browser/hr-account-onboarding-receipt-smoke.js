@@ -89,7 +89,7 @@ async function run(browser) {
                 { name: 'unknown', payload: fixture('unknown', false), message: /Стан доступу до вибраного бізнесу не вдалося підтвердити/ },
                 { name: 'missing', payload: fixture(), message: /Стан доступу до вибраного бізнесу не вдалося підтвердити/ },
                 { name: 'nested', payload: fixture('active', true, { nested: true }), message: /Доступ до вибраного бізнесу активний\./ },
-                { name: 'password-unconfirmed', payload: { ...fixture('active', true), loginReady: false }, message: /Готовність пароля до входу не підтверджено/ }
+                { name: 'password-unconfirmed', payload: { ...fixture('active', true), loginReady: false }, message: /Доступ до вибраного бізнесу активний\./ }
             ];
             for (const scenario of cases) {
                 await page.evaluate(payload => { window.__receiptFixture = payload; }, scenario.payload);
@@ -101,12 +101,16 @@ async function run(browser) {
                 assert.equal(await overlay.getAttribute('aria-modal'), 'true');
                 assert.equal(await page.evaluate(() => document.activeElement.id), 'accountOnboardingReceipt');
                 assert.equal(await page.locator('main').evaluate(element => element.inert), true);
-                const status = receipt.locator('.hr-account-receipt-access');
-                assert.match(await status.innerText(), scenario.message);
-                assert.equal(await status.getAttribute('role'), 'status');
-                assert.equal(await status.getAttribute('aria-live'), 'polite');
-                if (scenario.payload.loginReady) assert.match(await status.innerText(), /Пароль готовий до входу/);
-                else assert.doesNotMatch(await status.innerText(), /Пароль готовий до входу/);
+                const statuses = receipt.getByRole('status');
+                assert.equal(await statuses.count(), 2);
+                const loginMessage = scenario.payload.loginReady
+                    ? /Пароль готовий до входу/
+                    : /Готовність пароля до входу не підтверджено/;
+                for (const message of [scenario.message, loginMessage]) {
+                    const status = statuses.filter({ hasText: message });
+                    assert.match(await status.innerText(), message);
+                    assert.equal(await status.getAttribute('aria-live'), 'polite');
+                }
                 const business = receipt.locator('.hr-account-detail-card').filter({ hasText: 'Вибраний бізнес' });
                 assert.equal(await business.locator('strong').innerText(), 'Дар', 'receipt uses the created account business, not the operator Park context');
                 assert.match(await receipt.locator('.hr-account-credential').innerText(), /SyntheticReceipt234/);

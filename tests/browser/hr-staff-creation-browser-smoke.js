@@ -118,9 +118,28 @@ async function runActor(browser, pool, actor, existingAccountId) {
     try {
         await page.goto(new URL('/hr?tab=team', target).href);
         await page.waitForFunction(() => document.getElementById('hrCreateStaffForm')?.dataset.bound === 'true');
-        await page.locator('#hrCreateStaffBtn').click();
+        const createButton = page.locator('#hrCreateStaffBtn');
+        await createButton.waitFor({ state: 'visible' });
+        const toolbar = await page.locator('.hr-team-filter-row').boundingBox();
+        const search = await page.locator('#teamSearch').boundingBox();
+        const button = await createButton.boundingBox();
+        await createButton.click();
         const dialog = page.locator('#hrCreateStaffDialog');
         await dialog.waitFor({ state: 'visible' });
+        if (actor.label === 'mobile') await page.setViewportSize({ width: actor.width, height: 640 });
+        const geometry = await dialog.evaluate(element => {
+            const { left, right, top, bottom } = element.getBoundingClientRect();
+            return {
+                centered: Math.abs(left + right - innerWidth) <= 2 && Math.abs(top + bottom - innerHeight) <= 2,
+                inset: Math.min(left, top, innerWidth - right, innerHeight - bottom) >= 10
+            };
+        });
+        assert.deepEqual({
+            compactButton: button.width <= toolbar.width - 32,
+            desktopSameRow: actor.label === 'mobile' || Math.abs(button.y + button.height / 2 - search.y - search.height / 2) <= 2,
+            ...geometry
+        }, { compactButton: true, desktopSameRow: true, centered: true, inset: true });
+        if (actor.label === 'mobile') await page.setViewportSize({ width: actor.width, height: 900 });
         if (actor.role === 'creator') {
             await dialog.locator('[name="name"]').fill('Abandoned draft');
             assert.equal(await page.evaluate(() => window.CrmBusinessContext.set('dar')), 'dar');

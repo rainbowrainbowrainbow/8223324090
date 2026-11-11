@@ -3275,6 +3275,14 @@ body.dark-mode[data-page-group="hr"] .sch-replacement-details strong,
     align-items: center;
 }
 
+.hr-team-filter-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
 .page-container .hr-team-controls .hr-team-search {
     width: 100%;
     min-width: 0;
@@ -3847,10 +3855,6 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
     .page-container .hr-team-filter-row {
         grid-template-columns: minmax(0, 1fr);
         gap: 8px;
-    }
-
-    .page-container .hr-team-filter-info {
-        width: 100%;
     }
 
     .page-container .hr-people-results-grid {

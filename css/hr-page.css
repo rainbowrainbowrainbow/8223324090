@@ -5355,14 +5355,30 @@ button.hr-team-onboarding-compact:focus-visible {
     box-shadow: 0 28px 80px rgba(15,23,42,0.34);
 }
 #hrCreateStaffDialog {
-    width: min(540px, 94vw);
-    padding: 20px;
+    position: fixed;
+    inset: 0;
+    display: block;
+    width: min(540px, calc(100% - 24px));
+    max-width: none;
+    height: fit-content;
+    max-height: calc(100dvh - 24px);
+    margin: auto;
+    padding: clamp(16px, 4vw, 24px);
     overflow: auto;
+    border: 1px solid var(--border, #dbe2ea);
+    border-radius: 18px;
     color: var(--text-primary, #1e293b);
     background: var(--surface, #fff);
 }
 #hrCreateStaffDialog:not([open]) { display: none; }
 #hrCreateStaffDialog::backdrop { background: rgba(15, 23, 42, 0.58); }
+#hrCreateStaffForm { overflow: visible; }
+#hrCreateStaffTitle { margin-bottom: 16px; }
+#hrCreateStaffFields { margin-bottom: 12px; }
+#hrCreateStaffForm .hr-account-onboarding-actions {
+    margin-top: 16px;
+    padding: 12px 0 0;
+}
 #hrCreateStaffBtn[hidden] { display: none !important; }
 .hr-account-onboarding-head {
     display: flex;

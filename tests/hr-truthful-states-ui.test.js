@@ -83,6 +83,7 @@ function harness(markup, options = {}) {
 canManage = canUseHrCapability('hr.staff.manage');
 window.__hrTruthfulState = () => ({ reportState, professionCatalogAccess, professionCatalogLoadState, hrProfessions });
 window.__setWorkspaceOpen = value => { professionWorkspaceState.open = value; };
+window.__setAccountOnboardingOptions = value => { accountOnboardingOptions = value; };
 window.__isWorkspaceOpen = () => professionWorkspaceState.open;`);
     if (options.surfaceAvailable === true) win.getLegacyBusinessSurfaceAvailability = () => ({ available: true });
     return { dom, win };
@@ -800,7 +801,7 @@ test('late onboarding list cannot show people from the previous business', async
 });
 
 test('account onboarding payroll hint distinguishes denial from missing default profile', async () => {
-    const markup = '<select id="accountOnboardingConditionProfession"><option value="animator" selected>Animator</option></select><div id="accountOnboardingPayrollProfileHint"></div>';
+    const markup = '<input id="accountOnboardingEditConditions" type="checkbox"><select id="accountOnboardingConditionProfession"><option value="animator" selected>Animator</option></select><div id="accountOnboardingPayrollProfileHint"></div>';
     let denied = true;
     const { dom, win } = harness(markup, {
         fetch: async () => denied
@@ -808,6 +809,9 @@ test('account onboarding payroll hint distinguishes denial from missing default 
             : response(200, { success: true, data: [] })
     });
     try {
+        win.__setAccountOnboardingOptions({ canManagePayrollRules: true });
+        assert.equal(await win.ensureAccountOnboardingPayrollProfiles(true), null);
+        win.document.getElementById('accountOnboardingEditConditions').checked = true;
         await win.ensureAccountOnboardingPayrollProfiles(true);
         const hint = win.document.getElementById('accountOnboardingPayrollProfileHint');
         assert.equal(hint.dataset.state, 'error');

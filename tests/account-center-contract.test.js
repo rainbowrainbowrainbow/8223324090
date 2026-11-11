@@ -85,8 +85,9 @@ test('account center is a dense master-detail surface with conflict drill-down',
     assert.match(HR_CSS, /\.hr-account-row-open\s*\{/);
 });
 
-test('account creation uses the seven-step atomic onboarding workspace', () => {
-    assert.equal((HR_HTML.match(/data-account-onboarding-step="\d"/g) || []).length, 7);
+test('account creation reuses four panels with three-step existing-card navigation', () => {
+    assert.equal((HR_HTML.match(/data-account-onboarding-step="\d"/g) || []).length, 4);
+    assert.match(HR_PAGE_CODE, /\[2, 1, 5, 7\] : \[1, 5, 7\]/);
     assert.match(HR_HTML, /id="accountOnboardingReceipt"/);
     assert.match(HR_HTML, /Тимчасовий пароль буде показано один раз/);
     assert.match(HR_PAGE_CODE, /async function openAccountOnboardingWizard/);
@@ -116,6 +117,9 @@ function renderReceiptFixture(payload) {
     const root = { innerHTML: '', classList: { add() {}, remove() {} }, setAttribute() {}, focus() {} };
     const context = {
         accountOnboardingState: { payload: { access: { defaultBusinessContext: 'dar' } } },
+        ROLE_LABELS: { animator: 'Аніматор' },
+        professionTitle: key => key === 'animator' ? 'Аніматор' : key,
+        canManageAccountSecurity: () => true,
         accountOnboardingEl: () => root,
         getAccountBusinessCatalog: () => [{ key: 'dar', label: 'Дар' }, { key: 'event_genix', label: 'Парк Закревського' }],
         escapeHtml: value => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'),
@@ -143,6 +147,30 @@ test('account receipt separates password readiness, profile context, and busines
     assert.match(HR_HTML, /Бізнеси профілю/);
     assert.match(HR_HTML, /Вибір бізнесу задає контекст профілю, але сам по собі не створює членство/);
     assert.match(HR_PAGE_CODE, /Членство бізнесу/);
+});
+
+test('recovered receipt distinguishes unavailable details from empty data and preserves staff identity', () => {
+    const receipt = { account: { id: 17, username: 'test' }, staff: { id: 31, created: false, linked: true } };
+    const recovered = renderReceiptFixture({ replayed: true, receipt });
+    assert.match(recovered.html, /CRM-акаунт створено/);
+    assert.doesNotMatch(recovered.html, /Співробітника й CRM-акаунт створено|Не задано|Не змінювалися/);
+    assert.match(recovered.html, /#31.*прив’язано/);
+    assert.match(recovered.html, /Роль не завантажено/);
+    assert.match(recovered.html, /Дані професій не завантажено/);
+    assert.match(recovered.html, /Дані умов не завантажено/);
+    assert.match(recovered.html, /Збережену операцію знайдено/);
+    const created = renderReceiptFixture({ receipt: { ...receipt, staff: { id: 31, created: true }, professions: [], conditions: [], access: { role: 'animator' } } });
+    assert.match(created.html, /Співробітника й CRM-акаунт створено/);
+    assert.match(created.html, /Професії не призначено/);
+    assert.match(created.html, /Не змінювалися/);
+    assert.match(created.html, /Аніматор/);
+});
+
+test('pending membership receipt offers the canonical profile handoff without granting access', () => {
+    const { html } = renderReceiptFixture({ accessState: 'pending_membership', businessAccessReady: false, receipt: { account: { id: 17 } } });
+    assert.match(html, /href="\/profile\?tab=settings&assignAccount=17#profileBusinessMembers"/);
+    assert.match(html, /Призначити доступ акаунту/);
+    assert.doesNotMatch(renderReceiptFixture({ accessState: 'active', businessAccessReady: true, receipt: { account: { id: 17 } } }).html, /assignAccount=/);
 });
 
 test('receipt fallback is cautious and preserves credentials and post-commit warnings', () => {
@@ -217,6 +245,36 @@ test('account onboarding recovers from request failures and never logs issued cr
     assert.doesNotMatch(hrCredentialSource, /console\.(?:log|info|warn|error)/);
     assert.doesNotMatch(staffCredentialSource, /console\.(?:log|info|warn|error)/);
 });
+
+for (const changed of ['business', 'session', 'closed', 'replacement']) {
+    test(`late onboarding result is not rendered or acknowledged after ${changed}`, async () => {
+        let resolve, calls = 0, acknowledgements = 0, completions = 0;
+        let identity = 'park:session1';
+        const pending = new Promise(done => { resolve = done; });
+        const submit = { disabled: false };
+        const context = {
+            accountOnboardingState: { open: true, submitting: false, payload: { staff: { id: 123 } } },
+            accountOnboardingRequestSeq: 1,
+            accountOnboardingSteps: () => [1, 5, 7], validateAccountOnboardingStep: () => true,
+            renderAccountOnboardingReview() {}, accountOnboardingEl: () => submit,
+            setAccountOnboardingStatus() {}, teamAccessContext: () => identity,
+            submitStaffCreation: async () => { calls++; return pending; },
+            completeAccountOnboarding: () => { completions++; }
+        };
+        vm.createContext(context);
+        vm.runInContext(between(HR_PAGE_CODE, 'async function submitAccountOnboarding()', 'function completeAccountOnboarding('), context);
+        const request = context.submitAccountOnboarding();
+        await context.submitAccountOnboarding();
+        assert.equal(calls, 1, 'double click sends only one operation');
+        if (changed === 'business' || changed === 'session') identity = changed;
+        if (changed === 'closed') context.accountOnboardingState.open = false;
+        if (changed === 'replacement') context.accountOnboardingRequestSeq++;
+        resolve({ result: { success: true, receipt: { staff: { id: 123 } } }, acknowledge: () => { acknowledgements++; } });
+        await request;
+        assert.equal(completions, 0);
+        assert.equal(acknowledgements, 0, 'the original operation remains recoverable');
+    });
+}
 
 test('HR onboarding full-stack browser smoke uses deterministic app readiness and vacancy reloads', () => {
     assert.match(HR_FULLSTACK_BROWSER_SMOKE, /async function waitForAppShell/);

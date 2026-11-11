@@ -116,8 +116,17 @@ async function runActor(browser, pool, actor, existingAccountId) {
         localStorage.setItem('pzp_current_user', JSON.stringify(session.user));
         localStorage.setItem('pzp_crm_business_context', 'event_genix');
         localStorage.setItem('pzp_crm_business_context_user', String(session.user.id));
+        localStorage.setItem('pzp_dark_mode', 'false');
     }, session);
     const page = await context.newPage();
+    const supplementDirectory = path.join(output, 'ux-matrix');
+    fs.mkdirSync(supplementDirectory, { recursive: true });
+    const supplement = { key: `supplement-${actor.label}`, role: actor.label === 'mobile' ? 'delegate' : actor.role, mode: 'existing', width: actor.width, height: 900, theme: 'light', screens: [], checks: [] };
+    const captureSupplement = async label => {
+        const filename = `${supplement.key}-${label}.png`;
+        await page.screenshot({ path: path.join(supplementDirectory, filename), mask: [page.locator('#accountOnboardingReceipt .hr-account-credential code:nth-of-type(2)')] });
+        supplement.screens.push(filename);
+    };
     const pageErrors = [];
     page.on('pageerror', error => pageErrors.push(error.message));
     page.setDefaultTimeout(15000);
@@ -163,7 +172,12 @@ async function runActor(browser, pool, actor, existingAccountId) {
         await dialog.locator('[name="department"]').fill('animators');
         await dialog.locator('[name="position"]').fill('QA Animator');
         await dialog.locator('[name="role_type"]').selectOption('animator');
+        await dialog.locator('#hrCreateStaffProfessionPicker summary').click();
+        await dialog.locator('[name="secondary_professions"][value="waiter"]').check();
+        assert.match(await dialog.locator('#hrCreateStaffProfessionSummary').textContent(), /Офіціант/);
+        assert.equal(await dialog.locator('[name="secondary_professions"][value="animator"]').isDisabled(), true);
         await dialog.screenshot({ path: path.join(output, `${actor.label}-create.png`) });
+        await captureSupplement('hr-create');
         const loseResponse = actor.label === 'mobile';
         if (loseResponse) {
             await page.route('**/api/staff', async route => {
@@ -196,6 +210,7 @@ async function runActor(browser, pool, actor, existingAccountId) {
         await page.waitForFunction(() => document.getElementById('editSave').dataset.actionState === 'success');
         assert.equal(await profile.locator('#editStaffHeaderName').textContent(), name);
         await profile.screenshot({ path: path.join(output, `${actor.label}-edit.png`) });
+        await captureSupplement('hr-edit');
         await page.locator('#editCloseTop').click();
         await profile.waitFor({ state: 'hidden' });
         const card = page.locator('.hr-team-card').filter({ hasText: name });
@@ -205,14 +220,28 @@ async function runActor(browser, pool, actor, existingAccountId) {
         await profile.waitFor({ state: 'hidden' });
         if (actor.role === 'creator' || actor.parkWorker) {
             await card.getByRole('button', { name: /дії:/i }).click();
-            await card.getByRole('menuitem', { name: 'Створити CRM' }).click();
+            const menu = card.locator('[data-team-card-menu]');
+            const visibleMenu = await menu.evaluate(el => {
+                const rect = el.getBoundingClientRect();
+                const last = el.querySelector('button:last-child');
+                const item = last.getBoundingClientRect();
+                return { inViewport: rect.left >= 0 && rect.top >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight,
+                    unobscured: last.contains(document.elementFromPoint(item.left + 8, item.top + item.height / 2)) };
+            });
+            assert.deepEqual(visibleMenu, { inViewport: true, unobscured: true });
+            await page.keyboard.press('End');
+            await page.keyboard.press('Escape');
+            assert.equal(await menu.isVisible(), false);
+            assert.equal(await card.getByRole('button', { name: /дії:/i }).evaluate(el => el === document.activeElement), true);
+            await card.getByRole('button', { name: /відкрити/i }).click();
+            await profile.getByRole('button', { name: 'Створити CRM-акаунт', exact: true }).click();
             const wizard = page.locator('#accountOnboardingOverlay');
             await wizard.waitFor({ state: 'visible' });
             const username = `qa_staff_link_${actor.label}_${runId}`;
             await page.locator('#accountOnboardingUsername').fill(username);
             await page.locator('#accountOnboardingNext').click();
             assert.equal(await page.locator('#accountOnboardingStaffId').inputValue(), String(staff.id));
-            for (let step = 2; step <= 6; step++) {
+            for (const step of [5]) {
                 await page.locator(`[data-account-onboarding-step="${step}"]`).waitFor({ state: 'visible' });
                 await page.locator('#accountOnboardingNext').click();
             }
@@ -233,7 +262,7 @@ async function runActor(browser, pool, actor, existingAccountId) {
                 process.stdout.write('[hr-staff] Park admin linked the same staff ID and activated Park access\n');
                 return;
             }
-            await receipt.getByRole('link', { name: 'свій профіль' }).waitFor();
+            await receipt.getByRole('link', { name: 'Призначити доступ акаунту' }).waitFor();
             assert.match(await receipt.textContent(), /очікує членства.*Призначити доступ акаунту/s);
             await page.locator('[data-account-onboarding-finish]').click();
             assert.equal(await page.evaluate(id => openAccountOnboardingWizard(null, { staffId: id }), staff.id), false);
@@ -263,6 +292,8 @@ async function runActor(browser, pool, actor, existingAccountId) {
             await profile.locator('#editPhone').fill('+380009998877');
             await profile.locator('#editSave').click();
             const conflict = page.getByRole('dialog').filter({ hasText: 'Картку змінив інший оператор' });
+            await conflict.waitFor();
+            await captureSupplement('edit-conflict');
             await conflict.getByRole('button', { name: 'Залишити чернетку' }).click();
             assert.equal(await profile.locator('#editPhone').inputValue(), '+380009998877');
             assert.equal((await pool.query('SELECT phone FROM staff WHERE id = $1', [otherStaff.id])).rows[0].phone, '+380001112233');
@@ -276,6 +307,7 @@ async function runActor(browser, pool, actor, existingAccountId) {
             await otherCard.getByRole('button', { name: /дії:/i }).click();
             await otherCard.getByRole('menuitem', { name: /прив.язати crm/i }).click();
             await page.locator('.account-link-modal select').selectOption(String(existingAccountId));
+            await captureSupplement('link-existing');
             const [existingLink] = await Promise.all([
                 waitForResponse(page, 'POST', `/api/staff/${otherStaff.id}/link`),
                 page.locator('.account-link-modal').getByRole('button', { name: /прив.язати/i }).click()
@@ -290,15 +322,17 @@ async function runActor(browser, pool, actor, existingAccountId) {
             const newName = `QA CRM Recovery ${runId}`;
             const newUsername = `qa_crm_recovery_${runId}`;
             await page.locator('#accountOnboardingName').fill(newName);
-            await page.locator('#accountOnboardingUsername').fill(newUsername);
-            await page.locator('#accountOnboardingNext').click();
             await page.locator('input[name="accountOnboardingStaffMode"][value="new"]').check();
             await page.locator('#accountOnboardingDepartment').fill('animators');
             await page.locator('#accountOnboardingPosition').fill('QA Animator');
-            await page.locator('#accountOnboardingNext').click();
             await page.locator('#accountOnboardingProfession-animator').check();
             await page.locator('#accountOnboardingPrimaryProfession-animator').check();
-            for (let step = 3; step <= 6; step++) await page.locator('#accountOnboardingNext').click();
+            await page.locator('#accountOnboardingNext').click();
+            await page.locator('#accountOnboardingUsername').fill(newUsername);
+            for (const step of [1, 5]) {
+                await page.locator(`[data-account-onboarding-step="${step}"]`).waitFor({ state: 'visible' });
+                await page.locator('#accountOnboardingNext').click();
+            }
             await page.route('**/api/users/onboarding', async route => {
                 if (route.request().method() !== 'POST') return route.continue();
                 const committed = await route.fetch();
@@ -314,6 +348,7 @@ async function runActor(browser, pool, actor, existingAccountId) {
             const recovery = await recovered.json();
             assert.equal(recovery.credential, null);
             await receipt.getByText('Збережену операцію знайдено.', { exact: false }).waitFor();
+            await captureSupplement('recovery');
             assert.match(await receipt.textContent(), new RegExp(`#${recovery.receipt.staff.id}`));
             const { rows: recoveredStaff } = await pool.query('SELECT id FROM staff WHERE name = $1', [newName]);
             assert.deepEqual(recoveredStaff, [{ id: recovery.receipt.staff.id }]);
@@ -338,6 +373,7 @@ async function runActor(browser, pool, actor, existingAccountId) {
         } else {
             assert.equal(await card.getByRole('menuitem', { name: 'Створити CRM' }).count(), 0);
         }
+        fs.writeFileSync(path.join(supplementDirectory, `${supplement.key}-evidence.json`), JSON.stringify(supplement, null, 2));
         process.stdout.write(`[hr-staff] ${actor.label}: create, edit and reopen confirmed${actor.role === 'creator' ? ', same staff ID linked to CRM' : ''}\n`);
     } catch (error) {
         if (pageErrors.length) process.stderr.write(`Browser errors: ${pageErrors.join(' | ')}\n`);
@@ -358,8 +394,15 @@ async function main() {
     let browser;
     try {
         const actors = await seed(pool);
-        browser = await requirePlaywright().chromium.launch({ headless: true });
+        browser = await requirePlaywright().chromium.launch({ headless: true,
+            ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } : {}) });
         for (const actor of actors) await runActor(browser, pool, actor, actors.find(item => item.label === 'mobile').id);
+        if (process.env.EG_HR_UX_VISUAL_AUDIT === '1') {
+            await require('./hr-crm-ux-visual-audit').runHrCrmVisualAudit({ browser, pool, actors, login, target, output, runId });
+        }
+        if (process.env.EG_HR_UX_EXTENDED_AUDIT === '1') {
+            await require('./hr-crm-ux-extended-audit').runHrCrmExtendedAudit({ browser, pool, actors, login, target, output, runId });
+        }
     } finally {
         await browser?.close();
         await pool.end();

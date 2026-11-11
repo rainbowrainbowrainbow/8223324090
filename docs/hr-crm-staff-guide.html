@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="uk">
+<meta charset="utf-8">
+<title>EventGenix | Картки співробітників і доступ до CRM</title>
+<!-- Reuses the content and visual template of output/pdf/EventGenix-Staff-Guide-Anna.pdf.
+     The previous ReportLab generator was not found; this HTML is the editable source. -->
+<style>
+@page { size: A4; margin: 0; }
+* { box-sizing: border-box; }
+body { margin: 0; color: #18304b; font: 11.5pt/1.5 "Segoe UI", Arial, sans-serif; }
+header { padding: 11mm 14mm 10mm; background: #14253b; color: white; }
+.brand { display: inline-block; padding: 4px 10px; border-radius: 5px; background: #6ee7c5; color: #14253b; font-size: 9pt; font-weight: 700; }
+h1 { font-size: 25pt; line-height: 1.15; margin: 5mm 0 3mm; }
+header p { margin: 0; color: #d1dce7; }
+main { padding: 6mm 14mm 18mm; }
+section { display: grid; grid-template-columns: 8mm 1fr; gap: 5mm; margin-bottom: 3mm; break-inside: avoid; }
+.number { border-radius: 6px; background: #eaf6f2; color: #007d69; height: 8mm; text-align: center; padding-top: 1mm; font-weight: 700; }
+h2 { margin: 0 0 1mm; font-size: 12pt; color: #14253b; }
+section p { margin: 0; padding-bottom: 3mm; border-bottom: 1px solid #d6e1eb; }
+.sheet { position: relative; height: 297mm; break-after: page; overflow: hidden; }
+.sheet:last-child { break-after: auto; }
+footer { position: absolute; bottom: 9mm; left: 14mm; right: 14mm; display: flex; justify-content: space-between; border-top: 1px solid #d6e1eb; padding-top: 3mm; color: #526781; font-size: 8pt; }
+</style>
+<article class="sheet"><header><span class="brand">EVENTGENIX / ПАРК</span><h1>Картки співробітників і CRM</h1><p>Пам’ятка для власника, адміністратора ПАРК та Anna</p></header>
+<main>
+<section><span class="number">1</span><div><h2>Створити картку співробітника</h2><p>Виберіть <b>ПАРК → HR → Команда → Додати співробітника</b>. Вкажіть ім’я та прізвище, відділ і посаду. За потреби додайте телефон, дату найму, адресу й основну професію. Додаткові професії виберіть прапорцями. Натисніть <b>Створити</b>. Відкриється збережена картка з номером. Ця дія сама по собі не створює вхід у CRM.</p></div></section>
+<section><span class="number">2</span><div><h2>Створити CRM-акаунт для наявної людини</h2><p>У картці відкрийте <b>Доступ до CRM → Створити CRM-акаунт</b>. Три кроки: <b>Акаунт → Доступ → Перевірка</b>. Звірте номер картки, введіть логін, виберіть дозволену роль і підтвердьте. Нова картка людини не створюється. Професії та ставки залишаються збереженими, якщо уповноважений власник окремо не ввімкне їх зміну.</p></div></section>
+<section><span class="number">3</span><div><h2>Створити людину разом з акаунтом</h2><p>У <b>HR → Акаунти → + Створити акаунт</b> виберіть <b>Новий співробітник</b>. Чотири кроки: <b>Дані співробітника → Акаунт → Доступ → Перевірка</b>. Після перевірки натисніть <b>Створити співробітника й CRM-акаунт</b>. Якщо розділ акаунтів недоступний вашій ролі, створіть картку за кроком 1 і видайте CRM-доступ за кроком 2.</p></div></section>
+<section><span class="number">4</span><div><h2>Перевірити результат і доступ</h2><p>Звірте логін, номер картки та стан доступу. Адміністратор із чинним дозволом оформлення у ПАРК отримує активне членство для нового робочого акаунта. Якщо показано <b>«очікує членства»</b>, власник натискає <b>Призначити доступ акаунту</b>, перевіряє підготовлений ID і явно призначає бізнес та роль. Тимчасовий пароль показується один раз; передавайте його лише працівнику.</p></div></section>
+</main><footer><span>Локальний кандидат UX-покращень після v0.83.31. Ще не випущено.</span><span>1 / 2</span></footer></article>
+<article class="sheet"><header><span class="brand">EVENTGENIX / ПАРК</span><h1>Прив’язка, зміни й повтор</h1><p>Як продовжити роботу без дубля та втрати змін</p></header><main>
+<section><span class="number">5</span><div><h2>Прив’язати вже наявний акаунт</h2><p>Власник у блоці <b>Доступ до CRM</b> обирає <b>Прив’язати наявний акаунт</b>. Звірте ім’я, логін, ID акаунта та номер картки. Чужий або зайнятий зв’язок буде відхилено. Прив’язка не означає автоматичну активацію членства в бізнесі.</p></div></section>
+<section><span class="number">6</span><div><h2>Редагувати дані й продовжити після помилки</h2><p>У «Команді» натисніть <b>Відкрити</b>. Ім’я, посаду, телефон і фото зберігайте кнопкою <b>Зберегти основне</b>; інші дозволені поля - у вкладці <b>Робота → Зберегти робочі дані</b>. При конфлікті порівняйте зміни колеги. Якщо відповідь після створення загубилася, повторіть дію з тими самими даними: система шукає попередню операцію. Відновлення не показує одноразовий пароль повторно.</p></div></section>
+<section><span class="number">7</span><div><h2>Схожі люди, відсутня кнопка або невідомий статус</h2><p>При збігу ПІБ чи телефону звірте ID, відділ і посаду; не створюйте дубль замість продовження операції. Невідомі дані в результаті не означають, що їх стерто. Права Anna визначаються її <b>активним членством і явними дозволами/заборонами</b>. Якщо потрібної дії немає, власник перевіряє ці налаштування. Новий пароль видається уповноваженим оператором через чинну дію <b>Новий пароль</b>.</p></div></section>
+<section><span class="number">✓</span><div><h2>Коротка перевірка перед передачею працівнику</h2><p>Номер картки збігається з потрібною людиною. Логін належить їй. Вибрано правильну роль і бізнес. Результат явно підтверджує активний доступ або показує наступну дію. Після втрати відповіді перевірено попередню операцію. Ставки не змінювалися без явної дії власника.</p></div></section>
+</main>
+<footer><span>Локальний кандидат UX-покращень після v0.83.31. Ще не випущено.</span><span>2 / 2</span></footer></article>
+</html>

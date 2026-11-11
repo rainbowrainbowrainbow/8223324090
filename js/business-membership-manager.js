@@ -56,6 +56,12 @@
         const select = container.querySelector('[data-members-select]');
         const accountId = container.querySelector('[data-members-account-id]');
         const addButton = container.querySelector('[data-members-add]');
+        const requestedAccount = new URLSearchParams(global.location?.search || '').get('assignAccount');
+        if (/^[1-9]\d*$/.test(requestedAccount || '') && Number.isSafeInteger(Number(requestedAccount))) {
+            accountId.value = requestedAccount;
+            status.textContent = `Підготовлено акаунт №${requestedAccount}. Натисніть «Призначити доступ акаунту», перевірте бізнес і роль та збережіть.`;
+            accountId.focus();
+        }
         let members = [];
         let sequence = 0;
         const currentIdentity = () => Boolean(global.AppState?.currentUser && Number(global.AppState.currentUser.id) === Number(user.id));

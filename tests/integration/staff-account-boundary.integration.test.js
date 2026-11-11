@@ -82,6 +82,91 @@ test('staff account operations enforce Park ownership and payroll/operation perm
     const onboard = (actor, body) => api('/api/users/onboarding', { actor, method: 'POST', body });
     const readStaff = async () => (await pool.query('SELECT phone, hourly_rate FROM staff WHERE id = $1', [staff.id])).rows[0];
 
+    await t.test('explicit existing-card conditions validate locked professions without replacing assignments', async () => {
+        const { rows: [person] } = await pool.query(
+            `INSERT INTO staff (name, department, position, role_type, hourly_rate)
+             VALUES ($1, 'QA', 'QA', 'animator', 321) RETURNING id`, [marker + '-conditions']
+        );
+        await pool.query(`INSERT INTO staff_role_assignments
+            (staff_id, profession_key, is_primary, status, admission_status)
+            VALUES ($1, 'animator', true, 'active', 'approved')`, [person.id]);
+        const body = { personal: { name: marker + '-conditions', username: marker + '-conditions' },
+            staff: { mode: 'existing', id: person.id }, access: { role: 'animator' },
+            conditions: { professionKey: 'waiter', rateMode: 'explicit', hourlyRate: 456,
+                shiftPreferences: [{ dayType: 'weekday', startTime: null, endTime: null }, { dayType: 'weekend', startTime: null, endTime: null }] } };
+        const invalid = await onboard(owner, body);
+        assert.equal(invalid.status, 400);
+        assert.equal(invalid.data.code, 'ACCOUNT_ONBOARDING_CONDITION_PROFESSION_MISMATCH');
+        assert.equal((await pool.query('SELECT id FROM users WHERE username=$1', [body.personal.username])).rowCount, 0);
+        body.conditions.professionKey = 'animator';
+        assert.equal((await onboard(restricted, body)).status, 403);
+        const before = (await pool.query('SELECT id, profession_key, is_primary, status, admission_status FROM staff_role_assignments WHERE staff_id=$1', [person.id])).rows;
+        const result = await onboard(owner, body);
+        assert.equal(result.status, 200, result.data.code);
+        assert.equal(result.data.receipt.staff.id, person.id);
+        assert.deepEqual((await pool.query('SELECT id, profession_key, is_primary, status, admission_status FROM staff_role_assignments WHERE staff_id=$1', [person.id])).rows, before);
+        assert.equal((await pool.query('SELECT hourly_rate FROM staff WHERE id=$1', [person.id])).rows[0].hourly_rate, '321.00');
+        assert.equal(Number((await pool.query('SELECT hourly_rate FROM staff_profession_rates WHERE staff_id=$1 AND profession_key=$2', [person.id, 'animator'])).rows[0].hourly_rate), 456);
+    });
+
+    await t.test('account-only onboarding preserves existing and legacy staff setup, assignments and pay', async () => {
+        for (const legacy of [false, true]) {
+            const { rows: [person] } = await pool.query(
+                `INSERT INTO staff (name, department, position, role_type, phone, hourly_rate, secondary_professions)
+                 VALUES ($1, 'QA', 'QA', $2, 'unchanged-phone', 321, $3::jsonb) RETURNING id`,
+                [marker + '-preserve-' + legacy, legacy ? null : 'animator', JSON.stringify(legacy ? [] : ['waiter'])]
+            );
+            if (!legacy) await pool.query(
+                `INSERT INTO staff_role_assignments (staff_id, profession_key, is_primary, status)
+                 VALUES ($1, 'animator', true, 'active')`, [person.id]
+            );
+            const snapshot = async () => ({
+                person: (await pool.query('SELECT name, role_type, secondary_professions, phone, hourly_rate, rate_unit, company_structure_node_id FROM staff WHERE id=$1', [person.id])).rows,
+                assignments: (await pool.query('SELECT * FROM staff_role_assignments WHERE staff_id=$1 ORDER BY id', [person.id])).rows
+            });
+            const before = await snapshot();
+            const body = { personal: { name: marker + '-preserve-' + legacy, username: marker + '-preserve-' + legacy },
+                staff: { mode: 'existing', id: person.id }, access: { role: 'animator', defaultBusinessContext: 'event_genix' } };
+            const key = randomUUID();
+            const result = await api('/api/users/onboarding', { actor: owner, method: 'POST', body, headers: { 'Idempotency-Key': key } });
+            assert.equal(result.status, 200, JSON.stringify(result.data.code));
+            assert.equal(result.data.receipt.staff.id, person.id);
+            assert.deepEqual(result.data.receipt.professions.map(item => item.key).sort(), legacy ? [] : ['animator', 'waiter']);
+            assert.equal(result.data.receipt.staff.created, false);
+            assert.deepEqual(await snapshot(), before);
+            const retry = await api('/api/users/onboarding', { actor: owner, method: 'POST', body, headers: { 'Idempotency-Key': key } });
+            assert.equal(retry.status, 200);
+            assert.equal(retry.data.receipt.staff.id, person.id);
+            assert.equal(retry.data.receipt.account.id, result.data.receipt.account.id);
+            assert.deepEqual(await snapshot(), before);
+        }
+    });
+
+    await t.test('two operators cannot create two accounts for the same saved person', async () => {
+        const { rows: [person] } = await pool.query(`INSERT INTO staff (name, department, position, role_type, hourly_rate)
+            VALUES ($1, 'QA', 'QA', 'animator', 123) RETURNING id`, [marker + '-two-operators']);
+        const bodies = [0, 1].map(index => ({ personal: { name: marker + '-two-operators', username: marker + '-race-' + index },
+            staff: { mode: 'existing', id: person.id }, access: { role: 'animator' } }));
+        const results = await Promise.all([owner, restricted].map((principal, index) => onboard(principal, bodies[index])));
+        assert.deepEqual(results.map(result => result.status).sort(), [200, 409]);
+        assert.equal(results.find(result => result.status === 409).data.code, 'ACCOUNT_ONBOARDING_STAFF_OCCUPIED');
+        assert.equal((await pool.query('SELECT id FROM users WHERE username=ANY($1::text[])', [bodies.map(body => body.personal.username)])).rowCount, 1);
+        assert.equal((await pool.query('SELECT user_id FROM employee_profiles WHERE staff_id=$1 AND user_id IS NOT NULL', [person.id])).rowCount, 1);
+        assert.equal((await pool.query('SELECT hourly_rate FROM staff WHERE id=$1', [person.id])).rows[0].hourly_rate, '123.00');
+    });
+
+    await t.test('an already authenticated operator cannot onboard after membership revocation', async () => {
+        const principal = await actor('revoked-onboarding', 'director', park);
+        assert.equal((await api('/api/users/onboarding/options', { actor: principal })).status, 200);
+        await pool.query('UPDATE business_memberships SET is_active=false WHERE user_id=$1 AND business_id=$2', [principal.id, park.id]);
+        const body = payload('revoked-attempt', { mode: 'new', department: 'QA', position: 'QA' }, {
+            personal: { name: marker + '-revoked-attempt', username: marker + '-revoked-attempt' }
+        });
+        assert.equal((await onboard(principal, body)).status, 403);
+        assert.equal((await pool.query('SELECT id FROM users WHERE username=$1', [body.personal.username])).rowCount, 0);
+        assert.equal((await pool.query('SELECT id FROM staff WHERE name=$1', [body.personal.name])).rowCount, 0);
+    });
+
     await t.test('foreign account management cannot reach Park staff or links', async () => {
         for (const path of ['/api/users/onboarding/options', '/api/users/staff-options', '/api/users/link-conflicts', '/api/employees']) {
             assert.equal((await api(path, { actor: foreign })).status, 403, path);

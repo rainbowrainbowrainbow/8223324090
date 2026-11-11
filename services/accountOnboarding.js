@@ -343,7 +343,7 @@ function normalizeConditions(value, selectedProfessionKeys) {
     return source.map(item => {
         const row = objectOrEmpty(item);
         const professionKey = normalizeProfessionKey(firstDefined(row.professionKey, row.profession_key, row.key));
-        if (!professionKey || !selectedProfessionKeys.has(professionKey)) {
+        if (!professionKey || (selectedProfessionKeys && !selectedProfessionKeys.has(professionKey))) {
             throw onboardingError('Умови можна додати лише для вибраної професії', 400, 'ACCOUNT_ONBOARDING_CONDITION_PROFESSION_MISMATCH', { professionKey });
         }
         if (seen.has(professionKey)) {
@@ -498,9 +498,12 @@ function normalizeAccountOnboardingPayload(payload = {}) {
     }
 
     const professionSource = firstDefined(source.professions, source.professionAssignments, staffSource.professions);
-    const professions = normalizeProfessionAssignments(professionSource);
-    const primaryProfessionKey = professions.find(item => item.isPrimary).key;
-    const selectedProfessionKeys = new Set(professions.map(item => item.key));
+    const professionsProvided = hasOwn(source, 'professions') || hasOwn(source, 'professionAssignments') || hasOwn(staffSource, 'professions');
+    const professions = mode === 'existing' && !professionsProvided ? [] : normalizeProfessionAssignments(professionSource);
+    const primaryProfessionKey = professions.find(item => item.isPrimary)?.key || null;
+    // Existing assignments are checked under the staff row lock before any condition write.
+    const selectedProfessionKeys = mode === 'existing' && !professionsProvided
+        ? null : new Set(professions.map(item => item.key));
     const conditions = normalizeConditions(firstDefined(source.conditions, source.professionConditions), selectedProfessionKeys);
 
     const structureProvided = hasOwn(source, 'structureNodeId')
@@ -534,6 +537,7 @@ function normalizeAccountOnboardingPayload(payload = {}) {
         structureNodeId,
         structureProvided,
         professions,
+        professionsProvided,
         primaryProfessionKey,
         conditions,
         access: normalizeAccess(accessSource, primaryProfessionKey)
@@ -564,7 +568,10 @@ async function validateStructureNode(client, normalized) {
 }
 
 async function lockAndValidateProfessions(client, normalized) {
-    const keys = normalized.professions.map(item => item.key);
+    const keys = [...new Set([
+        ...normalized.professions.map(item => item.key),
+        ...normalized.conditions.map(item => item.professionKey)
+    ])];
     const result = await client.query(
         `SELECT id, key, title, is_active
          FROM hr_professions
@@ -656,8 +663,12 @@ async function createStaff(client, normalized) {
 async function updateExistingStaffSetup(client, staff, normalized, secondaryProfessionKeys = []) {
     const secondary = normalizeProfessionKeyArray(secondaryProfessionKeys)
         .filter(key => key !== normalized.primaryProfessionKey);
-    const values = [normalized.primaryProfessionKey, JSON.stringify(secondary)];
-    const sets = ['role_type = $1', 'secondary_professions = $2::jsonb'];
+    const values = [];
+    const sets = [];
+    if (normalized.professionsProvided) {
+        values.push(normalized.primaryProfessionKey, JSON.stringify(secondary));
+        sets.push('role_type = $1', 'secondary_professions = $2::jsonb');
+    }
     if (normalized.structureProvided) {
         values.push(normalized.structureNodeId);
         sets.push(`company_structure_node_id = $${values.length}`);
@@ -674,6 +685,7 @@ async function updateExistingStaffSetup(client, staff, normalized, secondaryProf
         values.push(normalized.staff.rateUnit);
         sets.push(`rate_unit = $${values.length}`);
     }
+    if (!sets.length) return staff;
     values.push(staff.id);
     const result = await client.query(
         `UPDATE staff
@@ -689,7 +701,7 @@ async function updateExistingStaffSetup(client, staff, normalized, secondaryProf
 async function loadExistingRoleAssignments(client, staffId) {
     const result = await client.query(
         `SELECT profession_key, status, admission_status, internship_status,
-                hourly_rate, payroll_scheme_id, notes
+                hourly_rate, payroll_scheme_id, notes, is_primary
          FROM staff_role_assignments
          WHERE staff_id = $1
          FOR UPDATE`,
@@ -1035,24 +1047,31 @@ async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = 
                 throw onboardingError('Не можна перемістити працівника до архівного вузла', 409, 'ACCOUNT_ONBOARDING_STRUCTURE_NODE_ARCHIVED', { nodeId: normalized.structureNodeId });
             }
             const existingAssignments = await loadExistingRoleAssignments(client, currentStaff.id);
-            effectiveAssignments = mergeExistingProfessionAssignments(
-                currentStaff,
-                normalized.professions,
-                existingAssignments
-            );
+            if (!normalized.professionsProvided) {
+                const existingKeys = new Set([
+                    normalizeProfessionKey(currentStaff.role_type),
+                    ...normalizeProfessionKeyArray(currentStaff.secondary_professions),
+                    ...existingAssignments.map(row => normalizeProfessionKey(row.profession_key))
+                ].filter(Boolean));
+                for (const condition of normalized.conditions) {
+                    if (!existingKeys.has(condition.professionKey)) {
+                        throw onboardingError('Умови можна додати лише для збереженої професії', 400,
+                            'ACCOUNT_ONBOARDING_CONDITION_PROFESSION_MISMATCH', { professionKey: condition.professionKey });
+                    }
+                }
+            }
+            effectiveAssignments = normalized.professionsProvided
+                ? mergeExistingProfessionAssignments(currentStaff, normalized.professions, existingAssignments)
+                : existingAssignments.map(row => ({ key: row.profession_key, isPrimary: row.is_primary === true }));
             staff = await updateExistingStaffSetup(
                 client,
                 currentStaff,
                 normalized,
                 legacySecondaryProfessionKeys(currentStaff, effectiveAssignments, existingAssignments)
             );
-            savedAssignments = await replaceAuthoritativeAssignments(
-                client,
-                staff.id,
-                effectiveAssignments,
-                cleanText(actor?.username, 100) || null,
-                existingAssignments
-            );
+            savedAssignments = normalized.professionsProvided
+                ? await replaceAuthoritativeAssignments(client, staff.id, effectiveAssignments, cleanText(actor?.username, 100) || null, existingAssignments)
+                : existingAssignments;
         } else {
             await requireDistinctStaffConfirmation(client, {
                 ...normalized.personal, distinctStaffIds: normalized.staff.distinctStaffIds
@@ -1231,6 +1250,18 @@ async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = 
         });
     }
 
+    // Older cards may carry professions only in staff columns. Report those
+    // saved values without converting them into new assignment writes.
+    const receiptAssignments = savedAssignments.slice();
+    if (!normalized.professionsProvided && normalized.staff.mode === 'existing') {
+        const knownKeys = new Set(receiptAssignments.map(item => item.profession_key));
+        const primaryKey = normalizeProfessionKey(staff.role_type);
+        for (const key of [primaryKey, ...normalizeProfessionKeyArray(staff.secondary_professions)].filter(Boolean)) {
+            if (knownKeys.has(key)) continue;
+            knownKeys.add(key);
+            receiptAssignments.push({ profession_key: key, is_primary: key === primaryKey });
+        }
+    }
     const receipt = {
         account: {
             id: user.id,
@@ -1248,8 +1279,8 @@ async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = 
             created: staffCreated,
             linked: true
         },
-        structure: { nodeId: normalized.structureNodeId },
-        professions: savedAssignments.map(item => ({
+        structure: { nodeId: staff.company_structure_node_id || null },
+        professions: receiptAssignments.map(item => ({
             key: item.profession_key,
             isPrimary: item.is_primary === true,
             status: item.status,

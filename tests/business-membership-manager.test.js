@@ -25,6 +25,7 @@ function fixture(role = 'owner') {
     const user = { id: 1, businessProfile: { organizations: [{ id: 7, role }] } };
     const state = { requests: [], responses: [], opened: [], reloads: 0 };
     const context = {
+        URLSearchParams,
         AppState: { currentUser: user }, document: { createElement: () => element() },
         getAuthHeaders: () => ({ Authorization: 'Bearer local-fixture', 'X-Business-Context': 'dar', 'x-business-scope': 'all' }),
         async apiFetchWithAuthRetry(url, options) {
@@ -42,6 +43,24 @@ function fixture(role = 'owner') {
 }
 
 const response = (body, status = 200) => ({ ok: status >= 200 && status < 300, status, json: async () => body });
+
+test('onboarding handoff prefills only a valid account ID without reading or granting access', () => {
+    for (const value of ['42', '0', '-1', '4.2', '1e3', '<script>', '9007199254740992']) {
+        const f = fixture();
+        f.context.location.search = `?assignAccount=${encodeURIComponent(value)}`;
+        const panel = element();
+        f.manager.mount(panel, f.user);
+        assert.equal(panel.querySelector('[data-members-account-id]').value, value === '42' ? '42' : '');
+        assert.equal(f.state.requests.length, 0);
+        assert.equal(f.state.opened.length, 0);
+    }
+    const f = fixture('member');
+    f.context.location.search = '?assignAccount=42';
+    const panel = element();
+    f.manager.mount(panel, f.user);
+    assert.equal(panel.hidden, true);
+    assert.equal(panel.querySelector('[data-members-account-id]').value, '');
+});
 const plain = value => JSON.parse(JSON.stringify(value));
 
 test('owner/admin entry depends on server organization membership, never global creator claims', () => {

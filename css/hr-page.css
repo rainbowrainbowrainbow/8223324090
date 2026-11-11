@@ -4549,11 +4549,16 @@ button.hr-team-onboarding-compact:focus-visible {
     outline: none;
 }
 .hr-team-overflow-menu {
+    margin: 0;
+    bottom: auto;
     position: absolute;
     z-index: 30;
     top: calc(100% + 6px);
     right: 0;
     width: min(240px, calc(100vw - 28px));
+    max-height: calc(100dvh - 16px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
     display: grid;
     gap: 8px;
     padding: 8px;
@@ -4564,6 +4569,10 @@ button.hr-team-onboarding-compact:focus-visible {
 }
 .hr-team-overflow-menu[hidden] {
     display: none;
+}
+.hr-team-card.has-open-menu {
+    z-index: 40;
+    transform: none;
 }
 .hr-team-menu-section {
     display: grid;
@@ -10985,4 +10994,53 @@ body.dark-mode #staffProfilePanelPayroll .hr-payroll-profile-badge,
 [data-theme="dark"] #staffProfilePanelPayroll .hr-payroll-profile-badge {
     background: rgba(16, 185, 129, 0.18);
     color: #A7F3D0;
+}
+
+/* HR account setup keeps optional controls readable and actions reachable. */
+.hr-profession-picker { min-width: 0; border: 1px solid var(--gray-300); border-radius: 12px; padding: 8px 12px; }
+.hr-profession-picker summary { min-height: 44px; cursor: pointer; line-height: 1.5; overflow-wrap: anywhere; }
+.hr-profession-picker-options { display: grid; max-height: 240px; overflow-y: auto; gap: 4px; }
+.hr-profession-picker-options label { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 4px; }
+.hr-profession-picker-options input { width: 20px; height: 20px; flex: 0 0 auto; }
+.hr-profession-picker-options label:has(input:disabled) { opacity: .6; }
+#accountOnboardingProfessionSetup, #accountOnboardingConditions, #accountOnboardingAdvancedAccess { padding: 12px 0; min-width: 0; border: 0; }
+#accountOnboardingNewPersonalFields { margin-bottom: 16px; }
+#accountOnboardingOverlay .hr-account-onboarding-panel { width: 100%; box-sizing: border-box; }
+#accountOnboardingOverlay .hr-account-advanced summary { padding-block: 12px; min-height: 44px; box-sizing: border-box; }
+#accountOnboardingOverlay .hr-account-option { display: flex; align-items: center; gap: 10px; min-height: 44px; }
+#accountOnboardingOverlay button, #hrCreateStaffDialog button, .hr-team-open, .hr-team-overflow-trigger, .hr-team-menu-item { min-height: 44px; }
+.hr-team-overflow-trigger { min-width: 44px; }
+#accountOnboardingOverlay .hr-account-preset-grid button strong, #accountOnboardingOverlay .hr-account-preset-grid button small { display: block; line-height: 1.5; }
+#accountOnboardingOverlay .hr-account-preset-grid button small { margin-top: 6px; }
+#accountOnboardingOverlay .hr-account-profession-copy,
+#accountOnboardingOverlay .hr-account-primary-label { display: flex; flex-direction: column; justify-content: center; min-height: 44px; min-width: 44px; font-size: 12px; }
+#accountOnboardingOverlay .hr-account-profession-copy small { font-size: 11px; }
+#accountOnboardingOverlay .hr-account-profession-copy small,
+#accountOnboardingOverlay .hr-account-primary-label { color: #475569; }
+#accountOnboardingOverlay .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+#accountOnboardingOverlay .hr-account-profession-copy,
+#accountOnboardingOverlay .hr-account-primary-label { background: transparent; }
+body.dark-mode #accountOnboardingOverlay .hr-account-profession-option,
+body.dark-mode #accountOnboardingOverlay .hr-account-option-list > label { background: #272740; color: #e2e8f0; }
+body.dark-mode #accountOnboardingOverlay .hr-account-profession-option:has(input[data-account-onboarding-profession]:checked),
+body.dark-mode #accountOnboardingOverlay .hr-account-option-list > label:has(input:checked) { background: #193a36; color: #a7f3d0; }
+body.dark-mode #accountOnboardingOverlay .hr-account-profession-copy strong { color: inherit; }
+body.dark-mode #accountOnboardingOverlay .hr-account-profession-copy small,
+body.dark-mode #accountOnboardingOverlay .hr-account-primary-label { color: #cbd5e1; }
+#accountOnboardingModeChoice[hidden] { display: none; }
+body.dark-mode #accountOnboardingOverlay .hr-account-preset-grid button { color: #a7f3d0; background: #193a36; }
+#staffEditModal .hr-staff-profile-card[hidden] { display: none; }
+#staffEditModal .hr-staff-profile-save-scope { position: sticky; bottom: -12px; z-index: 2; background: var(--white); }
+body.dark-mode #staffEditModal .hr-staff-profile-save-scope { background: #202039; }
+body.dark-mode #accountOnboardingOverlay .hr-account-onboarding-steps li.is-active,
+body.dark-mode #accountOnboardingOverlay .hr-account-onboarding-steps li.is-complete,
+body.dark-mode #accountOnboardingOverlay .hr-account-receipt h4,
+body.dark-mode #accountOnboardingOverlay .hr-account-eyebrow { color: #6ee7b7; }
+#accountOnboardingOverlay .hr-account-onboarding-actions { flex-wrap: wrap; }
+#accountOnboardingSubmit { white-space: normal; max-width: 100%; }
+@media (max-width: 600px) {
+    #staffEditModal .hr-staff-profile-save-scope span { display: none; }
+    #staffEditModal .hr-staff-profile-save-scope { padding: 8px; }
+    #accountOnboardingProgress { font-size: 12px; }
+    #accountOnboardingSubmit { flex: 1 1 180px; }
 }

@@ -84,7 +84,7 @@ function createOnboardingHarness(options = {}) {
                 return { rows: [{ id: 1, key: 'animator', title: 'Animator', is_active: true }] };
             }
             if (/INSERT INTO staff \(name, department, position, phone, hire_date/i.test(text)) return { rows: [staff], rowCount: 1 };
-            if (/SELECT profession_key, status, admission_status, internship_status, hourly_rate, payroll_scheme_id, notes FROM staff_role_assignments/i.test(text)) return { rows: [] };
+            if (/SELECT profession_key, status, admission_status, internship_status, hourly_rate, payroll_scheme_id, notes, is_primary FROM staff_role_assignments/i.test(text)) return { rows: [] };
             if (/UPDATE staff_role_assignments SET is_primary = false/i.test(text)) return { rows: [], rowCount: 0 };
             if (/DELETE FROM staff_role_assignments/i.test(text)) return { rows: [], rowCount: 0 };
             if (/INSERT INTO staff_role_assignments/i.test(text)) {
@@ -165,6 +165,22 @@ function createOnboardingHarness(options = {}) {
         get postCommitQueries() { return postCommitQueries; }
     };
 }
+
+test('existing-card account creation may omit professions while new-card creation still requires them', () => {
+    const body = onboardingPayload();
+    delete body.professions;
+    assert.throws(() => normalizeAccountOnboardingPayload(body));
+    body.staff = { mode: 'existing', id: 77 };
+    const normalized = normalizeAccountOnboardingPayload(body);
+    assert.equal(normalized.professionsProvided, false);
+    assert.deepEqual(normalized.professions, []);
+    assert.equal(normalized.primaryProfessionKey, null);
+    assert.equal(normalized.structureProvided, false);
+    assert.deepEqual(normalized.conditions, []);
+    for (const professions of [null, []]) {
+        assert.throws(() => normalizeAccountOnboardingPayload({ ...body, professions }));
+    }
+});
 
 test('account onboarding policies use one canonical mapping and protect system identities', () => {
     assert.equal(professionToAccountRole('trampoline_instructor'), 'animator');

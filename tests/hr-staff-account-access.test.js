@@ -35,6 +35,8 @@ function harness() {
     w.AppState = { currentUser: { id: 9, role: 'director' } };
     w.ACCOUNT_SECURITY_ROLES = ['creator', 'director'];
     w.canAccess = () => !state.denied && ['creator', 'director'].includes(w.AppState.currentUser.role);
+    w.canRunAccountOnboarding = () => Boolean(state.onboarding) && !state.denied;
+    w.canLinkAccounts = () => w.canManageAccountSecurity();
     w.staffEditOpenSeq = 1;
     w.staffProfileContextKey = state.context;
     w.accountUsers = [];
@@ -76,6 +78,41 @@ test('staff account section makes no account request for non-managers or denied 
         assert.equal(h.section().hidden, true);
         assert.equal(h.state.calls.length, 0);
         assert.equal(h.root().textContent, '');
+    } finally { h.close(); }
+});
+
+test('onboarding delegate sees card action without account directory or password controls', async () => {
+    const h = harness();
+    try {
+        h.w.AppState.currentUser.role = 'admin';
+        h.state.onboarding = true;
+        h.state.fetch = async () => ({ success: true, staff: [{ id: 1 }] });
+        await h.w.loadStaffAccountAccess(1);
+        assert.equal(h.section().hidden, false);
+        assert.equal(h.state.calls[0].url, '/api/users/onboarding/options');
+        assert.match(h.root().textContent, /Створити CRM-акаунт/);
+        assert.equal(h.root().querySelectorAll('button[onclick^="openStaffAccountPasswordModal"]').length, 0);
+        assert.equal(h.root().querySelectorAll('button[onclick^="linkCrmFromStaffCard"]').length, 0);
+        h.state.fetch = async () => ({ success: true, staff: [{ id: 1, linked_user_id: 101 }] });
+        await h.w.loadStaffAccountAccess(1);
+        assert.match(h.root().textContent, /CRM-акаунт прив’язано/);
+        assert.doesNotMatch(h.root().textContent, /Створити CRM-акаунт/);
+        assert.ok(h.state.calls.every(call => call.url === '/api/users/onboarding/options'));
+    } finally { h.close(); }
+});
+
+test('a directory response is discarded if account-management permission is lost while onboarding remains', async () => {
+    const h = harness();
+    try {
+        const pending = deferred();
+        h.state.fetch = () => pending.promise;
+        const load = h.w.loadStaffAccountAccess(1);
+        h.w.AppState.currentUser.role = 'admin';
+        h.state.onboarding = true;
+        pending.resolve([account()]);
+        assert.equal((await load).stale, true);
+        assert.equal(h.root().textContent, '');
+        assert.equal(h.root().getAttribute('aria-busy'), 'false');
     } finally { h.close(); }
 });
 
@@ -130,7 +167,7 @@ test('fresh staff lookup rejects older card and session responses and can recove
         assert.equal(h.root().getAttribute('aria-busy'), 'false');
         h.state.fetch = async () => [];
         await h.w.loadStaffAccountAccess(2);
-        assert.match(h.root().textContent, /не привʼязано/);
+        assert.match(h.root().textContent, /не прив’язано/);
     } finally { h.close(); }
 });
 

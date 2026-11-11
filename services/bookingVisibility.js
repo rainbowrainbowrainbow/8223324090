@@ -1,4 +1,4 @@
-const { resolveCapability } = require('./accountAccessPolicy');
+const { normalizeRoleList, resolveCapability } = require('./accountAccessPolicy');
 
 function canUseAction(user, action) {
     return resolveCapability(user, action, { type: 'action' }).allowed;
@@ -391,6 +391,27 @@ function canViewBooking(user, booking) {
     return classifyBookingVisibility(user, booking).canView === true;
 }
 
+// The shared Park schedule is a read surface. Personal queues, notifications,
+// other businesses and mutation guards retain the assignment-based policy.
+function canReadSharedAnimatorTimeline(user, businessContext) {
+    return businessContext === 'event_genix'
+        && normalizeRoleList(user).includes('animator')
+        && resolveCapability(user, '/', { type: 'page' }).allowed
+        && resolveCapability(user, 'view_all', { type: 'action' }).source !== 'explicit_deny';
+}
+
+function buildTimelineBookingVisibilityScope(user, params = [], alias = 'b', businessContext) {
+    return canReadSharedAnimatorTimeline(user, businessContext)
+        ? ''
+        : buildBookingVisibilityScope(user, params, alias);
+}
+
+function canViewTimelineBooking(user, booking) {
+    if (!booking) return false;
+    const businessContext = booking.business_context ?? booking.businessContext ?? 'event_genix';
+    return canReadSharedAnimatorTimeline(user, businessContext) || canViewBooking(user, booking);
+}
+
 function canEditBooking(user, booking) {
     const decision = classifyBookingVisibility(user, booking);
     return decision.canView === true && decision.canEdit === true;
@@ -486,10 +507,12 @@ module.exports = {
     bookingVisibilityReasonCode,
     buildBookingVisibilityCondition,
     buildBookingVisibilityScope,
+    buildTimelineBookingVisibilityScope,
     bookingAccessDeniedPayload,
     canDeleteBooking,
     canEditBooking,
     canViewBooking,
+    canViewTimelineBooking,
     classifyBookingVisibility,
     getVisibleBookingScope,
     hasOperationalBookingEdit,

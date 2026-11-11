@@ -8,9 +8,11 @@ const {
     BOOKING_VISIBILITY_REASON_CODES,
     bookingVisibilityReasonCode,
     buildBookingVisibilityScope,
+    buildTimelineBookingVisibilityScope,
     canDeleteBooking,
     canEditBooking,
     canViewBooking,
+    canViewTimelineBooking,
     classifyBookingVisibility,
     getVisibleBookingScope,
     resolveBookingDerivedLinkedRoute,
@@ -286,7 +288,7 @@ test('booking details can fall back to id read when current timeline projection 
     assert.match(detailRouteBlock, /requireTimelineContext\(req, res, businessContext\)/);
     assert.match(detailRouteBlock, /bookingContextSql\('b', '\$2'\)/);
     assert.match(detailRouteBlock, /bookingActiveStatusSql\('b'\)/);
-    assert.match(detailRouteBlock, /canViewBooking\(req\.user, row\)/);
+    assert.match(detailRouteBlock, /canViewTimelineBooking\(req\.user, row\)/);
     assert.match(detailRouteBlock, /sendBookingDenied\(req, res, row\)/);
     assert.match(detailRouteBlock, /Booking not found/);
     assert.match(detailRouteBlock, /attachBanquetLinksToBookings\(\[mapBookingRowWithVersion\(row\)\], businessContext\)/);
@@ -337,4 +339,38 @@ test('unknown or ambiguous booking scope fails closed', () => {
     const scope = getVisibleBookingScope({ role: 'waiter' }, params, 'b');
     assert.equal(scope.sql, 'AND 1 = 0');
     assert.equal(scope.condition, 'FALSE');
+});
+
+test('Park animators read unassigned timeline bookings without widening personal scope or mutations', () => {
+    const actor = { id: 49, username: 'fixture-animator', role: 'animator', staffIds: [932] };
+    const booking = { id: 'BK-OTHER', business_context: 'event_genix', line_id: '22', created_by: 'manager' };
+    const params = ['2099-01-14', 'event_genix'];
+
+    assert.equal(buildTimelineBookingVisibilityScope(actor, params, 'b', 'event_genix'), '');
+    assert.deepEqual(params, ['2099-01-14', 'event_genix']);
+    assert.equal(canViewTimelineBooking(actor, booking), true);
+    assert.equal(canViewTimelineBooking({ ...actor, staffIds: [] }, booking), true);
+    assert.equal(canViewBooking(actor, booking), false, 'personal queues and reminders stay assignment-scoped');
+    assert.notEqual(buildBookingVisibilityScope(actor, [], 'b'), '');
+    assert.equal(canEditBooking(actor, booking), false);
+    assert.equal(canDeleteBooking(actor, booking), false);
+});
+
+test('shared timeline reads respect business boundaries, effective roles and explicit denies', () => {
+    const booking = { id: 'BK-OTHER', businessContext: 'event_genix', lineId: '22', createdBy: 'manager' };
+    const animator = { id: 49, username: 'fixture-animator', role: 'animator', staffIds: [932] };
+    for (const actor of [null, { ...animator, role: 'cook' },
+        { ...animator, action_denylist: ['view_all'] },
+        { ...animator, page_denylist: ['/'] }]) {
+        assert.equal(canViewTimelineBooking(actor, booking), false);
+        assert.notEqual(buildTimelineBookingVisibilityScope(actor, [], 'b', 'event_genix'), '');
+    }
+    for (const businessContext of ['dar', 'maysternya_doli', 'unknown', undefined]) {
+        assert.notEqual(buildTimelineBookingVisibilityScope(animator, [], 'b', businessContext), '');
+        if (businessContext) assert.equal(canViewTimelineBooking(animator, { ...booking, businessContext }), false);
+    }
+    assert.equal(canViewTimelineBooking(animator, null), false);
+    assert.equal(canViewTimelineBooking({ ...animator, role: 'waiter', extra_roles: ['animator'] }, booking), true);
+    assert.equal(canViewTimelineBooking({ ...animator, role: 'waiter', extra_roles: [] }, booking), false);
+    assert.equal(canViewTimelineBooking({ role: 'manager' }, booking), true);
 });

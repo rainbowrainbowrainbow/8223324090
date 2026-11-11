@@ -1388,8 +1388,10 @@ async function withApp(rows, links, fn, options = {}) {
     installMock('../services/bookingVisibility', {
         bookingAccessDeniedPayload: () => ({ success: false, error: 'denied' }),
         buildBookingVisibilityScope: () => '',
+        buildTimelineBookingVisibilityScope: () => '',
         canEditBooking: (...args) => options.canEditBooking ? options.canEditBooking(...args) : true,
-        canViewBooking: (...args) => options.canViewBooking ? options.canViewBooking(...args) : true
+        canViewBooking: (...args) => options.canViewBooking ? options.canViewBooking(...args) : true,
+        canViewTimelineBooking: (...args) => options.canViewBooking ? options.canViewBooking(...args) : true
     });
     installMock('../services/telegram', { notifyTelegram: async () => null });
     installMock('../services/bookingAutomation', { processBookingAutomation: async () => null });

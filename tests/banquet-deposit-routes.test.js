@@ -107,6 +107,7 @@ async function withApp(run) {
     });
     installMock('../services/bookingVisibility', {
         canViewBooking: () => true,
+        canViewTimelineBooking: () => true,
         bookingAccessDeniedPayload: () => ({ success: false, error: 'booking-hidden' })
     });
     installMock('../services/banquetGroups', {

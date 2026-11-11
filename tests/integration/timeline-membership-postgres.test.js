@@ -157,10 +157,35 @@ test('actual booking and timeline HTTP routes preserve membership context with P
             assert.equal(detail.status, 200);
             assert.equal(detail.body.booking.businessContext, 'dar');
             assert.equal((await request(actor, 'GET', '/api/bookings/detail/park-private')).status, 404);
-            assert.equal((await request(actor, 'GET', '/api/bookings/detail/park-private?businessContext=event_genix')).status, 404);
+            assert.equal((await request(actor, 'GET', '/api/bookings/detail/park-private?businessContext=event_genix')).status, 200);
             const day = await request(actor, 'GET', '/api/bookings/2026-09-12');
             assert.equal(day.status, 200);
             assert.deepEqual(day.body.map(row => row.id), ['dar-private']);
+        });
+
+        await t.test('Park animator reads the whole timeline and details but cannot mutate or cross businesses', async () => {
+            const actor = await reset({ parkRole: 'animator', darRole: 'animator' });
+            const before = await dataSnapshot();
+            const day = await request(actor, 'GET', '/api/bookings/2026-09-12?businessContext=event_genix');
+            assert.equal(day.status, 200);
+            assert.deepEqual(day.body.map(row => row.id), ['park-private']);
+            const detail = await request(actor, 'GET', '/api/bookings/detail/park-private?businessContext=event_genix');
+            assert.equal(detail.status, 200);
+            assert.equal(detail.body.booking.id, 'park-private');
+            assert.equal((await request(actor, 'GET', '/api/bookings/detail/dar-private?businessContext=dar')).status, 404);
+            assert.equal((await request(actor, 'GET', '/api/bookings/detail/other-private?businessContext=fixture_other')).status, 403);
+            for (const [method, route, body] of [
+                ['POST', '/api/bookings', {}],
+                ['PUT', '/api/bookings/park-private', { notes: 'Forbidden' }],
+                ['DELETE', '/api/bookings/park-private', undefined]
+            ]) assert.equal((await request(actor, method, route + '?businessContext=event_genix', body)).status, 403);
+            assert.deepEqual(await dataSnapshot(), before);
+
+            await pool.query("UPDATE business_memberships SET action_denylist = ARRAY['view_all'] WHERE user_id = $1 AND business_id = 1", [actor.id]);
+            const denied = await request(actor, 'GET', '/api/bookings/2026-09-12?businessContext=event_genix');
+            assert.equal(denied.status, 200);
+            assert.deepEqual(denied.body, []);
+            assert.equal((await request(actor, 'GET', '/api/bookings/detail/park-private?businessContext=event_genix')).status, 404);
         });
 
         await t.test('Dar-only account has timeline resources and lines without an implicit Park grant', async () => {

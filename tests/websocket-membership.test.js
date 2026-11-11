@@ -425,7 +425,7 @@ describe('WebSocket chat membership authorization', () => {
         });
     });
 
-    it('uses fresh DB role and staff binding for booking visibility', async () => {
+    it('updates every Park animator timeline and honors freshly revoked shared visibility', async () => {
         const assignedStaff = await openAuthedClient(2);
         const otherStaff = await openAuthedClient(3);
         await withClients([assignedStaff, otherStaff], async () => {
@@ -435,7 +435,7 @@ describe('WebSocket chat membership authorization', () => {
             ]);
 
             const assignedMessage = waitForMessage(assignedStaff, msg => msg.type === 'booking:updated');
-            const leaked = didReceiveMessage(
+            const shared = didReceiveMessage(
                 otherStaff,
                 msg => msg.type === 'booking:updated',
                 async () => wsService.broadcastBookingEvent('booking:updated', {
@@ -448,7 +448,14 @@ describe('WebSocket chat membership authorization', () => {
             );
 
             assert.equal((await assignedMessage).payload.id, 502);
-            assert.equal(await leaked, false);
+            assert.equal(await shared, true);
+
+            state.users.get(3).action_denylist = ['view_all'];
+            assert.equal(await didReceiveMessage(otherStaff, msg => msg.type === 'booking:updated',
+                async () => wsService.broadcastBookingEvent('booking:updated', {
+                    id: 502, date: '2026-07-15', business_context: 'event_genix',
+                    line_id: '22', created_by: 'someone-else'
+                })), false);
         });
     });
 

@@ -126,9 +126,10 @@ const {
 } = require('../services/timelineResources');
 const {
     bookingAccessDeniedPayload,
-    buildBookingVisibilityScope,
+    buildTimelineBookingVisibilityScope,
     canEditBooking,
-    canViewBooking
+    canViewBooking,
+    canViewTimelineBooking
 } = require('../services/bookingVisibility');
 let _triggerAlertBroadcast;
 try { _triggerAlertBroadcast = require('./dashboard').triggerAlertBroadcast; } catch {}
@@ -505,7 +506,7 @@ async function bookingDayProjectionStatus(queryable, { id, date, businessContext
     const projectedDate = String(date || '').slice(0, 10);
     const projectedContext = businessContext || DEFAULT_TIMELINE_CONTEXT;
     const params = [projectedDate, projectedContext, id];
-    const visibility = buildBookingVisibilityScope(user, params, 'b');
+    const visibility = buildTimelineBookingVisibilityScope(user, params, 'b', projectedContext);
     try {
         const result = await queryable.query(
             `SELECT b.id
@@ -2868,7 +2869,7 @@ router.get('/occupancy', async (req, res) => {
         if (!requireTimelineContext(req, res, businessContext)) return;
         const workdayHours = 10;
         const params = [from, to, businessContext];
-        const visibility = buildBookingVisibilityScope(req.user, params, 'b');
+        const visibility = buildTimelineBookingVisibilityScope(req.user, params, 'b', businessContext);
 
         const result = await pool.query(`
             SELECT b.line_id, COUNT(*)::int AS bookings_count,
@@ -2905,7 +2906,7 @@ router.get('/education-series/:seriesId', async (req, res) => {
         const businessContext = timelineContextFromRequest(req);
         if (!requireTimelineContext(req, res, businessContext)) return;
         const params = [seriesId, businessContext];
-        const visibility = buildBookingVisibilityScope(req.user, params, 'b');
+        const visibility = buildTimelineBookingVisibilityScope(req.user, params, 'b', businessContext);
         const result = await pool.query(
             `SELECT b.*,
                     to_char(date_trunc('milliseconds', b.updated_at), 'YYYY-MM-DD HH24:MI:SS.MS') AS updated_at_version_token
@@ -3209,7 +3210,7 @@ async function resolveBanquetSummaryForRequest(req, res) {
         res.status(404).json({ success: false, error: 'Booking not found' });
         return null;
     }
-    if (!canViewBooking(req.user, mainBooking)) {
+    if (!canViewTimelineBooking(req.user, mainBooking)) {
         sendBookingDenied(req, res, mainBooking);
         return null;
     }
@@ -3232,7 +3233,7 @@ async function resolveBanquetSummaryForRequest(req, res) {
     }
 
     if (snapshot?.members?.length && snapshot.source !== 'single_booking') {
-        const visibleMembers = (snapshot.members || []).filter(member => canViewBooking(req.user, member.booking));
+        const visibleMembers = (snapshot.members || []).filter(member => canViewTimelineBooking(req.user, member.booking));
         const requestBookingInGroup = visibleMembers.some(member => String(member.bookingId) === String(id))
             || visibleMembers.some(member => (member.technicalChildren || []).some(child => String(child.id) === String(id)));
         if (!requestBookingInGroup) {
@@ -3317,7 +3318,7 @@ async function resolveBanquetSummaryForRequest(req, res) {
                 [linkedIds, businessContext]
             );
             linkedBookings = linkedResult.rows
-                .filter(row => canViewBooking(req.user, row))
+                .filter(row => canViewTimelineBooking(req.user, row))
                 .map(row => ({
                     ...row,
                     _banquetLink: linkByTarget.get(String(row.id)) || null
@@ -3438,7 +3439,7 @@ router.get('/detail/:id', async (req, res) => {
         );
         const row = result.rows[0] || null;
         if (!row) return res.status(404).json({ success: false, error: 'Booking not found' });
-        if (!canViewBooking(req.user, row)) return sendBookingDenied(req, res, row);
+        if (!canViewTimelineBooking(req.user, row)) return sendBookingDenied(req, res, row);
 
         const [booking] = await attachBanquetLinksToBookings([mapBookingRowWithVersion(row)], businessContext);
         res.json({ success: true, booking });
@@ -3457,7 +3458,7 @@ router.get('/:date', async (req, res) => {
         if (!requireTimelineContext(req, res, businessContext)) return;
         const timelineView = normalizeTimelineView(req.query.timelineView);
         const params = [date, businessContext];
-        const visibility = buildBookingVisibilityScope(req.user, params, 'b');
+        const visibility = buildTimelineBookingVisibilityScope(req.user, params, 'b', businessContext);
         // v19.13: Explicit column list instead of SELECT *
         const result = await pool.query(
             `SELECT id, business_context, date, time, line_id, program_id, program_code, label, program_name,

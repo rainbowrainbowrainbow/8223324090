@@ -11,7 +11,8 @@ const {
 } = require('../services/timelineContext');
 const {
     bookingAccessDeniedPayload,
-    canViewBooking
+    canViewBooking,
+    canViewTimelineBooking
 } = require('../services/bookingVisibility');
 const {
     BanquetGroupError,
@@ -107,13 +108,13 @@ function bookingSetPackageOwnerAliases(req, res) {
 
 function sanitizeSnapshotForUser(snapshot, user) {
     if (!snapshot) return null;
-    const visibleMembers = (snapshot.members || []).filter(member => canViewBooking(user, member.booking));
+    const visibleMembers = (snapshot.members || []).filter(member => canViewTimelineBooking(user, member.booking));
     const visibleBookingIds = new Set(visibleMembers.map(member => String(member.bookingId)));
     const hiddenCount = (snapshot.members || []).length - visibleMembers.length;
 
     const technicalChildrenByParentId = {};
     for (const member of visibleMembers) {
-        const visibleChildren = (member.technicalChildren || []).filter(child => canViewBooking(user, child));
+        const visibleChildren = (member.technicalChildren || []).filter(child => canViewTimelineBooking(user, child));
         if (visibleChildren.length) technicalChildrenByParentId[String(member.bookingId)] = visibleChildren;
     }
 
@@ -164,8 +165,8 @@ function anchorVisible(snapshot, user) {
     if (!snapshot?.anchorBookingId) return true;
     const anchorId = String(snapshot.anchorBookingId);
     return (snapshot.members || []).some(member => {
-        if (String(member.bookingId) === anchorId && canViewBooking(user, member.booking)) return true;
-        return (member.technicalChildren || []).some(child => String(child.id) === anchorId && canViewBooking(user, child));
+        if (String(member.bookingId) === anchorId && canViewTimelineBooking(user, member.booking)) return true;
+        return (member.technicalChildren || []).some(child => String(child.id) === anchorId && canViewTimelineBooking(user, child));
     });
 }
 

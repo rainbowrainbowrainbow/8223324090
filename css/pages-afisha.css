@@ -167,6 +167,11 @@
     margin: 8px 0;
 }
 
+.afisha-ops-card [data-import-action][aria-disabled="true"] {
+    opacity: .6;
+    cursor: wait;
+}
+
 .afisha-import-preview {
     max-height: 220px;
     overflow-y: auto;

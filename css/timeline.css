@@ -5555,6 +5555,7 @@ body.timeline-constructor-active::after {
 .afisha-create-modes { display: flex; flex-wrap: wrap; gap: 8px; }
 .afisha-create-modes[role="group"] { margin-block-end: 12px; }
 .timeline-marketing-modal .afisha-create-modes button { min-height: 44px; }
+.timeline-marketing-modal [data-import-action][aria-disabled="true"] { opacity: .6; cursor: wait; }
 .timeline-marketing-modal .afisha-create-modes button[aria-pressed="true"] {
     background: color-mix(in srgb, var(--primary) 22%, var(--gray-50));
     border-color: var(--primary);

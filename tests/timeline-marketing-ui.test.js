@@ -58,22 +58,39 @@ test('the timeline opens a batch draft alongside the single-event form and refre
         modal.querySelector('[data-afisha-mode="batch"]').click();
         assert.equal(single.hidden, true);
         assert.equal(batch.elements.importDate.value, days[1]);
+        const action = batch.querySelector('[data-import-action]');
+        assert.equal(action.disabled, true);
+        assert.equal(action.textContent, 'Перевірити розклад');
         batch.elements.importDate.value = days[0];
         batch.elements.importText.value = '14:00;Шоу\n21;14:00;Квест';
-        batch.dispatchEvent(new f.w.Event('submit', { cancelable: true }));
+        batch.elements.importText.dispatchEvent(new f.w.Event('input', { bubbles: true }));
+        assert.equal(action.disabled, false);
+        assert.match(batch.querySelector('[data-import-status]').textContent, /Перевірте дати й час/);
+        action.click();
         await flush();
+        assert.equal(action.textContent, 'Додати 2 заходи');
         assert.equal(batch.querySelectorAll('ol li').length, 2);
         assert.equal(batch.querySelector('img'), null);
         modal.querySelector('[data-afisha-mode="single"]').click();
         modal.querySelector('[data-afisha-mode="batch"]').click();
         assert.equal(batch.elements.importDate.value, days[0]);
-        batch.querySelector('[data-import-save]').click();
+        batch.elements.importText.value += '\n';
+        batch.elements.importText.dispatchEvent(new f.w.Event('input', { bubbles: true }));
+        assert.equal(action.textContent, 'Перевірити розклад');
+        assert.equal(batch.querySelector('ol').hidden, true);
+        action.click();
+        await flush();
+        assert.equal(action.textContent, 'Додати 2 заходи');
+        action.click();
         await flush();
         assert.deepEqual(requests.map(request => request.url), [
             '/api/afisha/timeline/import?businessContext=event_genix',
+            '/api/afisha/timeline/import?businessContext=event_genix',
             '/api/afisha/timeline/import?businessContext=event_genix'
         ]);
-        assert.deepEqual(requests[1].draft, { ...requests[0].draft, commit: true });
+        assert.equal(requests[0].draft.commit, false);
+        assert.equal(requests[1].draft.commit, false);
+        assert.deepEqual(requests[2].draft, { ...requests[1].draft, commit: true });
         assert.deepEqual(f.state.writes, days);
         assert.equal(f.state.renders, 1);
         assert.equal(modal.isConnected, false);

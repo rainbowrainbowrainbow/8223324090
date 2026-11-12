@@ -360,8 +360,7 @@
             <p data-import-status role="status"></p>
             <ol data-import-preview class="afisha-timeline-import-preview" aria-label="Заходи у передперегляді" tabindex="0" hidden></ol>
             <div class="afisha-create-modes">
-                <button type="submit" class="btn-secondary" data-import-check>Перевірити розклад</button>
-                <button type="button" class="btn-primary" data-import-save disabled>Додати заходи</button>
+                <button type="submit" class="btn-primary" data-import-action disabled>Перевірити розклад</button>
             </div>
         </form>`;
         const modal = M.dialog('Додати афішний захід', `${modePicker}<form data-create-form class="timeline-marketing-form">

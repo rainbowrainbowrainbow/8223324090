@@ -5176,6 +5176,7 @@ function toggleTaskRescheduleMenu(button) {
     wrap.classList.toggle('is-open', willOpen);
     menu.hidden = !willOpen;
     button.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+    if (willOpen) menu.querySelector('button:not(:disabled)')?.focus();
 }
 
 async function rescheduleOverdueTask(taskId, option = 'tomorrow') {
@@ -5463,7 +5464,28 @@ function setupTaskActionDelegation() {
             if (!event.target.closest('.task-overdue-wrap')) closeTaskRescheduleMenus();
         });
         document.addEventListener('keydown', event => {
-            if (event.key === 'Escape') closeTaskRescheduleMenus();
+            const wrap = event.target.closest('.task-overdue-wrap.is-open');
+            if (!wrap) return;
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                event.stopPropagation();
+                wrap.querySelector('.task-overdue-trigger')?.focus();
+                closeTaskRescheduleMenus();
+                return;
+            }
+            if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+            const items = [...wrap.querySelectorAll('.task-reschedule-menu button:not(:disabled)')];
+            if (!items.length) return;
+            event.preventDefault();
+            const index = items.indexOf(event.target);
+            const last = items.length - 1;
+            const next = event.key === 'Home' ? 0 : event.key === 'End' ? last
+                : event.key === 'ArrowDown' ? (index + 1) % items.length
+                : index <= 0 ? last : index - 1;
+            items[next].focus();
+        });
+        document.addEventListener('focusin', event => {
+            closeTaskRescheduleMenus(event.target.closest('.task-overdue-wrap'));
         });
     }
 

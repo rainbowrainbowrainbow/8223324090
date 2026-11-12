@@ -6785,7 +6785,7 @@ function suggestAccountUsernameFromStaff(staff = {}) {
         .replace(/[^a-z0-9._-]+/g, '.')
         .replace(/\.+/g, '.')
         .replace(/^\.+|\.+$/g, '');
-    return normalized || `staff.${staff.id || Date.now()}`;
+    return normalized.length >= 3 ? normalized.slice(0, 50) : `staff.${staff.id || Date.now()}`;
 }
 
 function staffRoleToAccountRole(roleType) {
@@ -6871,6 +6871,7 @@ async function loadStaffAccountAccess(staffId) {
             <span>Логін</span><strong>${escapeHtml(user.username || '')}</strong>
             <span>${user.is_active === false ? 'Акаунт деактивовано — вхід заборонено' : 'Акаунт активний'}</span>
             <div class="hr-account-detail-actions">
+                ${window.BusinessMembershipManager?.canManage(AppState.currentUser) ? `<a class="btn-secondary" href="/profile?tab=settings&assignAccount=${id}#profileBusinessMembers">Керувати CRM-доступом</a>` : ''}
                 <button type="button" class="btn-secondary" onclick="copyStaffAccountLogin(${id}, this)">Скопіювати логін</button>
                 <button type="button" class="btn-secondary" onclick="openStaffAccountPasswordModal(${id}, this)"${canReset ? '' : ' disabled'}>Новий пароль</button>
             </div>
@@ -9357,6 +9358,10 @@ function renderAccountOnboardingAccessControls(options = {}) {
     const role = allowedRoles.has(options.role || roleSelect.value) ? (options.role || roleSelect.value) : (allowedRoles.has(mappedRole) ? mappedRole : roleOptions[0]?.value || 'animator');
     roleSelect.innerHTML = roleOptions.map(option => `<option value="${escapeHtml(option.value)}" ${option.value === role ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('');
 
+    const roleHint = accountOnboardingEl('accountOnboardingRoleHint');
+    const rolePages = accountOnboardingOptions?.rolePages?.filter(page => page.roles.includes(role)).slice(0, 3) || [];
+    if (roleHint) roleHint.textContent = rolePages.length
+        ? `Типові розділи ролі: ${rolePages.map(page => page.label).join(', ')}` : '';
     const businessNote = accountOnboardingEl('accountOnboardingBusinessNote');
     const canActivate = workerOnboarding || Boolean(accountOnboardingOptions?.membershipBusinesses?.length);
     const pending = accountOnboardingOptions?.parkMembershipRequired && !canActivate;
@@ -9364,8 +9369,6 @@ function renderAccountOnboardingAccessControls(options = {}) {
         businessNote.hidden = !pending;
         businessNote.textContent = pending ? 'Акаунт очікуватиме, поки власник призначить доступ до бізнесу.' : '';
     }
-    accountOnboardingEl('accountOnboardingSubmit').textContent = canActivate
-        ? 'Створити акаунт і надати доступ' : 'Створити CRM-акаунт';
     const workerNote = accountOnboardingEl('accountOnboardingWorkerAccessNote');
     if (workerNote) {
         workerNote.hidden = !workerOnboarding;
@@ -9536,9 +9539,10 @@ function syncAccountOnboardingStaffMode() {
     const existing = accountOnboardingStaffMode() === 'existing';
     const lockedStaff = Number(accountOnboardingState.context?.staffId || accountOnboardingState.context?.staff?.id || 0);
     const personal = accountOnboardingEl('accountOnboardingPersonalFields');
-    const accountPanel = document.querySelector('[data-account-onboarding-step="1"] .hr-account-form-grid');
+    const accountPanel = accountOnboardingEl('accountOnboardingIdentityFields');
     (existing ? accountPanel : accountOnboardingEl('accountOnboardingNewPersonalFields'))?.prepend(personal);
     for (const id of ['accountOnboardingName', 'accountOnboardingPhone']) accountOnboardingEl(id).readOnly = existing;
+    accountOnboardingEl('accountOnboardingPhone').closest('label')?.classList.toggle('hidden', existing);
     accountOnboardingEl('accountOnboardingStaffId').disabled = Boolean(lockedStaff);
     document.querySelectorAll('input[name="accountOnboardingStaffMode"]').forEach(input => { input.disabled = Boolean(lockedStaff); });
     accountOnboardingEl('accountOnboardingExistingSetup').hidden = !existing || !canManageAccountSecurity();
@@ -9549,9 +9553,12 @@ function syncAccountOnboardingStaffMode() {
     accountOnboardingEl('accountOnboardingAccessDetails').hidden = !canManageAccountSecurity();
     accountOnboardingEl('accountOnboardingConditions').disabled = !accountOnboardingChangesConditions();
     accountOnboardingEl('accountOnboardingAdvancedAccess').disabled = !canManageAccountSecurity() || !accountOnboardingEl('accountOnboardingEditAccess').checked;
-    accountOnboardingEl('accountOnboardingTitle').textContent = existing ? 'Створити CRM-акаунт' : 'Співробітник і CRM-акаунт';
-    accountOnboardingEl('accountOnboardingSubmit').textContent = existing ? 'Створити CRM-акаунт' : 'Створити співробітника й CRM-акаунт';
-    if (accountOnboardingEl('accountOnboardingExistingStaffFields')) accountOnboardingEl('accountOnboardingExistingStaffFields').hidden = !existing;
+    accountOnboardingEl('accountOnboardingTitle').textContent = existing ? 'Надати CRM-доступ' : 'Співробітник і CRM-доступ';
+    const activateAccess = accountOnboardingOptions?.parkWorkerOnboarding || accountOnboardingOptions?.membershipBusinesses?.length;
+    accountOnboardingEl('accountOnboardingSubmit').textContent = activateAccess
+        ? 'Створити акаунт і надати доступ'
+        : existing ? 'Створити CRM-акаунт' : 'Створити співробітника й CRM-акаунт';
+    if (accountOnboardingEl('accountOnboardingExistingStaffFields')) accountOnboardingEl('accountOnboardingExistingStaffFields').hidden = !existing || Boolean(lockedStaff);
     if (accountOnboardingEl('accountOnboardingNewStaffFields')) accountOnboardingEl('accountOnboardingNewStaffFields').hidden = existing;
     const rateMode = accountOnboardingEl('accountOnboardingRateMode');
     const previousStaffMode = rateMode?.dataset.staffMode || '';
@@ -9608,21 +9615,6 @@ function focusInvalidAccountOnboarding(message, element) {
     }
     element?.focus?.({ preventScroll: false });
     return false;
-}
-
-function suggestAccountOnboardingPassword() {
-    const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-    const limit = 256 - (256 % alphabet.length);
-    const bytes = new Uint8Array(16);
-    let password = '';
-    while (password.length < 16) {
-        crypto.getRandomValues(bytes);
-        for (const byte of bytes) {
-            if (byte < limit) password += alphabet[byte % alphabet.length];
-            if (password.length === 16) break;
-        }
-    }
-    return password;
 }
 
 function validateAccountOnboardingSection(step) {
@@ -9774,6 +9766,10 @@ function showAccountOnboardingStep(step) {
     const safeStep = steps.includes(Number(step)) ? Number(step) : steps[0];
     const index = steps.indexOf(safeStep);
     accountOnboardingState.step = safeStep;
+    if (safeStep === 5 && accountOnboardingStaffMode() === 'new') {
+        const username = accountOnboardingEl('accountOnboardingUsername');
+        if (!username.value) username.value = suggestAccountUsernameFromStaff({ name: accountOnboardingEl('accountOnboardingName').value });
+    }
     document.querySelectorAll('[data-account-onboarding-step]').forEach(panel => {
         panel.hidden = Number(panel.dataset.accountOnboardingStep) !== safeStep;
     });
@@ -9847,7 +9843,9 @@ function renderAccountOnboardingReceipt(response) {
         const shifts = (after.shiftPreferences || []).filter(item => item.isActive).map(item => `${item.dayType === 'weekday' ? 'Будні' : 'Вихідні'}: ${item.startTime}–${item.endTime}`).join(', ');
         return `${professionTitle(condition.professionKey)}: ${rate}${shifts ? ` · ${shifts}` : ''}`;
     }).join('; ');
-    const title = receipt.staff?.created === true ? 'Співробітника й CRM-акаунт створено' : 'CRM-акаунт створено';
+    const title = accessState === 'active' && businessAccessReady ? 'CRM-доступ активний'
+        : membershipPending ? 'Очікує призначення доступу'
+            : receipt.staff?.created === true ? 'Співробітника й CRM-акаунт створено' : 'CRM-акаунт створено';
     const professionSummary = Array.isArray(receipt.professions)
         ? receipt.professions.map(item => `${professionTitle(item.key)}${item.isPrimary ? ' · основна' : ''}`).join(', ') || 'Професії не призначено'
         : 'Дані професій не завантажено';
@@ -9994,7 +9992,7 @@ function bindAccountOnboardingControls() {
         event.currentTarget.textContent = visible ? 'Приховати пароль' : 'Показати пароль';
     });
     accountOnboardingEl('accountOnboardingPasswordGenerate').addEventListener('click', () => {
-        password.value = suggestAccountOnboardingPassword();
+        password.value = generateInitialAccountPassword();
         password.dispatchEvent(new Event('input', { bubbles: true }));
     });
     for (const eventName of ['input', 'change']) {
@@ -10184,7 +10182,13 @@ async function openAccountOnboardingWizard(button, context = {}) {
         if (requestedStaffId && !contextStaff) {
             throw new Error(`Картка #${requestedStaffId} недоступна або неактивна. Перевірте її в HR → Команда.`);
         }
-        if (contextStaff?.linked_user_id || contextStaff?.linkedUserId) {
+        const linkedUserId = Number(contextStaff?.linked_user_id || contextStaff?.linkedUserId || 0);
+        if (linkedUserId > 0) {
+            if (loading && window.BusinessMembershipManager?.canManage(AppState.currentUser)) {
+                loading.innerHTML = `<p>Картка #${requestedStaffId} уже прив’язана до акаунта.</p><a class="hr-account-primary" href="/profile?tab=settings&assignAccount=${linkedUserId}#profileBusinessMembers">Керувати CRM-доступом</a>`;
+                loading.querySelector('a')?.focus();
+                return false;
+            }
             throw new Error(`Картка #${requestedStaffId} уже прив’язана до акаунта. Перевірте зв’язок у HR → Акаунти.`);
         }
         if (contextStaff) {
@@ -10196,7 +10200,7 @@ async function openAccountOnboardingWizard(button, context = {}) {
             if (context.name) accountOnboardingEl('accountOnboardingName').value = context.name;
             if (context.username) accountOnboardingEl('accountOnboardingUsername').value = context.username;
         }
-        accountOnboardingEl('accountOnboardingPassword').value = suggestAccountOnboardingPassword();
+        accountOnboardingEl('accountOnboardingPassword').value = generateInitialAccountPassword();
         syncAccountOnboardingStaffMode();
         syncAccountOnboardingProfessionDependants();
         showAccountOnboardingStep(accountOnboardingSteps()[0]);

@@ -264,7 +264,7 @@ describe('backoffice foundation v2 contracts', () => {
         assert.match(accountLinkingService, /async function unlinkUserFromStaffProfiles/);
         assert.match(accountLinkingService, /function oneTimeCredential/);
         assert.match(accountLinkingService, /async function verifyIssuedCredential/);
-        const oneTimeChars = accountLinkingService.match(/const chars = '([^']+)'/)?.[1] || '';
+        const oneTimeChars = accountLinkingService.match(/const PASSWORD_ALPHABET = '([^']+)'/)?.[1] || '';
         assert.ok(oneTimeChars && !/[ILO0l1]/.test(oneTimeChars), 'one-time passwords avoid visually ambiguous characters');
         assert.match(accountLinkingService, /async function getAccountLinkConflicts/);
         assert.match(accountLinkingService, /staff_already_linked/);
@@ -282,7 +282,7 @@ describe('backoffice foundation v2 contracts', () => {
         assert.match(usersRoute, /linkUserToStaffProfile/);
         assert.match(usersRoute, /unlinkUserFromStaffProfiles/);
         assert.match(usersRoute, /password_one_time_reissued/);
-        assert.match(usersRoute, /credential:\s*issueOneTime \?/);
+        assert.match(usersRoute, /credential:\s*issueOneTime && access\.businessAccessReady/);
         assert.match(usersRoute, /function resetPasswordFromPayload/);
         assert.match(usersRoute, /body\.newPassword,\s*body\.password,\s*body\.manualPassword/);
         assert.match(usersRoute, /function shouldActivateAfterPasswordReset/);

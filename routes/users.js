@@ -31,7 +31,7 @@ const {
 const { createLogger } = require('../utils/logger');
 const { recordAccountSecurityEvent, listAccountSecurityEvents } = require('../services/accountSecurity');
 const { lockOrganizationOwnership, assertCanDeactivateOrganizationOwners } = require('../services/organizationOwnership');
-const { normalizeManualPassword } = require('../services/credentialInput');
+const { isValidInitialPassword, normalizeManualPassword } = require('../services/credentialInput');
 const {
     BUSINESS_CONTEXTS,
     DEFAULT_BUSINESS_CONTEXT,
@@ -56,9 +56,13 @@ const {
     canOnboardParkWorker,
     PARK_WORKER_ROLES,
     createAccountOnboarding,
-    findCommittedAccountOnboarding
+    findCommittedAccountOnboarding,
+    resolveCreatedAccountAccess
 } = require('../services/accountOnboarding');
-const { getOrganizationManagement } = require('../services/organizationLifecycle');
+const { getOrganizationManagement, prepareNewAccountMembership } = require('../services/organizationLifecycle');
+const {
+    describeAccountCreationOperation, lockAccountCreationOperation, recordAccountCreationOperation
+} = require('../services/accountCreationOperations');
 const { normalizeStaffCompanyStructurePayload } = require('../services/staffDisplayGroups');
 const { curateProfessionCatalogRows } = require('../services/professions');
 const { canAccessParkStaffAccounts, requireParkStaffAccounts } = require('../services/legacyBusinessSurface');
@@ -478,6 +482,38 @@ router.get('/link-conflicts', requireAction('manage_accounts'), requireParkStaff
     }
 });
 
+async function listGrantableAccountBusinesses(actor) {
+    try {
+        const { organizations } = await getOrganizationManagement(pool, actor);
+        return organizations.flatMap(organization => organization.businesses)
+            .filter(business => business.status === 'active' && business.accessMode === 'membership')
+            .map(business => ({ key: business.contextKey, label: business.label }));
+    } catch (error) {
+        if (error.code === 'organization_management_denied') return [];
+        throw error;
+    }
+}
+
+router.get('/creation-access', requireAction('manage_accounts'), requireParkStaffAccounts, async (req, res) => {
+    try {
+        const context = DEFAULT_BUSINESS_CONTEXT;
+        const registry = req.user.businessMembershipAccess?.registry || [];
+        const business = registry.find(item => item.businessContext === context);
+        const requiresMembership = business?.accessMode === 'membership';
+        const eligible = requiresMembership && business.active ? await listGrantableAccountBusinesses(req.user) : [];
+        const grant = eligible.find(item => item.key === context);
+        res.json({
+            success: true, businessContext: context,
+            businessLabel: grant?.label || BUSINESS_CONTEXTS[context].label,
+            activateMembership: Boolean(grant),
+            pendingMembership: requiresMembership && !grant
+        });
+    } catch (error) {
+        log.error('Account creation access lookup failed', error);
+        res.status(503).json({ success: false, error: 'Не вдалося перевірити можливість надати CRM-доступ' });
+    }
+});
+
 // GET /api/users/onboarding/options — aggregate data for the controlled account onboarding wizard
 function requireParkAccountOnboarding(req, res, next) {
     if (canUseAction(req.user, 'manage_accounts') && canUseAction(req.user, 'hr.staff.manage')) return next();
@@ -492,15 +528,7 @@ router.get('/onboarding/options', requireParkAccountOnboarding, requireParkStaff
         const membershipRegistry = (req.user.businessMembershipAccess?.registry || [])
             .filter(business => business.active && business.accessMode === 'membership');
         const grantableBusinesses = !parkWorkerOnboarding && membershipRegistry.length
-            ? getOrganizationManagement(pool, req.user).then(({ organizations }) => organizations
-                .flatMap(organization => organization.businesses)
-                .filter(business => business.status === 'active' && business.accessMode === 'membership')
-                .map(business => ({ key: business.contextKey, label: business.label })))
-                .catch(error => {
-                    if (error.code === 'organization_management_denied') return [];
-                    throw error;
-                })
-            : [];
+            ? listGrantableAccountBusinesses(req.user).then(rows => rows.filter(row => row.key === DEFAULT_BUSINESS_CONTEXT)) : [];
         const [staffResult, professionResult, structureResult, conditionResult, membershipBusinesses] = await Promise.all([
             pool.query(
                 `SELECT s.id, s.name, s.department, s.position, s.phone, s.hire_date,
@@ -606,6 +634,7 @@ router.get('/onboarding/options', requireParkAccountOnboarding, requireParkStaff
             parkMembershipRequired: membershipRegistry.some(business => business.businessContext === DEFAULT_BUSINESS_CONTEXT),
             allowedAccountRoles: parkWorkerOnboarding ? PARK_WORKER_ROLES : null,
             roleHierarchy: ROLE_HIERARCHY,
+            rolePages: getPublicPagePermissionMetadata().map(({ label, roles }) => ({ label, roles })),
             rolePresets: {
                 management: ['senior_manager', 'manager'],
                 operations: ['admin', 'reception', 'security'],
@@ -1324,7 +1353,10 @@ router.patch('/:id/active', requireAction('manage_accounts'), async (req, res) =
 router.post('/', requireAction('manage_accounts'), async (req, res) => {
     const client = await pool.connect();
     try {
-        const { password, name, role, extraRoles, businessContexts } = req.body;
+        const { password, name, role, extraRoles, businessContexts, activateMembership } = req.body;
+        if (activateMembership !== undefined && typeof activateMembership !== 'boolean') {
+            return res.status(400).json({ error: 'Некоректний режим надання доступу' });
+        }
         const pageAllowlistInput = req.body.pageAllowlist ?? req.body.page_allowlist;
         const pageDenylistInput = req.body.pageDenylist ?? req.body.page_denylist;
         const actionAllowlistInput = req.body.actionAllowlist ?? req.body.action_allowlist;
@@ -1346,9 +1378,9 @@ router.post('/', requireAction('manage_accounts'), async (req, res) => {
         if (isProtectedSystemAccount({ username, name })) {
             return res.status(409).json({ error: 'Це імʼя зарезервоване для захищеного системного акаунта' });
         }
-        const finalPassword = issueOneTime ? generateOneTimePassword() : normalizeManualPassword(password);
-        if (finalPassword.length < 6) {
-            return res.status(400).json({ error: 'Пароль має бути не менше 6 символів' });
+        const finalPassword = issueOneTime ? generateOneTimePassword() : password;
+        if (!isValidInitialPassword(finalPassword)) {
+            return res.status(400).json({ error: 'Вкажіть початковий пароль від 12 символів і до 72 байтів без крайніх пробілів, крапки з комою та переносів рядка.' });
         }
         if (Number.isNaN(staffId)) {
             return res.status(400).json({ error: 'Некоректний staff-профіль' });
@@ -1375,12 +1407,21 @@ router.post('/', requireAction('manage_accounts'), async (req, res) => {
             : [];
         assertNoCapabilityConflicts(normalizedPageAllowlist, normalizedPageDenylist, CAPABILITY_TYPES.PAGE);
         assertNoCapabilityConflicts(normalizedActionAllowlist, normalizedActionDenylist);
-        const normalizedDefaultBusinessContext = defaultBusinessContextForSelection(
+        if (activateMembership && (typeof requestedDefaultBusinessContext !== 'string'
+            || !/^[a-z][a-z0-9_]{2,63}$/.test(requestedDefaultBusinessContext)
+            || (businessContexts !== undefined && (!Array.isArray(businessContexts)
+                || businessContexts.length !== 1 || businessContexts[0] !== requestedDefaultBusinessContext)))) {
+            return res.status(400).json({ error: 'Для активації членства оберіть один бізнес' });
+        }
+        if (staffId && activateMembership && requestedDefaultBusinessContext !== DEFAULT_BUSINESS_CONTEXT) {
+            return res.status(403).json({ error: 'Картки співробітників можна прив’язувати лише до акаунтів ПАРК' });
+        }
+        const normalizedDefaultBusinessContext = activateMembership ? requestedDefaultBusinessContext : defaultBusinessContextForSelection(
             requestedDefaultBusinessContext,
             Array.isArray(businessContexts) ? businessContexts : [],
             primaryRole
         );
-        const normalizedBusinessContexts = businessContextsWithDefault(
+        const normalizedBusinessContexts = activateMembership ? [normalizedDefaultBusinessContext] : businessContextsWithDefault(
             Array.isArray(businessContexts) ? businessContexts : [],
             normalizedDefaultBusinessContext,
             primaryRole
@@ -1390,7 +1431,39 @@ router.post('/', requireAction('manage_accounts'), async (req, res) => {
             return res.status(403).json({ error: 'Не можна створити акаунт з таким рівнем доступу' });
         }
 
+        const operation = describeAccountCreationOperation(req, 'manual_account_creation', {
+            username, name: name.trim(), staffId, primaryRole, issueOneTime, activateMembership: Boolean(activateMembership),
+            businessContext: normalizedDefaultBusinessContext, businessContexts: normalizedBusinessContexts,
+            extraRoles: normalizedExtraRoles, pageAllowlist: normalizedPageAllowlist, pageDenylist: normalizedPageDenylist,
+            actionAllowlist: normalizedActionAllowlist, actionDenylist: normalizedActionDenylist
+        });
         await client.query('BEGIN');
+        if (operation && activateMembership) await lockOrganizationOwnership(client);
+        const saved = await lockAccountCreationOperation(client, operation);
+        if (saved) {
+            const { rows: [user] } = await client.query(
+                `SELECT id, username, name, role, extra_roles, page_allowlist, page_denylist, action_allowlist,
+                        action_denylist, business_contexts, default_business_context, is_active
+                 FROM users WHERE id = $1`, [saved.userId]
+            );
+            if (!user || !canCreateAccount(req.user, user.role, user.extra_roles || [])) {
+                throw Object.assign(new Error('Збережений акаунт більше недоступний'), { statusCode: 403 });
+            }
+            const access = await resolveCreatedAccountAccess(client, user, normalizedDefaultBusinessContext);
+            await client.query('COMMIT');
+            return res.json({ success: true, replayed: true, user, ...access, credential: null });
+        }
+        const membership = activateMembership
+            ? await prepareNewAccountMembership(client, req.user, normalizedDefaultBusinessContext, {
+                role: primaryRole, extraRoles: normalizedExtraRoles, pageAllowlist: normalizedPageAllowlist,
+                pageDenylist: normalizedPageDenylist, actionAllowlist: normalizedActionAllowlist,
+                actionDenylist: normalizedActionDenylist
+            }, req)
+            : null;
+        if (membership && (!canCreateAccount(membership.actor, primaryRole, normalizedExtraRoles)
+            || (staffId && !canAccessParkStaffAccounts({ ...req, user: membership.actor }, { write: true })))) {
+            throw Object.assign(new Error('Право створювати акаунт із цією роллю більше недоступне'), { statusCode: 403 });
+        }
         await reserveUsernameIdentity(client, username, {
             code: 'ACCOUNT_USERNAME_OCCUPIED',
             message: 'Акаунт або login alias з таким username вже існує'
@@ -1413,6 +1486,15 @@ router.post('/', requireAction('manage_accounts'), async (req, res) => {
             throw new Error(`password_login_ready_check_failed_after_create:${loginCheck.reason}`);
         }
 
+        const user = result.rows[0];
+        let access;
+        if (membership) {
+            await membership.activate(user.id);
+            access = await resolveCreatedAccountAccess(client, user, normalizedDefaultBusinessContext);
+            if (!access.businessAccessReady) {
+                throw Object.assign(new Error('Не вдалося підтвердити CRM-доступ до вибраного бізнесу'), { statusCode: 409 });
+            }
+        }
         if (staffId) {
             await linkUserToStaffProfile(client, {
                 userId: result.rows[0].id,
@@ -1425,7 +1507,7 @@ router.post('/', requireAction('manage_accounts'), async (req, res) => {
         }
         await recordAccountSecurityEvent({
             actor: req.user,
-            target: result.rows[0],
+            target: user,
             eventType: 'account_created',
             reason: 'account_management',
             details: { role: primaryRole, extraRoles: normalizedExtraRoles, pageAllowlist: normalizedPageAllowlist, pageDenylist: normalizedPageDenylist, actionAllowlist: normalizedActionAllowlist, actionDenylist: normalizedActionDenylist, businessContexts: normalizedBusinessContexts, defaultBusinessContext: normalizedDefaultBusinessContext, staffLinked: !!staffId, oneTimeIssued: issueOneTime, loginReady: loginCheck.loginReady },
@@ -1433,6 +1515,7 @@ router.post('/', requireAction('manage_accounts'), async (req, res) => {
             client,
             strict: true
         });
+        await recordAccountCreationOperation(client, operation, { userId: user.id }, req);
         await client.query('COMMIT');
 
         log.info(`User ${req.user.username} created user ${username} (role: ${primaryRole})`);
@@ -1451,17 +1534,25 @@ router.post('/', requireAction('manage_accounts'), async (req, res) => {
             }
         } catch (e) { /* non-critical */ }
 
+        if (!access) {
+            access = await resolveCreatedAccountAccess(pool, user, normalizedDefaultBusinessContext).catch(() => ({
+                businessAccessReady: false, accessState: 'unknown', businessContext: normalizedDefaultBusinessContext
+            }));
+        }
         res.json({
             success: true,
-            user: result.rows[0],
+            user,
+            ...access,
             loginReady: loginCheck.loginReady,
             loginReadyReason: loginCheck.reason,
-            credential: issueOneTime ? oneTimeCredential(result.rows[0].username, finalPassword, 'account_create') : null
+            credential: issueOneTime && access.businessAccessReady
+                ? oneTimeCredential(user.username, finalPassword, 'account_create') : null
         });
     } catch (err) {
         try { await client.query('ROLLBACK'); } catch {}
         log.error('Create user error', err);
-        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Internal server error' });
+        const status = err.statusCode || err.status;
+        res.status(status || 500).json({ error: status ? err.message : 'Internal server error', ...(status && err.code ? { code: err.code } : {}) });
     } finally {
         client.release();
     }

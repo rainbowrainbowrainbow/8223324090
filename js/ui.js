@@ -1997,6 +1997,21 @@ function promptModal(message, options = {}) {
     });
 }
 
+function generateInitialAccountPassword() {
+    const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+    const limit = 256 - (256 % alphabet.length);
+    const bytes = new Uint8Array(16);
+    let password = '';
+    while (password.length < 16) {
+        crypto.getRandomValues(bytes);
+        for (const byte of bytes) {
+            if (byte < limit) password += alphabet[byte % alphabet.length];
+            if (password.length === 16) break;
+        }
+    }
+    return password;
+}
+
 /**
  * formModal — multi-field form modal.
  * fields: [{ key, label, type?, defaultValue?, placeholder?, options?, required? }]
@@ -2093,7 +2108,11 @@ function formModal(title, fields, options = {}) {
                 return `<div data-fm-field-wrap="${escAttr(f.key)}" style="margin-bottom:10px;">${label}<textarea id="${id}" data-key="${f.key}" class="fm-field" placeholder="${ph}" rows="3" style="${baseStyle}resize:vertical;">${defVal}</textarea>${hint}</div>`;
             }
             const inputType = f.type || 'text';
-            return `<div data-fm-field-wrap="${escAttr(f.key)}" style="margin-bottom:10px;">${label}<input type="${inputType}" id="${id}" data-key="${f.key}" class="fm-field" value="${defVal}" placeholder="${ph}" style="${baseStyle}">${hint}</div>`;
+            const initialPassword = inputType === 'password' && f.initialPasswordControls === true;
+            const passwordControls = initialPassword
+                ? `<div class="confirm-actions"><button type="button" class="confirm-btn" data-fm-password-toggle aria-controls="${id}" aria-pressed="false">Показати пароль</button><button type="button" class="confirm-btn" data-fm-password-regenerate>Згенерувати інший</button></div>`
+                : '';
+            return `<div data-fm-field-wrap="${escAttr(f.key)}" style="margin-bottom:10px;">${label}<input type="${inputType}" id="${id}" data-key="${f.key}" class="fm-field" value="${defVal}" placeholder="${ph}" style="${baseStyle}"${initialPassword ? ' autocomplete="new-password"' : ''}>${hint}${passwordControls}</div>`;
         }).join('');
 
         const overlay = document.createElement('div');
@@ -2258,7 +2277,22 @@ function formModal(title, fields, options = {}) {
             }
             close(vals);
         });
-        overlay.addEventListener('click', (e) => { if (e.target === overlay && closeOnBackdrop) requestCancel(); });
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay && closeOnBackdrop) requestCancel();
+            const button = e.target.closest('[data-fm-password-toggle], [data-fm-password-regenerate]');
+            if (!button) return;
+            const input = button.closest('[data-fm-field-wrap]')?.querySelector('input.fm-field');
+            if (!input) return;
+            if (button.hasAttribute('data-fm-password-toggle')) {
+                const visible = input.type === 'password';
+                input.type = visible ? 'text' : 'password';
+                button.textContent = visible ? 'Приховати пароль' : 'Показати пароль';
+                button.setAttribute('aria-pressed', String(visible));
+            } else {
+                input.value = generateInitialAccountPassword();
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        });
 
         // Focus management
         overlay.querySelectorAll('.fm-field').forEach(el => {

@@ -134,14 +134,13 @@ async function runHrCrmExtendedAudit({ browser, pool, actors, login, target, out
                     assert.equal(await page.evaluate(() => Object.hasOwn(buildAccountOnboardingPayload(), 'professions')), false);
                 }
                 await capture('account');
-                await next.click();
                 await page.locator('#accountOnboardingRole').selectOption('animator');
                 if (advanced) {
                     await page.locator('#accountOnboardingConditionsDetails > summary').click();
                     await page.locator('#accountOnboardingEditConditions').check();
                     await page.locator('#accountOnboardingRateMode').selectOption('explicit');
                     await page.locator('#accountOnboardingHourlyRate').fill('0');
-                    await next.click();
+                    await page.locator('#accountOnboardingSubmit').click();
                     assert.equal(await page.locator('#accountOnboardingHourlyRate').evaluate(el => el === document.activeElement), true);
                     await capture('rate-error');
                     await page.locator('#accountOnboardingHourlyRate').fill('456');
@@ -155,13 +154,12 @@ async function runHrCrmExtendedAudit({ browser, pool, actors, login, target, out
                     assert.deepEqual(await page.evaluate(() => buildAccountOnboardingPayload().access.extraRoles), []);
                     await capture('advanced');
                 }
-                await next.click();
                 const submit = page.locator('#accountOnboardingSubmit');
                 assert.equal(await submit.evaluate(el => {
                     const rect = el.getBoundingClientRect();
                     return rect.bottom <= innerHeight && rect.right <= innerWidth && el.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
                 }), true);
-                await capture('review');
+                await capture('ready-to-submit');
                 await submit.focus();
                 await page.keyboard.press('Tab');
                 assert.equal(await page.locator('#accountOnboardingClose').evaluate(el => el === document.activeElement), true);

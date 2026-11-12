@@ -93,7 +93,8 @@ test('Park HR QA writes register exact fixtures, suppress chat and retire the ru
     await db.query('UPDATE trusted_qa_runs SET test_customer_marker=$2 WHERE id=$1', [run.id, run.test_customer_marker]);
     assert.equal((await api('/api/staff', { actor: delegate, qaToken: token, key: randomUUID(), method: 'POST', body: draft, context: 'dar' })).status, 403);
     async function runBrowser(actor, width, runPage) {
-        const browser = await requirePlaywright().chromium.launch({ headless: true });
+        const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
+        const browser = await requirePlaywright().chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
         try {
             const context = await browser.newContext({ viewport: { width, height: 900 }, serviceWorkers: 'block' });
             await installHrFixtureQaBrowserGuard(context, process.env.TEST_URL, token);
@@ -179,9 +180,7 @@ test('Park HR QA writes register exact fixtures, suppress chat and retire the ru
         const next = page.locator('#accountOnboardingNext');
         await next.click();
         await page.locator('#accountOnboardingUsername').fill(`${runId}-account-2`);
-        await next.click();
         await page.locator('#accountOnboardingRole').selectOption('animator');
-        await next.click();
         return clickSubmit(page, '/api/users/onboarding', page.locator('#accountOnboardingSubmit'));
     });
     assert.equal(second.status, 200, JSON.stringify({ code: second.data.code,
@@ -196,7 +195,8 @@ test('Park HR QA writes register exact fixtures, suppress chat and retire the ru
     assert.equal(repeat.data.receipt.staff.id, secondId);
     assert.equal(repeat.data.receipt.account.id, accountId);
     assert.equal(repeat.data.credential, null);
-    assert.equal(repeat.data.accessState, 'pending_membership');
+    assert.equal(second.data.accessState, 'active');
+    assert.equal(repeat.data.accessState, 'active');
     const accountIds = [firstAccount.data.receipt.account.id, accountId];
     assert.equal((await db.query('SELECT 1 FROM chat_channel_members WHERE user_id=ANY($1::int[])', [accountIds])).rowCount, 0);
     const explicitLink = await api(`/api/staff/${secondId}/link`, { actor: owner, qaToken: token, requestId: randomUUID(),
@@ -210,7 +210,7 @@ test('Park HR QA writes register exact fixtures, suppress chat and retire the ru
     const addMembership = userId => api(membershipPath + userId, { actor: owner, qaToken: token, requestId: randomUUID(), method: 'PUT',
         body: { businessId: park.id, role: 'animator', isDefault: true } });
     assert.equal((await addMembership(outsider.id)).status, 403);
-    assert.equal((await addMembership(accountId)).status, 200);
+    assert.equal((await addMembership(accountId)).status, 409);
     assert.equal((await addMembership(accountIds[0])).status, 409);
     const login = await api('/api/auth/login', { method: 'POST',
         body: { username: second.data.credential.username, password: second.data.credential.password } });

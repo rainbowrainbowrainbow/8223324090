@@ -414,7 +414,7 @@
                             <div id="accountOnboardingExistingStaffFields" class="hr-account-form-grid">
                                 <label class="is-wide"><span>Картка співробітника *</span><select id="accountOnboardingStaffId"><option value="">Оберіть співробітника</option></select><small>Вже зайняті профілі недоступні для вибору.</small></label>
                             </div>
-                            <div class="hr-account-form-grid">
+                            <div id="accountOnboardingIdentityFields" class="hr-account-form-grid">
                                 <div id="accountOnboardingPersonalFields" class="hr-account-form-grid is-wide"></div>
                                 <label><span>Логін *</span><input id="accountOnboardingUsername" name="username" maxlength="50" pattern="[a-zA-Z0-9._-]{3,50}" autocomplete="off" required><small>Після створення логін не змінюється.</small></label>
                                 <div class="is-wide">
@@ -430,7 +430,7 @@
                             <div class="hr-account-onboarding-panel-head"><h4>Роль у CRM і бізнес</h4><p>Оберіть роль, яка відповідає роботі співробітника.</p></div>
                             <div id="accountOnboardingRolePresets" class="hr-account-preset-grid" aria-label="Швидкі пакети ролей"></div>
                             <div class="hr-account-form-grid">
-                                <label><span>Основна роль *</span><select id="accountOnboardingRole"></select></label>
+                                <label><span>Основна роль *</span><select id="accountOnboardingRole" aria-describedby="accountOnboardingRoleHint"></select><small id="accountOnboardingRoleHint"></small></label>
                                 <label id="accountOnboardingDefaultBusinessField"><span>Бізнес за замовченням</span><select id="accountOnboardingDefaultBusiness"></select></label>
                                 <p id="accountOnboardingSingleBusiness" hidden></p>
                             </div>

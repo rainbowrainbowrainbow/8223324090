@@ -121,8 +121,13 @@ const {
 } = require('../services/accountLinking');
 const {
     professionToAccountRole,
-    isProtectedSystemAccount
+    isProtectedSystemAccount,
+    resolveCreatedAccountAccess
 } = require('../services/accountOnboarding');
+const { prepareNewAccountMembership } = require('../services/organizationLifecycle');
+const {
+    describeAccountCreationOperation, lockAccountCreationOperation, recordAccountCreationOperation
+} = require('../services/accountCreationOperations');
 const { buildStaffScheduleWorkbookBuffer } = require('../services/staffScheduleWorkbook');
 
 const { requireAction, requireRole, authenticateToken, ROLE_LEVEL, canUseAction } = require('../middleware/auth');
@@ -2735,9 +2740,36 @@ router.post('/:id/unlink', requireAction('manage_accounts'), async (req, res) =>
 
 // POST /api/staff/bulk-create-accounts — create one-time credential packets for unlinked staff
 router.post('/bulk-create-accounts', requireAction('manage_accounts'), async (req, res) => {
+    const activateMembership = req.body?.activateMembership;
+    if (activateMembership !== undefined && typeof activateMembership !== 'boolean') {
+        return res.status(400).json({ success: false, error: 'Некоректний режим надання доступу' });
+    }
+    const businessContext = DEFAULT_BUSINESS_CONTEXT;
     const client = await pool.connect();
     try {
+        const operation = describeAccountCreationOperation(req, 'bulk_account_creation', {
+            businessContext, activateMembership: Boolean(activateMembership)
+        });
         await client.query('BEGIN');
+        await lockOrganizationOwnership(client);
+        const saved = await lockAccountCreationOperation(client, operation);
+        if (saved) {
+            const { rows } = await client.query(
+                `SELECT s.id AS staff_id, s.name, s.department, u.id, u.username, u.role,
+                        u.business_contexts, u.default_business_context, u.is_active
+                 FROM employee_profiles ep JOIN staff s ON s.id = ep.staff_id JOIN users u ON u.id = ep.user_id
+                 WHERE u.id = ANY($1::int[]) AND ep.is_active IS TRUE`, [saved.userIds]
+            );
+            const created = [];
+            for (const row of rows) {
+                if (!canActorManageAccountRoleSet(req.user, row.role)) continue;
+                const access = await resolveCreatedAccountAccess(client, row, businessContext);
+                created.push({ staffId: row.staff_id, name: row.name, department: row.department,
+                    username: row.username, role: row.role, ...access, credential: null });
+            }
+            await client.query('COMMIT');
+            return res.json({ success: true, replayed: true, created, skipped: saved.skipped });
+        }
 
         // Find all active non-freelance staff without user accounts
         const unlinked = await client.query(`
@@ -2755,6 +2787,7 @@ router.post('/bulk-create-accounts', requireAction('manage_accounts'), async (re
         `);
 
         const created = [];
+        const createdUserIds = [];
         const skipped = [];
         const seenPersonKeys = new Set();
 
@@ -2799,6 +2832,13 @@ router.post('/bulk-create-accounts', requireAction('manage_accounts'), async (re
                 });
                 continue;
             }
+            const membership = activateMembership
+                ? await prepareNewAccountMembership(client, req.user, businessContext, { role }, req)
+                : null;
+            if (membership && (!canUseAction(membership.actor, 'hr.staff.manage')
+                || !canActorManageAccountRoleSet(membership.actor, role))) {
+                throw Object.assign(new Error('Право створювати акаунт із цією роллю більше недоступне'), { statusCode: 403 });
+            }
             const username = await uniqueUsername(client, suggestedUsername);
             const password = generateOneTimePassword();
             const passwordHash = await bcrypt.hash(password, 10);
@@ -2828,16 +2868,24 @@ router.post('/bulk-create-accounts', requireAction('manage_accounts'), async (re
                 eventType: 'bulk_account_created_with_staff_link',
                 details: { source: 'staff_bulk_create', oneTimeIssued: true }
             });
+            const account = userResult.rows[0];
+            if (membership) await membership.activate(account.id);
+            const access = await resolveCreatedAccountAccess(client, account, businessContext);
+            if (membership && !access.businessAccessReady) {
+                throw Object.assign(new Error('Не вдалося підтвердити CRM-доступ до ПАРК'), { statusCode: 409 });
+            }
             await recordAccountSecurityEvent({
                 actor: req.user,
                 target: userResult.rows[0],
                 eventType: 'account_created',
                 reason: 'staff_bulk_create',
-                details: { role, staffId: staff.id, oneTimeIssued: true, loginReady: loginCheck.loginReady },
+                details: { role, staffId: staff.id, defaultBusinessContext: businessContext, businessAccessReady: access.businessAccessReady, oneTimeIssued: true, loginReady: loginCheck.loginReady },
                 req,
-                client
+                client,
+                strict: true
             });
 
+            createdUserIds.push(account.id);
             created.push({
                 staffId: staff.id,
                 name: staff.name,
@@ -2846,10 +2894,15 @@ router.post('/bulk-create-accounts', requireAction('manage_accounts'), async (re
                 department: staff.department,
                 loginReady: loginCheck.loginReady,
                 loginReadyReason: loginCheck.reason,
-                credential: oneTimeCredential(username, password, 'staff_bulk_create')
+                ...access,
+                credential: access.businessAccessReady ? oneTimeCredential(username, password, 'staff_bulk_create') : null
             });
         }
 
+        await recordAccountCreationOperation(client, operation, {
+            userIds: createdUserIds,
+            skipped: skipped.map(({ staffId, reason, label }) => ({ staffId, reason, label }))
+        }, req);
         await client.query('COMMIT');
         log.info(`Bulk create: ${created.length} accounts created, ${skipped.length} skipped`);
         res.json({
@@ -2866,7 +2919,8 @@ router.post('/bulk-create-accounts', requireAction('manage_accounts'), async (re
     } catch (err) {
         await client.query('ROLLBACK');
         log.error('POST /staff/bulk-create-accounts error', err);
-        res.status(500).json({ success: false, error: 'Помилка сервера' });
+        const status = err.statusCode || err.status;
+        res.status(status || 500).json({ success: false, error: status ? err.message : 'Помилка сервера', ...(status && err.code ? { code: err.code } : {}) });
     } finally {
         client.release();
     }

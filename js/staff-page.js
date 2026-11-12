@@ -8036,21 +8036,43 @@ function getCredentialPassword(credential) {
     return credential?.password || credential?.oneTimePassword || '';
 }
 
+async function loadStaffAccountCreationAccess() {
+    try {
+        const response = await staffApiFetch('/api/users/creation-access');
+        const access = await response.json();
+        if (response.ok && access.success) return access;
+        showNotification(access.error || 'Не вдалося перевірити можливість надати CRM-доступ', 'error');
+    } catch {
+        showNotification('Не вдалося перевірити можливість надати CRM-доступ', 'error');
+    }
+    return null;
+}
+
+async function submitStaffAccountCreation(path, body) {
+    const options = {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
+        body: JSON.stringify(body)
+    };
+    for (let attempt = 0; attempt < 2; attempt++) {
+        const response = await staffApiFetch(path, options).catch(() => null);
+        if (response && response.status < 500) return response.json();
+    }
+    return { success: false, error: 'Не вдалося підтвердити результат створення. Оновіть список акаунтів.' };
+}
+
 function validateStaffAccountManualPassword(values = {}) {
     const password = String(values.password || '');
-    if (!password) return null;
-    if (password.length < 6) {
-        return { key: 'password', message: 'Пароль має бути не менше 6 символів' };
-    }
-    if (password !== String(values.confirmPassword || '')) {
-        return { key: 'confirmPassword', message: 'Паролі не збігаються' };
+    if ([...password].length < 12 || new TextEncoder().encode(password).length > 72
+        || /[\r\n;]/.test(password) || password.normalize('NFKC').trim() !== password) {
+        return { key: 'password', message: 'Вкажіть пароль від 12 символів і до 72 байтів без крайніх пробілів, крапки з комою та переносів рядка.' };
     }
     return null;
 }
 
 function showOneTimeCredential(credential, title = 'Тимчасовий пароль, показується один раз', payload = {}) {
     if (!credential) return;
-    const text = `Логін: ${credential.username || ''}\nПароль: ${getCredentialPassword(credential)}`;
+    const text = `CRM: ${location.origin}/\nБізнес: ${payload.businessLabel || payload.businessContext || 'Парк Закревського'}\nЛогін: ${credential.username || ''}\nПароль: ${getCredentialPassword(credential)}`;
     const hasReadiness = Object.prototype.hasOwnProperty.call(payload, 'loginReady');
     const readinessMessage = hasReadiness
         ? (payload.loginReady
@@ -8259,11 +8281,16 @@ async function confirmLinkAccount() {
 async function createAccountForLinkingStaff() {
     const info = getLinkInfo(StaffState.linkingStaffId);
     if (!info || typeof formModal !== 'function') return;
+    const access = await loadStaffAccountCreationAccess();
+    if (!access) return;
     const result = await formModal(`Створити акаунт · ${info.name}`, [
         { key: 'name', label: 'Імʼя в CRM', required: true, defaultValue: info.name || '' },
         { key: 'username', label: 'Логін', required: true, defaultValue: suggestUsernameFromStaffInfo(info) },
-        { key: 'password', label: 'Пароль вручну або порожньо для one-time', type: 'password', placeholder: 'Порожньо = CRM згенерує одноразовий пароль' },
-        { key: 'confirmPassword', label: 'Повторити пароль, якщо вводите вручну', type: 'password' },
+        { key: 'business', type: 'note', text: access.pendingMembership
+            ? `${access.businessLabel}: акаунт очікуватиме призначення доступу.`
+            : `Бізнес: ${access.businessLabel}` },
+        { key: 'password', label: 'Початковий пароль', type: 'password', initialPasswordControls: true, defaultValue: generateInitialAccountPassword(),
+            hint: 'Можна відредагувати. Мінімум 12 символів.', required: true },
         { key: 'role', label: 'Основна роль', type: 'select', defaultValue: getStaffAccountRole(info), options: [
             { value: 'animator', label: 'Аніматор' },
             { value: 'manager', label: 'Менеджер' },
@@ -8278,44 +8305,36 @@ async function createAccountForLinkingStaff() {
     ], {
         icon: '👤',
         type: 'info',
-        okText: 'Створити',
+        okText: access.activateMembership ? 'Створити акаунт і надати доступ' : 'Створити CRM-акаунт',
         className: 'staff-account-create-modal',
         validate: validateStaffAccountManualPassword
     });
     if (!result) return;
     const password = String(result.password || '');
-    const issueOneTime = !password;
-    if (password && password.length < 6) {
-        showNotification('Пароль має бути не менше 6 символів', 'error');
-        return;
-    }
-    if (password && password !== String(result.confirmPassword || '')) {
-        showNotification('Паролі не збігаються', 'error');
-        return;
-    }
     try {
-        const res = await staffApiFetch('/api/users', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                username: String(result.username || '').trim(),
-                password: issueOneTime ? undefined : password,
-                issueOneTime,
-                name: String(result.name || '').trim(),
-                role: result.role || 'animator',
-                staffId: info.id
-            })
+        const data = await submitStaffAccountCreation('/api/users', {
+            username: String(result.username || '').trim(),
+            password,
+            activateMembership: access.activateMembership,
+            defaultBusinessContext: access.businessContext,
+            name: String(result.name || '').trim(),
+            role: result.role || 'animator',
+            staffId: info.id
         });
-        const data = await res.json();
         if (!data.success) {
             showNotification(data.error || 'Не вдалося створити акаунт', 'error');
             return;
         }
         closeLinkModal();
-        if (data.credential) {
-            showOneTimeCredential(data.credential, `Акаунт ${data.user?.username || result.username} створено`, data);
+        if (data.replayed) {
+            showNotification('Знайдено збережений акаунт. За потреби видайте початковий пароль повторно в керуванні акаунтом.', 'info');
+        } else if (data.loginReady && data.businessAccessReady) {
+            showOneTimeCredential({ username: data.user.username, password }, `CRM-доступ активний · ${info.name}`,
+                { ...data, businessLabel: access.businessLabel });
         } else {
-            showNotification(`Акаунт ${data.user?.username || result.username} створено`, 'success');
+            const pending = data.accessState === 'pending_membership';
+            showNotification(pending ? 'Акаунт очікує призначення доступу до бізнесу.'
+                : 'Акаунт створено. Потрібно перевірити доступ до бізнесу.', 'info');
         }
         await fetchAllUsers();
         await fetchLinkStatus();
@@ -8334,19 +8353,22 @@ async function handleBulkCreate() {
         return;
     }
 
-    if (!await confirmModal(`Створити акаунти для ${unlinked} працівників без акаунтів?\n\nCRM покаже одноразові логіни і паролі тільки в цьому вікні. CSV/PDF експорт паролів вимкнено.`, { type: 'warning', okText: 'Створити' })) return;
+    const access = await loadStaffAccountCreationAccess();
+    if (!access) return;
+    const detail = access.pendingMembership
+        ? 'Акаунти очікуватимуть призначення доступу до бізнесу.'
+        : `Бізнес: ${access.businessLabel}. Паролі будуть доступні для акаунтів із підтвердженим доступом.`;
+    if (!await confirmModal(`Створити акаунти для ${unlinked} працівників?\n\n${detail}`, { type: 'warning', okText: 'Створити' })) return;
 
     showNotification('Створюємо акаунти...');
     try {
-        const res = await staffApiFetch('/api/staff/bulk-create-accounts', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
+        const data = await submitStaffAccountCreation('/api/staff/bulk-create-accounts', {
+            activateMembership: access.activateMembership
         });
-        const data = await res.json();
 
         if (data.success) {
-            StaffState.bulkResults = data;
-            showBulkResults(data);
+            StaffState.bulkResults = { ...data, businessLabel: access.businessLabel };
+            showBulkResults(StaffState.bulkResults);
             await fetchLinkStatus();
             renderLinkStatsBar();
             renderSchedule();
@@ -8363,27 +8385,32 @@ function showBulkResults(data) {
     const created = Array.isArray(data.created) ? data.created : [];
     const skipped = Array.isArray(data.skipped) ? data.skipped : [];
     let html = `<p style="margin:0 0 8px;font-size:14px;font-weight:700">Створено: ${created.length} акаунтів</p>`;
-    html += '<p style="margin:0 0 8px;font-size:12px;color:var(--warning,#f59e0b)">Паролі показані один раз. CSV/PDF експорт паролів вимкнено.</p>';
+    if (data.replayed) html += '<p>Знайдено збережений результат. За потреби видайте пароль повторно в керуванні акаунтом.</p>';
+    else if (created.some(item => item.credential)) html += '<p>Початкові паролі показуються один раз.</p>';
 
     if (skipped.length > 0) {
         html += `<p style="margin:0 0 8px;font-size:12px;color:var(--gray-500)">Пропущено: ${skipped.length} (дублі або вже привʼязані)</p>`;
     }
 
     html += `<table class="bulk-results-table">
-        <thead><tr><th>Ім'я</th><th>Логін</th><th>Пароль</th><th>Роль</th></tr></thead>
+        <thead><tr><th>Ім'я</th><th>Логін</th><th>Пароль</th><th>Роль</th><th>CRM-доступ</th></tr></thead>
         <tbody>`;
 
     for (const c of created) {
-        const password = getCredentialPassword(c.credential) || c.password || '';
+        const password = c.businessAccessReady ? getCredentialPassword(c.credential) : '';
+        const status = c.businessAccessReady ? 'Активний'
+            : c.accessState === 'pending_membership' ? 'Очікує призначення' : 'Потрібна перевірка';
         html += `<tr>
             <td style="font-family:inherit;font-weight:600">${escapeHtml(c.name)}</td>
             <td>${escapeHtml(c.username)}</td>
             <td>${escapeHtml(password)}</td>
             <td>${escapeHtml(c.role)}</td>
+            <td>${status}</td>
         </tr>`;
     }
     html += '</tbody></table>';
     body.innerHTML = html;
+    document.getElementById('bulkCopyBtn')?.classList.toggle('hidden', !created.some(item => item.businessAccessReady && item.credential));
     document.getElementById('bulkCsvBtn')?.classList.add('hidden');
     document.getElementById('bulkPdfBtn')?.classList.add('hidden');
     document.getElementById('bulkResultsOverlay')?.classList.add('visible');
@@ -8391,14 +8418,15 @@ function showBulkResults(data) {
 
 function closeBulkResults() {
     document.getElementById('bulkResultsOverlay')?.classList.remove('visible');
+    StaffState.bulkResults = null;
+    document.getElementById('bulkResultsBody')?.replaceChildren();
 }
 
 function copyBulkResults() {
     if (!StaffState.bulkResults) return;
-    const lines = ['Ім\'я\tЛогін\tПароль\tРоль'];
-    for (const c of (StaffState.bulkResults.created || [])) {
-        lines.push(`${c.name}\t${c.username}\t${getCredentialPassword(c.credential) || c.password || ''}\t${c.role}`);
-    }
+    const active = StaffState.bulkResults.created.filter(item => item.businessAccessReady && item.credential);
+    if (!active.length) return;
+    const lines = active.map(item => `CRM: ${location.origin}/\nБізнес: ${StaffState.bulkResults.businessLabel}\nЛогін: ${item.username}\nПароль: ${getCredentialPassword(item.credential)}\n`);
     navigator.clipboard.writeText(lines.join('\n')).then(() => {
         showNotification('Скопійовано в буфер обміну');
     });

@@ -28,6 +28,7 @@ const {
 const { isValidInitialPassword } = require('./credentialInput');
 const { recordAccountSecurityEvent } = require('./accountSecurity');
 const { buildMembershipAccess } = require('./businessMembership');
+const { resolveAuthBusinessContext } = require('./authBusinessProfile');
 const {
     normalizeProfessionKey,
     normalizeProfessionKeyArray,
@@ -908,6 +909,18 @@ async function resolveAccountBusinessAccess(dbPool, userId, businessContext) {
     return { businessAccessReady: ready, accessState: ready ? 'active' : 'unknown' };
 }
 
+async function resolveCreatedAccountAccess(db, user, businessContext) {
+    if (user.is_active === false) return { businessAccessReady: false, accessState: 'unknown', businessContext };
+    const resolved = await resolveAuthBusinessContext(db, user, { body: { businessContext } });
+    if (!resolved.scope.invalid && resolved.scope.activeContext === businessContext) {
+        return { businessAccessReady: true, accessState: 'active', businessContext };
+    }
+    const access = resolved.user.businessMembershipAccess;
+    const business = access?.registry?.find(item => item.businessContext === businessContext);
+    const pending = business?.active && business.accessMode === 'membership' && !access.activeMembership;
+    return { businessAccessReady: false, accessState: pending ? 'pending_membership' : 'unknown', businessContext };
+}
+
 async function addDefaultChatMemberships(dbPool, userId) {
     const channels = await dbPool.query('SELECT id FROM chat_channels WHERE is_default = true ORDER BY id');
     for (const channel of channels.rows) {
@@ -1005,6 +1018,10 @@ async function findCommittedAccountOnboarding(req, key, db = pool) {
 
 async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = {}) {
     const normalized = normalizeAccountOnboardingPayload(payload);
+    if (req && normalized.access.activateMembership === true
+        && normalized.access.defaultBusinessContext !== DEFAULT_BUSINESS_CONTEXT) {
+        throw onboardingError('HR-картки доступні для оформлення акаунта ПАРК', 403, 'ACCOUNT_ONBOARDING_STAFF_FORBIDDEN');
+    }
     requireOnboardingStaffOperation(actor, normalized.staff.mode);
     const operation = describeStaffCreationOperation(req, 'onboarding', normalized);
     const delegated = canOnboardParkWorker(req) && !canUseAction(actor, 'manage_accounts');
@@ -1048,6 +1065,12 @@ async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = 
         const membership = !delegated && normalized.access.activateMembership === true
             ? await prepareNewAccountMembership(client, actor, normalized.access.defaultBusinessContext, normalized.access, req)
             : null;
+        if (membership) {
+            requireOnboardingStaffOperation(membership.actor, normalized.staff.mode);
+            if (!canUseAction(membership.actor, 'hr.staff.manage') || !actorCanManageRoleSet(membership.actor, role, extraRoles)) {
+                throw onboardingError('Право створювати акаунт із цією роллю більше недоступне', 403, 'ACCOUNT_ONBOARDING_ROLE_FORBIDDEN');
+            }
+        }
         const marker = normalized.personal.username.startsWith('hrqa-') ? normalized.personal.username : normalized.personal.name;
         qa = await prepareHrFixtureQa(client, req, 'onboard', marker);
         assertHrQaOnboarding(qa, operation, normalized);
@@ -1191,6 +1214,9 @@ async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = 
             throw new Error(`account_onboarding_login_ready_check_failed:${loginCheck.reason}`);
         }
 
+        if (staffCreated) await registerHrQaEntity(client, qa, 'hr_staff', staff.id, { name: staff.name });
+        await registerHrQaEntity(client, qa, 'hr_account', user.id, { username: user.username });
+        if (membership) await membership.activate(user.id);
         const link = await linkUserToStaffProfile(client, {
             userId: user.id,
             staffId: staff.id,
@@ -1199,13 +1225,10 @@ async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = 
             eventType: 'account_onboarding_staff_linked',
             details: { source: 'account_onboarding', staffCreated }
         });
-        if (staffCreated) await registerHrQaEntity(client, qa, 'hr_staff', staff.id, { name: staff.name });
-        await registerHrQaEntity(client, qa, 'hr_account', user.id, { username: user.username });
         await registerHrQaEntity(client, qa, 'hr_profile', link.profile.id, {
             staffId: link.profile.staffId, userId: link.profile.userId
         });
 
-        if (membership) await membership.activate(user.id);
         if (park || membership) {
             const verified = await resolveAccountBusinessAccess(client, user.id, normalized.access.defaultBusinessContext);
             if (!verified.businessAccessReady) {
@@ -1369,6 +1392,7 @@ module.exports = {
     actorCanManageTarget,
     canToggleAccount,
     resolveAccountBusinessAccess,
+    resolveCreatedAccountAccess,
     professionToAccountRole,
     assertLastActiveCreatorInvariant,
     normalizeAccountOnboardingPayload,

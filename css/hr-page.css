@@ -5429,6 +5429,11 @@ button.hr-team-onboarding-compact:focus-visible {
     border-bottom: 1px solid rgba(148,163,184,0.14);
     list-style: none;
 }
+.hr-account-onboarding-steps[hidden],
+#accountOnboardingExistingStaffFields[hidden] {
+    display: none;
+}
+
 .hr-account-onboarding-steps li {
     display: flex;
     align-items: center;

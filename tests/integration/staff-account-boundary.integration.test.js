@@ -401,4 +401,106 @@ test('staff account operations enforce Park ownership and payroll/operation perm
         assert.equal((await onboard(restricted, payload('revoked-member'))).status, 403);
         assert.equal((await api('/api/staff/' + staff.id + '/link', { actor: restricted, method: 'POST', body: { userId: viewer.id } })).status, 403);
     });
+    await t.test('manual and bulk creation report the same Park access readiness', async () => {
+        const config = await api('/api/users/creation-access', { actor: owner });
+        assert.equal(config.status, 200);
+        assert.equal(config.data.activateMembership, true);
+        assert.equal(config.data.businessContext, 'event_genix');
+        const options = await api('/api/users/onboarding/options', { actor: owner });
+        assert.deepEqual(options.data.membershipBusinesses.map(item => item.key), ['event_genix']);
+        const outsidePark = payload('outside-park-grant');
+        outsidePark.access = { role: 'animator', activateMembership: true, defaultBusinessContext: 'dar' };
+        assert.equal((await onboard(owner, outsidePark)).status, 403);
+        const pendingManager = await actor('pending-manager', 'director', park);
+        const restrictedConfig = await api('/api/users/creation-access', { actor: pendingManager });
+        assert.equal(restrictedConfig.status, 200);
+        assert.equal(restrictedConfig.data.pendingMembership, true);
+
+        const manualKey = randomUUID();
+        const manualRequest = {
+            username: marker + '-manual-ready', name: marker + '-manual-ready', role: 'animator', password,
+            defaultBusinessContext: 'event_genix', activateMembership: true
+        };
+        const manualCreate = body => api('/api/users', {
+            actor: owner, method: 'POST', body, headers: { 'Idempotency-Key': manualKey }
+        });
+        const manual = await manualCreate(manualRequest);
+        assert.equal(manual.status, 200, manual.data.code);
+        assert.equal(manual.data.accessState, 'active');
+        const manualReplay = await manualCreate(manualRequest);
+        assert.equal(manualReplay.data.user.id, manual.data.user.id);
+        assert.equal(manualReplay.data.replayed, true);
+        assert.equal(manualReplay.data.credential, null);
+        assert.equal((await manualCreate({ ...manualRequest, name: 'Changed request' })).status, 409);
+        const pending = await api('/api/users', { actor: pendingManager, method: 'POST', body: {
+            username: marker + '-manual-pending', name: marker + '-manual-pending', role: 'animator', password
+        } });
+        assert.equal(pending.status, 200, pending.data.code);
+        assert.equal(pending.data.accessState, 'pending_membership');
+        const deniedGrant = await api('/api/users', { actor: pendingManager, method: 'POST', body: {
+            username: marker + '-manual-denied', name: marker + '-manual-denied', role: 'animator', password,
+            defaultBusinessContext: 'event_genix', activateMembership: true
+        } });
+        assert.equal(deniedGrant.status, 403);
+        const foreignBulk = await api('/api/staff/bulk-create-accounts', { actor: foreign, method: 'POST', body: { activateMembership: true } });
+        assert.equal(foreignBulk.status, 403);
+
+        const { rows: [person] } = await pool.query(`INSERT INTO staff (name, department, position, role_type)
+            VALUES ($1, 'animators', 'QA Animator', 'animator') RETURNING id`, [marker + '-bulk-ready']);
+        const bulkKey = randomUUID();
+        const bulkCreate = () => api('/api/staff/bulk-create-accounts', { actor: owner, method: 'POST',
+            body: { activateMembership: true }, headers: { 'Idempotency-Key': bulkKey } });
+        const bulk = await bulkCreate();
+        assert.equal(bulk.status, 200, bulk.data.code);
+        const created = bulk.data.created.find(row => row.staffId === person.id);
+        assert.ok(created?.credential?.password, 'the active account has a credential');
+        assert.equal(created.accessState, 'active');
+        const bulkReplay = await bulkCreate();
+        assert.equal(bulkReplay.data.replayed, true);
+        const recovered = bulkReplay.data.created.find(row => row.staffId === person.id);
+        assert.equal(recovered.username, created.username);
+        assert.equal(recovered.accessState, 'active');
+        assert.equal(recovered.credential, null);
+        const login = await api('/api/auth/login', { method: 'POST', body: {
+            username: created.username, password: created.credential.password
+        } });
+        assert.equal(login.status, 200);
+        assert.equal(login.data.user.activeBusinessContext, 'event_genix');
+        assert.equal(login.data.user.role, 'animator');
+        const retry = await api('/api/staff/bulk-create-accounts', { actor: owner, method: 'POST', body: { activateMembership: true } });
+        assert.equal(retry.status, 200);
+        assert.ok(!retry.data.created.some(row => row.staffId === person.id));
+    });
+    await t.test('a membership revoked while account creation waits prevents the grant and user write', async () => {
+        const creator = await actor('revoked-during-grant', 'creator', park);
+        const username = marker + '-revoked-request';
+        const lock = await pool.connect();
+        let result;
+        try {
+            await lock.query('BEGIN');
+            await lock.query("SELECT pg_advisory_xact_lock(hashtext('eventgenix:organization-ownership'))");
+            result = api('/api/users', { actor: creator, method: 'POST', body: {
+                username, name: username, role: 'animator', password,
+                defaultBusinessContext: 'event_genix', activateMembership: true
+            } });
+            let waiting = false;
+            for (let attempt = 0; attempt < 100 && !waiting; attempt++) {
+                const { rows } = await pool.query(
+                    `SELECT 1 FROM pg_stat_activity WHERE wait_event_type = 'Lock'
+                     AND query LIKE '%eventgenix:organization-ownership%'`
+                );
+                waiting = rows.length > 0;
+                if (!waiting) await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            assert.ok(waiting, 'the account operation entered the transaction and waited for authorization');
+            await lock.query('UPDATE business_memberships SET is_active = false WHERE user_id = $1 AND business_id = $2',
+                [creator.id, park.id]);
+            await lock.query('COMMIT');
+        } finally {
+            await lock.query('ROLLBACK');
+            lock.release();
+        }
+        assert.equal((await result).status, 403);
+        assert.equal((await pool.query('SELECT id FROM users WHERE username = $1', [username])).rowCount, 0);
+    });
 });

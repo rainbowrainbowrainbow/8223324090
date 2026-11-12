@@ -1934,7 +1934,7 @@ test('account action overrides drive final permissions and protect against self-
 
         const createHr = await request(baseUrl, 'POST', '/api/users', {
             username: 'hr.operator',
-            password: 'HrPass789!',
+            password: 'HrFixturePass789!',
             name: 'HR Operator',
             role: 'hr'
         }, creatorToken());
@@ -1942,7 +1942,7 @@ test('account action overrides drive final permissions and protect against self-
 
         const hrLogin = await request(baseUrl, 'POST', '/api/auth/login', {
             username: 'hr.operator',
-            password: 'HrPass789!'
+            password: 'HrFixturePass789!'
         });
         assert.equal(hrLogin.status, 200);
         const hrManageAccounts = await request(baseUrl, 'GET', '/api/manage-accounts-smoke', undefined, hrLogin.data.accessToken);
@@ -1957,7 +1957,7 @@ test('account action overrides drive final permissions and protect against self-
 
         const createArtDirector = await request(baseUrl, 'POST', '/api/users', {
             username: 'art.director',
-            password: 'ArtPass789!',
+            password: 'ArtFixturePass789!',
             name: 'Art Director',
             role: 'art_director'
         }, creatorToken());
@@ -1965,7 +1965,7 @@ test('account action overrides drive final permissions and protect against self-
 
         const artLogin = await request(baseUrl, 'POST', '/api/auth/login', {
             username: 'art.director',
-            password: 'ArtPass789!'
+            password: 'ArtFixturePass789!'
         });
         assert.equal(artLogin.status, 200);
         const artManageAccounts = await request(baseUrl, 'GET', '/api/manage-accounts-smoke', undefined, artLogin.data.accessToken);

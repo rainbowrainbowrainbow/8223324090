@@ -191,6 +191,13 @@ function requireLegacyBusinessSurface(surface, { parkScheduleRouter = null, park
             && req.method === 'POST' && /^\/[1-9]\d*\/link$/.test(parkStaffScheduleRoutePath(req))
             && canAccessParkStaffAccounts(req, { write: true })
             && resolveCapability(req.user, 'manage_accounts', { type: 'action' }).allowed) return next();
+        if (access.code === 'staff_not_migrated' && parkScheduleRouter === 'staff'
+            && hasCurrentParkScheduleMembership(req)
+            && resolveCapability(req.user, 'manage_accounts', { type: 'action' }).allowed
+            && resolveCapability(req.user, 'hr.staff.manage', { type: 'action' }).allowed
+            && ((req.method === 'GET' && parkStaffScheduleRoutePath(req) === '/link-status')
+                || (req.method === 'POST' && parkStaffScheduleRoutePath(req) === '/bulk-create-accounts'
+                    && canAccessParkStaffAccounts(req, { write: true })))) return next();
         if (access.code === 'staff_not_migrated' && canUseParkStaffSchedule(req, parkScheduleRouter)) {
             const routePath = parkStaffScheduleRoutePath(req);
             const sendJson = res.json.bind(res);

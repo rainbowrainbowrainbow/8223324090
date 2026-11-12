@@ -49,7 +49,7 @@ async function seed(pool) {
         { label: 'desktop', width: 1440, username: process.env.TEST_USER, password: process.env.TEST_PASS, id: creator.user.id, role: 'creator', allow: [], deny: [] },
         { label: 'mobile', width: 390, username, password, id: delegate.id, role: 'admin',
             allow: ['hr.staff.view', 'hr.staff.create', 'hr.staff.profile.edit'], deny: ['hr.staff.manage'] },
-        { label: 'park-admin', width: 1440, username: adminUsername, password, id: admin.id, role: 'admin',
+        { label: 'park-admin', width: 390, username: adminUsername, password, id: admin.id, role: 'admin',
             allow: [], deny: [], parkWorker: true }
     ];
     for (const actor of actors) {
@@ -152,7 +152,7 @@ async function runActor(browser, pool, actor, existingAccountId) {
         });
         assert.deepEqual({
             compactButton: button.width <= toolbar.width - 32,
-            desktopSameRow: actor.label === 'mobile' || Math.abs(button.y + button.height / 2 - search.y - search.height / 2) <= 2,
+            desktopSameRow: actor.width < 600 || Math.abs(button.y + button.height / 2 - search.y - search.height / 2) <= 2,
             ...geometry
         }, { compactButton: true, desktopSameRow: true, centered: true, inset: true });
         if (actor.label === 'mobile') await page.setViewportSize({ width: actor.width, height: 900 });
@@ -260,6 +260,9 @@ async function runActor(browser, pool, actor, existingAccountId) {
             assert.equal(await passwordInput.getAttribute('type'), 'password');
             assert.equal(await page.locator('#accountOnboardingStaffId').inputValue(), String(staff.id));
             assert.equal(await page.locator('#accountOnboardingNext').isVisible(), false);
+            assert.match(await page.locator('#accountOnboardingSubmit').innerText(), /Створити акаунт і надати доступ/);
+            assert.equal(await wizard.evaluate(el => el.scrollWidth <= el.clientWidth + 1), true);
+            await captureSupplement('crm-access-form');
             const [linked] = await Promise.all([
                 waitForResponse(page, 'POST', '/api/users/onboarding'),
                 page.locator('#accountOnboardingSubmit').click()
@@ -276,7 +279,8 @@ async function runActor(browser, pool, actor, existingAccountId) {
             const receipt = page.locator('#accountOnboardingReceipt');
             if (actor.parkWorker) {
                 await receipt.getByText('Доступ до вибраного бізнесу активний.', { exact: false }).waitFor();
-                process.stdout.write('[hr-staff] Park admin linked the same staff ID and activated Park access\n');
+                await captureSupplement('crm-access-active');
+                process.stdout.write('[hr-staff] Park admin linked the same staff ID and activated Park access at a mobile viewport\n');
                 return;
             }
             await receipt.getByText('Доступ до вибраного бізнесу активний.', { exact: false }).waitFor();

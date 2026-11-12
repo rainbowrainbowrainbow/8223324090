@@ -130,38 +130,30 @@ async function runHrCrmVisualAudit({ browser, pool, actors, login, target, outpu
                     await page.locator('#accountOnboardingUsername').fill(username);
                     await assertLayout();
                     await capture('account');
-                    await next.click();
                     await page.locator('[data-account-onboarding-step="5"]').waitFor({ state: 'visible' });
                     const roleSelect = page.locator('#accountOnboardingRole');
-                    if (!actor.parkWorker && width === 1366) {
-                        await roleSelect.selectOption('director');
-                        const businesses = page.locator('#accountOnboardingBusinesses');
-                        assert.equal(await businesses.isVisible(), true);
-                        await businesses.locator('input[value="dar"]').check();
-                        await page.locator('#accountOnboardingDefaultBusiness').selectOption('dar');
+                    const businessSelect = page.locator('#accountOnboardingDefaultBusiness');
+                    if (await businessSelect.isVisible()) {
+                        await businessSelect.selectOption('dar');
                         const access = await page.evaluate(() => buildAccountOnboardingPayload().access);
-                        assert.ok(access.businessContexts.includes('dar'));
+                        assert.deepEqual(access.businessContexts, ['dar']);
                         assert.equal(access.defaultBusinessContext, 'dar');
                         await capture('multiple-businesses');
+                        await businessSelect.selectOption('event_genix');
                     }
                     await roleSelect.selectOption('animator');
                     record.contrast = [...(record.contrast || []), ...await measureContrast('.hr-account-eyebrow, .hr-account-preset-grid button strong, .hr-account-preset-grid button small, [data-account-onboarding-step="5"] .hr-account-onboarding-panel-head p, #accountOnboardingBusinesses > label:not(.is-disabled)')];
                     assert.ok(record.contrast.every(item => item.ratio >= 4.5), JSON.stringify(record.contrast));
                     await assertLayout();
-                    assert.equal(await page.locator('#accountOnboardingSingleBusiness').isVisible(), true);
                     assert.equal(await page.locator('#accountOnboardingBusinessChoices').isVisible(), false);
-                    assert.equal(await page.locator('#accountOnboardingDefaultBusinessField').isVisible(), false);
-                    assert.match(await page.locator('#accountOnboardingSingleBusiness').innerText(), /Парк/);
+                    if (actor.parkWorker) assert.match(await page.locator('#accountOnboardingSingleBusiness').innerText(), /Парк/);
                     await capture('access');
-                    await page.locator('#accountOnboardingBack').click();
-                    assert.equal(await page.locator('#accountOnboardingUsername').inputValue(), username);
-                    await next.click();
-                    await next.click();
+                    if (mode === 'new') {
+                        await page.locator('#accountOnboardingBack').click();
+                        await next.click();
+                        assert.equal(await page.locator('#accountOnboardingUsername').inputValue(), username);
+                    }
                     await assertLayout();
-                    const review = await page.locator('#accountOnboardingReview').innerText();
-                    assert.match(review, /Результат.*Парк/is);
-                    assert.doesNotMatch(review, /event_genix|0 дод\. ролей|не змінювати наявні умови/);
-                    await capture('review');
                     const [response] = await Promise.all([
                         page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/users/onboarding'),
                         page.locator('#accountOnboardingSubmit').click()
@@ -174,7 +166,7 @@ async function runHrCrmVisualAudit({ browser, pool, actors, login, target, outpu
                         assert.equal((await pool.query('SELECT hourly_rate FROM staff WHERE id=$1', [existingId])).rows[0].hourly_rate, '123.00');
                     }
                     assert.equal((await pool.query('SELECT id FROM staff WHERE name=$1', [name])).rowCount, 1);
-                    assert.equal(result.accessState, actor.parkWorker ? 'active' : 'pending_membership');
+                    assert.equal(result.accessState, 'active');
                     await page.locator('[data-account-onboarding-finish]').waitFor({ state: 'visible' });
                     const copy = page.locator('[data-account-onboarding-copy]');
                     assert.ok(await copy.evaluate(button => {

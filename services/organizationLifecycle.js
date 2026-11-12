@@ -6,6 +6,7 @@ const { ACTION_PERMISSIONS: ACTION_PERMISSION_ENTRIES, getPublicPagePermissionMe
 const { normalizeBusinessContext, normalizeKnownBusinessContext, normalizeBusinessScopeMode, BUSINESS_SCOPE_SINGLE } = require('./businessContext');
 const { recordAccountSecurityEvent } = require('./accountSecurity');
 const { lockOrganizationOwnership } = require('./organizationOwnership');
+const { resolveAuthBusinessContext } = require('./authBusinessProfile');
 const { prepareHrQaMembership, prepareHrQaRevocation, registerHrQaEntity } = require('./hrFixtureQa');
 const { validateBusinessModules, businessModuleCatalog, configuredBusinessModuleEnabled } = require('./businessModuleRegistry');
 
@@ -175,6 +176,16 @@ async function updateBusinessMembership(db, actor, organizationId, targetUserId,
 // Prepare at transaction entry so account and staff writes take the same locks as lifecycle operations.
 async function prepareNewAccountMembership(client, actor, businessContext, access, req) {
     await lockOrganizationOwnership(client);
+    const { rows: [account] } = await client.query(
+        `SELECT id, username, role, is_active, extra_roles, page_allowlist, page_denylist,
+                action_allowlist, action_denylist, business_contexts, default_business_context
+         FROM users WHERE id = $1 FOR SHARE`, [actor.id]
+    );
+    const current = account?.is_active ? await resolveAuthBusinessContext(client, account, req) : null;
+    if (!current || current.scope.invalid || !canUseAction(current.user, 'manage_accounts')) {
+        throw failure(403, 'organization_management_denied', 'Право керувати акаунтами більше недоступне');
+    }
+    const principal = current.user;
     const business = await client.query(
         `SELECT id, organization_id FROM businesses
          WHERE context_key = $1 AND status = 'active' AND access_mode = 'membership'`,
@@ -185,13 +196,14 @@ async function prepareNewAccountMembership(client, actor, businessContext, acces
     }
     const businessId = positiveId(business.rows[0].id);
     const organizationId = positiveId(business.rows[0].organization_id);
-    const manager = await authorizeOrganization(client, actor, organizationId, false);
+    const manager = await authorizeOrganization(client, principal, organizationId, false);
     const input = { ...access, businessId, isDefault: true };
     validateMembershipInput(input);
     return {
         businessId,
         organizationId,
-        activate: userId => writeBusinessMembership(client, actor, manager, organizationId,
+        actor: principal,
+        activate: userId => writeBusinessMembership(client, principal, manager, organizationId,
             positiveId(userId), businessId, input, req)
     };
 }

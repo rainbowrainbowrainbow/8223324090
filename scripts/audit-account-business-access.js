@@ -26,7 +26,7 @@ async function auditAccountBusinessAccess(client, accountId = null) {
                 SELECT u.id AS account_id,
                        COALESCE(c.reason, c.event_type, 'unverified') AS source,
                        CASE
-                           WHEN c.event_type = 'account_onboarding_created'
+                           WHEN c.event_type = 'account_onboarding_created' OR c.reason = 'staff_bulk_create'
                                THEN NULLIF(c.details->>'defaultBusinessContext', '')
                            WHEN c.reason = 'account_management'
                                AND c.details->'businessContexts' = jsonb_build_array(u.default_business_context)

@@ -5552,6 +5552,21 @@ body.timeline-constructor-active::after {
 .timeline-marketing-description { white-space: pre-wrap; overflow-wrap: anywhere; }
 .timeline-marketing-form { display: grid; gap: 9px; margin-top: 0; }
 .timeline-marketing-form[hidden] { display: none; }
+.afisha-create-modes { display: flex; flex-wrap: wrap; gap: 8px; }
+.afisha-create-modes[role="group"] { margin-block-end: 12px; }
+.timeline-marketing-modal .afisha-create-modes button { min-height: 44px; }
+.timeline-marketing-modal .afisha-create-modes button[aria-pressed="true"] {
+    background: color-mix(in srgb, var(--primary) 22%, var(--gray-50));
+    border-color: var(--primary);
+}
+.afisha-timeline-import-preview {
+    max-height: 160px;
+    overflow-y: auto;
+    overflow-wrap: anywhere;
+    padding-inline-start: 24px;
+    margin: 0;
+}
+.timeline-marketing-form [data-import-status] { margin: 0; }
 .timeline-marketing-form label { display: grid; gap: 5px; min-width: 0; color: var(--gray-700); }
 .timeline-marketing-form input, .timeline-marketing-form textarea, .timeline-marketing-form select {
     width: 100%; box-sizing: border-box; min-width: 0; padding: 9px;

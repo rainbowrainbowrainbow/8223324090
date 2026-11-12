@@ -593,29 +593,6 @@
         }
     }
 
-    function importRows() {
-        const text = $('afishaImportText').value.trim();
-        if (!text) return notify('Вставте рядки для імпорту', 'error');
-        const rows = text.split(/\n+/).map(line => line.trim()).filter(Boolean);
-        return rows.reduce((chain, line) => chain.then(async count => {
-            const [date, time, durationRaw, title, description = '', type = 'event'] = line.split(';').map(part => part.trim());
-            if (!date || !time || !title) return count;
-            await api('POST', '/afisha', {
-                date,
-                time,
-                title,
-                description,
-                type: TYPE_META[type] ? type : 'event',
-                duration: Number(durationRaw || 60)
-            });
-            return count + 1;
-        }), Promise.resolve(0)).then(async count => {
-            notify(`Імпортовано подій: ${count}`, 'success');
-            $('afishaImportText').value = '';
-            await loadData();
-        }).catch(err => notify(`Імпорт зупинено: ${err.message}`, 'error'));
-    }
-
     function exportCsv() {
         const rows = visibleItems();
         if (!rows.length) return notify('Немає подій для експорту', 'warning');
@@ -784,11 +761,18 @@
             $('afishaPageTitle')?.focus();
             $('afishaPageForm')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         });
+        $('afishaFocusImportBtn')?.addEventListener('click', () => {
+            $('afishaImportText').focus({ preventScroll: true });
+            $('afishaImportForm').scrollIntoView({ block: 'start' });
+        });
         $('afishaPageList')?.addEventListener('click', handleListClick);
         $('afishaEventWorkspace')?.addEventListener('click', handleListClick);
         $('afishaFilterDate')?.addEventListener('change', handleFilterChange);
         $('afishaFilterType')?.addEventListener('change', handleFilterChange);
-        $('afishaImportBtn')?.addEventListener('click', importRows);
+        window.AfishaImportForm.bind($('afishaImportForm'), {
+            request: draft => api('POST', '/afisha/import', draft),
+            onSaved: loadData
+        });
         $('afishaExportBtn')?.addEventListener('click', exportCsv);
         $('afishaTemplateForm')?.addEventListener('submit', submitTemplate);
         $('afishaTemplateList')?.addEventListener('click', handleTemplateClick);
@@ -841,6 +825,7 @@
         state.filterDate = queryParam('date') || '';
         state.selectedId = queryParam('event') || null;
         $('afishaPageDate').value = date;
+        $('afishaImportMonth').value = date.slice(0, 7);
         $('afishaPageTime').value = time;
         $('afishaFilterDate').value = state.filterDate;
         applyLeadPrefillToAfishaForm(leadPrefillFromUrl());

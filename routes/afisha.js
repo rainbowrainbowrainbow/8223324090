@@ -14,6 +14,7 @@ const { authenticateToken } = require('../middleware/auth');
 const { pushDefaultTimelineBusinessContext } = require('../services/timelineBusinessScope');
 const { insertHistory } = require('../services/historyLog');
 const { moveAfishaSchedule } = require('../services/afishaSchedule');
+const { parseAfishaImport, importAfishaEvents } = require('../services/afishaImport');
 const { createTimelineAfisha, updateTimelineAfisha } = require('../services/afishaTimeline');
 const { birthdaySlotsForEvents, isGreetingEvent, setBirthdaySlot } = require('../services/afishaBirthdaySlots');
 const { DEFAULT_TIMELINE_CONTEXT, timelineContextFromRequest, requireTimelineAction } = require('../services/timelineContext');
@@ -729,6 +730,30 @@ router.get('/:date', async (req, res) => {
         log.error('Get by date error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
+});
+
+async function handleAfishaImport(req, res) {
+    try {
+        const input = req.body || {};
+        const batch = parseAfishaImport(input);
+        if (input.commit !== true) return res.json(batch);
+        const result = await importAfishaEvents(pool, batch, req.user.username);
+        res.json(result);
+    } catch (error) {
+        if (!error.statusCode) log.error('Afisha import error', error);
+        res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Не вдалося імпортувати розклад' });
+    }
+}
+
+router.post('/import', businessScopeWriteGuard, (req, res) => {
+    if (timelineContextFromRequest(req) !== DEFAULT_TIMELINE_CONTEXT) {
+        return res.status(403).json({ error: 'Афіша недоступна в цьому бізнесі' });
+    }
+    return handleAfishaImport(req, res);
+});
+
+router.post('/timeline/import', businessScopeWriteGuard, (req, res) => {
+    if (requireAfishaTimelineEdit(req, res)) return handleAfishaImport(req, res);
 });
 
 router.post('/', async (req, res) => {

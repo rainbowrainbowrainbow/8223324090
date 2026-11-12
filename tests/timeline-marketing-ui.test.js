@@ -30,12 +30,55 @@ function fixture() {
     w.closeModal = element => element.remove();
     w.HTMLElement.prototype.setPointerCapture = () => {};
     w.document.elementFromPoint = () => null;
-    for (const name of ['timeline-marketing', 'timeline-afisha', 'timeline-promotions']) {
+    for (const name of ['timeline-marketing', 'afisha-import-form', 'timeline-afisha', 'timeline-promotions']) {
         w.eval(fs.readFileSync(path.join(__dirname, '../js', `${name}.js`), 'utf8'));
     }
     return { w, state, close: () => dom.window.close() };
 }
 const event = { id: 1, title: '<img src=x onerror=alert(1)>', date: '2026-10-19', time: '14:00', duration: 60, type: 'event', original_time: '14:00' };
+
+test('the timeline opens a batch draft alongside the single-event form and refreshes all affected dates', async () => {
+    const f = fixture();
+    try {
+        const requests = [];
+        const days = ['2026-10-20', '2026-10-21'];
+        f.w.apiFetchWithAuthRetry = async (url, options) => {
+            const draft = JSON.parse(options.body);
+            requests.push({ url, draft });
+            return response(draft.commit ? { created: 2, skipped: 0 } : {
+                items: days.map(date => ({ date, time: '14:00', title: '<img>', duration: 60 }))
+            });
+        };
+        f.w.TimelineAfisha.quickCreate(days, null);
+        const modal = f.w.document.querySelector('.timeline-marketing-modal');
+        const single = modal.querySelector('[data-create-form]');
+        const batch = modal.querySelector('[data-batch-form]');
+        assert.equal(batch.hidden, true);
+        single.elements.date.value = days[1];
+        modal.querySelector('[data-afisha-mode="batch"]').click();
+        assert.equal(single.hidden, true);
+        assert.equal(batch.elements.importDate.value, days[1]);
+        batch.elements.importDate.value = days[0];
+        batch.elements.importText.value = '14:00;Шоу\n21;14:00;Квест';
+        batch.dispatchEvent(new f.w.Event('submit', { cancelable: true }));
+        await flush();
+        assert.equal(batch.querySelectorAll('ol li').length, 2);
+        assert.equal(batch.querySelector('img'), null);
+        modal.querySelector('[data-afisha-mode="single"]').click();
+        modal.querySelector('[data-afisha-mode="batch"]').click();
+        assert.equal(batch.elements.importDate.value, days[0]);
+        batch.querySelector('[data-import-save]').click();
+        await flush();
+        assert.deepEqual(requests.map(request => request.url), [
+            '/api/afisha/timeline/import?businessContext=event_genix',
+            '/api/afisha/timeline/import?businessContext=event_genix'
+        ]);
+        assert.deepEqual(requests[1].draft, { ...requests[0].draft, commit: true });
+        assert.deepEqual(f.state.writes, days);
+        assert.equal(f.state.renders, 1);
+        assert.equal(modal.isConnected, false);
+    } finally { f.close(); }
+});
 
 test('birthday slot editor labels the source and saves only the selected occurrence', async () => {
     const f = fixture();

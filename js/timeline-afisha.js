@@ -346,7 +346,25 @@
         const business = M.context();
         const initialDate = dates.includes(options.date) ? options.date
             : (dates.includes(formatDate(AppState.selectedDate)) ? formatDate(AppState.selectedDate) : dates[0]);
-        const modal = M.dialog('Додати афішний захід', `<form data-create-form class="timeline-marketing-form">
+        const modePicker = options.promotionId ? '' : `<div class="afisha-create-modes" role="group" aria-label="Кількість заходів">
+            <button type="button" class="btn-secondary" data-afisha-mode="single" aria-pressed="true">Один захід</button>
+            <button type="button" class="btn-secondary" data-afisha-mode="batch" aria-pressed="false">Кілька заходів</button>
+        </div>`;
+        const batchForm = options.promotionId ? '' : `<form data-batch-form class="timeline-marketing-form" hidden>
+            <label>Дата для списку<input name="importDate" type="date" value="${M.esc(initialDate)}" required></label>
+            <label>Список заходів
+                <small>Один захід на рядок. Вкажіть час, назву та, за потреби, тривалість у хвилинах через крапку з комою. Без тривалості — 60 хв.</small>
+                <textarea name="importText" rows="4" maxlength="32000" required placeholder="14:00;Майстер-клас;45&#10;16:00;Паперове шоу"></textarea>
+            </label>
+            <small>Для розкладу на місяць почніть рядок із числа або правила повторення. Наприклад, <code>вихідні;12:00;Квест</code>. Місяць береться з обраної дати.</small>
+            <p data-import-status role="status"></p>
+            <ol data-import-preview class="afisha-timeline-import-preview" aria-label="Заходи у передперегляді" tabindex="0" hidden></ol>
+            <div class="afisha-create-modes">
+                <button type="submit" class="btn-secondary" data-import-check>Перевірити розклад</button>
+                <button type="button" class="btn-primary" data-import-save disabled>Додати заходи</button>
+            </div>
+        </form>`;
+        const modal = M.dialog('Додати афішний захід', `${modePicker}<form data-create-form class="timeline-marketing-form">
             <label>Назва<input name="title" maxlength="180" required autofocus></label>
             <div class="timeline-marketing-date-pair"><label>Дата<input name="date" type="date" min="${dates[0]}" max="${dates[dates.length - 1]}" value="${initialDate}" required></label>
             <label>Час<input name="time" type="time" value="14:00" step="300" required></label></div>
@@ -357,8 +375,38 @@
             <label>Акція<select name="promotion"></select></label>
             <strong>Аніматори (до двох)</strong><div class="afisha-assignment-options" data-lines></div>
             <div role="alert" data-error></div><button type="submit" class="btn-primary">Додати захід</button>
-        </form>`, trigger);
+        </form>${batchForm}`, trigger);
         const form = modal.querySelector('[data-create-form]');
+        const bulk = modal.querySelector('[data-batch-form]');
+        const modes = [...modal.querySelectorAll('[data-afisha-mode]')];
+        const setModeBusy = busy => modes.forEach(button => { button.disabled = busy; });
+        if (bulk) {
+            let batchOpened = false;
+            modes.forEach(button => button.addEventListener('click', () => {
+                const isBatch = button.dataset.afishaMode === 'batch';
+                if (isBatch && !batchOpened) {
+                    bulk.elements.importDate.value = form.elements.date.value || initialDate;
+                    batchOpened = true;
+                }
+                form.hidden = isBatch;
+                bulk.hidden = !isBatch;
+                modes.forEach(mode => mode.setAttribute('aria-pressed', String(mode === button)));
+                (isBatch ? bulk.elements.importText : form.elements.title).focus();
+            }));
+            window.AfishaImportForm.bind(bulk, {
+                request: draft => {
+                    if (M.context() !== business) throw new Error('Бізнес-контекст змінився. Повторіть дію.');
+                    return M.request('/afisha/timeline/import', 'POST', draft, business);
+                },
+                onBusy: setModeBusy,
+                onSaved: async (result, changedDates) => {
+                    changedDates.forEach(date => invalidateTimelineDateCache(date, { businessContext: business }));
+                    closeModal(modal);
+                    showNotification(`Додано заходів: ${result.created}. Пропущено дублікатів: ${result.skipped}.`);
+                    if (M.context() === business) await renderTimeline();
+                }
+            });
+        }
         form.elements.type.addEventListener('change', () => {
             const greeting = form.elements.type.value === 'greeting';
             form.elements.duration.disabled = greeting;
@@ -382,6 +430,7 @@
             if (ids.length > 2) { form.querySelector('[data-error]').textContent = 'Оберіть не більше двох аніматорів'; return; }
             const submit = form.querySelector('[type="submit"]');
             submit.disabled = true;
+            setModeBusy(true);
             try {
                 await M.request('/afisha/timeline', 'POST', {
                     title: form.elements.title.value, date: form.elements.date.value, time: form.elements.time.value,
@@ -394,7 +443,10 @@
                 if (M.context() === business) await renderTimeline();
                 showNotification('Афішний захід додано');
             } catch (error) { form.querySelector('[data-error]').textContent = error.message; }
-            finally { submit.disabled = false; }
+            finally {
+                submit.disabled = false;
+                setModeBusy(false);
+            }
         });
     }
 

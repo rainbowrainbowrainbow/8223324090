@@ -123,6 +123,7 @@
 .afisha-filter-row select,
 .afisha-template-form input,
 .afisha-template-form select,
+.afisha-ops-card input,
 .afisha-ops-card textarea,
 .afisha-form-card input,
 .afisha-form-card select,
@@ -144,6 +145,37 @@
 .afisha-material-form textarea {
     width: 100%;
     resize: vertical;
+}
+
+.afisha-ops-card {
+    min-width: 0;
+}
+
+.afisha-import-help,
+.afisha-import-status,
+.afisha-import-preview {
+    font-size: 0.875rem;
+    overflow-wrap: anywhere;
+}
+
+.afisha-import-help pre {
+    margin: 8px 0;
+    white-space: pre-wrap;
+}
+
+.afisha-import-status {
+    margin: 8px 0;
+}
+
+.afisha-import-preview {
+    max-height: 220px;
+    overflow-y: auto;
+    padding-inline-start: 24px;
+    margin: 8px 0 12px;
+}
+
+.afisha-import-preview li + li {
+    margin-top: 6px;
 }
 
 .afisha-page-list,
@@ -398,6 +430,7 @@ body.dark-mode .afisha-filter-row input,
 body.dark-mode .afisha-filter-row select,
 body.dark-mode .afisha-template-form input,
 body.dark-mode .afisha-template-form select,
+body.dark-mode .afisha-ops-card input,
 body.dark-mode .afisha-ops-card textarea,
 body.dark-mode .afisha-form-card input,
 body.dark-mode .afisha-form-card select,

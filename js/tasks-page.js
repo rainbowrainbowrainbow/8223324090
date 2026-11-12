@@ -2490,7 +2490,7 @@ async function loadAllTasks(options = {}) {
     if (board && !append) board.innerHTML = '<div class="loading-spinner">Завантаження задач…</div>';
     if (append) {
         taskPagination = { ...taskPagination, loadingMore: true };
-        renderBoard();
+        renderTaskPagination(board);
     }
     try {
         const targetPage = append ? Math.max(1, Number(taskPagination.nextPage) || Number(taskPagination.page || 0) + 1) : 1;
@@ -2518,10 +2518,13 @@ function renderTaskPagination(container) {
     const { total = 0, hasMore = false, loadingMore = false } = taskPagination || {};
     if (!hasMore && total <= allTasks.length) return;
     const label = loadingMore ? 'Завантаження…' : `Завантажити ще (${allTasks.length} з ${total})`;
-    container.insertAdjacentHTML('beforeend', `
+    const html = `
         <div class="task-pagination" aria-live="polite">
             <button type="button" class="btn-secondary" data-task-load-more ${loadingMore ? 'disabled aria-disabled="true"' : ''}>${label}</button>
-        </div>`);
+        </div>`;
+    const existing = container.querySelector(':scope > .task-pagination');
+    if (existing) existing.outerHTML = html;
+    else container.insertAdjacentHTML('beforeend', html);
 }
 
 async function apiCreateOperationPack(data) {

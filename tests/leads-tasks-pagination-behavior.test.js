@@ -186,9 +186,13 @@ test('Tasks frontend appends without duplicates and exposes loading/error/retry 
     harness.pending[0].resolve(taskPage([{ id: 1 }, { id: 2 }], { total: 3, hasMore: true }));
     await first;
 
+    const document = harness.dom.window.document;
+    const firstPage = document.querySelector('[data-rendered-count]');
     const append = harness.hooks.loadAllTasks({ append: true });
     assert.equal(harness.hooks.getPagination().loadingMore, true);
-    assert.ok(harness.dom.window.document.querySelector('[data-task-load-more][disabled]'));
+    assert.ok(document.querySelector('[data-task-load-more][disabled]'));
+    assert.equal(document.querySelector('[data-rendered-count]'), firstPage);
+    assert.equal(document.querySelectorAll('[data-task-load-more]').length, 1);
     harness.pending[1].resolve(taskPage([{ id: 2 }, { id: 3 }], { page: 2, total: 3 }));
     await append;
     assert.deepEqual(Array.from(harness.hooks.getTasks(), task => task.id), [1, 2, 3]);

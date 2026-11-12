@@ -3878,16 +3878,17 @@ function handleKanbanLeadTypeTriggerEvent(event) {
     if (!trigger) return;
     event.preventDefault();
     event.stopPropagation();
-    if (trigger.disabled) return;
+    if (trigger.disabled || event.repeat) return;
 
     const leadId = Number(trigger.dataset.leadId || 0);
     if (!leadId) return;
-    const justOpened = kanbanLeadTypeTriggerOpenedLeadId === leadId
-        && Date.now() - kanbanLeadTypeTriggerOpenedAt < 700;
-    if (justOpened) return;
-
-    kanbanLeadTypeTriggerOpenedAt = Date.now();
-    kanbanLeadTypeTriggerOpenedLeadId = leadId;
+    const keyboard = event.type === 'keydown' || (event.type === 'click' && event.detail === 0);
+    if (!keyboard) {
+        const now = Date.now();
+        if (kanbanLeadTypeTriggerOpenedLeadId === leadId && now - kanbanLeadTypeTriggerOpenedAt < 700) return;
+        kanbanLeadTypeTriggerOpenedAt = now;
+        kanbanLeadTypeTriggerOpenedLeadId = leadId;
+    }
     if (isLeadBusinessReadOnly()) {
         showKanbanLeadTypeReadOnlyNotice(trigger);
         return;
@@ -3919,16 +3920,17 @@ function handleKanbanBookingConversionTriggerEvent(event) {
     if (!trigger) return;
     event.preventDefault();
     event.stopPropagation();
-    if (trigger.disabled) return;
+    if (trigger.disabled || event.repeat) return;
 
     const leadId = Number(trigger.dataset.leadId || 0);
     if (!leadId) return;
-    const justOpened = kanbanBookingConversionTriggerOpenedLeadId === leadId
-        && Date.now() - kanbanBookingConversionTriggerOpenedAt < 700;
-    if (justOpened) return;
-
-    kanbanBookingConversionTriggerOpenedAt = Date.now();
-    kanbanBookingConversionTriggerOpenedLeadId = leadId;
+    const keyboard = event.type === 'keydown' || (event.type === 'click' && event.detail === 0);
+    if (!keyboard) {
+        const now = Date.now();
+        if (kanbanBookingConversionTriggerOpenedLeadId === leadId && now - kanbanBookingConversionTriggerOpenedAt < 700) return;
+        kanbanBookingConversionTriggerOpenedAt = now;
+        kanbanBookingConversionTriggerOpenedLeadId = leadId;
+    }
     if (!guardLeadWrite('створювати бронювання з ліда')) return;
 
     showKanbanBookingConversionMenu(leadId, event);

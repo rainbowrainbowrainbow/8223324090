@@ -1795,6 +1795,7 @@ const DashboardPage = (() => {
     }
 
     function renderDashboardOpenFallback(error, source = 'render') {
+        clearDeferredWeather();
         if (_dashboardConfigWritable === false) {
             renderDashboardConfigLoadError(_dashboardConfigLoadError || error || new Error('Dashboard config не завантажився'));
             return;
@@ -1835,6 +1836,7 @@ const DashboardPage = (() => {
     }
 
     function renderDashboardConfigLoadError(error) {
+        clearDeferredWeather();
         const grid = document.getElementById('dashboardGrid');
         const shell = document.getElementById('dashboardBoardShell');
         if (shell) shell.classList.add('hidden');
@@ -3700,6 +3702,7 @@ const DashboardPage = (() => {
     }
 
     function renderMixedSceneDashboard(grid) {
+        clearDeferredWeather();
         const layout = buildMixedSceneLayout();
         grid.className = 'dashboard-grid dashboard-mixed-scene';
         grid.innerHTML = renderMixedSceneMarkup(layout);
@@ -3923,9 +3926,13 @@ const DashboardPage = (() => {
         [...new Set(allKeys)].forEach(widgetKey => loadWidgetData(widgetKey));
     }
 
+    function clearDeferredWeather() {
+        _deferredWeather?.observer.disconnect();
+        _deferredWeather = null;
+    }
+
     function renderFlatWidgetGrid(grid, options = {}) {
-        _weatherCardObserver?.disconnect();
-        _weatherCardObserver = null;
+        clearDeferredWeather();
         grid.className = 'dashboard-grid dashboard-widget-grid' + (_layoutEditing ? ' is-layout-editing' : '');
         syncDashboardLayoutModeControls();
         const widgets = Array.isArray(options.widgetKeys)
@@ -3941,14 +3948,14 @@ const DashboardPage = (() => {
             if (options.hydrateData === false) continue;
             if (widgetKey === 'weather' && typeof IntersectionObserver === 'function') {
                 const card = grid.lastElementChild;
+                const container = card.querySelector('.widget-body');
                 const observer = new IntersectionObserver(entries => {
                     if (!entries.some(entry => entry.isIntersecting)) return;
-                    observer.disconnect();
-                    if (_weatherCardObserver !== observer) return;
-                    _weatherCardObserver = null;
-                    if (card.isConnected) loadWidgetData(widgetKey);
+                    if (_deferredWeather?.observer !== observer) return;
+                    clearDeferredWeather();
+                    if (container.isConnected) loadWidgetData(widgetKey, container);
                 }, { rootMargin: '160px 0px' });
-                _weatherCardObserver = observer;
+                _deferredWeather = { observer, container };
                 observer.observe(card);
             } else {
                 loadWidgetData(widgetKey);
@@ -3968,7 +3975,7 @@ const DashboardPage = (() => {
     let _dashboardContextFingerprint = '';
     let _widgetLayoutStatusTimer = null;
     let _widgetDragCleanup = null;
-    let _weatherCardObserver = null;
+    let _deferredWeather = null;
 
     function setWidgetLayoutStatus(message, state = 'saved') {
         const status = document.getElementById('dashboardLayoutStatus');
@@ -10791,10 +10798,10 @@ ${focusButton}
     function refreshStaleVisibleWidgets() {
         if (document.hidden) return Promise.resolve([]);
         const staleTypes = visibleDashboardWidgetTypes()
-            .filter(type => type !== 'weather' || !_weatherCardObserver)
             .filter(type => !isWidgetDataFresh(type, dashboardWidgetRequestContext(type).key));
         return Promise.allSettled(staleTypes.map(type => {
             const container = dashboardWidgetContainers(type)[0];
+            if (container === _deferredWeather?.container) return Promise.resolve();
             return container ? loadWidgetData(type, container) : Promise.resolve();
         }));
     }

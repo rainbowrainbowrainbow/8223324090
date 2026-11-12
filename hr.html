@@ -418,6 +418,14 @@
                             <div class="hr-account-form-grid">
                                 <div id="accountOnboardingPersonalFields" class="hr-account-form-grid is-wide"></div>
                                 <label><span>Логін *</span><input id="accountOnboardingUsername" name="username" maxlength="50" pattern="[a-zA-Z0-9._-]{3,50}" autocomplete="off" required><small>Після створення логін не змінюється.</small></label>
+                                <div class="is-wide">
+                                    <label><span>Початковий пароль *</span><input id="accountOnboardingPassword" type="password" autocomplete="new-password" minlength="12" maxlength="72" aria-describedby="accountOnboardingPasswordHint" required></label>
+                                    <small id="accountOnboardingPasswordHint">Можна відредагувати. Від 12 символів, без крайніх пробілів, крапки з комою та переносів рядка.</small>
+                                    <div class="hr-account-choice-row">
+                                        <button type="button" id="accountOnboardingPasswordToggle" class="hr-account-toggle" aria-controls="accountOnboardingPassword" aria-pressed="false">Показати пароль</button>
+                                        <button type="button" id="accountOnboardingPasswordGenerate" class="hr-account-toggle">Згенерувати інший</button>
+                                    </div>
+                                </div>
                             </div>
                         <div id="accountOnboardingExistingSetup" hidden><label class="hr-account-option"><input id="accountOnboardingEditSetup" type="checkbox"> Змінити професії та структуру цієї картки</label><div id="accountOnboardingExistingProfessionFields" hidden></div></div></section>
 <section data-account-onboarding-step="5" class="hr-account-onboarding-panel" hidden>

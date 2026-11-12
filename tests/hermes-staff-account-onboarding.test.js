@@ -544,6 +544,7 @@ test('existing-account onboarding can link and reissue one-time login with sanit
     });
     let updatedHash = null;
     let securityEvents = 0;
+    const auditParams = [];
     const calls = [];
     const client = {
         async query(sql, params = []) {
@@ -586,7 +587,7 @@ test('existing-account onboarding can link and reissue one-time login with sanit
             }
             if (/INSERT INTO account_security_events/i.test(sql)) {
                 securityEvents += 1;
-                assert.doesNotMatch(JSON.stringify(params), /[A-Z][A-Za-z]+-[A-Z][A-Za-z]+-\d{2}/);
+                auditParams.push(params);
                 return { rows: [], rowCount: 1 };
             }
             throw new Error(`Unexpected link+reissue SQL: ${sql}`);
@@ -601,7 +602,7 @@ test('existing-account onboarding can link and reissue one-time login with sanit
     assert.equal(result.staff.id, 936);
     assert.equal(result.user.id, 49);
     assert.equal(result.credential.username, 'sofia.marchenko');
-    assert.match(result.credential.password, /^[A-Z][A-Za-z]+-[A-Z][A-Za-z]+-\d{2}$/);
+    assert.match(result.credential.password, /^[A-HJ-KM-NP-Za-hj-km-np-z2-9]{16}$/);
     assert.equal(result.loginReady, true);
     assert.equal(result.meta.staffWrites, 0);
     assert.equal(result.meta.staffProfileWrites, 1);
@@ -611,13 +612,13 @@ test('existing-account onboarding can link and reissue one-time login with sanit
     assert.equal(result.meta.staffTelegramNotifications, 0);
     assert.equal(result.meta.credentialIssued, true);
     assert.equal(securityEvents, 2);
+    assert.ok(!JSON.stringify(auditParams).includes(result.credential.password));
     assert.equal(calls.some(call => /INSERT INTO users/i.test(call.sql)), false);
 });
 
-test('default one-time passwords are human-readable temporary passwords', () => {
+test('default one-time passwords are 16 characters without ambiguous letters or digits', () => {
     for (let i = 0; i < 50; i += 1) {
         const password = generateOneTimePassword();
-        assert.match(password, /^[A-Z][A-Za-z]+-[A-Z][A-Za-z]+-\d{2}$/);
-        assert.equal(password.split('-').length, 3);
+        assert.match(password, /^[A-HJ-KM-NP-Za-hj-km-np-z2-9]{16}$/);
     }
 });

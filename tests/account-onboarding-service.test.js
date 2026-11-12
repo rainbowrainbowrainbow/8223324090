@@ -299,11 +299,36 @@ test('post-commit chat failure returns a warning without exposing credentials to
     assert.equal(result.accessState, 'pending_membership');
     assert.equal(result.receipt.access.businessAccessReady, result.businessAccessReady);
     assert.equal(result.receipt.access.accessState, result.accessState);
-    assert.match(result.credential.password, /^[A-Z][A-Za-z]+-[A-Z][A-Za-z]+-\d{2}$/);
+    assert.match(result.credential.password, /^[A-HJ-KM-NP-Za-hj-km-np-z2-9]{16}$/);
     assert.ok(harness.calls.some(call => call.text === 'COMMIT'));
     const auditText = JSON.stringify(harness.auditParams);
     assert.doesNotMatch(auditText, new RegExp(result.credential.password));
     assert.doesNotMatch(auditText, /password/i);
+});
+
+test('the operator-selected initial password is verified and omitted from audit events', async () => {
+    const harness = createOnboardingHarness();
+    const initialPassword = 'Demo-Initial-Password-482';
+    const result = await createAccountOnboarding({
+        payload: { ...onboardingPayload(), initialPassword },
+        actor: { id: 1, username: 'creator', role: 'creator', action_denylist: [] },
+        dbPool: harness.dbPool
+    });
+    assert.equal(result.loginReady, true);
+    assert.equal(result.credential.password, initialPassword);
+    assert.ok(!JSON.stringify(harness.calls).includes(initialPassword));
+});
+
+test('invalid initial passwords do not start account creation', async () => {
+    for (const initialPassword of ['', 'short', 'é'.repeat(37), ' leading-space-password', 'Password: wrapped-demo-secret']) {
+        const harness = createOnboardingHarness();
+        await assert.rejects(createAccountOnboarding({
+            payload: { ...onboardingPayload(), initialPassword },
+            actor: { id: 1, username: 'creator', role: 'creator', action_denylist: [] },
+            dbPool: harness.dbPool
+        }), { code: 'ACCOUNT_ONBOARDING_INVALID_PASSWORD', statusCode: 400 });
+        assert.deepEqual(harness.calls, []);
+    }
 });
 
 test('account business access is active only for matching active registry and memberships', async () => {

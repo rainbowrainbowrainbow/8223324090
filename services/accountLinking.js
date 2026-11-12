@@ -40,32 +40,13 @@ function suggestUsernameForStaff(staff = {}) {
     return `staff.${staff.id || Date.now()}`;
 }
 
-const READABLE_PASSWORD_WORDS = Object.freeze([
-    'Park', 'Dar', 'Kava', 'Lito', 'Svit', 'Quest', 'Room', 'Smile',
-    'Misto', 'Panda', 'Rocket', 'Sunny', 'Music', 'Cake', 'Magic', 'Green'
-]);
+const PASSWORD_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
 
-function generateReadableTemporaryPassword() {
-    const bytes = crypto.randomBytes(3);
-    const first = READABLE_PASSWORD_WORDS[bytes[0] % READABLE_PASSWORD_WORDS.length];
-    let second = READABLE_PASSWORD_WORDS[bytes[1] % READABLE_PASSWORD_WORDS.length];
-    if (second === first) {
-        second = READABLE_PASSWORD_WORDS[(bytes[1] + 1) % READABLE_PASSWORD_WORDS.length];
-    }
-    const number = 10 + (bytes[2] % 90);
-    return `${first}-${second}-${number}`;
-}
-
-function generateOneTimePassword(length = null) {
-    if (length === null || length === undefined) {
-        return generateReadableTemporaryPassword();
-    }
-    const safeLength = Math.max(8, Math.min(128, Number(length) || 10));
-    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-    const bytes = crypto.randomBytes(safeLength);
+function generateOneTimePassword(length = 16) {
+    const safeLength = Math.max(8, Math.min(128, Math.trunc(Number(length)) || 16));
     let password = '';
-    for (let i = 0; i < safeLength; i += 1) {
-        password += chars[bytes[i] % chars.length];
+    for (let index = 0; index < safeLength; index += 1) {
+        password += PASSWORD_ALPHABET[crypto.randomInt(PASSWORD_ALPHABET.length)];
     }
     return password;
 }
@@ -547,7 +528,6 @@ module.exports = {
     normalizePositiveInt,
     normalizeUsername,
     suggestUsernameForStaff,
-    generateReadableTemporaryPassword,
     generateOneTimePassword,
     verifyIssuedCredential,
     reserveUsernameIdentity,

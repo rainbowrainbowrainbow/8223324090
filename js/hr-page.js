@@ -7249,8 +7249,10 @@ async function submitStaffCreation(kind, initialBody, isCurrent) {
                 ? { ...body, staff: { ...body.staff, distinctStaffIds: attempt.distinctStaffIds } }
                 : { ...body, distinctStaffIds: attempt.distinctStaffIds };
         }
+        // Persist the operation identity without deriving a reusable hash of a password.
+        const { initialPassword: _initialPassword, ...operationBody } = body;
         const fingerprint = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',
-            new TextEncoder().encode(JSON.stringify(body))))).map(byte => byte.toString(16).padStart(2, '0')).join('');
+            new TextEncoder().encode(JSON.stringify(operationBody))))).map(byte => byte.toString(16).padStart(2, '0')).join('');
         if (attempt) {
             const recovered = await lookupStaffCreationAttempt(kind, attempt);
             if (recovered?.success) return { result: recovered, acknowledge: () => writeStaffCreationAttempt(storageKey, null) };
@@ -9588,6 +9590,21 @@ function focusInvalidAccountOnboarding(message, element) {
     return false;
 }
 
+function suggestAccountOnboardingPassword() {
+    const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+    const limit = 256 - (256 % alphabet.length);
+    const bytes = new Uint8Array(16);
+    let password = '';
+    while (password.length < 16) {
+        crypto.getRandomValues(bytes);
+        for (const byte of bytes) {
+            if (byte < limit) password += alphabet[byte % alphabet.length];
+            if (password.length === 16) break;
+        }
+    }
+    return password;
+}
+
 function validateAccountOnboardingSection(step) {
     setAccountOnboardingStatus('');
     if (step === 1) {
@@ -9595,6 +9612,14 @@ function validateAccountOnboardingSection(step) {
         const username = accountOnboardingEl('accountOnboardingUsername');
         if (!String(name?.value || '').trim()) return focusInvalidAccountOnboarding('Вкажіть імʼя в CRM.', name);
         if (!/^[a-zA-Z0-9._-]{3,50}$/.test(String(username?.value || '').trim())) return focusInvalidAccountOnboarding('Логін: 3–50 символів, лише латиниця, цифри, крапка, дефіс або підкреслення.', username);
+    }
+    if (step === 1) {
+        const input = accountOnboardingEl('accountOnboardingPassword');
+        const password = input.value;
+        if ([...password].length < 12 || new TextEncoder().encode(password).length > 72
+            || /[\r\n;]/.test(password) || password.normalize('NFKC').trim() !== password) {
+            return focusInvalidAccountOnboarding('Вкажіть пароль від 12 символів, до 72 байтів, без крайніх пробілів, крапки з комою та переносів рядка.', input);
+        }
     }
     if (step === 2) {
         if (accountOnboardingStaffMode() === 'existing') {
@@ -9682,7 +9707,8 @@ function buildAccountOnboardingPayload() {
             actionAllowlist: checkedAccountOnboardingValues('accountOnboardingActionAllow', 'account-onboarding-action-allow'),
             actionDenylist: checkedAccountOnboardingValues('accountOnboardingActionDeny', 'account-onboarding-action-deny')
         },
-        issueOneTime: true
+        issueOneTime: true,
+        initialPassword: accountOnboardingEl('accountOnboardingPassword').value
     };
     if (accountOnboardingChangesSetup()) {
         payload.structureNodeId = accountOnboardingEl('accountOnboardingStructureNode')?.value || null;
@@ -9903,6 +9929,8 @@ async function submitAccountOnboarding() {
 }
 
 function completeAccountOnboarding(response) {
+    accountOnboardingEl('accountOnboardingPassword').value = '';
+    accountOnboardingState.payload = null;
     renderAccountOnboardingReceipt(response);
     accountCenterLastUpdatedId = response.receipt?.account?.id || response.user?.id || null;
     accountOnboardingOptions = null;
@@ -9926,6 +9954,10 @@ function closeAccountOnboardingWizard({ force = false } = {}) {
     overlay?.classList.add('hidden');
     overlay?.setAttribute('aria-hidden', 'true');
     accountOnboardingEl('accountOnboardingForm')?.reset();
+    accountOnboardingEl('accountOnboardingPassword').type = 'password';
+    const passwordToggle = accountOnboardingEl('accountOnboardingPasswordToggle');
+    passwordToggle.setAttribute('aria-pressed', 'false');
+    passwordToggle.textContent = 'Показати пароль';
     if (accountOnboardingEl('accountOnboardingRateMode')) {
         delete accountOnboardingEl('accountOnboardingRateMode').dataset.userChanged;
         delete accountOnboardingEl('accountOnboardingRateMode').dataset.staffMode;
@@ -9963,6 +9995,17 @@ function setAccountOnboardingBackgroundInert(inert) {
 function bindAccountOnboardingControls() {
     const overlay = accountOnboardingEl('accountOnboardingOverlay');
     if (!overlay || overlay.dataset.bound === 'true') return;
+    const password = accountOnboardingEl('accountOnboardingPassword');
+    accountOnboardingEl('accountOnboardingPasswordToggle').addEventListener('click', event => {
+        const visible = password.type === 'password';
+        password.type = visible ? 'text' : 'password';
+        event.currentTarget.setAttribute('aria-pressed', String(visible));
+        event.currentTarget.textContent = visible ? 'Приховати пароль' : 'Показати пароль';
+    });
+    accountOnboardingEl('accountOnboardingPasswordGenerate').addEventListener('click', () => {
+        password.value = suggestAccountOnboardingPassword();
+        password.dispatchEvent(new Event('input', { bubbles: true }));
+    });
     for (const eventName of ['input', 'change']) {
         accountOnboardingEl('accountOnboardingForm').addEventListener(eventName, () => {
             if (!accountOnboardingState.submitting) setAccountOnboardingStatus('');
@@ -10140,6 +10183,7 @@ async function openAccountOnboardingWizard(button, context = {}) {
             if (context.name) accountOnboardingEl('accountOnboardingName').value = context.name;
             if (context.username) accountOnboardingEl('accountOnboardingUsername').value = context.username;
         }
+        accountOnboardingEl('accountOnboardingPassword').value = suggestAccountOnboardingPassword();
         syncAccountOnboardingStaffMode();
         syncAccountOnboardingProfessionDependants();
         showAccountOnboardingStep(accountOnboardingSteps()[0]);

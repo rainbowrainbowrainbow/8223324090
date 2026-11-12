@@ -36,6 +36,14 @@ function normalizeManualPassword(value) {
     return normalizeCredentialPassword(value);
 }
 
+function isValidInitialPassword(password) {
+    return typeof password === 'string'
+        && [...password].length >= 12
+        && Buffer.byteLength(password, 'utf8') <= 72
+        && !/[\r\n;]/.test(password)
+        && normalizeManualPassword(password) === password;
+}
+
 function uniquePasswordCandidates(...values) {
     const seen = new Set();
     const candidates = [];
@@ -74,6 +82,7 @@ module.exports = {
     extractCredentialBlock,
     normalizeCredentialPassword,
     normalizeManualPassword,
+    isValidInitialPassword,
     normalizeLoginCredentialPayload,
     uniquePasswordCandidates
 };

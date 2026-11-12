@@ -25,6 +25,7 @@ const {
     reserveUsernameIdentity,
     linkUserToStaffProfile
 } = require('./accountLinking');
+const { isValidInitialPassword } = require('./credentialInput');
 const { recordAccountSecurityEvent } = require('./accountSecurity');
 const { buildMembershipAccess } = require('./businessMembership');
 const {
@@ -1000,7 +1001,12 @@ async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = 
     }
     if (!dbPool || typeof dbPool.connect !== 'function') throw new TypeError('Database pool is required');
 
-    const temporaryPassword = generateOneTimePassword();
+    const initialPassword = payload?.initialPassword;
+    if (initialPassword !== undefined && !isValidInitialPassword(initialPassword)) {
+        throw onboardingError('Вкажіть пароль від 12 символів і до 72 байтів, без крайніх пробілів, крапки з комою та переносів рядка.',
+            400, 'ACCOUNT_ONBOARDING_INVALID_PASSWORD');
+    }
+    const temporaryPassword = initialPassword ?? generateOneTimePassword();
     const passwordHash = await bcrypt.hash(temporaryPassword, 10);
     if (!await bcrypt.compare(temporaryPassword, passwordHash)) {
         throw new Error('account_onboarding_password_hash_verification_failed');

@@ -43,6 +43,7 @@ const { resolveStaffOperation } = require('./staffOperationAccess');
 const { canManageStaffPayrollRules } = require('./parkHrPayrollAccess');
 const { hasCurrentParkScheduleMembership } = require('./parkStaffScheduleAccess');
 const { lockOrganizationOwnership } = require('./organizationOwnership');
+const { prepareNewAccountMembership } = require('./organizationLifecycle');
 const {
     describeStaffCreationOperation, readStaffCreationOperation, lockStaffCreationOperation, recordStaffCreationOperation
 } = require('./staffCreationOperations');
@@ -369,6 +370,9 @@ function normalizeConditions(value, selectedProfessionKeys) {
 
 function normalizeAccess(value, primaryProfessionKey) {
     const source = objectOrEmpty(value);
+    if (hasOwn(source, 'activateMembership') && typeof source.activateMembership !== 'boolean') {
+        throw onboardingError('Вкажіть, чи потрібно активувати членство', 400, 'ACCOUNT_ONBOARDING_INVALID_ACCESS_MODE');
+    }
     const role = cleanText(source.role || professionToAccountRole(primaryProfessionKey), 64);
     if (!ROLE_HIERARCHY.includes(role)) {
         throw onboardingError('Для основної професії не визначена коректна CRM role', 400, 'ACCOUNT_ONBOARDING_INVALID_ACCOUNT_ROLE', { primaryProfessionKey });
@@ -406,7 +410,16 @@ function normalizeAccess(value, primaryProfessionKey) {
 
     let businessContexts = [DEFAULT_BUSINESS_CONTEXT];
     let defaultBusinessContext = DEFAULT_BUSINESS_CONTEXT;
-    if (['creator', 'director'].includes(role)) {
+    if (source.activateMembership === true) {
+        const target = firstDefined(source.defaultBusinessContext, source.default_business_context, DEFAULT_BUSINESS_CONTEXT);
+        const selected = firstDefined(source.businessContexts, source.business_contexts, [target]);
+        if (typeof target !== 'string' || !/^[a-z][a-z0-9_]{2,63}$/.test(target)
+            || !Array.isArray(selected) || selected.length !== 1 || selected[0] !== target) {
+            throw onboardingError('Для активації членства оберіть один бізнес', 400, 'ACCOUNT_ONBOARDING_INVALID_BUSINESS_CONTEXT');
+        }
+        businessContexts = [target];
+        defaultBusinessContext = target;
+    } else if (['creator', 'director'].includes(role)) {
         const requestedContexts = normalizeStringArray(firstDefined(source.businessContexts, source.business_contexts));
         if (requestedContexts.some(context => !BUSINESS_CONTEXTS[context])) {
             throw onboardingError('Некоректний бізнес-контекст', 400, 'ACCOUNT_ONBOARDING_INVALID_BUSINESS_CONTEXT');
@@ -427,7 +440,8 @@ function normalizeAccess(value, primaryProfessionKey) {
         actionAllowlist,
         actionDenylist,
         businessContexts,
-        defaultBusinessContext
+        defaultBusinessContext,
+        ...(hasOwn(source, 'activateMembership') ? { activateMembership: source.activateMembership } : {})
     };
 }
 
@@ -906,6 +920,12 @@ async function addDefaultChatMemberships(dbPool, userId) {
 }
 
 function normalizeDatabaseError(error) {
+    if (error?.code === 'organization_management_denied') {
+        return onboardingError('Немає права призначати доступ до цієї організації', 403, error.code);
+    }
+    if (Number.isInteger(error?.status) && error.status >= 400 && error.status < 500 && !error.statusCode) {
+        return onboardingError(error.message, error.status, error.code);
+    }
     if (error?.code === '23505') {
         return onboardingError('Акаунт або зв’язок із такими даними вже існує', 409, 'ACCOUNT_ONBOARDING_CONFLICT');
     }
@@ -1025,6 +1045,9 @@ async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = 
     try {
         await client.query('BEGIN');
         const park = delegated ? await lockParkOnboardingMembership(client, actor, normalized.staff.mode) : null;
+        const membership = !delegated && normalized.access.activateMembership === true
+            ? await prepareNewAccountMembership(client, actor, normalized.access.defaultBusinessContext, normalized.access, req)
+            : null;
         const marker = normalized.personal.username.startsWith('hrqa-') ? normalized.personal.username : normalized.personal.name;
         qa = await prepareHrFixtureQa(client, req, 'onboard', marker);
         assertHrQaOnboarding(qa, operation, normalized);
@@ -1182,6 +1205,15 @@ async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = 
             staffId: link.profile.staffId, userId: link.profile.userId
         });
 
+        if (membership) await membership.activate(user.id);
+        if (park || membership) {
+            const verified = await resolveAccountBusinessAccess(client, user.id, normalized.access.defaultBusinessContext);
+            if (!verified.businessAccessReady) {
+                throw onboardingError('Не вдалося підтвердити CRM-доступ до вибраного бізнесу',
+                    409, 'ACCOUNT_ONBOARDING_ACCESS_NOT_READY');
+            }
+        }
+        const grantedMembership = membership || park;
         const safeAuditDetails = {
             source: 'account_onboarding',
             accountRole: normalized.access.role,
@@ -1191,7 +1223,7 @@ async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = 
             actionDenyOverrideCount: normalized.access.actionDenylist.length,
             businessContexts: normalized.access.businessContexts,
             defaultBusinessContext: normalized.access.defaultBusinessContext,
-            ...(park ? { organizationId: park.organizationId, businessId: park.businessId, membershipActivated: true } : {}),
+            ...(grantedMembership ? { organizationId: grantedMembership.organizationId, businessId: grantedMembership.businessId, membershipActivated: true } : {}),
             staffId: staff.id,
             staffCreated,
             structureNodeId: normalized.structureNodeId,

@@ -67,18 +67,22 @@ async function authorizeManager(client, actor, organizationId, ownerOnly) {
     return { platform: false, role: current.role };
 }
 
+async function authorizeOrganization(client, actor, id, ownerOnly) {
+    // All organization lifecycle writers take this lock before checking
+    // authority or counting owners, including concurrent self-demotions.
+    const organization = await client.query('SELECT id, status FROM organizations WHERE id = $1 FOR UPDATE', [id]);
+    if (!organization.rows[0]) throw failure(404, 'organization_not_found', 'Organization not found');
+    if (organization.rows[0].status !== 'active') throw failure(403, 'organization_management_denied', 'Organization is inactive');
+    return authorizeManager(client, actor, id, ownerOnly);
+}
+
 async function transaction(db, actor, organizationId, ownerOnly, operation) {
     const id = positiveId(organizationId, 'organization_id_invalid');
     const client = await db.connect();
     try {
         await client.query('BEGIN');
         await lockOrganizationOwnership(client);
-        // All organization lifecycle writers take this lock before checking
-        // authority or counting owners, including concurrent self-demotions.
-        const organization = await client.query('SELECT id, status FROM organizations WHERE id = $1 FOR UPDATE', [id]);
-        if (!organization.rows[0]) throw failure(404, 'organization_not_found', 'Organization not found');
-        if (organization.rows[0].status !== 'active') throw failure(403, 'organization_management_denied', 'Organization is inactive');
-        const manager = await authorizeManager(client, actor, id, ownerOnly);
+        const manager = await authorizeOrganization(client, actor, id, ownerOnly);
         const result = await operation(client, manager, id);
         await client.query('COMMIT');
         return result;
@@ -108,61 +112,88 @@ function authorizeTarget(manager, actor, target, nextOrganizationRole) {
     }
 }
 
+async function writeBusinessMembership(client, actor, manager, orgId, userId, businessId, input, req) {
+    const qa = await prepareHrQaMembership(client, req, orgId, businessId, userId, input);
+    const business = await client.query('SELECT id FROM businesses WHERE id = $1 AND organization_id = $2 AND status = \'active\'', [businessId, orgId]);
+    if (!business.rows[0]) throw failure(404, 'business_not_found', 'Active business not found in organization');
+    const target = await targetState(client, userId, orgId, businessId);
+    if (!target.account.is_active) throw failure(409, 'business_member_inactive', 'An active user account is required');
+    const current = target.business || {};
+    const currentOverrides = editableActionOverrides(current);
+    const organizationRole = has(input, 'organizationRole') ? input.organizationRole : target.organization?.role || 'member';
+    authorizeTarget(manager, actor, target, organizationRole);
+    if (target.organization?.is_active && target.organization.role === 'owner' && organizationRole !== 'owner') {
+        const owners = await client.query(
+            `SELECT COUNT(*)::int AS count FROM organization_memberships om JOIN users u ON u.id = om.user_id
+             WHERE om.organization_id = $1 AND om.role = 'owner' AND om.is_active IS TRUE AND u.is_active IS TRUE`, [orgId]
+        );
+        if (owners.rows[0].count <= 1) throw failure(409, 'organization_last_owner', 'The last active organization owner cannot be demoted');
+    }
+    const role = has(input, 'role') ? input.role.trim() : current.role;
+    if (!role) throw failure(400, 'business_membership_invalid', 'A role is required for a new business membership');
+    const next = {
+        role,
+        extraRoles: has(input, 'extraRoles') ? stringArray(input.extraRoles) : current.extra_roles || [],
+        pageAllowlist: has(input, 'pageAllowlist') ? normalizePageAllowlist(input.pageAllowlist) : current.page_allowlist || [],
+        pageDenylist: has(input, 'pageDenylist') ? normalizePageDenylist(input.pageDenylist) : current.page_denylist || [],
+        actionAllowlist: has(input, 'actionAllowlist') ? normalizeActionOverrideList(input.actionAllowlist) : currentOverrides.actionAllowlist,
+        actionDenylist: has(input, 'actionDenylist') ? normalizeActionOverrideList(input.actionDenylist) : currentOverrides.actionDenylist,
+        isDefault: has(input, 'isDefault') ? input.isDefault : current.is_default === true
+    };
+    await client.query(
+        `INSERT INTO organization_memberships (organization_id, user_id, role, is_active, created_by_user_id)
+         VALUES ($1, $2, $3, true, $4)
+         ON CONFLICT (organization_id, user_id) DO UPDATE SET role = EXCLUDED.role, is_active = true`,
+        [orgId, userId, organizationRole, actor.id]
+    );
+    if (next.isDefault) await client.query('UPDATE business_memberships SET is_default = false WHERE user_id = $1 AND organization_id = $2 AND business_id <> $3', [userId, orgId, businessId]);
+    const updated = await client.query(
+        `INSERT INTO business_memberships (business_id, organization_id, user_id, role, extra_roles, page_allowlist, page_denylist, action_allowlist, action_denylist, is_default, is_active, created_by_user_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true, $11)
+         ON CONFLICT (business_id, user_id) DO UPDATE SET role = EXCLUDED.role, extra_roles = EXCLUDED.extra_roles,
+             page_allowlist = EXCLUDED.page_allowlist, page_denylist = EXCLUDED.page_denylist,
+             action_allowlist = EXCLUDED.action_allowlist, action_denylist = EXCLUDED.action_denylist,
+             is_default = EXCLUDED.is_default, is_active = true
+         RETURNING business_id, user_id, role, is_default, is_active`,
+        [businessId, orgId, userId, next.role, next.extraRoles, next.pageAllowlist, next.pageDenylist, next.actionAllowlist, next.actionDenylist, next.isDefault, actor.id]
+    );
+    await recordAccountSecurityEvent({ actor, target: { id: userId }, eventType: 'business_membership_updated',
+        details: { organizationId: orgId, businessId, membershipRole: next.role, organizationRole,
+            previousOrganizationRole: target.organization?.role || null, before: current, after: next, sessionsRevoked: false }, req, client, strict: true });
+    await registerHrQaEntity(client, qa, 'hr_membership', userId, { organizationId: orgId, businessId });
+    return updated.rows[0];
+}
+
 async function updateBusinessMembership(db, actor, organizationId, targetUserId, input, req) {
     validateMembershipInput(input);
     const userId = positiveId(targetUserId);
     const businessId = positiveId(input.businessId);
-    return transaction(db, actor, organizationId, false, async (client, manager, orgId) => {
-        const qa = await prepareHrQaMembership(client, req, orgId, businessId, userId, input);
-        const business = await client.query('SELECT id FROM businesses WHERE id = $1 AND organization_id = $2 AND status = \'active\'', [businessId, orgId]);
-        if (!business.rows[0]) throw failure(404, 'business_not_found', 'Active business not found in organization');
-        const target = await targetState(client, userId, orgId, businessId);
-        if (!target.account.is_active) throw failure(409, 'business_member_inactive', 'An active user account is required');
-        const current = target.business || {};
-        const currentOverrides = editableActionOverrides(current);
-        const organizationRole = has(input, 'organizationRole') ? input.organizationRole : target.organization?.role || 'member';
-        authorizeTarget(manager, actor, target, organizationRole);
-        if (target.organization?.is_active && target.organization.role === 'owner' && organizationRole !== 'owner') {
-            const owners = await client.query(
-                `SELECT COUNT(*)::int AS count FROM organization_memberships om JOIN users u ON u.id = om.user_id
-                 WHERE om.organization_id = $1 AND om.role = 'owner' AND om.is_active IS TRUE AND u.is_active IS TRUE`, [orgId]
-            );
-            if (owners.rows[0].count <= 1) throw failure(409, 'organization_last_owner', 'The last active organization owner cannot be demoted');
-        }
-        const role = has(input, 'role') ? input.role.trim() : current.role;
-        if (!role) throw failure(400, 'business_membership_invalid', 'A role is required for a new business membership');
-        const next = {
-            role,
-            extraRoles: has(input, 'extraRoles') ? stringArray(input.extraRoles) : current.extra_roles || [],
-            pageAllowlist: has(input, 'pageAllowlist') ? normalizePageAllowlist(input.pageAllowlist) : current.page_allowlist || [],
-            pageDenylist: has(input, 'pageDenylist') ? normalizePageDenylist(input.pageDenylist) : current.page_denylist || [],
-            actionAllowlist: has(input, 'actionAllowlist') ? normalizeActionOverrideList(input.actionAllowlist) : currentOverrides.actionAllowlist,
-            actionDenylist: has(input, 'actionDenylist') ? normalizeActionOverrideList(input.actionDenylist) : currentOverrides.actionDenylist,
-            isDefault: has(input, 'isDefault') ? input.isDefault : current.is_default === true
-        };
-        await client.query(
-            `INSERT INTO organization_memberships (organization_id, user_id, role, is_active, created_by_user_id)
-             VALUES ($1, $2, $3, true, $4)
-             ON CONFLICT (organization_id, user_id) DO UPDATE SET role = EXCLUDED.role, is_active = true`,
-            [orgId, userId, organizationRole, actor.id]
-        );
-        if (next.isDefault) await client.query('UPDATE business_memberships SET is_default = false WHERE user_id = $1 AND organization_id = $2 AND business_id <> $3', [userId, orgId, businessId]);
-        const updated = await client.query(
-            `INSERT INTO business_memberships (business_id, organization_id, user_id, role, extra_roles, page_allowlist, page_denylist, action_allowlist, action_denylist, is_default, is_active, created_by_user_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true, $11)
-             ON CONFLICT (business_id, user_id) DO UPDATE SET role = EXCLUDED.role, extra_roles = EXCLUDED.extra_roles,
-                 page_allowlist = EXCLUDED.page_allowlist, page_denylist = EXCLUDED.page_denylist,
-                 action_allowlist = EXCLUDED.action_allowlist, action_denylist = EXCLUDED.action_denylist,
-                 is_default = EXCLUDED.is_default, is_active = true
-             RETURNING business_id, user_id, role, is_default, is_active`,
-            [businessId, orgId, userId, next.role, next.extraRoles, next.pageAllowlist, next.pageDenylist, next.actionAllowlist, next.actionDenylist, next.isDefault, actor.id]
-        );
-        await recordAccountSecurityEvent({ actor, target: { id: userId }, eventType: 'business_membership_updated',
-            details: { organizationId: orgId, businessId, membershipRole: next.role, organizationRole,
-                previousOrganizationRole: target.organization?.role || null, before: current, after: next, sessionsRevoked: false }, req, client, strict: true });
-        await registerHrQaEntity(client, qa, 'hr_membership', userId, { organizationId: orgId, businessId });
-        return updated.rows[0];
-    });
+    return transaction(db, actor, organizationId, false, (client, manager, orgId) =>
+        writeBusinessMembership(client, actor, manager, orgId, userId, businessId, input, req));
+}
+
+// Prepare at transaction entry so account and staff writes take the same locks as lifecycle operations.
+async function prepareNewAccountMembership(client, actor, businessContext, access, req) {
+    await lockOrganizationOwnership(client);
+    const business = await client.query(
+        `SELECT id, organization_id FROM businesses
+         WHERE context_key = $1 AND status = 'active' AND access_mode = 'membership'`,
+        [businessContext]
+    );
+    if (!business.rows[0]) {
+        throw failure(409, 'business_not_available', 'Вибраний бізнес не приймає нові членства');
+    }
+    const businessId = positiveId(business.rows[0].id);
+    const organizationId = positiveId(business.rows[0].organization_id);
+    const manager = await authorizeOrganization(client, actor, organizationId, false);
+    const input = { ...access, businessId, isDefault: true };
+    validateMembershipInput(input);
+    return {
+        businessId,
+        organizationId,
+        activate: userId => writeBusinessMembership(client, actor, manager, organizationId,
+            positiveId(userId), businessId, input, req)
+    };
 }
 
 async function deactivateBusinessMembership(db, actor, organizationId, targetUserId, businessId, req) {
@@ -485,4 +516,4 @@ async function getMemberAccessProfile(db, actor, targetUserId) {
 }
 
 module.exports = { createBusiness, createOrganization, deactivateBusinessMembership, getMemberAccessProfile, getOrganizationManagement,
-    initializeBusinessResources, listOrganizationMembers, setBusinessStatus, updateBusinessConfiguration, updateBusinessMembership };
+    initializeBusinessResources, listOrganizationMembers, prepareNewAccountMembership, setBusinessStatus, updateBusinessConfiguration, updateBusinessMembership };

@@ -85,11 +85,11 @@ test('account center is a dense master-detail surface with conflict drill-down',
     assert.match(HR_CSS, /\.hr-account-row-open\s*\{/);
 });
 
-test('account creation reuses four panels with three-step existing-card navigation', () => {
-    assert.equal((HR_HTML.match(/data-account-onboarding-step="\d"/g) || []).length, 4);
-    assert.match(HR_PAGE_CODE, /\[2, 1, 5, 7\] : \[1, 5, 7\]/);
+test('account creation uses one access form with a separate step for new staff details', () => {
+    assert.equal((HR_HTML.match(/data-account-onboarding-step="\d"/g) || []).length, 2);
+    assert.match(HR_PAGE_CODE, /\[2, 5\] : \[5\]/);
     assert.match(HR_HTML, /id="accountOnboardingReceipt"/);
-    assert.match(HR_HTML, /Тимчасовий пароль буде показано один раз/);
+    assert.match(HR_HTML, /id="accountOnboardingPassword" type="password"/);
     assert.match(HR_PAGE_CODE, /async function openAccountOnboardingWizard/);
     assert.match(HR_PAGE_CODE, /function buildAccountOnboardingPayload/);
     assert.match(HR_PAGE_CODE, /crmApiFetch\('\/api\/users\/onboarding\/options'\)/);
@@ -118,7 +118,8 @@ function renderReceiptFixture(payload, canAssign = true) {
     const context = {
         window: { BusinessMembershipManager: { canManage: () => canAssign } },
         AppState: { currentUser: {} },
-        accountOnboardingState: { payload: { access: { defaultBusinessContext: 'dar' } } },
+        accountOnboardingState: { operationKey: 'synthetic-operation', payload: { access: { defaultBusinessContext: 'dar' } } },
+        accountOnboardingOptions: null,
         ROLE_LABELS: { animator: 'Аніматор' },
         professionTitle: key => key === 'animator' ? 'Аніматор' : key,
         canManageAccountSecurity: () => true,
@@ -148,7 +149,7 @@ test('account receipt separates password readiness, profile context, and busines
     }
     assert.match(HR_HTML, /Бізнеси профілю/);
     assert.match(HR_HTML, /Вибір бізнесу задає контекст профілю, але сам по собі не створює членство/);
-    assert.match(HR_PAGE_CODE, /доступ до бізнесу потрібно призначити окремо/);
+    assert.match(HR_PAGE_CODE, /Акаунт очікуватиме, поки власник призначить доступ до бізнесу/);
 });
 
 test('recovered receipt distinguishes unavailable details from empty data and preserves staff identity', () => {
@@ -176,7 +177,8 @@ test('pending membership receipt offers the canonical profile handoff without gr
     const fresh = renderReceiptFixture(response, false);
     assert.match(fresh.html, /Передайте ID акаунта #17/);
     assert.doesNotMatch(fresh.html, /assignAccount=/);
-    assert.match(fresh.html, /data-account-onboarding-copy/);
+    assert.doesNotMatch(fresh.html, /synthetic-only|data-account-onboarding-copy/);
+    assert.match(fresh.html, /data-account-onboarding-verify-access/);
     const replay = renderReceiptFixture({ ...response, replayed: true });
     assert.equal(replay.state.credential, null);
     assert.match(replay.html, /#31/);
@@ -189,7 +191,8 @@ test('receipt fallback is cautious and preserves credentials and post-commit war
     const warning = { code: 'BUSINESS_ACCESS_STATUS_UNKNOWN', message: 'Статус членства не підтверджено.' };
     const fallback = renderReceiptFixture({ loginReady: true, credential, receipt: { warnings: [warning] } });
     assert.equal(fallback.state.credential, credential);
-    assert.match(fallback.html, /SyntheticReceipt234/);
+    assert.doesNotMatch(fallback.html, /SyntheticReceipt234|data-account-onboarding-copy/);
+    assert.match(fallback.html, /data-account-onboarding-verify-access/);
     assert.match(fallback.html, /Статус членства не підтверджено/);
     assert.match(fallback.html, /Стан доступу до вибраного бізнесу не вдалося підтвердити/);
 
@@ -266,8 +269,8 @@ for (const changed of ['business', 'session', 'closed', 'replacement']) {
         const context = {
             accountOnboardingState: { open: true, submitting: false, payload: { staff: { id: 123 } } },
             accountOnboardingRequestSeq: 1,
-            accountOnboardingSteps: () => [1, 5, 7], validateAccountOnboardingStep: () => true,
-            renderAccountOnboardingReview() {}, accountOnboardingEl: () => submit,
+            accountOnboardingSteps: () => [5], validateAccountOnboardingStep: () => true,
+            buildAccountOnboardingPayload: () => ({ staff: { id: 123 } }), accountOnboardingEl: () => submit,
             setAccountOnboardingStatus() {}, teamAccessContext: () => identity,
             submitStaffCreation: async () => { calls++; return pending; },
             completeAccountOnboarding: () => { completions++; }

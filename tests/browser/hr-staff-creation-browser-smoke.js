@@ -250,17 +250,23 @@ async function runActor(browser, pool, actor, existingAccountId) {
             await wizard.waitFor({ state: 'visible' });
             const username = `qa_staff_link_${actor.label}_${runId}`;
             await page.locator('#accountOnboardingUsername').fill(username);
-            await page.locator('#accountOnboardingNext').click();
+            const initialPassword = 'Browser-Initial-Password-827';
+            const passwordInput = page.locator('#accountOnboardingPassword');
+            assert.equal((await passwordInput.inputValue()).length, 16);
+            await passwordInput.fill(initialPassword);
+            await page.locator('#accountOnboardingPasswordToggle').click();
+            assert.equal(await passwordInput.getAttribute('type'), 'text');
+            await page.locator('#accountOnboardingPasswordToggle').click();
+            assert.equal(await passwordInput.getAttribute('type'), 'password');
             assert.equal(await page.locator('#accountOnboardingStaffId').inputValue(), String(staff.id));
-            for (const step of [5]) {
-                await page.locator(`[data-account-onboarding-step="${step}"]`).waitFor({ state: 'visible' });
-                await page.locator('#accountOnboardingNext').click();
-            }
+            assert.equal(await page.locator('#accountOnboardingNext').isVisible(), false);
             const [linked] = await Promise.all([
                 waitForResponse(page, 'POST', '/api/users/onboarding'),
                 page.locator('#accountOnboardingSubmit').click()
             ]);
             assert.equal(linked.status(), 200, 'CRM account created');
+            const linkedResult = await linked.json();
+            assert.ok(linkedResult.credential?.password === initialPassword, 'the submitted password was used');
             const { rows: [binding] } = await pool.query(
                 'SELECT ep.staff_id FROM employee_profiles ep JOIN users u ON ep.user_id = u.id WHERE u.username = $1',
                 [username]
@@ -273,8 +279,8 @@ async function runActor(browser, pool, actor, existingAccountId) {
                 process.stdout.write('[hr-staff] Park admin linked the same staff ID and activated Park access\n');
                 return;
             }
-            await receipt.getByRole('link', { name: 'Призначити доступ акаунту' }).waitFor();
-            assert.match(await receipt.textContent(), /очікує членства.*Призначити доступ акаунту/s);
+            await receipt.getByText('Доступ до вибраного бізнесу активний.', { exact: false }).waitFor();
+            assert.equal(linkedResult.businessAccessReady, true);
             await page.locator('[data-account-onboarding-finish]').click();
             assert.equal(await page.evaluate(id => openAccountOnboardingWizard(null, { staffId: id }), staff.id), false);
             assert.match(await page.locator('#accountOnboardingLoading').textContent(), new RegExp(`#${staff.id}.*уже прив’язана`));
@@ -340,10 +346,7 @@ async function runActor(browser, pool, actor, existingAccountId) {
             await page.locator('#accountOnboardingPrimaryProfession-animator').check();
             await page.locator('#accountOnboardingNext').click();
             await page.locator('#accountOnboardingUsername').fill(newUsername);
-            for (const step of [1, 5]) {
-                await page.locator(`[data-account-onboarding-step="${step}"]`).waitFor({ state: 'visible' });
-                await page.locator('#accountOnboardingNext').click();
-            }
+            assert.equal(await page.locator('#accountOnboardingNext').isVisible(), false);
             await page.route('**/api/users/onboarding', async route => {
                 if (route.request().method() !== 'POST') return route.continue();
                 const committed = await route.fetch();

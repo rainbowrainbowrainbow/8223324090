@@ -385,7 +385,7 @@
                     <header class="hr-account-onboarding-head">
                         <div>
                             <span class="hr-account-eyebrow">Контрольоване створення</span>
-                            <h3 id="accountOnboardingTitle">Створити CRM-акаунт</h3>
+                            <h3 id="accountOnboardingTitle">Надати CRM-доступ</h3>
                             <p>Перевірте дані співробітника та виберіть доступ до CRM.</p>
                         </div>
                         <button type="button" id="accountOnboardingClose" class="hr-account-icon-btn" aria-label="Закрити створення акаунта">×</button>
@@ -410,8 +410,7 @@
                             </div>
                             <div id="accountOnboardingProfessions" class="hr-account-option-list" role="group" aria-label="Професії" tabindex="-1"></div>
                         </div></section>
-<section data-account-onboarding-step="1" class="hr-account-onboarding-panel">
-                            <div class="hr-account-onboarding-panel-head"><h4>Акаунт</h4><p>Вкажіть логін для входу до CRM.</p></div>
+<section data-account-onboarding-step="5" class="hr-account-onboarding-panel" hidden>
                             <div id="accountOnboardingExistingStaffFields" class="hr-account-form-grid">
                                 <label class="is-wide"><span>Картка співробітника *</span><select id="accountOnboardingStaffId"><option value="">Оберіть співробітника</option></select><small>Вже зайняті профілі недоступні для вибору.</small></label>
                             </div>
@@ -427,8 +426,7 @@
                                     </div>
                                 </div>
                             </div>
-                        <div id="accountOnboardingExistingSetup" hidden><label class="hr-account-option"><input id="accountOnboardingEditSetup" type="checkbox"> Змінити професії та структуру цієї картки</label><div id="accountOnboardingExistingProfessionFields" hidden></div></div></section>
-<section data-account-onboarding-step="5" class="hr-account-onboarding-panel" hidden>
+                        <div id="accountOnboardingExistingSetup" hidden><label class="hr-account-option"><input id="accountOnboardingEditSetup" type="checkbox"> Змінити професії та структуру цієї картки</label><div id="accountOnboardingExistingProfessionFields" hidden></div></div>
                             <div class="hr-account-onboarding-panel-head"><h4>Роль у CRM і бізнес</h4><p>Оберіть роль, яка відповідає роботі співробітника.</p></div>
                             <div id="accountOnboardingRolePresets" class="hr-account-preset-grid" aria-label="Швидкі пакети ролей"></div>
                             <div class="hr-account-form-grid">
@@ -457,11 +455,6 @@
                             <details class="hr-account-advanced"><summary>Дозволити окремі дії</summary><div id="accountOnboardingActionAllow" class="hr-account-option-list is-compact"></div></details>
                             <details class="hr-account-advanced"><summary>Заборонити окремі дії</summary><div id="accountOnboardingActionDeny" class="hr-account-option-list is-compact"></div></details>
                         </fieldset></details></section>
-<section data-account-onboarding-step="7" class="hr-account-onboarding-panel" hidden>
-                            <div class="hr-account-onboarding-panel-head"><h4>Перевірка перед створенням</h4><p>Перевірте співробітника, логін, роль і бізнес перед збереженням.</p></div>
-                            <div id="accountOnboardingReview" class="hr-account-review"></div>
-                            <div class="hr-account-credential-note">Тимчасовий пароль буде показано один раз після успішного створення.</div>
-                        </section>
                     </form>
                     <section id="accountOnboardingReceipt" class="hr-account-receipt hidden" aria-live="polite"></section>
                     <div id="accountOnboardingStatus" class="hr-account-onboarding-status" role="alert" aria-live="assertive"></div>

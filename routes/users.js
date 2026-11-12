@@ -58,6 +58,7 @@ const {
     createAccountOnboarding,
     findCommittedAccountOnboarding
 } = require('../services/accountOnboarding');
+const { getOrganizationManagement } = require('../services/organizationLifecycle');
 const { normalizeStaffCompanyStructurePayload } = require('../services/staffDisplayGroups');
 const { curateProfessionCatalogRows } = require('../services/professions');
 const { canAccessParkStaffAccounts, requireParkStaffAccounts } = require('../services/legacyBusinessSurface');
@@ -488,7 +489,19 @@ router.get('/onboarding/options', requireParkAccountOnboarding, requireParkStaff
     try {
         const parkWorkerOnboarding = !canUseAction(req.user, 'manage_accounts');
         const canViewPayroll = !parkWorkerOnboarding && canUseAction(req.user, 'hr.payroll.view');
-        const [staffResult, professionResult, structureResult, conditionResult] = await Promise.all([
+        const membershipRegistry = (req.user.businessMembershipAccess?.registry || [])
+            .filter(business => business.active && business.accessMode === 'membership');
+        const grantableBusinesses = !parkWorkerOnboarding && membershipRegistry.length
+            ? getOrganizationManagement(pool, req.user).then(({ organizations }) => organizations
+                .flatMap(organization => organization.businesses)
+                .filter(business => business.status === 'active' && business.accessMode === 'membership')
+                .map(business => ({ key: business.contextKey, label: business.label })))
+                .catch(error => {
+                    if (error.code === 'organization_management_denied') return [];
+                    throw error;
+                })
+            : [];
+        const [staffResult, professionResult, structureResult, conditionResult, membershipBusinesses] = await Promise.all([
             pool.query(
                 `SELECT s.id, s.name, s.department, s.position, s.phone, s.hire_date,
                         s.role_type, COALESCE(s.secondary_professions, '[]'::jsonb) AS secondary_professions,
@@ -559,7 +572,8 @@ router.get('/onboarding/options', requireParkAccountOnboarding, requireParkStaff
                    ON pref.staff_id = keys.staff_id AND pref.profession_key = keys.profession_key
                  GROUP BY keys.staff_id, keys.profession_key, rate.hourly_rate
                  ORDER BY keys.staff_id, keys.profession_key`
-            ) : { rows: [] }
+            ) : { rows: [] },
+            grantableBusinesses
         ]);
         const structure = normalizeStaffCompanyStructurePayload(structureResult.rows[0]?.value || {});
         const conditionsByStaff = new Map();
@@ -588,6 +602,8 @@ router.get('/onboarding/options', requireParkAccountOnboarding, requireParkStaff
             })),
             canManagePayrollRules: !parkWorkerOnboarding && canManageStaffPayrollRules(req.user),
             parkWorkerOnboarding,
+            membershipBusinesses,
+            parkMembershipRequired: membershipRegistry.some(business => business.businessContext === DEFAULT_BUSINESS_CONTEXT),
             allowedAccountRoles: parkWorkerOnboarding ? PARK_WORKER_ROLES : null,
             roleHierarchy: ROLE_HIERARCHY,
             rolePresets: {

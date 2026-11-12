@@ -114,20 +114,24 @@ async function run(browser) {
                 }
                 const business = receipt.locator('.hr-account-detail-card').filter({ hasText: 'Вибраний бізнес' });
                 assert.equal(await business.locator('strong').innerText(), 'Дар', 'receipt uses the created account business, not the operator Park context');
-                assert.match(await receipt.locator('.hr-account-credential').innerText(), /SyntheticReceipt234/);
-                if (scenario.payload.receipt.warnings.length) assert.match(await receipt.locator('.hr-account-receipt-warnings').innerText(), /Статус членства не підтверджено/);
-
+                const canShare = scenario.name === 'active' || scenario.name === 'nested';
                 const copyButton = receipt.locator('[data-account-onboarding-copy]');
-                assert.ok(await copyButton.evaluate(el => {
-                    const rect = el.getBoundingClientRect();
-                    return rect.top >= 0 && rect.bottom <= innerHeight
-                        && el.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
-                }), 'Copy is reachable before scrolling');
+                assert.equal(await copyButton.count(), canShare ? 1 : 0);
+                assert.equal(await receipt.locator('.hr-account-credential').count(), canShare ? 1 : 0);
+                if (scenario.payload.receipt.warnings.length) assert.match(await receipt.locator('.hr-account-receipt-warnings').innerText(), /Статус членства не підтверджено/);
                 const assign = receipt.getByRole('link', { name: 'Призначити доступ акаунту' });
                 assert.equal(await assign.count(), scenario.name === 'pending' ? 1 : 0);
                 if (scenario.name === 'pending') assert.ok(await assign.evaluate(el => el.getBoundingClientRect().bottom <= innerHeight));
-                await copyButton.click();
-                assert.equal(await page.evaluate(() => window.__receiptCopies.at(-1)), 'Username: synthetic.receipt\nPassword: SyntheticReceipt234');
+                if (canShare) {
+                    assert.ok(await copyButton.evaluate(el => {
+                        const rect = el.getBoundingClientRect();
+                        return rect.top >= 0 && rect.bottom <= innerHeight
+                            && el.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
+                    }), 'Copy is reachable before scrolling');
+                    await copyButton.click();
+                    const copied = await page.evaluate(() => window.__receiptCopies.at(-1));
+                    assert.equal(copied, `CRM: ${new URL(page.url()).origin}/\nБізнес: Дар\nUsername: synthetic.receipt\nPassword: SyntheticReceipt234`);
+                }
                 assert.equal(await page.evaluate(() => accountOnboardingState.credential.password), 'SyntheticReceipt234');
                 assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true);
                 assert.equal(await overlay.evaluate(element => element.scrollWidth <= element.clientWidth + 1), true);

@@ -6,6 +6,7 @@ const assert = require('node:assert/strict');
 const bcrypt = require('bcryptjs');
 const { Pool } = require('pg');
 const { assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
+const { auditAccountBusinessAccess } = require('../../scripts/audit-account-business-access');
 const { createAccountOnboarding, resolveAccountBusinessAccess } = require('../../services/accountOnboarding');
 const { loadMembershipAccess } = require('../../services/businessMembership');
 const { syncLinkedStaffAccountDeactivation } = require('../../services/staffLifecycle');
@@ -306,6 +307,64 @@ describe('transactional account onboarding on isolated PostgreSQL', { skip: !ena
             });
         } finally {
             try { await client.query('ROLLBACK'); } finally { client.release(); }
+        }
+    });
+
+    it('activates an authorized membership with the account and rolls back a failed grant', async () => {
+        const businessContext = 'qa_grant_' + crypto.randomBytes(6).toString('hex');
+        const { rows: [organization] } = await pool.query(
+            'INSERT INTO organizations (slug, name) VALUES ($1, $2) RETURNING id',
+            [businessContext, 'Disposable account grant organization']
+        );
+        await pool.query(
+            `INSERT INTO businesses (organization_id, context_key, label, short_label, access_mode)
+             VALUES ($1, $2, 'Disposable account grant business', 'Grant QA', 'membership')`,
+            [organization.id, businessContext]
+        );
+        const grantActor = { ...actor, platformRole: 'creator' };
+        try {
+            const payload = onboardingPayload(`${usernamePrefix}.granted`, `${staffNamePrefix} Granted`);
+            Object.assign(payload.access, { activateMembership: true, defaultBusinessContext: businessContext });
+            payload.initialPassword = 'Synthetic-First-Login-872';
+            const result = await createAccountOnboarding({ payload, actor: grantActor, dbPool: pool });
+            assert.equal(result.accessState, 'active');
+            assert.equal(result.businessAccessReady, true);
+            const login = await request('POST', '/api/auth/login', {
+                username: payload.personal.username, password: payload.initialPassword
+            });
+            assert.equal(login.status, 200);
+            assert.equal(login.data.user.activeBusinessContext, businessContext);
+            assert.equal(login.data.user.role, 'animator');
+            const auditClient = await pool.connect();
+            try {
+                const active = await auditAccountBusinessAccess(auditClient, result.user.id);
+                assert.equal(active.accounts[0].status, 'active');
+                assert.equal(active.accounts[0].expected_business, businessContext);
+                await pool.query(
+                    'UPDATE business_memberships SET is_active = false WHERE user_id = $1 AND organization_id = $2',
+                    [result.user.id, organization.id]
+                );
+                const revoked = await auditAccountBusinessAccess(auditClient, result.user.id);
+                assert.equal(revoked.accounts[0].status, 'revoked');
+            } finally {
+                auditClient.release();
+            }
+
+            const rejected = onboardingPayload(`${usernamePrefix}.rejected`, `${staffNamePrefix} Rejected`);
+            Object.assign(rejected.access, { activateMembership: true, defaultBusinessContext: businessContext });
+            await assert.rejects(createAccountOnboarding({
+                payload: rejected, actor: grantActor,
+                dbPool: faultingPool(pool, sql => /INSERT INTO business_memberships/.test(sql))
+            }), /forced_account_onboarding_integration_failure/);
+            const written = await pool.query(
+                `SELECT EXISTS(SELECT 1 FROM users WHERE username = $1) AS account,
+                        EXISTS(SELECT 1 FROM staff WHERE name = $2) AS staff`,
+                [rejected.personal.username, rejected.personal.name]
+            );
+            assert.deepEqual(written.rows[0], { account: false, staff: false });
+        } finally {
+            await pool.query('DELETE FROM businesses WHERE context_key = $1', [businessContext]);
+            await pool.query('DELETE FROM organizations WHERE id = $1', [organization.id]);
         }
     });
 

@@ -87,26 +87,26 @@ function mirrorBootstrapFixture(t, source, mirrorlist) {
     if (mirrorlist != null) fs.writeFileSync(mirror, mirrorlist);
     const vendor = path.join(apt, 'sources.list.d', 'vendor.list');
     fs.writeFileSync(vendor, 'deb https://packages.microsoft.com/ubuntu/24.04/prod noble main\n');
-    const workflow = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'ci.yml'), 'utf8');
-    const block = workflow.match(/- name: Use Ubuntu archive mirror for (?:WebKit|browser) dependencies[\s\S]*?run: \|\r?\n((?: {10}[^\n]*(?:\n|$))+)/);
+    const workflow = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'ci.yml'), 'utf8').replaceAll('\r\n', '\n');
+    const block = workflow.match(/- name: Use Ubuntu archive mirror for (?:WebKit|browser) dependencies[\s\S]*?run: \|\n((?: {10}[^\n]*(?:\n|$))+)/);
     assert.ok(block, 'Read the actual workflow bootstrap, not a copied implementation');
     const shellPath = value => value.replace(/\\/g, '/').replace(/^([A-Za-z]):/, (_, drive) => '/' + drive.toLowerCase());
     const quotePath = value => "'" + shellPath(value).replaceAll("'", "'\"'\"'") + "'";
     const body = block[1].split('\n').map(line => line.slice(10)).join('\n').replaceAll('/etc/apt', () => quotePath(apt));
     const bash = mirrorBootstrapBash();
-    const run = () => {
+    const run = (expectedStatus = 0) => {
         const command = `PATH=${quotePath(path.join(root, 'bin'))}:"$PATH"\n${body}`;
         const result = spawnSync(bash, ['-c', command], { encoding: 'utf8' });
         assert.ifError(result.error);
         assert.equal(result.signal, null);
-        return result;
+        assert.equal(result.status, expectedStatus, result.stderr.trim());
     };
     return { run, readSources: () => fs.readFileSync(sources, 'utf8'), readMirror: () => fs.readFileSync(mirror, 'utf8'), readVendor: () => fs.readFileSync(vendor, 'utf8') };
 }
 
 test('WebKit bootstrap rewrites direct Ubuntu URIs without changing signatures or third-party sources', t => {
     const fixture = mirrorBootstrapFixture(t, 'URIs: https://azure.archive.ubuntu.com/ubuntu\nSuites: noble noble-updates\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\n');
-    assert.equal(fixture.run().status, 0);
+    fixture.run();
     assert.match(fixture.readSources(), /URIs: https:\/\/archive\.ubuntu\.com\/ubuntu/);
     assert.match(fixture.readSources(), /Signed-By: \/usr\/share\/keyrings\/ubuntu-archive-keyring.gpg/);
     assert.equal(fixture.readVendor(), 'deb https://packages.microsoft.com/ubuntu/24.04/prod noble main\n');
@@ -115,17 +115,17 @@ test('WebKit bootstrap rewrites direct Ubuntu URIs without changing signatures o
 test('WebKit bootstrap normalizes the runner mirrorlist and is idempotent', t => {
     const source = 'URIs: mirror+file:/etc/apt/apt-mirrors.txt\nSuites: noble noble-security\n';
     const fixture = mirrorBootstrapFixture(t, source, 'http://azure.archive.ubuntu.com/ubuntu\nhttps://azure.archive.ubuntu.com/ubuntu\nhttp://archive.ubuntu.com/ubuntu\n');
-    assert.equal(fixture.run().status, 0);
+    fixture.run();
     assert.equal(fixture.readSources(), source);
     assert.doesNotMatch(fixture.readMirror(), /azure\.archive/);
     assert.equal(fixture.readMirror(), 'http://archive.ubuntu.com/ubuntu\nhttps://archive.ubuntu.com/ubuntu\nhttp://archive.ubuntu.com/ubuntu\n');
     const before = fixture.readMirror();
-    assert.equal(fixture.run().status, 0);
+    fixture.run();
     assert.equal(fixture.readMirror(), before);
 });
 
 test('WebKit bootstrap fails closed when the expected Ubuntu source file is absent', t => {
     const fixture = mirrorBootstrapFixture(t, null, 'http://azure.archive.ubuntu.com/ubuntu\n');
-    assert.equal(fixture.run().status, 1);
+    fixture.run(1);
     assert.equal(fixture.readMirror(), 'http://azure.archive.ubuntu.com/ubuntu\n');
 });

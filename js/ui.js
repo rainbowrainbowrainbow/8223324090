@@ -2277,21 +2277,22 @@ function formModal(title, fields, options = {}) {
             }
             close(vals);
         });
-        overlay.addEventListener('click', (e) => {
-            if (e.target === overlay && closeOnBackdrop) requestCancel();
-            const button = e.target.closest('[data-fm-password-toggle], [data-fm-password-regenerate]');
-            if (!button) return;
-            const input = button.closest('[data-fm-field-wrap]')?.querySelector('input.fm-field');
-            if (!input) return;
-            if (button.hasAttribute('data-fm-password-toggle')) {
+        overlay.addEventListener('click', (e) => { if (e.target === overlay && closeOnBackdrop) requestCancel(); });
+        overlay.querySelectorAll('[data-fm-password-toggle]').forEach(button => {
+            const input = button.closest('[data-fm-field-wrap]').querySelector('input.fm-field');
+            button.addEventListener('click', () => {
                 const visible = input.type === 'password';
                 input.type = visible ? 'text' : 'password';
                 button.textContent = visible ? 'Приховати пароль' : 'Показати пароль';
                 button.setAttribute('aria-pressed', String(visible));
-            } else {
+            });
+        });
+        overlay.querySelectorAll('[data-fm-password-regenerate]').forEach(button => {
+            const input = button.closest('[data-fm-field-wrap]').querySelector('input.fm-field');
+            button.addEventListener('click', () => {
                 input.value = generateInitialAccountPassword();
                 input.dispatchEvent(new Event('input', { bubbles: true }));
-            }
+            });
         });
 
         // Focus management

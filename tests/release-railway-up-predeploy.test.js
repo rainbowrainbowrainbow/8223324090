@@ -291,39 +291,24 @@ test('Railway release predeploy guard reads live /api/version without Railway va
 });
 
 test('Railway release parser accepts npm PowerShell value-forwarding shape', () => {
-    const previous = {
-        branch: process.env.npm_config_branch,
-        commit: process.env.npm_config_commit,
-        liveUrl: process.env.npm_config_live_url
-    };
-    process.env.npm_config_branch = 'true';
-    process.env.npm_config_commit = 'true';
-    process.env.npm_config_live_url = 'true';
-    try {
-        const parsed = parseArgs([
-            '--dry-run',
-            '--skip-remote-check',
-            'codex/forwarding-check',
-            HEAD,
-            RECOVERY_HEAD,
-            'https://crm.example.test'
-        ]);
-        assert.equal(parsed.branch, 'codex/forwarding-check');
-        assert.equal(parsed.commit, HEAD);
-        assert.equal(parsed.recoverMissingLiveMetadataCommit, RECOVERY_HEAD);
-        assert.equal(parsed.liveUrl, 'https://crm.example.test');
-        assert.equal(parsed.dryRun, true);
-        assert.equal(parsed.skipRemoteCheck, true);
-    } finally {
-        for (const [key, value] of Object.entries({
-            npm_config_branch: previous.branch,
-            npm_config_commit: previous.commit,
-            npm_config_live_url: previous.liveUrl
-        })) {
-            if (value === undefined) delete process.env[key];
-            else process.env[key] = value;
-        }
-    }
+    const parsed = parseArgs([
+        '--dry-run',
+        '--skip-remote-check',
+        'codex/forwarding-check',
+        HEAD,
+        RECOVERY_HEAD,
+        'https://crm.example.test'
+    ], {
+        npm_config_branch: 'true',
+        npm_config_commit: 'true',
+        npm_config_live_url: 'true'
+    });
+    assert.equal(parsed.branch, 'codex/forwarding-check');
+    assert.equal(parsed.commit, HEAD);
+    assert.equal(parsed.recoverMissingLiveMetadataCommit, RECOVERY_HEAD);
+    assert.equal(parsed.liveUrl, 'https://crm.example.test');
+    assert.equal(parsed.dryRun, true);
+    assert.equal(parsed.skipRemoteCheck, true);
 });
 
 test('Railway release npm wrapper documents the canonical PowerShell command shape', () => {
@@ -341,7 +326,7 @@ test('Railway release npm wrapper documents the canonical PowerShell command sha
         RECOVERY_HEAD,
         '--live-url',
         'https://crm.example.test'
-    ]);
+    ], {});
     assert.equal(parsed.branch, 'codex/forwarding-check');
     assert.equal(parsed.recoverMissingLiveMetadataCommit, RECOVERY_HEAD);
 });
@@ -363,7 +348,7 @@ test('Railway release parser accepts explicit source branch migration proof with
         HEAD,
         '--live-url',
         'https://crm.example.test'
-    ]);
+    ], {});
 
     assert.equal(parsed.migrateLiveSourceBranchFrom, LIVE.sourceBranch);
     assert.equal(parsed.migrateLiveSourceBranchCommit, HEAD);

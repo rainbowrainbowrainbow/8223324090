@@ -42,6 +42,8 @@ const {
     runAuthorizedReleaseStage,
     releaseCommandPlan,
     resolveSpawnCommand,
+    waitForProductionCi,
+    withoutReleaseOverrides,
     resumeAuthorizedQa,
     writeBlockFile
 } = require('../scripts/production-block-controller');
@@ -454,10 +456,65 @@ test('manifest and reports redact secrets and database URLs', () => {
 test('release plan requires exact-SHA CI, helper deploy, version proof, and no raw Railway command', () => {
     const plan = releaseCommandPlan(manifest()).join('\n');
     assert.match(plan, /gh run watch <exact-sha-run> --exit-status/);
+    assert.match(plan, /gh run watch <exact-sha-runtime-artifact-run> --exit-status/);
     assert.match(plan, /npm run release:railway-up/);
     assert.match(plan, /npm run version:smoke/);
     assert.match(plan, /npm run release:timeline-proof/);
     assert.doesNotMatch(plan, /(^|\n)railway\s+up\b/);
+});
+
+test('release commands isolate inherited overrides while preserving local tooling and authentication', () => {
+    const env = {
+        RELEASE_DEPLOY_BRANCH: 'codex/eventgenix-production',
+        RELEASE_RAILWAY_UP_PARSE_ONLY: 'true',
+        VERSION_SMOKE_ALLOW_MISSING_METADATA: 'true',
+        CODEX_PRODUCTION_BLOCK_ID: 'old-block',
+        NPM_CONFIG_SKIP_REMOTE_CHECK: 'true',
+        npm_config_branch: 'true',
+        Path: 'portable-toolchain',
+        GIT_BASH_PATH: 'portable-bash',
+        GH_TOKEN: 'fixture',
+        npm_config_cache: 'local-cache'
+    };
+    assert.deepEqual(withoutReleaseOverrides(env), {
+        Path: 'portable-toolchain',
+        GIT_BASH_PATH: 'portable-bash',
+        GH_TOKEN: 'fixture',
+        npm_config_cache: 'local-cache'
+    });
+    assert.equal(env.RELEASE_DEPLOY_BRANCH, 'codex/eventgenix-production');
+});
+
+test('production CI waits on the requested workflow and verifies exact successful push evidence', () => {
+    const workflowName = 'Runtime artifact smoke';
+    const evidence = {
+        headSha: RELEASE_SHA, headBranch: 'codex/eventgenix-production', workflowName,
+        event: 'push', status: 'completed', conclusion: 'success'
+    };
+    const calls = [];
+    const dependencies = {
+        findExactCiRun(sha, options) {
+            assert.equal(sha, RELEASE_SHA);
+            assert.deepEqual(options, { strictProduction: true, workflowFile: 'runtime-artifact.yml', workflowName });
+            return { databaseId: 42 };
+        },
+        commandResult(command, args) {
+            assert.equal(command, 'gh');
+            assert.equal(args[0], 'run');
+            assert.equal(args[2], '42');
+            calls.push(args[1]);
+            return JSON.stringify(evidence);
+        }
+    };
+    assert.deepEqual(waitForProductionCi(RELEASE_SHA, 'runtime-artifact.yml', workflowName, dependencies).evidence, evidence);
+    assert.deepEqual(calls, ['watch', 'view']);
+    evidence.workflowName = 'CI';
+    assert.throws(() => waitForProductionCi(RELEASE_SHA, 'runtime-artifact.yml', workflowName, dependencies),
+        { code: 'PRODUCTION_BLOCK_CI_IDENTITY_INVALID' });
+    evidence.workflowName = workflowName;
+    evidence.conclusion = 'failure';
+    assert.throws(() => waitForProductionCi(RELEASE_SHA, 'runtime-artifact.yml', workflowName, dependencies),
+        { code: 'PRODUCTION_BLOCK_CI_INCOMPLETE' });
 });
 
 test('production controller passes the authorized branch to timeline proof', () => {

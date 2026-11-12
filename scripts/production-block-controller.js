@@ -4,6 +4,7 @@ const childProcess = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { requiresBuild: requiresArtifactBuild } = require('./runtime-artifact-inputs');
 const {
     ProductionBlockError,
     MAX_VALIDITY_MS,
@@ -304,7 +305,7 @@ function commandResult(command, args, options = {}) {
         encoding: 'utf8',
         windowsHide: true,
         stdio: options.inherit ? 'inherit' : ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env, ...(options.env || {}) }
+        env: { ...(options.isolateReleaseEnv ? withoutReleaseOverrides(process.env) : process.env), ...(options.env || {}) }
     });
     if (result.error) throw result.error;
     fail(result.status === 0, `${command} ${args.join(' ')} failed`, 'PRODUCTION_BLOCK_COMMAND_FAILED', {
@@ -313,6 +314,13 @@ function commandResult(command, args, options = {}) {
         stderr: cleanText(result.stderr, 1000)
     });
     return String(result.stdout || '').trim();
+}
+
+function withoutReleaseOverrides(env) {
+    // npm can forward release arguments as npm_config_* in PowerShell.
+    const releaseConfig = /^npm_config_(branch|commit|message|live_url|dry_run|skip_remote_check|keep_export|export_root|recover_missing_live_metadata_commit|migrate_live_source_branch_from|migrate_live_source_branch_commit)$/i;
+    return Object.fromEntries(Object.entries(env).filter(([key]) =>
+        !/^(RELEASE_|VERSION_SMOKE_|CODEX_PRODUCTION_BLOCK_)/i.test(key) && !releaseConfig.test(key)));
 }
 
 function git(args) {
@@ -371,6 +379,14 @@ function remoteProductionSha() {
     const sha = output.split(/\s+/)[0].toLowerCase();
     fail(SHA_PATTERN.test(sha), 'Cannot verify remote production SHA', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
     return sha;
+}
+
+async function assertStandardProductionBase(manifest, expectedRemote) {
+    const live = await liveVersion(manifest.liveUrl);
+    fail(live.commitSha === manifest.baseLiveSha && live.deploymentMetadata?.complete === true,
+        'Live production changed after release preparation', 'PRODUCTION_BLOCK_LIVE_BASE_DRIFT');
+    fail(remoteProductionSha() === expectedRemote,
+        'Remote production does not match the expected release stage', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
 }
 
 function runAuthorizedReleaseStage(manifest, blockFile, command, args, options = {}, dependencies = {}) {
@@ -455,7 +471,7 @@ function defaultRuntime() {
             return scope.kind === 'certificate' ? certificateQaPreflight(scope) : trustedQaPreflight(scope, live);
         },
         async execute(manifest, blockFile) {
-            commandResult('npm', ['test'], { inherit: true });
+            commandResult('npm', ['test'], { inherit: true, isolateReleaseEnv: true });
             if (isPreparedProtectedRelease(manifest)) {
                 commandResult('npm', ['run', 'check:version'], { inherit: true });
                 fail(git(['rev-parse', 'HEAD']).toLowerCase() === manifest.initialHeadSha
@@ -484,22 +500,13 @@ function defaultRuntime() {
                 assertPreparedProductionBase(manifest, await liveVersion(), remoteProductionSha());
                 assertPerformanceCiRecoveryBase();
             }
+            const artifactBase = isPreparedProtectedRelease(manifest) ? null : remoteProductionSha();
             runAuthorizedReleaseStage(manifest, blockFile,
                 'git', ['push', 'origin', `HEAD:refs/heads/${manifest.allowedBranch}`], { inherit: true });
-            const exact = findExactCiRun(releaseSha, { strictProduction: isPreparedProtectedRelease(manifest) });
-            fail(Boolean(exact), 'Exact-SHA GitHub CI run was not found', 'PRODUCTION_BLOCK_CI_NOT_FOUND');
-            commandResult('gh', ['run', 'watch', String(exact.databaseId), '--exit-status'], { inherit: true });
+            const { run: exact, evidence: ci } = waitForProductionCi(releaseSha);
             if (isPreparedProtectedRelease(manifest)) {
-                const ci = JSON.parse(commandResult('gh', ['run', 'view', String(exact.databaseId), '--json',
-                    'headSha,headBranch,workflowName,event,status,conclusion,jobs']));
                 if (manifest.allowedProtectedWorkflow.kind === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE) {
-                    const artifactRun = findExactCiRun(releaseSha, {
-                        strictProduction: true, workflowFile: 'runtime-artifact.yml', workflowName: 'Runtime artifact smoke'
-                    });
-                    fail(Boolean(artifactRun), 'Exact-SHA runtime artifact CI run was not found', 'PRODUCTION_BLOCK_CI_NOT_FOUND');
-                    commandResult('gh', ['run', 'watch', String(artifactRun.databaseId), '--exit-status'], { inherit: true });
-                    const artifact = JSON.parse(commandResult('gh', ['run', 'view', String(artifactRun.databaseId), '--json',
-                        'headSha,headBranch,workflowName,event,status,conclusion,jobs']));
+                    const { evidence: artifact } = waitForProductionCi(releaseSha, 'runtime-artifact.yml', 'Runtime artifact smoke');
                     assertPerformanceCiResult(ci, artifact, releaseSha);
                 } else {
                     assertHrPayrollCiResult(ci, releaseSha);
@@ -510,6 +517,10 @@ function defaultRuntime() {
                 fail(manifest.allowedProtectedWorkflow.kind !== PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE
                     || remote === releaseSha,
                 'Corrected performance CI SHA is not on the production ref', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
+            } else {
+                const { evidence: artifact } = waitForProductionCi(releaseSha, 'runtime-artifact.yml', 'Runtime artifact smoke');
+                if (requiresArtifactBuild(artifactBase, releaseSha, git)) assertRuntimeArtifactBuild(artifact);
+                await assertStandardProductionBase(manifest, releaseSha);
             }
             runAuthorizedReleaseStage(manifest, blockFile, 'npm', ['run', 'release:railway-up', '--',
                 '--branch', manifest.allowedBranch,
@@ -520,18 +531,24 @@ function defaultRuntime() {
                 '--live-url', manifest.liveUrl
             ], {
                 inherit: true,
+                isolateReleaseEnv: true,
                 env: {
+                    RELEASE_RAILWAY_BIN: process.env.RELEASE_RAILWAY_BIN,
+                    RELEASE_RAILWAY_EXPORT_ROOT: process.env.RELEASE_RAILWAY_EXPORT_ROOT,
+                    RELEASE_DEPLOY_BRANCH: manifest.allowedBranch,
                     CODEX_PRODUCTION_BLOCK_ID: manifest.blockId,
                     CODEX_PRODUCTION_BLOCK_HASH: manifest.manifestHash
                 }
             });
             commandResult('npm', ['run', 'version:smoke', '--', manifest.liveUrl], {
                 inherit: true,
+                isolateReleaseEnv: true,
                 env: { VERSION_SMOKE_EXPECT_COMMIT: releaseSha, VERSION_SMOKE_EXPECT_BRANCH: manifest.allowedBranch }
             });
             commandResult('npm', ['run', 'release:timeline-proof', '--', manifest.liveUrl], {
                 inherit: true,
-                env: { RELEASE_DEPLOY_BRANCH: manifest.allowedBranch }
+                isolateReleaseEnv: true,
+                env: { RELEASE_DEPLOY_BRANCH: manifest.allowedBranch, VERSION_SMOKE_EXPECT_COMMIT: releaseSha }
             });
             manifest.runtimeState.releaseSha = releaseSha;
             manifest.runtimeState.releaseCompletedAt = new Date().toISOString();
@@ -810,11 +827,15 @@ function assertPerformanceCiResult(main, artifact, releaseSha) {
         && artifact.workflowName === 'Runtime artifact smoke' && artifact.event === 'push'
         && artifact.status === 'completed' && artifact.conclusion === 'success',
     'Performance CI requires successful production artifact CI for the exact SHA', 'PRODUCTION_BLOCK_CI_IDENTITY_INVALID');
+    assertRuntimeArtifactBuild(artifact);
+}
+
+function assertRuntimeArtifactBuild(artifact) {
     const job = artifact.jobs?.[0];
     fail(artifact.jobs?.length === 1 && job.name === 'runtime-artifact' && job.status === 'completed'
         && job.conclusion === 'success' && job.steps?.some(step => step.name === 'Build and smoke-test clean release export'
             && step.status === 'completed' && step.conclusion === 'success'),
-    'Performance CI requires an executed artifact build and smoke check', 'PRODUCTION_BLOCK_CI_REQUIRED_JOB_FAILED');
+    'Release requires an executed artifact build and smoke check', 'PRODUCTION_BLOCK_CI_REQUIRED_JOB_FAILED');
 }
 
 function assertHrPayrollCiResult(run, releaseSha) {
@@ -849,6 +870,22 @@ function findExactCiRun(releaseSha, options = {}) {
     return null;
 }
 
+function waitForProductionCi(releaseSha, workflowFile = 'ci.yml', workflowName = 'CI', dependencies = {}) {
+    const findRun = dependencies.findExactCiRun || findExactCiRun;
+    const runCommand = dependencies.commandResult || commandResult;
+    const run = findRun(releaseSha, { strictProduction: true, workflowFile, workflowName });
+    fail(Boolean(run), `Exact-SHA ${workflowName} run was not found`, 'PRODUCTION_BLOCK_CI_NOT_FOUND');
+    runCommand('gh', ['run', 'watch', String(run.databaseId), '--exit-status'], { inherit: true });
+    const evidence = JSON.parse(runCommand('gh', ['run', 'view', String(run.databaseId), '--json',
+        'headSha,headBranch,workflowName,event,status,conclusion,jobs']));
+    fail(evidence.headSha === releaseSha && evidence.headBranch === TARGET.branch
+        && evidence.event === 'push' && evidence.workflowName === workflowName,
+    `GitHub ${workflowName} run does not match the production push`, 'PRODUCTION_BLOCK_CI_IDENTITY_INVALID');
+    fail(evidence.status === 'completed' && evidence.conclusion === 'success',
+        `GitHub ${workflowName} run is not successful`, 'PRODUCTION_BLOCK_CI_INCOMPLETE');
+    return { run, evidence };
+}
+
 function releaseCommandPlan(manifest) {
     return [
         'npm test',
@@ -857,6 +894,8 @@ function releaseCommandPlan(manifest) {
             : [`npm run version:bump -- patch --label "${manifest.releaseLabel}"`]),
         `git push origin HEAD:refs/heads/${manifest.allowedBranch}`,
         'gh run watch <exact-sha-run> --exit-status',
+        ...(!isPreparedProtectedRelease(manifest) || manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE
+            ? ['gh run watch <exact-sha-runtime-artifact-run> --exit-status'] : []),
         `npm run release:railway-up -- --branch ${manifest.allowedBranch} --project ${manifest.railwayProjectId} --environment ${manifest.railwayEnvironment} --service ${manifest.railwayServiceId}`,
         'npm run version:smoke -- <live-url>',
         'npm run release:timeline-proof -- <live-url>',
@@ -1166,6 +1205,8 @@ module.exports = {
     runAuthorizedReleaseStage,
     releaseCommandPlan,
     resolveSpawnCommand,
+    waitForProductionCi,
+    withoutReleaseOverrides,
     resumeAuthorizedQa,
     statusAction,
     trustedQaPreflight,

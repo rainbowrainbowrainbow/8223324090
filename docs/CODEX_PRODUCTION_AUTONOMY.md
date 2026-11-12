@@ -130,6 +130,28 @@ not production authority.
 
 Never stash, reset, checkout, delete, or rewrite another user's dirty work.
 
+### Running on another machine
+
+- Use the clean checkout of the exact candidate and the repository Node 22/npm 10
+  baseline. Install dependencies with `npm ci` and use that machine's Git and
+  authenticated GitHub/Railway CLI sessions. Check `git --version`,
+  `gh --version`, `railway --version` and `tar --version` before starting.
+- The controller runs `npm test` without inherited release overrides and passes
+  the approved branch, SHA, project, environment and service to the deployment
+  subprocess. Leave `RELEASE_DEPLOY_BRANCH` out of shell startup profiles and
+  use `--branch` for a direct helper invocation.
+- On Windows, the browser smoke fixture can use Git Bash from the Git for Windows
+  installation on PATH. If the selected Git distribution ships without Bash,
+  set `GIT_BASH_PATH` to the local Git for Windows `bash.exe` for the test
+  process. The release helper accepts a native `railway.exe` on PATH, the
+  npm-installed CLI, or a local `RELEASE_RAILWAY_BIN` override. On macOS and
+  Linux, use the native Git, Bash, tar and Railway CLI.
+- For an ordinary release handoff, keep the current block manifest, the
+  checked-out SHA and attempt evidence together. The manifest expiry and
+  attempt count still apply on the next machine. Stop the previous release
+  process before continuing. Resolve any QA plan paths and credentials on the
+  new machine under the original QA scope.
+
 ## 5. Read-Only Production Preflight
 
 Before asking for Yellow authorization:
@@ -229,7 +251,9 @@ Inside a valid Yellow envelope:
 3. Push only the exact approved candidate to
    `codex/eventgenix-production`.
 4. Record the resulting 40-character SHA.
-5. Wait for GitHub Actions checks associated with that exact SHA.
+5. Wait for the `CI` workflow for the exact production push. An ordinary
+   release also waits for `Runtime artifact smoke` for that SHA. When packaging
+   inputs change, the artifact build and smoke step must execute successfully.
 6. Do not deploy while required checks are pending or failed.
 
 CI uses Node 22 and npm 10. It runs `npm ci`, `npm test`, and separate disposable
@@ -427,8 +451,10 @@ is green.
 Required behavior:
 
 - use `npm run release:railway-up`;
-- pass the verified production branch through the helper's documented
-  `RELEASE_DEPLOY_BRANCH` input;
+- pass the verified production branch to the helper with `--branch`. The
+  controller also supplies `RELEASE_DEPLOY_BRANCH` to the deployment child
+  process. When invoking the helper directly with that environment variable,
+  scope it to the helper process;
 - allow the helper to identify the production project explicitly;
 - never run raw `railway up` from an unlinked worktree;
 - never change Railway project, environment, service, owner, variables, secrets,
@@ -437,6 +463,28 @@ Required behavior:
 The helper must prove the uploaded SHA and branch through Railway metadata or its
 clean archive release manifest. Legacy `RELEASE_DEPLOY_COMMIT` and
 `RELEASE_DEPLOY_BRANCH` variables alone are not valid deployment identity.
+
+### Upload timeout after successful CI
+
+Read Railway status and the recent deployment list for the exact project,
+environment and service. If a deployment may still be queued or running, wait
+for a terminal state and check `/api/version`. If the intended SHA is already
+live, finish the version and release proof.
+
+For an ordinary release without migrations, protected paths or writable QA, a
+confirmed failed upload can use the next attempt of the same valid block.
+Before that attempt, verify the original base is still live, the remote
+production ref and the clean local HEAD both equal the exact release SHA,
+both CI workflows for that push succeeded, and the failed Railway attempt is
+settled. Stop on ambiguous deployment identity or foreign drift.
+
+Record the attempt number and failed deployment ID with the block evidence.
+Run the documented helper with the same `--branch`, `--commit`, `--project`,
+`--environment`, `--service` and `--live-url`. This continues at upload. A
+fresh `execute` starts at preflight and would generate another version
+commit. On success, run the exact-SHA version and release proof and record the
+new Railway deployment ID. The original expiry and attempt budget still apply.
+Count manual retries together with the attempts recorded by the controller.
 
 ## 11. Live Version And Release Proof
 

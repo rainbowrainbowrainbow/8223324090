@@ -5304,14 +5304,10 @@ function clearBanquetLinkLayer() {
     if (layer) layer.innerHTML = '';
 }
 
-function bookingBlockAnchorPoint(block, side = 'right') {
-    const scroll = document.getElementById('timelineScroll');
-    if (!block || !scroll) return null;
-    const blockRect = block.getBoundingClientRect();
-    const scrollRect = scroll.getBoundingClientRect();
+function bookingBlockAnchorPoint(blockRect, side, origin) {
     return {
-        x: (side === 'left' ? blockRect.left : blockRect.right) - scrollRect.left + scroll.scrollLeft,
-        y: blockRect.top + blockRect.height / 2 - scrollRect.top + scroll.scrollTop
+        x: (side === 'left' ? blockRect.left : blockRect.right) + origin.x,
+        y: blockRect.top + blockRect.height / 2 + origin.y
     };
 }
 
@@ -5374,7 +5370,20 @@ function renderBanquetLinksOverlay() {
     }
     const layer = ensureBanquetLinkLayer();
     if (!layer) return;
-    layer.innerHTML = '';
+    const scroll = document.getElementById('timelineScroll');
+    if (!scroll) {
+        layer.replaceChildren();
+        return;
+    }
+    const scrollRect = scroll.getBoundingClientRect();
+    const origin = { x: scroll.scrollLeft - scrollRect.left, y: scroll.scrollTop - scrollRect.top };
+    const rectByBlock = new Map();
+    const blockRect = block => {
+        if (!rectByBlock.has(block)) rectByBlock.set(block, block.getBoundingClientRect());
+        return rectByBlock.get(block);
+    };
+    // Detached SVG writes do not invalidate the layout measured for the other links.
+    const paths = document.createDocumentFragment();
     const blocks = Array.from(document.querySelectorAll('.booking-block[data-booking-id]:not(.status-hidden)'))
         .filter(block => !block.classList.contains('afisha-block'));
     const blockById = new Map(blocks.map(block => [String(block.dataset.bookingId), block]));
@@ -5396,18 +5405,17 @@ function renderBanquetLinksOverlay() {
             if (renderedPairs.has(pairKey)) return;
             renderedPairs.add(pairKey);
 
-            const fromRect = fromBlock.getBoundingClientRect();
-            const toRect = targetBlock.getBoundingClientRect();
+            const fromRect = blockRect(fromBlock);
+            const toRect = blockRect(targetBlock);
             const fromSide = fromRect.left <= toRect.left ? 'right' : 'left';
             const toSide = fromSide === 'right' ? 'left' : 'right';
-            const from = bookingBlockAnchorPoint(fromBlock, fromSide);
-            const to = bookingBlockAnchorPoint(targetBlock, toSide);
+            const from = bookingBlockAnchorPoint(fromRect, fromSide, origin);
+            const to = bookingBlockAnchorPoint(toRect, toSide, origin);
             const target = bookingById.get(targetId);
-            const title = `Банкетний звʼязок: ${booking.label || booking.programCode || booking.id} ↔ ${target?.label || target?.programCode || targetId}`;
             const adjacent = Math.abs((to?.x || 0) - (from?.x || 0)) < 42
                 || Math.abs(fromRect.right - toRect.left) < 12
                 || Math.abs(toRect.right - fromRect.left) < 12;
-            appendBanquetLinkPath(layer, from, to, bookingVisualLinkPathClass(link, adjacent), bookingVisualLinkTitle(link, booking, target, targetId), { adjacent });
+            appendBanquetLinkPath(paths, from, to, bookingVisualLinkPathClass(link, adjacent), bookingVisualLinkTitle(link, booking, target, targetId), { adjacent });
         });
     });
 
@@ -5415,13 +5423,15 @@ function renderBanquetLinksOverlay() {
         const sourceBlock = blockById.get(String(_banquetLinkDraft.sourceId));
         const pointer = _banquetLinkDraft.pointer;
         if (sourceBlock && pointer) {
-            const leftPoint = bookingBlockAnchorPoint(sourceBlock, 'left');
-            const rightPoint = bookingBlockAnchorPoint(sourceBlock, 'right');
+            const sourceRect = blockRect(sourceBlock);
+            const leftPoint = bookingBlockAnchorPoint(sourceRect, 'left', origin);
+            const rightPoint = bookingBlockAnchorPoint(sourceRect, 'right', origin);
             const sourceSide = pointer.x >= ((leftPoint.x + rightPoint.x) / 2) ? 'right' : 'left';
-            const from = bookingBlockAnchorPoint(sourceBlock, sourceSide);
-            appendBanquetLinkPath(layer, from, pointer, 'timeline-banquet-link-path timeline-banquet-link-path--draft');
+            const from = sourceSide === 'right' ? rightPoint : leftPoint;
+            appendBanquetLinkPath(paths, from, pointer, 'timeline-banquet-link-path timeline-banquet-link-path--draft');
         }
     }
+    layer.replaceChildren(paths);
 }
 
 function beginBanquetLinkDraft(booking, block, event) {

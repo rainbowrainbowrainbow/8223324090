@@ -20,7 +20,11 @@ Any proposed exception must bind the exact CI bytes, exact staff-release file
 inventory, production target, and approved SHA; preserve all expiry, CI,
 migration and drift guards; include regression tests for mismatches; and must
 not reuse another workflow's unrelated exception or allow arbitrary CI changes.
-The exception itself needs review before release preparation can succeed.
+The owner approved `RED-STAFF-RELEASE-CI` for this exact CI scope. The
+`staff-deletion-ci` exception now pins the base SHA, prepared version, CI hash,
+complete changed-file inventory, empty migration and QA scopes, and the prepared
+release SHA. Controller tests reject path, hash, base, version, migration and
+SHA drift. A separate Yellow authorization is still required for production.
 
 Before any push or deployment, recheck the live SHA and production branch,
 parallel deployments, next available patch version and target identity, then

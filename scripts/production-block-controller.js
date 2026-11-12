@@ -9,6 +9,7 @@ const {
     ProductionBlockError,
     MAX_VALIDITY_MS,
     PROTECTED_WORKFLOWS,
+    STAFF_DELETION_CI_HASH,
     PERFORMANCE_CI_WORKFLOW_HASHES,
     PERFORMANCE_CI_FAILED_SHA,
     PERFORMANCE_CI_FAILED_RUN,
@@ -413,7 +414,10 @@ function defaultRuntime() {
                 descendsFromLive: gitIsAncestor(live.commitSha, head),
                 changedPaths: paths,
                 migrations: loadMigrations(paths),
-                workflowHashes: performanceCi ? performanceCiWorkflowHashes(paths) : undefined,
+                workflowHashes: performanceCi ? performanceCiWorkflowHashes(paths)
+                    : options.protectedWorkflow === PROTECTED_WORKFLOWS.STAFF_DELETION_CI ? staffDeletionWorkflowHashes() : undefined,
+                staffDeletionGate: options.protectedWorkflow === PROTECTED_WORKFLOWS.STAFF_DELETION_CI
+                    ? staffDeletionGateFacts(head) : undefined,
                 performanceCiRecovery: performanceCi ? performanceCiRecoveryFacts(head) : undefined
             };
         },
@@ -431,7 +435,8 @@ function defaultRuntime() {
                 migrations: loadMigrations(paths).map(item => item.file).sort(),
                 migrationHashes: Object.fromEntries(loadMigrations(paths).map(item => [item.file, migrationSqlHash(item.sql)])),
                 changedPaths: paths,
-                workflowHashes: performanceCi ? performanceCiWorkflowHashes(paths) : undefined,
+                workflowHashes: performanceCi ? performanceCiWorkflowHashes(paths)
+                    : manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.STAFF_DELETION_CI ? staffDeletionWorkflowHashes() : undefined,
                 performanceCiRecovery: performanceCi ? performanceCiRecoveryFacts(head) : undefined
             };
         },
@@ -570,6 +575,16 @@ function performanceCiWorkflowHashes(changedPaths) {
     const workflows = Object.keys(PERFORMANCE_CI_WORKFLOW_HASHES);
     if (!workflows.every(file => changedPaths.includes(file))) return undefined;
     return Object.fromEntries(workflows.map(file => [file, migrationSqlHash(fs.readFileSync(path.join(ROOT, file), 'utf8'))]));
+}
+
+function staffDeletionWorkflowHashes() {
+    return { '.github/workflows/ci.yml': migrationSqlHash(fs.readFileSync(path.join(ROOT, '.github/workflows/ci.yml'), 'utf8')) };
+}
+
+function staffDeletionGateFacts(head) {
+    const [, parent, ...others] = git(['rev-list', '--parents', '-n', '1', head]).split(/\s+/);
+    return { parent: others.length ? null : parent,
+        changedPaths: changedPaths('8290ba7705971a94c0e9b1a1062993b25ce2037c', head) };
 }
 
 function performanceCiRecoveryFacts(head) {
@@ -1006,6 +1021,10 @@ async function assertExecuteDrift(manifest, runtime) {
     if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE) {
         assertPerformanceCiWorkflowHashes(drift.workflowHashes);
         assertPerformanceCiRecovery(drift.performanceCiRecovery);
+    }
+    if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.STAFF_DELETION_CI) {
+        fail(drift.workflowHashes?.['.github/workflows/ci.yml'] === STAFF_DELETION_CI_HASH,
+            'Staff deletion CI workflow differs from the reviewed content', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
     }
     if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA) {
         const expectedHashes = Object.fromEntries(manifest.migrationClassifications.map(item => [item.file, item.sqlHash]));

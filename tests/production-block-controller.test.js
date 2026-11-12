@@ -12,6 +12,8 @@ const {
     confirmationValue,
     manifestHash,
     migrationSqlHash,
+    STAFF_DELETION_PATHS,
+    STAFF_DELETION_CI_HASH,
     PERFORMANCE_CI_CHANGED_PATHS,
     PERFORMANCE_CI_WORKFLOW_HASHES,
     PERFORMANCE_CI_FAILED_SHA,
@@ -899,6 +901,44 @@ function successfulHrPayrollCi() {
             'HR and payroll PostgreSQL integration', 'My Day PostgreSQL integration', 'My Day browser interactions'
         ].map(name => ({ name, status: 'completed', conclusion: 'success' })) };
 }
+
+test('staff deletion CI release pins exact scope, content and prepared SHA', async t => {
+    const options = { protectedWorkflow: 'staff-deletion-ci' };
+    const scope = {
+        live: { commitSha: 'a6e37b311202fbe7929118aa9c5c3c0422ab0211', version: '0.83.40' },
+        releaseVersion: '0.83.41', changedPaths: STAFF_DELETION_PATHS,
+        workflowHashes: { '.github/workflows/ci.yml': STAFF_DELETION_CI_HASH },
+        staffDeletionGate: { parent: '8290ba7705971a94c0e9b1a1062993b25ce2037c', changedPaths: [
+            'docs/STAFF_DELETION_RELEASE_REVIEW_2026-11-12.md', 'scripts/production-block-controller.js',
+            'scripts/production-block-policy.js', 'tests/production-block-controller.test.js'
+        ] }
+    };
+    const value = manifest(options, scope);
+    assert.equal(validateManifest(value).preparedRelease.sha, HEAD_SHA);
+    for (const override of [
+        { changedPaths: [...scope.changedPaths, 'routes/auth.js'] },
+        { changedPaths: scope.changedPaths.filter(file => file !== 'routes/hr.js') },
+        { live: { ...scope.live, commitSha: LIVE_SHA } },
+        { staffDeletionGate: { ...scope.staffDeletionGate, parent: LIVE_SHA } },
+        { staffDeletionGate: { ...scope.staffDeletionGate, changedPaths: ['routes/hr.js'] } },
+        { releaseVersion: '0.83.42' },
+        { migrations: [{ file: 'db/migrations/999_test.sql', sql: 'CREATE TABLE test(id int);' }] },
+        { workflowHashes: { '.github/workflows/ci.yml': 'f'.repeat(64) } }
+    ]) assert.throws(() => manifest(options, { ...scope, ...override }));
+    assert.throws(() => manifest({ ...options, qaScope: { enabled: true, kind: 'finance' } }, scope));
+    assert.throws(() => manifest({}, scope), error => error.code === 'PRODUCTION_BLOCK_RED_PATHS');
+    const tampered = structuredClone(value);
+    tampered.preparedRelease.version = '0.83.42';
+    tampered.manifestHash = manifestHash(tampered);
+    assert.throws(() => validateManifest(tampered), error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+    const file = blockFile(t, value);
+    const execute = drift => executeAction({ blockFile: file, confirmation: confirmationValue(value), dryRun: true },
+        dryRuntime({ drift: async () => ({ head: HEAD_SHA, changedPaths: scope.changedPaths,
+            descendsFromBase: true, migrations: [], workflowHashes: scope.workflowHashes, ...drift }) }));
+    assert.equal((await execute()).success, true);
+    await assert.rejects(execute({ head: RELEASE_SHA }), error => error.code === 'PRODUCTION_BLOCK_SHA_DRIFT');
+    await assert.rejects(execute({ workflowHashes: {} }), error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
+});
 
 test('performance CI release pins the workflows and its single prepared release scope', async t => {
     const options = { protectedWorkflow: 'performance-ci-release', maxReleaseAttempts: 1 };

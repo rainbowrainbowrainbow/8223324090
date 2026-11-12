@@ -342,7 +342,8 @@
             vertical-align: middle;
         }
 
-        .fin-table tbody tr { cursor: pointer; }
+        .fin-table tbody tr[onclick] { cursor: pointer; }
+        .fin-transaction-edit:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
         .fin-table tbody tr:hover { background: rgba(16,185,129,0.03); }
 
         .fin-amount-income { color: #10B981; font-weight: 700; }
@@ -1383,6 +1384,7 @@
                                 <th>Сума</th>
                                 <th>Оплата</th>
                                 <th>Створив</th>
+                                <th scope="col" id="transActionHeader" hidden>Дія</th>
                             </tr>
                         </thead>
                         <tbody id="transTableBody"></tbody>

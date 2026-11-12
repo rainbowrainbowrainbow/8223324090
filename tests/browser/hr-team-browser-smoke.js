@@ -2187,6 +2187,8 @@ async function run() {
     }
 }
 
-run()
+module.exports = { installHarness, requirePlaywright, readRepo, HR_HTML, ROOT };
+
+if (require.main === module) run()
     .then(() => (process.env.HR_TEAM_ACCOUNT_RECEIPT_ONLY === 'true' || process.env.HR_TEAM_OFFBOARDING_ONLY === 'true' || process.env.HR_TEAM_ACCOUNT_ACCESS_ONLY === 'true' || process.env.HR_TEAM_RATE_SAFETY_ONLY === 'true' || process.env.HR_TEAM_PAY_CONDITIONS_ONLY === 'true') ? undefined : require('./hr-structure-tree-browser-smoke').run())
     .catch(err => fail(err?.stack || err?.message || String(err)));

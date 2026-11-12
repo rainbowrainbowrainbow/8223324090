@@ -30,6 +30,8 @@ const {
 } = require('../services/businessContext');
 const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
 const { parkHrStaffCardEditCapability, PARK_STAFF_PROFILE_FIELD_LIMITS } = require('../services/parkHrStaffCardRead');
+const { isParkHrStaffDeletionRoute, projectStaffDeletionReadiness } = require('../services/parkHrStaffDeletionAccess');
+const { loadAdditionalStaffDeletionBlockers } = require('../services/staffDeletionReferences');
 const { prepareHrFixtureQa, claimHrFixtureQa, requireHrQaEntity } = require('../services/hrFixtureQa');
 const { parkHrPayrollCapabilities, requireParkHrPayrollAccess, canManageStaffPayrollRules } = require('../services/parkHrPayrollAccess');
 const { resolveStaffOperation } = require('../services/staffOperationAccess');
@@ -339,6 +341,7 @@ const HR_SHIFT_COPY_WEEK_MAX_STAFF = 500;
 function hrCapabilityCandidates(req) {
     const routePath = String(req.path || '/');
     const isRead = req.method === 'GET' || req.method === 'HEAD';
+    if (isParkHrStaffDeletionRoute(req)) return ['hr.staff.manage'];
     if (req.method === 'PUT') {
         const profileEdit = parkHrStaffCardEditCapability(req);
         if (profileEdit) return [profileEdit];
@@ -1396,6 +1399,9 @@ const STAFF_DELETE_BLOCKER_CHECKS = [
     { key: 'resources', label: 'видані ресурси або костюми', table: 'staff_resource_assignments', where: 'staff_id = $1' },
     { key: 'offboarding', label: 'історія offboarding', table: 'staff_offboarding_events', where: 'staff_id = $1' },
     { key: 'training', label: 'проходження навчання', table: 'training_course_enrollment', where: 'staff_id = $1' },
+    { key: 'training_submissions', label: 'навчальні роботи', table: 'training_submissions', where: 'staff_id = $1' },
+    { key: 'training_assignments', label: 'навчальні завдання', table: 'training_assignments', where: '$1 = ANY(assigned_to)' },
+    { key: 'discipline_actions', label: 'історія кадрових рішень', table: 'discipline_actions_log', where: 'staff_id = $1' },
     { key: 'profession_progress', label: 'чеклісти професій', table: 'hr_staff_profession_checklist_progress', where: 'staff_id = $1' },
     { key: 'reports_submitted', label: 'фінансові звіти submitter', table: 'reports', where: 'submitted_by_id = $1' },
     { key: 'accountants', label: 'звʼязка бухгалтера', table: 'accountants', where: 'staff_id = $1' }
@@ -1438,6 +1444,8 @@ async function loadStaffDeleteReadiness(staffId, db = pool, options = {}) {
         }
         : null;
     const activeBlockers = blockers.filter(item => item.count > 0);
+    activeBlockers.push(...await loadAdditionalStaffDeletionBlockers(db, staffId,
+        STAFF_DELETE_BLOCKER_CHECKS, STAFF_DELETE_CLEANUP_CHECKS));
     if (installmentBlocker) activeBlockers.push(installmentBlocker);
     return {
         staff: staffResult.rows[0],
@@ -4589,11 +4597,11 @@ router.get('/staff/:id/offboarding-readiness', requireHrManage, async (req, res)
     }
 });
 
-router.get('/staff/:id/delete-readiness', requireHrManage, async (req, res) => {
+router.get('/staff/:id/delete-readiness', requireAction('hr.staff.manage'), async (req, res) => {
     try {
         const data = await loadStaffDeleteReadiness(Number(req.params.id));
         if (!data) return res.status(404).json({ success: false, error: 'Працівника не знайдено' });
-        res.json({ success: true, data });
+        res.json({ success: true, data: projectStaffDeletionReadiness(data, req.user) });
     } catch (err) {
         log.error('GET /hr/staff/:id/delete-readiness error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
@@ -4996,7 +5004,7 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
 });
 
 // DELETE /api/hr/staff/:id — permanent duplicate cleanup guarded by typed confirmation
-router.delete('/staff/:id', requireHrManage, async (req, res) => {
+router.delete('/staff/:id', requireAction('hr.staff.manage'), async (req, res) => {
     const confirmation = cleanStaffText(req.body?.confirmation, 20);
     if (confirmation !== STAFF_DELETE_CONFIRMATION) {
         return res.status(400).json({
@@ -5005,8 +5013,9 @@ router.delete('/staff/:id', requireHrManage, async (req, res) => {
         });
     }
 
-    const client = await pool.connect();
+    let client;
     try {
+        client = await pool.connect();
         const staffId = Number(req.params.id);
         const reason = cleanStaffText(req.body?.reason, 1000) || 'duplicate_cleanup';
         await client.query('BEGIN');
@@ -5020,7 +5029,7 @@ router.delete('/staff/:id', requireHrManage, async (req, res) => {
             return res.status(409).json({
                 success: false,
                 error: 'Працівника не можна видалити, бо є звʼязані операційні записи',
-                data: readiness
+                data: projectStaffDeletionReadiness(readiness, req.user)
             });
         }
 
@@ -5040,7 +5049,7 @@ router.delete('/staff/:id', requireHrManage, async (req, res) => {
             }
         });
     } catch (err) {
-        await client.query('ROLLBACK').catch(() => {});
+        if (client) await client.query('ROLLBACK').catch(() => {});
         log.error('DELETE /hr/staff/:id error', err);
         if (err.code === '23503') {
             return res.status(409).json({
@@ -5050,7 +5059,7 @@ router.delete('/staff/:id', requireHrManage, async (req, res) => {
         }
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     } finally {
-        client.release();
+        if (client) client.release();
     }
 });
 

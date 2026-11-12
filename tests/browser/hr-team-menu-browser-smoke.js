@@ -1,0 +1,93 @@
+'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
+const assert = require('node:assert/strict');
+const { installHarness, requirePlaywright, readRepo, HR_HTML, ROOT } = require('./hr-team-browser-smoke');
+(async () => {
+    const browser = await requirePlaywright().chromium.launch({ headless: true });
+    const out = path.join(ROOT, 'output/playwright/hr-team-menu');
+    fs.mkdirSync(out, { recursive: true });
+    const realCss = [...HR_HTML.matchAll(/href="(css\/[^"?]+)\?[^\"]*"/g)].map(match => readRepo(match[1])).join('\n');
+    const results = [];
+    try {
+        for (const width of [1100, 390]) {
+            for (const theme of ['light', 'dark']) {
+                const page = await browser.newPage({ viewport: { width, height: 844 } });
+                const errors = [];
+                page.on('pageerror', error => errors.push(error.message));
+                await installHarness(page, { dark: theme === 'dark' });
+                await page.evaluate(() => {
+                    const team = document.getElementById('tab-team');
+                    const shell = document.createElement('div');
+                    shell.className = 'page-container';
+                    team.before(shell);
+                    shell.append(team);
+                    document.getElementById('outsideButton').style.visibility = 'hidden';
+                    for (const person of teamStaff) {
+                        person.photo_url = null;
+                        if (person.id === 1) person.name = 'Тестовий співробітник';
+                    }
+                    filterAndRenderTeam();
+                });
+                await page.addStyleTag({ content: realCss });
+                await page.evaluate(value => document.documentElement.setAttribute('data-theme', value), theme);
+                const trigger = page.locator('.hr-team-card[data-staff-id="1"] .hr-team-overflow-trigger');
+                await trigger.click();
+                const menu = page.locator('#hrTeamCardMenu1');
+                await menu.waitFor({ state: 'visible' });
+                for (const item of ['.hr-team-document', '.hr-team-move']) {
+                    const action = menu.locator(item);
+                    assert.equal(await action.getAttribute('aria-disabled'), 'true');
+                    assert.equal(await action.getAttribute('onclick'), null);
+                    assert.ok(await action.getAttribute('aria-describedby'));
+                    const bounds = await action.boundingBox();
+                    await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+                    if (!await menu.isVisible()) await trigger.click();
+                }
+                await page.waitForFunction(() => document.querySelector('#hrTeamCardMenu1').contains(document.activeElement));
+                const state = await menu.evaluate(el => {
+                    const style = getComputedStyle(el);
+                    const card = el.closest('.hr-team-card');
+                    const button = card.querySelector('.hr-team-overflow-trigger');
+                    const bounds = el.getBoundingClientRect();
+                    const action = el.querySelector('button');
+                    return { background: style.backgroundColor, border: style.borderColor, shadow: style.boxShadow,
+                        card: getComputedStyle(card).backgroundColor, color: getComputedStyle(action).color,
+                        rect: { left: bounds.left, right: bounds.right, top: bounds.top, bottom: bounds.bottom },
+                        triggerWidth: button.getBoundingClientRect().width,
+                        triggerHeight: button.getBoundingClientRect().height,
+                        svg: button.querySelector('svg')?.getBoundingClientRect().toJSON() };
+                });
+                assert.notEqual(state.background, state.card);
+                assert.notEqual(state.shadow, 'none');
+                assert.ok(state.rect.left >= 0 && state.rect.right <= width);
+                assert.ok(state.rect.top >= 0 && state.rect.bottom <= 844);
+                assert.ok(state.triggerWidth >= 44 && state.triggerHeight >= 44);
+                await page.screenshot({ path: path.join(out, theme + '-' + width + '.png'), fullPage: false });
+                if (width === 390) {
+                    const cardBounds = await page.locator('.hr-team-card[data-staff-id="1"]').boundingBox();
+                    const top = Math.max(0, Math.floor(cardBounds.y) - 8);
+                    await page.screenshot({ path: path.join(out, theme + '-detail.png'),
+                        clip: { x: 0, y: top, width, height: 844 - top } });
+                }
+                await page.keyboard.press('End');
+                assert.equal(await page.locator('.hr-team-card[data-staff-id="1"] .hr-team-delete').evaluate(el => el === document.activeElement), true);
+                await page.keyboard.press('Home');
+                await page.keyboard.press('ArrowDown');
+                assert.equal(await menu.evaluate(el => el.contains(document.activeElement)), true);
+                await page.keyboard.press('Escape');
+                assert.equal(await menu.isVisible(), false);
+                assert.equal(await trigger.evaluate(el => el === document.activeElement), true);
+                await trigger.press('Enter');
+                await menu.waitFor({ state: 'visible' });
+                await page.mouse.click(5, 5);
+                assert.equal(await menu.isVisible(), false);
+                assert.deepEqual(errors, []);
+                results.push({ width, theme, ...state });
+                await page.close();
+            }
+        }
+        fs.writeFileSync(path.join(out, 'results.json'), JSON.stringify(results, null, 2));
+        console.log(JSON.stringify(results));
+    } finally { await browser.close(); }
+})().catch(error => { console.error(error); process.exitCode = 1; });

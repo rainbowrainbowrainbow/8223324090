@@ -3209,8 +3209,9 @@ body.dark-mode[data-page-group="hr"] .sch-replacement-details strong,
 }
 
 .page-container .hr-team-overflow-menu {
-    border-color: color-mix(in srgb, var(--gray-400) 18%, transparent);
-    box-shadow: var(--shadow-lg);
+    background: #f1f5f9;
+    border-color: #94a3b8;
+    box-shadow: 0 18px 42px rgba(15, 23, 42, 0.24), 0 4px 10px rgba(15, 23, 42, 0.12);
 }
 
 .page-container .hr-team-training-compact,
@@ -3505,8 +3506,14 @@ body.dark-mode .page-container .hr-team-card,
 
 body.dark-mode .page-container .hr-team-overflow-menu,
 [data-theme="dark"] .page-container .hr-team-overflow-menu {
-    background: var(--surface, #1E1E38);
-    border-color: color-mix(in srgb, var(--gray-400) 16%, transparent);
+    background: #27354b;
+    border-color: #64748b;
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.55), 0 4px 12px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+body.dark-mode .page-container .hr-team-menu-section--danger small,
+[data-theme="dark"] .page-container .hr-team-menu-section--danger small {
+    color: #fca5a5;
 }
 
 body.dark-mode .page-container .hr-team-training-compact,

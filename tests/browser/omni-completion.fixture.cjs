@@ -7,6 +7,8 @@ const root = path.resolve(__dirname, '../..');
 const artifactDir = path.resolve(process.env.OMNI_BROWSER_ARTIFACT_DIR || path.join(root, 'output', 'playwright', 'omni-completion'));
 fs.mkdirSync(artifactDir, { recursive: true });
 const layoutOnly = process.env.OMNI_LAYOUT_ONLY === '1';
+const composerOnly = layoutOnly && process.env.OMNI_COMPOSER_ONLY === '1';
+const forceComposerFallback = composerOnly && process.env.OMNI_COMPOSER_FALLBACK === '1';
 const nativeZoom = process.env.OMNI_NATIVE_ZOOM === '1';
 const FIXED_BROWSER_TIME = '2099-01-01T12:30:00.000Z';
 const sanitize = value => String(value || '').replace(/https?:\/\/\S+/g, '[url]');
@@ -51,7 +53,9 @@ function playwright() {
   throw new Error('playwright_missing');
 }
 (async () => {
-  const {chromium, request} = playwright();
+  const engines = playwright();
+  const {chromium, request} = engines;
+  const engine = composerOnly ? engines[process.env.OMNI_COMPOSER_BROWSER || 'chromium'] : chromium;
   const base = 'https://8223324090-production.up.railway.app';
   let api = null;
   let session;
@@ -93,11 +97,17 @@ function playwright() {
     }]
   };
   const zoomBrowser = nativeZoom ? await require('./omni-native-zoom.cjs').launch(chromium) : null;
-  const browser = zoomBrowser ? null : await chromium.launch(layoutOnly ? {headless:true} : {channel:'chrome',headless:true});
+  const browser = zoomBrowser ? null : await engine.launch(layoutOnly ? {headless:true} : {channel:'chrome',headless:true});
   let context = null;
   let tracingStarted = false;
   try {
-    context = zoomBrowser?.context || await browser.newContext({viewport:{width:1440,height:1000}, serviceWorkers:'block'});
+    context = zoomBrowser?.context || await browser.newContext({viewport:{width:1440,height:1000}, serviceWorkers:'block', timezoneId:'Europe/Kyiv'});
+    if (forceComposerFallback) {
+      await context.addInitScript(() => {
+        const supports = CSS.supports.bind(CSS);
+        CSS.supports = (...args) => args[0] === 'field-sizing' ? false : supports(...args);
+      });
+    }
     if (layoutOnly) {
       await context.tracing.start({ screenshots: true, snapshots: true, sources: true });
       tracingStarted = true;
@@ -331,7 +341,8 @@ function playwright() {
       const local=new Map([['/omni','omni.html'],['/css/omni-workspace.css','css/omni-workspace.css']]);
       if(local.has(url.pathname)) {
         const file=local.get(url.pathname);
-        const content=fs.readFileSync(path.join(root,file),'utf8');
+        let content=fs.readFileSync(path.join(root,file),'utf8');
+        if (forceComposerFallback && file === 'omni.html') content = content.replace('@supports (field-sizing: content)', '@supports (field-sizing: fixture-unsupported)');
         return route.fulfill({status:200,contentType:file.endsWith('.css')?'text/css':'text/html',body:file.endsWith('.html')?content.replace('// ---- Events ----','window.__omniFixtureRefresh = loadConversations; window.__omniFixtureRefreshAccounts = loadOmniAccounts; window.__omniFixtureDebug = () => ({ currentConvId, selectedDraftKey, input: input.value, draft: selectedDraftKey ? conversationDrafts.get(selectedDraftKey) || null : null, mode: omniMode, mobileView: mobileInboxView }); // ---- Events ----'):content});
       }
       const staticFile = path.resolve(root, '.' + url.pathname);
@@ -348,6 +359,32 @@ function playwright() {
     const errors=[];page.on('pageerror',e=>{ errors.push(e.message.slice(0,120)); runReport.pageErrors = errors.slice(); });
     await page.goto(base+'/omni?businessContext=event_genix',{waitUntil:'domcontentloaded'});
     await page.waitForSelector('body.shell-ready .omni-conv-item',{timeout:60000});
+    if (composerOnly) {
+      await page.setViewportSize({width:390,height:844});
+      await page.locator('.omni-conv-item').first().click();
+      const composer = page.locator('#omniInput');
+      const measure = () => composer.evaluate(el => ({
+        height: el.getBoundingClientRect().height, scroll: el.scrollHeight,
+        client: el.clientHeight, inlineHeight: el.style.height,
+        supports: CSS.supports('field-sizing', 'content')
+      }));
+      const empty = await measure();
+      await composer.fill('Один\nДва\nТри');
+      const multiline = await measure();
+      await composer.fill(('ДовгеСлово🙂'.repeat(6) + '\n').repeat(10));
+      const long = await measure();
+      await composer.fill('');
+      const cleared = await measure();
+      assert.ok(multiline.height > empty.height);
+      assert.ok(long.height <= 120 && long.scroll > long.client);
+      assert.equal(cleared.height, empty.height);
+      assert.equal(Boolean(long.inlineHeight), !long.supports);
+      assert.deepEqual(errors, []);
+      await page.screenshot({path:path.join(artifactDir,'composer-mobile.png')});
+      console.log(JSON.stringify({browser:browser.version(), forceComposerFallback, empty, multiline, long, cleared}));
+      runReport.status = 'passed';
+      return;
+    }
     const typography = await page.evaluate(async () => {
       await document.fonts.ready;
       const shell = document.querySelector('.omni-workspace-shell');

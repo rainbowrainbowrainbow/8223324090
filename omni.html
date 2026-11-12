@@ -6140,8 +6140,13 @@
         // Auto-resize textarea
         function resizeComposer() {
             if (nativeComposerSizing) return;
+            if (!input.value) {
+                input.style.height = '';
+                return;
+            }
             input.style.height = 'auto';
-            input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+            const borderHeight = input.offsetHeight - input.clientHeight;
+            input.style.height = Math.min(input.scrollHeight + borderHeight, 120) + 'px';
         }
         if (!nativeComposerSizing) input.addEventListener('input', resizeComposer);
         function syncOmniViewport() {

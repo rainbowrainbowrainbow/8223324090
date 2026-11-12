@@ -99,6 +99,9 @@ test('suggestions never become a confirmed shortcut and a default-business link 
 test('list renders batch shortcuts and interactive links do not also open the customer card', t => {
     const h = ui(t);
     h.context.CrmState.customers = [{ ...customer, omniNavigation: buildCustomerOmniNavigation(customer, [conversation]) }];
+    h.context.bindCustomerTableActions();
+    h.context.bindCustomerTableActions();
+    h.context.renderCustomerTable();
     h.context.renderCustomerTable();
     const doc = h.dom.window.document;
     assert.ok(doc.querySelector('[data-label="Контакти"]'));
@@ -109,6 +112,8 @@ test('list renders batch shortcuts and interactive links do not also open the cu
     assert.deepEqual(h.opened, []);
     doc.querySelector('tr').dispatchEvent(new h.dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     assert.deepEqual(h.opened, [101]);
+    doc.querySelector('tr').dispatchEvent(new h.dom.window.KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+    assert.deepEqual(h.opened, [101, 101]);
 });
 
 test('hero provides one Omni action while the hub presents context without repeating it', t => {

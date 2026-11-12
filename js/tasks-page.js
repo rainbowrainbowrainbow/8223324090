@@ -5464,7 +5464,7 @@ function setupTaskActionDelegation() {
             if (!event.target.closest('.task-overdue-wrap')) closeTaskRescheduleMenus();
         });
         document.addEventListener('keydown', event => {
-            const wrap = event.target.closest('.task-overdue-wrap.is-open');
+            const wrap = event.target.closest?.('.task-overdue-wrap.is-open');
             if (!wrap) return;
             if (event.key === 'Escape') {
                 event.preventDefault();
@@ -5485,7 +5485,7 @@ function setupTaskActionDelegation() {
             items[next].focus();
         });
         document.addEventListener('focusin', event => {
-            closeTaskRescheduleMenus(event.target.closest('.task-overdue-wrap'));
+            closeTaskRescheduleMenus(event.target.closest?.('.task-overdue-wrap'));
         });
     }
 

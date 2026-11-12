@@ -3747,7 +3747,7 @@ function bindCustomerActionsMenu() {
     if (!menu || !toggle) return;
     toggle.addEventListener('click', () => {
         if (menu.classList.contains('is-open')) closeCustomerActionsMenu();
-        else openCustomerActionsMenu();
+        else openCustomerActionsMenu({ focusFirst: true });
     });
     toggle.addEventListener('keydown', (event) => {
         if (event.key !== 'ArrowDown') return;
@@ -3767,6 +3767,9 @@ function bindCustomerActionsMenu() {
         } else if (event.key === 'ArrowUp') {
             event.preventDefault();
             items[(currentIndex - 1 + items.length) % items.length]?.focus();
+        } else if (event.key === 'Home' || event.key === 'End') {
+            event.preventDefault();
+            items[event.key === 'Home' ? 0 : items.length - 1]?.focus();
         }
     });
     menu.addEventListener('click', (event) => {

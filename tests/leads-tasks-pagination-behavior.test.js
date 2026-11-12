@@ -233,7 +233,8 @@ function leadsHarness() {
         requests.push({ url: String(url), ...item });
         return item.promise;
     };
-    context.renderKanban = () => renders.push('kanban');
+    context.renderKanban = stage => renders.push(`kanban:${stage}`);
+    context.updateKanbanLoadMoreButton = stage => renders.push(`loading:${stage}`);
     context.renderTable = () => renders.push('table');
     context.showNotification = () => {};
     context.escapeHtml = value => String(value);
@@ -330,6 +331,7 @@ test('Leads Kanban keeps column ordering and completes parallel load-more reques
     assert.deepEqual(loaded.filter(lead => lead.stage === 'contacted').map(lead => lead.id), [2, 4]);
     assert.equal(harness.hooks.getKanbanPages().new.loadingMore, false);
     assert.equal(harness.hooks.getKanbanPages().contacted.loadingMore, false);
+    assert.deepEqual(harness.renders, ['loading:new', 'loading:contacted', 'kanban:contacted', 'kanban:new']);
     harness.dom.window.close();
 });
 

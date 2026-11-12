@@ -1142,7 +1142,7 @@ async function loadMoreLeads({ stage = '' } = {}) {
     const nextState = { ...state, loadingMore: true };
     if (isKanban) leadKanbanPagination = { ...leadKanbanPagination, [stage]: nextState };
     else leadPagination = nextState;
-    if (isKanban) renderKanban(); else renderTable();
+    if (isKanban) updateKanbanLoadMoreButton(stage); else renderTable();
 
     try {
         const params = leadListParams();
@@ -1157,14 +1157,17 @@ async function loadMoreLeads({ stage = '' } = {}) {
         leadsData = [...leadsData, ...page.leads.filter(lead => !existingIds.has(Number(lead.id)))];
         if (isKanban) leadKanbanPagination = { ...leadKanbanPagination, [stage]: { ...page.pagination, loadingMore: false } };
         else leadPagination = { ...page.pagination, loadingMore: false };
-        if (isKanban) renderKanban(); else renderTable();
+        if (isKanban) {
+            const hasOtherStages = page.leads.some(lead => (lead.pipeline_stage || 'new') !== stage);
+            renderKanban(hasOtherStages ? '' : stage);
+        } else renderTable();
     } catch (err) {
         if (loadSeq !== leadLoadSeq) return;
         console.error('Load more leads error', err);
         if (isKanban) leadKanbanPagination = { ...leadKanbanPagination, [stage]: { ...state, loadingMore: false } };
         else leadPagination = { ...state, loadingMore: false };
         if (typeof showNotification === 'function') showNotification('Не вдалося завантажити наступні ліди. Спробуйте ще раз.', 'error');
-        if (isKanban) renderKanban(); else renderTable();
+        if (isKanban) updateKanbanLoadMoreButton(stage); else renderTable();
     }
 }
 
@@ -3145,7 +3148,23 @@ function renderLeadBookingConversionButton(lead = {}) {
     return `<button type="button" draggable="false" class="kanban-action-btn kanban-booking-convert-btn" data-lead-booking-convert data-kanban-interactive="true" data-lead-id="${leadId}" aria-haspopup="menu" aria-expanded="false" aria-label="Створити бронь: ${escapeHtml(clientName)}" title="Створити бронь">📅</button>`;
 }
 
-function renderKanban() {
+function updateKanbanLoadMoreButton(stage) {
+    const column = findKanbanColumn(document.getElementById('kanbanView'), stage);
+    const button = column?.querySelector('[data-lead-load-more]');
+    if (!button) return;
+    const { loadingMore, total } = leadKanbanPagination[stage];
+    button.disabled = loadingMore;
+    if (loadingMore) button.setAttribute('aria-disabled', 'true');
+    else button.removeAttribute('aria-disabled');
+    const count = column.querySelectorAll('.kanban-card').length;
+    button.textContent = loadingMore ? 'Завантаження…' : `Завантажити ще (${count} з ${total || count})`;
+}
+
+function findKanbanColumn(board, stage) {
+    return Array.from(board?.children || []).find(column => column.dataset?.stage === stage);
+}
+
+function renderKanban(onlyStage = '') {
     const tableWrap = document.getElementById('tableView');
     const kanbanWrap = document.getElementById('kanbanView');
     const mailingWrap = document.getElementById('mailingView');
@@ -3196,7 +3215,9 @@ function renderKanban() {
         }
     }
 
-    kanbanWrap.innerHTML = PIPELINE_STAGES.map(stage => {
+    const column = !kanbanDragState && onlyStage ? findKanbanColumn(kanbanWrap, onlyStage) : null;
+    const stages = column ? PIPELINE_STAGES.filter(stage => stage.key === onlyStage) : PIPELINE_STAGES;
+    const columnsHtml = stages.map(stage => {
         const leads = grouped[stage.key] || [];
         const pagination = leadKanbanPagination[stage.key] || { total: leads.length, hasMore: false, loadingMore: false };
         const total = Number(pagination.total || leads.length);
@@ -3254,16 +3275,23 @@ function renderKanban() {
             </div>`;
     }).join('');
 
-    bindKanbanLeadTypeTriggerControls(kanbanWrap);
-    bindKanbanBookingConversionTriggerControls(kanbanWrap);
-    setupKanbanDragDrop();
+    let rendered = kanbanWrap;
+    if (column) {
+        column.outerHTML = columnsHtml;
+        rendered = findKanbanColumn(kanbanWrap, onlyStage);
+    } else {
+        kanbanWrap.innerHTML = columnsHtml;
+    }
+    bindKanbanLeadTypeTriggerControls(rendered);
+    bindKanbanBookingConversionTriggerControls(rendered);
+    setupKanbanDragDrop(rendered);
     syncLeadReadOnlyUi();
     syncLeadStageMovePendingUi();
 }
 
-function setupKanbanDragDrop() {
-    const cards = document.querySelectorAll('.kanban-card[draggable]');
-    const columns = document.querySelectorAll('.kanban-column');
+function setupKanbanDragDrop(root = document) {
+    const cards = root.querySelectorAll('.kanban-card[draggable]');
+    const columns = root.matches?.('.kanban-column') ? [root] : root.querySelectorAll('.kanban-column');
 
     cards.forEach(card => {
         card.querySelectorAll('a, button, select, [data-kanban-actions]').forEach(control => {

@@ -179,8 +179,14 @@ function assertHrQaOnboarding(qa, operation, normalized) {
     'HR_QA_ONBOARDING_SCOPE_DENIED', 'QA onboarding must use a basic Park test account');
 }
 
-async function prepareHrQaMembership(client, req, organizationId, businessId, userId, input) {
-    const qa = await prepareHrFixtureQa(client, req, 'membership');
+async function prepareHrQaMembership(client, req, organizationId, businessId, userId, input, onboardingQa) {
+    const qa = onboardingQa || await prepareHrFixtureQa(client, req, 'membership');
+    if (onboardingQa) {
+        requireQa(qa.endpoint === ENDPOINTS.onboard && registry().requestEndpointKey(req) === ENDPOINTS.onboard
+            && registry().normalizeAllowedEndpoints(qa.run.allowed_endpoints).includes(ENDPOINTS.membership)
+            && Number(qa.run.operator_user_id) === Number(req.user?.id),
+        'HR_QA_MEMBERSHIP_SCOPE_DENIED', 'This onboarding request does not allow QA membership');
+    }
     if (!qa) return null;
     const account = await requireHrQaEntity(client, qa, 'hr_account', userId);
     requireQa(Number(qa.membership.organizationId) === organizationId && Number(qa.membership.businessId) === businessId
@@ -196,7 +202,7 @@ async function prepareHrQaMembership(client, req, organizationId, businessId, us
     );
     requireQa(!prior.rowCount && !existing.rowCount && account.username,
         'HR_QA_MEMBERSHIP_LIMIT', 'The HR QA run allows one new membership', 409);
-    await claimHrFixtureQa(client, qa, req);
+    if (!onboardingQa) await claimHrFixtureQa(client, qa, req);
     return qa;
 }
 

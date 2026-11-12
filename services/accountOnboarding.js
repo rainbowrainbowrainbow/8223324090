@@ -1216,7 +1216,7 @@ async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = 
 
         if (staffCreated) await registerHrQaEntity(client, qa, 'hr_staff', staff.id, { name: staff.name });
         await registerHrQaEntity(client, qa, 'hr_account', user.id, { username: user.username });
-        if (membership) await membership.activate(user.id);
+        if (membership) await membership.activate(user.id, qa);
         const link = await linkUserToStaffProfile(client, {
             userId: user.id,
             staffId: staff.id,

@@ -113,8 +113,8 @@ function authorizeTarget(manager, actor, target, nextOrganizationRole) {
     }
 }
 
-async function writeBusinessMembership(client, actor, manager, orgId, userId, businessId, input, req) {
-    const qa = await prepareHrQaMembership(client, req, orgId, businessId, userId, input);
+async function writeBusinessMembership(client, actor, manager, orgId, userId, businessId, input, req, onboardingQa) {
+    const qa = await prepareHrQaMembership(client, req, orgId, businessId, userId, input, onboardingQa);
     const business = await client.query('SELECT id FROM businesses WHERE id = $1 AND organization_id = $2 AND status = \'active\'', [businessId, orgId]);
     if (!business.rows[0]) throw failure(404, 'business_not_found', 'Active business not found in organization');
     const target = await targetState(client, userId, orgId, businessId);
@@ -203,8 +203,8 @@ async function prepareNewAccountMembership(client, actor, businessContext, acces
         businessId,
         organizationId,
         actor: principal,
-        activate: userId => writeBusinessMembership(client, principal, manager, organizationId,
-            positiveId(userId), businessId, input, req)
+        activate: (userId, onboardingQa) => writeBusinessMembership(client, principal, manager, organizationId,
+            positiveId(userId), businessId, input, req, onboardingQa)
     };
 }
 

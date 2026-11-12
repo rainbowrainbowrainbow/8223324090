@@ -274,6 +274,28 @@ async function assertLargeListsStayAccessible(page, state) {
     assert.equal(await page.locator('.cabinet-day-secondary [data-cabinet-overdue-triage-row]').count(), 80);
     assert.equal(await page.locator('[data-cabinet-day-more], [data-cabinet-overdue-more]').count(), 0);
 }
+
+async function assertFocusedFetchRefreshesOverdue(page, state) {
+    const overdueDate = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+    state.seedTasks = [{
+        id: 19991,
+        title: 'Fresh overdue task from projection',
+        status: 'todo',
+        priority: 'normal',
+        deadline: `${overdueDate}T10:00:00Z`,
+        bucket: 'overdue'
+    }];
+    const projection = page.waitForResponse(response => {
+        const url = new URL(response.url());
+        return url.pathname === '/api/tasks/my-cabinet' && url.searchParams.get('focusDate') === '2099-06-15';
+    });
+    await page.locator('#cabinetTaskDate').fill('2099-06-15');
+    await projection;
+    await page.waitForFunction(() => document.querySelector('#cabinetMyDaySegmentPanel')?.dataset.activeOverdue === '1');
+    assert.equal(await page.locator('.cabinet-day-secondary [data-cabinet-overdue-triage-row]').count(), 1,
+        'focused projection refreshes the overdue column and count');
+}
+
 async function assertFullComposerContract(page, state) {
     const readComposer = () => page.evaluate(() => ({
         title: document.getElementById('cabinetTaskTitle')?.value || '',
@@ -444,6 +466,7 @@ async function run() {
         await page.waitForSelector('#cabinetTaskTitle');
         await assertComposerListenersStayBoundOnce(page, state);
         await assertDraftSurvivesDueChanges(page, state);
+        await assertFocusedFetchRefreshesOverdue(page, state);
         await assertFullComposerContract(page, state);
         assert.ok(state.requests.some(item => item.includes('/api/tasks/my-cabinet')), 'browser uses the My Day projection endpoint');
         assert.equal(state.taskCreatePayloads.length, 2, 'browser exercised exactly one failed and one successful create');

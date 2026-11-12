@@ -9961,8 +9961,7 @@ function attachProfileListeners() {
             setCabinetDuePreset('custom', { rerender: true });
             const focusDate = cabinetSelectedDueDate();
             if (!focusDate) return;
-            refreshMyCabinetTab({ silent: true, keepExistingOnError: true })
-                .then(() => rerenderCabinetMyDaySegmentPanel())
+            refreshCabinetFocusedDatePanel()
                 .catch(error => console.warn('Profile cabinet custom focus refresh failed', error));
         });
     }

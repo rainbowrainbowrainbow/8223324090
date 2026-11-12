@@ -275,6 +275,41 @@ async function assertLargeListsStayAccessible(page, state) {
     assert.equal(await page.locator('[data-cabinet-day-more], [data-cabinet-overdue-more]').count(), 0);
 }
 
+async function assertCardDetailsPreserveComposer(page, state) {
+    const title = page.locator('#cabinetTaskTitle');
+    const draft = 'Keep this draft while opening task details';
+    await title.fill(draft);
+    const composer = await title.evaluateHandle(element => element.closest('#cabinetTaskComposer'));
+    const requestsBefore = state.cabinetRequests;
+    for (const column of ['primary', 'secondary']) {
+        const card = page.locator(`.cabinet-day-${column} .cabinet-task-card`).first();
+        const toggle = card.locator('[data-cabinet-task-action="toggle-my-day-details"]');
+        await toggle.click();
+        assert.equal(await card.getAttribute('data-my-day-details-expanded'), 'true', `${column} details expand`);
+        assert.equal(await toggle.getAttribute('aria-expanded'), 'true', `${column} toggle announces expanded state`);
+        assert.equal(await title.inputValue(), draft, `${column} detail toggle keeps the draft`);
+        assert.ok(await title.evaluate((element, original) => element.closest('#cabinetTaskComposer') === original, composer),
+            `${column} detail toggle keeps the composer node`);
+        await toggle.click();
+        assert.equal(await card.getAttribute('data-my-day-details-expanded'), 'false', `${column} details collapse`);
+        assert.equal(await title.inputValue(), draft, `${column} collapse keeps the draft`);
+    }
+    for (const mode of ['detailed', 'compact']) {
+        const toggle = page.locator(`[data-cabinet-my-day-view-mode="${mode}"]`);
+        await toggle.click();
+        assert.equal(await toggle.getAttribute('aria-pressed'), 'true', `${mode} view is selected`);
+        assert.equal(await title.inputValue(), draft, `${mode} view keeps the draft`);
+        assert.ok(await title.evaluate((element, original) => element.closest('#cabinetTaskComposer') === original, composer),
+            `${mode} view keeps the composer node`);
+        assert.equal(await page.locator('.cabinet-day-primary .cabinet-task-card').first().getAttribute('data-my-day-view-mode'), mode,
+            `${mode} view updates today cards`);
+        assert.equal(await page.locator('.cabinet-day-secondary .cabinet-task-card').first().getAttribute('data-my-day-view-mode'), mode,
+            `${mode} view updates overdue cards`);
+    }
+    assert.equal(state.cabinetRequests, requestsBefore, 'detail toggles do not fetch the cabinet projection');
+    await composer.dispose();
+}
+
 async function assertFocusedFetchRefreshesOverdue(page, state) {
     const overdueDate = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
     state.seedTasks = [{
@@ -475,6 +510,7 @@ async function run() {
         assert.deepEqual(state.rootNavigations, [], 'authenticated profile fixture did not redirect to root');
         assert.deepEqual(pageErrors, [], `browser runtime has no uncaught errors: ${pageErrors.join('; ')}`);
         await assertLargeListsStayAccessible(page, state);
+        await assertCardDetailsPreserveComposer(page, state);
         console.log('My Day draft browser smoke passed');
     } catch (error) {
         const body = await page.locator('body').innerText().catch(() => 'body unavailable');

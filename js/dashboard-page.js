@@ -3924,6 +3924,8 @@ const DashboardPage = (() => {
     }
 
     function renderFlatWidgetGrid(grid, options = {}) {
+        _weatherCardObserver?.disconnect();
+        _weatherCardObserver = null;
         grid.className = 'dashboard-grid dashboard-widget-grid' + (_layoutEditing ? ' is-layout-editing' : '');
         syncDashboardLayoutModeControls();
         const widgets = Array.isArray(options.widgetKeys)
@@ -3936,7 +3938,21 @@ const DashboardPage = (() => {
             if (!canUseWidget(widgetKey)) continue;
             grid.insertAdjacentHTML('beforeend', renderSceneWidgetCard(widgetKey, 'default'));
             renderedCount += 1;
-            if (options.hydrateData !== false) loadWidgetData(widgetKey);
+            if (options.hydrateData === false) continue;
+            if (widgetKey === 'weather' && typeof IntersectionObserver === 'function') {
+                const card = grid.lastElementChild;
+                const observer = new IntersectionObserver(entries => {
+                    if (!entries.some(entry => entry.isIntersecting)) return;
+                    observer.disconnect();
+                    if (_weatherCardObserver !== observer) return;
+                    _weatherCardObserver = null;
+                    if (card.isConnected) loadWidgetData(widgetKey);
+                }, { rootMargin: '160px 0px' });
+                _weatherCardObserver = observer;
+                observer.observe(card);
+            } else {
+                loadWidgetData(widgetKey);
+            }
         }
 
         if (renderedCount === 0) {
@@ -3952,6 +3968,7 @@ const DashboardPage = (() => {
     let _dashboardContextFingerprint = '';
     let _widgetLayoutStatusTimer = null;
     let _widgetDragCleanup = null;
+    let _weatherCardObserver = null;
 
     function setWidgetLayoutStatus(message, state = 'saved') {
         const status = document.getElementById('dashboardLayoutStatus');
@@ -10774,6 +10791,7 @@ ${focusButton}
     function refreshStaleVisibleWidgets() {
         if (document.hidden) return Promise.resolve([]);
         const staleTypes = visibleDashboardWidgetTypes()
+            .filter(type => type !== 'weather' || !_weatherCardObserver)
             .filter(type => !isWidgetDataFresh(type, dashboardWidgetRequestContext(type).key));
         return Promise.allSettled(staleTypes.map(type => {
             const container = dashboardWidgetContainers(type)[0];

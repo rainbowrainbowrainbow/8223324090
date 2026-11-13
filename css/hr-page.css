@@ -9910,7 +9910,8 @@ body.dark-mode .hr-training-course-row span,
 body.dark-mode .hr-training-empty { color: #94A3B8; }
 body.dark-mode .kanban-col { background: rgba(255,255,255,0.03); }
 body.dark-mode .vac-desc { color: var(--gray-400); }
-body.dark-mode .btn-vac-action, body.dark-mode .kc-btn { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.1); color: var(--gray-300); }
+body.dark-mode .btn-vac-action, body.dark-mode .kc-btn { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.16); color: #e2e8f0; }
+body.dark-mode .btn-vac-action.danger, body.dark-mode .kc-btn.danger { color: #fca5a5; }
 body.dark-mode .kc-resume-pill, body.dark-mode .candidate-file-chip { background: rgba(96,165,250,0.14); color: #93C5FD; }
 body.dark-mode .candidate-detail-modal, body.dark-mode .candidate-intake-modal { background: #1E1E2E; color: #E2E8F0; border-color: rgba(255,255,255,0.1); }
 body.dark-mode .candidate-detail-grid section, body.dark-mode .candidate-upload-card { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.08); }

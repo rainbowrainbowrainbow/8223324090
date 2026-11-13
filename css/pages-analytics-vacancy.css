@@ -54,6 +54,7 @@ body.dark-mode .fin-chart-readout-item b {
 /* v0.73.67: HR vacancy workspace tabs and AI platform templates live outside inline HR debt. */
 .vacancy-workspace {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 16px;
 }
 

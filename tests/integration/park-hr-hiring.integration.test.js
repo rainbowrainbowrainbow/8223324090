@@ -194,9 +194,11 @@ test('Park admin edits professions and owns hiring records on migrated PostgreSQ
                             await page.locator('#fm_notes').fill('Synthetic interview result');
                             await page.locator('.form-modal-overlay').getByRole('button', { name: 'Зберегти' }).click();
                             await interview.getByText('Synthetic interview result', { exact: true }).waitFor();
+                            await interview.getByText('13.11.2026', { exact: false }).waitFor();
                         }
                     }
                     await page.locator('[data-vacancy-tab="vacancies"]').click();
+                    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
                     await page.screenshot({ path: path.join(output, 'hiring-' + width + '-' + theme + '.png') });
                     await page.close();
                 }

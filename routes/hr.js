@@ -406,7 +406,7 @@ const HR_PAYROLL_RESPONSE_FIELDS = new Set([
 
 function stripHrPayrollFields(value) {
     if (Array.isArray(value)) return value.map(stripHrPayrollFields);
-    if (!value || typeof value !== 'object') return value;
+    if (!value || typeof value !== 'object' || value instanceof Date) return value;
     return Object.fromEntries(Object.entries(value)
         .filter(([key]) => !HR_PAYROLL_RESPONSE_FIELDS.has(key))
         .map(([key, nested]) => [key, stripHrPayrollFields(nested)]));

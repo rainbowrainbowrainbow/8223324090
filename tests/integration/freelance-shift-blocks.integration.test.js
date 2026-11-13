@@ -39,6 +39,26 @@ test('mixed shift mode survives PostgreSQL reload and cannot enter payroll befor
             [profession]
         );
         const selector = { staffId: staff.id, shiftDate: date };
+        const separateDate = '2026-11-12';
+        const separate = await saveHrShiftDayPlan(client, {
+            staffId: staff.id, shiftDate: separateDate,
+            payload: {
+                primaryProfessionKey: profession,
+                segments: [{ professionKey: profession, shiftStart: '09:00', shiftEnd: '12:00', workMode: 'freelance' }]
+            }
+        });
+        const separateSegmentId = separate.plan.segments[0].id;
+        const { rows: [separateFact] } = await client.query(
+            `INSERT INTO hr_time_records (staff_id, record_date, clock_in, clock_out, status, business_context)
+             VALUES ($1, $2, $3, $4, 'present', 'event_genix') RETURNING id`,
+            [staff.id, separateDate, '2026-11-12T09:00:00+02:00', '2026-11-12T12:00:00+02:00']
+        );
+        await assert.rejects(confirmFreelanceAttendance(client, {
+            staffId: staff.id, date: separateDate, attendanceId: separateFact.id,
+            allocations: [{ segmentId: separateSegmentId, minutes: 180 }]
+        }, 'qa'), { code: 'FREELANCE_TERMS_REQUIRED' });
+        assert.equal((await listFreelanceSettlement(client, separateDate))
+            .some(row => row.segment_id === separateSegmentId), false);
         const defaultVersion = await insertFreelanceRateVersion(client, {
             professionKey: profession, rateUnit: 'hour', rate: '155.15', effectiveFrom: date
         }, 'qa');
@@ -59,6 +79,8 @@ test('mixed shift mode survives PostgreSQL reload and cannot enter payroll befor
         assert.deepEqual(loaded.plan.segments.map(({ id, workMode }) => [id, workMode]),
             saved.plan.segments.map(({ id, workMode }) => [id, workMode]));
         assert.deepEqual(loaded.plan.segments.map(segment => segment.workMode), ['regular', 'freelance']);
+        assert.deepEqual((await loadHrShiftDayPlan(client, { ...selector, shiftDate: separateDate }))
+            .plan.segments.map(segment => segment.workMode), ['freelance']);
         const freelanceId = loaded.plan.segments[1].id;
         const { rows: [agreedDefault] } = await client.query(
             'SELECT source_version_id, rate FROM hr_freelance_segment_terms WHERE segment_id = $1',

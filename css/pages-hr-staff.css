@@ -5683,6 +5683,7 @@ body[data-page-group="hr"] .schedule-table td.schedule-day-cell > .schedule-heal
     margin: 0;
 }
 
+.sch-segment-work-mode-field,
 .sch-segment-note-field {
     grid-column: 1 / -1;
 }

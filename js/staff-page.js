@@ -4985,6 +4985,7 @@ function scheduleDayPayPreview(professionKey, purpose, terms) {
     const draftChoice = scheduleDayPayEntry(professionKey,purpose)?.draft?.choice;
     const explicitTopUp = terms.exception || (draftChoice && !['current','inherit'].includes(draftChoice));
     for (const segment of readSchedulePlanSegments('schedule')) {
+        if (segment.workMode === 'freelance') continue;
         const role = segment.additionalRoles.find(row => row.professionKey === professionKey && row.compensationMode === 'paid_hourly');
         const matches = purpose === 'base_replacement' ? segment.professionKey === professionKey
             : role || (explicitTopUp && segment.professionKey === professionKey);
@@ -5323,7 +5324,7 @@ function renderSchedulePlanSegmentCard(scope, segment, index, segmentCount) {
                 </div>
             </div>
             <div class="sch-segment-grid">
-                <div class="form-group">
+                <div class="form-group sch-segment-work-mode-field">
                     <label for="${escapeHtml(workModeId)}">Формат виходу</label>
                     <select id="${escapeHtml(workModeId)}" data-segment-field="work-mode">
                         <option value="regular">За графіком</option>
@@ -5357,7 +5358,7 @@ function renderSchedulePlanSegmentCard(scope, segment, index, segmentCount) {
                     <input type="text" id="${escapeHtml(noteId)}" data-segment-field="note" value="${escapeHtml(segment.note || '')}" placeholder="Необов'язково">
                 </div>
             </div>
-            ${scope === 'schedule' ? `<div data-day-pay-slot data-pay-purpose="base_replacement" data-pay-profession="${escapeHtml(segment.professionKey)}" data-pay-id="${escapeHtml(segment.clientKey)}-base"></div>` : ''}
+            ${scope === 'schedule' && segment.workMode !== 'freelance' ? `<div data-day-pay-slot data-pay-purpose="base_replacement" data-pay-profession="${escapeHtml(segment.professionKey)}" data-pay-id="${escapeHtml(segment.clientKey)}-base"></div>` : ''}
             <fieldset class="sch-additional-roles sch-unpaid-roles">
                 <legend>Додаткова роль без доплати</legend>
                 <div class="sch-additional-role-options">${unpaidHtml}</div>

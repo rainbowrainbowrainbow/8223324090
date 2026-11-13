@@ -109,6 +109,8 @@ async function run() {
         await page.locator('#scheduleWorkModeFilter').selectOption('freelance');
         await cell.click();
         assert.equal(await cards.nth(1).locator('[data-segment-field="work-mode"]').inputValue(), 'freelance');
+        assert.equal(await cards.nth(1).locator('[data-day-pay-slot]').count(), 0);
+        assert.match(await cards.first().locator('[data-day-pay-preview]').textContent(), /240 хв/);
         await page.screenshot({ path: path.join(out, 'schedule-desktop.png') });
         await page.setViewportSize({ width: 390, height: 844 });
         await page.locator('#schCancelBtn').click();

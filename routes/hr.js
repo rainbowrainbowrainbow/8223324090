@@ -3309,6 +3309,7 @@ function publicHrShiftSegment(segment = {}) {
         shiftStart: shiftStart === null ? null : String(shiftStart).slice(0, 5),
         shiftEnd: shiftEnd === null ? null : String(shiftEnd).slice(0, 5),
         breakMinutes: Number(segment.breakMinutes ?? segment.break_minutes ?? 0),
+        workMode: segment.workMode ?? segment.work_mode ?? 'regular',
         note: segment.note ?? segment.notes ?? null,
         additionalRoles: additionalRoles.map(role => ({
             professionKey: role.professionKey ?? role.profession_key ?? null,

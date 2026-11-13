@@ -56,6 +56,11 @@
                     </div>
                     <div class="staff-schedule-search-row" role="search" aria-label="Пошук співробітників у графіку">
                         <input type="search" id="scheduleStaffSearch" class="staff-schedule-search" aria-label="Пошук співробітників у графіку" placeholder="Пошук: ПІБ, професія, відділ, статус..." autocomplete="off">
+                        <select id="scheduleWorkModeFilter" aria-label="Формат виходу">
+                            <option value="all">Усі</option>
+                            <option value="regular">За графіком</option>
+                            <option value="freelance">Є фріланс</option>
+                        </select>
                         <div id="scheduleStaffFilterInfo" class="staff-schedule-filter-info" aria-live="polite"></div>
                     </div>
                     <div id="deptFilter" class="dept-filter" role="group" aria-label="Фільтр працівників за професійною секцією"></div>

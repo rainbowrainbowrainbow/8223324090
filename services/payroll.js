@@ -1399,6 +1399,16 @@ async function loadPayrollAttendanceMetrics(options = {}, db = pool) {
             : (Array.isArray(row.segmentAllocations) ? row.segmentAllocations : []);
         const rawCompensationSnapshot = row.compensation_snapshot || row.compensationSnapshot || null;
         const compensationSnapshot = rawCompensationSnapshot ? parseConfig(rawCompensationSnapshot) : null;
+        const hasFreelance = segmentAllocations.some(segment => segment.workMode === 'freelance')
+            || compensationSnapshot?.plan?.segments?.some(segment => segment.workMode === 'freelance');
+        if (hasFreelance) {
+            bucket.payrollBlockingIssues.push(payrollIssue(
+                'PAYROLL_FREELANCE_TIME_REQUIRES_CONFIRMATION',
+                'Підтвердьте розподіл часу між штатними та фріланс-блоками',
+                { date, attendanceRef: row.attendance_ref ?? row.id ?? null }, 'error'
+            ));
+            continue;
+        }
         const hasPaidHourlyAdditionalRole = segmentAllocations.some(segmentHasPaidHourlyAdditionalRole);
         const compensationAllocations = Array.isArray(compensationSnapshot?.compensationAllocations)
             ? compensationSnapshot.compensationAllocations

@@ -562,6 +562,7 @@ function copyableDayPlanPayload(loadedPlan) {
         primaryProfessionKey: loadedPlan.plan.primaryProfessionKey,
         segments: loadedPlan.plan.segments.map(segment => ({
             professionKey: segment.professionKey,
+            workMode: segment.workMode || 'regular',
             shiftStart: segment.shiftStart,
             shiftEnd: segment.shiftEnd,
             breakMinutes: segment.breakMinutes,
@@ -610,6 +611,7 @@ function scheduleEntryWithDayPlan(entry, plan = null) {
         segments: plan?.segments?.map(segment => ({
             id: segment.id ?? null,
             professionKey: segment.professionKey,
+            workMode: segment.workMode || 'regular',
             shiftStart: segment.shiftStart,
             shiftEnd: segment.shiftEnd,
             breakMinutes: segment.breakMinutes,
@@ -852,6 +854,7 @@ router.get('/schedule', requireAction('hr.schedule.view'), async (req, res) => {
                             jsonb_build_object(
                                 'id', hss.id,
                                 'professionKey', hss.profession_key,
+                                'workMode', hss.work_mode,
                                 'shiftStart', LEFT(hss.planned_start::text, 5),
                                 'shiftEnd', LEFT(hss.planned_end::text, 5),
                                 'breakMinutes', hss.break_minutes,

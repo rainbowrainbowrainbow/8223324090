@@ -1315,3 +1315,46 @@ test('diff persistence keeps an unchanged segment id and rejects a foreign segme
     );
     assert.equal(foreign.calls.some(call => /^INSERT INTO hr_shift_segments/.test(call.text)), false);
 });
+
+test('persists a mixed work day and returns the same mode on each saved segment', async () => {
+    const state = createExistingMultiSegmentClient('regular');
+    const saved = await saveHrShiftDayPlan(state.client, {
+        hrShiftId: 42,
+        payload: {
+            primaryProfessionKey: 'reception',
+            segments: [
+                segment('reception', '09:00', '13:00', { id: 71, workMode: 'regular' }),
+                segment('manager', '15:00', '20:00', { id: 72, workMode: 'freelance' })
+            ]
+        }
+    });
+    assert.deepEqual(saved.plan.segments.map(item => [item.id, item.workMode]), [
+        [71, 'regular'], [72, 'freelance']
+    ]);
+    const writes = state.calls.filter(call => /^UPDATE hr_shift_segments SET/.test(call.text));
+    assert.equal(writes.length, 1);
+    assert.deepEqual(writes[0].params.slice(7), [72, 42, 'freelance']);
+});
+
+test('older schedule updates preserve an identified freelance block and reject implicit removal', async () => {
+    const stored = [
+        { id: 71, profession_key: 'reception', planned_start: '09:00', planned_end: '13:00', sort_order: 0 },
+        { id: 72, profession_key: 'manager', planned_start: '15:00', planned_end: '20:00', sort_order: 1, work_mode: 'freelance' }
+    ];
+    const state = createExistingMultiSegmentClient('regular', stored);
+    const first = segment('reception', '09:00', '13:00', { id: 71 });
+    const saved = await saveHrShiftDayPlan(state.client, {
+        hrShiftId: 42,
+        payload: { primaryProfessionKey: 'reception', segments: [first, segment('manager', '15:00', '20:00', { id: 72 })] }
+    });
+    assert.equal(saved.plan.segments[1].workMode, 'freelance');
+
+    await assert.rejects(
+        saveHrShiftDayPlan(state.client, {
+            hrShiftId: 42,
+            payload: { primaryProfessionKey: 'reception', segments: [first] }
+        }),
+        { code: 'HR_SHIFT_FREELANCE_EXPLICIT_PLAN_REQUIRED' }
+    );
+    assert.equal(state.calls.some(call => /^DELETE FROM hr_shift_segments/.test(call.text)), false);
+});

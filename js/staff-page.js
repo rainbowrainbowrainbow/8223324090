@@ -100,6 +100,7 @@ const StaffState = {
     searchQuery: '',
     expandedScheduleGroups: new Set(),
     healthFilter: 'all',
+    workModeFilter: 'all',
     includeFreelance: false,
     editingCell: null,  // { staffId, date }
     hoursData: null,    // { staffId: { totalHours, workingDays, ... } }
@@ -688,6 +689,7 @@ function normalizeScheduleSegmentForUi(segment = {}, fallbackProfessionKey = '',
         id: segment.id ?? null,
         clientKey: scheduleSegmentClientKey(segment),
         professionKey,
+        workMode: (segment.workMode ?? segment.work_mode) === 'freelance' ? 'freelance' : 'regular',
         shiftStart: normalizeSchedulePlanTime(segment.shiftStart || segment.shift_start || segment.planned_start) || defaultTimes.shiftStart,
         shiftEnd: normalizeSchedulePlanTime(segment.shiftEnd || segment.shift_end || segment.planned_end) || defaultTimes.shiftEnd,
         breakMinutes: Math.max(0, Number.parseInt(segment.breakMinutes ?? segment.break_minutes ?? 0, 10) || 0),
@@ -839,7 +841,8 @@ function scheduleEntryTitle(emp, date, entry, shiftStart, shiftEnd) {
             const additional = segment.additionalProfessionKeys.length
                 ? ` + ${segment.additionalProfessionKeys.map(professionLabel).join(', ')}`
                 : '';
-            return `${segment.shiftStart}-${segment.shiftEnd} ${professionLabel(segment.professionKey)}${additional}`;
+            const workMode = segment.workMode === 'freelance' ? ' · Фріланс' : '';
+            return `${segment.shiftStart}-${segment.shiftEnd} ${professionLabel(segment.professionKey)}${additional}${workMode}`;
         }));
         parts.push(`Оплачувано: ${formatScheduleMinutes(entry?.planned_minutes ?? entry?.plannedMinutes ?? schedulePlanMetrics(segments).plannedMinutes)}`);
     } else if (shiftStart && shiftEnd) {
@@ -901,7 +904,9 @@ function renderScheduleCellSegments(entry, fallbackProfessionKey, sectionProfess
     const plannedMinutes = Number(entry?.planned_minutes ?? entry?.plannedMinutes);
     const paidMinutes = Number.isFinite(plannedMinutes) ? plannedMinutes : metrics.plannedMinutes;
     if (fullRange) {
-        return `<span class="sch-month-summary">${segments.length} ${segments.length === 1 ? 'блок' : 'блоки'} · ${escapeHtml(formatScheduleMinutes(paidMinutes))}</span>`;
+        const freelanceMark = segments.some(segment => segment.workMode === 'freelance')
+            ? ' · <abbr class="sch-freelance-mark" title="Фріланс">ФР</abbr>' : '';
+        return `<span class="sch-month-summary">${segments.length} ${segments.length === 1 ? 'блок' : 'блоки'} · ${escapeHtml(formatScheduleMinutes(paidMinutes))}${freelanceMark}</span>`;
     }
     const normalizedSectionProfession = normalizeProfessionKey(sectionProfessionKey);
     const segmentMatchesSection = segment => Boolean(normalizedSectionProfession && (
@@ -918,7 +923,8 @@ function renderScheduleCellSegments(entry, fallbackProfessionKey, sectionProfess
             professionLabel(segment.professionKey),
             ...segment.additionalProfessionKeys.map(professionLabel)
         ].filter(Boolean).join(' + ');
-        return { compactTime, roleSummary, text: `${compactTime} · ${roleSummary}` };
+        const modeLabel = segment.workMode === 'freelance' ? ' · Фріланс' : '';
+        return { compactTime, roleSummary, text: `${compactTime} · ${roleSummary}${modeLabel}` };
     };
     const visible = visibleSegments.map(segment => {
         const matchesSection = segmentMatchesSection(segment);
@@ -926,14 +932,19 @@ function renderScheduleCellSegments(entry, fallbackProfessionKey, sectionProfess
             ? ` +${segment.additionalProfessionKeys.length}`
             : '';
         const summary = segmentSummary(segment);
+        const freelanceMark = segment.workMode === 'freelance'
+            ? '<abbr class="sch-freelance-mark" title="Фріланс">ФР</abbr>' : '';
         return `<span class="sch-segment-line ${matchesSection ? 'is-section-role' : ''}" title="${escapeHtml(summary.text)}">
             <span class="sch-time" data-schedule-compact-time="${escapeHtml(summary.compactTime)}">${escapeHtml(summary.compactTime)}</span>
             <span class="sch-profession">${escapeHtml(professionLabel(segment.professionKey))}${escapeHtml(additional)}</span>
+            ${freelanceMark}
         </span>`;
     }).join('');
     const hiddenSummary = hiddenSegments.map(segment => segmentSummary(segment).text).join(' | ');
+    const hiddenFreelanceMark = hiddenSegments.some(segment => segment.workMode === 'freelance')
+        ? ' · <abbr class="sch-freelance-mark" title="Фріланс">ФР</abbr>' : '';
     const more = hiddenSegments.length
-        ? `<span class="sch-segment-more ${hasHiddenSectionMatch ? 'is-section-role' : ''}" title="${escapeHtml(hiddenSummary)}">+${hiddenSegments.length}</span>`
+        ? `<span class="sch-segment-more ${hasHiddenSectionMatch ? 'is-section-role' : ''}" title="${escapeHtml(hiddenSummary)}">+${hiddenSegments.length}${hiddenFreelanceMark}</span>`
         : '';
     return `<span class="sch-segment-lines ${hasVisibleSectionMatch ? 'has-section-match' : ''}">${visible}${more}</span>`;
 }
@@ -2527,7 +2538,13 @@ function scheduleVisibleStaff(staffList = StaffState.staff) {
 }
 
 function scheduleFinalVisibleStaffSnapshot(staffList = StaffState.staff, dates = getScheduleDates()) {
-    const base = uniqueScheduleStaffById(scheduleVisibleStaff(staffList));
+    const workMode = StaffState.workModeFilter || 'all';
+    const base = uniqueScheduleStaffById(scheduleVisibleStaff(staffList)).filter(staff =>
+        workMode === 'all' || dates.some(date => {
+            const entry = StaffState.schedule[`${staff.id}_${formatDateStr(date)}`];
+            return scheduleEntrySegmentsForUi(entry).some(segment => segment.workMode === workMode);
+        })
+    );
     const health = buildScheduleHealth(dates, base, { department: StaffState.activeDept });
     const visible = uniqueScheduleStaffById(scheduleHealthFilteredStaff(base, health));
     return { base, health, visible };
@@ -4068,12 +4085,21 @@ function renderScheduleStaffFilterInfo(filteredStaff = null) {
     const base = scheduleStaffVisibleWithoutSearch();
     const visible = Array.isArray(filteredStaff) ? filteredStaff : scheduleVisibleStaff();
     const query = normalizeScheduleSearchText(StaffState.searchQuery);
-    info.textContent = query
+    info.textContent = query || (StaffState.workModeFilter && StaffState.workModeFilter !== 'all')
         ? `Показано ${visible.length} з ${base.length}`
         : `${base.length} співробітників у графіку`;
 }
 
 function bindScheduleStaffSearchControls() {
+    const workMode = document.getElementById('scheduleWorkModeFilter');
+    if (workMode && workMode.dataset.scheduleWorkModeBound !== 'true') {
+        workMode.value = StaffState.workModeFilter || 'all';
+        workMode.addEventListener('change', () => {
+            StaffState.workModeFilter = workMode.value;
+            renderSchedule();
+        });
+        workMode.dataset.scheduleWorkModeBound = 'true';
+    }
     const search = document.getElementById('scheduleStaffSearch');
     if (!search) return;
     const stateValue = StaffState.searchQuery || '';
@@ -5247,6 +5273,7 @@ function schedulePaidRoleOptions(scope, professionOptions, segment) {
 }
 
 function renderSchedulePlanSegmentCard(scope, segment, index, segmentCount) {
+    const workModeId = schedulePlanFieldId(scope, 'work-mode', index, segment.clientKey);
     const selectedKeys = [segment.professionKey, ...(segment.additionalProfessionKeys || [])];
     const professionOptions = schedulePlanProfessionOptions(scope, selectedKeys);
     const professionId = schedulePlanFieldId(scope, 'profession', index, segment.clientKey);
@@ -5296,6 +5323,13 @@ function renderSchedulePlanSegmentCard(scope, segment, index, segmentCount) {
                 </div>
             </div>
             <div class="sch-segment-grid">
+                <div class="form-group">
+                    <label for="${escapeHtml(workModeId)}">Формат виходу</label>
+                    <select id="${escapeHtml(workModeId)}" data-segment-field="work-mode">
+                        <option value="regular">За графіком</option>
+                        <option value="freelance" ${segment.workMode === 'freelance' ? 'selected' : ''}>Фріланс</option>
+                    </select>
+                </div>
                 <div class="form-group sch-segment-profession-field">
                     <label for="${escapeHtml(professionId)}">Професія</label>
                     <select id="${escapeHtml(professionId)}" data-segment-field="profession">${optionHtml}</select>
@@ -5404,6 +5438,7 @@ function readSchedulePlanSegments(scope) {
         return {
             id: card.dataset.segmentId ? Number(card.dataset.segmentId) : null,
             clientKey: card.dataset.segmentKey || scheduleSegmentClientKey(),
+            workMode: card.querySelector('[data-segment-field="work-mode"]')?.value || 'regular',
             professionKey: normalizeProfessionKey(card.querySelector('[data-segment-field="profession"]')?.value),
             shiftStart: normalizeSchedulePlanTime(card.querySelector('[data-segment-field="start"]')?.value),
             shiftEnd: normalizeSchedulePlanTime(card.querySelector('[data-segment-field="end"]')?.value),
@@ -5840,6 +5875,10 @@ function validateSchedulePlan(scope, options = {}) {
         }
         if (Number(segment.breakMinutes || 0) < 0) addFieldError(index, 'break', 'Перерва не може бути від’ємною.');
         const additional = segment.additionalProfessionKeys || [];
+        if (segment.workMode === 'freelance'
+            && segment.additionalRoles?.some(role => role.compensationMode === 'paid_hourly')) {
+            addFieldError(index, 'paid-profession', 'Фріланс-блок не підтримує додаткові оплачувані ролі.');
+        }
         if (additional.includes(segment.professionKey)) {
             addFieldError(index, 'paid-profession', 'Основну професію не можна дублювати як додаткову.');
         }
@@ -7119,6 +7158,7 @@ async function handleSave() {
             segments: validation.segments.map(segment => ({
                 id: segment.id,
                 professionKey: segment.professionKey,
+                workMode: segment.workMode,
                 shiftStart: segment.shiftStart,
                 shiftEnd: segment.shiftEnd,
                 breakMinutes: segment.breakMinutes,
@@ -7515,6 +7555,7 @@ async function handleFillWeekSave() {
     const professionKey = showTime ? validation.primaryProfessionKey : null;
     const segmentTemplate = showTime ? validation.segments.map(segment => ({
         professionKey: segment.professionKey,
+        workMode: segment.workMode,
         shiftStart: segment.shiftStart,
         shiftEnd: segment.shiftEnd,
         breakMinutes: segment.breakMinutes,

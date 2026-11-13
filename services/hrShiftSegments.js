@@ -19,6 +19,7 @@ const HR_SHIFT_BREAK_POLICY = 'segment_minutes_mvp';
 const HR_SHIFT_OVERNIGHT_POLICY = 'single_overnight_segment_only';
 const HR_SHIFT_PAID_ROLE_POLICY_VERSION = 'simultaneous-profession-pay-v1';
 const HR_SHIFT_COMPENSATION_MODES = new Set(['unpaid', 'paid_hourly']);
+const HR_SHIFT_WORK_MODES = new Set(['regular', 'freelance']);
 const HR_SHIFT_PAID_ROLE_MESSAGES = Object.freeze({
     HR_SHIFT_PAID_ROLE_RATE_REQUIRED: 'Для оплачуваної додаткової професії потрібна явна погодинна ставка',
     HR_SHIFT_PAID_ROLE_DUPLICATE: 'Професія не може дублювати основну або іншу додаткову роль сегмента',
@@ -495,8 +496,20 @@ function normalizeSegment(segment = {}, segmentIndex = 0, options = {}) {
         .filter(role => role.compensationMode === 'paid_hourly')
         .map(role => role.professionKey);
 
+    // Preserve omission until persistence so older editors cannot reset a freelance block.
+    const hasWorkMode = hasOwn(segment, 'workMode') || hasOwn(segment, 'work_mode');
+    const workMode = firstDefined(segment.workMode, segment.work_mode);
+    if (hasWorkMode && !HR_SHIFT_WORK_MODES.has(workMode)) {
+        fail('HR_SHIFT_SEGMENT_INVALID_WORK_MODE', 'Невідомий формат виходу', { segmentIndex });
+    }
+    if (workMode === 'freelance' && paidAdditionalProfessionKeys.length) {
+        fail('HR_SHIFT_FREELANCE_PAID_ROLE_UNSUPPORTED',
+            'Фріланс-блок не підтримує додаткові оплачувані ролі', { segmentIndex });
+    }
+
     return {
         id: normalizeSegmentId(segment.id),
+        ...(hasWorkMode ? { workMode } : {}),
         professionKey,
         shiftStart,
         shiftEnd,
@@ -1188,6 +1201,7 @@ async function loadHrShiftSnapshots(db, whereSql, params) {
                 ) AS plan_updated_at_token,
                 hss.id AS segment_id,
                 hss.profession_key,
+                hss.work_mode,
                 hss.planned_start,
                 hss.planned_end,
                 hss.break_minutes,
@@ -1234,6 +1248,7 @@ async function loadHrShiftSnapshots(db, whereSql, params) {
             snapshotsById.get(shiftId).segmentRows.push({
                 id: row.segment_id,
                 profession_key: row.profession_key,
+                work_mode: row.work_mode,
                 planned_start: row.planned_start,
                 planned_end: row.planned_end,
                 break_minutes: row.break_minutes,
@@ -1322,6 +1337,7 @@ function segmentPayloadFromRow(row = {}) {
     const payload = {
         id: row.id,
         professionKey: row.profession_key,
+        workMode: row.work_mode || 'regular',
         shiftStart: row.planned_start,
         shiftEnd: row.planned_end,
         breakMinutes: row.break_minutes,
@@ -1479,11 +1495,22 @@ async function replaceHrShiftSegments(client, hrShiftId, plan, options = {}) {
                 segmentId: requestedId
             }, 409);
         }
+        const workMode = segment.workMode ?? existing?.work_mode ?? 'regular';
+        if (existing?.work_mode === 'freelance' && !requestedId && segment.workMode === undefined) {
+            fail('HR_SHIFT_FREELANCE_BLOCK_ID_REQUIRED',
+                'Щоб змінити фріланс-блок, оновіть графік і відкрийте його повторно',
+                { hrShiftId: Number(hrShiftId), segmentId: existing.id }, 409);
+        }
+        if (workMode === 'freelance' && segment.paidAdditionalProfessionKeys.length) {
+            fail('HR_SHIFT_FREELANCE_PAID_ROLE_UNSUPPORTED',
+                'Фріланс-блок не підтримує додаткові оплачувані ролі', { segmentIndex: segment.inputIndex });
+        }
         let segmentId;
         if (existing) {
             segmentId = existing.id;
             retainedIds.add(String(segmentId));
             const fieldsChanged = normalizeProfessionKey(existing.profession_key) !== segment.professionKey
+                || (existing.work_mode || 'regular') !== workMode
                 || normalizeShiftTime(existing.planned_start) !== segment.shiftStart
                 || normalizeShiftTime(existing.planned_end) !== segment.shiftEnd
                 || Number(existing.break_minutes || 0) !== segment.breakMinutes
@@ -1499,7 +1526,8 @@ async function replaceHrShiftSegments(client, hrShiftId, plan, options = {}) {
                         notes = $5,
                         sort_order = $6,
                         updated_by = $7,
-                        updated_at = NOW()
+                        updated_at = NOW(),
+                        work_mode = $10
                      WHERE id = $8 AND hr_shift_id = $9`,
                     [
                         segment.professionKey,
@@ -1510,7 +1538,8 @@ async function replaceHrShiftSegments(client, hrShiftId, plan, options = {}) {
                         segment.sortOrder,
                         actor,
                         segmentId,
-                        hrShiftId
+                        hrShiftId,
+                        workMode
                     ]
                 );
             }
@@ -1531,9 +1560,9 @@ async function replaceHrShiftSegments(client, hrShiftId, plan, options = {}) {
             const inserted = await client.query(
                 `INSERT INTO hr_shift_segments (
                     hr_shift_id, profession_key, planned_start, planned_end,
-                    break_minutes, notes, sort_order, created_by, updated_by
+                    break_minutes, notes, sort_order, created_by, updated_by, work_mode
                  )
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, $9)
                  RETURNING *`,
                 [
                     hrShiftId,
@@ -1543,7 +1572,8 @@ async function replaceHrShiftSegments(client, hrShiftId, plan, options = {}) {
                     segment.breakMinutes,
                     segment.note,
                     segment.sortOrder,
-                    actor
+                    actor,
+                    workMode
                 ]
             );
             segmentId = inserted.rows[0].id;
@@ -1551,13 +1581,19 @@ async function replaceHrShiftSegments(client, hrShiftId, plan, options = {}) {
                 roleInsertPairs.push({ segmentId, ...role });
             }
         }
-        persistedSegments.push({ ...segment, id: segmentId });
+        persistedSegments.push({ ...segment, id: segmentId, workMode });
     }
 
     const removedIds = existingRows
         .map(row => row.id)
         .filter(id => !retainedIds.has(String(id)));
     if (removedIds.length) {
+        if (normalizedPlan.segments.some(segment => segment.workMode === undefined)
+            && existingRows.some(row => row.work_mode === 'freelance' && removedIds.includes(row.id))) {
+            fail('HR_SHIFT_FREELANCE_EXPLICIT_PLAN_REQUIRED',
+                'Для видалення фріланс-блоку потрібен актуальний редактор графіка',
+                { hrShiftId: Number(hrShiftId) }, 409);
+        }
         await client.query(
             'DELETE FROM hr_shift_segments WHERE hr_shift_id = $1 AND id = ANY($2::bigint[])',
             [hrShiftId, removedIds]
@@ -1680,6 +1716,11 @@ async function preserveExistingSegmentsForMetadataUpdate(client, payload, curren
         || parseJsonArray(row.additional_profession_keys, []).length > 0
     );
     const hasLegacyPlanFields = hasLegacyTimeFields(payload) || hasLegacyProfessionFields(payload);
+    if (hasLegacyPlanFields && rows.some(row => row.work_mode === 'freelance')) {
+        fail('HR_SHIFT_FREELANCE_EXPLICIT_PLAN_REQUIRED',
+            'Для зміни фріланс-блоку використайте редактор блоків графіка',
+            { hrShiftId: currentShift.id }, 409);
+    }
     if (rows.length > 1) {
         fail(
             'HR_SHIFT_SEGMENTS_REQUIRED',

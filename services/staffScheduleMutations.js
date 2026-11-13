@@ -261,6 +261,7 @@ function normalizeScheduleAuditPlan(plan = null) {
         primaryProfessionKey: plan.primaryProfessionKey || null,
         segments: (plan.segments || []).map(segment => ({
             professionKey: segment.professionKey || null,
+            workMode: segment.workMode || 'regular',
             shiftStart: segment.shiftStart || null,
             shiftEnd: segment.shiftEnd || null,
             breakMinutes: Number(segment.breakMinutes || 0),

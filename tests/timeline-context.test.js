@@ -875,6 +875,7 @@ test('sidebar timeline launcher derives zero, one, or two modes from the hydrate
         location,
         localStorage,
         isAuthenticatedRuntimeReady: () => true,
+        canAccessPage: page => page === '/' || page === '/maysternya-doli',
         addEventListener(type, listener) {
             const listeners = windowListeners.get(type) || [];
             listeners.push(listener);

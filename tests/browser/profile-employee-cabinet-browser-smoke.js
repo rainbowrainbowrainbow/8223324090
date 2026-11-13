@@ -11,7 +11,8 @@ const origin = 'http://profile-fixture.test';
 function salary(month, gross) {
     const march = month === '2024-03';
     return { month, gross, state: 'ready', status: 'approved', deductions: 100, paid: 500,
-        balance: gross - 600, detail: { physicalHours: 10, additionalRoleHours: 2, rates: [
+        balance: gross - 600, detail: { physicalHours: 10, additionalRoleHours: 2,
+            lines: [{ label: 'Оплата за одиницю', kind: 'piece', quantity: 3, rate: 200, amount: 600 }], rates: [
             { profession: 'host', rate: 200, amount: 400, date: month + '-08', unit: 'hour', kind: 'additional' }
         ] }, adjustments: [{ date: month + '-08', type: 'penalty', amount: 100, reason: 'Запізнення', status: 'applied' }],
         late: [{ date: month + '-08', minutes: 12, planned: '10:00', actual: month + '-08T08:12:00Z',
@@ -111,6 +112,7 @@ async function main() {
         const month = page.locator('#profileEmployeeMonthInput');
         await month.fill('2024-03');
         await page.getByText(/3\s450/).waitFor();
+        await page.getByText(/Оплата за одиницю · 3 од\..*за роботу/).waitFor();
         const olderResponse = page.waitForResponse(response => response.url().includes('/salary?month=2024-02'));
         hold = false;
         pending.splice(0).forEach(resolve => resolve());

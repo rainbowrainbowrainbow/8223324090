@@ -1557,6 +1557,7 @@ async function initProfilePage() {
         && window.location.hash === '#hr-personal-reminders';
     await loadProfileData(viewUserId);
     renderProfile();
+    if (isOwnProfile && activeTab === 'materials') void loadProfileWorkMaterials();
     if (isOwnProfile && Object.hasOwn(PROFILE_EMPLOYEE_TABS, activeTab)) void loadProfileEmployeeMonth(activeTab);
     if (isOwnProfile) void checkProfileAutoRewards();
     if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
@@ -2294,7 +2295,13 @@ function renderProfileEmployeeSalary(data) {
         return [`${profession}${rate.kind === 'additional' ? ' · додаткова оплата' : ''}${day}${workTime}${period}`,
             `${profileEmployeeMoney(rate.rate)}${unit} · ${profileEmployeeMoney(rate.amount)}`];
     });
-    const lines = (detail.lines || []).map(line => [line.label || 'Складова розрахунку', profileEmployeeMoney(line.amount)]);
+    const lines = (detail.lines || []).map(line => {
+        const quantity = line.kind === 'piece' && line.quantity != null
+            ? ` · ${profileEmployeeNumber(line.quantity)} од.` : '';
+        const rate = line.kind === 'piece' && line.rate != null
+            ? ` · ${profileEmployeeMoney(line.rate)} за роботу` : '';
+        return [`${line.label || 'Складова розрахунку'}${quantity}${rate}`, profileEmployeeMoney(line.amount)];
+    });
     const adjustments = (data.adjustments || []).map(row => [
         [profileEmployeeDateText(row.date), types[row.type] || 'Коригування', row.reason, adjustmentStatus[row.status] || 'Статус не визначено'].filter(Boolean).join(' · '),
         profileEmployeeMoney(row.amount)

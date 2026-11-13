@@ -22,6 +22,7 @@ const SCHEDULE_FIELDS = [
 ];
 const SEGMENT_FIELDS = [
     'id', 'professionKey', 'profession_key', 'shiftStart', 'shift_start', 'shiftEnd', 'shift_end',
+    'workMode', 'work_mode',
     'breakMinutes', 'break_minutes', 'note', 'additionalProfessionKeys', 'additional_profession_keys',
     'paidAdditionalProfessionKeys', 'paid_additional_profession_keys', 'countsAsPhysicalTime', 'physicalTimeSource'
 ];
@@ -41,6 +42,7 @@ const ATTENDANCE_FIELDS = [
 ];
 const ALLOCATION_FIELDS = [
     'segmentId', 'segment_id', 'segmentIndex', 'professionKey', 'profession_key',
+    'workMode', 'work_mode',
     'shiftStart', 'shift_start', 'shiftEnd', 'shift_end', 'breakMinutes', 'break_minutes',
     'plannedMinutes', 'planned_minutes', 'actualMinutes', 'actual_minutes', 'overtimeMinutes', 'overtime_minutes',
     'overlapMinutes', 'breakDeductedMinutes', 'countsAsPhysicalTime'

@@ -98,6 +98,10 @@ async function loadScope(db, business, actor, input, current) {
         const date = loaded.shift.shift_date instanceof Date ? loaded.shift.shift_date.toISOString().slice(0,10) : String(loaded.shift.shift_date).slice(0,10);
         if (date !== input.workDate) c.fail('SUBSTITUTION_SOURCE_STALE', 'Дата підміни не відповідає зміні', 409);
         const blockers = [];
+        if (loaded.plan.segments.some(segment => segment.workMode === 'freelance')) {
+            blockers.push({ code: 'SUBSTITUTION_FREELANCE_SHIFT_UNSUPPORTED',
+                message: 'Фріланс-блок потребує окремого призначення та погодження оплати.' });
+        }
         if (!input.startsAt || !input.endsAt || loaded.plan.segments.length !== 1 || loaded.plan.segments[0].professionKey !== input.professionKey
             || loaded.plan.segments.some(segment => segment.additionalRoles?.length || segment.additionalProfessionKeys?.length)
             || c.kyivParts(input.startsAt).time !== loaded.plan.plannedStart?.slice(0,5)
@@ -156,10 +160,17 @@ async function applyAssignment(db, business, actor, row, source) {
     return updated;
 }
 
+function fingerprintShiftPlan(plan) {
+    return c.fingerprint({
+        ...plan,
+        segments: plan.segments.map(({ workMode, ...segment }) => workMode === 'freelance' ? { ...segment, workMode } : segment)
+    });
+}
+
 async function assertCurrent(db, business, actor, row) {
     if (row.source_type === 'standalone') return;
     const source = await loadScope(db, business, actor, row.input_json, row);
-    if (source.type === 'hr_shift' && c.fingerprint(source.plan) !== c.fingerprint(row.source_snapshot.plan)) c.fail('SUBSTITUTION_SOURCE_STALE', 'Часовий план підміни змінено', 409);
+    if (source.type === 'hr_shift' && fingerprintShiftPlan(source.plan) !== fingerprintShiftPlan(row.source_snapshot.plan)) c.fail('SUBSTITUTION_SOURCE_STALE', 'Часовий план підміни змінено', 409);
     if (source.type === 'task' && c.fingerprint([source.task.date,source.task.startsAt,source.task.endsAt])
         !== c.fingerprint([row.source_snapshot.task.date,row.source_snapshot.task.startsAt,row.source_snapshot.task.endsAt])) c.fail('SUBSTITUTION_SOURCE_STALE', 'Час задачі змінено після передачі; перевірте її історію', 409);
 }

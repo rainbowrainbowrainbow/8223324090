@@ -510,6 +510,9 @@ function defaultRuntime() {
             const migrationFiles = loadMigrations(changedPaths(manifest.baseLiveSha, releaseSha)).map(item => item.file).sort();
             fail(JSON.stringify(migrationFiles) === JSON.stringify(manifest.allowedMigrationFiles),
                 'Migration set drifted after authorization', 'PRODUCTION_BLOCK_MIGRATION_DRIFT');
+            if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS) {
+                assertPreparedProductionBase(manifest, await liveVersion(), remoteProductionSha());
+            }
             if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE) {
                 assertPreparedProductionBase(manifest, await liveVersion(), remoteProductionSha());
                 assertPerformanceCiRecoveryBase();
@@ -526,13 +529,18 @@ function defaultRuntime() {
                     assertPerformanceCiResult(ci, artifact, releaseSha);
                 } else {
                     assertHrPayrollCiResult(ci, releaseSha);
+                    if (manifest.allowedProtectedWorkflow.kind === PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS) {
+                        const { evidence: artifact } = waitForProductionCi(releaseSha, 'runtime-artifact.yml', 'Runtime artifact smoke');
+                        if (requiresArtifactBuild(manifest.baseLiveSha, releaseSha, git)) assertRuntimeArtifactBuild(artifact);
+                    }
                 }
                 // CI can take minutes; check foreign live/remote drift again immediately before upload.
                 const remote = remoteProductionSha();
                 assertPreparedProductionBase(manifest, await liveVersion(), remote);
-                fail(manifest.allowedProtectedWorkflow.kind !== PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE
-                    || remote === releaseSha,
-                'Corrected performance CI SHA is not on the production ref', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
+                if ([PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE, PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS]
+                    .includes(manifest.allowedProtectedWorkflow.kind)) {
+                    fail(remote === releaseSha, 'Prepared release SHA is not on the production ref', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
+                }
             } else {
                 const { evidence: artifact } = waitForProductionCi(releaseSha, 'runtime-artifact.yml', 'Runtime artifact smoke');
                 if (requiresArtifactBuild(artifactBase, releaseSha, git)) assertRuntimeArtifactBuild(artifact);
@@ -921,7 +929,8 @@ function releaseCommandPlan(manifest) {
         `git push origin HEAD:refs/heads/${manifest.allowedBranch}`,
         'gh run watch <exact-sha-run> --exit-status',
         ...(!isPreparedProtectedRelease(manifest)
-            || [PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE, PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE]
+            || [PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE, PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE,
+                PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS]
                 .includes(manifest.allowedProtectedWorkflow?.kind)
             ? ['gh run watch <exact-sha-runtime-artifact-run> --exit-status'] : []),
         `npm run release:railway-up -- --branch ${manifest.allowedBranch} --project ${manifest.railwayProjectId} --environment ${manifest.railwayEnvironment} --service ${manifest.railwayServiceId}`,
@@ -1042,10 +1051,11 @@ async function assertExecuteDrift(manifest, runtime) {
         fail(drift.workflowHashes?.['.github/workflows/ci.yml'] === STAFF_DELETION_CI_HASH,
             'Staff deletion CI workflow differs from the reviewed content', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
     }
-    if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA) {
+    if ([PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA, PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS]
+        .includes(manifest.allowedProtectedWorkflow?.kind)) {
         const expectedHashes = Object.fromEntries(manifest.migrationClassifications.map(item => [item.file, item.sqlHash]));
         fail(stableJson(drift.migrationHashes || {}) === stableJson(expectedHashes),
-            'Finance migration SQL changed after exact authorization', 'PRODUCTION_BLOCK_MIGRATION_HASH_DRIFT');
+            'Protected migration SQL changed after exact authorization', 'PRODUCTION_BLOCK_MIGRATION_HASH_DRIFT');
     }
     if (manifest.retryFrom) fail(drift.descendsFromRetry === true,
         'Finance retry no longer descends from its exact prior candidate', 'PRODUCTION_BLOCK_RETRY_SHA_INVALID');
@@ -1068,7 +1078,8 @@ function gitIsSafeDescendant(initialHead, currentHead, drift) {
 
 async function executeAction(options, runtime) {
     const manifest = readBlockFile(options.blockFile);
-    return manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA
+    return [PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA, PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS]
+        .includes(manifest.allowedProtectedWorkflow?.kind)
         ? withBlockFileLock(options.blockFile, () => executeBlockAction(options, runtime))
         : executeBlockAction(options, runtime);
 }

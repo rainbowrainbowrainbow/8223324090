@@ -7,15 +7,29 @@ const { projectParkStaffSchedulePayload } = require('./parkStaffScheduleProjecti
 
 const VIEW = ['hr.payroll.view'];
 const RULES = [...VIEW, 'hr.payroll.manage', 'manage_payroll_rules'];
+const FREELANCE_PAYMENT_OPTIONS = '/freelance/payment-options';
+const FREELANCE_CAPABILITIES = new Map([
+    ['GET /freelance/day', 'view_payroll'],
+    ['GET /freelance/settlement', 'view_payroll'],
+    ['GET /freelance/rates', 'manage_payroll_rules'],
+    ['POST /freelance/rates', 'manage_payroll_rules'],
+    ['POST /freelance/terms', 'manage_payroll_rules'],
+    ['POST /freelance/attendance', 'manage_payroll_accrual'],
+    ['POST /freelance/payments', 'confirm_payroll_payment'],
+    ['POST /freelance/reversals', 'reverse_payroll_payment']
+]);
 const STAFF_PAY_FIELDS = new Set(['hourly_rate', 'hourlyRate', 'rate_unit', 'rateUnit', 'profession_rates', 'professionRates',
     'role_type', 'secondary_professions', 'secondaryProfessions']);
 
-// These are individual HR conditions and attendance operations, not a grant to
-// the legacy payroll namespace. Payment, settlement, close and bulk routes stay closed.
+// Allow individual HR, attendance and freelance operations. General payroll
+// payment, settlement, close and bulk routes stay closed.
 function parkHrPayrollCapabilities(req, routerId) {
     const method = String(req.method || 'GET').toUpperCase();
     const path = parkStaffScheduleRoutePath(req);
     if (routerId === 'payroll') {
+        const freelanceCapability = FREELANCE_CAPABILITIES.get(`${method} ${path}`);
+        if (freelanceCapability) return [...VIEW, freelanceCapability];
+        if (method === 'GET' && path === FREELANCE_PAYMENT_OPTIONS) return VIEW;
         if (method !== 'GET') return null;
         if (['/preview', '/range-preview', '/schemes'].includes(path)) return [...VIEW, 'view_payroll'];
         if (['/export', '/export-xlsx'].includes(path)) return [...VIEW, 'view_payroll', 'export_data'];
@@ -66,12 +80,18 @@ function allowed(req, capabilities) {
     return capabilities.every(capability => resolveCapability(req.user, capability, { type: 'action' }).allowed);
 }
 
+function canReadFreelancePaymentOptions(user) {
+    return allowed({ user }, ['confirm_payroll_payment']) || allowed({ user }, ['reverse_payroll_payment']);
+}
+
 function requireParkHrPayrollAccess(routerId, legacyGuard, db) {
     return async (req, res, next) => {
         const capabilities = parkHrPayrollCapabilities(req, routerId);
         // Compatibility and existing narrower Park lanes keep their own guards.
         if (!capabilities || req.user?.businessMembershipAccess?.membershipEnabled !== true) return legacyGuard(req, res, next);
+        const isFreelanceOptions = routerId === 'payroll' && parkStaffScheduleRoutePath(req) === FREELANCE_PAYMENT_OPTIONS;
         if (!hasCurrentParkScheduleMembership(req) || !allowed(req, capabilities)
+            || (isFreelanceOptions && !canReadFreelancePaymentOptions(req.user))
             || (req.method !== 'GET' && resolveBusinessScope(req).canWrite === false)) {
             return res.status(403).json({ success: false, code: 'PARK_HR_PAYROLL_ACCESS_DENIED', error: 'Немає доступу до цієї дії в Park.' });
         }
@@ -119,4 +139,4 @@ function canManageStaffPayrollRules(user) {
     return allowed({ user }, RULES);
 }
 
-module.exports = { parkHrPayrollCapabilities, requireParkHrPayrollAccess, canManageStaffPayrollRules };
+module.exports = { parkHrPayrollCapabilities, requireParkHrPayrollAccess, canManageStaffPayrollRules, canReadFreelancePaymentOptions };

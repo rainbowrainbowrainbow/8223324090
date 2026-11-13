@@ -25,8 +25,106 @@ const PROTECTED_WORKFLOWS = Object.freeze({
     PERFORMANCE_CI_RELEASE: 'performance-ci-release',
     STAFF_DELETION_CI: 'staff-deletion-ci',
     HR_PAYROLL: 'hr-payroll',
+    FREELANCE_SHIFT_BLOCKS: 'freelance-shift-blocks',
     FINANCE_MANUAL_QA: 'finance-manual-qa'
 });
+const FREELANCE_BASE = '46df02047c196dfa5159e27f6cfb09fe6e907b11';
+const FREELANCE_RED_PATHS = Object.freeze(['routes/finance.js', 'routes/payroll.js']);
+const FREELANCE_SQL_HASHES = Object.freeze({
+    'db/migrations/395_hr_shift_segment_work_mode.sql': '3e6bac7d0515d514ba1764facb8f3e9d3a2737eb7b2b6f811971effcdd015077',
+    'db/migrations/396_freelance_work_terms_and_facts.sql': '27f0b8cc1cee6a43aced5574f8632023bcfd692ff45efd586b3f18a8e5cb777e',
+    'db/migrations/397_freelance_finance_movements.sql': '4f0ce8e12922cb7cad3ea32b5e7ef706c2eadc898cd90600b663fc07d596e9b9'
+});
+const FREELANCE_PATHS = Object.freeze(normalizePathList([
+    'CHANGELOG.md',
+    'accounting-deposits.html',
+    'afisha.html',
+    'art-director.html',
+    'attendance-upload.html',
+    'booking-summary.html',
+    'cashier-payments.html',
+    'center.html',
+    'certificates.html',
+    'chat-settings.html',
+    'chat.html',
+    'checkin.html',
+    'content.html',
+    'copilot.html',
+    'css/assistant-rail.css',
+    'css/pages-hr-staff.css',
+    'css/pages-shell.css',
+    'css/pages.css',
+    'css/sidebar-aurora.css',
+    'customers.html',
+    'dashboard.html',
+    'data-deletion.html',
+    'db/migrations/395_hr_shift_segment_work_mode.sql',
+    'db/migrations/396_freelance_work_terms_and_facts.sql',
+    'db/migrations/397_freelance_finance_movements.sql',
+    'demo.html',
+    'designer.html',
+    'designs.html',
+    'docs/FREELANCE_SHIFT_BLOCKS.md',
+    'docs/integrations/checkbox/IMPLEMENTATION_STATUS.md',
+    'finance.html',
+    'game.html',
+    'graduation.html',
+    'guardian-ops.html',
+    'hermes-studio.html',
+    'hr.html',
+    'index.html',
+    'invite.html',
+    'js/designs-page.js',
+    'js/finance-page.js',
+    'js/staff-page.js',
+    'js/staff-schedule-shell.js',
+    'landing/index.html',
+    'leads.html',
+    'omni.html',
+    'package-lock.json',
+    'package.json',
+    'privacy-policy.html',
+    'profile.html',
+    'programs.html',
+    'quiz.html',
+    'report-agent.html',
+    'reports.html',
+    'room.html',
+    'routes/finance.js',
+    'routes/hr.js',
+    'routes/payroll.js',
+    'routes/staff.js',
+    'scripts/production-block-controller.js',
+    'scripts/production-block-policy.js',
+    'server.js',
+    'services/hrAttendance.js',
+    'services/hrFreelanceWork.js',
+    'services/hrShiftSegments.js',
+    'services/parkHrPayrollAccess.js',
+    'services/parkStaffScheduleProjection.js',
+    'services/payroll.js',
+    'services/staffScheduleMutations.js',
+    'services/staffSubstitutionSources.js',
+    'shop.html',
+    'sound.html',
+    'staff.html',
+    'status.html',
+    'sw.js',
+    'tasks.html',
+    'terms-of-service.html',
+    'tests/browser/freelance-shift-actual-app.js',
+    'tests/hr-shift-segments-service.test.js',
+    'tests/integration/freelance-shift-blocks.integration.test.js',
+    'tests/park-hr-payroll-access.test.js',
+    'tests/park-staff-schedule-projection.test.js',
+    'tests/park-staff-schedule-routes.test.js',
+    'tests/payroll-finance-workflow-contract.test.js',
+    'tests/production-block-controller.test.js',
+    'tests/ui-check.js',
+    'timeline-settings.html',
+    'training.html',
+    'warehouse.html'
+]));
 const STAFF_DELETION_BASE = 'a6e37b311202fbe7929118aa9c5c3c0422ab0211';
 const STAFF_DELETION_REVIEWED_PARENT = '8290ba7705971a94c0e9b1a1062993b25ce2037c';
 const STAFF_DELETION_GATE_PATHS = Object.freeze(normalizePathList([
@@ -504,7 +602,7 @@ function migrationSqlHash(sql) {
 function isPreparedProtectedWorkflow(kind) {
     return [PROTECTED_WORKFLOWS.HR_PAYROLL, PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA,
         PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE, PROTECTED_WORKFLOWS.STAFF_DELETION_CI,
-        PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE].includes(kind);
+        PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE, PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS].includes(kind);
 }
 
 function isPreparedProtectedRelease(manifest) {
@@ -637,6 +735,12 @@ function validateProtectedWorkflow(workflow, changedPaths = [], redPaths = []) {
             'HR/payroll requires its exact implementation, isolated regressions and additive migration',
             'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
         return { enabled: true, kind: workflow, protectedChangedPaths: [...redPaths] };
+    }
+    if (workflow === PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS) {
+        fail(stableJson(normalizePathList(redPaths)) === stableJson(FREELANCE_RED_PATHS)
+            && stableJson(normalizePathList(changedPaths)) === stableJson(FREELANCE_PATHS),
+        'Freelance release paths differ from the reviewed inventory', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+        return { enabled: true, kind: workflow, protectedChangedPaths: [...FREELANCE_RED_PATHS] };
     }
     if (workflow === PROTECTED_WORKFLOWS.LEAD_UI_CI_GATE) {
         const changed = normalizePathList(changedPaths);
@@ -840,6 +944,10 @@ function buildManifest(facts, options = {}) {
         fail(isNewerVersion(facts.releaseVersion, facts.live?.version),
             'HR/payroll needs a prepared release commit newer than live', 'PRODUCTION_BLOCK_RELEASE_NOT_PREPARED');
     }
+    if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS) {
+        migrations.forEach((item, index) => { item.sqlHash = migrationSqlHash(facts.migrations[index].sql); });
+        validateFreelanceScope(baseLiveSha, facts.live?.version, facts.releaseVersion, qaScope, migrations, maxReleaseAttempts);
+    }
     if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA) {
         migrations.forEach((item, index) => {
             item.sqlHash = migrationSqlHash(facts.migrations[index].sql);
@@ -880,6 +988,8 @@ function buildManifest(facts, options = {}) {
         protectedContractMutationAllowed: false,
         rollbackReference: options.rollbackReference || {
             previousProductionSha: baseLiveSha,
+            ...(protectedWorkflow.kind === PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS
+                ? { compatibleBinaryRequired: true, preserveFreelanceHistory: true } : {}),
             ...(protectedWorkflow.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA
                 ? { compatibleBinaryRequired: true, pre381RollbackProhibited: true, preserveJournalEvidence: true } : {}),
             migrations: Object.fromEntries(migrations.map(item => [item.file, item.rollback || 'No automatic rollback documented']))
@@ -993,6 +1103,13 @@ function validateManifest(manifest, options = {}) {
             && isNewerVersion(manifest.preparedRelease?.version, manifest.preparedRelease?.baseVersion),
             'HR/payroll requires an exact prepared release SHA', 'PRODUCTION_BLOCK_RELEASE_NOT_PREPARED');
     }
+    if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS) {
+        validateFreelanceScope(manifest.baseLiveSha, manifest.preparedRelease?.baseVersion, manifest.preparedRelease?.version,
+            qaScope, manifest.migrationClassifications, manifest.maxReleaseAttempts);
+        fail(manifest.preparedRelease?.sha === manifest.initialHeadSha
+            && stableJson(manifest.allowedMigrationFiles) === stableJson(Object.keys(FREELANCE_SQL_HASHES)),
+        'Freelance requires the exact prepared SHA and migration inventory', 'PRODUCTION_BLOCK_RELEASE_NOT_PREPARED');
+    }
     if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA) {
         validateFinanceScope(qaScope, manifest.migrationClassifications);
         fail(JSON.stringify(manifest.allowedMigrationFiles) === JSON.stringify(Object.keys(FINANCE_MANUAL_SQL_HASHES).sort()),
@@ -1017,6 +1134,19 @@ function validateHrPayrollScope(qa, migrations) {
         && migrations[0].kind === 'schema' && migrations[0].red === false,
         'HR/payroll permits only migration 374 schema and read-only production QA',
         'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+}
+
+function validateFreelanceScope(base, baseVersion, version, qa, migrations, attempts) {
+    fail(base === FREELANCE_BASE && baseVersion === '0.83.53' && version === '0.83.54'
+        && qa.enabled === false && attempts === 1
+        && stableJson(migrations.map(item => item.file).sort()) === stableJson(Object.keys(FREELANCE_SQL_HASHES)),
+    'Freelance requires its exact base, patch, migrations, one attempt and read-only QA',
+    'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+    for (const item of migrations) {
+        fail(item.kind === 'schema' && item.red === false && item.destructive === false
+            && item.sqlHash === FREELANCE_SQL_HASHES[item.file],
+        'Freelance migration differs from the reviewed additive SQL', 'PRODUCTION_BLOCK_MIGRATION_HASH_DRIFT', { file: item.file });
+    }
 }
 
 function validateFinanceScope(qa, migrations) {
@@ -1081,7 +1211,9 @@ function warningText(manifest) {
         'Межі: тільки зафіксовані branch/service/migrations/QA scope/protected workflow; прямі зміни реальних даних через controller, налаштувань і секретів заборонені.',
         manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA
             ? 'Відкат фінансів: тільки сумісний binary зі збереженими журналом, ownership guards і поділом змін. Після записів відкат на pre381 SHA та видалення журналу заборонені; QA завершення зберігає evidence.'
-            : `Відкат: production SHA ${manifest.baseLiveSha}; migration mapping у block manifest; exact QA cleanup.`,
+            : manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS
+                ? 'Відкат фрілансу після першого запису потребує сумісної версії зі збереженими міграціями, історією виплат і правилами звичайної зарплати.'
+                : `Відкат: production SHA ${manifest.baseLiveSha}; migration mapping у block manifest; exact QA cleanup.`,
         `Потрібний дозвіл: «Дозволяю блок ${manifest.blockId}» або exact controller confirmation ${confirmationValue(manifest)}.`
     ].join('\n');
 }
@@ -1094,6 +1226,8 @@ module.exports = {
     MAX_VALIDITY_MS,
     ProductionBlockError,
     PROTECTED_WORKFLOWS,
+    FREELANCE_PATHS,
+    FREELANCE_SQL_HASHES,
     STAFF_DELETION_PATHS,
     STAFF_DELETION_CI_HASH,
     PERFORMANCE_CI_CHANGED_PATHS,

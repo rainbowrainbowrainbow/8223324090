@@ -68,6 +68,48 @@ test('payments, close, settlements, bulk and unrelated HR writes remain denied e
     }
 });
 
+test('Park freelance finance uses exact routes, payroll visibility and the operation-specific capability', async () => {
+    const routerId = 'payroll';
+    for (const [method, path, action] of [
+        ['GET', '/freelance/day', 'view_payroll'], ['GET', '/freelance/settlement', 'view_payroll'],
+        ['GET', '/freelance/rates', 'manage_payroll_rules'], ['POST', '/freelance/rates', 'manage_payroll_rules'],
+        ['POST', '/freelance/terms', 'manage_payroll_rules'], ['POST', '/freelance/attendance', 'manage_payroll_accrual'],
+        ['POST', '/freelance/payments', 'confirm_payroll_payment'], ['POST', '/freelance/reversals', 'reverse_payroll_payment']
+    ]) {
+        assert.equal((await invoke(request(path, method), { routerId })).passed, true, path);
+        for (const deny of [[action], ['hr.payroll.view']]) {
+            const denied = await invoke(request(path, method, { deny }), { routerId });
+            assert.equal(denied.status, 403, `${path} with ${deny} denied`);
+            assert.equal(denied.calls, 0);
+        }
+    }
+    for (const [method, path] of [['POST', '/freelance/day'], ['GET', '/freelance/payments'],
+        ['GET', '/payment-options'], ['POST', '/freelance/payment-options'], ['GET', '/freelance/unknown']]) {
+        assert.equal((await invoke(request(path, method), { routerId })).status, 403, path);
+    }
+});
+
+test('freelance payment options accept either existing payment action', async () => {
+    const path = '/freelance/payment-options';
+    const routerId = 'payroll';
+    for (const action of ['confirm_payroll_payment', 'reverse_payroll_payment']) {
+        assert.equal((await invoke(request(path, 'GET', { deny: [action] }), { routerId })).passed, true);
+    }
+    for (const deny of [['confirm_payroll_payment', 'reverse_payroll_payment'], ['hr.payroll.view']]) {
+        const denied = await invoke(request(path, 'GET', { deny }), { routerId });
+        assert.equal(denied.status, 403);
+        assert.equal(denied.calls, 0);
+    }
+});
+
+test('Park freelance mutations reject other businesses, aggregate scope and revoked membership', async () => {
+    for (const scope of [{ context: 'dar' }, { context: 'all' }, { revoked: 'event_genix' }]) {
+        const denied = await invoke(request('/freelance/payments', 'POST', scope), { routerId: 'payroll' });
+        assert.equal(denied.status, 403, JSON.stringify(scope));
+        assert.equal(denied.calls, 0);
+    }
+});
+
 test('another business, aggregate, revoked and inconsistent membership cannot use the Park lane', async () => {
     const stale = request(); stale.user.activeBusinessMembership.organizationId = 99;
     for (const req of [request(undefined, undefined, { context: 'dar' }),

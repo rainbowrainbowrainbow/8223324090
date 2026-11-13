@@ -562,6 +562,7 @@ function copyableDayPlanPayload(loadedPlan) {
         primaryProfessionKey: loadedPlan.plan.primaryProfessionKey,
         segments: loadedPlan.plan.segments.map(segment => ({
             professionKey: segment.professionKey,
+            workMode: segment.workMode || 'regular',
             shiftStart: segment.shiftStart,
             shiftEnd: segment.shiftEnd,
             breakMinutes: segment.breakMinutes,
@@ -610,6 +611,7 @@ function scheduleEntryWithDayPlan(entry, plan = null) {
         segments: plan?.segments?.map(segment => ({
             id: segment.id ?? null,
             professionKey: segment.professionKey,
+            workMode: segment.workMode || 'regular',
             shiftStart: segment.shiftStart,
             shiftEnd: segment.shiftEnd,
             breakMinutes: segment.breakMinutes,
@@ -852,6 +854,7 @@ router.get('/schedule', requireAction('hr.schedule.view'), async (req, res) => {
                             jsonb_build_object(
                                 'id', hss.id,
                                 'professionKey', hss.profession_key,
+                                'workMode', hss.work_mode,
                                 'shiftStart', LEFT(hss.planned_start::text, 5),
                                 'shiftEnd', LEFT(hss.planned_end::text, 5),
                                 'breakMinutes', hss.break_minutes,
@@ -1163,6 +1166,8 @@ router.post('/schedule/:id/replace', requireAction('hr.schedule.manage'), async 
             return res.status(409).json({ success: false, error: 'У працівника для заміни вже є активний слот графіка на цю дату' });
         }
 
+        const { prepareFreelanceReassignment, snapshotReassignedFreelanceTerms } = require('../services/hrFreelanceWork');
+        await prepareFreelanceReassignment(client, sourcePlan, replacementStaffId, date);
         const originalStaffId = currentShift.original_staff_id || currentShift.staff_id;
         const original = await client.query('SELECT id, name FROM staff WHERE id = $1', [originalStaffId]);
         const updatedShift = await client.query(
@@ -1183,6 +1188,7 @@ router.post('/schedule/:id/replace', requireAction('hr.schedule.manage'), async 
             ]
         );
 
+        await snapshotReassignedFreelanceTerms(client, sourcePlan.plan, replacementStaffId, date, req.user?.username);
         const replacementPrevious = await loadScheduleEntryForUpdate(client, replacementStaffId, date);
         await client.query('DELETE FROM staff_schedule WHERE id = $1', [scheduleId]);
         const replacementScheduleId = await upsertScheduleMirror(
@@ -1357,6 +1363,8 @@ router.post('/schedule/:id/replacement-clear', requireAction('hr.schedule.manage
             return res.status(409).json({ success: false, error: 'Оригінальний працівник вже має активний слот графіка на цю дату' });
         }
 
+        const { prepareFreelanceReassignment, snapshotReassignedFreelanceTerms } = require('../services/hrFreelanceWork');
+        await prepareFreelanceReassignment(client, currentPlan, originalStaffId, date);
         const restoredShift = await client.query(
             `UPDATE hr_shifts SET
                 staff_id = original_staff_id,
@@ -1370,6 +1378,7 @@ router.post('/schedule/:id/replacement-clear', requireAction('hr.schedule.manage
             [schedule.hr_shift_id]
         );
 
+        await snapshotReassignedFreelanceTerms(client, currentPlan.plan, originalStaffId, date, req.user?.username);
         const originalPrevious = await loadScheduleEntryForUpdate(client, originalStaffId, date);
         await client.query('DELETE FROM staff_schedule WHERE id = $1', [scheduleId]);
         const restoredScheduleId = await upsertScheduleMirror(client, restoredShift.rows[0], restoredShift.rows[0].notes || null);

@@ -5683,6 +5683,7 @@ body[data-page-group="hr"] .schedule-table td.schedule-day-cell > .schedule-heal
     margin: 0;
 }
 
+.sch-segment-work-mode-field,
 .sch-segment-note-field {
     grid-column: 1 / -1;
 }
@@ -6015,6 +6016,15 @@ body[data-page-group="hr"] .schedule-table td.schedule-day-cell > .schedule-heal
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.sch-freelance-mark {
+    color: var(--text-primary, currentColor);
+    border: 1px solid currentColor;
+    border-radius: 4px;
+    padding: 0 0.2em;
+    font-weight: 700;
+    text-decoration: none;
 }
 
 .sch-segment-lines {

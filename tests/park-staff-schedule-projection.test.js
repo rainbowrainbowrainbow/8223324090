@@ -99,7 +99,7 @@ test('Park payroll viewers receive only explicit rate fields needed for schedule
 });
 
 test('Park attendance retains factual time and allocation aliases while excluding compensation snapshots', () => {
-    const physical = { professionKey: 'animator', shiftStart: '09:00', shiftEnd: '12:00', actualMinutes: 175,
+    const physical = { professionKey: 'animator', shiftStart: '09:00', shiftEnd: '12:00', actualMinutes: 175, workMode: 'freelance',
         hourlyRate: 1234, salary: 5678 };
     const output = project('staff', '/attendance', { success: true, from: '2026-09-13', to: '2026-09-21',
         source: 'hr_time_records+staff_checkins', summary: { total: 1 }, data: [{ staff_id: 7, date: '2026-09-14',
@@ -114,7 +114,7 @@ test('Park attendance retains factual time and allocation aliases while excludin
     assert.equal(output.data[0].time_status, 'late');
     assert.equal(output.data[0].actual_minutes, 175);
     assert.deepEqual(output.data[0].segmentAllocations, [{ professionKey: 'animator', shiftStart: '09:00',
-        shiftEnd: '12:00', actualMinutes: 175 }]);
+        shiftEnd: '12:00', actualMinutes: 175, workMode: 'freelance' }]);
     assert.deepEqual(output.data[0].segment_allocations, output.data[0].segmentAllocations);
     assert.deepEqual(output.data[0].allocationIssues, [{ code: 'GAP', message: 'Synthetic gap' }]);
     assert.deepEqual(output.summary, { total: 1 });
@@ -141,6 +141,19 @@ test('Park schedule keeps dates, versions, ordered segments and paid-role round-
     assert.deepEqual(row.segments[0].paidAdditionalProfessionKeys, ['reception']);
     assert.equal(Object.hasOwn(row, 'hourly_rate'), false);
     assert.equal(Object.hasOwn(row.segments[0], 'estimatedSalary'), false);
+});
+
+test('Park schedule round-trips freelance block identity without agreed rate or estimate', () => {
+    const output = project('staff', '/schedule', { success: true, data: [{
+        staff_id: 7,
+        segments: [
+            { id: 11, workMode: 'regular' },
+            { id: 12, workMode: 'freelance', rate: '123.00', estimatedAmount: 369 }
+        ]
+    }] });
+    assert.deepEqual(output.data[0].segments, [
+        { id: 11, workMode: 'regular' }, { id: 12, workMode: 'freelance' }
+    ]);
 });
 
 test('Park shift preferences and successful mutations expose only scheduling response fields', () => {

@@ -251,6 +251,8 @@ function normalizeAttendanceSegments(input = {}) {
         return {
             id: segment.id ?? null,
             professionKey,
+            ...(segment.workMode === 'freelance' || segment.work_mode === 'freelance'
+                ? { workMode: 'freelance' } : {}),
             shiftStart: String(shiftStart).slice(0, 5),
             shiftEnd: String(shiftEnd).slice(0, 5),
             breakMinutes,
@@ -313,6 +315,7 @@ function publicAttendancePlanSegment(segment = {}) {
     return {
         id: segment.id ?? null,
         professionKey: segment.professionKey || null,
+        ...(segment.workMode === 'freelance' ? { workMode: segment.workMode } : {}),
         shiftStart: segment.shiftStart || null,
         shiftEnd: segment.shiftEnd || null,
         breakMinutes: normalizeNonNegativeMinutes(segment.breakMinutes),
@@ -440,6 +443,7 @@ async function buildAttendanceCompensationPlanSnapshot(db, input = {}) {
             rateSource: terms.rateSource, policyVersion: terms.ruleVersion, conditions: terms });
     }
     for (const [segmentIndex, segment] of segments.entries()) {
+        if (segment.workMode === 'freelance') continue;
         capture(segment, segmentIndex, segment.professionKey, false);
         const additional = new Set(permanentMonthly.filter(professionKey => professionKey !== segment.professionKey));
         for (const role of segment.additionalRoles || []) {
@@ -490,8 +494,8 @@ function buildLegacyAttendanceCompensationSnapshot(input = {}) {
         planSource: input.planSource || input.plan_source || HR_ATTENDANCE_PLAN_SOURCES.ATTENDANCE_SNAPSHOT,
         plan,
         physicalAllocation: null,
-        compensationAllocations: plan.segments.map((segment, segmentIndex) =>
-            baseCompensationAllocation(segment, 0, segmentIndex)),
+        compensationAllocations: plan.segments.flatMap((segment, segmentIndex) =>
+            segment.workMode === 'freelance' ? [] : [baseCompensationAllocation(segment, 0, segmentIndex)]),
         totals: {
             physicalMinutes: 0,
             baseMinutes: 0,
@@ -527,7 +531,8 @@ function finalizeAttendanceCompensationSnapshot(snapshotValue, physicalAllocatio
         };
     });
     const overtimeMinutes = normalizeNonNegativeMinutes(physicalAllocation?.overtimeMinutes);
-    if (overtimeMinutes > 0) {
+    const hasFreelance = source.plan?.segments?.some(segment => segment.workMode === 'freelance');
+    if (overtimeMinutes > 0 && !hasFreelance) {
         const primaryProfessionKey = source.plan?.primaryProfessionKey || null;
         let primaryBase = compensationAllocations.find(allocation =>
             allocation.allocationType === 'base'
@@ -971,6 +976,7 @@ function segmentAllocationPayload(segment, actualMinutes, overlapMinutes = null)
     return {
         segmentId: segment.id,
         professionKey: segment.professionKey,
+        ...(segment.workMode === 'freelance' ? { workMode: segment.workMode } : {}),
         shiftStart: segment.shiftStart,
         shiftEnd: segment.shiftEnd,
         breakMinutes: segment.breakMinutes,
@@ -1237,6 +1243,8 @@ function decorateAttendanceRecord(record = {}, loadedShift = null) {
         ...attendanceAllocationFields(allocation),
         compensationSnapshot,
         compensation_snapshot: compensationSnapshot,
+        ...(loadedShift?.plan?.segments?.some(segment => segment.workMode === 'freelance')
+            ? { currentPlanHasFreelance: true } : {}),
         compensationAllocations: compensationSnapshot?.compensationAllocations || [],
         compensation_allocations: compensationSnapshot?.compensationAllocations || [],
         compensationIssues,

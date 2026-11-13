@@ -3,6 +3,7 @@ const { pool } = require('../db');
 const { canUseAction } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const { attendanceFactMinutes, attendanceTimezoneTransitionIssue, hydrateAttendanceRecords } = require('./hrAttendance');
+const { attendanceHasFreelance, loadConfirmedFreelanceAllocations } = require('./hrFreelanceWork');
 const {
     assertPayrollPeriodOpen,
     buildPayrollRateUnitWarnings,
@@ -1386,6 +1387,7 @@ async function loadPayrollAttendanceMetrics(options = {}, db = pool) {
         ORDER BY tr.staff_id, tr.record_date, tr.id
     `, params);
     const attendanceRows = await hydrateAttendanceRecords(db, result.rows);
+    const freelanceConfirmations = await loadConfirmedFreelanceAllocations(db, attendanceRows);
     const buckets = new Map();
     const professionMaps = new Map();
     const overtimeMaps = new Map();
@@ -1406,21 +1408,75 @@ async function loadPayrollAttendanceMetrics(options = {}, db = pool) {
         const date = String(row.date || row.record_date || '').slice(0, 10);
         const source = row.allocation_source || row.allocationSource || 'none';
         const breakPolicy = row.break_policy || row.breakPolicy || null;
-        const segmentAllocations = Array.isArray(row.segment_allocations)
+        let segmentAllocations = Array.isArray(row.segment_allocations)
             ? row.segment_allocations
             : (Array.isArray(row.segmentAllocations) ? row.segmentAllocations : []);
         const rawCompensationSnapshot = row.compensation_snapshot || row.compensationSnapshot || null;
-        const compensationSnapshot = rawCompensationSnapshot ? parseConfig(rawCompensationSnapshot) : null;
+        let compensationSnapshot = rawCompensationSnapshot ? parseConfig(rawCompensationSnapshot) : null;
+        const hasFreelance = attendanceHasFreelance(row);
+        const confirmed = hasFreelance ? freelanceConfirmations.get(Number(row.attendance_ref || row.id)) : null;
+        const confirmedPlanMatches = confirmed?.size === segmentAllocations.length
+            && segmentAllocations.every(segment => confirmed.get(String(segment.segmentId ?? segment.segment_id))?.work_mode
+                === (segment.workMode || 'regular'));
+        if (hasFreelance && !confirmedPlanMatches) {
+            bucket.payrollBlockingIssues.push(payrollIssue(
+                'PAYROLL_FREELANCE_TIME_REQUIRES_CONFIRMATION',
+                'Підтвердьте розподіл часу між штатними та фріланс-блоками',
+                { date, attendanceRef: row.attendance_ref ?? row.id ?? null }, 'error'
+            ));
+            continue;
+        }
+        if (confirmedPlanMatches) {
+            if (segmentAllocations.some(segment => segment.workMode !== 'freelance')) {
+                (bucket.freelanceMixedDays ??= []).push(date);
+            }
+            segmentAllocations = segmentAllocations.flatMap(segment => {
+                const block = confirmed.get(String(segment.segmentId ?? segment.segment_id));
+                return block.work_mode === 'regular' ? [{ ...segment, actualMinutes: block.minutes }] : [];
+            });
+            if (compensationSnapshot) {
+                const allocations = (compensationSnapshot.compensationAllocations || []).flatMap(allocation => {
+                    const block = confirmed.get(String(allocation.segmentId));
+                    return block?.work_mode === 'regular'
+                        ? [{ ...allocation, actualMinutes: block.minutes, overtimeMinutes: 0 }] : [];
+                });
+                const sumByType = type => allocations.filter(row => row.allocationType === type)
+                    .reduce((total, row) => total + row.actualMinutes, 0);
+                compensationSnapshot = {
+                    ...compensationSnapshot,
+                    compensationAllocations: allocations,
+                    totals: {
+                        ...compensationSnapshot.totals,
+                        baseMinutes: sumByType('base'),
+                        simultaneousAdditionalMinutes: sumByType('simultaneous_additional')
+                    }
+                };
+            }
+        }
         const hasPaidHourlyAdditionalRole = segmentAllocations.some(segmentHasPaidHourlyAdditionalRole);
         const compensationAllocations = Array.isArray(compensationSnapshot?.compensationAllocations)
             ? compensationSnapshot.compensationAllocations
             : (Array.isArray(compensationSnapshot?.compensation_allocations)
                 ? compensationSnapshot.compensation_allocations
                 : []);
-        const actualMinutes = Math.max(0, toNumber(row.actualMinutes ?? row.actual_minutes ?? row.total_worked_minutes, 0));
-        const allocatedMinutes = Math.max(0, toNumber(row.allocatedMinutes ?? row.allocated_minutes, 0));
-        const overtimeMinutes = attendanceFactMinutes(row).overtimeMinutes;
-        const plannedMinutes = Math.max(0, toNumber(row.plannedMinutes ?? row.planned_minutes, 0));
+        const actualMinutes = hasFreelance
+            ? segmentAllocations.reduce((total, segment) => total + segment.actualMinutes, 0)
+            : Math.max(0, toNumber(row.actualMinutes ?? row.actual_minutes ?? row.total_worked_minutes, 0));
+        const allocatedMinutes = hasFreelance ? actualMinutes
+            : Math.max(0, toNumber(row.allocatedMinutes ?? row.allocated_minutes, 0));
+        const overtimeMinutes = hasFreelance ? 0 : attendanceFactMinutes(row).overtimeMinutes;
+        const plannedMinutes = hasFreelance
+            ? segmentAllocations.reduce((total, segment) => total + (segment.plannedMinutes || 0), 0)
+            : Math.max(0, toNumber(row.plannedMinutes ?? row.planned_minutes, 0));
+        if (hasFreelance && compensationAllocations.some(allocation =>
+            allocation.allocationType === 'base' && (allocation.conditions?.rateUnit || allocation.rateUnit) === 'day')) {
+            bucket.payrollBlockingIssues.push(payrollIssue(
+                'PAYROLL_FREELANCE_DAILY_RATE_REVIEW',
+                'Поденна ставка для змішаного виходу потребує окремого погодження',
+                { date, attendanceRef: row.attendance_ref ?? row.id ?? null }, 'error'
+            ));
+            continue;
+        }
         const status = String(row.status || row.time_status || '').trim();
         const leavePolicy = resolveLeavePayrollPolicy(status, row, compensationSnapshot);
         const businessContext = String(row.business_context || row.businessContext || '').trim();
@@ -1433,10 +1489,11 @@ async function loadPayrollAttendanceMetrics(options = {}, db = pool) {
             timezoneIssue.code, timezoneIssue.message,
             { date, attendanceRef: row.attendance_ref ?? row.id ?? null, elapsedMinutes: timezoneIssue.elapsedMinutes, civilMinutes: timezoneIssue.civilMinutes }, 'error'
         ));
-        const worked = actualMinutes > 0 || WORKED_ATTENDANCE_STATUSES.has(status);
+        const worked = actualMinutes > 0 || (!hasFreelance && WORKED_ATTENDANCE_STATUSES.has(status));
         if (worked && date) workedDates.get(staffId).add(date);
 
-        bucket.physicalMinutes += actualMinutes;
+        bucket.physicalMinutes += hasFreelance
+            ? Math.max(0, toNumber(row.actualMinutes ?? row.actual_minutes, 0)) : actualMinutes;
         bucket.totalMinutes += actualMinutes;
         bucket.allocatedMinutes += allocatedMinutes;
         bucket.overtimeMinutes += overtimeMinutes;
@@ -1568,7 +1625,7 @@ async function loadPayrollAttendanceMetrics(options = {}, db = pool) {
         const primaryProfessionKey = normalizeProfessionKey(
             overtimeAllocation?.professionKey
             || overtimeAllocation?.profession_key
-            || row.primary_profession_key
+            || (hasFreelance ? firstSegmentProfession : row.primary_profession_key)
             || firstSegmentProfession
         );
         if (worked && date) bucket.primaryDays.push({ date, professionKey: primaryProfessionKey });
@@ -3096,6 +3153,19 @@ function calculateProfessionPay(staff, scheme, metrics = payrollMetricBucket(sta
     }
     const activeScheme = scheme || fallbackSchemeForStaff(staff);
     const schemeType = activeScheme?.schemeType || activeScheme?.scheme_type || 'hourly';
+    if (schemeType === 'per_shift' && metrics.freelanceMixedDays?.length) {
+        const blockingIssues = [...metrics.payrollBlockingIssues, payrollIssue(
+            'PAYROLL_FREELANCE_DAILY_RATE_REVIEW',
+            'Поденна ставка для змішаного виходу потребує окремого погодження',
+            { dates: metrics.freelanceMixedDays }, 'error'
+        )];
+        return {
+            applies: true, baseLines: [], overtimeLines: [], additionalLines: [],
+            baseAmount: 0, overtimeAmount: 0, additionalAmount: 0, totalAmount: 0,
+            professionRateSummary: [], allocationIssues: metrics.allocationIssues, blockingIssues,
+            reconciliation: { ...metrics.reconciliation, blockingIssues }
+        };
+    }
     const standardType = ['hourly', 'per_shift', 'monthly_fixed'].includes(schemeType);
     if (!standardType) {
         return applySimultaneousAdditionalPayPolicy({

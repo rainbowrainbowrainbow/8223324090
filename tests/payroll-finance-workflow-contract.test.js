@@ -78,7 +78,7 @@ test('generic Finance PUT and DELETE return 409 for payroll-managed transactions
     assert.match(financeRoute, /PAYROLL_PAYMENT_MANAGED/);
     assert.match(financeRoute, /LEFT JOIN payroll_payment_movements ppm ON ppm\.finance_transaction_id = ft\.id/);
     assert.match(financeRoute, /LEFT JOIN payroll_reports pr/);
-    assert.match(financeRoute, /row\.payroll_movement_id \|\| row\.legacy_payroll_report_id \|\| row\.source === 'payroll'/);
+    assert.match(financeRoute, /row\.payroll_movement_id\s*\|\|\s*row\.legacy_payroll_report_id\s*\|\|\s*row\.source === 'payroll'\s*\|\|\s*row\.source === 'hr_freelance'/);
 
     const putBlock = financeRoute.match(/router\.put\('\/transactions\/:id'[\s\S]*?router\.delete\('\/transactions\/:id'/)?.[0] || '';
     assert.match(putBlock, /assertFinanceTransactionNotPayrollManaged\(id, businessContext, client\)/);

@@ -12,6 +12,8 @@ const {
     confirmationValue,
     manifestHash,
     migrationSqlHash,
+    FREELANCE_PATHS,
+    FREELANCE_SQL_HASHES,
     PROFILE_EMPLOYEE_RELEASE_PATHS,
     PROFILE_EMPLOYEE_AUTH_BLOB,
     STAFF_DELETION_PATHS,
@@ -56,6 +58,33 @@ const { inputs: artifactInputs, requiresBuild } = require('../scripts/runtime-ar
 const LIVE_SHA = '1'.repeat(40);
 const HEAD_SHA = '2'.repeat(40);
 const RELEASE_SHA = '3'.repeat(40);
+const FREELANCE_BASE = '46df02047c196dfa5159e27f6cfb09fe6e907b11';
+
+test('freelance release binds the exact base, inventory, additive SQL and both CI workflows', () => {
+    const migrations = Object.keys(FREELANCE_SQL_HASHES).map(file => ({
+        file, sql: fs.readFileSync(path.join(__dirname, '..', file), 'utf8')
+    }));
+    const release = {
+        live: { commitSha: FREELANCE_BASE, sourceBranch: 'codex/eventgenix-production', version: '0.83.53' },
+        releaseVersion: '0.83.54',
+        changedPaths: FREELANCE_PATHS,
+        migrations
+    };
+    const options = { protectedWorkflow: 'freelance-shift-blocks', maxReleaseAttempts: 1 };
+    const value = manifest(options, release);
+    assert.equal(validateManifest(value).preparedRelease.sha, HEAD_SHA);
+    assert.equal(value.rollbackReference.preserveFreelanceHistory, true);
+    assert.match(releaseCommandPlan(value).join('\n'), /exact-sha-runtime-artifact-run/);
+    assert.throws(() => assertPreparedProductionBase(value, release.live, LIVE_SHA), { code: 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT' });
+    assert.throws(() => manifest(options, { ...release, changedPaths: [...FREELANCE_PATHS, 'routes/auth.js'] }),
+        { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID' });
+    assert.throws(() => manifest(options, { ...release, migrations: migrations.map(item => ({ ...item, sql: item.sql + '\n-- drift' })) }),
+        { code: 'PRODUCTION_BLOCK_MIGRATION_HASH_DRIFT' });
+    assert.throws(() => manifest(options, { ...release, live: { ...release.live, commitSha: LIVE_SHA } }),
+        { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID' });
+    assert.throws(() => manifest({ ...options, maxReleaseAttempts: 2 }, release),
+        { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID' });
+});
 
 test('employee profile release pins protected bytes, exact SHA, inventory, and both CI gates', async t => {
     const base = 'e076dcd445fbb128306cb2e7a26e9db2bd2af0c1';

@@ -61,6 +61,8 @@ const {
     pushBusinessScopeCondition
 } = require('../services/businessContext');
 const { buildBusinessOperatingProfile } = require('../services/businessProfile');
+const { hasProfileEmployeeScope, loadProfileEmployee } = require('../services/profileEmployee');
+const { employeeMonthRange, loadEmployeeSalary, loadEmployeeResults } = require('../services/profileEmployeeMonths');
 const { resolveAuthBusinessContext, authBusinessUserFields } = require('../services/authBusinessProfile');
 
 const log = createLogger('Auth');
@@ -166,7 +168,7 @@ function normalizeProfileCockpitWidgets(value) {
 
 function normalizeProfileStaffProfile(row) {
     if (!row) return null;
-    const primaryRole = row.role_type || row.profile_role || '';
+    const primaryRole = row.role_type || '';
     return {
         id: row.id,
         employeeProfileId: row.employee_profile_id || null,
@@ -177,6 +179,7 @@ function normalizeProfileStaffProfile(row) {
         roleType: primaryRole,
         secondary_professions: normalizeSecondaryProfessions(row.secondary_professions, primaryRole),
         secondaryProfessions: normalizeSecondaryProfessions(row.secondary_professions, primaryRole),
+        professionAssignments: row.profession_assignments || [],
         phone: row.phone || null
     };
 }
@@ -459,6 +462,40 @@ router.get('/profile/:userId', authenticateToken, async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 });
+
+async function readEmployeeProfileMonth(req, res, read) {
+    res.set('Cache-Control', 'private, no-store');
+    const range = employeeMonthRange(req.query.month);
+    if (!range) return res.status(400).json({ error: 'Оберіть місяць у форматі РРРР-ММ.' });
+    const scope = resolveBusinessScope(req);
+    if (!requireBusinessScope(req, res, scope)) return;
+    let client;
+    try {
+        if (!hasProfileEmployeeScope(req)) return res.json({ state: 'unavailable', month: range.month });
+        client = await pool.connect();
+        await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+        const employee = (await loadProfileEmployee(client, req)).rows[0];
+        const data = employee
+            ? await read(client, employee, scope, range)
+            : { state: 'unavailable', month: range.month };
+        await client.query('COMMIT');
+        return res.json(data);
+    } catch (err) {
+        if (client) await client.query('ROLLBACK').catch(() => {});
+        log.warn('Employee profile month unavailable:', err.code || err.name);
+        return res.status(503).json({ error: 'Дані тимчасово недоступні.' });
+    } finally {
+        client?.release();
+    }
+}
+
+router.get('/profile/me/salary', authenticateToken, (req, res) =>
+    readEmployeeProfileMonth(req, res, (db, employee, scope, range) =>
+        loadEmployeeSalary(db, employee.id, range)));
+
+router.get('/profile/me/results', authenticateToken, (req, res) =>
+    readEmployeeProfileMonth(req, res, (db, employee, scope, range) =>
+        loadEmployeeResults(db, employee, req.user.id, scope, range)));
 
 // v10.6: Personal cabinet — comprehensive profile data with shift, achievements, team, deltas
 router.get('/profile', authenticateToken, async (req, res) => {
@@ -788,31 +825,19 @@ router.get('/profile', authenticateToken, async (req, res) => {
                 [username]
             ),
             // 25: Staff profile bridge for profession-centered profile surface
-            pool.query(
-                `SELECT s.id, ep.id AS employee_profile_id, s.name, s.department, s.position,
-                        s.role_type, COALESCE(s.secondary_professions, '[]'::jsonb) AS secondary_professions,
-                        s.phone, ep.role AS profile_role, ep.department AS profile_department, ep.full_name
-                 FROM staff s
-                 LEFT JOIN employee_profiles ep
-                   ON ep.staff_id = s.id
-                  AND ep.user_id = $1
-                  AND COALESCE(ep.is_active, true) = true
-                 WHERE ep.user_id = $1
-                    OR LOWER(s.name) = LOWER($2)
-                 ORDER BY CASE WHEN ep.user_id = $1 THEN 0 ELSE 1 END,
-                          COALESCE(s.is_active, true) DESC,
-                          s.id
-                 LIMIT 1`,
-                [user.id, user.name || user.display_name || username]
-            ),
+            loadProfileEmployee(pool, req),
             // 26: Active HR profession catalog for profile cards and checklist previews
-            pool.query(
-                `SELECT id, key, title, department, short_info, responsibilities, checklist,
+            hasProfileEmployeeScope(req) ? pool.query(
+                `SELECT id, key, title, department, short_info, responsibilities,
+                        COALESCE((SELECT jsonb_agg(item.title ORDER BY item.sort_order, item.id)
+                                  FROM hr_profession_checklist_items item
+                                  WHERE item.profession_id = profession.id AND item.is_active = true),
+                                 '[]'::jsonb) AS checklist,
                         color, sort_order, is_active
-                 FROM hr_professions
+                 FROM hr_professions profession
                  WHERE is_active = true
                  ORDER BY sort_order ASC, title ASC`
-            ),
+            ) : Promise.resolve({ rows: [] }),
             // 27: Completed work units (parent tasks + completed subtasks)
             pool.query(
                 `SELECT

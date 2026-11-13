@@ -2272,6 +2272,81 @@
             align-items: start;
         }
 
+        .profile-employee-month {
+            margin-block: 1rem;
+            min-width: 0;
+        }
+
+        .profile-employee-month .profile-panel-head {
+            flex-wrap: wrap;
+        }
+
+        .profile-employee-month input[type="month"] {
+            max-width: 100%;
+            padding: .55rem;
+            margin-inline-start: .4rem;
+            border: 1px solid currentColor;
+            border-radius: .5rem;
+            font: inherit;
+            color: inherit;
+            background: transparent;
+        }
+
+        .profile-employee-month :focus-visible {
+            outline: 2px solid #059669;
+            outline-offset: 3px;
+        }
+
+        .profile-employee-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
+            gap: .75rem;
+        }
+
+        .profile-employee-summary > div {
+            padding: .75rem;
+            border-radius: .75rem;
+            background: rgba(16, 185, 129, .09);
+        }
+
+        .profile-employee-summary dd {
+            margin: .25rem 0 0;
+            font-weight: 700;
+            overflow-wrap: anywhere;
+        }
+
+        .profile-employee-details {
+            margin-block: 1.25rem;
+        }
+
+        .profile-employee-details ul {
+            list-style: none;
+            padding: 0;
+            margin: .5rem 0;
+        }
+
+        .profile-employee-details li {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            gap: .3rem 1rem;
+            padding: .55rem 0;
+            border-bottom: 1px solid rgba(148, 163, 184, .35);
+            overflow-wrap: anywhere;
+        }
+
+        .profile-employee-comparison table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: .9rem;
+        }
+
+        .profile-employee-comparison :is(th, td, caption) {
+            text-align: start;
+            padding: .5rem .35rem;
+            border-bottom: 1px solid rgba(148, 163, 184, .35);
+        }
+
         .profile-work-panel {
             min-width: 0;
             background:

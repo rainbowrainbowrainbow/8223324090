@@ -478,7 +478,7 @@ function summarizePayrollSettlementMonth(month, reports = []) {
     };
 }
 
-async function loadPayrollSettlementReadModels(month, db = pool) {
+async function loadPayrollSettlementReadModels(month, db = pool, staffId = null) {
     const normalizedMonth = normalizePayrollMonth(month);
     const result = await db.query(
         `WITH report_installments AS (
@@ -510,6 +510,7 @@ async function loadPayrollSettlementReadModels(month, db = pool) {
             FROM payroll_reports pr
             LEFT JOIN payroll_installments pi ON pi.payroll_report_id = pr.id
             WHERE pr.period_month = $1
+              ${staffId === null ? '' : 'AND pr.staff_id = $2'}
         ),
         movement_totals AS (
             SELECT ppm.installment_id,
@@ -550,7 +551,7 @@ async function loadPayrollSettlementReadModels(month, db = pool) {
         ORDER BY ri.report_id,
                  CASE ri.kind WHEN 'advance' THEN 1 WHEN 'final' THEN 2 ELSE 3 END,
                  ri.installment_id`,
-        [normalizedMonth]
+        staffId === null ? [normalizedMonth] : [normalizedMonth, staffId]
     );
 
     const grouped = new Map();

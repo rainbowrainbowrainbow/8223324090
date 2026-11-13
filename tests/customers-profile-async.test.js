@@ -131,6 +131,7 @@ function profileHarness() {
         let profileTabRequestSeq = 0;
         const profileResourceStates = new Map();
         let isOwnProfile = true;
+        const PROFILE_EMPLOYEE_TABS = { salary: 'Зарплата', results: 'Мої результати' };
         let myAchievements = [];
         let myInventory = [];
         let walletData = null;

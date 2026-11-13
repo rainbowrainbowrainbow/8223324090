@@ -73,6 +73,9 @@ const MODES = {
     'payroll-fullstack': [
         'tests/integration/payroll-fullstack-settlement.integration.test.js'
     ],
+    'profile-employee': [
+        'tests/integration/profile-employee-cabinet.integration.test.js'
+    ],
     admission: [
         'tests/integration/admission-tickets.integration.test.js'
     ],

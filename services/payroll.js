@@ -1189,6 +1189,7 @@ async function fetchStaffList(month, periodOptions = {}, db = pool) {
     const bounds = getMonthBounds(month);
     const from = normalizeDateValue(periodOptions.from) || bounds.from;
     const to = normalizeDateValue(periodOptions.to) || bounds.to;
+    const staffId = periodOptions.staffId;
     const readStaff = async () => {
         return db.query(`
             SELECT DISTINCT s.id, s.name, s.department, s.position, s.role_type, s.hourly_rate,
@@ -1206,15 +1207,16 @@ async function fetchStaffList(month, periodOptions = {}, db = pool) {
               )
               AND (NULLIF(s.hire_date::text, '') IS NULL OR NULLIF(s.hire_date::text, '')::date <= $2::date)
               AND (NULLIF(s.termination_date::text, '') IS NULL OR NULLIF(s.termination_date::text, '')::date > $1::date)
+              ${staffId ? 'AND s.id = $3' : ''}
             ORDER BY s.name
-        `, [from, to]);
+        `, staffId ? [from, to, staffId] : [from, to]);
     };
 
     try {
         const result = await readStaff();
         return result.rows.map(mapStaff);
     } catch (err) {
-        if (err.code === '42703') {
+        if (err.code === '42703' && !staffId) {
             const fallback = await db.query(`
                 SELECT DISTINCT s.id, s.name, s.department, s.position, s.role_type, s.hourly_rate, COALESCE(s.rate_unit, 'hour') AS rate_unit
                 FROM staff s
@@ -2003,6 +2005,8 @@ function profileResolution(profile, version, workDate, sourceOrder, assignment =
         profileVersionId: version.id,
         profileTitle: profile.title,
         profileKind: profile.profileKind,
+        effectiveFrom: [version.effectiveFrom, assignment?.effectiveFrom].filter(Boolean).sort().at(-1) || null,
+        effectiveTo: [version.effectiveTo, assignment?.effectiveTo].filter(Boolean).sort()[0] || null,
         sourceProfileId: profile.sourceProfileId,
         sourceVersionId: profile.sourceVersionId,
         assignmentId: assignment?.id || null,
@@ -2148,6 +2152,8 @@ function professionSummaryRow({
         assignment_kind: resolution?.assignmentKind || null,
         work_date: normalizedWorkDate,
         workDate: normalizedWorkDate,
+        effectiveFrom: resolution?.effectiveFrom || null,
+        effectiveTo: resolution?.effectiveTo || null,
         iso_weekday: resolution?.isoWeekday || isoWeekdayForDate(normalizedWorkDate),
         applied_rule: appliedRule || resolution?.appliedRule || null,
         formula: formula || null,
@@ -3294,21 +3300,26 @@ async function fetchTimeMetrics(month, periodOptions = {}, db = pool) {
         to: normalizeDateValue(periodOptions.to) || monthBounds.to
     };
     try {
-        return await loadPayrollAttendanceMetrics(bounds, db);
+        return await loadPayrollAttendanceMetrics({
+            ...bounds,
+            staffIds: periodOptions.staffId ? [periodOptions.staffId] : []
+        }, db);
     } catch (err) {
+        if (periodOptions.staffId) throw err;
         if (!isMissingTableError(err)) log.warn('time metrics query failed:', err.message);
         return new Map();
     }
 }
 
-async function fetchAdjustments(month, db = pool) {
+async function fetchAdjustments(month, db = pool, staffId = null) {
     try {
         const result = await db.query(`
             SELECT staff_id, type, COALESCE(SUM(amount), 0)::numeric AS total
             FROM salary_adjustments
             WHERE month = $1 AND COALESCE(status, 'applied') = 'applied'
+              ${staffId === null ? '' : 'AND staff_id = $2'}
             GROUP BY staff_id, type
-        `, [month]);
+        `, staffId === null ? [month] : [month, staffId]);
         const map = new Map();
         for (const row of result.rows) {
             if (!map.has(row.staff_id)) {
@@ -3328,14 +3339,15 @@ async function fetchAdjustments(month, db = pool) {
     }
 }
 
-async function fetchPayrollEntries(month, db = pool) {
+async function fetchPayrollEntries(month, db = pool, staffId = null) {
     try {
         const result = await db.query(`
             SELECT *
             FROM payroll_entries
             WHERE period_month = $1
+              ${staffId === null ? '' : 'AND staff_id = $2'}
             ORDER BY created_at, id
-        `, [month]);
+        `, staffId === null ? [month] : [month, staffId]);
         const map = new Map();
         for (const row of result.rows) {
             if (!map.has(row.staff_id)) map.set(row.staff_id, []);
@@ -3343,6 +3355,7 @@ async function fetchPayrollEntries(month, db = pool) {
         }
         return map;
     } catch (err) {
+        if (staffId !== null) throw err;
         if (!isMissingTableError(err)) log.warn('payroll_entries query failed:', err.message);
         return new Map();
     }
@@ -3791,7 +3804,8 @@ async function buildPayrollContext(month, options = {}, db = pool) {
     const normalizedMonth = assertPayrollMonth(normalizePayrollMonth(month));
     const periodOptions = {
         from: normalizeDateValue(options.from),
-        to: normalizeDateValue(options.to)
+        to: normalizeDateValue(options.to),
+        staffId: options.staffId || null
     };
     const monthBounds = getMonthBounds(normalizedMonth);
     const isFullMonth = (!periodOptions.from || periodOptions.from === monthBounds.from)
@@ -3811,21 +3825,20 @@ async function buildPayrollContext(month, options = {}, db = pool) {
     for (const [staffId, substitutions] of substitutionMap) {
         timeMap.set(staffId, applyPayrollSubstitutions(timeMap.get(staffId) || {}, substitutions));
     }
-    const adjustmentMap = includeMonthlyAdjustments ? await fetchAdjustments(normalizedMonth, db) : new Map();
-    const entryMap = includeMonthlyAdjustments ? await fetchPayrollEntries(normalizedMonth, db) : new Map();
+    const adjustmentMap = includeMonthlyAdjustments ? await fetchAdjustments(normalizedMonth, db, periodOptions.staffId) : new Map();
+    const entryMap = includeMonthlyAdjustments ? await fetchPayrollEntries(normalizedMonth, db, periodOptions.staffId) : new Map();
     const schemeMap = await loadActivePayrollSchemeMap(staffIds, normalizedMonth, db);
     const reportMap = includeReports ? await fetchReportsByMonth(normalizedMonth, db) : new Map();
     const periodIncome = await fetchPeriodIncome(normalizedMonth, {
         from: periodOptions.from || monthBounds.from,
         to: periodOptions.to || monthBounds.to
     }, db);
-    const allSchemes = await fetchAllSchemes(null, db);
     const professionRateMap = await loadProfessionRateMap(staffIds, db);
     const payrollProfileContext = await loadPayrollProfileContext(staffIds, {
         from: periodOptions.from || monthBounds.from,
         to: periodOptions.to || monthBounds.to
     }, db);
-    const kpiAuditSnapshotMap = includeMonthlyAdjustments
+    const kpiAuditSnapshotMap = includeMonthlyAdjustments && !periodOptions.staffId
         ? await fetchPayrollKpiAuditSnapshots(normalizedMonth, staffIds, db)
         : new Map();
 
@@ -3843,7 +3856,6 @@ async function buildPayrollContext(month, options = {}, db = pool) {
         schemeMap,
         reportMap,
         periodIncome,
-        allSchemes,
         professionRateMap,
         payrollProfileContext,
         kpiAuditSnapshotMap
@@ -4141,6 +4153,12 @@ async function getPayrollPreview(staffId, month, db = pool) {
         throw err;
     }
     return row;
+}
+
+async function getEmployeePayrollPreview(staffId, month, db = pool) {
+    if (!Number.isSafeInteger(staffId) || staffId <= 0) throw new TypeError('Invalid employee identity');
+    const context = await buildPayrollContext(month, { staffId, includeReports: false }, db);
+    return buildPayrollRowsFromContext(context).staffRows[0] || null;
 }
 
 async function getPayrollRangePreview(options = {}, db = pool) {
@@ -6209,6 +6227,7 @@ async function updatePayrollReportStatus(id, status, user) {
 }
 
 module.exports = {
+    getEmployeePayrollPreview,
     OVERTIME_MULTIPLIER,
     SCHEME_TYPES,
     REPORT_STATUSES,

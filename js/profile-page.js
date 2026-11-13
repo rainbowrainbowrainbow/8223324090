@@ -24,6 +24,8 @@ let profileTabRequestSeq = 0;
 let initialHrReminderLinkPending = false;
 const profileResourceStates = new Map();
 let activeProfessionKey = null;
+const PROFILE_EMPLOYEE_TABS = { salary: 'Зарплата', results: 'Мої результати' };
+const profileEmployeeMonthState = {};
 let profileMaterialsState = {
     key: null,
     loading: false,
@@ -683,20 +685,23 @@ function profileProfessionByKey(key) {
 
 function profilePrimaryProfessionKey() {
     const staff = profileStaffProfile();
-    return normalizeProfileProfessionKey(staff.role_type || staff.roleType || profileRole(profileData) || 'default');
+    return normalizeProfileProfessionKey(staff.role_type || staff.roleType);
 }
 
 function profileSecondaryProfessionKeys() {
     const primary = profilePrimaryProfessionKey();
     const staff = profileStaffProfile();
-    return normalizeProfileProfessionList(staff.secondary_professions || staff.secondaryProfessions, [primary]);
+    return normalizeProfileProfessionList([
+        ...normalizeProfileProfessionList(staff.secondary_professions || staff.secondaryProfessions),
+        ...(staff.professionAssignments || []).map(item => item.key)
+    ], [primary]);
 }
 
 function profileProfessionEntry(key, options = {}) {
     const normalized = normalizeProfileProfessionKey(key) || 'default';
     const catalog = profileProfessionByKey(normalized);
     const guide = PROFILE_PROFESSION_GUIDES[normalized] || PROFILE_PROFESSION_GUIDES.default;
-    const title = catalog?.title || profileRoleLabel(normalized);
+    const title = catalog?.title || (normalized === 'default' ? 'Професію не призначено' : profileRoleLabel(normalized));
     return {
         key: normalized,
         title,
@@ -705,10 +710,9 @@ function profileProfessionEntry(key, options = {}) {
         responsibilities: Array.isArray(catalog?.responsibilities) && catalog.responsibilities.length
             ? catalog.responsibilities
             : guide.responsibilities,
-        checklist: Array.isArray(catalog?.checklist) && catalog.checklist.length
-            ? catalog.checklist
-            : guide.checklist,
+        checklist: Array.isArray(catalog?.checklist) ? catalog.checklist : [],
         color: catalog?.color || '#10b981',
+        assignment: profileStaffProfile().professionAssignments?.find(item => item.key === normalized) || null,
         primary: options.primary === true
     };
 }
@@ -718,13 +722,13 @@ function profileProfessionEntries() {
     const keys = [primary, ...profileSecondaryProfessionKeys()].filter(Boolean);
     const unique = [];
     const seen = new Set();
-    keys.forEach((key, index) => {
+    keys.forEach(key => {
         const normalized = normalizeProfileProfessionKey(key);
         if (!normalized || seen.has(normalized)) return;
         seen.add(normalized);
-        unique.push(profileProfessionEntry(normalized, { primary: index === 0 }));
+        unique.push(profileProfessionEntry(normalized, { primary: normalized === primary }));
     });
-    return unique.length ? unique : [profileProfessionEntry('default', { primary: true })];
+    return unique;
 }
 
 function profileProfessionKeys() {
@@ -824,6 +828,7 @@ function profileSecondaryTabOrder() {
     return [
         { id: 'myday', label: 'Мій день', ownOnly: true },
         ...profileWorkHubTabOrder().map(({ id, label, ownOnly }) => ({ id, label, ownOnly })),
+        ...Object.entries(PROFILE_EMPLOYEE_TABS).map(([id, label]) => ({ id, label, ownOnly: true })),
         { id: 'achievements', label: 'Досягнення' },
         { id: 'leaderboard', label: 'Рейтинг' },
         { id: 'inventory', label: 'Інвентар', ownOnly: true },
@@ -904,7 +909,7 @@ function renderProfilePrimaryTab(tab, label, options = {}) {
     const attrs = lock
         ? ' data-profile-locked="true" data-profile-soon="скоро"'
         : '';
-    return `<button class="${classes}" data-profile-tab="${tab}" onclick="switchTab('${tab}')"${attrs}>${escapeHtml(label)}${options.suffix || ''}</button>`;
+    return `<button type="button" class="${classes}" data-profile-tab="${tab}" onclick="switchTab('${tab}')"${activeTab === tab ? ' aria-current="page"' : ''}${attrs}>${escapeHtml(label)}${options.suffix || ''}</button>`;
 }
 
 function renderProfileSoonMenu(tabs = []) {
@@ -947,7 +952,7 @@ function profileWorkTabMetric(tabId) {
     const quick = myCabinetData?.stats?.taskQuick || {};
     switch (tabId) {
         case 'professions':
-            return entries.length > 1 ? `${entries.length} професії` : '1 професія';
+            return entries.length ? `Призначено: ${entries.length}` : 'Не призначено';
         case 'checklists':
             return `${(active.checklist || []).length || 0} пунктів`;
         case 'materials': {
@@ -1524,7 +1529,7 @@ async function initProfilePage() {
     }
     const requestedTab = params.get('tab');
     const normalizedRequestedTab = normalizeProfileTab(requestedTab);
-    const allowedOwnTabs = ['professions', 'checklists', 'materials', 'myday', 'settings', 'achievements', 'inventory', 'shop', 'leaderboard', 'quests', 'season', 'teams', 'referral'];
+    const allowedOwnTabs = ['professions', 'checklists', 'materials', 'myday', 'settings', 'achievements', 'inventory', 'shop', 'leaderboard', 'quests', 'season', 'teams', 'referral', ...Object.keys(PROFILE_EMPLOYEE_TABS)];
     if (isOwnProfile && normalizedRequestedTab && allowedOwnTabs.includes(normalizedRequestedTab)) {
         activeTab = normalizedRequestedTab;
     }
@@ -1533,8 +1538,18 @@ async function initProfilePage() {
         window.__profileTabPopstateBound = true;
         window.addEventListener('popstate', async () => {
             const nextTab = normalizeProfileTab(new URLSearchParams(window.location.search || '').get('tab')) || 'professions';
-            if (nextTab && nextTab !== activeTab) await switchTab(nextTab, { skipUrl: true });
+            if (nextTab && (nextTab !== activeTab || Object.hasOwn(PROFILE_EMPLOYEE_TABS, nextTab))) {
+                await switchTab(nextTab, { skipUrl: true });
+            }
         });
+        for (const event of ['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'permissions:lifecycle']) {
+            window.addEventListener(event, () => {
+                for (const tab of Object.keys(PROFILE_EMPLOYEE_TABS)) delete profileEmployeeMonthState[tab];
+                if (isOwnProfile && Object.hasOwn(PROFILE_EMPLOYEE_TABS, activeTab)) {
+                    void loadProfileEmployeeMonth(activeTab);
+                }
+            });
+        }
     }
 
     // Load data
@@ -1542,6 +1557,7 @@ async function initProfilePage() {
         && window.location.hash === '#hr-personal-reminders';
     await loadProfileData(viewUserId);
     renderProfile();
+    if (isOwnProfile && Object.hasOwn(PROFILE_EMPLOYEE_TABS, activeTab)) void loadProfileEmployeeMonth(activeTab);
     if (isOwnProfile) void checkProfileAutoRewards();
     if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
     else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
@@ -1841,8 +1857,8 @@ function renderProfileWidgetSettingsPanel() {
 }
 
 function renderProfileProfessionHeaderPanel(entries = profileProfessionEntries()) {
-    const primary = entries[0] || profileProfessionEntry('default', { primary: true });
-    const secondary = entries.slice(1, 4);
+    const primary = entries.find(entry => entry.primary) || profileProfessionEntry('default');
+    const secondary = entries.filter(entry => !entry.primary);
     return `
         <div class="profile-profession-header-panel">
             <div class="profile-profession-header-main" style="--profession-color:${escapeHtml(primary.color)}">
@@ -1853,7 +1869,7 @@ function renderProfileProfessionHeaderPanel(entries = profileProfessionEntries()
             <div class="profile-profession-header-stack">
                 <div class="profile-profession-header-stack-title">
                     <span class="profile-kicker">Додаткові ролі</span>
-                    <strong>${secondary.length ? `${secondary.length} активні` : 'немає'}</strong>
+                    <strong>${secondary.length || 'немає'}</strong>
                 </div>
                 ${secondary.length
                     ? secondary.map(item => `
@@ -1868,19 +1884,21 @@ function renderProfileProfessionHeaderPanel(entries = profileProfessionEntries()
 }
 
 function renderProfileProfessionSwitcher(entries = profileProfessionEntries()) {
+    if (!entries.length) return '';
     const active = profileActiveProfessionEntry();
     return `
-        <div class="profile-work-hub-context" aria-label="Активна професія профілю">
+        <div class="profile-work-hub-context" aria-label="Перегляд професій профілю">
             <div class="profile-work-hub-context-copy">
-                <span class="profile-kicker">Активна професія</span>
+                <span class="profile-kicker">Обрана професія</span>
                 <strong>${escapeHtml(active.title)}</strong>
                 <small>${escapeHtml(active.department || active.shortInfo || 'Професійний контекст')}</small>
             </div>
-            <div class="profile-profession-switcher" role="list" aria-label="Перемикач професій">
+            <div class="profile-profession-switcher" role="group" aria-label="Перемикач професій">
                 ${entries.map(entry => `
                     <button type="button"
                         class="profile-profession-switch ${entry.key === active.key ? 'active' : ''}"
                         style="--profession-color:${escapeHtml(entry.color)}"
+                        data-profile-profession="${escapeHtml(entry.key)}"
                         onclick="setProfileProfessionContext('${escapeHtml(entry.key)}')"
                         aria-pressed="${entry.key === active.key ? 'true' : 'false'}">
                         <span>${entry.primary ? 'Основна' : 'Додаткова'}</span>
@@ -1995,8 +2013,8 @@ function renderProfile() {
     const workingRoleState = profileWorkingRoleState(p);
     const workingRoleLabel = workingRoleState.activeLabel || workingRoleState.workingLabel || roleLabel;
     const professionEntries = profileProfessionEntries();
-    const primaryProfession = professionEntries[0];
-    const secondaryCount = Math.max(0, professionEntries.length - 1);
+    const primaryProfession = professionEntries.find(entry => entry.primary);
+    const secondaryCount = professionEntries.filter(entry => !entry.primary).length;
     const isMyDayTab = activeTab === 'myday';
 
     // Active title
@@ -2028,7 +2046,7 @@ function renderProfile() {
                         </div>
                         <div class="profile-working-role-wrap">
                             <div class="profile-role-line profile-role-line--primary">
-                                <span class="profile-role-pill profile-role-pill--profession">${escapeHtml(primaryProfession.title)}</span>
+                                ${primaryProfession ? `<span class="profile-role-pill profile-role-pill--profession">${escapeHtml(primaryProfession.title)}</span>` : ''}
                                 ${isOwnProfile ? `<button type="button" id="profileWorkingRoleTrigger" class="profile-working-role-trigger" aria-expanded="false" aria-controls="profileWorkingRolePanel">
                                     <small>Робоча роль</small>
                                     <b>${escapeHtml(workingRoleLabel)}</b>
@@ -2037,7 +2055,7 @@ function renderProfile() {
                             ${isOwnProfile ? renderProfileWorkingRoleControl(workingRoleState) : ''}
                         </div>
                         <div class="profile-identity-meta-row">
-                            ${secondaryCount ? `<span>+${secondaryCount} додаткові професії</span>` : '<span>одна активна професія</span>'}
+                            ${secondaryCount ? `<span>Додаткових професій: ${secondaryCount}</span>` : ''}
                             ${username ? `<span>@${escapeHtml(username)}</span>` : '<span>username не вказано</span>'}
                             <span class="${p.user?.telegramConnected ? 'is-ok' : ''}">${p.user?.telegramConnected ? 'Telegram підключено' : 'Telegram не підключено'}</span>
                         </div>
@@ -2068,6 +2086,7 @@ function renderProfile() {
 
 async function switchTab(tab, options = {}) {
     tab = normalizeProfileTab(tab);
+    if (Object.hasOwn(PROFILE_EMPLOYEE_TABS, tab) && !isOwnProfile) tab = 'professions';
     const requestSeq = ++profileTabRequestSeq;
     activeTab = tab;
     if (!options.skipUrl) syncProfileTabToUrl(tab);
@@ -2115,19 +2134,27 @@ async function switchTab(tab, options = {}) {
     document.querySelectorAll('.profile-soon-menu-item').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.profileTab === tab);
     });
+    if (Object.hasOwn(PROFILE_EMPLOYEE_TABS, tab)) void loadProfileEmployeeMonth(tab);
     return true;
 }
 
 async function setProfileProfessionContext(key) {
     const normalized = normalizeProfileProfessionKey(key);
     if (!profileProfessionKeys().includes(normalized)) return;
+    const focused = document.activeElement;
+    const selector = focused?.classList.contains('profile-inline-switch')
+        ? '.profile-inline-switch' : '.profile-profession-switch';
+    const restoreFocus = focused?.dataset.profileProfession === normalized;
+    const tab = activeTab;
     activeProfessionKey = normalized;
     if (activeTab === 'materials') {
         const tabContent = document.getElementById('tabContent');
         if (tabContent) tabContent.innerHTML = renderProfileMaterialsTab();
         await loadProfileWorkMaterials(normalized);
     }
+    if (tab !== activeTab || normalized !== activeProfessionKey) return;
     renderProfile();
+    if (restoreFocus) document.querySelector(`${selector}[data-profile-profession="${normalized}"]`)?.focus();
 }
 
 function renderTabContent() {
@@ -2138,6 +2165,8 @@ function renderTabContent() {
         case 'professions': return renderProfileProfessionsTab();
         case 'checklists': return renderProfileChecklistsTab();
         case 'materials': return renderProfileMaterialsTab();
+        case 'salary':
+        case 'results': return isOwnProfile ? renderProfileEmployeeMonth(activeTab) : '';
         case 'myday': return renderMyDayTab();
         case 'mytasks': return renderMyDayTab();
         case 'settings': return renderProfileSettingsTab();
@@ -2155,36 +2184,200 @@ function renderTabContent() {
     }
 }
 
-function profileProfessionGuide(role = profileRole()) {
-    const entry = profileProfessionEntry(role || profilePrimaryProfessionKey(), { primary: true });
-    return {
-        focus: entry.shortInfo,
-        responsibilities: entry.responsibilities,
-        checklist: entry.checklist
-    };
+function profileEmployeeSelectedMonth() {
+    const month = new URLSearchParams(window.location.search).get('month');
+    return /^(?:19|20)\d{2}-(?:0[1-9]|1[0-2])$/.test(month || '') ? month
+        : new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' }).format(new Date()).slice(0, 7);
 }
 
-function profileProfessionContext() {
-    const p = profileData || {};
-    const user = profileUser(p);
-    const role = profilePrimaryProfessionKey();
-    const primaryProfession = profileProfessionEntry(role, { primary: true });
-    const shift = p.nextShift || p.todayShift || {};
-    return {
-        role,
-        roleLabel: primaryProfession.title,
-        displayName: profileDisplayName(p),
-        username: profileUsername(p),
-        department: primaryProfession.department || shift.department || user.department || p.department || '',
-        position: shift.position || user.position || p.position || primaryProfession.title,
-        telegramConnected: Boolean(user.telegramConnected),
-        guide: {
-            focus: primaryProfession.shortInfo,
-            responsibilities: primaryProfession.responsibilities,
-            checklist: primaryProfession.checklist
-        },
-        professions: profileProfessionEntries()
+async function loadProfileEmployeeMonth(tab, month = profileEmployeeSelectedMonth()) {
+    if (!isOwnProfile || activeTab !== tab || !Object.hasOwn(PROFILE_EMPLOYEE_TABS, tab)) return;
+    if (!/^(?:19|20)\d{2}-(?:0[1-9]|1[0-2])$/.test(month)) return;
+    if (month !== profileEmployeeSelectedMonth()) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('month', month);
+        window.history.pushState({ profileTab: tab }, '', url);
+    }
+    const state = { month, loading: true };
+    profileEmployeeMonthState[tab] = state;
+    const update = () => {
+        if (activeTab !== tab || profileEmployeeMonthState[tab] !== state) return;
+        const body = document.getElementById('profileEmployeeMonthBody');
+        const selector = document.getElementById('profileEmployeeMonthInput');
+        if (selector && selector.value !== month) selector.value = month;
+        if (!body) return;
+        const restoreFocus = body.contains(document.activeElement);
+        body.setAttribute('aria-busy', String(state.loading));
+        body.innerHTML = renderProfileEmployeeMonthBody(tab, state);
+        if (restoreFocus) (body.querySelector('button') || selector)?.focus();
     };
+    update();
+    const data = await apiGetScoped(`/auth/profile/me/${tab}?month=${encodeURIComponent(month)}`);
+    state.data = data?.month === month ? data : null;
+    state.loading = false;
+    update();
+}
+
+function renderProfileEmployeeMonth(tab) {
+    const month = profileEmployeeSelectedMonth();
+    const current = profileEmployeeMonthState[tab];
+    const state = current?.month === month ? current : { loading: true };
+    return `
+        <section class="profile-work-panel profile-employee-month" aria-labelledby="profileEmployeeMonthTitle">
+            <div class="profile-panel-head">
+                <h2 id="profileEmployeeMonthTitle">${PROFILE_EMPLOYEE_TABS[tab]}</h2>
+                <label>Місяць
+                    <input id="profileEmployeeMonthInput" type="month" min="1900-01" max="2099-12"
+                        value="${month}" onchange="loadProfileEmployeeMonth('${tab}', this.value)">
+                </label>
+            </div>
+            <div id="profileEmployeeMonthBody" aria-busy="${state.loading}">
+                ${renderProfileEmployeeMonthBody(tab, state)}
+            </div>
+        </section>`;
+}
+
+function renderProfileEmployeeMonthBody(tab, state) {
+    if (state.loading) return '<p role="status">Завантаження…</p>';
+    if (!state.data) return `<p role="alert">Не вдалося завантажити дані за цей місяць.</p>
+        <button type="button" class="profile-inline-switch" onclick="loadProfileEmployeeMonth('${tab}')">Спробувати ще раз</button>`;
+    if (state.data.state === 'unavailable') return '<p role="status">Дані працівника недоступні в цьому кабінеті.</p>';
+    return tab === 'salary' ? renderProfileEmployeeSalary(state.data) : renderProfileEmployeeResults(state.data);
+}
+
+const profileSalaryFormat = new Intl.NumberFormat('uk-UA', { style: 'currency', currency: 'UAH' });
+const profileResultNumber = new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 2 });
+const profileEmployeeDate = new Intl.DateTimeFormat('uk-UA', { timeZone: 'Europe/Kyiv', dateStyle: 'short' });
+const profileEmployeeTime = new Intl.DateTimeFormat('uk-UA', { timeZone: 'Europe/Kyiv', timeStyle: 'short' });
+
+function profileEmployeeDateText(date, format = profileEmployeeDate) {
+    if (!date || !Number.isFinite(Date.parse(date))) return '—';
+    return format.format(new Date(date));
+}
+
+function profileEmployeeMoney(value) {
+    return value == null || !Number.isFinite(Number(value)) ? 'Немає даних' : profileSalaryFormat.format(value);
+}
+
+function profileEmployeeNumber(value) {
+    return value == null ? '—' : profileResultNumber.format(value);
+}
+
+function renderProfileEmployeeDetails(title, rows, empty = 'Даних за цей період немає.') {
+    return `<section class="profile-employee-details"><h3>${title}</h3>${rows.length
+        ? `<ul>${rows.map(([label, value]) => `<li><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></li>`).join('')}</ul>`
+        : `<p>${escapeHtml(empty)}</p>`}</section>`;
+}
+
+function renderProfileEmployeeSalary(data) {
+    const reportStatus = { preview: 'Попередній розрахунок', draft: 'Збережена чернетка', reviewed: 'Перевірено',
+        approved: 'Затверджено', paid: 'Закрито в обліку', voided: 'Скасовано', reversed: 'Сторновано' };
+    const adjustmentStatus = { applied: 'Враховано', pending: 'Очікує погодження', pending_review: 'Очікує погодження',
+        rejected: 'Відхилено', voided: 'Скасовано' };
+    const types = { bonus: 'Премія', kpi_bonus: 'Бонус за показниками', tip: 'Чайові', deduction: 'Утримання',
+        penalty: 'Штраф', advance: 'Аванс', zrs: 'ЗРС' };
+    const units = { hour: 'год', day: 'зміну', shift: 'зміну', month: 'місяць', piece: 'роботу' };
+    const installments = { advance: 'Аванс', final: 'Остаточна виплата' };
+    const paymentStatus = { draft: 'Чернетка', approved: 'Затверджено', paid: 'Виплачено',
+        partially_paid: 'Частково виплачено', cancelled: 'Скасовано' };
+    const detail = data.detail || {};
+    const work = [['Відпрацьовані дні', detail.shifts], ['Фізичні години', detail.physicalHours],
+        ['Години основних професій', detail.baseRoleHours], ['Години додаткових професій', detail.additionalRoleHours]];
+    const rates = (detail.rates || []).map(rate => {
+        const profession = profileProfessionByKey(rate.profession)?.title || profileRoleLabel(rate.profession || '');
+        const day = rate.date ? ` · ${profileEmployeeDateText(rate.date)}` : '';
+        const unit = units[rate.unit] ? ` за ${units[rate.unit]}` : '';
+        const workTime = rate.minutes > 0 ? ` · ${profileEmployeeNumber(rate.minutes / 60)} год`
+            : rate.days > 0 ? ` · змін: ${rate.days}` : '';
+        const period = rate.effectiveFrom || rate.effectiveTo
+            ? ` · дія: ${profileEmployeeDateText(rate.effectiveFrom)} — ${profileEmployeeDateText(rate.effectiveTo)}` : '';
+        return [`${profession}${rate.kind === 'additional' ? ' · додаткова оплата' : ''}${day}${workTime}${period}`,
+            `${profileEmployeeMoney(rate.rate)}${unit} · ${profileEmployeeMoney(rate.amount)}`];
+    });
+    const lines = (detail.lines || []).map(line => [line.label || 'Складова розрахунку', profileEmployeeMoney(line.amount)]);
+    const adjustments = (data.adjustments || []).map(row => [
+        [profileEmployeeDateText(row.date), types[row.type] || 'Коригування', row.reason, adjustmentStatus[row.status] || 'Статус не визначено'].filter(Boolean).join(' · '),
+        profileEmployeeMoney(row.amount)
+    ]);
+    const late = (data.late || []).map(row => [
+        `${profileEmployeeDateText(row.date)} · план ${row.planned?.slice(0, 5) || '—'} · факт ${profileEmployeeDateText(row.actual, profileEmployeeTime)}`,
+        [`${row.minutes} хв`, ...(row.adjustments || []).map(item =>
+            `утримання: ${profileEmployeeMoney(item.amount)} (${adjustmentStatus[item.status] || 'статус не визначено'})`)].join(' · ')
+    ]);
+    const payments = (data.installments || []).flatMap(item => [
+        [[installments[item.kind] || 'Виплата', paymentStatus[item.status] || '', item.scheduled ? profileEmployeeDateText(item.scheduled) : ''].filter(Boolean).join(' · '),
+            item.approved == null ? `Попередньо: ${profileEmployeeMoney(item.calculated)}` : profileEmployeeMoney(item.approved)],
+        ...item.movements.map(movement => [
+            `${movement.kind === 'reversal' ? 'Сторно' : 'Фактична виплата'} · ${profileEmployeeDateText(movement.date)}`,
+            profileEmployeeMoney(movement.amount)
+        ])
+    ]);
+    return `
+        <p role="status">${escapeHtml(reportStatus[data.status] || 'За цей місяць немає збереженого розрахунку.')}
+            ${data.locked ? ' · період закрито' : ''}
+            ${data.updatedAt ? ` · станом на ${profileEmployeeDateText(data.updatedAt)}` : ''}</p>
+        <dl class="profile-employee-summary">
+            ${[['Нараховано', data.gross], ['Утримано', data.deductions], ['Виплачено', data.paid], ['Залишок до виплати', data.balance]]
+                .map(([label, value]) => `<div><dt>${label}</dt><dd>${profileEmployeeMoney(value)}</dd></div>`).join('')}
+        </dl>
+        ${data.legacyAccounted ? '<p>Старий звіт закрито в обліку. Підтверджених дат і сум виплат у цьому джерелі немає.</p>' : ''}
+        ${detail.hasBlockingIssues ? '<p>Розрахунок містить позиції, які потребують звірки.</p>' : ''}
+        ${renderProfileEmployeeDetails('Розрахунок', [
+            ...work.filter(([, value]) => value != null).map(([label, value]) => [label, profileEmployeeNumber(value)]),
+            ...lines,
+            ...(data.net != null ? [['Після утримань і врахованих авансів', profileEmployeeMoney(data.net)]] : [])
+        ])}
+        ${detail.effectiveFrom || detail.effectiveTo ? `<p>Період дії схеми: ${profileEmployeeDateText(detail.effectiveFrom)} — ${profileEmployeeDateText(detail.effectiveTo)}</p>` : ''}
+        ${renderProfileEmployeeDetails('Ставки за професіями', rates, 'За цей місяць немає підтверджених даних про застосовані ставки.')}
+        ${renderProfileEmployeeDetails('Премії та утримання за записами HR', adjustments)}
+        ${renderProfileEmployeeDetails('Запізнення', late, 'Запізнень за журналом присутності не знайдено.')}
+        ${late.length ? '<p>Зв’язок показано для записів HR із датою порушення та правилом про запізнення.</p>' : ''}
+        ${renderProfileEmployeeDetails('Аванси й виплати', payments, 'Підтверджених записів про виплати немає.')}
+    `;
+}
+
+function renderProfileEmployeeResults(data) {
+    const current = data.current;
+    const previous = data.previous;
+    const punctuality = period => period.attendance.measuredArrivals
+        ? `${period.attendance.onTime} із ${period.attendance.measuredArrivals}`
+        : 'Немає даних';
+    const groups = [
+        ['Вчасні приходи (із записів з відомим планом і фактом)', punctuality],
+        ['Зафіксовані приходи', period => period.attendance.present],
+        ['Зафіксовані відсутності', period => period.attendance.absent],
+        ['Запізнення', period => period.attendance.late],
+        ['Хвилини запізнення', period => period.attendance.lateMinutes],
+        ['Задачі, завершені в цьому місяці', period => period.tasks.completed],
+        ['Задачі з дедлайном у цьому місяці, які прострочено', period => period.tasks.overdue],
+        ['Завершені пункти професійних чеклістів', period => period.checklistCompleted],
+        ['Завершені курси', period => period.coursesCompleted.length]
+    ];
+    const courses = current.coursesCompleted.map(course => [course.title, profileEmployeeDateText(course.date)]);
+    const ratings = current.ratings.filter(item => Number(item.score) >= 1 && Number(item.score) <= 5)
+        .map(item => [[profileEmployeeDateText(item.date), item.explanation].filter(Boolean).join(' · '), `${profileEmployeeNumber(Number(item.score))} із 5`]);
+    const admission = { approved: 'Допущено', pending: 'Очікує допуску', blocked: 'Допуск заблоковано', restricted: 'Обмежений допуск' };
+    const assignments = (data.currentAssignments || []).filter(item => admission[item.admissionStatus]).map(item => [
+        profileProfessionByKey(item.key)?.title || profileRoleLabel(item.key), admission[item.admissionStatus]
+    ]);
+    return `
+        <div class="profile-employee-comparison">
+            <table>
+                <caption>Порівняння з попереднім місяцем</caption>
+                <thead><tr><th scope="col">Показник</th><th scope="col">${escapeHtml(current.month.replace('-', '‑'))}</th><th scope="col">${escapeHtml(previous.month.replace('-', '‑'))}</th></tr></thead>
+                <tbody>${groups.map(([label, read], index) => {
+                    const value = period => index > 0 && index < 5 && !period.attendance.daysRecorded ? 'Немає даних' : read(period);
+                    return `<tr><th scope="row">${escapeHtml(label)}</th><td>${escapeHtml(value(current))}</td><td>${escapeHtml(value(previous))}</td></tr>`;
+                }).join('')}</tbody>
+            </table>
+        </div>
+        <p>Джерела: журнал присутності, задачі з прив’язаним акаунтом, записи виконання чеклістів і навчання.
+            Старі задачі без прив’язки до акаунта та зміни, які не потрапили до журналу, не враховані.</p>
+        ${renderProfileEmployeeDetails('Оцінки керівника', ratings, 'За цей місяць оцінок у журналі немає.')}
+        ${renderProfileEmployeeDetails('Завершені курси', courses)}
+        ${renderProfileEmployeeDetails('Поточні допуски', assignments, 'Немає підтверджених записів про допуски.')}
+        <p>Допуски показано за поточним станом. Помісячна історія допусків недоступна.</p>
+    `;
 }
 
 function profileAllProfessionTasks() {
@@ -2236,14 +2429,7 @@ function renderProfileProfessionFallbackChecklist(items = []) {
 }
 
 function renderProfileProfessionChecklist() {
-    const checklistTasks = profileProfessionChecklistTasks();
-    const checklistItems = profileProfessionEntries()
-        .flatMap(entry => (entry.checklist || []).map(item => `${entry.title}: ${item}`))
-        .slice(0, 8);
-    if (checklistTasks.length) {
-        return `<div class="profile-work-list">${checklistTasks.map(task => renderProfileTaskRow(task, 'Чекліст')).join('')}</div>`;
-    }
-    return renderProfileProfessionFallbackChecklist(checklistItems.length ? checklistItems : profileProfessionGuide().checklist);
+    return renderProfileChecklistItemsForProfession();
 }
 
 function renderProfileChecklistItemsForProfession(entry = profileActiveProfessionEntry()) {
@@ -2265,7 +2451,7 @@ function renderProfileChecklistsTab() {
             <section class="profile-work-panel profile-work-panel-primary profile-role-focus-panel" style="--profession-color:${escapeHtml(active.color)}">
                 <div class="profile-panel-head">
                     <div>
-                        <span class="profile-kicker">Чекліст активної професії</span>
+                        <span class="profile-kicker">Шаблон чекліста обраної професії</span>
                         <h2>${escapeHtml(active.title)}</h2>
                     </div>
                     <span>${escapeHtml(active.department || active.key)}</span>
@@ -2276,14 +2462,13 @@ function renderProfileChecklistsTab() {
             <section class="profile-work-panel profile-work-panel-tasks">
                 <div class="profile-panel-head">
                     <div>
-                        <span class="profile-kicker">Живі checklist-задачі</span>
-                        <h2>З task engine</h2>
+                        <h2>Мої задачі з чеклістами</h2>
                     </div>
                     <a href="/tasks?category=checklist">Задачі</a>
                 </div>
                 ${tasks.length
                     ? `<div class="profile-work-list">${tasks.map(task => renderProfileTaskRow(task, 'Чекліст')).join('')}</div>`
-                    : '<div class="profile-empty-professional">Активних checklist-задач для цього профілю зараз немає.</div>'}
+                    : '<div class="profile-empty-professional">Задач із чеклістами зараз немає.</div>'}
             </section>
             <section class="profile-work-panel profile-work-panel-wide">
                 <div class="profile-panel-head">
@@ -2291,14 +2476,14 @@ function renderProfileChecklistsTab() {
                         <span class="profile-kicker">Усі професійні чеклісти</span>
                         <h2>Швидкий доступ</h2>
                     </div>
-                    <a href="/hr?tab=checklists">HR чеклісти</a>
+                    ${profileCanAccessHr('hr.staff.view') ? '<a href="/hr?tab=checklists">HR чеклісти</a>' : ''}
                 </div>
                 <div class="profile-profession-roster">
                     ${profileProfessionEntries().map(entry => `
-                        <article class="profile-profession-card ${entry.key === active.key ? 'is-primary' : ''}" style="--profession-color:${escapeHtml(entry.color)}">
+                        <article class="profile-profession-card ${entry.primary ? 'is-primary' : ''}" style="--profession-color:${escapeHtml(entry.color)}">
                             <div class="profile-profession-card-head">
-                                <span>${entry.key === active.key ? 'Активна' : (entry.primary ? 'Основна' : 'Додаткова')}</span>
-                                <button type="button" class="profile-inline-switch" onclick="setProfileProfessionContext('${escapeHtml(entry.key)}')">Відкрити</button>
+                                <span>${entry.primary ? 'Основна' : 'Додаткова'}</span>
+                                <button type="button" class="profile-inline-switch" data-profile-profession="${escapeHtml(entry.key)}" aria-pressed="${entry.key === active.key}" onclick="setProfileProfessionContext('${escapeHtml(entry.key)}')">Відкрити</button>
                             </div>
                             <h3>${escapeHtml(entry.title)}</h3>
                             ${renderProfileChecklistItemsForProfession(entry)}
@@ -2339,6 +2524,7 @@ function profileNormalizeMaterialDate(value) {
 
 async function loadProfileWorkMaterials(key = profileActiveProfessionEntry().key, options = {}) {
     const normalized = normalizeProfileProfessionKey(key) || profileActiveProfessionEntry().key;
+    if (normalized === 'default') return;
     if (!options.force && profileMaterialsState.loaded && profileMaterialsState.key === normalized) return profileMaterialsState;
     profileMaterialsState = {
         key: normalized,
@@ -2348,6 +2534,7 @@ async function loadProfileWorkMaterials(key = profileActiveProfessionEntry().key
         materials: [],
         error: ''
     };
+    const pending = profileMaterialsState;
     const tabContent = document.getElementById('tabContent');
     if (activeTab === 'materials' && tabContent) tabContent.innerHTML = renderProfileMaterialsTab();
     try {
@@ -2356,6 +2543,7 @@ async function loadProfileWorkMaterials(key = profileActiveProfessionEntry().key
             apiGet(`/training/knowledge-base?role=${trainingRole}`),
             apiGet('/training/materials?page=1&limit=30')
         ]);
+        if (profileMaterialsState !== pending) return;
         const entry = profileProfessionEntry(normalized, { primary: normalized === profilePrimaryProfessionKey() });
         const articles = Array.isArray(knowledgeBase?.articles) ? knowledgeBase.articles : [];
         const allMaterials = Array.isArray(legacyMaterials?.materials) ? legacyMaterials.materials : [];
@@ -2371,6 +2559,7 @@ async function loadProfileWorkMaterials(key = profileActiveProfessionEntry().key
             error: ''
         };
     } catch (error) {
+        if (profileMaterialsState !== pending) return;
         console.warn('Profile materials load failed', error);
         profileMaterialsState = {
             key: normalized,
@@ -2415,6 +2604,7 @@ function renderProfileLegacyMaterialCard(material) {
 
 function renderProfileMaterialsTab() {
     const active = profileActiveProfessionEntry();
+    if (active.key === 'default') return '<p class="profile-empty-professional">Матеріали з’являться після призначення професії.</p>';
     const state = profileMaterialsState.key === active.key ? profileMaterialsState : {
         loading: false,
         loaded: false,
@@ -2489,16 +2679,27 @@ function renderProfileProfessionResponsibilities(items = []) {
         </div>`;
 }
 
+function profileCanAccessHr(action) {
+    return typeof canAccessPage === 'function' && canAccessPage('/hr')
+        && typeof canUseAction === 'function' && canUseAction(action);
+}
+
 function renderProfileProfessionCard(entry) {
+    const selected = entry.key === ensureActiveProfessionKey();
+    const status = { active: 'Активна', inactive: 'Неактивна', suspended: 'Призупинена' };
+    const admission = { approved: 'Допущено', pending: 'Очікує допуску', blocked: 'Допуск заблоковано' };
+    const internship = { in_progress: 'Стажування триває', completed: 'Стажування завершено' };
+    const assignmentLabels = [status[entry.assignment?.status], admission[entry.assignment?.admissionStatus], internship[entry.assignment?.internshipStatus]].filter(Boolean);
     return `
         <article class="profile-profession-card ${entry.primary ? 'is-primary' : ''}" style="--profession-color:${escapeHtml(entry.color)}">
             <div class="profile-profession-card-head">
-                <span>${entry.key === profileActiveProfessionEntry().key ? 'Активна' : (entry.primary ? 'Основна' : 'Додаткова')}</span>
-                <button type="button" class="profile-inline-switch" onclick="setProfileProfessionContext('${escapeHtml(entry.key)}')">Обрати</button>
+                <span>${entry.primary ? 'Основна' : 'Додаткова'}</span>
+                <button type="button" class="profile-inline-switch" data-profile-profession="${escapeHtml(entry.key)}" aria-pressed="${selected}" onclick="setProfileProfessionContext('${escapeHtml(entry.key)}')">${selected ? 'Обрана' : 'Обрати'}</button>
                 ${entry.department ? `<small>${escapeHtml(entry.department)}</small>` : ''}
             </div>
             <h3>${escapeHtml(entry.title)}</h3>
             <p>${escapeHtml(entry.shortInfo || 'Короткий опис ще не заповнено в HR каталозі.')}</p>
+            ${assignmentLabels.length ? `<div class="profile-profession-meta">${assignmentLabels.map(label => `<span>${label}</span>`).join('')}</div>` : ''}
             ${renderProfileProfessionResponsibilities((entry.responsibilities || []).slice(0, 4))}
             ${(entry.checklist || []).length ? `
                 <div class="profile-profession-card-checklist">
@@ -2513,10 +2714,9 @@ function renderProfileProfessionsTab() {
     const tasks = p.tasks || {};
     const myTasks = Array.isArray(p.myTasks) ? p.myTasks : [];
     const overdue = Array.isArray(tasks.overdueList) ? tasks.overdueList : [];
-    const context = profileProfessionContext();
-    const guide = context.guide;
     const nextShift = p.nextShift || p.todayShift || null;
-    const professions = context.professions || profileProfessionEntries();
+    const professions = profileProfessionEntries();
+    if (!professions.length) return '<p class="profile-empty-professional">Професії ще не призначено. Зверніться до відповідального за команду, якщо очікуєте тут свої професії.</p>';
     const activeProfession = profileActiveProfessionEntry();
 
     return `
@@ -2524,44 +2724,34 @@ function renderProfileProfessionsTab() {
             <section class="profile-work-panel profile-profession-hero">
                 <div class="profile-panel-head">
                     <div>
-                        <span class="profile-kicker">Активний професійний контекст</span>
+                        <span class="profile-kicker">Обрана професія</span>
                         <h2>${escapeHtml(activeProfession.title)}</h2>
                     </div>
-                    <span>${escapeHtml(activeProfession.department || context.position || context.roleLabel)}</span>
+                    ${activeProfession.department ? `<span>${escapeHtml(activeProfession.department)}</span>` : ''}
                 </div>
-                <p>${escapeHtml(activeProfession.shortInfo || guide.focus)}</p>
+                <p>${escapeHtml(activeProfession.shortInfo)}</p>
                 <div class="profile-profession-meta">
-                    <span>Основна: ${escapeHtml(professions[0]?.title || activeProfession.title)}</span>
-                    <span>Активна: ${escapeHtml(activeProfession.title)}</span>
-                    ${professions.length > 1 ? `<span>${professions.length - 1} додаткові професії</span>` : ''}
-                    ${context.department ? `<span>Зона: ${escapeHtml(context.department)}</span>` : ''}
-                    ${context.username ? `<span>@${escapeHtml(context.username)}</span>` : ''}
-                    <span>${context.telegramConnected ? 'Telegram підключено' : 'Telegram не підключено'}</span>
+                    <span>${activeProfession.primary ? 'Основна професія' : 'Додаткова професія'}</span>
                 </div>
-                ${renderProfileProfessionResponsibilities(activeProfession.responsibilities || guide.responsibilities)}
+                ${renderProfileProfessionResponsibilities(activeProfession.responsibilities)}
             </section>
 
             <section class="profile-work-panel profile-profession-roster-panel">
                 <div class="profile-panel-head">
                     <div>
-                        <span class="profile-kicker">Професії працівника</span>
-                        <h2>Primary + additional</h2>
+                        <h2>Призначені професії</h2>
                     </div>
-                    <a href="/hr#team">Редагувати в HR</a>
+                    ${profileCanAccessHr('hr.staff.manage') ? '<a href="/hr#team">Редагувати в HR</a>' : ''}
                 </div>
                 <div class="profile-profession-roster">
-                    ${professions.map(entry => renderProfileProfessionCard({
-                        ...entry,
-                        primary: entry.key === activeProfession.key ? true : entry.primary
-                    })).join('')}
+                    ${professions.map(renderProfileProfessionCard).join('')}
                 </div>
             </section>
 
             <section class="profile-work-panel profile-profession-checklist-panel">
                 <div class="profile-panel-head">
                     <div>
-                        <span class="profile-kicker">Чекліст ролі</span>
-                        <h2>Що тримати під контролем</h2>
+                        <h2>Шаблон чекліста професії</h2>
                     </div>
                     <a href="/tasks?view=my">Відкрити задачі</a>
                 </div>
@@ -2572,7 +2762,7 @@ function renderProfileProfessionsTab() {
                 <div class="profile-panel-head">
                     <div>
                         <span class="profile-kicker">Операційний стан</span>
-                        <h2>Сьогодні для ролі</h2>
+                        <h2>Мої зміни та задачі</h2>
                     </div>
                     ${nextShift ? '<span>зміна знайдена</span>' : '<span>без зміни</span>'}
                 </div>
@@ -2602,7 +2792,7 @@ function renderProfileProfessionsTab() {
                 </div>
                 ${myTasks.length
                     ? `<div class="profile-work-list">${myTasks.slice(0, 5).map(renderProfileTaskRow).join('')}</div>`
-                    : '<div class="profile-empty-professional">Активних задач для цієї ролі зараз немає.</div>'}
+                    : '<div class="profile-empty-professional">Активних задач зараз немає.</div>'}
             </section>
 
             <section class="profile-work-panel profile-profession-links-panel">
@@ -2615,7 +2805,7 @@ function renderProfileProfessionsTab() {
                 <div class="profile-quick-link-stack">
                     <a href="/profile?tab=myday">Мій день <span>особистий зріз</span></a>
                     <a href="/tasks?view=my">Повний список задач <span>основний модуль Tasks</span></a>
-                    <a href="/hr?tab=schedule">Графік <span>зміни й присутність</span></a>
+                    ${profileCanAccessHr('hr.schedule.view') ? '<a href="/hr?tab=schedule">Графік <span>зміни й присутність</span></a>' : ''}
                     <a href="/training">Навчання <span>матеріали ролі</span></a>
                 </div>
             </section>

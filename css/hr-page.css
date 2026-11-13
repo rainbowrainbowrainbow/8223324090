@@ -11055,3 +11055,28 @@ body.dark-mode #accountOnboardingOverlay .hr-account-eyebrow { color: #6ee7b7; }
     #accountOnboardingProgress { font-size: 12px; }
     #accountOnboardingSubmit { flex: 1 1 180px; }
 }
+
+/* Staff forms: keep the submit action beside the fields it applies to. */
+.hr-staff-form-actions { display: flex; justify-content: flex-end; margin: 12px 0 16px; }
+.hr-staff-form-actions button { min-height: 44px; min-width: 180px; padding: 10px 18px; }
+#editDocumentFile { width: 100%; min-width: 0; padding: 8px; border: 1px dashed var(--gray-300); border-radius: 12px; background: var(--gray-50); color: var(--gray-800); }
+#editDocumentFile::file-selector-button { min-height: 44px; margin-right: 12px; padding: 8px 16px; border: 1px solid var(--gray-300); border-radius: 9px; background: var(--white); color: var(--gray-800); font: inherit; font-weight: 700; cursor: pointer; }
+#editDocumentFile:focus-visible { outline: 3px solid var(--primary, #14b8a6); outline-offset: 2px; }
+#hrCreateStaffProfessionPicker > label { display: block; margin-bottom: 6px; }
+#hrCreateStaffProfessionPicker > select { width: 100%; }
+#hrCreateStaffSecondaryProfessions { margin-top: 8px; }
+#hrCreateStaffDialog select, #accountOnboardingOverlay select, #editStaffPosition { min-height: 44px; max-width: 100%; }
+#staffProfilePanelPayroll .hr-staff-payroll-preview-summary > div,
+#staffProfilePanelPayroll .hr-staff-payroll-legacy-row { background: var(--gray-50); }
+body.dark-mode #staffProfilePanelPayroll .hr-staff-payroll-preview-summary .is-positive,
+[data-theme="dark"] #staffProfilePanelPayroll .hr-staff-payroll-preview-summary .is-positive { color: #5eead4; }
+body.dark-mode #staffProfilePanelPayroll .hr-staff-payroll-preview-summary .is-negative,
+[data-theme="dark"] #staffProfilePanelPayroll .hr-staff-payroll-preview-summary .is-negative { color: #fca5a5; }
+@media (max-width: 640px) {
+    .hr-staff-form-actions, .hr-staff-form-actions button { width: 100%; }
+    #staffProfilePanelResources .hr-staff-foundation-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+.hr-staff-form-actions button[hidden] { display: none !important; }
+
+#hrCreateStaffProfessionPicker > label { font-size: 12px; font-weight: 800; color: var(--gray-700); }

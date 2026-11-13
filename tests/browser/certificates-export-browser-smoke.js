@@ -24,7 +24,7 @@ const api = read('js/api.js');
 const certificateApi = api.slice(api.indexOf('function certificateApiFailure('), api.indexOf('// v11.0: Kleshnya API'));
 const prelude = `
 const API_BASE = '/api';
-window.apiVerifyToken = async () => ({id: 1, username: 'synthetic-reception', role: 'reception'});
+window.apiVerifyToken = async () => ({id: 1, username: 'synthetic-admin', role: 'admin'});
 window.clearAuthStorage = () => {};
 window.hydrateBusinessOperatingProfile = async () => {};
 window.hydrateActionPermissions = async () => ({});

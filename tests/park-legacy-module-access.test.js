@@ -19,7 +19,7 @@ function request(context = 'event_genix', role = 'senior_manager', pageDenylist 
 }
 
 test('Park memberships can use both recovered surfaces with their canonical page permissions', () => {
-    for (const role of ['senior_manager', 'art_director', 'director', 'creator']) {
+    for (const role of ['senior_manager', 'director', 'creator']) {
         const req = request('event_genix', role);
         for (const surface of ['certificates', 'art']) {
             assert.equal(legacyBusinessSurfaceAccess(req, surface).available, true, `${role}:${surface}`);
@@ -45,7 +45,7 @@ test('new and batch certificate pages and Art aliases retain explicit denials', 
 });
 
 test('Park certificate code lookup requires both the check role and current Park membership', () => {
-    const allowed = request('event_genix', 'reception');
+    const allowed = request('event_genix', 'animator');
     allowed.path = '/code/CERT-2099-00001';
     assert.equal(legacyBusinessSurfaceAccess(allowed, 'certificates').available, true);
 
@@ -53,7 +53,7 @@ test('Park certificate code lookup requires both the check role and current Park
     deniedRole.path = '/code/CERT-2099-00001';
     assert.equal(legacyBusinessSurfaceAccess(deniedRole, 'certificates').available, false);
 
-    const foreignMembership = request('dar', 'reception');
+    const foreignMembership = request('dar', 'animator');
     foreignMembership.path = '/code/CERT-2099-00001';
     assert.equal(legacyBusinessSurfaceAccess(foreignMembership, 'certificates').available, false);
 });

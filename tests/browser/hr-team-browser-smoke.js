@@ -2187,6 +2187,13 @@ async function run() {
     }
 }
 
-run()
-    .then(() => (process.env.HR_TEAM_ACCOUNT_RECEIPT_ONLY === 'true' || process.env.HR_TEAM_OFFBOARDING_ONLY === 'true' || process.env.HR_TEAM_ACCOUNT_ACCESS_ONLY === 'true' || process.env.HR_TEAM_RATE_SAFETY_ONLY === 'true' || process.env.HR_TEAM_PAY_CONDITIONS_ONLY === 'true') ? undefined : require('./hr-structure-tree-browser-smoke').run())
+module.exports = { installHarness };
+
+if (require.main === module) run()
+    .then(async () => {
+        if (['HR_TEAM_ACCOUNT_RECEIPT_ONLY', 'HR_TEAM_OFFBOARDING_ONLY', 'HR_TEAM_ACCOUNT_ACCESS_ONLY',
+            'HR_TEAM_RATE_SAFETY_ONLY', 'HR_TEAM_PAY_CONDITIONS_ONLY'].some(key => process.env[key] === 'true')) return;
+        await require('./hr-team-ux-browser-smoke').run();
+        await require('./hr-structure-tree-browser-smoke').run();
+    })
     .catch(err => fail(err?.stack || err?.message || String(err)));

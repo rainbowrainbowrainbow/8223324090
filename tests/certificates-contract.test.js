@@ -114,10 +114,10 @@ test('certificate lookup exposes stable action reasons without permission detail
 });
 
 test('certificate redemption precheck requires the same Park business context as the write path', () => {
-    const parkMember = { businessContext: 'event_genix', accessMode: 'membership', businessId: 1, organizationId: 1, active: true, role: 'reception' };
-    const darMember = { businessContext: 'dar', accessMode: 'membership', businessId: 2, organizationId: 1, active: true, role: 'reception' };
+    const parkMember = { businessContext: 'event_genix', accessMode: 'membership', businessId: 1, organizationId: 1, active: true, role: 'admin' };
+    const darMember = { businessContext: 'dar', accessMode: 'membership', businessId: 2, organizationId: 1, active: true, role: 'admin' };
     const user = {
-        role: 'reception',
+        role: 'admin',
         businessMembershipAccess: {
             membershipEnabled: true,
             configured: true,
@@ -270,14 +270,14 @@ test('certificate date handling preserves PostgreSQL dates across winter and DST
 
 test('mobile certificate check grants only the designated Park operational roles', () => {
     const entry = PAGE_PERMISSION_BY_KEY['/certificates/check'];
-    const allowedRoles = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin', 'security', 'reception', 'animator'];
+    const allowedRoles = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin', 'animator'];
 
     assert.deepEqual(entry.defaultRoles, allowedRoles);
     assert.equal(entry.explicitAllow, false);
     for (const role of allowedRoles) {
         assert.equal(resolveCapability({ role }, '/certificates/check', { type: 'page' }).allowed, true, `${role} must be allowed`);
     }
-    for (const role of ['dishwasher', 'cleaning', 'maintenance', 'barista', 'wardrobe', 'cook', 'instructor']) {
+    for (const role of ['dishwasher', 'cleaning', 'maintenance', 'barista', 'wardrobe', 'cook', 'instructor', 'waiter', 'security', 'reception']) {
         assert.equal(resolveCapability({ role }, '/certificates/check', { type: 'page' }).allowed, false, `${role} must be denied`);
     }
     assert.equal(resolveCapability({ role: 'dishwasher', page_allowlist: ['/certificates/check'] }, '/certificates/check', { type: 'page' }).allowed, false);

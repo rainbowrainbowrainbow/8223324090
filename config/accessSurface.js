@@ -33,7 +33,7 @@ const SIDEBAR_PAGE_ROLE_EXCEPTIONS = [
     {
         path: '/',
         owner: 'timeline',
-        reason: 'Timeline page access allows all staff except waiter, but the sidebar exposes the link to operations roles only.'
+        reason: 'Timeline page access and sidebar visibility are limited to animators and event operations management.'
     }
 ];
 

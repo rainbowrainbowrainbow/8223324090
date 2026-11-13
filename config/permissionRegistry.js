@@ -37,6 +37,7 @@ const ROLE_HIERARCHY = Object.freeze([
 ]);
 
 const ALL_STAFF = Object.freeze(ROLE_HIERARCHY.filter(role => role !== 'waiter'));
+const EVENT_OPERATIONS_ACCESS = Object.freeze(['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin', 'animator']);
 const MANAGEMENT_UP = Object.freeze(['creator', 'director', 'vice_director', 'senior_manager']);
 const MANAGER_UP = Object.freeze([...MANAGEMENT_UP, 'manager']);
 const ADMIN_UP = Object.freeze([...MANAGER_UP, 'accountant', 'art_director', 'marketer', 'it_specialist', 'hr', 'admin']);
@@ -49,7 +50,6 @@ const TRAINING_ACCESS = Object.freeze([...MANAGER_UP, 'hr', 'senior_instructor',
 const GUARDIAN_OPS_ACCESS = Object.freeze(['creator', 'director', 'admin', 'security']);
 const FINANCE_ANALYTICS_ACCESS = Object.freeze(['creator', 'director', 'accountant']);
 const PAYMENT_CASHIER_ACCESS = Object.freeze(['creator', 'director', 'accountant', 'manager', 'senior_manager', 'admin', 'art_director', 'reception']);
-const CERTIFICATE_CHECK_ACCESS = Object.freeze(['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin', 'security', 'reception', 'animator']);
 const FISCAL_PHASE1_OPERATOR_ACCESS = Object.freeze(['creator', 'director', 'accountant', 'manager', 'senior_manager', 'admin', 'art_director']);
 const CASHIER_PRO_OPERATOR_ACCESS = Object.freeze(['creator', 'director', 'accountant', 'manager', 'senior_manager', 'admin']);
 const CASHIER_PRO_APPROVER_ACCESS = Object.freeze(['creator', 'director', 'accountant', 'manager', 'senior_manager']);
@@ -195,7 +195,7 @@ const PAGE_PERMISSIONS = Object.freeze([
     }),
     page({
         key: '/', label: 'Таймлайн', group: 'today', canonicalPath: '/',
-        defaultRoles: ALL_STAFF, risk: 'high', sidebarLinks: ['/', '/?educationSchedule=today'],
+        defaultRoles: EVENT_OPERATIONS_ACCESS, explicitAllow: false, risk: 'high', sidebarLinks: ['/', '/?educationSchedule=today'],
         frontendConsumers: [source('index.html', 'js/auth.js')],
         apiConsumers: [
             api('routes/bookings.js', '/api/bookings', null),
@@ -281,7 +281,7 @@ const PAGE_PERMISSIONS = Object.freeze([
     }),
     page({
         key: '/staff', label: 'Графік персоналу', group: 'team', canonicalPath: '/staff',
-        defaultRoles: ALL_STAFF, risk: 'high', sidebarLinks: ['/staff'],
+        defaultRoles: ROLE_HIERARCHY, risk: 'high', sidebarLinks: ['/staff'],
         frontendConsumers: [source('staff.html', 'js/auth.js')],
         apiConsumers: [api('routes/staff.js', '/api/staff', null)]
     }),
@@ -412,25 +412,25 @@ const PAGE_PERMISSIONS = Object.freeze([
     }),
     page({
         key: '/certificates', label: 'Сертифікати', group: 'product', canonicalPath: '/certificates',
-        defaultRoles: ALL_STAFF, risk: 'high', sidebarLinks: ['/certificates'],
+        defaultRoles: EVENT_OPERATIONS_ACCESS, explicitAllow: false, risk: 'high', sidebarLinks: ['/certificates'],
         frontendConsumers: [source('certificates.html', 'js/auth.js')],
         apiConsumers: [api('routes/certificates.js', '/api/certificates', null)]
     }),
     page({
         key: '/certificates/new', label: 'Видати сертифікат або абонемент', group: 'product', canonicalPath: '/certificates/new',
-        defaultRoles: ALL_STAFF, risk: 'high', sidebarLinks: ['/certificates/new'],
+        defaultRoles: EVENT_OPERATIONS_ACCESS, explicitAllow: false, risk: 'high', sidebarLinks: ['/certificates/new'],
         frontendConsumers: [source('certificates.html', 'js/auth.js')],
         apiConsumers: [api('routes/certificates.js', '/api/certificates', null)]
     }),
     page({
         key: '/certificates/batch', label: 'Пакет сертифікатів', group: 'product', canonicalPath: '/certificates/batch',
-        defaultRoles: ALL_STAFF, risk: 'high', sidebarLinks: ['/certificates/batch'],
+        defaultRoles: EVENT_OPERATIONS_ACCESS, explicitAllow: false, risk: 'high', sidebarLinks: ['/certificates/batch'],
         frontendConsumers: [source('certificates.html', 'js/auth.js')],
         apiConsumers: [api('routes/certificates.js', '/api/certificates', null)]
     }),
     page({
         key: '/certificates/check', label: 'Перевірка сертифіката', group: 'product', canonicalPath: '/certificates/check',
-        defaultRoles: CERTIFICATE_CHECK_ACCESS, risk: 'high',
+        defaultRoles: EVENT_OPERATIONS_ACCESS, risk: 'high',
         explicitAllow: false,
         frontendConsumers: [source('certificates.html', 'js/auth.js')],
         apiConsumers: [api('routes/certificates.js', '/api/certificates/code/:code', null)]
@@ -492,7 +492,7 @@ const ACTION_PERMISSIONS = Object.freeze([
         frontendConsumers: [source('js/hr-page.js', "'hr.today.view'", { enforces: true })], apiConsumers: [api('routes/hr.js', '/api/hr/today', null, 'Enforced by requireHrCapabilityContract.'), api('routes/hermes-schedule.js', '/api/hermes/attendance', null, 'GET: machine auth and hr.today.view capability.')]
     }),
     action({
-        key: 'hr.schedule.view', label: 'Перегляд HR-графіка', group: 'hr', defaultRoles: ALL_STAFF, risk: 'high',
+        key: 'hr.schedule.view', label: 'Перегляд HR-графіка', group: 'hr', defaultRoles: ROLE_HIERARCHY, risk: 'high',
         backendConsumers: [source('routes/hr.js', 'function requireHrCapabilityContract', { enforces: true })],
         frontendConsumers: [source('js/hr-page.js', "'hr.schedule.view'", { enforces: true }), source('js/hr-pulse-switcher.js', "'hr.schedule.view'", { enforces: true }), source('js/staff-page.js', "canUseStaffCapability('hr.schedule.view')", { enforces: true })],
         apiConsumers: [api('routes/hr.js', '/api/hr/shifts', null, 'Enforced by requireHrCapabilityContract.'), api('routes/staff.js', '/api/staff/schedule reads, shift-preferences reads, and schedule/export-xlsx', 'hr.schedule.view')]

@@ -82,7 +82,7 @@ test('certificate redemption against real PostgreSQL and authenticated HTTP rout
         server = await new Promise(resolve => { const listening = app.listen(0, '127.0.0.1', () => resolve(listening)); });
         const base = `http://127.0.0.1:${server.address().port}/api/certificates`;
 
-        async function account(role = 'reception') {
+        async function account(role = 'admin') {
             const user = (await pool.query(`INSERT INTO users (username, name, role, business_contexts, default_business_context)
                 VALUES ($1, 'Certificate Fixture', $2, '{event_genix,dar}', 'event_genix') RETURNING *`, ['fixture_' + crypto.randomUUID(), role])).rows[0];
             await pool.query("INSERT INTO organization_memberships (organization_id, user_id, role) VALUES (1, $1, 'member')", [user.id]);
@@ -175,24 +175,29 @@ test('certificate redemption against real PostgreSQL and authenticated HTTP rout
             assert.equal(row.audits, 1);
             const audit = (await pool.query("SELECT data FROM history WHERE data->>'certificateId' = $1", [String(cert.id)])).rows[0].data;
             assert.equal(audit.actorUserId, actor.user.id);
-            assert.equal(audit.actorRole, 'reception');
+            assert.equal(audit.actorRole, 'admin');
             assert.equal(audit.businessId, 1);
             assert.equal(audit.oldStatus, 'active');
             assert.equal(audit.newStatus, 'used');
             assert.equal((await request(actor, `/${cert.id}/redeem`)).status, 409);
         });
-        await t.test('exact mutation role list; security and animator remain verification-only', async () => {
+        await t.test('exact mutation role list; excluded staff cannot read and animator remains verification-only', async () => {
             for (const role of ['reception', 'admin', 'manager', 'senior_manager', 'vice_director', 'director', 'creator', 'security', 'animator']) {
                 const actor = await account(role);
                 const cert = await certificate();
-                const allowed = !['security', 'animator'].includes(role);
+                const pageAllowed = !['security', 'reception'].includes(role);
+                const allowed = pageAllowed && role !== 'animator';
                 const lookup = await request(actor, '/code/' + cert.cert_code, 'GET');
-                assert.equal(lookup.body.canRedeem, allowed, role);
-                assert.equal(lookup.body.redemptionReason, allowed ? 'available' : 'redemption_unavailable', role);
                 const validation = await request(actor, '/validate/' + cert.cert_code, 'GET');
-                assert.equal(validation.body.valid, true, role);
-                assert.equal(validation.body.canRedeem, allowed, role);
-                assert.equal(validation.body.redemptionReason, allowed ? 'available' : 'redemption_unavailable', role);
+                assert.equal(lookup.status, pageAllowed ? 200 : 403, role);
+                assert.equal(validation.status, pageAllowed ? 200 : 403, role);
+                if (pageAllowed) {
+                    assert.equal(lookup.body.canRedeem, allowed, role);
+                    assert.equal(lookup.body.redemptionReason, allowed ? 'available' : 'redemption_unavailable', role);
+                    assert.equal(validation.body.valid, true, role);
+                    assert.equal(validation.body.canRedeem, allowed, role);
+                    assert.equal(validation.body.redemptionReason, allowed ? 'available' : 'redemption_unavailable', role);
+                }
                 const result = await request(actor, `/${cert.id}/redeem`);
                 assert.equal(result.status, allowed ? 200 : 403, `${role}: ${JSON.stringify(result.body)}`);
                 assert.equal((await persisted(cert)).audits, allowed ? 1 : 0);

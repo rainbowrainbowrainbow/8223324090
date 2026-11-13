@@ -57,7 +57,7 @@ const SYSTEM_ACCOUNT_USERNAME = SYSTEM_ACCOUNT_USERNAMES;
 const SYSTEM_ACCOUNT_USERNAME_PREFIXES = Object.freeze(['openclaw', 'open_claw', 'open-claw']);
 
 const PROFESSION_ACCOUNT_ROLE_MAP = Object.freeze({
-    trampoline_instructor: 'animator',
+    trampoline_instructor: 'instructor',
     cleaner: 'cleaning',
     technician: 'maintenance',
     head_cook: 'head_chef',

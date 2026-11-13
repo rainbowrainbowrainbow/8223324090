@@ -183,7 +183,7 @@ test('existing-card account creation may omit professions while new-card creatio
 });
 
 test('account onboarding policies use one canonical mapping and protect system identities', () => {
-    assert.equal(professionToAccountRole('trampoline_instructor'), 'animator');
+    assert.equal(professionToAccountRole('trampoline_instructor'), 'instructor');
     assert.equal(professionToAccountRole('technician'), 'maintenance');
     assert.equal(professionToAccountRole('unknown_profession'), null);
     assert.equal(accountSystemStatus({ username: 'Guardian' }), 'guardian');

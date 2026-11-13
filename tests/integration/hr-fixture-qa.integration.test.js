@@ -173,8 +173,8 @@ test('Park HR QA writes register exact fixtures, suppress chat and retire the ru
         assert.equal(await page.evaluate(() => openAccountOnboardingWizard(null)), true);
         await page.locator('input[name="accountOnboardingStaffMode"][value="new"]').check();
         await page.locator('#accountOnboardingName').fill(staffName(2));
-        await page.locator('#accountOnboardingDepartment').fill('animators');
-        await page.locator('#accountOnboardingPosition').fill('QA Animator');
+        await page.locator('#accountOnboardingDepartment').selectOption({ index: 1 });
+        await page.locator('#accountOnboardingPosition').selectOption({ index: 1 });
         await page.locator('#accountOnboardingProfession-animator').check();
         await page.locator('#accountOnboardingPrimaryProfession-animator').check();
         const next = page.locator('#accountOnboardingNext');

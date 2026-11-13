@@ -468,6 +468,44 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
         }
     });
 
+    it('shows the same personal HR deadline in the cabinet and alert APIs until return', async () => {
+        const employee = await createUser('hr_alert_owner', 'waiter');
+        const other = await createUser('hr_alert_other', 'waiter');
+        const staff = (await query(`
+            INSERT INTO staff (name, department, position) VALUES ('HR API fixture', 'Fixture', 'Fixture') RETURNING id
+        `)).rows[0];
+        try {
+            await query('INSERT INTO employee_profiles (user_id, staff_id, full_name) VALUES ($1, $2, $3)',
+                [employee.id, staff.id, 'HR API fixture']);
+            const assignment = (await query(`
+                INSERT INTO staff_resource_assignments (staff_id, title, due_return_at, business_context)
+                VALUES ($1, 'HTTP reminder fixture', (now() AT TIME ZONE 'Europe/Kyiv')::date - 1, 'event_genix')
+                RETURNING id`, [staff.id])).rows[0];
+            const read = async (user, path, field) => {
+                const response = await request('GET', path, null, user.token);
+                assert.equal(response.status, 200, path);
+                assert.ok(Array.isArray(response.data[field]), path);
+                return response.data[field].filter(item => item.type === 'hr_deadline');
+            };
+            const cabinet = '/api/tasks/my-cabinet';
+            const alerts = '/api/dashboard/alerts';
+            const [personal, bell] = await Promise.all([
+                read(employee, cabinet, 'hrReminders'), read(employee, alerts, 'alerts')
+            ]);
+            assert.equal(personal.length, 1);
+            assert.equal(personal[0].stage, 'overdue');
+            assert.deepEqual(bell, personal);
+            assert.deepEqual(await read(other, cabinet, 'hrReminders'), []);
+            assert.deepEqual(await read(other, alerts, 'alerts'), []);
+            await query("UPDATE staff_resource_assignments SET status = 'returned' WHERE id = $1", [assignment.id]);
+            assert.deepEqual(await read(employee, cabinet, 'hrReminders'), []);
+            assert.deepEqual(await read(employee, alerts, 'alerts'), []);
+        } finally {
+            await query('DELETE FROM employee_profiles WHERE staff_id = $1', [staff.id]);
+            await query('DELETE FROM staff WHERE id = $1', [staff.id]);
+        }
+    });
+
     it('keeps migration 320 additive with tags column and tag_values constraint intact', async () => {
         const column = await query(
             `SELECT data_type, udt_name, is_nullable, column_default

@@ -15,18 +15,28 @@ async function run() {
     const target = assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL);
     assert.equal(target.isLocal, true);
     const db = new Pool({ connectionString: target.url.toString(), ssl: false });
-    const out = path.resolve(__dirname, '../../output/playwright/freelance-shift');
+    const membership = process.env.FREELANCE_BROWSER_MEMBERSHIP === 'true';
+    const out = path.resolve(__dirname, '../../output/playwright', membership ? 'freelance-shift-park' : 'freelance-shift');
     fs.mkdirSync(out, { recursive: true });
     const suffix = randomUUID().slice(0, 8);
     const date = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' }).format(new Date());
+    const businesses = {};
     const login = async role => {
         const username = `freelance_qa_${role}_${suffix}`;
         const password = randomUUID() + randomUUID();
-        await db.query(
+        const { rows: [user] } = await db.query(
             `INSERT INTO users (username, password_hash, role, name, business_contexts, default_business_context)
-             VALUES ($1, $2, $3, 'Synthetic Freelance QA', ARRAY['event_genix'], 'event_genix')`,
+             VALUES ($1, $2, $3, 'Synthetic Freelance QA', ARRAY['event_genix'], 'event_genix') RETURNING id`,
             [username, await bcrypt.hash(password, 10), role]
         );
+        if (membership) {
+            await db.query('INSERT INTO organization_memberships (organization_id, user_id, role) VALUES ($1,$2,$3)',
+                [businesses.event_genix.organization_id, user.id, role === 'creator' ? 'owner' : 'member']);
+            for (const [context, business] of Object.entries(businesses)) {
+                await db.query(`INSERT INTO business_memberships (business_id, organization_id, user_id, role, is_default)
+                    VALUES ($1,$2,$3,$4,$5)`, [business.id, business.organization_id, user.id, role, context === 'event_genix']);
+            }
+        }
         const response = await fetch(new URL('/api/auth/login', base), {
             method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Business-Context': 'event_genix' },
             body: JSON.stringify({ username, password })
@@ -34,18 +44,65 @@ async function run() {
         assert.equal(response.status, 200, `Synthetic ${role} login`);
         return response.json();
     };
-    const request = async (auth, route) => fetch(new URL(route, base), {
-        headers: { Authorization: 'Bearer ' + (auth.accessToken || auth.token), 'X-Business-Context': 'event_genix' }
+    const request = async (auth, route, { method = 'GET', context = 'event_genix', scope = 'single' } = {}) => fetch(new URL(route, base), {
+        method,
+        headers: { Authorization: 'Bearer ' + (auth.accessToken || auth.token), 'X-Business-Context': context,
+            'X-Business-Scope': scope }
     });
     let browser;
     let stage = 'fixture';
     try {
+        if (membership) {
+            const { rows: [organization] } = await db.query(`INSERT INTO organizations (slug, name)
+                VALUES ('isolated-freelance-browser', 'Synthetic Freelance QA')
+                ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name RETURNING id`);
+            for (const context of ['event_genix', 'dar']) {
+                const { rows: [business] } = await db.query(`INSERT INTO businesses
+                    (organization_id, context_key, label, short_label, access_mode)
+                    VALUES ($1,$2,$2,$2,'membership') ON CONFLICT (context_key) DO NOTHING RETURNING id, organization_id`,
+                [organization.id, context]);
+                businesses[context] = business || (await db.query(`SELECT id, organization_id FROM businesses
+                    WHERE organization_id = $1 AND context_key = $2 AND access_mode = 'membership'`, [organization.id, context])).rows[0];
+                assert.ok(businesses[context], 'Use an isolated registry owned by this browser fixture');
+            }
+        }
         const auth = await login('creator');
         const viewer = await login('animator');
+        if (membership) assert.equal(auth.user.membershipMode, 'membership');
         const endpoint = `/api/payroll/freelance/day?date=${date}`;
         assert.equal((await request(viewer, endpoint)).status, 403, 'Schedule user cannot read rates');
         const authorized = await request(auth, endpoint);
         assert.equal(authorized.status, 200, `Payroll read in ${auth.user.membershipMode || 'compatibility'} mode`);
+        if (membership) {
+            stage = 'membership boundaries';
+            const pay = '/api/payroll/freelance/payments';
+            assert.equal((await request(auth, '/api/payroll/payment-options')).status, 403);
+            assert.equal((await request(auth, pay, { method: 'POST', context: 'dar' })).status, 403);
+            assert.equal((await request(auth, pay, { method: 'POST', scope: 'all' })).status, 403);
+            const [owner] = (await db.query('SELECT id FROM users WHERE username = $1', [`freelance_qa_creator_${suffix}`])).rows;
+            const membershipParams = [businesses.event_genix.id, owner.id];
+            try {
+                for (const [action, route, method] of [
+                    ['view_payroll', endpoint, 'GET'],
+                    ['manage_payroll_rules', '/api/payroll/freelance/rates', 'GET'],
+                    ['manage_payroll_accrual', '/api/payroll/freelance/attendance', 'POST'],
+                    ['confirm_payroll_payment', pay, 'POST'],
+                    ['reverse_payroll_payment', '/api/payroll/freelance/reversals', 'POST']
+                ]) {
+                    await db.query('UPDATE business_memberships SET action_denylist = ARRAY[$3] WHERE business_id = $1 AND user_id = $2',
+                        [...membershipParams, action]);
+                    assert.equal((await request(auth, route, { method })).status, 403, action);
+                    if (action === 'confirm_payroll_payment') {
+                        assert.equal((await request(auth, '/api/payroll/freelance/payment-options')).status, 200);
+                    }
+                }
+                await db.query('UPDATE business_memberships SET is_active = false WHERE business_id = $1 AND user_id = $2', membershipParams);
+                assert.equal((await request(auth, endpoint)).status, 403);
+            } finally {
+                await db.query("UPDATE business_memberships SET is_active = true, action_denylist = '{}' WHERE business_id = $1 AND user_id = $2",
+                    membershipParams);
+            }
+        }
         const { rows: [staff] } = await db.query(
             `INSERT INTO staff (name, department, position, role_type, rate_unit, hourly_rate, is_active)
              VALUES ($1, 'animators', 'Synthetic QA', 'animator', 'hour', 120, true) RETURNING id`,
@@ -53,7 +110,8 @@ async function run() {
         );
         await db.query(
             `INSERT INTO finance_categories (name, type, business_context)
-             VALUES ($1, 'expense', 'event_genix')`, [`Freelance expense ${suffix}`]
+             VALUES ($1, 'expense', 'event_genix'), ($2, 'income', 'event_genix')`,
+            [`Freelance expense ${suffix}`, `Freelance reversal ${suffix}`]
         );
         await db.query(
             `INSERT INTO finance_accounts (name, business_context)
@@ -168,7 +226,19 @@ async function run() {
         await paid().waitFor();
         await paid().scrollIntoViewIfNeeded();
         await page.screenshot({ path: path.join(out, 'finance-mobile.png') });
-        console.log('Freelance actual-app browser journey passed');
+
+        stage = 'finance reversal';
+        await content.locator('.salary-main-panel').filter({ hasText: `Synthetic Freelance ${suffix}` })
+            .getByRole('button', { name: 'Сторнувати' }).click();
+        dialog = page.getByRole('dialog');
+        await dialog.locator('[name=categoryId]').selectOption({ label: `Freelance reversal ${suffix}` });
+        await dialog.locator('[name=reason]').fill('Synthetic reversal only');
+        const reversed = page.waitForResponse(response => response.url().includes('/api/payroll/freelance/reversals')
+            && response.request().method() === 'POST');
+        await dialog.getByRole('button', { name: 'Підтвердити', exact: true }).click();
+        assert.equal((await reversed).status(), 201);
+        await paymentPanel.getByText('До виплати', { exact: false }).waitFor();
+        console.log(`Freelance actual-app browser journey passed (${membership ? 'Park membership' : 'compatibility'})`);
     } catch (error) {
         throw new Error(`Freelance browser stage failed: ${stage}: ${error.message}`, { cause: error });
     } finally {

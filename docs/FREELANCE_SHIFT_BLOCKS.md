@@ -14,18 +14,18 @@ Base: `dd511e2f0da52da1401502991a68d476eee9ce44`, verified against the productio
 - The full baseline completed with exit code 0, including 3,988 unit tests. The subsequent Park response and preview changes passed focused schedule, HR and Park tests and a fresh actual-app browser journey.
 - Verified monthly and hourly cases on PostgreSQL: keeping the existing regular block permits an extra freelance block. Replacing planned regular work is rejected. A confirmed mixed day with a frozen hourly rate produces 480 UAH in regular pay and an independent 871 UAH freelance amount. The per-shift calculation flags mixed-day review.
 - The same PostgreSQL fixture preserves a separate freelance day without an agreed rate. Attendance confirmation returns `FREELANCE_TERMS_REQUIRED`, no settlement row appears, and creating a later default does not replace the previously saved plan.
-- Membership-mode access: the existing Park payroll gateway intentionally has no membership-enabled write lane for settlements. The freelance API currently follows this existing gate. Compatibility-mode browser evidence does not establish that the finance flow is available to Park membership-mode accounts. Resolving that boundary requires a separate scoped owner decision.
+- Membership-mode access: the owner approved the exact freelance routes below. The gateway checks fresh Park membership, payroll visibility, the action permission, writable scope for mutations and attendance ownership. The dedicated payment-options route uses the existing Finance catalog query.
 - The Park schedule projection includes the operational work mode on plans and factual allocations. It still strips the agreed rate, estimate and compensation details. A regression test covers both the round trip and the redaction.
 
 The PostgreSQL integration tests use an already migrated isolated local test database. Run them with `RUN_FREELANCE_SHIFT_INTEGRATION=true`, `TEST_DATABASE_URL` and the repository test target guard. The first fixture rolls back. The concurrency and browser tests commit synthetic history and require a disposable database.
 
-The actual app browser test is `tests/browser/freelance-shift-actual-app.js`. Set `RUN_FREELANCE_SHIFT_BROWSER=true`, the local `TEST_URL` and the isolated database variables. Use the existing Playwright tools and, if needed, point `FREELANCE_CHROMIUM_PATH` to a local Chromium binary. The test verifies authenticated schedule save/reload, role denial, confirmed time, payment registration and screenshots in `output/playwright/freelance-shift`.
+The actual app browser test is `tests/browser/freelance-shift-actual-app.js`. Set `RUN_FREELANCE_SHIFT_BROWSER=true`, the local `TEST_URL` and the isolated database variables. Use the existing Playwright tools and, if needed, point `FREELANCE_CHROMIUM_PATH` to a local Chromium binary. With `FREELANCE_BROWSER_MEMBERSHIP=true`, run against a disposable registry owned by the fixture. The test provisions synthetic Park and Dar memberships and verifies schedule save and reload, agreed terms, confirmed time, payment and reversal. It also checks access denial in Dar, aggregate read-only scope and revoked Park membership, and checks explicit permission denies. Desktop and 390 px captures are saved to `output/playwright/freelance-shift-park` for owner review. Compatibility mode saves to `output/playwright/freelance-shift`.
 
 Do not enable this feature in production from a partially verified build. The existing protected payroll release manifest is specific to its approved inventory and cannot be reused for this change. Review a release path separately. Retain migrations 392–394, confirmed attendance and finance movements on rollback. A compatible rollback build must keep work mode, payroll filtering and history guards whenever any freelance work has been recorded.
 
-## Proposed Park access scope for owner review
+## Approved Park access scope
 
-The change would use the existing Park membership and ownership checks on these exact method/path pairs. It requires separate approval before editing the gateway.
+The gateway applies the existing Park membership, payroll visibility and ownership checks to these exact method and path pairs.
 
 | Operation | Existing capability |
 | --- | --- |
@@ -34,6 +34,6 @@ The change would use the existing Park membership and ownership checks on these 
 | POST `/api/payroll/freelance/attendance` | `manage_payroll_accrual` |
 | POST `/api/payroll/freelance/payments` | `confirm_payroll_payment` |
 | POST `/api/payroll/freelance/reversals` | `reverse_payroll_payment` |
-| GET `/api/payroll/freelance/payment-options` (proposed dedicated endpoint) | `confirm_payroll_payment` or `reverse_payroll_payment` |
+| GET `/api/payroll/freelance/payment-options` | `confirm_payroll_payment` or `reverse_payroll_payment` |
 
-Use fresh single-business Park membership, existing payroll visibility and explicit deny rules, and writable business scope for every mutation. Keep the generic payment-options route and existing payroll settlement routes unchanged. Exercise the full browser flow using a synthetic membership-mode operator, then check denied access for another business, read-only scope, revoked membership and each explicit capability deny. Rollback removes only the exact freelance route admission and retains history and the ordinary-payroll filter.
+Rollback of Park access removes the freelance route admission and retains work modes, history and the ordinary-payroll filter.

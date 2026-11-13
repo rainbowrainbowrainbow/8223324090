@@ -29,7 +29,7 @@ const {
 const { closePayrollPeriod } = require('../services/hrPayrollPeriod');
 const { PAYROLL_HISTORICAL_CLASSIFICATION_MESSAGES } = require('../services/payrollSettlement');
 const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
-const { requireParkHrPayrollAccess } = require('../services/parkHrPayrollAccess');
+const { requireParkHrPayrollAccess, canReadFreelancePaymentOptions } = require('../services/parkHrPayrollAccess');
 const {
     agreeFreelanceSegmentTerms, confirmFreelanceAttendance, insertFreelanceRateVersion,
     listFreelanceRateOptions, listFreelanceSettlement, listFreelanceWorkDay, writeFreelanceMovement
@@ -354,7 +354,7 @@ router.patch('/schemes/:id', requireAction('manage_payroll_rules'), async (req, 
     }
 });
 
-router.get('/payment-options', requireAction('confirm_payroll_payment'), async (req, res) => {
+async function readPayrollPaymentOptions(req, res) {
     try {
         const businessContext = businessContextFromRequest(req);
         const [categories, accounts] = await Promise.all([
@@ -391,6 +391,16 @@ router.get('/payment-options', requireAction('confirm_payroll_payment'), async (
     } catch (err) {
         sendError(res, err);
     }
+}
+
+router.get('/payment-options', requireAction('confirm_payroll_payment'), readPayrollPaymentOptions);
+router.get('/freelance/payment-options', (req, res) => {
+    const scope = resolveBusinessScope(req);
+    if (scope.invalid || scope.mode !== 'single' || scope.activeContext !== DEFAULT_BUSINESS_CONTEXT
+        || !canReadFreelancePaymentOptions(req.user)) {
+        return res.status(403).json({ success: false, error: 'Немає доступу до параметрів фріланс-виплати.' });
+    }
+    return readPayrollPaymentOptions(req, res);
 });
 
 router.get('/preview', requireAction('view_payroll'), async (req, res) => {

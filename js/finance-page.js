@@ -1175,7 +1175,7 @@ async function loadFreelancePayroll() {
 }
 
 async function recordFreelanceFinanceMovement(row, reversalOf) {
-    const options = await fetchPayrollPaymentOptions();
+    const options = await payrollApiRequest('GET', payrollApiUrl('/api/payroll/freelance/payment-options'));
     if (!options) return;
     const original = row.movements.find(move => Number(move.id) === Number(reversalOf));
     const accounts = reversalOf ? options.accounts.filter(account => Number(account.id) === Number(original?.accountId)) : options.accounts;

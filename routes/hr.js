@@ -5823,6 +5823,8 @@ router.post('/shifts/:id/replace', requireHrManage, async (req, res) => {
             return res.status(409).json({ success: false, error: 'У підмінного співробітника вже є зміна на цю дату' });
         }
 
+        const { prepareFreelanceReassignment, snapshotReassignedFreelanceTerms } = require('../services/hrFreelanceWork');
+        await prepareFreelanceReassignment(client, loaded, replacementStaffId, toDateOnly(oldShift.shift_date));
         await recordPaidRoleAuditEvents(client, {
             staffId: oldShift.staff_id,
             shiftId: req.params.id,
@@ -5857,6 +5859,9 @@ router.post('/shifts/:id/replace', requireHrManage, async (req, res) => {
             [replacementStaffId, reason, req.user?.username || null, req.params.id]
         );
 
+        await snapshotReassignedFreelanceTerms(
+            client, loaded.plan, replacementStaffId, toDateOnly(oldShift.shift_date), req.user?.username
+        );
         await removeMirroredStaffSchedule(oldShift.staff_id, oldShift.shift_date, client);
         await mirrorHrShiftToStaffSchedule(updated.rows[0], client);
         await reconcileRosterDates(client, [oldShift.shift_date]);

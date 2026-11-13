@@ -1067,7 +1067,8 @@ async function fetchPayrollPaymentOptions() {
 const freelancePayrollLabels = { unpaid: 'До виплати', partially_paid: 'Частково оплачено', paid: 'Оплачено' };
 
 function freelancePayrollPanelVisible() {
-    return salarySurfaceAvailability().available && payrollBusinessContext() === 'event_genix'
+    const scope = window.getCrmBusinessScope?.();
+    return scope?.mode === 'single' && scope.activeContext === 'event_genix'
         && financeCanUsePayrollAction('view_payroll');
 }
 
@@ -3215,6 +3216,7 @@ async function initFinancePage() {
     clearSalaryWorkspace();
     document.getElementById('tabSalary')?.addEventListener('click', event => {
         if (!event.target.closest('button')) return;
+        if (event.target.closest('#freelancePayrollPanel')) return;
         const availability = salarySurfaceAvailability();
         if (availability.available && salaryAvailability.available) return;
         event.preventDefault();

@@ -65,7 +65,8 @@ function fail(code, message, details = {}, status = 400) {
 
 function isHrShiftPlanError(error) {
     return error instanceof HrShiftPlanError || error?.name === 'HrShiftPlanError'
-        || error?.code === 'FREELANCE_MONTHLY_REPLACEMENT_UNSUPPORTED';
+        || error?.code === 'FREELANCE_MONTHLY_REPLACEMENT_UNSUPPORTED'
+        || error?.code === 'FREELANCE_REASSIGNMENT_REQUIRES_NEW_AGREEMENT';
 }
 
 function hrShiftPlanErrorPayload(error, extra = {}) {
@@ -1734,7 +1735,8 @@ async function preserveExistingSegmentsForMetadataUpdate(client, payload, curren
         || parseJsonArray(row.additional_profession_keys, []).length > 0
     );
     const hasLegacyPlanFields = hasLegacyTimeFields(payload) || hasLegacyProfessionFields(payload);
-    if (hasLegacyPlanFields && rows.some(row => row.work_mode === 'freelance')) {
+    if ((hasLegacyPlanFields || !WORKING_DAY_STATUSES.has(status))
+        && rows.some(row => row.work_mode === 'freelance')) {
         fail('HR_SHIFT_FREELANCE_EXPLICIT_PLAN_REQUIRED',
             'Для зміни фріланс-блоку використайте редактор блоків графіка',
             { hrShiftId: currentShift.id }, 409);

@@ -106,6 +106,33 @@ async function lockFreelanceDay(client, staffId, date) {
     return loaded;
 }
 
+async function prepareFreelanceReassignment(client, loaded, staffId, date) {
+    const blocks = loaded.plan.segments.filter(segment => segment.workMode === 'freelance');
+    if (!blocks.length) return;
+    const protectedWork = await client.query(
+        `SELECT 1 FROM hr_freelance_attendance_confirmations WHERE hr_shift_id = $1
+         UNION ALL
+         SELECT 1 FROM hr_freelance_segment_terms WHERE segment_id = ANY($2::bigint[])
+         UNION ALL
+         SELECT 1 FROM hr_time_records WHERE staff_id = $3 AND record_date = $4::date AND clock_in IS NOT NULL
+         LIMIT 1`,
+        [loaded.shift.id, blocks.map(block => block.id), loaded.shift.staff_id, date]
+    );
+    if (protectedWork.rowCount) {
+        throw freelanceError('FREELANCE_REASSIGNMENT_REQUIRES_NEW_AGREEMENT',
+            'Зміна має погоджені умови або відмітку виходу. Для іншого працівника потрібен окремий вихід', 409);
+    }
+    await assertFreelanceDoesNotReplaceMonthlyWork(client, staffId, date, loaded.plan.segments, []);
+}
+
+async function snapshotReassignedFreelanceTerms(client, plan, staffId, date, actor) {
+    for (const segment of plan.segments.filter(block => block.workMode === 'freelance')) {
+        await insertDefaultFreelanceTerms(client, {
+            segmentId: segment.id, staffId, date, actor, professionKey: segment.professionKey
+        });
+    }
+}
+
 async function agreeFreelanceSegmentTerms(client, input, actor) {
     const staffId = identifier(input.staffId);
     const segmentId = identifier(input.segmentId);
@@ -525,6 +552,8 @@ module.exports = {
     listFreelanceRateOptions,
     listFreelanceWorkDay,
     loadConfirmedFreelanceAllocations,
+    prepareFreelanceReassignment,
+    snapshotReassignedFreelanceTerms,
     writeFreelanceMovement,
     workDate
 };

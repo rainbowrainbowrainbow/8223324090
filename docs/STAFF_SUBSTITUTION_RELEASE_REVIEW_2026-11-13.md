@@ -13,7 +13,9 @@ protected booking changes, real-data fixes, payouts, production fixtures or sett
 - Destination: `codex/eventgenix-production`.
 - Verified previous live/remote SHA: `481bf7135696e2caabf9f3edc222c4432e48329f`.
 - Verified live version: `0.83.46`, Team Pulse and attendance.
-- Target: next free patch `0.83.47`, subject to fresh drift checks.
+- First candidate: `0.83.47` (`a097f227`), pushed but not deployed because CI
+  rejected attendance-only recovery with the new ledger dependency.
+- Corrected target: next free patch `0.83.48`, subject to fresh drift checks.
 - Railway project `bc28b46c-d4bc-491c-893a-d8401c633668`, environment
   `production` (`d9f9b984-d54d-4620-a8bf-c48882ad5158`), service `8223324090`
   (`3fb62d4c-2dc2-4701-8e2b-09ce16e188ee`). No staged settings changes observed.
@@ -53,6 +55,27 @@ future work, not claims of this release.
   in the sanitized block manifest and final delivery report, not as assumed passes.
 
 ## Migration, QA and recovery boundary
+
+The first exact-SHA CI found the new attendance foreign key correctly blocked
+`attendance-v1` selective recovery. The correction preserves that rejection when
+either the artifact or target contains any substitution evidence. An exception is
+limited to the exact new foreign key with all four ledger tables empty on both
+sides. Access-exclusive locks cover attendance and ledger tables through commit;
+the target emptiness check requires READ COMMITTED visibility after lock acquisition.
+No ledger table is deleted, restored or trigger-disabled by this exception. Unknown
+dependencies still fail closed. Once substitutions exist, use reviewed full recovery
+on an isolated matching schema, not an attendance-only production restore.
+
+Regression coverage includes plain/encrypted empty-ledger recovery, an in-flight
+first substitution writer, target-side evidence, artifact-side evidence and unchanged
+attendance after rejection. Record the actual rerun outcome in release evidence.
+
+Correction validation passed: 29 backup contract tests and both real PostgreSQL
+recovery suites, including the new concurrent-writer regression and full recovery
+into a separate fresh database. The first local startup timed out; the successful
+rerun used only the disposable cluster with fsync/synchronous_commit disabled to
+reduce Windows disk latency. This validates logical recovery and locking, not
+crash durability. Standard PostgreSQL CI remains mandatory for the corrected SHA.
 
 Only `392_staff_substitutions.sql` is added: schema tables/indexes and immutable
 history/source guards, no data backfill or delete. Idempotency was verified by

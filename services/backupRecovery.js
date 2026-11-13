@@ -485,6 +485,36 @@ async function lockRestoreTables(client, selectedTables) {
     );
 }
 
+// Migration 392 adds an attendance child. The original two-table recovery set
+// remains safe only before any substitution evidence exists on either side.
+// Keep the exception specific; unknown dependencies still fail closed.
+async function allowEmptySubstitutionDependency(client, plan, catalog, dependencies) {
+    if (plan.restoreSet !== 'attendance-v1' || dependencies.length !== 1) return false;
+    const dependency = dependencies[0];
+    if (dependency.table !== 'staff_substitution_base_claims'
+        || dependency.referencedTable !== 'hr_time_records'
+        || dependency.columns.join(',') !== 'attendance_id'
+        || dependency.referencedColumns.join(',') !== 'id') return false;
+    const ledgerTables = [
+        'staff_substitutions', 'staff_substitution_events',
+        'staff_substitution_requests', 'staff_substitution_base_claims'
+    ];
+    if (!ledgerTables.every(name => catalog.tableMap.has(name)
+        && plan.payloadMap.get(name)?.rows.length === 0)) return false;
+    const isolation = await client.query("SELECT current_setting('transaction_isolation') AS isolation");
+    if (isolation.rows[0].isolation !== 'read committed') return false;
+
+    // Lock before the READ COMMITTED emptiness checks, and retain the locks
+    // through restore/commit so a concurrent agreement cannot race this proof.
+    // These extra tables are never deleted, restored or trigger-disabled.
+    await lockRestoreTables(client, [...plan.selectedTables, ...ledgerTables]);
+    for (const name of ledgerTables) {
+        const result = await client.query(`SELECT EXISTS (SELECT 1 FROM ${quotePublicRelation(name)}) AS occupied`);
+        if (result.rows[0].occupied) return false;
+    }
+    return true;
+}
+
 async function restoreTriggerModes(client, catalog, selectedTables) {
     const commands = {
         O: 'ENABLE',
@@ -747,7 +777,8 @@ async function executeRestorePlan(client, plan, {
                 plan.selectedSet.has(foreignKey.referencedTable)
                 && !plan.selectedSet.has(foreignKey.table)
             ));
-            if (unsafeDependencies.length > 0) {
+            if (unsafeDependencies.length > 0
+                && !await allowEmptySubstitutionDependency(client, plan, targetCatalog, unsafeDependencies)) {
                 throw recoveryError(
                     'BACKUP_RESTORE_SELECTION_NOT_CLOSED',
                     'Selective restore set has dependent tables outside the set',

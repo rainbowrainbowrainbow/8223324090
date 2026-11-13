@@ -87,6 +87,32 @@ test('default services use the migrated schema for an unrelated permanent occupa
             await service.mutate('event_genix',actor,'cancel',{expectedVersion:1,reason:'Synthetic restore',requestKey:randomUUID()},savedRow.id);
             assert.equal((await db.query(`SELECT ${field} AS owner FROM ${table} WHERE id=$1`,[sourceId])).rows[0].owner,users[0].id);
         }
+        const animators=[];
+        for(let i=0;i<3;i++) {
+            const person=(await db.query(`INSERT INTO staff(name,role_type,department,position,is_active,hourly_rate,rate_unit,hr_pool_status,is_freelance)
+                VALUES($1,'animator','animators','Synthetic animator',true,100,'hour','core',false) RETURNING id`,[`QA Animator ${i}`])).rows[0];
+            const day=(await db.query(`INSERT INTO hr_shifts(staff_id,shift_date,planned_start,planned_end,break_minutes,profession_key)
+                VALUES($1,'2099-01-17','09:00','18:00',0,'animator') RETURNING id`,[person.id])).rows[0];
+            await db.query(`INSERT INTO hr_shift_segments(hr_shift_id,profession_key,planned_start,planned_end) VALUES($1,'animator','09:00','18:00')`,[day.id]);
+            await db.query(`INSERT INTO staff_schedule(staff_id,date,status,shift_start,shift_end) VALUES($1,'2099-01-17','working','09:00','18:00')`,[person.id]);
+            animators.push(person.id);
+        }
+        await require('../../services/staffScheduleMutations').reconcileAnimatorRosterDates(db,['2099-01-17']);
+        for(const [slotKey,hour] of [['primary',13],['second',14]]) {
+            const event=(await db.query(`INSERT INTO afisha(date,time,title,duration,type,line_id,second_line_id)
+                VALUES('2099-01-17',$1,'Synthetic substitution event',60,'event',$2,$3) RETURNING id`,
+            [`${hour}:00`,String(slotKey==='primary'?animators[0]:animators[2]),String(slotKey==='primary'?animators[2]:animators[0])])).rows[0];
+            const assignment={...input,staffId:animators[1],originalStaffId:animators[0],professionKey:'animator',temporaryAdmission:false,
+                sourceType:'afisha',sourceId:String(event.id),slotKey,workDate:'2099-01-17',originalTreatment:'retain',
+                startsAt:`2099-01-17T${hour}:00:00+02:00`,endsAt:`2099-01-17T${hour+1}:00:00+02:00`,allowConcurrent:true,concurrentReason:'Event inside approved animator shift'};
+            const quoted=await service.preview('event_genix',actor,assignment);
+            assert.deepEqual(quoted.blockers,[],slotKey);
+            const savedRow=await service.mutate('event_genix',actor,'create',{input:assignment,previewFingerprint:quoted.fingerprint,effectsAcknowledged:true,requestKey:randomUUID()});
+            const field=slotKey==='primary'?'line_id':'second_line_id';
+            assert.equal(String((await db.query(`SELECT ${field} AS owner FROM afisha WHERE id=$1`,[event.id])).rows[0].owner),String(animators[1]));
+            await service.mutate('event_genix',actor,'cancel',{expectedVersion:1,reason:'Synthetic restore',requestKey:randomUUID()},savedRow.id);
+            assert.equal(String((await db.query(`SELECT ${field} AS owner FROM afisha WHERE id=$1`,[event.id])).rows[0].owner),String(animators[0]));
+        }
         // Immutable accounting evidence stays in this disposable database, never a shared/live target.
     } finally { await db.end(); }
 });

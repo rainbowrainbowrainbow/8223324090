@@ -48,7 +48,7 @@ const MODES = {
     ],
     recovery: ['tests/integration/full-backup-recovery.integration.test.js'],
     'banquet-recovery': ['tests/integration/banquet-production-recovery.integration.test.js'],
-    hr: ['tests/integration/hr-disposable.integration.test.js'],
+    hr: ['tests/integration/hr-disposable.integration.test.js', 'tests/integration/staff-substitution-actual-db.integration.test.js'],
     'staff-deletion': ['tests/integration/park-hr-staff-deletion-migrated.test.js'],
     permissions: [
         'tests/integration/permission-capabilities.integration.test.js',

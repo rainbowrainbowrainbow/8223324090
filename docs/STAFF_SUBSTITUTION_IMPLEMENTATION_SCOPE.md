@@ -1,6 +1,10 @@
 # Universal staff substitution: implementation scope
 
-Status: authorized local implementation; partial acceptance, NOT release-ready.
+Status: bounded first-release candidate; universal target remains incomplete.
+Release authorization and current acceptance are recorded in
+`STAFF_SUBSTITUTION_RELEASE_REVIEW_2026-11-13.md`. Earlier local-only statements
+below describe the implementation phase and are superseded for delivery by that
+review and the owner's explicit subsequent commit/push/deploy request.
 Owner approved RED-SUBSTITUTION-LOCAL-01 in this chat on 2026-11-13.
 Audit date: 2026-11-13, Europe/Kyiv.
 Base: production FETCH_HEAD `dd511e2f0da52da1401502991a68d476eee9ce44`.

@@ -17521,7 +17521,7 @@ async function confirmPayrollPaymentFromUi(installmentId, defaultAmount = 0) {
     const today = new Date().toISOString().slice(0, 10);
     const result = await formModal('Підтвердити виплату зарплати', [
         { key: 'actualPaymentDate', label: 'Фактична дата', type: 'date', defaultValue: today, required: true },
-        { key: 'amount', label: 'Сума', type: 'number', defaultValue: Math.max(0, Math.round(defaultAmount)), required: true },
+        { key: 'amount', label: 'Сума', type: 'number', defaultValue: Math.max(0, Math.round((Number(defaultAmount) + Number.EPSILON) * 100) / 100), required: true },
         { key: 'accountId', label: 'Рахунок', type: 'select', options: accounts, required: true },
         { key: 'paymentMethod', label: 'Спосіб оплати', type: 'select', options: (options.paymentMethods || ['cash', 'card', 'transfer', 'mixed']).map(method => ({ value: method, label: method })), required: true },
         { key: 'categoryId', label: 'Finance category', type: 'select', options: expenseCategories, required: true },

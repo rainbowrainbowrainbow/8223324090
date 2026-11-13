@@ -20,6 +20,7 @@ const POLL_INTERVAL_MS = 500;
 const ISOLATED_DATABASE_LOCK_NAMESPACE = 'eventgenix-isolated-postgres-runner-v1';
 const MANUAL_MONEY_MODES = new Set(['all', 'finance', 'finance-money', 'finance-money-browser', 'payroll', 'fullstack']);
 const MODES = {
+    substitutions: ['tests/integration/staff-substitution-actual-db.integration.test.js'],
     'attendance-ocr-browser': ['tests/browser/hr-attendance-ocr-actual-app-browser-smoke.js'],
     api: ['tests/api.test.js'],
     finance: [
@@ -47,7 +48,7 @@ const MODES = {
     ],
     recovery: ['tests/integration/full-backup-recovery.integration.test.js'],
     'banquet-recovery': ['tests/integration/banquet-production-recovery.integration.test.js'],
-    hr: ['tests/integration/hr-disposable.integration.test.js'],
+    hr: ['tests/integration/hr-disposable.integration.test.js', 'tests/integration/staff-substitution-actual-db.integration.test.js'],
     'staff-deletion': ['tests/integration/park-hr-staff-deletion-migrated.test.js'],
     permissions: [
         'tests/integration/permission-capabilities.integration.test.js',
@@ -737,6 +738,7 @@ async function runSuite(testDb, testFile, suiteMode) {
         REQUIRE_ISOLATED_TEST_TARGET: 'true',
         ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER: 'true',
         RUN_HR_DISPOSABLE_INTEGRATION: testFile.includes('hr-disposable') ? 'true' : 'false',
+        RUN_SUBSTITUTION_ACTUAL_DB: testFile.includes('staff-substitution-actual-db') ? 'true' : 'false',
         RUN_PERMISSION_CAPABILITIES_INTEGRATION: testFile.includes('permission-capabilities') ? 'true' : 'false',
         RUN_ATTENDANCE_LOCK_INTEGRATION: testFile.includes('attendance-lock-concurrency') ? 'true' : 'false',
         RUN_HR_SCHEDULER_JOBS_INTEGRATION: testFile.includes('hr-scheduler-jobs') ? 'true' : 'false',

@@ -149,6 +149,12 @@ function roundMoney(value) {
     return Math.round(toNumber(value, 0));
 }
 
+// Agreed substitution lines and persisted NUMERIC(12,2) ledger amounts retain cents.
+// Existing scheme-line calculations keep their historical whole-hryvnia rounding.
+function roundLedgerMoney(value) {
+    return Math.round((toNumber(value, 0) + Number.EPSILON) * 100) / 100;
+}
+
 function normalizePayrollAdjustmentType(value) {
     const type = String(value || '').trim().toLowerCase();
     if (type === LEGACY_ZRS_TYPE) return PAYROLL_ZRS_TYPE;
@@ -864,6 +870,8 @@ function buildCanonicalAdjustmentLines(adjustments = {}) {
 }
 
 function calcPayrollPreview(lines) {
+    const roundSummary = lines.some(line => line.lineType === 'staff_substitution' || line.line_type === 'staff_substitution')
+        ? roundLedgerMoney : roundMoney;
     const gross = lines
         .filter(item => ['base', 'additional', 'overtime', 'bonus', 'percent', 'manual'].includes(item.group))
         .reduce((sum, item) => sum + toNumber(item.amount, 0), 0);
@@ -896,19 +904,19 @@ function calcPayrollPreview(lines) {
         .reduce((sum, item) => sum + Math.abs(toNumber(item.amount, 0)), 0);
 
     return {
-        base: roundMoney(base),
-        additional: roundMoney(additional),
-        overtime: roundMoney(overtime),
-        bonuses: roundMoney(bonuses),
-        kpiBonus: roundMoney(kpiBonus),
-        kpi_bonus: roundMoney(kpiBonus),
-        percent: roundMoney(percent),
-        manual: roundMoney(manual),
-        gross: roundMoney(gross),
-        deductions: roundMoney(deductions),
-        zrs: roundMoney(zrs),
-        advances: roundMoney(zrs),
-        net: roundMoney(gross - deductions - zrs)
+        base: roundSummary(base),
+        additional: roundSummary(additional),
+        overtime: roundSummary(overtime),
+        bonuses: roundSummary(bonuses),
+        kpiBonus: roundSummary(kpiBonus),
+        kpi_bonus: roundSummary(kpiBonus),
+        percent: roundSummary(percent),
+        manual: roundSummary(manual),
+        gross: roundSummary(gross),
+        deductions: roundSummary(deductions),
+        zrs: roundSummary(zrs),
+        advances: roundSummary(zrs),
+        net: roundSummary(gross - deductions - zrs)
     };
 }
 
@@ -930,11 +938,13 @@ function calculateMonthlyPayroll(staff, scheme, metrics, adjustments = {}, entri
         : buildSchemeLines(staff, activeScheme, metrics);
     const lines = [
         ...baseLines,
+        ...(metrics.substitutionLines || []),
         ...buildCanonicalAdjustmentLines(adjustments),
         ...buildEntryLines(entries)
     ].filter(item => item.amount !== 0 || ['base', 'manual'].includes(item.group));
     const summary = calcPayrollPreview(lines);
     const blockingIssues = compactAllocationIssues([
+        ...(metrics.payrollBlockingIssues || []),
         ...(professionPay?.blockingIssues || []),
         ...calculationBlockers
     ]);
@@ -965,7 +975,7 @@ function effectiveMonthlyFixedAmount(staff, scheme, monthlyCalculation = null) {
 
 function calculationEarningAmount(calculation = {}) {
     const lines = Array.isArray(calculation.lines) ? calculation.lines : [];
-    return roundMoney(lines
+    return roundLedgerMoney(lines
         .filter(item => ADVANCE_EARNING_GROUPS.has(item.group))
         .reduce((sum, item) => sum + toNumber(item.amount, 0), 0));
 }
@@ -1034,7 +1044,7 @@ function calculateAdvanceInstallment(options = {}) {
         amount = calculationEarningAmount(rangeCalculation);
     }
 
-    const lockedAmount = roundMoney(amount);
+    const lockedAmount = schemeType === 'monthly_fixed' ? roundMoney(amount) : roundLedgerMoney(amount);
     return {
         kind: 'advance',
         earningFrom: options.earningFrom || null,
@@ -1064,7 +1074,7 @@ function approvedAdvanceAmount(advanceInstallment = {}) {
         || ''
     ).trim();
     if (!['approved', 'paid', 'partially_paid'].includes(status)) return 0;
-    return roundMoney(
+    return roundLedgerMoney(
         advanceInstallment.lockedAmount
         ?? advanceInstallment.locked_amount
         ?? advanceInstallment.amount
@@ -1076,7 +1086,7 @@ function approvedAdvanceAmount(advanceInstallment = {}) {
 
 function calculatedAdvanceAmount(advanceInstallment = {}) {
     if (!advanceInstallment) return 0;
-    return roundMoney(
+    return roundLedgerMoney(
         advanceInstallment.amount
         ?? advanceInstallment.calculatedAmount
         ?? advanceInstallment.calculated_amount
@@ -1089,12 +1099,12 @@ function calculateFinalInstallment(options = {}) {
     const blockers = Array.isArray(monthlyPayroll.blockers)
         ? monthlyPayroll.blockers
         : (Array.isArray(monthlyPayroll.blockingIssues) ? monthlyPayroll.blockingIssues : []);
-    const monthlyNet = roundMoney(monthlyPayroll.summary?.net ?? monthlyPayroll.netAmount ?? monthlyPayroll.net_amount ?? 0);
+    const monthlyNet = roundLedgerMoney(monthlyPayroll.summary?.net ?? monthlyPayroll.netAmount ?? monthlyPayroll.net_amount ?? 0);
     const approvedAdvance = approvedAdvanceAmount(options.advanceInstallment);
     const plannedAdvance = calculatedAdvanceAmount(options.plannedAdvanceInstallment);
     const deductedAdvance = approvedAdvance || plannedAdvance;
     const currentAdvanceAmount = options.currentAdvanceInstallment
-        ? roundMoney(
+        ? roundLedgerMoney(
             options.currentAdvanceInstallment.amount
             ?? options.currentAdvanceInstallment.calculatedAmount
             ?? options.currentAdvanceInstallment.calculated_amount
@@ -1103,14 +1113,14 @@ function calculateFinalInstallment(options = {}) {
         : null;
     const advanceCorrectionDelta = currentAdvanceAmount === null || approvedAdvance <= 0
         ? 0
-        : roundMoney(currentAdvanceAmount - approvedAdvance);
-    const paidAdvance = roundMoney(
+        : roundLedgerMoney(currentAdvanceAmount - approvedAdvance);
+    const paidAdvance = roundLedgerMoney(
         options.advancePaidAmount
         ?? options.advanceInstallment?.paidAmount
         ?? options.advanceInstallment?.paid_amount
         ?? 0
     );
-    const finalAmount = Math.max(monthlyNet - deductedAdvance, 0);
+    const finalAmount = Math.max(roundLedgerMoney(monthlyNet - deductedAdvance), 0);
     return {
         kind: 'final',
         amount: finalAmount,
@@ -1121,9 +1131,9 @@ function calculateFinalInstallment(options = {}) {
         currentAdvanceAmount,
         advanceCorrectionDeltaAmount: advanceCorrectionDelta,
         advancePaidAmount: paidAdvance,
-        advanceOutstandingAmount: Math.max(approvedAdvance - paidAdvance, 0),
-        overpaidAmount: Math.max(paidAdvance - monthlyNet, 0),
-        lockedAdvanceOverMonthlyNetAmount: Math.max(approvedAdvance - monthlyNet, 0),
+        advanceOutstandingAmount: Math.max(roundLedgerMoney(approvedAdvance - paidAdvance), 0),
+        overpaidAmount: Math.max(roundLedgerMoney(paidAdvance - monthlyNet), 0),
+        lockedAdvanceOverMonthlyNetAmount: Math.max(roundLedgerMoney(approvedAdvance - monthlyNet), 0),
         monthlyNetAmount: monthlyNet,
         blockers,
         confirmable: blockers.length === 0,
@@ -1146,9 +1156,9 @@ function calculateFinalInstallment(options = {}) {
             currentAdvanceAmount,
             advanceCorrectionDeltaAmount: advanceCorrectionDelta,
             advancePaidAmount: paidAdvance,
-            advanceOutstandingAmount: Math.max(approvedAdvance - paidAdvance, 0),
-            overpaidAmount: Math.max(paidAdvance - monthlyNet, 0),
-            lockedAdvanceOverMonthlyNetAmount: Math.max(approvedAdvance - monthlyNet, 0),
+            advanceOutstandingAmount: Math.max(roundLedgerMoney(approvedAdvance - paidAdvance), 0),
+            overpaidAmount: Math.max(roundLedgerMoney(paidAdvance - monthlyNet), 0),
+            lockedAdvanceOverMonthlyNetAmount: Math.max(roundLedgerMoney(approvedAdvance - monthlyNet), 0),
             blockers
         }
     };
@@ -3720,16 +3730,16 @@ function applyReportSnapshot(row, report) {
         schemeEffectiveFrom: snapshotScheme.effectiveFrom ?? row.schemeEffectiveFrom ?? null,
         schemeEffectiveTo: snapshotScheme.effectiveTo ?? row.schemeEffectiveTo ?? null,
         schemeUpdatedAt: snapshotScheme.updatedAt ?? row.schemeUpdatedAt ?? null,
-        baseAmount: roundMoney(breakdown.summary?.base ?? row.baseAmount),
-        additionalAmount: roundMoney(breakdown.summary?.additional ?? row.additionalAmount),
-        bonusesAmount: roundMoney(breakdown.summary?.bonuses ?? row.bonusesAmount),
-        percentAmount: roundMoney(breakdown.summary?.percent ?? row.percentAmount),
-        deductionsAmount: roundMoney(report.deductions_amount),
-        advancesAmount: roundMoney(report.advances_amount),
-        grossAmount: roundMoney(report.gross_amount),
-        netAmount: roundMoney(report.net_amount),
-        estimatedSalary: roundMoney(report.net_amount),
-        totalSalary: roundMoney(report.net_amount),
+        baseAmount: roundLedgerMoney(breakdown.summary?.base ?? row.baseAmount),
+        additionalAmount: roundLedgerMoney(breakdown.summary?.additional ?? row.additionalAmount),
+        bonusesAmount: roundLedgerMoney(breakdown.summary?.bonuses ?? row.bonusesAmount),
+        percentAmount: roundLedgerMoney(breakdown.summary?.percent ?? row.percentAmount),
+        deductionsAmount: roundLedgerMoney(report.deductions_amount),
+        advancesAmount: roundLedgerMoney(report.advances_amount),
+        grossAmount: roundLedgerMoney(report.gross_amount),
+        netAmount: roundLedgerMoney(report.net_amount),
+        estimatedSalary: roundLedgerMoney(report.net_amount),
+        totalSalary: roundLedgerMoney(report.net_amount),
         lines: Array.isArray(breakdown.lines) ? breakdown.lines : row.lines,
         professionRateSummary: Array.isArray(breakdown.professionRateSummary)
             ? breakdown.professionRateSummary
@@ -3795,6 +3805,12 @@ async function buildPayrollContext(month, options = {}, db = pool) {
     const staff = await fetchStaffList(normalizedMonth, periodOptions, db);
     const staffIds = staff.map(item => item.id);
     const timeMap = await fetchTimeMetrics(normalizedMonth, periodOptions, db);
+    const { loadPayrollSubstitutions, applyPayrollSubstitutions } = require('./staffSubstitutionPayroll');
+    const substitutionMap = await loadPayrollSubstitutions(db, staffIds,
+        periodOptions.from || monthBounds.from, periodOptions.to || monthBounds.to);
+    for (const [staffId, substitutions] of substitutionMap) {
+        timeMap.set(staffId, applyPayrollSubstitutions(timeMap.get(staffId) || {}, substitutions));
+    }
     const adjustmentMap = includeMonthlyAdjustments ? await fetchAdjustments(normalizedMonth, db) : new Map();
     const entryMap = includeMonthlyAdjustments ? await fetchPayrollEntries(normalizedMonth, db) : new Map();
     const schemeMap = await loadActivePayrollSchemeMap(staffIds, normalizedMonth, db);
@@ -3835,7 +3851,7 @@ async function buildPayrollContext(month, options = {}, db = pool) {
 }
 
 function payrollLineTypeAmount(lines = [], type) {
-    return roundMoney((Array.isArray(lines) ? lines : [])
+    return roundLedgerMoney((Array.isArray(lines) ? lines : [])
         .filter(item => (item.lineType || item.line_type) === type)
         .reduce((sum, item) => sum + toNumber(item.amount, 0), 0));
 }
@@ -4087,19 +4103,19 @@ async function getSalaryReport(month, db = pool) {
     return {
         month: context.month,
         staff: staffRowsWithSettlement.sort((a, b) => b.netAmount - a.netAmount || String(a.name || '').localeCompare(String(b.name || ''), 'uk')),
-        totalSalary: roundMoney(totals.net),
+        totalSalary: roundLedgerMoney(totals.net),
         totals: {
-            base: roundMoney(totals.base),
-            additional: roundMoney(totals.additional),
-            bonuses: roundMoney(totals.bonuses),
-            deductions: roundMoney(totals.deductions),
-            zrs: roundMoney(totals.zrs),
-            advances: roundMoney(totals.advances),
-            gross: roundMoney(totals.gross),
-            net: roundMoney(totals.net),
-            paid: settlement.totals ? roundMoney(settlement.totals.paidAmount) : null,
-            balance: settlement.totals ? roundMoney(settlement.totals.outstandingAmount) : null,
-            overpaid: settlement.totals ? roundMoney(settlement.totals.overpaidAmount) : null
+            base: roundLedgerMoney(totals.base),
+            additional: roundLedgerMoney(totals.additional),
+            bonuses: roundLedgerMoney(totals.bonuses),
+            deductions: roundLedgerMoney(totals.deductions),
+            zrs: roundLedgerMoney(totals.zrs),
+            advances: roundLedgerMoney(totals.advances),
+            gross: roundLedgerMoney(totals.gross),
+            net: roundLedgerMoney(totals.net),
+            paid: settlement.totals ? roundLedgerMoney(settlement.totals.paidAmount) : null,
+            balance: settlement.totals ? roundLedgerMoney(settlement.totals.outstandingAmount) : null,
+            overpaid: settlement.totals ? roundLedgerMoney(settlement.totals.overpaidAmount) : null
         },
         schemeTypes: SCHEME_TYPES,
         reconciliation: {
@@ -4162,14 +4178,14 @@ async function getPayrollRangePreview(options = {}, db = pool) {
         to,
         staff: filteredRows.sort((a, b) => b.netAmount - a.netAmount || String(a.name || '').localeCompare(String(b.name || ''), 'uk')),
         totals: {
-            base: roundMoney(scopedTotals.base),
-            additional: roundMoney(scopedTotals.additional),
-            bonuses: roundMoney(scopedTotals.bonuses),
-            deductions: roundMoney(scopedTotals.deductions),
-            zrs: roundMoney(scopedTotals.zrs),
-            advances: roundMoney(scopedTotals.advances),
-            gross: roundMoney(scopedTotals.gross),
-            net: roundMoney(scopedTotals.net)
+            base: roundLedgerMoney(scopedTotals.base),
+            additional: roundLedgerMoney(scopedTotals.additional),
+            bonuses: roundLedgerMoney(scopedTotals.bonuses),
+            deductions: roundLedgerMoney(scopedTotals.deductions),
+            zrs: roundLedgerMoney(scopedTotals.zrs),
+            advances: roundLedgerMoney(scopedTotals.advances),
+            gross: roundLedgerMoney(scopedTotals.gross),
+            net: roundLedgerMoney(scopedTotals.net)
         }
     });
 }
@@ -4261,10 +4277,10 @@ async function buildCanonicalPayrollInstallmentPreview(options = {}, db = pool) 
     return {
         month,
         staffId,
-        monthlyNetAmount: roundMoney(monthlyRow.netAmount),
-        advanceAmount: roundMoney(advanceInstallment.calculatedAmount),
-        finalAmount: roundMoney(finalInstallment.calculatedAmount),
-        combinedAmount: roundMoney(advanceInstallment.calculatedAmount + finalInstallment.calculatedAmount),
+        monthlyNetAmount: roundLedgerMoney(monthlyRow.netAmount),
+        advanceAmount: roundLedgerMoney(advanceInstallment.calculatedAmount),
+        finalAmount: roundLedgerMoney(finalInstallment.calculatedAmount),
+        combinedAmount: roundLedgerMoney(advanceInstallment.calculatedAmount + finalInstallment.calculatedAmount),
         monthlyPreview,
         advancePreview,
         monthlyRow,
@@ -4637,12 +4653,12 @@ function normalizePayrollWorkflowDate(value, code = 'PAYROLL_PAYMENT_DATE_INVALI
 }
 
 function normalizePositiveMoneyAmount(value, fallback = null, code = 'PAYROLL_PAYMENT_AMOUNT_INVALID') {
-    if ((value === null || value === undefined || value === '') && fallback !== null) return roundMoney(fallback);
+    if ((value === null || value === undefined || value === '') && fallback !== null) return roundLedgerMoney(fallback);
     const amount = Number(value);
     if (!Number.isFinite(amount) || amount <= 0) {
         throw payrollWorkflowError('payment amount must be a positive integer', 400, code);
     }
-    return roundMoney(amount);
+    return roundLedgerMoney(amount);
 }
 
 function normalizePayrollIdempotencyKey(value) {
@@ -4719,10 +4735,10 @@ async function loadPayrollPaymentIdempotency(client, idempotencyKey) {
 
 function payrollIdempotencyRequestAmount(options = {}, existingAmount = 0) {
     if (options.amount === null || options.amount === undefined || options.amount === '') {
-        return roundMoney(existingAmount);
+        return roundLedgerMoney(existingAmount);
     }
     const amount = Number(options.amount);
-    return Number.isFinite(amount) ? roundMoney(amount) : Number.NaN;
+    return Number.isFinite(amount) ? roundLedgerMoney(amount) : Number.NaN;
 }
 
 function assertPayrollMovementIdempotentReplay(existing, request = {}, options = {}) {
@@ -4744,7 +4760,7 @@ function assertPayrollMovementIdempotentReplay(existing, request = {}, options =
     const actual = {
         movementType: existing.movement_type,
         target: Number(existing[targetField]),
-        amount: roundMoney(existing.amount),
+        amount: roundLedgerMoney(existing.amount),
         actualPaymentDate: normalizeDateValue(existing.actual_payment_date),
         businessContext: String(existing.business_context || ''),
         paymentMethod: String(existing.payment_method || '').trim().toLowerCase(),
@@ -5483,17 +5499,17 @@ async function approvePayrollInstallment(id, user, options = {}) {
                 );
             }
             const advanceDue = advanceRow?.workflow_status === 'approved'
-                ? roundMoney(advanceRow.locked_amount ?? advanceRow.calculated_amount)
+                ? roundLedgerMoney(advanceRow.locked_amount ?? advanceRow.calculated_amount)
                 : 0;
-            const expectedFinalAmount = Math.max(roundMoney(row.report_net_amount) - advanceDue, 0);
-            if (roundMoney(row.calculated_amount) !== expectedFinalAmount) {
+            const expectedFinalAmount = Math.max(roundLedgerMoney(roundLedgerMoney(row.report_net_amount) - advanceDue), 0);
+            if (roundLedgerMoney(row.calculated_amount) !== expectedFinalAmount) {
                 throw payrollWorkflowError(
                     'final payroll installment must be recalculated after the advance decision',
                     409,
                     'PAYROLL_FINAL_RECALCULATION_REQUIRED',
                     {
                         installmentId,
-                        calculatedAmount: roundMoney(row.calculated_amount),
+                        calculatedAmount: roundLedgerMoney(row.calculated_amount),
                         expectedFinalAmount,
                         advanceDueAmount: advanceDue
                     }
@@ -5510,8 +5526,8 @@ async function approvePayrollInstallment(id, user, options = {}) {
                 blockers: freshBlockers
             });
         }
-        const calculatedAmount = roundMoney(row.calculated_amount);
-        const freshAmount = roundMoney(fresh.installment.calculatedAmount ?? fresh.installment.amount);
+        const calculatedAmount = roundLedgerMoney(row.calculated_amount);
+        const freshAmount = roundLedgerMoney(fresh.installment.calculatedAmount ?? fresh.installment.amount);
         if (calculatedAmount !== freshAmount
             || !snapshot.sourceFingerprint
             || snapshot.sourceFingerprint !== fresh.snapshot.sourceFingerprint
@@ -5674,7 +5690,7 @@ async function cancelPayrollAdvanceInstallment(id, user, options = {}) {
                AND workflow_status = 'draft'
              RETURNING *`,
             [
-                roundMoney(freshFinal.installment.calculatedAmount ?? freshFinal.installment.amount),
+                roundLedgerMoney(freshFinal.installment.calculatedAmount ?? freshFinal.installment.amount),
                 JSON.stringify(freshFinal.snapshot),
                 actor.username,
                 Number(finalRow.id)

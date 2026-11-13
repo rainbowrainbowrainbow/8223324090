@@ -121,7 +121,7 @@ function projectToday(row) {
     if (projected.shift && Object.hasOwn(row.shift, 'segments')) {
         projected.shift.segments = mapRows(row.shift.segments, projectSegment);
     }
-    projected.record = row.record ? { ...pick(row.record, ['id']), ...projectAttendance(row.record) } : null;
+    projected.record = row.record ? { ...pick(row.record, ['id', 'can_cancel_arrival']), ...projectAttendance(row.record) } : null;
     if (projected.record && Object.hasOwn(row.record, 'plan_warning')) {
         projected.record.plan_warning = row.record.plan_warning
             ? pick(row.record.plan_warning, ['code', 'message']) : null;
@@ -204,7 +204,7 @@ function projectParkStaffSchedulePayload(routerId, routePath, payload, options =
         };
     }
     if (routerId === 'hr' && path === '/today') {
-        return { ...pick(payload, ['success', 'date', 'displayGroups']), data: mapRows(payload.data, projectToday),
+        return { ...pick(payload, ['success', 'date', 'displayGroups', 'scheduleAvailable']), data: mapRows(payload.data, projectToday),
             summary: pick(payload.summary, ['total_staff', 'present', 'late', 'absent', 'on_vacation', 'sick']) };
     }
     if (routerId !== 'staff') throw new TypeError('Unknown Park schedule projection route');

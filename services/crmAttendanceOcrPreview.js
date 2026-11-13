@@ -29,7 +29,8 @@ async function attendanceSnapshot(client, documentDate, review) {
         if (row.classification !== 'requires_current_state_preview') { rows.push(row); continue; }
         const schedule = schedules.find(s => Number(s.staff_id) === row.matchedStaffId);
         let classification = 'ready_for_confirmed_apply';
-        if (records.some(r => Number(r.staff_id) === row.matchedStaffId) || checkins.some(r => Number(r.staff_id) === row.matchedStaffId)) classification = 'existing_attendance_requires_review';
+        if (records.some(r => Number(r.staff_id) === row.matchedStaffId && r.status !== 'arrival_cancelled')
+            || checkins.some(r => Number(r.staff_id) === row.matchedStaffId)) classification = 'existing_attendance_requires_review';
         else if (schedule && !['working','remote'].includes(schedule.status)) classification = 'schedule_conflict';
         if (classification === 'ready_for_confirmed_apply') {
             const plan = await resolveAttendancePlan(client, row.matchedStaffId, documentDate);

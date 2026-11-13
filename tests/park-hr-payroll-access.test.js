@@ -108,6 +108,16 @@ test('Today keeps its projection and enables mutations only with the existing sc
     assert.equal(reader.body.todayAccess.readOnly, true);
 });
 
+test('cancelling an arrival uses the same writable Park scope as clock-in', async () => {
+    const path = '/clock-in/cancel';
+    assert.deepEqual(parkHrPayrollCapabilities(request(path, 'POST'), 'hr'), ['hr.schedule.manage']);
+    assert.equal((await invoke(request(path, 'POST'))).passed, true);
+    for (const options of [{ context: 'dar' }, { context: 'all' }, { deny: ['hr.schedule.manage'] }]) {
+        assert.equal((await invoke(request(path, 'POST', options))).status, 403);
+    }
+    assert.equal((await invoke(request(path, 'POST'), { conflict: true })).status, 409);
+});
+
 test('salary preview advertises read-only settlement controls', async () => {
     const result = await invoke(request('/salary'), { response: { success: true,
         payroll_activation: { active: true, readOnly: false, calculateEndpoint: '/write' } } });

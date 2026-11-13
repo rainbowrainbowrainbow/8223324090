@@ -3167,6 +3167,51 @@ body.dark-mode #tab-kpi .hr-payroll-detail-toggle,
     gap: 10px;
 }
 
+.hr-today-schedule-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.hr-today-schedule-group + .hr-today-schedule-group {
+    margin-top: 6px;
+    padding-top: 14px;
+    border-top: 1px solid var(--gray-300);
+}
+
+.hr-today-schedule-group h3,
+.hr-today-schedule-notice {
+    margin: 0 0 2px;
+    font-size: 0.875rem;
+    color: var(--gray-600);
+}
+
+.hr-today-clock-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    flex-shrink: 0;
+    gap: 3px;
+}
+
+.hr-today-cancel-arrival {
+    background: transparent;
+    color: var(--gray-600);
+    border: 0;
+    border-radius: 6px;
+    padding: 4px 8px;
+    min-height: 24px;
+    font: inherit;
+    font-size: 0.75rem;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.hr-today-cancel-arrival:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+
 .hr-staff-row {
     display: flex;
     align-items: center;
@@ -9296,6 +9341,20 @@ body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
 }
 
 @media (max-width: 480px) {
+    #tab-today .hr-staff-row:has(.hr-today-cancel-arrival) {
+        flex-wrap: wrap;
+    }
+
+    #tab-today .hr-staff-row:has(.hr-today-cancel-arrival) .hr-staff-info {
+        flex-basis: calc(100% - 24px);
+    }
+
+    .hr-today-clock-actions:has(.hr-today-cancel-arrival) {
+        flex-direction: row;
+        flex-wrap: wrap;
+        margin-inline-start: 18px;
+    }
+
     #tab-salary .hr-payroll-group-header,
     #tab-kpi .hr-payroll-group-header {
         padding: 7px 9px;

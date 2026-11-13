@@ -56,6 +56,9 @@ const {
     finalizeAttendanceCompensationSnapshot,
     hydrateAttendanceRecords,
     parseAttendanceCompensationSnapshot,
+    cancelAttendanceClockIn,
+    CANCELLED_ARRIVAL_STATUS,
+    HR_TODAY_MANUAL_ARRIVAL_SQL,
     recordAttendanceClockIn,
     recordAttendanceClockOut,
     recordAttendanceStatus,
@@ -139,6 +142,7 @@ const {
     loadPayrollPeriodEvents,
     loadPayrollPeriodLock,
     loadPayrollReconciliation,
+    lockPayrollPeriodMutation,
     payrollMonthRange,
     payrollPeriodRange,
     requirePayrollMonth
@@ -6331,15 +6335,22 @@ router.get('/today', async (req, res) => {
             [today]
         );
 
-        const shifts = await pool.query(
-            'SELECT * FROM hr_shifts WHERE shift_date = $1', [today]
-        );
-        const hydratedShifts = await hydrateHrShiftDayPlans(pool, shifts.rows);
+        let scheduleAvailable = true;
+        let hydratedShifts = [];
+        try {
+            const shifts = await pool.query('SELECT * FROM hr_shifts WHERE shift_date = $1', [today]);
+            hydratedShifts = await hydrateHrShiftDayPlans(pool, shifts.rows);
+        } catch (error) {
+            scheduleAvailable = false;
+            log.error('GET /hr/today schedule error', error);
+        }
         const shiftMap = {};
         for (const snapshot of hydratedShifts) shiftMap[snapshot.shift.staff_id] = snapshot;
 
         const records = await pool.query(
-            'SELECT * FROM hr_time_records WHERE record_date = $1', [today]
+            `SELECT tr.*, (${HR_TODAY_MANUAL_ARRIVAL_SQL}) AS can_cancel_arrival
+             FROM hr_time_records tr WHERE record_date = $1 AND status IS DISTINCT FROM $2`,
+            [today, CANCELLED_ARRIVAL_STATUS]
         );
         const recordMap = {};
         for (const r of records.rows) recordMap[r.staff_id] = r;
@@ -6379,6 +6390,7 @@ router.get('/today', async (req, res) => {
                 } : null,
                 record: record ? {
                     id: record.id,
+                    can_cancel_arrival: record.can_cancel_arrival,
                     clock_in: record.clock_in,
                     clock_out: record.clock_out,
                     planned_start: record.planned_start,
@@ -6416,6 +6428,7 @@ router.get('/today', async (req, res) => {
         res.json({
             success: true,
             date: today,
+            scheduleAvailable,
             data,
             displayGroups: listStaffDisplayGroups(),
             summary
@@ -6706,7 +6719,7 @@ router.post('/clock-in', requireHrManage, async (req, res) => {
         await client.query('COMMIT');
         res.json({
             success: true,
-            data: clockInResult.record,
+            data: { ...clockInResult.record, can_cancel_arrival: !clockInResult.alreadyClockedIn },
             alreadyClockedIn: clockInResult.alreadyClockedIn,
             planSource: clockInResult.planSource
         });
@@ -6715,6 +6728,44 @@ router.post('/clock-in', requireHrManage, async (req, res) => {
         log.error('POST /hr/clock-in error', err);
         if (sendHrMutationFailure(res, err)) return;
         res.status(500).json({ success: false, error: 'Помилка сервера' });
+    } finally {
+        client.release();
+    }
+});
+
+// POST /api/hr/clock-in/cancel
+router.post('/clock-in/cancel', requireHrManage, async (req, res) => {
+    const staffId = parsePositiveSafeInteger(req.body?.staff_id);
+    const recordId = parsePositiveSafeInteger(req.body?.record_id);
+    const clockIn = req.body?.clock_in;
+    if (!staffId || staffId > 2147483647 || !recordId || recordId > 2147483647
+        || typeof clockIn !== 'string' || !Number.isFinite(Date.parse(clockIn))) {
+        return res.status(400).json({ success: false, error: 'Потрібна чинна відмітка приходу' });
+    }
+    const today = todayKyiv();
+    const month = today.slice(0, 7);
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await lockPayrollPeriodMutation(month, client);
+        await acquirePayrollPeriodMutationLock(client, month);
+        await assertPayrollPeriodOpen(month, client);
+        await lockAttendanceWriteTarget(client, { staffId, date: today });
+        await cancelAttendanceClockIn(client, {
+            staffId, recordId, recordDate: today, clockIn,
+            businessContext: hrBusinessContextFromRequest(req),
+            performedBy: req.user?.username || 'manual',
+            ip: req.ip
+        });
+        await client.query('COMMIT');
+        return res.json({ success: true, data: null });
+    } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        if (error.statusCode === 409 || error.statusCode === 423) {
+            return res.status(error.statusCode).json({ success: false, code: error.code, error: error.message });
+        }
+        log.error('POST /hr/clock-in/cancel error', error);
+        return res.status(500).json({ success: false, error: 'Не вдалося скасувати прихід' });
     } finally {
         client.release();
     }
@@ -6736,6 +6787,7 @@ router.post('/clock-out', requireHrManage, async (req, res) => {
         const clockOutResult = await recordAttendanceClockOut(client, {
             staffId,
             recordDate: today,
+            expectedClockIn: req.body.clock_in,
             settlementMode: settlement_mode || settlementMode,
             performedBy: req.user?.username || 'manual',
             method: 'manual',
@@ -6752,7 +6804,7 @@ router.post('/clock-out', requireHrManage, async (req, res) => {
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         log.error('POST /hr/clock-out error', err);
-        if (err?.code === 'ATTENDANCE_CLOCK_IN_REQUIRED') {
+        if (['ATTENDANCE_CLOCK_IN_REQUIRED', 'ATTENDANCE_ARRIVAL_CHANGED'].includes(err?.code)) {
             return res.status(err.statusCode || 400).json({ success: false, code: err.code, error: err.message });
         }
         if (sendHrMutationFailure(res, err)) return;
@@ -7349,9 +7401,9 @@ router.get('/report/export', requireAction('export_data'), async (req, res) => {
              FROM hr_time_records tr
              JOIN staff s ON s.id = tr.staff_id
              LEFT JOIN hr_shifts hs ON hs.staff_id = tr.staff_id AND hs.shift_date = tr.record_date
-             WHERE tr.record_date >= $1 AND tr.record_date <= $2
+             WHERE tr.record_date >= $1 AND tr.record_date <= $2 AND tr.status IS DISTINCT FROM $3
              ORDER BY s.name, tr.record_date`,
-            [from, to]
+            [from, to, CANCELLED_ARRIVAL_STATUS]
         );
         const includePayroll = canViewPayrollDetails(req.user);
         const professionRateMap = includePayroll

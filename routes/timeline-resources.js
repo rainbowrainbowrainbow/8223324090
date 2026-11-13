@@ -7,7 +7,7 @@ const { createLogger } = require('../utils/logger');
 const { logAdminAction } = require('../services/adminAudit');
 const {
     timelineContextFromRequest,
-    requireTimelineContext,
+    requireTimelineView,
     requireTimelineAction
 } = require('../services/timelineContext');
 const {
@@ -29,7 +29,7 @@ router.use(authenticateToken);
 
 router.get('/promotions', async (req, res) => {
     const context = timelineContextFromRequest(req);
-    if (!requireTimelineContext(req, res, context)) return;
+    if (!requireTimelineView(req, res, context)) return;
     try {
         const promotions = await listPromotions(pool, context, req.query.from, req.query.to);
         res.json({ context, promotions });
@@ -57,7 +57,7 @@ router.patch('/promotions/:id', businessScopeWriteGuard, handlePromotionWrite);
 router.get('/resources', async (req, res) => {
     try {
         const context = timelineContextFromRequest(req);
-        if (!requireTimelineContext(req, res, context)) return;
+        if (!requireTimelineView(req, res, context)) return;
         const type = req.query.type ? normalizeResourceType(req.query.type) : null;
         const includeInactive = req.query.includeInactive === 'true' || req.query.include_inactive === 'true';
         const resources = await listTimelineResources(pool, {
@@ -153,7 +153,7 @@ router.delete('/resources/:resourceId', async (req, res) => {
 router.get('/resources/availability', async (req, res) => {
     try {
         const context = timelineContextFromRequest(req);
-        if (!requireTimelineContext(req, res, context)) return;
+        if (!requireTimelineView(req, res, context)) return;
         const { date, time } = req.query;
         if (!validateDate(String(date || ''))) return res.status(400).json({ error: 'Invalid date' });
         if (!validateTime(String(time || ''))) return res.status(400).json({ error: 'Invalid time' });

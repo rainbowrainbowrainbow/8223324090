@@ -127,7 +127,7 @@ function loadFrontendAuth() {
     const sandbox = makeBrowserSandbox();
     sandbox.__capabilityCatalog = require(path.join(ROOT, 'services/accountAccessPolicy')).buildCapabilityCatalog();
     const api = vm.runInNewContext(
-        `${code}\n;PAGE_ACCESS = __capabilityCatalog.pageRoles; ACTION_PERMISSIONS = __capabilityCatalog.actionRoles; PAGE_CAPABILITY_ALIASES = __capabilityCatalog.pageAliases; ACTION_CAPABILITY_ALIASES = __capabilityCatalog.actionAliases; EXPLICIT_ALLOW_DISABLED_PAGES = new Set(__capabilityCatalog.explicitAllowDisabledPages); NON_DELEGABLE_ACTIONS = new Set(__capabilityCatalog.nonDelegableActions); ({ ROLE_HIERARCHY, ROLE_NAMES, PAGE_ACCESS, resolveCapability, canAccessPage, getCurrentPageAccessPath, enforceCurrentPageAccess, setPermissionLifecycle });`,
+        `${code}\n;PAGE_ACCESS = __capabilityCatalog.pageRoles; ACTION_PERMISSIONS = __capabilityCatalog.actionRoles; PAGE_CAPABILITY_ALIASES = __capabilityCatalog.pageAliases; ACTION_CAPABILITY_ALIASES = __capabilityCatalog.actionAliases; EXPLICIT_ALLOW_DISABLED_PAGES = new Set(__capabilityCatalog.explicitAllowDisabledPages); NON_DELEGABLE_ACTIONS = new Set(__capabilityCatalog.nonDelegableActions); ({ ROLE_HIERARCHY, ROLE_NAMES, PAGE_ACCESS, resolveCapability, canAccessPage, getCurrentPageAccessPath, enforceCurrentPageAccess, setPermissionLifecycle, getAuthenticatedTimelineStartPage });`,
         sandbox,
         { filename }
     );
@@ -466,13 +466,22 @@ frontend.sandbox.window.location = {
     replace(target) { redirectTarget = target; },
     reload() {}
 };
+for (const role of ['barista', 'waiter', 'instructor', 'cleaning', 'reception']) {
+    const user = { role };
+    if (frontend.getAuthenticatedTimelineStartPage(user) !== '/staff') fail(role + ' must start with the schedule');
+    for (const page of ['/', '/certificates', '/certificates/new', '/certificates/batch', '/certificates/check']) {
+        if (frontend.resolveCapability({ role, page_allowlist: [page] }, page, { type: 'page', ignoreServer: true }).allowed) {
+            fail(role + ' must not restore ' + page + ' with a legacy explicit grant');
+        }
+    }
+}
 frontend.sandbox.AppState.currentUser = { role: 'accountant' };
 frontend.setPermissionLifecycle('idle');
 if (frontend.enforceCurrentPageAccess() !== null || redirectTarget !== null) {
     fail('frontend page guard must defer without redirect until permissions are ready');
 }
 frontend.setPermissionLifecycle('ready');
-if (frontend.enforceCurrentPageAccess() !== false || redirectTarget !== '/') {
+if (frontend.enforceCurrentPageAccess() !== false || redirectTarget !== '/staff') {
     fail('frontend page guard must redirect disallowed manual URLs to the role start page');
 }
 

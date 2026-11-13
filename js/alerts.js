@@ -7,6 +7,7 @@ const _ALERTS_DISMISSED_KEY = 'crm_alerts_dismissed';
 let _alertsData = [];
 let _alertRuntimeStarted = false;
 let _alertInterval = null;
+let _alertScopeVersion = 0;
 
 // ─── Self-inject bell + panel ───────────────────
 function _ensureAlertElements() {
@@ -67,12 +68,14 @@ function _replaceAlertsData(alerts) {
 async function loadAlertBell() {
     if (typeof window.isAuthenticatedRuntimeReady !== 'function' || !window.isAuthenticatedRuntimeReady()) return;
     const badge = document.getElementById('alertBadge');
+    const scopeVersion = _alertScopeVersion;
     try {
         const fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
         const res = await fetchWithAuth('/api/dashboard/alerts', { headers: {} });
         if (!res) return;
         if (!res.ok) return;
         const data = await res.json();
+        if (scopeVersion !== _alertScopeVersion) return;
         const alerts = data.alerts || [];
         const dismissed = _getDismissed();
         _replaceAlertsData(alerts.filter(a => !dismissed.has(a.id)));
@@ -131,12 +134,14 @@ function _closeAlertsPanel() {
 async function _renderPanel() {
     const p = document.getElementById('alertsPanel');
     if (!p) return;
+    const scopeVersion = _alertScopeVersion;
     try {
         const fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
         const res = await fetchWithAuth('/api/dashboard/alerts', { headers: {} });
         if (!res) return;
         if (!res.ok) throw new Error('API error');
         const data = await res.json();
+        if (scopeVersion !== _alertScopeVersion) return;
         const alerts = data.alerts || [];
         const dismissed = _getDismissed();
         _replaceAlertsData(alerts.filter(a => !dismissed.has(a.id)));
@@ -254,7 +259,7 @@ function _renderAlertItem(a, isRead) {
             <span class="ap-icon">${a.icon || '⚠️'}</span>
             <div class="ap-content">
                 <div class="ap-item-title">${a.title || ''}</div>
-                ${a.message ? `<div class="ap-item-desc">${a.message}</div>` : ''}
+                ${a.message ? `<div class="ap-item-desc">${a.type === 'hr_deadline' ? escapeHtml(`${a.message} · ${a.dueDate}`) : a.message}</div>` : ''}
             </div>
             <button class="ap-dismiss" onclick="event.stopPropagation();_dismissAlert('${id}')" title="Сховати">✕</button>
         </div>
@@ -407,6 +412,12 @@ function _goAlert(link, id) {
     const currentPath = window.location.pathname;
     const linkBase = targetUrl.pathname;
     if (linkBase === currentPath) {
+        if (targetUrl.hash === '#hr-personal-reminders' && typeof window.switchTab === 'function') {
+            Promise.resolve(window.switchTab('myday')).then(() => {
+                document.getElementById('hr-personal-reminders')?.scrollIntoView({ block: 'start' });
+            });
+            return;
+        }
         const nextPath = `${targetUrl.pathname}${targetUrl.search}${targetUrl.hash}`;
         const currentFullPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
         if (nextPath !== currentFullPath) window.history.pushState(null, '', nextPath);
@@ -507,7 +518,8 @@ function startAlertRuntime() {
         const { payload } = e.detail || {};
         if (payload?.alerts) {
             const dismissed = _getDismissed();
-            const changed = _replaceAlertsData(payload.alerts.filter(a => !dismissed.has(a.id)));
+            const personal = _alertsData.filter(a => a.type === 'hr_deadline');
+            const changed = _replaceAlertsData([...personal, ...payload.alerts].filter(a => !dismissed.has(a.id)));
             const badge = document.getElementById('alertBadge');
             if (badge) { const read = _getRead(); _updateBadge(badge, _alertsData.filter(a => !read.has(a.id))); }
             _emitAlertsUpdated();
@@ -525,5 +537,14 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 window.addEventListener('crm:authenticated-runtime-ready', startAlertRuntime);
+window.addEventListener('crmBusinessScopeChanged', () => {
+    _alertScopeVersion++;
+    _replaceAlertsData([]);
+    _closeAlertsPanel();
+    const badge = document.getElementById('alertBadge');
+    if (badge) _updateBadge(badge, []);
+    _emitAlertsUpdated();
+    void loadAlertBell();
+});
 
 window._closeAlertsPanel = _closeAlertsPanel;

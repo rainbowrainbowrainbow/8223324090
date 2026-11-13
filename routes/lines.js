@@ -16,6 +16,7 @@ const {
     DEFAULT_TIMELINE_CONTEXT,
     timelineContextFromRequest,
     requireTimelineContext,
+    requireTimelineView,
     requireTimelineAction
 } = require('../services/timelineContext');
 const {
@@ -190,7 +191,7 @@ router.get('/:date', async (req, res) => {
         const { date } = req.params;
         if (!validateDate(date)) return res.status(400).json({ error: 'Invalid date format' });
         const businessContext = timelineContextFromRequest(req);
-        if (!requireTimelineContext(req, res, businessContext)) return;
+        if (!requireTimelineView(req, res, businessContext)) return;
         const timelineView = normalizeTimelineView(req.query.timelineView);
         if (timelineView === 'rooms' && businessContext === DEFAULT_TIMELINE_CONTEXT) {
             const lines = await roomTimelineLinesForContext(businessContext);

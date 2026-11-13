@@ -115,8 +115,8 @@ async function runHrCrmExtendedAudit({ browser, pool, actors, login, target, out
                 await overlay.waitFor({ state: 'visible' });
                 if (mode === 'new') {
                     await page.locator('#accountOnboardingName').fill(name);
-                    await page.locator('#accountOnboardingDepartment').fill('Анімація');
-                    await page.locator('#accountOnboardingPosition').fill('Аніматор');
+                    await page.locator('#accountOnboardingDepartment').selectOption({ index: 1 });
+                    await page.locator('#accountOnboardingPosition').selectOption({ index: 1 });
                     await page.locator('#accountOnboardingProfession-animator').check();
                     await page.locator('#accountOnboardingPrimaryProfession-animator').check();
                     for (const selector of ['.hr-account-profession-copy', '.hr-account-primary-label']) {

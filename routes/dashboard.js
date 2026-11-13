@@ -2527,6 +2527,11 @@ router.get('/alerts', async (req, res) => {
         const businessScope = dashboardBusinessScope(req, res);
         if (!businessScope) return;
         const today = getKyivDateStr();
+        const { listHrPersonalReminders } = require('../services/hrPersonalReminders');
+        const hrReminders = await listHrPersonalReminders(pool, req.user, businessScope, today).catch(error => {
+            log.warn('Alert center HR reminders unavailable', { code: error.code });
+            return [];
+        });
         const overdueParams = [];
         const overdueVisibility = buildTaskVisibilityScope(req.user, overdueParams, 't');
         const overdueBusinessCondition = appendDashboardBusinessScope(overdueParams, businessScope, 't');
@@ -2561,7 +2566,7 @@ router.get('/alerts', async (req, res) => {
                                (SELECT COUNT(*) FROM bookings b WHERE ${businessBookingSql('b')} AND b.date=$1 AND b.status='confirmed' ${shiftVisibility.sql} ${shiftBookingBusinessCondition}) AS today_bk`, shiftParams)
         ]);
         const alerts = [];
-        alerts.push(...urgentAlerts);
+        alerts.push(...hrReminders, ...urgentAlerts);
         overdue.rows.forEach(t => {
             const task = taskWidgetPayload([t])[0] || t;
             alerts.push({ id: `overdue_${t.id}`, level: 'warning', icon: '⚠️',

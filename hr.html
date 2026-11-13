@@ -12,22 +12,22 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.83.48">
-    <link rel="stylesheet" href="css/layout.css?v=0.83.48">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.83.48">
-    <link rel="stylesheet" href="css/pages-shell.css?v=0.83.48">
-    <link rel="stylesheet" href="css/pages-hr-staff.css?v=0.83.48">
-    <link rel="stylesheet" href="css/pages-hr-foundation.css?v=0.83.48">
-    <link rel="stylesheet" href="css/pages-analytics-vacancy.css?v=0.83.48">
-    <link rel="stylesheet" href="css/modals.css?v=0.83.48">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.83.48">
-    <link rel="stylesheet" href="css/responsive.css?v=0.83.48">
+    <link rel="stylesheet" href="css/base.css?v=0.83.51">
+    <link rel="stylesheet" href="css/layout.css?v=0.83.51">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.83.51">
+    <link rel="stylesheet" href="css/pages-shell.css?v=0.83.51">
+    <link rel="stylesheet" href="css/pages-hr-staff.css?v=0.83.51">
+    <link rel="stylesheet" href="css/pages-hr-foundation.css?v=0.83.51">
+    <link rel="stylesheet" href="css/pages-analytics-vacancy.css?v=0.83.51">
+    <link rel="stylesheet" href="css/modals.css?v=0.83.51">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.83.51">
+    <link rel="stylesheet" href="css/responsive.css?v=0.83.51">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/hr-page.css?v=0.83.48">
-    <link rel="stylesheet" href="css/hr-today-print.css?v=0.83.48">
-    <link rel="stylesheet" href="css/hr-attendance-ocr.css?v=0.83.48">
-    <link rel="stylesheet" href="css/account-access-editor.css?v=0.83.48">
+    <link rel="stylesheet" href="css/hr-page.css?v=0.83.51">
+    <link rel="stylesheet" href="css/hr-today-print.css?v=0.83.51">
+    <link rel="stylesheet" href="css/hr-attendance-ocr.css?v=0.83.51">
+    <link rel="stylesheet" href="css/account-access-editor.css?v=0.83.51">
 </head>
 <body data-page-group="hr">
     <script>
@@ -184,8 +184,8 @@
             <template id="hrNewStaffFields">
                 <label data-staff-field="Name"><span>Імʼя та прізвище *</span><input name="name" maxlength="100" autocomplete="name" required></label>
                 <label data-staff-field="Phone"><span>Телефон</span><input name="phone" type="tel" maxlength="30" autocomplete="tel"></label>
-                <label data-staff-field="Department"><span>Відділ *</span><input name="department" maxlength="50" required></label>
-                <label data-staff-field="Position"><span>Посада *</span><input name="position" maxlength="100" required></label>
+                <label data-staff-field="Department"><span>Відділ *</span><select name="department" required><option value="">Оберіть відділ</option></select></label>
+                <label data-staff-field="Position"><span>Посада *</span><select name="position" required><option value="">Оберіть посаду</option></select></label>
                 <label data-staff-field="HireDate"><span>Дата найму</span><input name="hireDate" type="date"></label>
                 <label data-staff-field="Address"><span>Адреса</span><input name="address" maxlength="1000" autocomplete="street-address"></label>
             </template>
@@ -195,10 +195,12 @@
                     <div id="hrCreateStaffFields" class="hr-account-form-grid"></div>
                     <div class="hr-account-form-grid">
                         <label><span>Основна професія</span><select name="role_type" id="hrCreateStaffProfession"><option value="">Без професії</option></select></label>
-                        <details class="hr-profession-picker" id="hrCreateStaffProfessionPicker">
-                            <summary>Додаткові професії <span id="hrCreateStaffProfessionSummary">— не вибрано</span></summary>
-                            <div id="hrCreateStaffSecondaryProfessions" class="hr-profession-picker-options" role="group" aria-label="Додаткові професії"></div>
-                        </details>
+                        <div id="hrCreateStaffProfessionPicker">
+                            <label for="hrCreateStaffSecondaryProfession"><span>Додаткова професія</span></label>
+                            <select id="hrCreateStaffSecondaryProfession"><option value="">Оберіть професію</option></select>
+                            <div id="hrCreateStaffSecondaryProfessions" class="hr-profession-selected-list" aria-label="Додані професії"></div>
+                            <small id="hrCreateStaffProfessionSummary" aria-live="polite">Не вибрано</small>
+                        </div>
                     </div>
                     <p id="hrCreateStaffStatus" role="status" aria-live="polite"></p>
                     <div class="hr-account-onboarding-actions">
@@ -362,7 +364,7 @@
                 </div>
                 <div id="accountCenterAdminNote" class="hr-account-note hidden">Для керування акаунтами потрібна capability manage_accounts.</div>
                 <div class="hr-account-toolbar" aria-label="Фільтри акаунтів">
-                    <label class="hr-account-search"><span class="sr-only">Пошук акаунтів</span><input type="search" id="accountCenterSearch" class="hr-team-search" placeholder="Імʼя, username, роль або staff…" autocomplete="off"></label>
+                    <label class="hr-account-search"><span class="sr-only">Пошук акаунтів</span><input type="search" id="accountCenterSearch" class="hr-team-search" placeholder="Імʼя, логін або роль…" autocomplete="off"></label>
                     <label class="hr-account-filter"><span>Статус</span><select id="accountCenterStatusFilter"><option value="active">Активні</option><option value="inactive">Вимкнені</option><option value="all">Усі</option></select></label>
                     <label class="hr-account-filter"><span>HR-звʼязок</span><select id="accountCenterLinkFilter"><option value="all">Усі</option><option value="linked">Привʼязані</option><option value="unlinked">Без staff</option><option value="inactive">Неактивний звʼязок</option></select></label>
                     <label class="hr-account-filter"><span>Роль</span><select id="accountCenterRoleFilter"><option value="all">Усі ролі</option></select></label>
@@ -420,7 +422,7 @@
                             </div>
                             <div id="accountOnboardingIdentityFields" class="hr-account-form-grid">
                                 <div id="accountOnboardingPersonalFields" class="hr-account-form-grid is-wide"></div>
-                                <label><span>Логін *</span><input id="accountOnboardingUsername" name="username" maxlength="50" pattern="[a-zA-Z0-9._-]{3,50}" autocomplete="off" required><small>Після створення логін не змінюється.</small></label>
+                                <label><span>Логін для входу *</span><input id="accountOnboardingUsername" name="username" maxlength="50" pattern="[a-zA-Z0-9._-]{3,50}" autocomplete="off" required><small>Після створення логін не змінюється.</small></label>
                                 <div class="is-wide">
                                     <label><span>Початковий пароль *</span><input id="accountOnboardingPassword" type="password" autocomplete="new-password" minlength="12" maxlength="72" aria-describedby="accountOnboardingPasswordHint" required></label>
                                     <small id="accountOnboardingPasswordHint">Можна відредагувати. Від 12 символів, без крайніх пробілів, крапки з комою та переносів рядка.</small>
@@ -1162,7 +1164,7 @@
                     </label>
                     <label>
                         <span>Посада</span>
-                        <input type="text" id="editStaffPosition" maxlength="100">
+                        <select id="editStaffPosition"><option value="">Оберіть посаду</option></select>
                     </label>
                 </div>
             <div class="form-group hr-staff-photo-field">
@@ -1519,7 +1521,6 @@
                             <button type="button" data-staff-workspace-view="documents:active" aria-pressed="true" onclick="setStaffWorkspaceView('documents', 'active', this)">Активні</button>
                             <button type="button" data-staff-workspace-view="documents:archive" aria-pressed="false" onclick="setStaffWorkspaceView('documents', 'archive', this)">Архів</button>
                         </div>
-                        <button type="button" id="editDocumentUpload" class="btn-secondary" onclick="uploadStaffDocument()">Додати скан</button>
                     </div>
                 </div>
                 <div id="editStaffDocumentsRestricted" class="hr-staff-workspace-state" data-state="restricted" role="status" hidden>
@@ -1543,7 +1544,7 @@
                         <input type="text" id="editDocumentTitle" maxlength="160" placeholder="Напр. Медкнижка 2026">
                     </div>
                     <div class="form-group is-wide">
-                        <label>Файл або скан</label>
+                        <label for="editDocumentFile">Файл або скан</label>
                         <input type="file" id="editDocumentFile" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.csv,.txt">
                         <small class="form-hint">Максимум 10 МБ. Доступ тільки для HR/керівників через авторизований API.</small>
                     </div>
@@ -1552,6 +1553,7 @@
                         <textarea id="editDocumentNotes" rows="2" placeholder="Що це за документ або коли перевірити"></textarea>
                     </div>
                 </div>
+                <div class="hr-staff-form-actions"><button type="button" id="editDocumentUpload" class="btn-primary" onclick="uploadStaffDocument()">Додати скан</button></div>
                 <div id="editStaffDocumentsFeedback" class="hr-staff-workspace-feedback" aria-live="polite" hidden></div>
                 <div id="editStaffDocuments" class="hr-staff-foundation-list" aria-live="polite" aria-busy="true">Документи завантажуються...</div>
             </section>
@@ -1563,7 +1565,6 @@
                     </div>
                     <div class="hr-staff-workspace-head-actions">
                         <button type="button" id="editMedicalCancel" class="btn-secondary" onclick="cancelStaffMedicalBookEdit()" hidden>Скасувати редагування</button>
-                        <button type="button" id="editMedicalSave" class="btn-primary" onclick="saveStaffMedicalBook()">Додати медкнижку</button>
                     </div>
                 </div>
                 <div id="editStaffMedicalRestricted" class="hr-staff-workspace-state" data-state="restricted" role="status" hidden>
@@ -1591,6 +1592,7 @@
                         <textarea id="editMedicalNotes" rows="2" placeholder="Напр. перевірити за 2 тижні до завершення"></textarea>
                     </div>
                 </div>
+                <div class="hr-staff-form-actions"><button type="button" id="editMedicalSave" class="btn-primary" onclick="saveStaffMedicalBook()">Додати медкнижку</button></div>
                 <div id="editMedicalDuplicateWarning" class="hr-staff-workspace-feedback" data-state="warning" role="status" aria-live="polite" hidden></div>
                 <div id="editMedicalBookFeedback" class="hr-staff-workspace-feedback" aria-live="polite" hidden></div>
                 <div id="editMedicalBookList" class="hr-staff-foundation-list" aria-live="polite" aria-busy="true">Медкнижка завантажується...</div>
@@ -1606,7 +1608,6 @@
                             <button type="button" data-staff-workspace-view="resources:active" aria-pressed="true" onclick="setStaffWorkspaceView('resources', 'active', this)">Активні</button>
                             <button type="button" data-staff-workspace-view="resources:history" aria-pressed="false" onclick="setStaffWorkspaceView('resources', 'history', this)">Історія</button>
                         </div>
-                        <button type="button" id="editResourceIssue" class="btn-secondary" onclick="issueStaffResource()">Видати</button>
                     </div>
                 </div>
                 <div class="hr-staff-foundation-grid">
@@ -1643,6 +1644,7 @@
                         <textarea id="editResourceNotes" rows="2" placeholder="Стан, серійний номер, відповідальний"></textarea>
                     </div>
                 </div>
+                <div class="hr-staff-form-actions"><button type="button" id="editResourceIssue" class="btn-primary" onclick="issueStaffResource()">Видати під звіт</button></div>
                 <div id="editStaffResourcesFeedback" class="hr-staff-workspace-feedback" aria-live="polite" hidden></div>
                 <div id="editStaffResources" class="hr-staff-foundation-list" aria-live="polite" aria-busy="true">Ресурси завантажуються...</div>
             </section>
@@ -1774,25 +1776,25 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.83.48"></script>
-    <script src="js/config.js?v=0.83.48"></script>
-    <script src="js/notification.js?v=0.83.48"></script>
-    <script src="js/api.js?v=0.83.48"></script>
-    <script src="js/auth.js?v=0.83.48"></script>
-    <script src="js/components/sidebar.js?v=0.83.48"></script>
+    <script src="js/ui.js?v=0.83.51"></script>
+    <script src="js/config.js?v=0.83.51"></script>
+    <script src="js/notification.js?v=0.83.51"></script>
+    <script src="js/api.js?v=0.83.51"></script>
+    <script src="js/auth.js?v=0.83.51"></script>
+    <script src="js/components/sidebar.js?v=0.83.51"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=0.83.48"></script>
-    <script src="js/hr-pulse-switcher.js?v=0.83.48"></script>
-    <script src="js/staff-schedule-shell.js?v=0.83.48"></script>
-    <script src="js/staff-schedule-loader.js?v=0.83.48"></script>
-    <script src="js/hr-attendance-state.js?v=0.83.48"></script>
-    <script src="js/account-access-editor.js?v=0.83.48"></script>
-    <script src="js/attendance-upload-links.js?v=0.83.48"></script>
-    <script src="js/hr-attendance-ocr.js?v=0.83.48"></script>
-    <script src="js/business-membership-manager.js?v=0.83.48"></script>
-    <script src="js/hr-page.js?v=0.83.48"></script>
-    <script src="js/staff-substitution.js?v=0.83.48"></script>
-    <script src="js/hr-today-print.js?v=0.83.48"></script>
-    <script src="js/alerts.js?v=0.83.48"></script>
+    <script src="js/ws.js?v=0.83.51"></script>
+    <script src="js/hr-pulse-switcher.js?v=0.83.51"></script>
+    <script src="js/staff-schedule-shell.js?v=0.83.51"></script>
+    <script src="js/staff-schedule-loader.js?v=0.83.51"></script>
+    <script src="js/hr-attendance-state.js?v=0.83.51"></script>
+    <script src="js/account-access-editor.js?v=0.83.51"></script>
+    <script src="js/attendance-upload-links.js?v=0.83.51"></script>
+    <script src="js/hr-attendance-ocr.js?v=0.83.51"></script>
+    <script src="js/business-membership-manager.js?v=0.83.51"></script>
+    <script src="js/hr-page.js?v=0.83.51"></script>
+    <script src="js/staff-substitution.js?v=0.83.51"></script>
+    <script src="js/hr-today-print.js?v=0.83.51"></script>
+    <script src="js/alerts.js?v=0.83.51"></script>
 </body>
 </html>

@@ -1648,6 +1648,9 @@ function crmBusinessDefaultTimelineRouteForUser(user) {
 }
 
 function crmBusinessStartPageForUser(user) {
+    if (typeof window.shouldStartWithStaffSchedule === 'function'
+        && window.shouldStartWithStaffSchedule(user)
+        && window.resolveCapability?.(user, '/staff', { type: 'page' }).allowed) return '/staff';
     const policy = resolveCrmBusinessPolicy(user);
     const defaultContext = policy.defaultContext || getCrmBusinessContext(user);
     const profile = getCrmBusinessProfileForContext(defaultContext) || crmBusinessProfileState.activeProfile;

@@ -311,3 +311,20 @@ test('an owner can independently allow schedule after loading a legacy staff den
 });
 
 }
+
+
+test('event operations pages exclude service roles even with legacy explicit grants', () => {
+    const pages = ['/', '/certificates', '/certificates/new', '/certificates/batch', '/certificates/check'];
+    const roles = require('../config/permissionRegistry').ROLE_HIERARCHY;
+    const allowed = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin', 'animator'];
+    for (const role of roles) {
+        for (const page of pages) {
+            assert.equal(resolveCapability({ role, page_allowlist: pages }, page, { type: 'page' }).allowed,
+                allowed.includes(role), role + ' ' + page);
+        }
+        assert.equal(resolveCapability({ role }, '/staff', { type: 'page' }).allowed, true, role + ' schedule');
+        assert.equal(resolveCapability({ role }, 'hr.schedule.view', { type: 'action' }).allowed, true, role + ' schedule read');
+    }
+    assert.equal(resolveCapability({ role: 'barista', extra_roles: ['animator'] }, '/', { type: 'page' }).allowed, true);
+    assert.equal(resolveCapability({ role: 'animator', page_denylist: ['/'] }, '/', { type: 'page' }).allowed, false);
+});

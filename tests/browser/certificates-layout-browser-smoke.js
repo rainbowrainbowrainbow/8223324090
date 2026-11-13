@@ -27,7 +27,7 @@ const html = read('certificates.html').replace(/<script\b[^>]*>[\s\S]*?<\/script
         <script src="/js/certificates-page.js"></script></body>`);
 const prelude = `
 const API_BASE = '/api';
-window.apiVerifyToken = async () => ({id: 1, username: 'synthetic-reception', role: 'reception'});
+window.apiVerifyToken = async () => ({id: 1, username: 'synthetic-admin', role: 'admin'});
 window.clearAuthStorage = () => {};
 window.hydrateBusinessOperatingProfile = async () => {};
 window.hydrateActionPermissions = async () => ({});

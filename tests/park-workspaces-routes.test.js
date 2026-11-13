@@ -169,8 +169,8 @@ async function withActualRouters(run) {
 
 test('Park certificate and Art recovery through actual Express routers', async t => {
     await withActualRouters(async ({ fixture, state, request }) => {
-        await t.test('senior manager and art director can issue a certificate, with committed history and readable result', async () => {
-            for (const role of ['senior_manager', 'art_director']) {
+        await t.test('senior manager and admin can issue a certificate, with committed history and readable result', async () => {
+            for (const role of ['senior_manager', 'admin']) {
                 state.actor = { role };
                 const result = await request('/api/certificates', { method: 'POST',
                     body: { ...CERTIFICATE_INPUT, displayValue: `  Synthetic ${role} Recipient  ` } });
@@ -192,6 +192,22 @@ test('Park certificate and Art recovery through actual Express routers', async t
             }
             assert.equal(fixture.calls.filter(call => call.sql.startsWith('INSERT INTO history ')).length, 2);
             assert.equal(fixture.calls.filter(call => call.sql === 'COMMIT').length, 2);
+        });
+
+        await t.test('excluded staff roles cannot access certificates even with stored page grants', async () => {
+            for (const role of ['art_director', 'barista', 'waiter', 'instructor', 'reception']) {
+                state.actor = { role, allowPages: ['/certificates', '/certificates/new', '/certificates/batch', '/certificates/check'] };
+                const callsBefore = fixture.calls.length;
+                for (const path of ['/api/certificates', '/api/certificates/code/CERT-2099-09981']) {
+                    const result = await request(path);
+                    assert.equal(result.status, 403, `${role}: ${result.text}`);
+                }
+                for (const path of ['/api/certificates', '/api/certificates/batch']) {
+                    const result = await request(path, { method: 'POST', body: CERTIFICATE_INPUT });
+                    assert.equal(result.status, 403, `${role}: ${result.text}`);
+                }
+                assert.equal(fixture.calls.length, callsBefore, 'denied requests cannot reach certificate data');
+            }
         });
 
         await t.test('single issuance stores stable codes for new and legacy callers', async () => {

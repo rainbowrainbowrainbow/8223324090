@@ -2574,7 +2574,12 @@ router.get('/my-cabinet', async (req, res) => {
             planningRowLimit: req.query.planningRowLimit || req.query.planning_row_limit,
             completedTodayLimit: req.query.completedTodayLimit || req.query.completed_today_limit
         });
-        res.json(projection);
+        const { listHrPersonalReminders } = require('../services/hrPersonalReminders');
+        const hrReminders = await listHrPersonalReminders(pool, req.user, businessScope).catch(error => {
+            log.warn('My cabinet HR reminders unavailable', { code: error.code });
+            return null;
+        });
+        res.json({ ...projection, hrReminders });
     } catch (err) {
         log.error('My cabinet task projection error', err);
         res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Internal server error' });

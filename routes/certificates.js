@@ -69,6 +69,16 @@ async function assertUniqueCertificateIdentity(db, displayValue, excludeId = nul
 // GET /api/certificates — List with filters
 // v39.8: Security — require authentication
 router.use(authenticateToken);
+router.use((req, res, next) => {
+    const path = String(req.path || '/').toLowerCase().replace(/\/$/, '') || '/';
+    const page = req.method === 'POST' && path === '/' ? '/certificates/new'
+        : req.method === 'POST' && path === '/batch' ? '/certificates/batch'
+            : path.startsWith('/code/') || /^\/\d+\/redeem$/.test(path) ? '/certificates/check' : '/certificates';
+    if (!resolveCapability(req.user, page, { type: 'page' }).allowed) {
+        return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+    next();
+});
 router.use(requireLegacyBusinessSurface('certificates'));
 // v40: Validate :id param is numeric
 router.param('id', (req, res, next, val) => { if (val && !/^\d+$/.test(val)) return res.status(400).json({ error: 'Invalid ID format' }); next(); });

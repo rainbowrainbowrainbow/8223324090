@@ -115,8 +115,8 @@ async function runHrCrmVisualAudit({ browser, pool, actors, login, target, outpu
                         await capture('validation');
                         await page.locator('#accountOnboardingName').fill(name);
                         await page.locator('#accountOnboardingPhone').fill(`+38000${String(evidence.length).padStart(7, '0')}`);
-                        await page.locator('#accountOnboardingDepartment').fill('Анімація');
-                        await page.locator('#accountOnboardingPosition').fill('Аніматор');
+                        await page.locator('#accountOnboardingDepartment').selectOption({ index: 1 });
+                        await page.locator('#accountOnboardingPosition').selectOption({ index: 1 });
                         await page.locator('#accountOnboardingProfession-animator').check();
                         await page.locator('#accountOnboardingPrimaryProfession-animator').check();
                         await assertLayout();

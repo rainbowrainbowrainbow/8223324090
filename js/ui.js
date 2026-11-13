@@ -2109,8 +2109,8 @@ function formModal(title, fields, options = {}) {
             }
             const inputType = f.type || 'text';
             const initialPassword = inputType === 'password' && f.initialPasswordControls === true;
-            const passwordControls = initialPassword
-                ? `<div class="confirm-actions"><button type="button" class="confirm-btn" data-fm-password-toggle aria-controls="${id}" aria-pressed="false">Показати пароль</button><button type="button" class="confirm-btn" data-fm-password-regenerate>Згенерувати інший</button></div>`
+            const passwordControls = inputType === 'password' && (initialPassword || f.passwordToggle === true)
+                ? `<div class="confirm-actions"><button type="button" class="confirm-btn" data-fm-password-toggle aria-controls="${id}" aria-pressed="false">👁 Показати пароль</button>${initialPassword ? '<button type="button" class="confirm-btn" data-fm-password-regenerate>Згенерувати інший</button>' : ''}</div>`
                 : '';
             return `<div data-fm-field-wrap="${escAttr(f.key)}" style="margin-bottom:10px;">${label}<input type="${inputType}" id="${id}" data-key="${f.key}" class="fm-field" value="${defVal}" placeholder="${ph}" style="${baseStyle}"${initialPassword ? ' autocomplete="new-password"' : ''}>${hint}${passwordControls}</div>`;
         }).join('');
@@ -2283,7 +2283,7 @@ function formModal(title, fields, options = {}) {
             button.addEventListener('click', () => {
                 const visible = input.type === 'password';
                 input.type = visible ? 'text' : 'password';
-                button.textContent = visible ? 'Приховати пароль' : 'Показати пароль';
+                button.textContent = visible ? 'Приховати пароль' : '👁 Показати пароль';
                 button.setAttribute('aria-pressed', String(visible));
             });
         });

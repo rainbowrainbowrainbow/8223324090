@@ -88,6 +88,7 @@ const { publish: publishEvent, publishInTransaction } = require('../services/eve
 const {
     DEFAULT_TIMELINE_CONTEXT,
     timelineContextFromRequest,
+    requireTimelineView,
     requireTimelineContext,
     requireTimelineAction
 } = require('../services/timelineContext');
@@ -3455,7 +3456,7 @@ router.get('/:date', async (req, res) => {
         const { date } = req.params;
         if (!validateDate(date)) return res.status(400).json({ error: 'Invalid date format' });
         const businessContext = timelineContextFromRequest(req);
-        if (!requireTimelineContext(req, res, businessContext)) return;
+        if (!requireTimelineView(req, res, businessContext)) return;
         const timelineView = normalizeTimelineView(req.query.timelineView);
         const params = [date, businessContext];
         const visibility = buildTimelineBookingVisibilityScope(req.user, params, 'b', businessContext);

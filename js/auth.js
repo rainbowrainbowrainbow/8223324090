@@ -2801,10 +2801,18 @@ function _getRoleConfig(role) {
 }
 
 function getRoleStartPage(role) {
+    if (shouldStartWithStaffSchedule({ role })) return '/staff';
     return _getRoleConfig(role).startPage || ROLE_SHELL_DEFAULT.startPage;
 }
 
+function shouldStartWithStaffSchedule(user = AppState.currentUser) {
+    const roles = [user?.role, ...[user?.roles, user?.extraRoles, user?.extra_roles].flatMap(list => Array.isArray(list) ? list : [])];
+    const operations = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin', 'animator'];
+    return roles.some(role => ROLE_LEVEL[role] !== undefined) && !roles.some(role => operations.includes(role));
+}
+
 function getAuthenticatedTimelineStartPage(user = AppState.currentUser) {
+    if (shouldStartWithStaffSchedule(user) && resolveCapability(user, '/staff', { type: 'page' }).allowed) return '/staff';
     if (typeof window !== 'undefined' && window.CrmBusinessContext?.startPageForUser) {
         return window.CrmBusinessContext.startPageForUser(user);
     }

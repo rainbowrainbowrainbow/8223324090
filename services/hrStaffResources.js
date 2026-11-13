@@ -65,6 +65,7 @@ function staffResourceAssignmentMeta(row) {
         quantity: Number(row.quantity || 0),
         issued_at: row.issued_at,
         due_return_at: row.due_return_at,
+        reminder_scope_known: Boolean(row.business_context || row.warehouse_stock_name),
         returned_at: row.returned_at,
         status: row.status,
         notes: row.notes,
@@ -283,10 +284,10 @@ async function issueStaffResource(staffId, body = {}, options = {}, dbPool = poo
         const result = await client.query(
             `INSERT INTO staff_resource_assignments
                 (staff_id, resource_kind, warehouse_stock_id, costume_id, title, quantity,
-                 issued_at, due_return_at, notes, issued_by)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+                 issued_at, due_return_at, notes, issued_by, business_context)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
              RETURNING *`,
-            [staffId, resourceKind, warehouseStockId, costumeId, title, quantity, issuedAt, dueReturnAt, notes, actor]
+            [staffId, resourceKind, warehouseStockId, costumeId, title, quantity, issuedAt, dueReturnAt, notes, actor, businessContext]
         );
         let assignment = result.rows[0];
 

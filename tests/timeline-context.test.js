@@ -10,12 +10,44 @@ const {
     normalizeTimelineContext,
     timelineContextFromRequest,
     canAccessTimelineContext,
+    requireTimelineView,
     canUseTimelineAction
 } = require('../services/timelineContext');
 const { ACTION_PERMISSIONS } = require('../middleware/auth');
 const { applyMembershipAccess, buildMembershipAccess } = require('../services/businessMembership');
+const { auditEffectiveRoles } = require('../scripts/audit-hr-timeline-roles');
 
 const ROOT = path.join(__dirname, '..');
+
+test('timeline read guard rejects restricted roles even with a saved page grant', () => {
+    for (const role of ['barista', 'waiter', 'instructor']) {
+        const res = { status(code) { assert.equal(code, 403); return this; }, json() {} };
+        assert.equal(requireTimelineView({ user: { role, page_allowlist: ['/'] } }, res, 'event_genix'), false);
+    }
+    assert.equal(requireTimelineView({ user: { role: 'animator' } }, {}, 'event_genix'), true);
+});
+
+test('legacy HR audit reports only businesses with an effective animator role', async () => {
+    const registry = ['event_genix', 'maysternya_doli', 'crm'].map((context_key, index) => ({
+        context_key, business_id: index + 1, organization_id: 1, access_mode: 'membership',
+        business_status: 'active', organization_status: 'active'
+    }));
+    const memberships = [
+        { ...registry[0], role: 'instructor', is_default: true, business_modules: ['timeline'] },
+        { ...registry[1], role: 'manager', extra_roles: ['animator'], business_modules: ['timeline'] }
+    ];
+    const candidate = {
+        id: 5, staff_id: 9, role: 'animator', role_type: 'trampoline_instructor', animation_evidence: true,
+        business_contexts: ['event_genix', 'maysternya_doli', 'crm']
+    };
+    const db = { query: async sql => ({ rows: sql.includes('FROM organization_memberships') ? memberships : registry }) };
+    const rows = await auditEffectiveRoles(db, candidate);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].business_context, 'maysternya_doli');
+    assert.equal(rows[0].role_source, 'membership');
+    assert.equal(rows[0].animation_evidence, true);
+    assert.deepEqual(rows[0].effective_roles, ['manager', 'animator']);
+});
 
 function createResourcePresentationTimeline() {
     const source = fs.readFileSync(path.join(ROOT, 'js', 'timeline-context.js'), 'utf8');
@@ -843,6 +875,7 @@ test('sidebar timeline launcher derives zero, one, or two modes from the hydrate
         location,
         localStorage,
         isAuthenticatedRuntimeReady: () => true,
+        canAccessPage: page => page === '/' || page === '/maysternya-doli',
         addEventListener(type, listener) {
             const listeners = windowListeners.get(type) || [];
             listeners.push(listener);

@@ -169,16 +169,16 @@ async function runActor(browser, pool, actor, existingAccountId) {
         }
         const name = `QA Staff ${actor.label} ${runId}`;
         await dialog.locator('[name="name"]').fill(name);
-        await dialog.locator('[name="department"]').fill('animators');
-        await dialog.locator('[name="position"]').fill('QA Animator');
+        await dialog.locator('[name="department"]').selectOption({ index: 1 });
+        await dialog.locator('[name="position"]').selectOption({ index: 1 });
         await dialog.locator('[name="role_type"]').selectOption('animator');
-        await dialog.locator('#hrCreateStaffProfessionPicker summary').click();
-        await dialog.locator('[name="secondary_professions"][value="waiter"]').check();
-        assert.match(await dialog.locator('#hrCreateStaffProfessionSummary').textContent(), /Офіціант/);
-        assert.equal(await dialog.locator('[name="secondary_professions"][value="animator"]').isDisabled(), true);
+
+        await dialog.locator('#hrCreateStaffSecondaryProfession').selectOption('waiter');
+        assert.match(await dialog.locator('#hrCreateStaffSecondaryProfessions').textContent(), /Офіціант/);
+        assert.equal(await dialog.locator('#hrCreateStaffSecondaryProfession option[value="animator"]').isDisabled(), true);
         await dialog.screenshot({ path: path.join(output, `${actor.label}-create.png`) });
         await captureSupplement('hr-create');
-        await dialog.locator('#hrCreateStaffProfessionPicker summary').click();
+
         const createCardSubmit = dialog.getByRole('button', { name: 'Створити картку', exact: true });
         await createCardSubmit.scrollIntoViewIfNeeded();
         await captureSupplement('hr-submit');
@@ -210,14 +210,15 @@ async function runActor(browser, pool, actor, existingAccountId) {
             assert.equal(await profile.getByRole('button', { name: 'Створити CRM-акаунт' }).count(), 0);
         }
         await captureSupplement('hr-created');
-        await profile.locator('#editStaffPosition').fill('QA Updated Position');
+        const updatedPosition = await profile.locator('#editStaffPosition option').last().getAttribute('value');
+        await profile.locator('#editStaffPosition').selectOption(updatedPosition);
         const [edit] = await Promise.all([
             waitForResponse(page, 'PUT', `/api/hr/staff/${staff.id}`),
             profile.locator('#editSave').click()
         ]);
         assert.equal(edit.status(), 200, 'position updated');
         const { rows } = await pool.query('SELECT id, position FROM staff WHERE name = $1', [name]);
-        assert.deepEqual(rows, [{ id: staff.id, position: 'QA Updated Position' }]);
+        assert.deepEqual(rows, [{ id: staff.id, position: updatedPosition }]);
         await page.waitForFunction(() => document.getElementById('editSave').dataset.actionState === 'success');
         assert.equal(await profile.locator('#editStaffHeaderName').textContent(), name);
         await profile.screenshot({ path: path.join(output, `${actor.label}-edit.png`) });
@@ -226,7 +227,7 @@ async function runActor(browser, pool, actor, existingAccountId) {
         await profile.waitFor({ state: 'hidden' });
         const card = page.locator('.hr-team-card').filter({ hasText: name });
         await card.getByRole('button', { name: /відкрити/i }).click();
-        await page.waitForFunction(() => document.getElementById('editStaffPosition').value === 'QA Updated Position');
+        await page.waitForFunction(expected => document.getElementById('editStaffPosition').value === expected, updatedPosition);
         await page.locator('#editCloseTop').click();
         await profile.waitFor({ state: 'hidden' });
         if (actor.role === 'creator' || actor.parkWorker) {
@@ -344,8 +345,8 @@ async function runActor(browser, pool, actor, existingAccountId) {
             const newUsername = `qa_crm_recovery_${runId}`;
             await page.locator('#accountOnboardingName').fill(newName);
             await page.locator('input[name="accountOnboardingStaffMode"][value="new"]').check();
-            await page.locator('#accountOnboardingDepartment').fill('animators');
-            await page.locator('#accountOnboardingPosition').fill('QA Animator');
+            await page.locator('#accountOnboardingDepartment').selectOption({ index: 1 });
+            await page.locator('#accountOnboardingPosition').selectOption({ index: 1 });
             await page.locator('#accountOnboardingProfession-animator').check();
             await page.locator('#accountOnboardingPrimaryProfession-animator').check();
             await page.locator('#accountOnboardingNext').click();

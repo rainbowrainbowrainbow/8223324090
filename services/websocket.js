@@ -18,7 +18,7 @@
 const { createLogger } = require('../utils/logger');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET, loadAuthenticatedUserAccess } = require('../middleware/auth');
-const { canAccessTimelineContext } = require('./timelineContext');
+const { canViewTimelinePage } = require('./timelineContext');
 const { canViewTimelineBooking } = require('./bookingVisibility');
 const { loadBusinessEventUser, canReceiveEvent } = require('./websocketEventAccess');
 
@@ -544,7 +544,7 @@ async function _broadcastAuthorizedTimelineEvent(eventType, audience, excludeUse
         excludeUserId, date: payload.date,
         authorize: async user => {
             const accessUser = await loadBusinessEventUser(user, payload.businessContext);
-            if (!accessUser || !canAccessTimelineContext(accessUser, payload.businessContext)) return false;
+            if (!accessUser || !canViewTimelinePage(accessUser, payload.businessContext)) return false;
             return !bookingVisibility || visibilityBookings.some(booking => canViewTimelineBooking(accessUser, booking));
         }
     });

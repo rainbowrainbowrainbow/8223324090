@@ -30,7 +30,7 @@ const prelude = `
 const API_BASE = '/api';
 window.fixtureAvailable = true;
 window.apiVerifyToken = async () => localStorage.getItem('fixture.auth') === 'expired'
-    ? null : ({id: 1, username: 'synthetic-reception', role: 'reception'});
+    ? null : ({id: 1, username: 'synthetic-admin', role: 'admin'});
 window.clearAuthStorage = () => localStorage.removeItem('fixture.auth');
 window.rememberAuthReturnRoute = reason => {
     localStorage.setItem('fixture.auth-return-route', location.pathname);

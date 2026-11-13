@@ -304,7 +304,7 @@ async function finalChecks() {
     }));
     await check('read-only-account-cannot-create-or-update-teachers',async()=>{
         reader={username:'edu_reader_'+crypto.randomBytes(12).toString('hex'),password:crypto.randomBytes(24).toString('base64url')};
-        await api('/api/users','POST',{username:reader.username,password:reader.password,name:'Спостерігач навчального центру',role:'director',pageAllowlist:['/'],businessContexts:['dar'],defaultBusinessContext:'dar',actionDenylist:['create_booking','edit_booking','delete_booking','manage_settings']});
+        await api('/api/users','POST',{username:reader.username,password:reader.password,name:'Спостерігач навчального центру',role:'director',businessContexts:['dar'],defaultBusinessContext:'dar',actionDenylist:['create_booking','edit_booking','delete_booking','manage_settings']});
         const response=await fetch(base+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:reader.username,password:reader.password})});assert.equal(response.status,200);
         const auth=await response.json();reader.token=auth.accessToken||auth.token;
         for(const [method,endpoint,body,status] of [
@@ -561,7 +561,7 @@ async function closeChecks(){
         assert.ok(!(await api('/api/education/groups/teachers?businessContext=maysternya_doli')).teachers.some(t=>t.id===candidate));
         if(!reader) {
             reader={username:'edu_observer_'+crypto.randomBytes(12).toString('hex'),password:crypto.randomBytes(24).toString('base64url')};
-            await api('/api/users','POST',{username:reader.username,password:reader.password,name:'Спостерігач викладачів',role:'director',pageAllowlist:['/'],businessContexts:['dar'],defaultBusinessContext:'dar',actionDenylist:['hr.staff.manage','create_booking','edit_booking','manage_settings']});
+            await api('/api/users','POST',{username:reader.username,password:reader.password,name:'Спостерігач викладачів',role:'director',businessContexts:['dar'],defaultBusinessContext:'dar',actionDenylist:['hr.staff.manage','create_booking','edit_booking','manage_settings']});
             const observerId=(await pool.query('SELECT id FROM users WHERE username=$1',[reader.username])).rows[0].id;
             await pool.query("INSERT INTO organization_memberships(organization_id,user_id,role) VALUES ($1,$2,'member')",[org,observerId]);
             const darId=(await pool.query("SELECT id FROM businesses WHERE context_key='dar'")).rows[0].id;

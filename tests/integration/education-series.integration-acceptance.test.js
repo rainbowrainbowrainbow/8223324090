@@ -148,7 +148,7 @@ describe('EDU-QA-01 extended real PostgreSQL and actual-app browser', { skip: !e
   });
   test('reader cannot manage settings or mutate education through direct API', async () => {
     const username=`eduqa_reader_${Date.now()}`,password=crypto.randomBytes(24).toString('base64url');
-    const created=await request('POST','/api/users',{username,password,name:'QA Education Reader',role:'director',pageAllowlist:['/','/timeline-settings'],businessContexts:['dar'],defaultBusinessContext:'dar',actionDenylist:['manage_settings','create_booking','edit_booking','delete_booking']});
+    const created=await request('POST','/api/users',{username,password,name:'QA Education Reader',role:'director',pageAllowlist:['/timeline-settings'],businessContexts:['dar'],defaultBusinessContext:'dar',actionDenylist:['manage_settings','create_booking','edit_booking','delete_booking']});
     assert.equal(created.status,200,`disposable reader creation: ${created.data.error || ''}`);
     const login=await request('POST','/api/auth/login',{username,password},''); assert.equal(login.status,200); readerToken=login.data.accessToken||login.data.token; readerCredentials={username,password};
     for(const [method,url,body] of [

@@ -226,7 +226,7 @@ async function finalChecks() {
     }));
     await check('read-only-account-cannot-create-or-update-teachers',async()=>{
         reader={username:'edu_reader_'+crypto.randomBytes(12).toString('hex'),password:crypto.randomBytes(24).toString('base64url')};
-        await api('/api/users','POST',{username:reader.username,password:reader.password,name:'Спостерігач навчального центру',role:'director',pageAllowlist:['/'],businessContexts:['dar'],defaultBusinessContext:'dar',actionDenylist:['create_booking','edit_booking','delete_booking','manage_settings']});
+        await api('/api/users','POST',{username:reader.username,password:reader.password,name:'Спостерігач навчального центру',role:'director',businessContexts:['dar'],defaultBusinessContext:'dar',actionDenylist:['create_booking','edit_booking','delete_booking','manage_settings']});
         const response=await fetch(base+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:reader.username,password:reader.password})});assert.equal(response.status,200);
         const auth=await response.json();reader.token=auth.accessToken||auth.token;
         for(const [method,endpoint,body,status] of [

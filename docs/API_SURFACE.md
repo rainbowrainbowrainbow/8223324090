@@ -100,6 +100,7 @@ focused route tests in the same pack.
 | `/api` | `routes/shop.js` | shop legacy aliases |
 | `/api/sound-library` | `routes/sound-library.js` | sound-library |
 | `/api/staff` | `routes/staff.js` | staff |
+| `/api/staff-substitutions` | `routes/staff-substitutions.js` | Shared substitution preview, history and audited commands; existing Park staff and HR/payroll capabilities |
 | `/api/stats` | `routes/stats.js` | stats |
 | `/api/status` | `routes/status.js` | status |
 | `/api/streaks` | `routes/streaks.js` | streaks |

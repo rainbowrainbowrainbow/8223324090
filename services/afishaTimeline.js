@@ -102,15 +102,16 @@ async function createTimelineAfisha(pool, input, actor) {
     } finally { client.release(); }
 }
 
-async function updateTimelineAfisha(pool, id, input, actor) {
+async function updateTimelineAfisha(pool, id, input, actor, options = {}) {
     if (!/^[1-9]\d*$/.test(String(id))) throw fail(400, 'Некоректний ID заходу');
     const lineIds = normalizeLineIds(input.lineIds);
     const expectedLineIds = normalizeLineIds(input.expectedLineIds);
     const promotionId = normalizePromotionId(input.promotionId);
     const expectedPromotionId = normalizePromotionId(input.expectedPromotionId);
-    const client = await pool.connect();
+    const ownsTransaction = !options.client;
+    const client = options.client || await pool.connect();
     try {
-        await client.query('BEGIN');
+        if (ownsTransaction) await client.query('BEGIN');
         const found = await client.query('SELECT * FROM afisha WHERE id = $1 FOR UPDATE', [id]);
         const event = found.rows[0];
         if (!event) throw fail(404, 'Захід не знайдено');
@@ -135,12 +136,12 @@ async function updateTimelineAfisha(pool, id, input, actor) {
         await insertHistory(client, { businessContext: 'event_genix', action: 'afisha_tl_update', username: actor,
             data: { id: event.id, from: { lineIds: lineIdsOf(event), promotionId: event.promotion_id },
                 to: { lineIds, promotionId } } });
-        await client.query('COMMIT');
+        if (ownsTransaction) await client.query('COMMIT');
         return result.rows[0];
     } catch (error) {
-        await client.query('ROLLBACK');
+        if (ownsTransaction) await client.query('ROLLBACK');
         throw error;
-    } finally { client.release(); }
+    } finally { if (ownsTransaction) client.release(); }
 }
 
 module.exports = { createTimelineAfisha, updateTimelineAfisha, normalizeLineIds, lineIdsOf };

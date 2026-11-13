@@ -144,6 +144,6 @@ test('staff schedule XLSX export requires schedule view and export_data before w
     const staffPage = read('js/staff-page.js');
     assert.match(staffRoutes, /router\.post\('\/schedule\/export-xlsx', requireAction\('hr\.schedule\.view'\), requireAction\('export_data'\), async \(req, res\) => \{[\s\S]*?await buildStaffScheduleWorkbookBuffer\(/);
     assert.match(registry, /api\('routes\/staff\.js', '\/api\/staff\/schedule\/export-xlsx', 'export_data'\)/);
-    assert.match(staffPage, /StaffState\.canExportSchedule = StaffState\.canViewSchedule && canUseStaffCapability\('export_data'\);/);
+    assert.match(staffPage, /StaffState\.canExportSchedule = StaffState\.canViewSchedule && canUseStaffCapability\('export_data'\) && writable;/);
     assert.match(staffPage, /async function handleExcelExport\(\) \{[\s\S]*?if \(!StaffState\.canExportSchedule\) \{/);
 });

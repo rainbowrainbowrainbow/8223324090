@@ -87,10 +87,12 @@ function assertSegmentedPlan(shift, expectedStaffId = null) {
 
 describe('HR disposable fixture integration', { skip: !enabled }, () => {
     before(async () => {
-        const suffix = `${process.pid}-${Date.now()}`;
+        // This suite verifies queue idempotency, not PDF name overflow. Keep the
+        // visible synthetic name within the normal printed name-cell width.
+        const suffix = String(process.pid);
         for (const label of ['Primary', 'Replacement']) {
             const response = await authRequest('POST', '/api/staff', {
-                name: `Disposable QA ${label} ${suffix}`,
+                name: `QA ${label === 'Primary' ? 'A' : 'B'} ${suffix}`,
                 department: 'admin',
                 position: 'Disposable integration fixture',
                 role_type: 'reception',

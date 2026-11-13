@@ -129,9 +129,9 @@ test('Park HR QA writes register exact fixtures, suppress chat and retire the ru
         await page.locator('#hrCreateStaffBtn').click();
         await assert.rejects(page.evaluate(() => fetch('/api/users', { method: 'POST', body: '{}' })));
         const dialog = page.locator('#hrCreateStaffDialog');
-        for (const field of ['name', 'department', 'position']) {
-            await dialog.locator(`[name="${field}"]`).fill(draft[field]);
-        }
+        await dialog.locator('[name="name"]').fill(draft.name);
+        await dialog.locator('[name="department"]').selectOption(draft.department);
+        await dialog.locator('[name="position"]').selectOption('Control');
         await dialog.locator('[name="role_type"]').selectOption('animator');
         const created = await clickSubmit(page, '/api/staff', dialog.locator('[type="submit"]'));
         await page.locator('#staffEditModal').waitFor({ state: 'visible' });

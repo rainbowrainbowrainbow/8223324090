@@ -152,6 +152,53 @@ const HR_HTML = [
 ].join('\n');
 const HR_JS = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
 
+test('vacancy status remains selectable after empty and failed responses', async () => {
+    const dom = new JSDOM(`
+        <select id="vacStatusFilter">
+            <option value="open">Open</option>
+            <option value="all">All</option>
+        </select>
+        <div id="vacanciesList"></div>
+    `);
+    const { document } = dom.window;
+    const filter = document.getElementById('vacStatusFilter');
+    const list = document.getElementById('vacanciesList');
+    const requests = [];
+    const context = vm.createContext({
+        document,
+        vacancyLoadSequence: 0,
+        teamAccessContext: () => 'event_genix',
+        initVacancyWorkspaceTabs: () => {},
+        loadVacancyPlatformTemplates: async () => {},
+        renderVacancyTemplateStudio: () => {},
+        renderVacancyResponses: () => {},
+        renderInterviewResults: () => {},
+        hrFetch: async path => {
+            requests.push(path);
+            if (requests.length === 1) return { success: true, vacancies: [] };
+            if (requests.length === 2) throw new Error('Connection interrupted');
+            return { success: true, vacancies: [] };
+        }
+    });
+    const start = HR_JS.indexOf('async function loadVacancies(');
+    const end = HR_JS.indexOf('async function patchVacancy(', start);
+    assert.ok(start >= 0 && end > start);
+    vm.runInContext(HR_JS.slice(start, end), context);
+    try {
+        await vm.runInContext('loadVacancies()', context);
+        assert.match(list.textContent, /Вакансій немає/);
+        filter.value = 'all';
+        await filter.onchange();
+        assert.match(list.textContent, /Не вдалося завантажити вакансії/);
+        filter.value = 'open';
+        await filter.onchange();
+        assert.match(list.textContent, /Вакансій немає/);
+        assert.deepEqual(requests, ['/vacancies?status=open', '/vacancies?status=all', '/vacancies?status=open']);
+    } finally {
+        dom.window.close();
+    }
+});
+
 test('staff move uses the latest revisions and reports a failed reactivation separately', async () => {
     const writes = [];
     const notices = [];

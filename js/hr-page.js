@@ -20815,7 +20815,9 @@ async function loadVacancies() {
     await loadVacancyPlatformTemplates();
     if (loadSequence !== vacancyLoadSequence || context !== teamAccessContext()) return;
     renderVacancyTemplateStudio();
-    const status = document.getElementById('vacStatusFilter')?.value || 'open';
+    const statusFilter = document.getElementById('vacStatusFilter');
+    if (statusFilter) statusFilter.onchange = loadVacancies;
+    const status = statusFilter?.value || 'open';
     const list = document.getElementById('vacanciesList');
     if (list) list.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:24px">⏳</div>';
     const sec = document.getElementById('candidatesSection');
@@ -20880,7 +20882,6 @@ async function loadVacancies() {
             </div>
         </div>
     `).join('');
-    document.getElementById('vacStatusFilter').onchange = loadVacancies;
     setVacancyWorkspaceTab(activeVacancyWorkspaceTab);
 }
 

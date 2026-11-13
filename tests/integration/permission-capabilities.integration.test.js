@@ -110,7 +110,7 @@ describe('disposable token-backed permission capability contract', { skip: !enab
             },
             { key: 'manager', role: 'manager', actionAllowlist: [], actionDenylist: [] },
             { key: 'hr', role: 'hr', actionAllowlist: [], actionDenylist: [] },
-            { key: 'staffReader', role: 'hr', actionAllowlist: [], actionDenylist: ['hr.payroll.view'] },
+            { key: 'staffReader', role: 'hr', actionAllowlist: [], actionDenylist: ['hr.payroll.view', 'hr.staff.manage'] },
             { key: 'staffCreator', role: 'animator', actionAllowlist: [], actionDenylist: ['hr.staff.manage', 'hr.schedule.manage'] },
             { key: 'matrix', role: 'waiter', actionAllowlist: [], actionDenylist: [] }
         ];
@@ -584,6 +584,7 @@ describe('disposable token-backed permission capability contract', { skip: !enab
         accounts.admin.token = await login(accounts.admin.username, accounts.admin.password);
         const currentReaderAccess = await permissions(reader.token);
         assert.equal(currentReaderAccess.capabilities['action:hr.staff.view']?.allowed, true);
+        assert.equal(currentReaderAccess.capabilities['action:hr.staff.manage']?.allowed, false);
         assert.equal(currentReaderAccess.capabilities['action:hr.payroll.view']?.allowed, false);
 
         const fixture = await schemaPool.query(
@@ -658,6 +659,12 @@ describe('disposable token-backed permission capability contract', { skip: !enab
 
             const draft = { name: 'Disposable Park Creation QA', department: 'admin', position: 'Administrator', phone: '+380000000003' };
             const fullToken = await login(fullManager.username, fullManager.password);
+            const managedStructure = await request('GET', '/api/hr/company-structure', null, fullToken);
+            assert.equal(managedStructure.status, 200, JSON.stringify(managedStructure.data));
+            assert.equal(managedStructure.data.structureAccess.readOnly, false);
+            assert.ok(Object.hasOwn(managedStructure.data.data, 'updatedAt'));
+            assert.equal(managedStructure.data.data.updatedBy, undefined);
+            assert.equal((await request('GET', `/api/hr/staff/${staffId}/documents`, null, fullToken)).status, 200);
             const fullCreation = await request('POST', '/api/staff', {
                 ...draft, name: 'Disposable Park Full Manager QA', phone: '+380000000002'
             }, fullToken);

@@ -7161,7 +7161,7 @@ async function loadTeam() {
             return;
         }
         teamStaff = data.data;
-        teamLoadState = { status: teamStaff.length ? 'success' : 'empty', context, message: '' };
+        teamLoadState = { status: teamStaff.length ? 'success' : 'empty', context, message: '', workflows: data.staffCardAccess?.workflows };
         setTeamCreateAccess(data.staffCardAccess?.canCreate === true);
         filterAndRenderTeam();
         if (teamRetryRestoreFocus) document.getElementById('teamSearch')?.focus({ preventScroll: true });
@@ -7736,17 +7736,12 @@ function renderTeamCardOverflowMenu(staff = {}) {
     const createAccountItem = !staff.has_account && canRunAccountOnboarding()
         ? `<button type="button" role="menuitem" class="hr-team-menu-item" onclick="openAccountCreateForStaff(${id}, this)">Створити CRM</button>`
         : '';
-    const staffLegacyAvailability = typeof getLegacyBusinessSurfaceAvailability === 'function'
-        ? getLegacyBusinessSurfaceAvailability('staff')
-        : { available: false, message: 'Доступ до бізнесу ще не підтверджено. Оновіть сторінку.' };
-    const unavailableReason = escapeHtml(staffLegacyAvailability.message || 'Тимчасово недоступно до розмежування даних за бізнесами.');
-    const manageItems = canManage && staffLegacyAvailability.available !== true
-        ? `<button type="button" role="menuitem" class="hr-team-menu-item hr-team-document" data-ui-contract="hr-staff-document-paperclip" aria-disabled="true" aria-describedby="${menuId}Unavailable">Документи</button>
-           <button type="button" role="menuitem" class="hr-team-menu-item hr-team-move" aria-disabled="true" aria-describedby="${menuId}Unavailable">Перемістити</button>
-           <small id="${menuId}Unavailable">${unavailableReason}</small>`
-        : canManage
-        ? `<button type="button" role="menuitem" class="hr-team-menu-item hr-team-document" data-ui-contract="hr-staff-document-paperclip" onclick="openStaffDocuments(${id})">Документи</button>
-           <button type="button" role="menuitem" class="hr-team-menu-item hr-team-move" onclick="openStaffMoveMenu(${id}, this)">Перемістити</button>`
+    const documents = canUseTeamWorkflow('documents');
+    const move = canUseTeamWorkflow('move');
+    const manageItems = canManage
+        ? `<button type="button" role="menuitem" class="hr-team-menu-item hr-team-document" data-ui-contract="hr-staff-document-paperclip" ${documents ? `onclick="openStaffDocuments(${id})"` : `aria-disabled="true" aria-describedby="${menuId}Unavailable"`}>Документи</button>
+           <button type="button" role="menuitem" class="hr-team-menu-item hr-team-move" ${move ? `onclick="openStaffMoveMenu(${id}, this)"` : `aria-disabled="true" aria-describedby="${menuId}Unavailable"`}>Перемістити</button>
+           ${documents && move ? '' : `<small id="${menuId}Unavailable">Деякі дії недоступні в цьому бізнесі або для вашої ролі.</small>`}`
         : '';
     const actionSection = [accountItems, createAccountItem, manageItems].filter(Boolean).join('');
     const dangerSection = canManage
@@ -7960,22 +7955,6 @@ function buildStaffMovePayload(staff = {}, targetBucket = 'workers', targetRole 
     return body;
 }
 
-async function setStaffProfileActive(staffId, isActive) {
-    const data = await hrFetch(`/staff/${staffId}/status`, {
-        method: 'PUT',
-        body: JSON.stringify({ is_active: Boolean(isActive) })
-    });
-    if (!data?.success) {
-        showNotification(data?.error || 'Не вдалося оновити активність профілю', 'error');
-        return false;
-    }
-    if (isActive && data.account_reactivation_blocked) {
-        showNotification('Співробітника активовано, але linked CRM-акаунт потребує доступу manage_accounts.', 'warning');
-    }
-    if (!isActive) await refreshHrOperationalViews();
-    return true;
-}
-
 function formatStaffDeleteItems(items = [], emptyText = 'немає') {
     if (!Array.isArray(items) || !items.length) return emptyText;
     return items.map(item => `${item.label}: ${Number(item.count || 0)}`).join('; ');
@@ -8109,8 +8088,13 @@ function focusStaffDocumentsPanel() {
     }, 100));
 }
 
+function canUseTeamWorkflow(operation) {
+    return canManage && teamLoadState.context === teamAccessContext()
+        && teamLoadState.workflows?.[operation] === true;
+}
+
 async function openStaffDocuments(staffId) {
-    if (!canManage) {
+    if (!canUseTeamWorkflow('documents')) {
         showNotification('Скани документів доступні тільки HR/керівникам', 'error');
         return;
     }
@@ -8119,133 +8103,126 @@ async function openStaffDocuments(staffId) {
 
 window.openStaffDocuments = openStaffDocuments;
 
-async function openStaffMoveMenu(staffId, button) {
-    if (!canManage) {
-        showNotification('Переміщення доступне тільки HR/керівникам', 'error');
-        return;
+const pendingStaffMoves = new Set();
+
+async function runStaffMove(staffId, chooseDestination, button = null) {
+    if (!canUseTeamWorkflow('move')) {
+        showNotification('Переміщення недоступне в цьому бізнесі або для вашої ролі.', 'error');
+        return false;
     }
-    const staff = teamStaff.find(item => Number(item.id) === Number(staffId));
-    if (!staff) return;
-    await ensureProfessionsLoaded({ silent: true });
-    const currentBucket = bucketForStaff(staff);
-    const preferredRole = preferredWorkerRoleForStaff(staff);
-    const targetOptions = staffMoveTargetOptions(currentBucket);
-    if (!targetOptions.length) {
-        showNotification('Для вашої ролі немає доступних HR-розділів для переміщення', 'error');
-        return;
-    }
-    const result = await formModal(`Перемістити: ${staff.name}`, [
-        {
-            key: 'targetBucket',
-            label: 'Куди перемістити',
-            type: 'select',
-            defaultValue: targetOptions[0]?.value || '',
-            options: targetOptions
-        },
-        {
-            key: 'targetRole',
-            label: 'Основна професія після повернення зі стажерів',
-            type: 'select',
-            defaultValue: preferredRole,
-            options: professionSelectOptionsForStaffMove(staff),
-            hint: 'Використовується тільки для переходу зі “Стажери” в “Робітники”.'
-        },
-        {
-            key: 'reason',
-            label: 'Причина для чорного списку',
-            type: 'textarea',
-            defaultValue: staff.blacklist_reason || '',
-            placeholder: 'Обовʼязково тільки для чорного списку'
-        }
-    ], {
-        icon: '↔',
-        type: 'info',
-        okText: 'Перемістити',
-        className: 'hr-staff-move-modal'
-    });
-    if (!result) return;
-    const targetBucket = String(result.targetBucket || currentBucket);
-    if (targetBucket === currentBucket) {
-        showNotification('Співробітник уже в цьому розділі', 'info');
-        return;
-    }
-    if (targetBucket === 'blacklist' && !String(result.reason || staff.blacklist_reason || '').trim()) {
-        showNotification('Для чорного списку потрібно вказати причину', 'error');
-        return;
-    }
-    const body = buildStaffMovePayload(staff, targetBucket, result.targetRole, result.reason);
-    const reactivating = currentBucket === 'dismissed' && targetBucket !== 'dismissed';
+    const context = teamAccessContext();
+    const generation = teamLoadRequestSeq;
+    const current = () => context === teamAccessContext() && generation === teamLoadRequestSeq;
+    const key = JSON.stringify([context, staffId]);
+    if (pendingStaffMoves.has(key)) return false;
+    pendingStaffMoves.add(key);
     if (button) button.disabled = true;
-    let data;
+    let placementSaved = false;
     try {
-        data = await hrFetch(`/staff/${staff.id}`, {
-            method: 'PUT',
-            body: JSON.stringify(body)
-        });
-        if (data?.success && reactivating) {
-            const activated = await setStaffProfileActive(staff.id, true);
-            if (!activated) return;
+        const latest = await hrFetch(`/staff/${staffId}`);
+        if (!current()) return false;
+        const staff = latest?.data;
+        if (!latest?.success || staff?.profile_revision == null) {
+            showNotification(latest?.error || 'Не вдалося завантажити актуальну картку. Повторіть спробу.', 'error');
+            return false;
         }
+        const currentBucket = bucketForStaff(staff);
+        const destination = await chooseDestination(staff, currentBucket);
+        if (!destination || !current()) return false;
+        const { targetBucket, targetRole, reason } = destination;
+        if (!staffMoveTargetOptions(currentBucket).some(option => option.value === targetBucket)) return false;
+        if (targetBucket === 'blacklist' && !String(reason || staff.blacklist_reason || '').trim()) {
+            showNotification('Для чорного списку потрібно вказати причину', 'error');
+            return false;
+        }
+        const data = await hrFetch(`/staff/${staffId}`, {
+            method: 'PUT',
+            headers: { 'X-Staff-Profile-Revision': String(staff.profile_revision) },
+            body: buildStaffMovePayload(staff, targetBucket, targetRole, reason)
+        });
+        if (!current()) return false;
+        if (!data?.success) {
+            showNotification(data?.error || 'Не вдалося перемістити співробітника', 'error');
+            return false;
+        }
+        placementSaved = true;
+        if (currentBucket === 'dismissed') {
+            const activation = await hrFetch(`/staff/${staffId}/status`, {
+                method: 'PUT',
+                headers: { 'X-Staff-Profile-Revision': String(data.data?.profile_revision ?? '') },
+                body: { is_active: true }
+            });
+            if (!current()) return false;
+            if (!activation?.success) {
+                showNotification(`Розділ збережено, але працівника не активовано. ${activation?.error || 'Перевірте картку.'}`, 'warning');
+                await loadTeam();
+                return false;
+            }
+            if (activation.account_reactivation_blocked) {
+                showNotification('Працівника активовано. Для відновлення CRM-акаунта зверніться до адміністратора.', 'warning');
+            }
+        }
+        activePeopleBucket = normalizeVisiblePeopleBucket(targetBucket);
+        showNotification(`Переміщено в «${HR_TEAM_MOVE_TARGETS.find(item => item.id === targetBucket)?.label || targetBucket}»`, 'success');
+        await loadTeam();
+        if (context === teamAccessContext()) await refreshHrOperationalViews();
+        return true;
+    } catch {
+        if (current()) {
+            showNotification(placementSaved
+                ? 'Розділ збережено. Перевірте активність працівника після відновлення з’єднання.'
+                : 'Не вдалося підтвердити переміщення. Перевірте картку перед повторною спробою.', 'warning');
+            await loadTeam();
+        }
+        return false;
     } finally {
+        pendingStaffMoves.delete(key);
         if (button) button.disabled = false;
     }
-    if (!data?.success) {
-        showNotification(data?.error || 'Не вдалося перемістити співробітника', 'error');
-        return;
-    }
-    activePeopleBucket = normalizeVisiblePeopleBucket(targetBucket);
-    showNotification(`Переміщено в "${HR_TEAM_MOVE_TARGETS.find(item => item.id === targetBucket)?.label || targetBucket}"`, 'success');
-    await loadTeam();
-    await refreshHrOperationalViews();
+}
+
+async function openStaffMoveMenu(staffId, button) {
+    return runStaffMove(Number(staffId), async (staff, currentBucket) => {
+        await ensureProfessionsLoaded({ silent: true });
+        const targetOptions = staffMoveTargetOptions(currentBucket);
+        if (!targetOptions.length) return null;
+        return formModal(`Перемістити: ${staff.name}`, [
+            { key: 'targetBucket', label: 'Куди перемістити', type: 'select',
+                defaultValue: targetOptions[0].value, options: targetOptions },
+            { key: 'targetRole', label: 'Основна професія після повернення зі стажерів', type: 'select',
+                defaultValue: preferredWorkerRoleForStaff(staff), options: professionSelectOptionsForStaffMove(staff),
+                hint: 'Використовується тільки для переходу зі стажерів у робітники.' },
+            { key: 'reason', label: 'Причина для чорного списку', type: 'textarea',
+                defaultValue: staff.blacklist_reason || '', placeholder: 'Обов’язково для чорного списку' }
+        ], { icon: '↔', type: 'info', okText: 'Перемістити', className: 'hr-staff-move-modal' });
+    }, button);
 }
 
 window.openStaffMoveMenu = openStaffMoveMenu;
 
 async function moveStaffToBucket(staffId, targetBucket, options = {}) {
-    if (!canManage) {
-        showNotification('Переміщення доступне тільки HR/керівникам', 'error');
-        return false;
-    }
-    const staff = teamStaff.find(item => Number(item.id) === Number(staffId));
-    if (!staff) return false;
-    const normalizedTarget = normalizeVisiblePeopleBucket(targetBucket);
-    const currentBucket = bucketForStaff(staff);
-    if (normalizedTarget === currentBucket) return false;
-    if (normalizedTarget === 'dismissed') {
+    if (targetBucket === 'dismissed') {
         showNotification('Для звільнення відкрийте профіль і завершіть співпрацю через вкладку завершення співпраці.', 'warning');
         return false;
     }
-    let reason = options.reason || '';
-    if (normalizedTarget === 'blacklist' && !String(reason || staff.blacklist_reason || '').trim()) {
-        const result = await formModal('Причина чорного списку', [
-            { key: 'reason', label: 'Причина', type: 'textarea', required: true }
-        ], { icon: '!', type: 'warning', okText: 'Перемістити' });
-        if (!result?.reason?.trim()) return false;
-        reason = result.reason.trim();
-    }
-    const body = buildStaffMovePayload(staff, normalizedTarget, options.targetRole || preferredWorkerRoleForStaff(staff), reason);
-    const data = await hrFetch(`/staff/${staff.id}`, {
-        method: 'PUT',
-        body: JSON.stringify(body)
+    return runStaffMove(Number(staffId), async (staff, currentBucket) => {
+        if (targetBucket === currentBucket) return null;
+        let reason = options.reason || '';
+        if (targetBucket === 'blacklist' && !String(reason || staff.blacklist_reason || '').trim()) {
+            const result = await formModal('Причина чорного списку', [
+                { key: 'reason', label: 'Причина', type: 'textarea', required: true }
+            ], { icon: '!', type: 'warning', okText: 'Перемістити' });
+            if (!result?.reason?.trim()) return null;
+            reason = result.reason.trim();
+        }
+        return { targetBucket, targetRole: options.targetRole || preferredWorkerRoleForStaff(staff), reason };
     });
-    if (!data?.success) {
-        showNotification(data?.error || 'Не вдалося перемістити співробітника', 'error');
-        return false;
-    }
-    if (currentBucket === 'dismissed') {
-        const activated = await setStaffProfileActive(staff.id, true);
-        if (!activated) return false;
-    }
-    activePeopleBucket = normalizedTarget;
-    showNotification(`Переміщено в "${HR_TEAM_MOVE_TARGETS.find(item => item.id === normalizedTarget)?.label || normalizedTarget}"`, 'success');
-    await loadTeam();
-    await refreshHrOperationalViews();
-    return true;
 }
+
 
 function initTeamDragAndDrop() {
     const grid = document.getElementById('teamGrid');
-    if (!grid || !canManage) return;
+    if (!grid || !canUseTeamWorkflow('move')) return;
     const dropTargets = [
         ...grid.querySelectorAll('.hr-people-bucket'),
         ...document.querySelectorAll('.hr-tab[data-bucket]')
@@ -13756,6 +13733,7 @@ async function previewStaffDocument(documentId, button = null) {
             setStaffWorkspaceFeedback('documents', 'error', 'Для цього документа доступне лише завантаження.');
             return { success: false, error: 'preview_unavailable' };
         }
+        const context = staffProfileContextKey;
         try {
             const resp = typeof apiFetchWithAuthRetry === 'function'
                 ? await apiFetchWithAuthRetry(documentMeta.preview_url)
@@ -13768,6 +13746,7 @@ async function previewStaffDocument(documentId, button = null) {
                 return { success: false, error: message };
             }
             const blob = await resp.blob();
+            if (context !== teamAccessContext() || activeEditStaffId() !== staffId) return { success: false, stale: true };
             if (!showStaffDocumentPreview(documentMeta, blob, button)) {
                 setStaffWorkspaceFeedback('documents', 'error', 'Формат не підтримує безпечний перегляд. Завантажте файл.');
                 return { success: false, error: 'preview_format_unsupported' };
@@ -13798,6 +13777,7 @@ async function downloadStaffDocument(documentId, fallbackName = 'staff-document'
         const touchWindow = typeof openTouchDownloadWindow === 'function'
             ? openTouchDownloadWindow('Документ працівника')
             : null;
+        const context = staffProfileContextKey;
         try {
             const resp = typeof apiFetchWithAuthRetry === 'function'
                 ? await apiFetchWithAuthRetry(`/api/hr/staff/${staffId}/documents/${documentId}/download`)
@@ -13810,6 +13790,10 @@ async function downloadStaffDocument(documentId, fallbackName = 'staff-document'
                 return { success: false, error: payload?.error || 'download_failed' };
             }
             const blob = await resp.blob();
+            if (context !== teamAccessContext() || activeEditStaffId() !== staffId) {
+                if (typeof closeTouchDownloadWindow === 'function') closeTouchDownloadWindow(touchWindow);
+                return { success: false, stale: true };
+            }
             const documentMeta = staffDocumentMetaById.get(Number(documentId));
             const filename = documentMeta?.original_name || documentMeta?.title || fallbackName || 'staff-document';
             if (typeof finishBlobDownload === 'function') {
@@ -16036,13 +16020,6 @@ async function loadRoleAssignmentsReport(expectedRequestSeq = reportRequestSeq) 
     const head = document.getElementById('roleReportHead');
     const body = document.getElementById('roleReportBody');
     if (!summaryRoot || !head || !body) return;
-    const availability = typeof getLegacyBusinessSurfaceAvailability === 'function'
-        ? getLegacyBusinessSurfaceAvailability('staff')
-        : { available: false, message: 'Доступ до бізнесу ще не підтверджено. Дочекайтеся завантаження профілю або оновіть сторінку.' };
-    if (availability.available !== true) {
-        renderRoleReportUnavailable(availability.message || 'Рольові призначення недоступні в поточному бізнесі.');
-        return;
-    }
     const context = teamAccessContext();
     head.replaceChildren();
     body.replaceChildren();

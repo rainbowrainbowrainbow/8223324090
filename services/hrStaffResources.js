@@ -94,10 +94,12 @@ async function listStaffResources(staffId, options = {}, db = pool) {
                LEFT JOIN warehouse_stock ws ON ws.id = sra.warehouse_stock_id
                LEFT JOIN costumes c ON c.id = sra.costume_id
                WHERE sra.staff_id = $1`;
-    const params = [staffId];
+    const params = [staffId, options.businessContext || DEFAULT_BUSINESS_CONTEXT];
+    sql += ` AND (sra.warehouse_stock_id IS NULL OR COALESCE(ws.business_context, 'event_genix') = $2)`;
+    if (options.allowCostumes === false) sql += ' AND sra.costume_id IS NULL';
     if (filter.statuses) {
         params.push(filter.statuses);
-        sql += ` AND sra.status = ANY($2::text[])`;
+        sql += ` AND sra.status = ANY($3::text[])`;
     }
     sql += ` ORDER BY sra.status = 'issued' DESC, sra.due_return_at ASC NULLS LAST, sra.created_at DESC`;
     const result = await db.query(sql, params);
@@ -154,6 +156,7 @@ async function listStaffResourceOptions(options = {}, db = pool) {
     }
 
     if (kind === 'costume') {
+        if (options.allowCostumes === false) throw serviceError('Спільний каталог костюмів недоступний у цьому бізнесі', 409);
         const params = [];
         const conditions = [`COALESCE(c.condition, 'good') <> 'retired'`];
         if (query) {
@@ -210,6 +213,9 @@ async function issueStaffResource(staffId, body = {}, options = {}, dbPool = poo
         const notes = cleanStaffResourceText(body.notes, 2000);
         const actor = options.actor || null;
         const businessContext = options.businessContext || DEFAULT_BUSINESS_CONTEXT;
+        if (resourceKind === 'costume' && options.allowCostumes === false) {
+            throw serviceError('Спільний каталог костюмів недоступний у цьому бізнесі', 409);
+        }
         let title = cleanStaffResourceText(body.title, 160);
 
         await client.query('BEGIN');
@@ -375,7 +381,13 @@ async function transitionStaffResource(staffId, assignmentId, targetStatus, body
             [assignmentId, staffId]
         );
         const existing = assignmentResult.rows[0] || null;
-        if (!existing) throw serviceError('Ресурс не знайдено', 404);
+        if (!existing || (existing.warehouse_stock_id
+            && (existing.warehouse_business_context || DEFAULT_BUSINESS_CONTEXT) !== (options.businessContext || DEFAULT_BUSINESS_CONTEXT))) {
+            throw serviceError('Ресурс не знайдено', 404);
+        }
+        if (existing.costume_id && options.allowCostumes === false) {
+            throw serviceError('Спільний каталог костюмів недоступний у цьому бізнесі', 409);
+        }
         if (existing.status !== 'issued') {
             if (existing.status === targetStatus) {
                 await client.query('COMMIT');
@@ -390,29 +402,34 @@ async function transitionStaffResource(staffId, assignmentId, targetStatus, body
             throw serviceError('Ресурс уже має інший кінцевий статус', 409);
         }
 
+        const businessContext = options.businessContext || DEFAULT_BUSINESS_CONTEXT;
         let returnMovementId = null;
-        if (targetStatus === 'returned' && existing.warehouse_stock_id) {
+        if (existing.warehouse_stock_id) {
             const stock = await client.query(
                 `SELECT id, location_id, business_context
                  FROM warehouse_stock
-                 WHERE id = $1
+                 WHERE id = $1 AND COALESCE(business_context, 'event_genix') = $2
                  FOR UPDATE`,
-                [existing.warehouse_stock_id]
+                [existing.warehouse_stock_id, businessContext]
             );
-            if (stock.rows[0]) {
-                const stockRow = stock.rows[0];
-                const businessContext = stockRow.business_context || DEFAULT_BUSINESS_CONTEXT;
+            const stockRow = stock.rows[0];
+            if (!stockRow) throw serviceError('Складський ресурс недоступний у цьому бізнесі', 409);
+            if (targetStatus === 'returned') {
+                const quantity = Number(existing.quantity);
+                if (!Number.isSafeInteger(quantity) || quantity < 1) {
+                    throw serviceError('Кількість складського ресурсу потребує перевірки', 409);
+                }
                 const reason = `HR-повернення від співробітника #${staffId}`;
                 await client.query(
                     `UPDATE warehouse_stock
                      SET quantity = quantity + $1, updated_at = NOW(), updated_by = $2
                      WHERE id = $3`,
-                    [existing.quantity, actor, existing.warehouse_stock_id]
+                    [quantity, actor, existing.warehouse_stock_id]
                 );
                 await client.query(
                     `INSERT INTO warehouse_history (stock_id, change, reason, created_by, business_context)
                      VALUES ($1, $2, $3, $4, $5)`,
-                    [existing.warehouse_stock_id, existing.quantity, reason, actor, businessContext]
+                    [existing.warehouse_stock_id, quantity, reason, actor, businessContext]
                 );
                 const movement = await client.query(
                     `INSERT INTO warehouse_stock_movements (
@@ -421,7 +438,7 @@ async function transitionStaffResource(staffId, assignmentId, targetStatus, body
                      )
                      VALUES ($1, 'return', NULL, $2, $3, $4, $5, $6)
                      RETURNING id`,
-                    [existing.warehouse_stock_id, stockRow.location_id || null, existing.quantity, reason, actor, businessContext]
+                    [existing.warehouse_stock_id, stockRow.location_id || null, quantity, reason, actor, businessContext]
                 );
                 returnMovementId = movement.rows[0].id;
             }

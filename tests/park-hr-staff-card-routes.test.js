@@ -152,7 +152,7 @@ test('Park HR staff list and base detail use exact GET and membership boundaries
         // Incident characterization, not the desired availability contract.
         // Replace each denial expectation with a workflow regression when its
         // bounded Park recovery is approved and implemented.
-        await t.test('2026-11-12 audit reproduces legacy gaps for both director and creator before SQL', async () => {
+        await t.test('staff workflow boundaries deny managers in a different business before SQL', async () => {
             const routes = [
                 ['GET', `/api/hr/staff/${STAFF_ID}/history`],
                 ['GET', `/api/hr/staff/${STAFF_ID}/lifecycle-checklist`],
@@ -177,12 +177,11 @@ test('Park HR staff list and base detail use exact GET and membership boundaries
                 for (const [method, path] of routes) {
                     const count = calls.length;
                     const response = await request(path, {
-                        method, ...(method === 'GET' ? {} : { body: { confirmation: 'ТАК' } })
+                        method, context: 'dar', ...(method === 'GET' ? {} : { body: { confirmation: 'ТАК' } })
                     });
                     const label = `${role}: ${method} ${path}`;
                     assert.equal(response.status, 403, label);
-                    assert.equal(response.body.code, 'staff_not_migrated', label);
-                    assert.match(response.body.error, /Спільні дані працівників/, label);
+                    assert.ok(['staff_not_migrated', 'HR_CAPABILITY_REQUIRED'].includes(response.body.code), label);
                     assert.equal(calls.length, count, `${label}: denied before database access`);
                 }
             }
@@ -381,7 +380,7 @@ test('Park HR staff list and base detail use exact GET and membership boundaries
             assert.equal((await request('/api/hr/company-structure')).status, 500);
             state.actor = {};
             for (const [method, path] of [
-                ['HEAD', '/api/hr/company-structure'], ['PUT', '/api/hr/company-structure'],
+                ['HEAD', '/api/hr/company-structure'],
                 ['GET', '/api/hr/company-structure/'], ['GET', '/api/hr/company-structure/extra'],
                 ['GET', '/api/hr/pool?status=reserve'],
                 ['HEAD', '/api/hr/checklists/dashboard']

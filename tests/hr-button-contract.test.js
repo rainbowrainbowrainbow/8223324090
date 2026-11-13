@@ -1709,10 +1709,10 @@ test('HR onboarding assignment keeps routes thin and owns task sync in service',
 test('HR staff document service owns private upload, preview, archive, restore, and download metadata', async () => {
     for (const token of [
         "require('../services/hrStaffDocuments')",
-        "router.get('/staff/:id/documents', requireHrManage",
+        "router.get('/staff/:id/documents', requireAction('hr.staff.manage')",
         "router.post('/staff/:id/documents', requireHrManage, handleStaffDocumentUpload",
-        "router.get('/staff/:id/documents/:documentId/download', requireHrManage",
-        "router.get('/staff/:id/documents/:documentId/preview', requireHrManage",
+        "router.get('/staff/:id/documents/:documentId/download', requireAction('hr.staff.manage')",
+        "router.get('/staff/:id/documents/:documentId/preview', requireAction('hr.staff.manage')",
         "router.delete('/staff/:id/documents/:documentId', requireHrManage",
         "router.put('/staff/:id/documents/:documentId/restore', requireHrManage",
         "auditLog('staff_document_upload'",
@@ -1720,7 +1720,7 @@ test('HR staff document service owns private upload, preview, archive, restore, 
         "auditLog('staff_document_restore'",
         "res.setHeader('Cache-Control', 'no-store, private')",
         "res.setHeader('X-Content-Type-Options', 'nosniff')",
-        'safeStaffDocumentDownloadFilename(doc.original_name)'
+        "staffDocumentDisposition('attachment', doc.original_name)"
     ]) {
         assert.ok(HR_ROUTE.includes(token), `missing HR staff document route token ${token}`);
     }
@@ -1912,8 +1912,8 @@ test('HR staff documents are reachable from the compact team card overflow menu'
 test('HR staff resource service owns warehouse and costume side effects atomically', async () => {
     for (const token of [
         "require('../services/hrStaffResources')",
-        "router.get('/staff/:id/resources', requireHrManage",
-        "router.get('/resource-options', requireHrManage",
+        "router.get('/staff/:id/resources', requireAction('hr.staff.manage')",
+        "router.get('/resource-options', requireAction('hr.staff.manage')",
         "router.post('/staff/:id/resources', requireHrManage",
         `router.put('/staff/:id/resources/:assignmentId/return', requireHrManage`,
         `router.put('/staff/:id/resources/:assignmentId/status', requireHrManage`,
@@ -1995,11 +1995,11 @@ test('HR staff resource service owns warehouse and costume side effects atomical
     const listed = await listStaffResources(42, { includeReturned: false }, listDb);
     assert.equal(listed[0].warehouse_stock_name, 'Radio');
     assert.match(listQueries[0].sql, /sra.status = ANY/);
-    assert.deepEqual(listQueries[0].params[1], ['issued']);
+    assert.deepEqual(listQueries[0].params[2], ['issued']);
     await listStaffResources(42, { view: 'history' }, listDb);
-    assert.deepEqual(listQueries[1].params[1], ['returned', 'lost', 'written_off']);
+    assert.deepEqual(listQueries[1].params[2], ['returned', 'lost', 'written_off']);
     await listStaffResources(42, { includeReturned: true }, listDb);
-    assert.equal(listQueries[2].params.length, 1, 'legacy include_returned=true keeps the all-status response');
+    assert.equal(listQueries[2].params.length, 2, 'legacy include_returned=true keeps the all-status response');
     const options = await listStaffResourceOptions({ kind: 'warehouse_stock', q: 'radio', businessContext: 'park' }, listDb);
     assert.equal(options.kind, 'warehouse_stock');
     assert.equal(options.data[0].label, 'Radio');
@@ -2136,6 +2136,7 @@ test('HR resource terminal statuses are idempotent and keep inventory synchroniz
                             queries.push({ sql, params });
                             if (/^BEGIN$|^COMMIT$|^ROLLBACK$/i.test(sql)) return { rows: [] };
                             if (/FROM staff_resource_assignments sra/i.test(sql)) return { rows: [{ ...state }] };
+                            if (/FROM warehouse_stock/i.test(sql)) return { rows: [{ id: params[0], business_context: params[1] }] };
                             if (/UPDATE staff_resource_assignments/i.test(sql) && /SET status = \$3/i.test(sql)) {
                                 state.status = params[2];
                                 state.returned_at = params[3];

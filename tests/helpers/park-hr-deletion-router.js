@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const express = require('express');
 
-async function withDeletionRouter(run, database = null) {
+async function withDeletionRouter(run, database = null, { realServices = [] } = {}) {
     const saved = new Map(Object.entries(require.cache));
     const state = { actor: {}, missing: false, counts: {}, outstanding: { count: 0, amount: 0 } };
     const calls = [];
@@ -45,16 +45,18 @@ async function withDeletionRouter(run, database = null) {
     try {
         for (const name of ['../../routes/hr', '../../middleware/auth']) delete require.cache[require.resolve(name)];
         mock('../../db', { pool });
-        mock('../../utils/logger', { createLogger: () => ({ info() {}, warn() {}, error() {}, debug() {} }) });
+        mock('../../utils/logger', { createLogger: () => ({ info() {}, warn() {}, error(message, error) { state.lastError = error?.message || message; }, debug() {} }) });
         for (const name of ['websocket', 'accountSecurity', 'accountOnboarding', 'costumeInventory', 'taskExecution',
             'taskPerformancePolicy', 'staffLifecycle', 'hrVacancyPlatformFormatter', 'hrPayrollPeriod', 'payroll',
             'hrPayrollSchemes', 'hrPayrollProfiles', 'liveMultiSegmentQa', 'hrStaffDocuments', 'hrStaffMedicalBook',
-            'hrStaffResources', 'hrAttendanceDocuments', 'hrAttendanceDocumentsPdf', 'hrAttendanceDocumentAutomation', 'booking']) {
+            'hrStaffResources', 'hrAttendanceDocuments', 'hrAttendanceDocumentsPdf', 'hrAttendanceDocumentAutomation']) {
+            if (realServices.includes(name)) { delete require.cache[require.resolve(`../../services/${name}`)]; continue; }
             mock(`../../services/${name}`, new Proxy({}, { get: (_target, key) => () => {
                 unexpected.push(`${name}.${String(key)}`);
                 throw new Error('Unexpected service call');
             } }));
         }
+        mock('../../services/booking', { getKyivDateStr: () => '2026-11-13' });
         mock('../../services/payrollSettlement', {
             loadStaffOutstandingPayrollInstallments: async () => state.outstanding
         });
@@ -83,12 +85,14 @@ async function withDeletionRouter(run, database = null) {
         app.use('/api/hr', authenticate, require('../../routes/hr'));
         server = await new Promise(resolve => { const listener = app.listen(0, '127.0.0.1', () => resolve(listener)); });
         const origin = `http://127.0.0.1:${server.address().port}`;
-        async function request(path, { method = 'GET', body, context = 'event_genix' } = {}) {
+        async function request(path, { method = 'GET', body, context = 'event_genix', headers = {} } = {}) {
             const res = await fetch(origin + '/api/hr' + path, { method,
-                headers: { 'Content-Type': 'application/json', 'X-Business-Context': context },
-                ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+                headers: { ...(body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
+                    'X-Business-Context': context, ...headers },
+                ...(body === undefined ? {} : { body: body instanceof FormData ? body : JSON.stringify(body) }) });
             const text = await res.text();
-            return { status: res.status, body: text ? JSON.parse(text) : null };
+            return { status: res.status, headers: res.headers, body: text && res.headers.get('content-type')?.includes('application/json')
+                ? JSON.parse(text) : text || null };
         }
         await run({ state, calls, request, origin });
         assert.deepEqual(unexpected, []);

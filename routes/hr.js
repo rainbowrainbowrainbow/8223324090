@@ -29,6 +29,7 @@ const {
     resolveBusinessScope
 } = require('../services/businessContext');
 const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
+const { staffWorkflowCapability } = require('../services/parkHrStaffWorkflowAccess');
 const { parkHrStaffCardEditCapability, PARK_STAFF_PROFILE_FIELD_LIMITS } = require('../services/parkHrStaffCardRead');
 const { isParkHrStaffDeletionRoute, projectStaffDeletionReadiness } = require('../services/parkHrStaffDeletionAccess');
 const { loadAdditionalStaffDeletionBlockers } = require('../services/staffDeletionReferences');
@@ -342,6 +343,8 @@ function hrCapabilityCandidates(req) {
     const routePath = String(req.path || '/');
     const isRead = req.method === 'GET' || req.method === 'HEAD';
     if (isParkHrStaffDeletionRoute(req)) return ['hr.staff.manage'];
+    const workflow = staffWorkflowCapability(req);
+    if (workflow) return [workflow];
     if (req.method === 'PUT') {
         const profileEdit = parkHrStaffCardEditCapability(req);
         if (profileEdit) return [profileEdit];
@@ -389,6 +392,7 @@ function requireHrCapabilityContract(req, res, next) {
 }
 
 const HR_PAYROLL_RESPONSE_FIELDS = new Set([
+    'outstanding_payroll_installment_amount',
     'hourly_rate', 'hourlyRate', 'rate_unit', 'rateUnit', 'estimated_salary', 'estimatedSalary',
     'salary', 'base_salary', 'baseSalary', 'total_salary', 'totalSalary',
     'profession_rates', 'professionRates', 'profession_rate_summary', 'professionRateSummary',
@@ -805,6 +809,31 @@ function actorCanDisableOffboardingAccount(actor, account = {}) {
     return accountMaxRoleLevel(account) < accountRoleLevel('director');
 }
 
+// Account state is global. The lifecycle transaction already holds the
+// organization ownership lock used by membership writers.
+async function assertParkLifecycleAccountScope(client, req) {
+    if (req.user?.businessMembershipAccess?.membershipEnabled !== true) return;
+    const { rows } = await client.query(
+        `SELECT 1
+         FROM employee_profiles ep JOIN users u ON u.id = ep.user_id
+         WHERE ep.staff_id = $1 AND (
+            EXISTS (SELECT 1 FROM business_memberships bm
+                    JOIN businesses b ON b.id = bm.business_id
+                    WHERE bm.user_id = u.id AND bm.is_active IS TRUE AND b.context_key <> $2)
+            OR EXISTS (SELECT 1 FROM organization_memberships om
+                       WHERE om.user_id = u.id AND om.is_active IS TRUE AND om.organization_id <> $3)
+            OR EXISTS (SELECT 1 FROM unnest(u.business_contexts) AS c(context) WHERE c.context <> $2)
+            OR COALESCE(u.default_business_context, $2) <> $2
+         )
+         LIMIT 1`,
+        [req.params.id, DEFAULT_BUSINESS_CONTEXT, req.user.activeBusinessMembership.organizationId]
+    );
+    if (rows.length) {
+        throw Object.assign(new Error('Пов’язаний CRM-акаунт має доступ до іншого бізнесу. Зверніться до адміністратора.'),
+            { code: 'STAFF_ACCOUNT_SHARED_BUSINESS', statusCode: 409 });
+    }
+}
+
 function accountOffboardingBlockReason(actor, account = {}) {
     if (Number(account.id) === Number(actor?.id)) return 'current_user';
     if (isProtectedSystemAccount(account)) return 'protected_system_account';
@@ -880,17 +909,22 @@ async function loadStaffOffboardingReadiness(staffId, db = pool, options = {}) {
     const currentUserId = Number(options.currentUserId || 0);
     const actor = options.actor || null;
     const openResources = await db.query(
-        `SELECT sra.id, sra.resource_kind, sra.title, sra.quantity, sra.issued_at, sra.due_return_at,
+        `SELECT sra.id, sra.resource_kind,
+                CASE WHEN sra.warehouse_stock_id IS NOT NULL AND ws.id IS NULL
+                      OR (sra.costume_id IS NOT NULL AND NOT $2)
+                     THEN 'Ресурс з обмеженим доступом' ELSE sra.title END AS title,
+                sra.quantity, sra.issued_at, sra.due_return_at,
                 ws.name AS warehouse_stock_name,
-                c.name AS costume_name,
+                CASE WHEN $2 THEN c.name ELSE NULL END AS costume_name,
                 COUNT(*) OVER()::int AS total_count
          FROM staff_resource_assignments sra
          LEFT JOIN warehouse_stock ws ON ws.id = sra.warehouse_stock_id
+            AND COALESCE(ws.business_context, 'event_genix') = 'event_genix'
          LEFT JOIN costumes c ON c.id = sra.costume_id
          WHERE sra.staff_id = $1 AND sra.status = 'issued'
          ORDER BY sra.due_return_at ASC NULLS LAST, sra.created_at DESC, sra.id DESC
          LIMIT 10`,
-        [staffId]
+        [staffId, actor?.businessMembershipAccess?.membershipEnabled !== true]
     );
     const activeAccounts = await db.query(
         `SELECT u.id, u.username, u.name, u.role, u.extra_roles, ep.id AS profile_id, ep.full_name
@@ -924,6 +958,7 @@ async function loadStaffOffboardingReadiness(staffId, db = pool, options = {}) {
                    sc.status
             FROM staff_certifications sc
             WHERE sc.staff_id = $1
+              AND COALESCE(sc.business_context, 'event_genix') = 'event_genix'
               AND sc.status IN ('active', 'expired')
               AND sc.expires_at IS NOT NULL
               AND sc.expires_at <= CURRENT_DATE + INTERVAL '30 days'
@@ -948,13 +983,14 @@ async function loadStaffOffboardingReadiness(staffId, db = pool, options = {}) {
         open_resource_count: openResourceCount,
         open_resources: openResources.rows.map(staffOffboardingResourceMeta),
         active_account_count: accounts.length,
-        active_accounts: accounts,
+        active_accounts: canUseAction(actor, 'manage_accounts') ? accounts : [],
         document_alert_count: documentAlertCount,
         document_alerts: documentAlerts.rows.map(staffOffboardingDocumentAlertMeta),
         outstanding_payroll_installment_count: Number(outstandingInstallments.count || 0),
         outstanding_payroll_installment_amount: Number(outstandingInstallments.amount || 0),
         disable_available: blockedAccounts.length === 0,
-        disable_blockers: blockedAccounts,
+        disable_blockers: canUseAction(actor, 'manage_accounts') ? blockedAccounts
+            : blockedAccounts.map(({ block_reason, is_current_user }) => ({ block_reason, is_current_user })),
         disable_requires_manage_accounts: accounts.length > 0,
         ready_for_closure: openResourceCount === 0
             && documentAlertCount === 0
@@ -1279,7 +1315,8 @@ async function loadStaffLifecycleChecklist(staffId, db = pool, options = {}) {
             action: 'payroll',
             count: outstandingInstallmentCount,
             detail: outstandingInstallmentCount
-                ? `Outstanding installments: ${outstandingInstallmentCount}, залишок ${Math.round(outstandingInstallmentAmount)}.`
+                ? `Неврегульовані виплати: ${outstandingInstallmentCount}${canViewPayrollDetails(options.actor)
+                    ? `, залишок ${Math.round(outstandingInstallmentAmount)}` : ''}.`
                 : 'Outstanding installments немає.',
             source: 'payroll_installments + payroll_payment_movements'
         }),
@@ -3703,9 +3740,10 @@ router.get('/professions/:professionKey/staff/:staffId/checklist', async (req, r
 });
 
 async function handleStaffProfessionChecklistToggle(req, res) {
-    const client = await pool.connect();
+    let client;
     let inTransaction = false;
     try {
+        client = await pool.connect();
         await client.query('BEGIN');
         inTransaction = true;
         const actor = req.user?.username || null;
@@ -3757,7 +3795,7 @@ async function handleStaffProfessionChecklistToggle(req, res) {
         if (inTransaction) await client.query('ROLLBACK').catch(() => {});
         sendProfessionChecklistFailure(res, err, 'PUT /hr/staff/:id/profession-checklist error');
     } finally {
-        client.release();
+        client?.release();
     }
 }
 
@@ -3834,9 +3872,9 @@ router.get('/staff', async (req, res) => {
     }
 });
 
-router.get('/staff/:id/history', async (req, res) => {
+router.get('/staff/:id/history', requireAction('hr.staff.manage'), async (req, res) => {
     try {
-        const limit = Math.max(1, Math.min(100, Number(req.query.limit || 50)));
+        const limit = Math.max(1, Math.min(100, parseNonNegativeSafeInteger(req.query.limit, 50)));
         const result = await pool.query(
             `SELECT id, action, staff_id, performed_by, details, ip_address, created_at
              FROM hr_audit_log
@@ -3847,7 +3885,10 @@ router.get('/staff/:id/history', async (req, res) => {
         );
         res.json({
             success: true,
-            data: result.rows.map(row => publicHrAuditRow(row, req.user))
+            data: result.rows.map(row => {
+                const { ip_address, ...entry } = publicHrAuditRow(row, req.user);
+                return canUseAction(req.user, 'manage_accounts') ? { ...entry, ip_address } : entry;
+            })
         });
     } catch (err) {
         log.error('GET /hr/staff/:id/history error', err);
@@ -3949,7 +3990,7 @@ router.get('/staff/:id', async (req, res) => {
     }
 });
 
-router.get('/staff/:id/lifecycle-checklist', requireHrManage, async (req, res) => {
+router.get('/staff/:id/lifecycle-checklist', requireAction('hr.staff.manage'), async (req, res) => {
     try {
         const data = await loadStaffLifecycleChecklist(req.params.id, pool, { currentUserId: req.user?.id, actor: req.user });
         if (!data) return res.status(404).json({ success: false, error: 'Працівника не знайдено' });
@@ -3961,7 +4002,7 @@ router.get('/staff/:id/lifecycle-checklist', requireHrManage, async (req, res) =
 });
 
 // GET /api/hr/staff/:id/documents — private metadata only; binary is served by guarded download route.
-router.get('/staff/:id/documents', requireHrManage, async (req, res) => {
+router.get('/staff/:id/documents', requireAction('hr.staff.manage'), async (req, res) => {
     try {
         const staff = await loadStaffRowOrNull(req.params.id);
         if (!staff) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
@@ -3975,15 +4016,30 @@ router.get('/staff/:id/documents', requireHrManage, async (req, res) => {
 });
 
 // POST /api/hr/staff/:id/documents — private DB-backed upload, never public /uploads.
+async function writePrivateStaffRecord(req, work) {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const staff = await loadStaffRowOrNull(req.params.id, client, { lock: true });
+        if (!staff) throw Object.assign(new Error('Співробітника не знайдено'), { statusCode: 404 });
+        const result = await work(client);
+        await client.query('COMMIT');
+        return result;
+    } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw error;
+    } finally {
+        client.release();
+    }
+}
+
 router.post('/staff/:id/documents', requireHrManage, handleStaffDocumentUpload, async (req, res) => {
     try {
-        const staff = await loadStaffRowOrNull(req.params.id);
-        if (!staff) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
-        const file = req.file;
-        const created = await createStaffDocument(req.params.id, file, req.body, req.user?.username || null);
-        await auditLog('staff_document_upload', parseInt(req.params.id), req.user?.username, {
-            ...created.audit
-        }, req.ip);
+        const created = await writePrivateStaffRecord(req, async client => {
+            const record = await createStaffDocument(req.params.id, req.file, req.body, req.user?.username || null, client);
+            await auditLog('staff_document_upload', Number(req.params.id), req.user?.username, record.audit, req.ip, client);
+            return record;
+        });
         res.json({ success: true, data: created.data });
     } catch (err) {
         log.error('POST /hr/staff/:id/documents error', err);
@@ -3991,7 +4047,15 @@ router.post('/staff/:id/documents', requireHrManage, handleStaffDocumentUpload, 
     }
 });
 
-router.get('/staff/:id/documents/:documentId/download', requireHrManage, async (req, res) => {
+function staffDocumentDisposition(kind, filename) {
+    const safe = safeStaffDocumentDownloadFilename(filename);
+    const fallback = safe.replace(/[^\x20-\x7e]/g, '_');
+    const encoded = encodeURIComponent(safe).replace(/['()*]/g, value =>
+        '%' + value.charCodeAt(0).toString(16).toUpperCase());
+    return `${kind}; filename="${fallback}"; filename*=UTF-8''${encoded}`;
+}
+
+router.get('/staff/:id/documents/:documentId/download', requireAction('hr.staff.manage'), async (req, res) => {
     try {
         if (!/^[0-9]+$/.test(String(req.params.documentId || ''))) {
             return res.status(400).json({ success: false, error: 'Invalid document ID' });
@@ -4001,7 +4065,8 @@ router.get('/staff/:id/documents/:documentId/download', requireHrManage, async (
         res.setHeader('Content-Type', doc.mime_type || 'application/octet-stream');
         res.setHeader('Content-Length', String(doc.file_size || doc.file_data.length || 0));
         res.setHeader('Cache-Control', 'no-store, private');
-        res.setHeader('Content-Disposition', `attachment; filename="${safeStaffDocumentDownloadFilename(doc.original_name)}"`);
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('Content-Disposition', staffDocumentDisposition('attachment', doc.original_name));
         res.send(doc.file_data);
     } catch (err) {
         log.error('GET /hr/staff/:id/documents/:documentId/download error', err);
@@ -4009,7 +4074,7 @@ router.get('/staff/:id/documents/:documentId/download', requireHrManage, async (
     }
 });
 
-router.get('/staff/:id/documents/:documentId/preview', requireHrManage, async (req, res) => {
+router.get('/staff/:id/documents/:documentId/preview', requireAction('hr.staff.manage'), async (req, res) => {
     try {
         if (!/^[0-9]+$/.test(String(req.params.documentId || ''))) {
             return res.status(400).json({ success: false, error: 'Invalid document ID' });
@@ -4025,7 +4090,7 @@ router.get('/staff/:id/documents/:documentId/preview', requireHrManage, async (r
         res.setHeader('Cache-Control', 'no-store, private');
         res.setHeader('X-Content-Type-Options', 'nosniff');
         res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
-        res.setHeader('Content-Disposition', `inline; filename="${safeStaffDocumentDownloadFilename(doc.original_name)}"`);
+        res.setHeader('Content-Disposition', staffDocumentDisposition('inline', doc.original_name));
         res.send(doc.file_data);
     } catch (err) {
         log.error('GET /hr/staff/:id/documents/:documentId/preview error', err);
@@ -4038,15 +4103,16 @@ router.delete('/staff/:id/documents/:documentId', requireHrManage, async (req, r
         if (!/^[0-9]+$/.test(String(req.params.documentId || ''))) {
             return res.status(400).json({ success: false, error: 'Invalid document ID' });
         }
-        const archived = await archiveStaffDocument(req.params.id, req.params.documentId, req.user?.username || null);
+        const archived = await writePrivateStaffRecord(req, async client => {
+            const record = await archiveStaffDocument(req.params.id, req.params.documentId, req.user?.username || null, client);
+            if (record) await auditLog('staff_document_archive', Number(req.params.id), req.user?.username, record.audit, req.ip, client);
+            return record;
+        });
         if (!archived) return res.status(404).json({ success: false, error: 'Документ не знайдено' });
-        await auditLog('staff_document_archive', parseInt(req.params.id), req.user?.username, {
-            ...archived.audit
-        }, req.ip);
         res.json({ success: true, data: archived.data });
     } catch (err) {
         log.error('DELETE /hr/staff/:id/documents/:documentId error', err);
-        res.status(500).json({ success: false, error: 'Помилка сервера' });
+        res.status(err.statusCode || 500).json({ success: false, error: err.statusCode ? err.message : 'Помилка сервера' });
     }
 });
 
@@ -4055,19 +4121,20 @@ router.put('/staff/:id/documents/:documentId/restore', requireHrManage, async (r
         if (!/^[0-9]+$/.test(String(req.params.documentId || ''))) {
             return res.status(400).json({ success: false, error: 'Invalid document ID' });
         }
-        const restored = await restoreStaffDocument(req.params.id, req.params.documentId, req.user?.username || null);
+        const restored = await writePrivateStaffRecord(req, async client => {
+            const record = await restoreStaffDocument(req.params.id, req.params.documentId, req.user?.username || null, client);
+            if (record) await auditLog('staff_document_restore', Number(req.params.id), req.user?.username, record.audit, req.ip, client);
+            return record;
+        });
         if (!restored) return res.status(404).json({ success: false, error: 'Архівний документ не знайдено' });
-        await auditLog('staff_document_restore', parseInt(req.params.id), req.user?.username, {
-            ...restored.audit
-        }, req.ip);
         res.json({ success: true, data: restored.data });
     } catch (err) {
         log.error('PUT /hr/staff/:id/documents/:documentId/restore error', err);
-        res.status(500).json({ success: false, error: 'Помилка сервера' });
+        res.status(err.statusCode || 500).json({ success: false, error: err.statusCode ? err.message : 'Помилка сервера' });
     }
 });
 
-router.get('/staff/:id/medical-book', requireHrManage, async (req, res) => {
+router.get('/staff/:id/medical-book', requireAction('hr.staff.manage'), async (req, res) => {
     try {
         const staff = await loadStaffRowOrNull(req.params.id);
         if (!staff) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
@@ -4090,13 +4157,14 @@ function sendStaffMedicalBookError(res, err) {
     return res.status(status).json(payload);
 }
 
-router.post('/staff/:id/medical-book', requireHrManage, async (req, res) => {
+router.post('/staff/:id/medical-book', requireAction('hr.staff.manage'), async (req, res) => {
     try {
-        const staff = await loadStaffRowOrNull(req.params.id);
-        if (!staff) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
         const actor = req.user?.username || null;
-        const created = await createStaffMedicalBook(req.params.id, req.body, actor);
-        await auditLog(created.auditEvent, parseInt(req.params.id), actor, created.audit, req.ip);
+        const created = await writePrivateStaffRecord(req, async client => {
+            const record = await createStaffMedicalBook(req.params.id, req.body, actor, client);
+            await auditLog(record.auditEvent, Number(req.params.id), actor, record.audit, req.ip, client);
+            return record;
+        });
         res.json({ success: true, data: created.data });
     } catch (err) {
         log.error('POST /hr/staff/:id/medical-book error', err);
@@ -4109,18 +4177,19 @@ router.patch('/staff/:id/medical-book/:certificationId', requireHrManage, async 
         if (!/^[0-9]+$/.test(String(req.params.certificationId || ''))) {
             return res.status(400).json({ success: false, error: 'Invalid certification ID' });
         }
-        const staff = await loadStaffRowOrNull(req.params.id);
-        if (!staff) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
         const actor = req.user?.username || null;
-        const updated = await updateStaffMedicalBook(req.params.id, req.params.certificationId, req.body, actor);
-        await auditLog(updated.auditEvent, parseInt(req.params.id), actor, updated.audit, req.ip);
+        const updated = await writePrivateStaffRecord(req, async client => {
+            const record = await updateStaffMedicalBook(req.params.id, req.params.certificationId, req.body, actor, client);
+            await auditLog(record.auditEvent, Number(req.params.id), actor, record.audit, req.ip, client);
+            return record;
+        });
         res.json({ success: true, data: updated.data });
     } catch (err) {
         log.error('PATCH /hr/staff/:id/medical-book/:certificationId error', err);
         return sendStaffMedicalBookError(res, err);
     }
 });
-router.get('/staff/:id/resources', requireHrManage, async (req, res) => {
+router.get('/staff/:id/resources', requireAction('hr.staff.manage'), async (req, res) => {
     try {
         const staff = await loadStaffRowOrNull(req.params.id);
         if (!staff) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
@@ -4128,7 +4197,9 @@ router.get('/staff/:id/resources', requireHrManage, async (req, res) => {
         const resources = await listStaffResources(req.params.id, {
             view: req.query.view,
             status: req.query.status,
-            includeReturned
+            includeReturned,
+            businessContext: hrBusinessContextFromRequest(req),
+            allowCostumes: req.user?.businessMembershipAccess?.membershipEnabled !== true
         });
         res.json({ success: true, data: resources });
     } catch (err) {
@@ -4137,16 +4208,18 @@ router.get('/staff/:id/resources', requireHrManage, async (req, res) => {
     }
 });
 
-router.get('/resource-options', requireHrManage, async (req, res) => {
+router.get('/resource-options', requireAction('hr.staff.manage'), async (req, res) => {
     try {
         const result = await listStaffResourceOptions({
             kind: req.query.kind,
             q: req.query.q || req.query.search,
             limit: req.query.limit,
-            businessContext: hrBusinessContextFromRequest(req)
+            businessContext: hrBusinessContextFromRequest(req),
+            allowCostumes: req.user?.businessMembershipAccess?.membershipEnabled !== true
         });
         res.json({ success: true, ...result });
     } catch (err) {
+        if (err.statusCode) return res.status(err.statusCode).json({ success: false, error: err.message });
         log.error('GET /hr/resource-options error', err);
         res.status(500).json({ success: false, error: 'Помилка завантаження ресурсів' });
     }
@@ -4158,6 +4231,7 @@ router.post('/staff/:id/resources', requireHrManage, async (req, res) => {
         const issued = await issueStaffResource(req.params.id, req.body, {
             actor,
             businessContext: hrBusinessContextFromRequest(req),
+            allowCostumes: req.user?.businessMembershipAccess?.membershipEnabled !== true,
             today: todayKyiv()
         });
         await auditLog('staff_resource_issue', parseInt(req.params.id), actor, {
@@ -4180,6 +4254,8 @@ router.put('/staff/:id/resources/:assignmentId/return', requireHrManage, async (
         const actor = req.user?.username || null;
         const returned = await returnStaffResource(req.params.id, req.params.assignmentId, req.body, {
             actor,
+            businessContext: hrBusinessContextFromRequest(req),
+            allowCostumes: req.user?.businessMembershipAccess?.membershipEnabled !== true,
             today: todayKyiv()
         });
         if (!returned.idempotent) {
@@ -4205,6 +4281,8 @@ router.put('/staff/:id/resources/:assignmentId/status', requireHrManage, async (
         const status = String(req.body?.status || '').trim();
         const transitioned = await transitionStaffResource(req.params.id, req.params.assignmentId, status, req.body, {
             actor,
+            businessContext: hrBusinessContextFromRequest(req),
+            allowCostumes: req.user?.businessMembershipAccess?.membershipEnabled !== true,
             today: todayKyiv()
         });
         if (!transitioned.idempotent) {
@@ -4566,7 +4644,7 @@ router.put('/staff/:id/role-assignments', requireHrManage, async (req, res) => {
     }
 });
 
-router.get('/staff/:id/offboarding', requireHrManage, async (req, res) => {
+router.get('/staff/:id/offboarding', requireAction('hr.staff.manage'), async (req, res) => {
     try {
         const staff = await loadStaffRowOrNull(req.params.id);
         if (!staff) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
@@ -4585,7 +4663,7 @@ router.get('/staff/:id/offboarding', requireHrManage, async (req, res) => {
     }
 });
 
-router.get('/staff/:id/offboarding-readiness', requireHrManage, async (req, res) => {
+router.get('/staff/:id/offboarding-readiness', requireAction('hr.staff.manage'), async (req, res) => {
     try {
         const staff = await loadStaffRowOrNull(req.params.id);
         if (!staff) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
@@ -4609,8 +4687,9 @@ router.get('/staff/:id/delete-readiness', requireAction('hr.staff.manage'), asyn
 });
 
 router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
-    const client = await pool.connect();
+    let client;
     try {
+        client = await pool.connect();
         const reason = cleanStaffText(req.body.reason, 2000);
         if (!reason) return res.status(400).json({ success: false, error: 'Причина завершення співпраці обовʼязкова' });
         const effectiveDate = cleanStaffDate(req.body.effective_date || req.body.effectiveDate) || todayKyiv();
@@ -4626,6 +4705,7 @@ router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
             await client.query('ROLLBACK');
             return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
         }
+        await assertParkLifecycleAccountScope(client, req);
         const readiness = await loadStaffOffboardingReadiness(req.params.id, client, { currentUserId: req.user?.id, actor: req.user });
         const openResourceCount = readiness.open_resource_count || 0;
         const outstandingInstallments = await loadStaffOutstandingPayrollInstallments(req.params.id, client);
@@ -4698,8 +4778,6 @@ router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
             eventDetails: { offboardingEventId: event.rows[0].id },
             logger: log
         });
-        await client.query('COMMIT');
-        broadcastRosterDates(scheduleCleanup.dates || [], req.user?.id);
         await auditLog('staff_offboarding_complete', parseInt(req.params.id), req.user?.username, {
             event_id: event.rows[0].id,
             effective_date: effectiveDate,
@@ -4710,7 +4788,9 @@ router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
             open_resource_count: openResourceCount,
             schedule_cleanup: scheduleCleanup,
             account_deactivation: accountDeactivation
-        }, req.ip);
+        }, req.ip, client);
+        await client.query('COMMIT');
+        broadcastRosterDates(scheduleCleanup?.dates || [], req.user?.id);
         res.json({
             success: true,
             data: event.rows[0],
@@ -4722,13 +4802,13 @@ router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
             account_deactivation: accountDeactivation
         });
     } catch (err) {
-        await client.query('ROLLBACK').catch(() => {});
+        await client?.query('ROLLBACK').catch(() => {});
         log.error('POST /hr/staff/:id/offboarding error', err);
         if (err.code === 'account_deactivation_blocked') return res.status(err.statusCode).json({ success: false, error: staffOffboardingDisableError(err.blockers), code: err.code, blockers: err.blockers });
-        if (err.code === 'organization_last_owner') return res.status(409).json({ success: false, error: err.message, code: err.code });
+        if (['organization_last_owner', 'STAFF_ACCOUNT_SHARED_BUSINESS'].includes(err.code)) return res.status(409).json({ success: false, error: err.message, code: err.code });
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     } finally {
-        client.release();
+        client?.release();
     }
 });
 
@@ -5065,8 +5145,9 @@ router.delete('/staff/:id', requireAction('hr.staff.manage'), async (req, res) =
 
 // PUT /api/hr/staff/:id/status — activate/deactivate
 router.put('/staff/:id/status', requireHrManage, async (req, res) => {
-    const client = await pool.connect();
+    let client;
     try {
+        client = await pool.connect();
         const isActive = req.body?.is_active === true || req.body?.isActive === true;
         if (req.body?.is_active !== true && req.body?.is_active !== false && req.body?.isActive !== true && req.body?.isActive !== false) {
             return res.status(400).json({ success: false, error: 'is_active required' });
@@ -5074,10 +5155,17 @@ router.put('/staff/:id/status', requireHrManage, async (req, res) => {
 
         await client.query('BEGIN');
         await lockOrganizationOwnership(client);
-        const before = await client.query('SELECT * FROM staff WHERE id = $1 FOR UPDATE', [req.params.id]);
+        const before = await client.query('SELECT *, xmin::text AS profile_revision FROM staff WHERE id = $1 FOR UPDATE', [req.params.id]);
         if (!before.rows.length) {
             await client.query('ROLLBACK');
             return res.status(404).json({ success: false, error: 'Не знайдено' });
+        }
+        await assertParkLifecycleAccountScope(client, req);
+        const revision = req.get('X-Staff-Profile-Revision');
+        if (revision !== undefined && revision !== before.rows[0].profile_revision) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ success: false, code: 'STAFF_PROFILE_CONFLICT',
+                error: 'Картку змінено. Перевірте актуальні дані перед активацією.' });
         }
         if (!isActive) {
             const outstandingInstallments = await loadStaffOutstandingPayrollInstallments(req.params.id, client);
@@ -5131,10 +5219,7 @@ router.put('/staff/:id/status', requireHrManage, async (req, res) => {
                  WHERE ep.staff_id = $1 AND ep.user_id IS NOT NULL
                  FOR UPDATE OF ep, u`,
                 [req.params.id]
-            ).catch(err => {
-                log.warn(`HR rehire account lookup skipped: ${err.message}`);
-                return { rows: [] };
-            });
+            );
             const allowedAccounts = linkedAccounts.rows.filter(account => actorCanReactivateStaffAccount(req.user, account));
             accountReactivationBlockers = linkedAccounts.rows
                 .map(account => ({
@@ -5150,20 +5235,14 @@ router.put('/staff/:id/status', requireHrManage, async (req, res) => {
                      WHERE staff_id = $1 AND user_id = ANY($2::int[])
                      RETURNING user_id`,
                     [req.params.id, userIds]
-                ).catch(err => {
-                    log.warn(`HR rehire profile activation skipped: ${err.message}`);
-                    return { rows: [] };
-                });
+                );
                 const activatedUsers = await client.query(
                     `UPDATE users
                      SET is_active = true
                      WHERE id = ANY($1::int[])
                      RETURNING id, username, name, role`,
                     [userIds]
-                ).catch(err => {
-                    log.warn(`HR rehire account activation skipped: ${err.message}`);
-                    return { rows: [] };
-                });
+                );
                 reactivatedAccounts = activatedUsers.rows;
                 for (const target of activatedUsers.rows) {
                     await recordAccountSecurityEvent({
@@ -5182,8 +5261,6 @@ router.put('/staff/:id/status', requireHrManage, async (req, res) => {
             }
         }
 
-        await client.query('COMMIT');
-        broadcastRosterDates(scheduleCleanup?.dates || [], req.user?.id);
         await auditLog(isActive ? 'staff_rehire' : 'status_change', parseInt(req.params.id), req.user?.username, {
             is_active: isActive,
             reactivated_accounts: reactivatedAccounts.length,
@@ -5192,7 +5269,9 @@ router.put('/staff/:id/status', requireHrManage, async (req, res) => {
             account_reactivation_blockers: accountReactivationBlockers,
             schedule_cleanup: scheduleCleanup,
             account_deactivation: accountDeactivation
-        }, req.ip);
+        }, req.ip, client);
+        await client.query('COMMIT');
+        broadcastRosterDates(scheduleCleanup?.dates || [], req.user?.id);
         res.json({
             success: true,
             data: result.rows[0],
@@ -5204,13 +5283,13 @@ router.put('/staff/:id/status', requireHrManage, async (req, res) => {
             account_deactivation: accountDeactivation
         });
     } catch (err) {
-        await client.query('ROLLBACK').catch(() => {});
+        await client?.query('ROLLBACK').catch(() => {});
         log.error('PUT /hr/staff/:id/status error', err);
         if (err.code === 'account_deactivation_blocked') return res.status(err.statusCode).json({ success: false, error: staffOffboardingDisableError(err.blockers), code: err.code, blockers: err.blockers });
-        if (err.code === 'organization_last_owner') return res.status(409).json({ success: false, error: err.message, code: err.code });
+        if (['organization_last_owner', 'STAFF_ACCOUNT_SHARED_BUSINESS'].includes(err.code)) return res.status(409).json({ success: false, error: err.message, code: err.code });
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     } finally {
-        client.release();
+        client?.release();
     }
 });
 
@@ -5235,8 +5314,9 @@ router.get('/pool', async (req, res) => {
 
 // PUT /api/hr/staff/:id/pool-status — move staff between core/reserve/blacklist
 router.put('/staff/:id/pool-status', requireHrManage, async (req, res) => {
-    const client = await pool.connect();
+    let client;
     try {
+        client = await pool.connect();
         const { status, reason } = req.body;
         if (!['core', 'reserve', 'blacklisted'].includes(status)) {
             return res.status(400).json({ success: false, error: 'Невалідний статус пулу' });
@@ -5268,11 +5348,11 @@ router.put('/staff/:id/pool-status', requireHrManage, async (req, res) => {
         }, req.ip);
         res.json({ success: true, data: result.rows[0], schedule_cleanup: scheduleCleanup });
     } catch (err) {
-        await client.query('ROLLBACK').catch(() => {});
+        await client?.query('ROLLBACK').catch(() => {});
         log.error('PUT /hr/staff/:id/pool-status error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     } finally {
-        client.release();
+        client?.release();
     }
 });
 
@@ -5293,14 +5373,28 @@ router.get('/company-structure', async (req, res) => {
 });
 
 router.put('/company-structure', requireHrManage, async (req, res) => {
-    const client = await pool.connect();
+    let client;
     try {
+        client = await pool.connect();
         const source = req.body || {};
         const hasExpectedVersion = Object.prototype.hasOwnProperty.call(source, 'baseUpdatedAt')
             || Object.prototype.hasOwnProperty.call(source, 'expectedUpdatedAt');
         const expectedUpdatedAt = source.baseUpdatedAt ?? source.expectedUpdatedAt ?? null;
+        if (!hasExpectedVersion && req.user?.businessMembershipAccess?.membershipEnabled === true) {
+            return res.status(428).json({ success: false, error: 'Оновіть структуру перед збереженням.' });
+        }
+        if (req.user?.businessMembershipAccess?.membershipEnabled === true) {
+            const raw = source.nodes;
+            const normalized = normalizeCompanyStructurePayload(source).nodes;
+            if (!Array.isArray(raw) || raw.length !== normalized.length
+                || normalized.some((node, index) => node.id !== raw[index]?.id
+                    || node.parentId !== (raw[index]?.parentId || null))) {
+                return res.status(400).json({ success: false, error: 'Перевірте ідентифікатори та зв’язки вузлів структури.' });
+            }
+        }
 
         await client.query('BEGIN');
+        await client.query("SELECT pg_advisory_xact_lock(hashtext('eventgenix:hr-company-structure'))");
         const current = await client.query(
             "SELECT value FROM settings WHERE key = 'hr_company_structure' FOR UPDATE"
         );
@@ -5326,33 +5420,33 @@ router.put('/company-structure', requireHrManage, async (req, res) => {
             [JSON.stringify(payload)]
         );
         const nodeIds = payload.nodes.map(node => node.id).filter(Boolean);
+        const removedNodeIds = currentPayload.nodes.map(node => node.id).filter(id => !nodeIds.includes(id));
         const staffCleanup = await client.query(
             `UPDATE staff
              SET company_structure_node_id = NULL
-             WHERE company_structure_node_id IS NOT NULL
-               AND NOT (company_structure_node_id = ANY($1::text[]))`,
-            [nodeIds]
+             WHERE company_structure_node_id = ANY($1::text[])`,
+            [removedNodeIds]
         );
         const professionCleanup = await client.query(
             `UPDATE hr_professions
              SET structure_node_id = NULL, updated_at = NOW()
-             WHERE structure_node_id IS NOT NULL
-               AND NOT (structure_node_id = ANY($1::text[]))`,
-            [nodeIds]
+             WHERE structure_node_id = ANY($1::text[])`,
+            [removedNodeIds]
         );
         const staleRefsCleared = {
             staff: staffCleanup.rowCount || 0,
             professions: professionCleanup.rowCount || 0
         };
+        await auditLog('company_structure_update', null, req.user?.username,
+            { updatedAt: payload.updatedAt, nodes: payload.nodes.length }, req.ip, client);
         await client.query('COMMIT');
-        await auditLog('company_structure_update', null, req.user?.username, { updatedAt: payload.updatedAt, nodes: payload.nodes.length }, req.ip);
         res.json({ success: true, data: payload, displayGroups: listStaffDisplayGroups(), staleRefsCleared });
     } catch (err) {
-        await client.query('ROLLBACK').catch(() => {});
+        await client?.query('ROLLBACK').catch(() => {});
         log.error('PUT /hr/company-structure error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     } finally {
-        client.release();
+        client?.release();
     }
 });
 
@@ -7626,7 +7720,7 @@ router.get('/onboarding/responsible-candidates', requireHrManage, async (req, re
 // GET /api/hr/onboarding/templates
 router.get('/onboarding/templates', async (req, res) => {
     try {
-        const result = req.parkHrOnboardingRead
+        const result = req.parkHrOnboardingRead && !req.parkHrOnboardingManage
             ? await pool.query(`SELECT ot.id, ot.name, ot.department
                 FROM onboarding_templates ot
                 WHERE EXISTS (SELECT 1 FROM onboarding_progress op
@@ -7645,7 +7739,7 @@ router.get('/onboarding/templates', async (req, res) => {
 router.post('/onboarding/templates', requireHrManage, async (req, res) => {
     try {
         const { name, department, items } = req.body;
-        if (!name || !items) return res.status(400).json({ success: false, error: 'Потрібні name та items' });
+        if (typeof name !== 'string' || !name.trim() || !Array.isArray(items)) return res.status(400).json({ success: false, error: 'Потрібні name та items' });
         const result = await pool.query(
             'INSERT INTO onboarding_templates (name, department, items) VALUES ($1, $2, $3) RETURNING *',
             [name, department, JSON.stringify(items)]
@@ -7836,7 +7930,8 @@ router.get('/onboarding', async (req, res) => {
 router.put('/onboarding/:id/check', requireHrManage, async (req, res) => {
     try {
         const { item_id, done } = req.body;
-        const prog = await pool.query('SELECT * FROM onboarding_progress WHERE id = $1', [req.params.id]);
+        if (typeof done !== 'boolean') return res.status(400).json({ success: false, error: 'Некоректний стан пункту' });
+        const prog = await pool.query('SELECT *, xmin::text AS revision FROM onboarding_progress WHERE id = $1', [req.params.id]);
         if (prog.rows.length === 0) return res.status(404).json({ success: false, error: 'Не знайдено' });
         if (normalizeProfessionKey(prog.rows[0].profession_key)) {
             return res.status(409).json({
@@ -7858,10 +7953,11 @@ router.put('/onboarding/:id/check', requireHrManage, async (req, res) => {
 
         const result = await pool.query(
             `UPDATE onboarding_progress SET items = $1, completed_items = $2,
-             status = $3, completed_at = $4, training_status = $6 WHERE id = $5 RETURNING *`,
+             status = $3, completed_at = $4, training_status = $6 WHERE id = $5 AND xmin::text = $7 RETURNING *`,
             [JSON.stringify(items), completedItems, isComplete ? 'completed' : 'in_progress',
-             isComplete ? new Date().toISOString() : null, req.params.id, nextTrainingStatus]
+             isComplete ? new Date().toISOString() : null, req.params.id, nextTrainingStatus, prog.rows[0].revision]
         );
+        if (!result.rows[0]) return res.status(409).json({ success: false, error: 'Чекліст змінено. Оновіть його.' });
         res.json({ success: true, data: result.rows[0] });
     } catch (err) {
         log.error('PUT /hr/onboarding/:id/check error', err);
@@ -8576,7 +8672,7 @@ router.put('/availability/:staffId', requireHrManage, async (req, res) => {
 
 // в”Ђв”Ђв”Ђ Staff Shifts by display_name (v33.5) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 // GET /api/hr/staff/:id/shifts?month=2026-03
-router.get('/staff/:id/shifts', async (req, res) => {
+router.get('/staff/:id/shifts', requireAction('hr.schedule.view'), async (req, res) => {
     try {
         const staffRow = await pool.query('SELECT * FROM staff WHERE id = $1', [req.params.id]);
         if (!staffRow.rowCount) return res.status(404).json({ error: 'Staff not found' });
@@ -8613,15 +8709,17 @@ router.get('/staff/:id/shifts', async (req, res) => {
                             SELECT 1
                             FROM bookings linked
                             WHERE NULLIF(BTRIM(COALESCE(linked.linked_to, '')), '') = b.id
+                              AND COALESCE(linked.business_context, 'event_genix') = $5
                               AND linked.line_id = $1::text
                               AND linked.status != 'cancelled'
                         )
                     )
                )
                AND b.date >= $3 AND b.date <= $4
+               AND COALESCE(b.business_context, 'event_genix') = $5
                AND b.status != 'cancelled'
              ORDER BY b.date, b.time, b.id`,
-            [req.params.id, displayName.trim(), dateFrom, dateTo]
+            [req.params.id, displayName.trim(), dateFrom, dateTo, hrBusinessContextFromRequest(req)]
         );
         res.json({
             success: true,

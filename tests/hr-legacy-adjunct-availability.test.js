@@ -217,21 +217,20 @@ const roleReport = { success: true, summary: { staff_count: 1, role_count: 1 }, 
     { staff_id: 41, staff_name: 'Synthetic Staff', profession_title: 'Synthetic Role', status: 'active' }
 ] };
 
-test('writable Park Today uses HR cards without a false legacy warning while the unsupported role report stays explicit', async () => {
+test('writable Park Today and the role report use their recovered endpoints', async () => {
     const h = harness({ page: true, membership: true });
     try {
         h.state.transport = async url => {
-            assert.equal(url, '/api/hr/today', 'only the supported Today endpoint is requested');
-            return response(200, today);
+            assert.ok(['/api/hr/today', '/api/hr/role-assignments/report'].includes(url));
+            return response(200, url === '/api/hr/today' ? today : roleReport);
         };
         await h.w.loadToday();
         await h.w.loadRoleAssignmentsReport();
-        assert.equal(h.state.calls.length, 1);
+        assert.equal(h.state.calls.length, 2);
         assert.match(h.w.document.getElementById('todayList').textContent, /Synthetic Staff/);
         assert.equal(h.w.document.getElementById('todayStaffLinksStatus')?.textContent || '', '');
         assert.match(h.w.document.querySelector('.hr-today-row-action--profile').getAttribute('onclick'), /openStaffEdit\(41\)/);
-        assert.match(h.w.document.getElementById('roleReportSummary').textContent, /недоступн/);
-        assert.equal(h.w.document.getElementById('roleReportBody').textContent, '');
+        assert.match(h.w.document.getElementById('roleReportBody').textContent, /Synthetic Role/);
     } finally { h.close(); }
 });
 
@@ -271,10 +270,11 @@ test('an old role report response cannot repopulate the section after a business
         const request = h.w.loadRoleAssignmentsReport();
         h.w.fixtureProfile.membershipMode = 'membership';
         h.w.dispatchEvent(new h.w.CustomEvent('crmBusinessProfileChanged'));
+        h.state.transport = async () => response(403, { success: false, error: 'Недоступно' });
         await h.w.loadRoleAssignmentsReport();
         wait.resolve(response(200, roleReport));
         await request;
-        assert.equal(h.state.calls.length, 1);
+        assert.equal(h.state.calls.length, 2);
         assert.equal(h.w.document.getElementById('roleReportBody').textContent, '');
         assert.doesNotMatch(h.w.document.getElementById('roleReportSummary').textContent, /Synthetic Role/);
     } finally { h.close(); }

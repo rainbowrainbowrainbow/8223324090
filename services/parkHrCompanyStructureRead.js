@@ -24,17 +24,17 @@ function canReadParkHrCompanyStructure(req) {
         && resolveCapability(req.user, 'hr.staff.view', { type: 'action' }).allowed;
 }
 
-function projectParkHrCompanyStructurePayload(payload) {
+function projectParkHrCompanyStructurePayload(payload, canWrite = false) {
     if (payload?.success !== true) return payload;
     const nodes = Array.isArray(payload.data?.nodes)
-        ? payload.data.nodes.map(node => pick(node, NODE_FIELDS)) : [];
+        ? payload.data.nodes.map(node => pick(node, canWrite ? [...NODE_FIELDS, 'description', 'meta'] : NODE_FIELDS)) : [];
     return {
         success: true,
-        data: { nodes },
+        data: { nodes, ...(canWrite ? pick(payload.data, ['structure', 'instructions', 'updatedAt']) : {}) },
         hasSavedStructure: payload.hasSavedStructure === true,
         displayGroups: Array.isArray(payload.displayGroups)
             ? payload.displayGroups.map(group => pick(group, DISPLAY_GROUP_FIELDS)) : [],
-        structureAccess: { readOnly: true, businessContext: 'event_genix' }
+        structureAccess: { readOnly: !canWrite, businessContext: 'event_genix' }
     };
 }
 

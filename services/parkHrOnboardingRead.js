@@ -36,11 +36,11 @@ function projectProgress(value) {
     return progress;
 }
 
-function projectParkHrOnboardingPayload(path, payload) {
+function projectParkHrOnboardingPayload(path, payload, canWrite = false) {
     if (payload?.success !== true) return payload;
     if (path === '/onboarding') {
         return { success: true, data: Array.isArray(payload.data) ? payload.data.map(projectProgress) : [],
-            onboardingAccess: { readOnly: true, partial: true, scope: 'general' } };
+            onboardingAccess: { readOnly: !canWrite, partial: true, scope: 'general' } };
     }
     if (path === '/onboarding/templates') {
         return { success: true, data: Array.isArray(payload.data)

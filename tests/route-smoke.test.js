@@ -1872,7 +1872,7 @@ function createFakePool() {
                 const staff = hrState.staff.get(Number(params[0]));
                 return { rows: staff ? [staff] : [] };
             }
-            if (/SELECT \* FROM staff WHERE id = \$1 FOR UPDATE/i.test(text)) {
+            if (/SELECT \*(?:, xmin::text AS profile_revision)? FROM staff WHERE id = \$1 FOR UPDATE/i.test(text)) {
                 const staff = hrState.staff.get(Number(params[0]));
                 return { rows: staff ? [staff] : [], rowCount: staff ? 1 : 0 };
             }
@@ -2619,7 +2619,7 @@ function createFakePool() {
                 }
                 return { rows: [] };
             }
-            if (/UPDATE tasks SET title = \$2,/i.test(text) && /WHERE id = \$1 RETURNING \*/i.test(text)) {
+            if (/UPDATE tasks SET title = \$2,/i.test(text) && /WHERE id = \$1 AND COALESCE\(business_context, 'event_genix'\) = 'event_genix' RETURNING \*/i.test(text)) {
                 const row = hrState.tasks.find(task => Number(task.id) === Number(params[0]));
                 if (!row) return { rows: [], rowCount: 0 };
                 Object.assign(row, {
@@ -2636,7 +2636,7 @@ function createFakePool() {
                 });
                 return { rows: [row], rowCount: 1 };
             }
-            if (/FROM staff_resource_assignments sra LEFT JOIN warehouse_stock ws ON ws\.id = sra\.warehouse_stock_id LEFT JOIN costumes c ON c\.id = sra\.costume_id WHERE sra\.staff_id = \$1 AND sra\.status = 'issued'/i.test(text)) {
+            if (/FROM staff_resource_assignments sra LEFT JOIN warehouse_stock ws ON ws\.id = sra\.warehouse_stock_id AND COALESCE\(ws\.business_context, 'event_genix'\) = 'event_genix' LEFT JOIN costumes c ON c\.id = sra\.costume_id WHERE sra\.staff_id = \$1 AND sra\.status = 'issued'/i.test(text)) {
                 return { rows: hrState.resourcesByStaff.get(Number(params[0])) || [] };
             }
             if (/FROM employee_profiles ep JOIN users u ON u\.id = ep\.user_id WHERE ep\.staff_id = \$1/i.test(text) && !/FOR UPDATE OF ep, u/i.test(text)) {

@@ -1,5 +1,39 @@
 # Staff substitution bounded release review
 
+## Delivered release
+
+- Production version: **0.83.48**, `Людина на заміну`.
+- Released SHA: `3f41bef21804f61ecb452961902be68e047603be` on
+  `codex/eventgenix-production`.
+- Railway deployment: `1fbf828a-2c5c-487a-8afc-426ba42710a7`, **SUCCESS**.
+- Migration log: `Migration applied: 392_staff_substitutions` at
+  `2026-11-13T15:24:17Z`.
+- [Exact-SHA CI](https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/43450001816):
+  all 13 jobs successful, including the full HR/payroll PostgreSQL and HR browser jobs.
+- [Runtime artifact smoke](https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/43450001879): successful.
+- Full local `npm test`: successful, including 4,000 unit tests and 1,327 UI checks.
+- Live version/source proof, both timeline contexts and service-worker markers:
+  successful. Public QA at `2026-11-13T15:25:19Z` verified the substitution asset's
+  normalized SHA-256 against the released source, both HR/staff HTML integrations,
+  and HTTP 401 for the anonymous substitution catalog request.
+- Authenticated live QA was **not run**: the mandated credential file was absent.
+  No production fixture or real-business-data mutation was performed for QA.
+
+This completion record is a documentation-only follow-up on the source branch;
+the production release SHA above remains the immutable deployed reference.
+
+Primary implementation files: `routes/staff-substitutions.js`,
+`services/staffSubstitutionContract.js`, `services/staffSubstitutionContext.js`,
+`services/staffSubstitutionSources.js`, `services/staffSubstitutionPayroll.js`,
+`services/staffSubstitutions.js`, `db/migrations/392_staff_substitutions.sql`,
+`js/staff-substitution.js`, `hr.html`, `staff.html`, `services/payroll.js`,
+`js/hr-page.js`, `services/afishaTimeline.js`, `services/backupRecovery.js`,
+plus focused tests, isolated-runner registration and release metadata.
+
+Recommended next action: authorized authenticated production QA with a test account
+and separately bounded disposable records. Adding the new substitution actual-app
+suite to a CI mode that the workflow invokes remains follow-up work.
+
 The owner explicitly requested commit, push and deploy of the current implementation
 on 2026-11-13, after the partial feature boundaries were disclosed. This supersedes
 the earlier local-only delivery boundary, but does not authorize new CRM grants,
@@ -48,8 +82,10 @@ future work, not claims of this release.
   no subsequent responsive styling changes were made.
 - Stale export test now expects the existing additional writable-business guard.
   The runtime authorization implementation was not changed.
-- The existing HR isolated runner now includes the substitution actual-app proof,
-  so the existing CI HR job covers it without changing workflow configuration.
+- The `hr` isolated-runner mode now includes the substitution actual-app proof.
+  Coverage correction: the current CI HR job invokes other isolated modes, so it
+  does **not** execute this added suite. The new substitution PostgreSQL/actual-app
+  scenarios passed locally; do not label them as CI or authenticated live evidence.
 - Full `npm test`, exact production-push `CI` and `Runtime artifact smoke` are
   required by the production controller before deployment. Record their outcomes
   in the sanitized block manifest and final delivery report, not as assumed passes.

@@ -31,9 +31,12 @@ that baseline and preserves the prior HR changes.
 - Read-only browser review in Park HR returned eight active cards from the
   query for trampoline work; all eight showed no linked CRM account. This
   search is not a full audit of account and membership roles.
-- `scripts/audit-hr-timeline-roles.js` lists IDs and evidence for linked
-  active trampoline instructors with an animator role. Run using an
-  authorized read-only `HR_ROLE_AUDIT_DATABASE_URL`. No account role writes
+- `scripts/audit-hr-timeline-roles.js` lists IDs, effective roles and page
+  access by business for linked active trampoline instructors who have
+  the animator role in that business. It also counts the pending expiry
+  transitions by business in the same read-only snapshot. Run with an
+  authorized `PRODUCTION_READONLY_DATABASE_URL` or its audit-specific
+  alias `HR_ROLE_AUDIT_DATABASE_URL`. No account role writes
   are part of this release. Review any genuine animation duties before
   proposing a separate, exact correction.
 - The production test credentials file specified by the runbook was absent.

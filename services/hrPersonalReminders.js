@@ -16,7 +16,7 @@ async function listHrPersonalReminders(db, user, scope, today = getKyivDateStr()
             JOIN staff s ON s.id = ep.staff_id AND s.is_active IS TRUE
             JOIN users u ON u.id = ep.user_id AND u.is_active IS TRUE
             WHERE ep.user_id = $1 AND ep.is_active IS TRUE
-              AND COALESCE(s.hr_pool_status, 'active') NOT IN ('terminated', 'blacklist', 'dismissed')
+              AND s.hr_pool_status IS DISTINCT FROM 'blacklisted'
         ), deadlines AS (
             SELECT 'resource' AS kind, r.id, r.title, r.due_return_at AS due_date,
                    COALESCE(r.business_context, CASE WHEN ws.id IS NOT NULL

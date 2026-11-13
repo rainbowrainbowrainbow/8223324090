@@ -29,7 +29,13 @@ async function main() {
                   AND ('animator' = u.role OR 'animator' = ANY(u.extra_roles)
                     OR 'animator' = bm.role OR 'animator' = ANY(bm.extra_roles))
                 ORDER BY u.id, b.context_key`);
-            process.stdout.write(JSON.stringify(result.rows, null, 2) + '\n');
+            const expiry = await client.query(`
+                SELECT COALESCE(business_context, 'event_genix') AS business_context,
+                       COUNT(*)::int AS pending_expiry
+                FROM staff_certifications
+                WHERE status = 'active' AND expires_at < (now() AT TIME ZONE 'Europe/Kyiv')::date
+                GROUP BY 1 ORDER BY 1`);
+            process.stdout.write(JSON.stringify({ accounts: result.rows, expiry: expiry.rows }, null, 2) + '\n');
             await client.query('ROLLBACK');
         } finally {
             client.release();

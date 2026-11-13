@@ -491,10 +491,11 @@ function createFakePool() {
         ]),
         professionChecklistProgress: new Map(),
         jobVacancies: new Map([
-            [56, { id: 56, title: 'Кухар', role_type: 'cook', department: 'cafe', status: 'open' }],
-            [57, { id: 57, title: 'Бариста', role_type: 'barista', department: 'cafe', status: 'open' }],
-            [58, { id: 58, title: 'Headcount smoke', role_type: 'animator', department: 'qa', status: 'open', target_hires: 2 }],
-            [59, { id: 59, title: 'Closed headcount smoke', role_type: 'animator', department: 'qa', status: 'filled', target_hires: 1 }]
+            [55, { id: 55, business_context: 'event_genix' }],
+            [56, { id: 56, business_context: 'event_genix', title: 'Кухар', role_type: 'cook', department: 'cafe', status: 'open' }],
+            [57, { id: 57, business_context: 'event_genix', title: 'Бариста', role_type: 'barista', department: 'cafe', status: 'open' }],
+            [58, { id: 58, business_context: 'event_genix', title: 'Headcount smoke', role_type: 'animator', department: 'qa', status: 'open', target_hires: 2 }],
+            [59, { id: 59, business_context: 'event_genix', title: 'Closed headcount smoke', role_type: 'animator', department: 'qa', status: 'filled', target_hires: 1 }]
         ]),
         jobApplications: new Map([
             [703, { id: 703, vacancy_id: 56, name: 'Кандидат на додаткову професію', status: 'offer', staff_id: null, profession_key: null, onboarding_progress_id: null }],
@@ -3613,6 +3614,17 @@ function createFakePool() {
                         notes: params[6]
                     }]
                 };
+            }
+            if (/SELECT id FROM job_vacancies WHERE id = \$1 AND business_context = \$2/i.test(text)) {
+                const vacancy = hrState.jobVacancies.get(Number(params[0]));
+                return { rows: vacancy?.business_context === params[1] ? [{ id: vacancy.id }] : [] };
+            }
+            if (/SELECT a\.id FROM job_applications a JOIN job_vacancies v ON v\.id = a\.vacancy_id WHERE a\.id = \$1 AND v\.business_context = \$2/i.test(text)) {
+                const id = Number(params[0]);
+                const application = hrState.jobApplications.get(id) || ([701, 702].includes(id) ? { vacancy_id: 55 } : null);
+                const vacancy = hrState.jobVacancies.get(application?.vacancy_id);
+                const fileMatches = params.length === 2 || (id === 701 && Number(params[2]) === 801);
+                return { rows: vacancy?.business_context === params[1] && fileMatches ? [{ id }] : [] };
             }
             if (/SELECT a\.\*, v\.role_type AS vacancy_role_type, v\.title AS vacancy_title, v\.department AS vacancy_department, v\.target_hires AS vacancy_target_hires FROM job_applications a JOIN job_vacancies v ON v\.id = a\.vacancy_id WHERE a\.vacancy_id=\$1/i.test(text)) {
                 const rows = Array.from(hrState.jobApplications.values())

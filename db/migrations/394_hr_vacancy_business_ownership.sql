@@ -1,5 +1,5 @@
 -- MIGRATION_KIND: schema
--- SAFETY: Adds a nullable business owner and index. Existing vacancies retain unknown ownership until explicitly reviewed.
+-- SAFETY: Adds a nullable business owner and index. Existing vacancies remain unchanged until the separately approved data fix.
 -- ROLLBACK: Revert the hiring access release while retaining this column and its ownership evidence.
 
 ALTER TABLE job_vacancies ADD COLUMN IF NOT EXISTS business_context TEXT;

@@ -9389,7 +9389,7 @@ router.patch('/applications/:id', requireHrManage, async (req, res) => {
     if (status === 'hired') return res.status(400).json({ success: false, error: 'Статус hired встановлюється тільки через транзакційну дію Найняти' });
     if (status)              { sets.push(`status=$${i++}`); vals.push(status); }
     if (notes !== undefined) { sets.push(`notes=$${i++}`);  vals.push(notes); }
-    if (interview_date)      { sets.push(`interview_date=$${i++}`); vals.push(interview_date); }
+    if (interview_date !== undefined) { sets.push(`interview_date=$${i++}`); vals.push(interview_date || null); }
     if (salary_expectation)  { sets.push(`salary_expectation=$${i++}`); vals.push(salary_expectation); }
     if (address !== undefined) { sets.push(`address=$${i++}`); vals.push(address); }
     if (birth_date !== undefined) { sets.push(`birth_date=$${i++}`); vals.push(birth_date || null); }
@@ -9401,7 +9401,13 @@ router.patch('/applications/:id', requireHrManage, async (req, res) => {
     sets.push('updated_at=NOW()');
     vals.push(parseInt(req.params.id));
     try {
-        await pool.query(`UPDATE job_applications SET ${sets.join(',')} WHERE id=$${i}`, vals);
+        const updated = await pool.query(
+            `UPDATE job_applications SET ${sets.join(',')} WHERE id=$${i}
+             ${status ? "AND staff_id IS NULL AND status <> 'hired'" : ''} RETURNING id`, vals
+        );
+        if (!updated.rows.length) {
+            return res.status(409).json({ success: false, error: 'Запис кандидата змінився. Оновіть список і повторіть дію.' });
+        }
         res.json({ success: true });
     } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });

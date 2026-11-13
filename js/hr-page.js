@@ -20722,8 +20722,9 @@ function renderVacancyResponses() {
                 <p class="vacancy-response-text">${escapeHtml(responseText).slice(0, 700)}</p>
                 <div class="kc-actions">
                     <button type="button" class="kc-btn" onclick="openCandidateDetail(${candidate.id})">Картка</button>
-                    <button type="button" class="kc-btn" onclick="moveCandidate(${candidate.id},'interview')">На співбесіду</button>
-                    <button type="button" class="kc-btn danger" onclick="moveCandidate(${candidate.id},'rejected')">Відхилити</button>
+                    ${['hired', 'rejected'].includes(candidate.status) ? '' : `
+                        <button type="button" class="kc-btn" onclick="moveCandidate(${candidate.id},'interview')">На співбесіду</button>
+                        <button type="button" class="kc-btn danger" onclick="moveCandidate(${candidate.id},'rejected')">Відхилити</button>`}
                 </div>
             </article>
         `;
@@ -20762,9 +20763,11 @@ function renderInterviewResults() {
             <p class="vacancy-interview-notes">${escapeHtml(candidate.interview_notes || candidate.notes || 'Результат співбесіди ще не описаний.').slice(0, 700)}</p>
             <div class="kc-actions">
                 <button type="button" class="kc-btn" onclick="openCandidateDetail(${candidate.id})">Картка</button>
-                <button type="button" class="kc-btn" onclick="moveCandidate(${candidate.id},'offer')">Оффер</button>
-                <button type="button" class="kc-btn success" onclick="hireCandidate(${candidate.id}, this)">Найняти</button>
-                <button type="button" class="kc-btn danger" onclick="moveCandidate(${candidate.id},'rejected')">Відхилити</button>
+                <button type="button" class="kc-btn" onclick="editCandidateInterview(${candidate.id})">Запис співбесіди</button>
+                ${['hired', 'rejected'].includes(candidate.status) ? '' : `
+                    <button type="button" class="kc-btn" onclick="moveCandidate(${candidate.id},'offer')">Оффер</button>
+                    <button type="button" class="kc-btn success" onclick="hireCandidate(${candidate.id}, this)">Найняти</button>
+                    <button type="button" class="kc-btn danger" onclick="moveCandidate(${candidate.id},'rejected')">Відхилити</button>`}
             </div>
         </article>
     `).join('');
@@ -20861,13 +20864,13 @@ async function loadVacancies() {
         return;
     }
     if (list) list.innerHTML = ownershipNotice + vacancies.map(v => `
-        <div class="hr-vacancy-card" onclick="openCandidates(${v.id},'${escapeHtml(v.title).replace(/'/g,"\\'")}')">
+        <div class="hr-vacancy-card" onclick="openCandidates(${v.id}, this.querySelector('.vac-title').textContent)">
             <div class="vac-header">
                 ${v.priority === 'urgent' ? '<span class="vac-badge urgent">🔴 ТЕРМІНОВО</span>' : ''}
                 <span class="vac-badge">${VAC_STATUS_LABEL[v.status] || v.status}</span>
                 <span class="vac-apps" title="Кандидатів">👥 ${v.active_candidates || 0}</span>
             </div>
-            <div class="vac-title">${escapeHtml(v.title)}</div>
+            <button type="button" class="vac-title">${escapeHtml(v.title)}</button>
             <div class="vac-role">${ROLE_LABELS[v.role_type] || v.role_type}</div>
             ${v.target_hires ? `<div class="vac-meta">Найнято ${Number(v.hired_count || 0)} із ${Number(v.target_hires)}</div>` : '<div class="vac-meta">Headcount не задано · закриття вручну</div>'}
             ${v.schedule ? `<div class="vac-meta">🕐 ${escapeHtml(v.schedule)}</div>` : ''}
@@ -21112,10 +21115,11 @@ async function downloadResumeFile(applicationId, fileId) {
         ? openTouchDownloadWindow('Файл резюме')
         : null;
     try {
-        const response = await fetch(`/api/hr/applications/${applicationId}/resume-files/${fileId}/download`, {
+        const request = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
+        const response = await request(`/api/hr/applications/${applicationId}/resume-files/${fileId}/download`, {
             headers: token ? { Authorization: `Bearer ${token}` } : {}
         });
-        if (!response.ok) {
+        if (!response?.ok) {
             showNotification('Не вдалося завантажити файл резюме', 'error');
             if (typeof closeTouchDownloadWindow === 'function') closeTouchDownloadWindow(touchWindow);
             return;
@@ -21148,6 +21152,28 @@ async function moveCandidate(id, status) {
     const data = await hrFetch(`/applications/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }).catch(() => null);
     if (!data?.success) {
         showNotification(data?.error || 'Не вдалося змінити етап кандидата', 'error');
+        return;
+    }
+    await refreshCandidates();
+}
+
+async function editCandidateInterview(id) {
+    const candidate = findCurrentApplication(id);
+    if (!candidate) return;
+    const context = teamAccessContext();
+    const vacancyId = currentVacancyId;
+    const result = await formModal(`Співбесіда · ${candidate.name}`, [
+        { key: 'date', label: 'Дата співбесіди', type: 'date', defaultValue: String(candidate.interview_date || '').slice(0, 10) },
+        { key: 'notes', label: 'Результат співбесіди', type: 'textarea', defaultValue: escapeHtml(candidate.interview_notes || '') }
+    ]);
+    if (!result || context !== teamAccessContext() || vacancyId !== currentVacancyId) return;
+    const response = await hrFetch(`/applications/${id}`, {
+        method: 'PATCH',
+        body: { interview_date: result.date || null, interview_notes: String(result.notes || '').trim() || null }
+    }).catch(() => null);
+    if (context !== teamAccessContext() || vacancyId !== currentVacancyId) return;
+    if (!response?.success) {
+        showNotification(response?.error || 'Не вдалося зберегти співбесіду', 'error');
         return;
     }
     await refreshCandidates();

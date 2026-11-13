@@ -102,6 +102,12 @@ test('Park admin edits professions and owns hiring records on migrated PostgreSQ
             hire_mode: 'new_staff'
         });
         assert.equal(repeated.status, 409);
+        const hiredStageChange = await api('PATCH', '/api/hr/applications/' + applicationId, { status: 'rejected' });
+        assert.equal(hiredStageChange.status, 409);
+        const rejected = await api('PATCH', '/api/hr/applications/' + secondCandidate.body.application.id, {
+            status: 'rejected'
+        });
+        assert.equal(rejected.status, 200);
         const unownedId = (await db.query(`INSERT INTO job_vacancies (title,role_type)
             VALUES ('Unowned fixture','animator') RETURNING id`)).rows[0].id;
         const foreignId = (await db.query(`INSERT INTO job_vacancies (title,role_type,business_context)
@@ -156,6 +162,36 @@ test('Park admin edits professions and owns hiring records on migrated PostgreSQ
                     assert.equal(await page.locator('#editStaffHeaderRole').textContent(), width === 1366 ? 'Бариста' : 'Кухар');
                     await page.waitForFunction(() => document.getElementById('staffProfilePanelWork').dataset.loadState === 'ready');
                     await page.screenshot({ path: path.join(output, 'professions-' + width + '-' + theme + '.png') });
+                    await page.goto(BASE_URL + '/hr#other', { waitUntil: 'domcontentloaded' });
+                    await page.getByText('Вакансій немає.', { exact: false }).waitFor();
+                    await page.locator('#vacStatusFilter').selectOption('filled');
+                    const vacancyButton = page.getByRole('button', { name: 'Hiring fixture vacancy', exact: true });
+                    await vacancyButton.focus();
+                    await vacancyButton.press('Enter');
+                    const kanban = page.locator('#candidatesKanban');
+                    await kanban.getByText('Disposable candidate', { exact: true }).waitFor();
+                    assert.equal(await kanban.locator('.kanban-col').count(), 6);
+                    await kanban.locator('.kanban-col').filter({ hasText: 'Найнятий' })
+                        .getByText('Disposable candidate', { exact: true }).waitFor();
+                    await kanban.locator('.kanban-col').filter({ hasText: 'Відхилено' })
+                        .getByText('Second disposable candidate', { exact: true }).waitFor();
+                    for (const tab of ['responses', 'interviews', 'templates']) {
+                        const control = page.locator(`[data-vacancy-tab="${tab}"]`);
+                        await control.focus();
+                        await control.press('Enter');
+                        assert.equal(await control.getAttribute('aria-selected'), 'true');
+                        assert.equal(await page.locator(`[data-vacancy-panel="${tab}"]`).isVisible(), true);
+                        if (tab === 'interviews') {
+                            const interview = page.locator('.vacancy-interview-row').filter({ has: page.getByRole('heading', { name: 'Disposable candidate', exact: true }) });
+                            await interview.getByRole('button', { name: 'Запис співбесіди' }).click();
+                            await page.locator('#fm_date').fill('2026-11-13');
+                            await page.locator('#fm_notes').fill('Synthetic interview result');
+                            await page.locator('.form-modal-overlay').getByRole('button', { name: 'Зберегти' }).click();
+                            await interview.getByText('Synthetic interview result', { exact: true }).waitFor();
+                        }
+                    }
+                    await page.locator('[data-vacancy-tab="vacancies"]').click();
+                    await page.screenshot({ path: path.join(output, 'hiring-' + width + '-' + theme + '.png') });
                     await page.close();
                 }
             } finally {

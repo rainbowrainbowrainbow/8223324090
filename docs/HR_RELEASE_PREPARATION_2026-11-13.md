@@ -1,9 +1,10 @@
 # HR release preparation
 
-The live baseline observed at the start of this preparation was v0.83.46,
-`481bf7135696e2caabf9f3edc222c4432e48329f`. The production branch had already
-advanced to Staff Substitution v0.83.47, which the HR branch now includes.
-Verify the live SHA and Railway status again before assigning a rollback SHA.
+The production baseline observed on 2026-11-13 was v0.83.45,
+`dd511e2f0da52da1401502991a68d476eee9ce44` on
+`codex/eventgenix-production`. Railway reported a successful deployment on
+`fortunate-appreciation / production / 8223324090`. The HR branch includes
+that baseline and preserves the prior HR changes.
 
 ## Functional scope
 
@@ -12,7 +13,7 @@ Verify the live SHA and Railway status again before assigning a rollback SHA.
   use the same projection. Resource reminders start seven calendar days before
   the due date, medical-book reminders fourteen days before expiry. The
   transition to overdue, due-date changes and closure are reflected on refresh.
-- Migration 393 adds a nullable business key for new resource issues.
+- Migration 392 adds a nullable business key for new resource issues.
   Existing warehouse issues can use their warehouse context. Legacy issues
   without authoritative context stay out of personal reminders and HR can see
   a prompt to handle them manually. No historical data is backfilled.
@@ -50,9 +51,8 @@ Verify the live SHA and Railway status again before assigning a rollback SHA.
 
 ## Release envelope preparation
 
-Candidate version: v0.83.48. The production branch includes Staff Substitution
-v0.83.47 at `a097f2279202c24dcfc57b9597d1721d0bbd9a43`. Wait for the preceding
-rollout to converge before requesting authorization. Refresh live version, remote production SHA, nearby
+Candidate version: v0.83.47. The parallel HR Team Pulse branch already has a
+v0.83.46 candidate. Refresh live version, remote production SHA, nearby
 release refs and pending Railway deployments before presenting the envelope.
 
 Destination: `codex/eventgenix-production`. Use a normal fast-forward push,

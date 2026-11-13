@@ -11147,7 +11147,10 @@ function populateStaffProfessionControlsPending(staff = {}) {
     if (secondary) secondary.innerHTML = staffSecondaryProfessions(staff)
         .map(key => `<option value="${escapeHtml(key)}" selected>${escapeHtml(key)}</option>`).join('');
     const picker = document.getElementById('editSecondaryProfessionPicker');
-    if (picker) picker.replaceChildren();
+    if (picker) {
+        setSelectedSecondaryProfessionKeys(staffSecondaryProfessions(staff), primary);
+        renderSecondaryProfessionPicker([], staffSecondaryProfessions(staff));
+    }
     const search = document.getElementById('editSecondaryProfessionSearch');
     if (search) search.value = '';
     const structure = document.getElementById('editCompanyStructureNode');
@@ -14954,6 +14957,8 @@ function setStaffProfileCatalogState(modal, state, message = '') {
     modal.dataset.catalogState = state;
     const blocked = state !== 'ready';
     const scoped = modal.dataset.parkProfileEditMode === 'true';
+    const professionPicker = modal.querySelector('#editSecondaryProfessionPicker');
+    if (professionPicker) professionPicker.inert = blocked || scoped;
     ['editRoleType', 'editSecondaryProfessions', 'editSecondaryProfessionSearch', 'editCompanyStructureNode', 'editRoleAssignmentsSave']
         .forEach(id => {
             const field = modal.querySelector(`#${id}`);
@@ -15385,10 +15390,8 @@ async function saveStaffEdit(options = {}) {
             return data || { success: false };
         }
         const fresh = mergeFreshStaffProfile(data.data || { ...body, id: Number(staffId) });
-        if (scope === 'main') {
-            const currentName = document.getElementById('editStaffName')?.value;
-            syncStaffProfileHeaderName(currentName ?? fresh?.name ?? body.name ?? '', fresh || body);
-        }
+        const currentName = document.getElementById('editStaffName')?.value;
+        syncStaffProfileHeaderName(currentName ?? fresh?.name ?? body.name ?? '', fresh || body);
         markStaffProfileScopeFieldsClean(scope, submittedFields);
         const shiftPreferencesSave = shouldSaveShiftPreferences
             ? await saveStaffShiftPreferences(staffId, { payload: pendingShiftPreferences, isCurrent })
@@ -20848,11 +20851,14 @@ async function loadVacancies() {
             <div class="vac-stat-card"><span class="vac-stat-num">${totalC}</span><span class="vac-stat-label">Кандидатів</span></div>
         </div>`;
 
+    const ownershipNotice = Number(data.pendingOwnership) > 0
+        ? '<p role="status">Частина попередніх вакансій очікує підтвердження належності бізнесу. Зверніться до керівника.</p>'
+        : '';
     if (!vacancies.length) {
-        if (list) list.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:40px">Вакансій немає. Натисни "+ Вакансія"</div>';
+        if (list) list.innerHTML = ownershipNotice + '<div style="text-align:center;color:var(--gray-400);padding:40px">Вакансій немає. Натисни "+ Вакансія"</div>';
         return;
     }
-    if (list) list.innerHTML = vacancies.map(v => `
+    if (list) list.innerHTML = ownershipNotice + vacancies.map(v => `
         <div class="hr-vacancy-card" onclick="openCandidates(${v.id},'${escapeHtml(v.title).replace(/'/g,"\\'")}')">
             <div class="vac-header">
                 ${v.priority === 'urgent' ? '<span class="vac-badge urgent">🔴 ТЕРМІНОВО</span>' : ''}
@@ -21170,6 +21176,8 @@ async function hireCandidate(id, button = null) {
             return;
         }
         const professionKey = normalizeProfessionKey(candidate.vacancy_role_type);
+        const canSetHireRate = ['hr.payroll.view', 'hr.payroll.manage', 'manage_payroll_rules']
+            .every(capability => canUseHrCapability(capability));
         const vacancyHasHeadcount = Number(candidate.vacancy_target_hires) > 0;
         const eligibleStaff = (staffResponse.data || []).filter(staff => !staffProfessionKeys(staff).includes(professionKey));
         const staffOptions = eligibleStaff.map(staff => ({
@@ -21212,7 +21220,7 @@ async function hireCandidate(id, button = null) {
                 label: 'Ставка нового працівника',
                 type: 'number',
                 defaultValue: candidate.salary_expectation || 0,
-                visibleWhen: values => values.hireMode === 'new_staff'
+                visibleWhen: values => values.hireMode === 'new_staff' && canSetHireRate
             },
             {
                 key: 'startOnboarding',
@@ -21269,7 +21277,7 @@ async function hireCandidate(id, button = null) {
         if (result.hireMode === 'existing_staff') payload.existing_staff_id = Number(result.existingStaffId);
         else {
             payload.department = result.department;
-            payload.salary = Number(result.salary || 0);
+            payload.salary = canSetHireRate ? Number(result.salary || 0) : 0;
         }
         if (result.startOnboarding === 'yes') payload.responsible_user_id = Number(result.responsibleUserId);
         const res = await hrFetch(`/applications/${id}/hire`, { method: 'POST', body: payload });

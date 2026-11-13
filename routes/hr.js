@@ -438,6 +438,7 @@ function shapeHrStaffList(rows, capability, user) {
     return shapeHrPayrollFields(rows, user);
 }
 router.use(requireHrCapabilityContract);
+router.use(require('../services/parkHrHiringAccess').requireParkHrHiringAccess(pool));
 router.use(require('../services/parkHrProfessionRead').requireParkProfessionReads(pool));
 // Owner-approved narrow assignment lane; other legacy HR routes retain their guards.
 const educationHrMembership = require('../services/educationHrMembership');
@@ -4502,7 +4503,11 @@ router.get('/staff/:id/role-assignments', requireHrManage, async (req, res) => {
         const staff = await loadStaffRowOrNull(req.params.id);
         if (!staff) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
         const data = await loadStaffRoleAssignments(req.params.id);
-        res.json({ success: true, data });
+        const fields = ['id', 'staff_id', 'staffId', 'profession_key', 'professionKey', 'profession_title',
+            'professionTitle', 'is_primary', 'isPrimary', 'status', 'admission_status', 'admissionStatus',
+            'internship_status', 'internshipStatus'];
+        res.json({ success: true, data: canViewPayrollDetails(req.user) ? data
+            : data.map(row => Object.fromEntries(fields.filter(key => Object.hasOwn(row, key)).map(key => [key, row[key]]))) });
     } catch (err) {
         log.error('GET /hr/staff/:id/role-assignments error', err);
         res.status(500).json({ success: false, error: 'Помилка завантаження ролей' });
@@ -9083,13 +9088,16 @@ router.get('/vacancies', async (req, res) => {
                         (SELECT COUNT(*) FROM job_applications a WHERE a.vacancy_id=v.id AND a.status!='rejected') AS active_candidates,
                         (SELECT COUNT(*) FROM job_applications a WHERE a.vacancy_id=v.id AND a.status='hired' AND a.staff_id IS NOT NULL) AS hired_count
                  FROM job_vacancies v`;
-        const conds = [], params = [];
+        const conds = ['v.business_context = $1'], params = [DEFAULT_BUSINESS_CONTEXT];
         if (status !== 'all') { conds.push(`v.status=$${params.length+1}`); params.push(status); }
         if (role_type)        { conds.push(`v.role_type=$${params.length+1}`); params.push(role_type); }
         if (conds.length) q += ' WHERE ' + conds.join(' AND ');
         q += ` ORDER BY CASE v.priority WHEN 'urgent' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END, v.created_at DESC`;
         const r = await pool.query(q, params);
-        res.json({ success: true, vacancies: r.rows });
+        const pendingOwnership = canUseAction(req.user, 'hr.staff.manage')
+            ? Number((await pool.query('SELECT count(*)::int AS count FROM job_vacancies WHERE business_context IS NULL')).rows[0].count)
+            : 0;
+        res.json({ success: true, vacancies: r.rows, pendingOwnership });
     } catch (err) { log.error('GET /vacancies', err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -9104,11 +9112,11 @@ router.post('/vacancies', requireHrManage, async (req, res) => {
     }
     try {
         const r = await pool.query(
-            `INSERT INTO job_vacancies (title,role_type,department,description,requirements,salary_from,salary_to,schedule,work_format,status,priority,created_by,target_hires)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+            `INSERT INTO job_vacancies (title,role_type,department,description,requirements,salary_from,salary_to,schedule,work_format,status,priority,created_by,target_hires,business_context)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
             [title.trim(), role_type, department, description||null, requirements||null,
              salary_from||null, salary_to||null, schedule||null, work_format, status, priority, req.user?.username||null,
-             targetHires === null || targetHires === '' ? null : Number(targetHires)]);
+             targetHires === null || targetHires === '' ? null : Number(targetHires), DEFAULT_BUSINESS_CONTEXT]);
         res.json({ success: true, vacancy: r.rows[0] });
     } catch (err) { log.error('POST /vacancies', err); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -9403,6 +9411,9 @@ router.post('/applications/:id/hire', requireHrManage, async (req, res) => {
     const afterCommit = [];
     try {
         const hireMode = String(req.body.hire_mode || req.body.hireMode || 'new_staff').trim();
+        if (Number(req.body.salary || 0) !== 0 && !canManageStaffPayrollRules(req.user)) {
+            return res.status(403).json({ success: false, error: 'Для встановлення ставки потрібен доступ до зарплатних умов.' });
+        }
         const vacancyAction = String(req.body.vacancy_action || req.body.vacancyAction || '').trim();
         const startProfessionOnboarding = req.body.start_profession_onboarding === true || req.body.startProfessionOnboarding === true;
         const responsibleUserId = Number(req.body.responsible_user_id ?? req.body.responsibleUserId ?? 0);

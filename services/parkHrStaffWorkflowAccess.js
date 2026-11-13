@@ -8,6 +8,7 @@ const { hasCurrentParkScheduleMembership, parkStaffScheduleRoutePath } = require
 const MANAGE = 'hr.staff.manage';
 const staff = '/staff/[0-9]+';
 const routes = [
+    ['GET', new RegExp(`^${staff}/role-assignments$`, 'i'), MANAGE],
     ['GET', new RegExp(`^${staff}/(?:history|lifecycle-checklist|documents(?:/[0-9]+/(?:preview|download))?|medical-book|resources|offboarding(?:-readiness)?)$`, 'i'), MANAGE],
     ['GET', new RegExp(`^${staff}/shifts$`, 'i'), 'hr.schedule.view'],
     ['GET', /^\/resource-options$/i, MANAGE],

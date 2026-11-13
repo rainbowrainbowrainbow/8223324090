@@ -207,6 +207,7 @@ test('staff move uses the latest revisions and reports a failed reactivation sep
 
 test('work save reports saved professions when the shift preferences request fails', async () => {
     const calls = [];
+    let headerStaff;
     const body = { role_type: 'cook', secondary_professions: ['waiter'] };
     const context = vm.createContext({
         activeEditStaffId: () => 41,
@@ -224,6 +225,7 @@ test('work save reports saved professions when the shift preferences request fai
             return { success: true, data: payload };
         },
         mergeFreshStaffProfile: staff => staff,
+        syncStaffProfileHeaderName: (_name, staff) => { headerStaff = staff; },
         markStaffProfileScopeFieldsClean: () => {},
         markStaffProfileScopesClean: scopes => calls.push(['clean', scopes]),
         saveStaffShiftPreferences: async id => {
@@ -243,6 +245,7 @@ test('work save reports saved professions when the shift preferences request fai
     const result = await vm.runInContext("saveStaffEdit({ scope: 'work' })", context);
     assert.equal(result.partial, true);
     assert.deepEqual(result.data, body);
+    assert.equal(headerStaff.role_type, 'cook');
     assert.deepEqual(calls.slice(0, 2), [['profile', 41, body], ['shift', 41]]);
     assert.equal(calls.length, 3);
     assert.equal(calls[2][0], 'warning');

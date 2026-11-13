@@ -296,6 +296,9 @@ const Sidebar = (() => {
         const roles = _hrTeamBucketRoles(user, role);
         if (!roles.length) return _hrVisibleBucketsForRole('default').has(bucketId);
         if (roles.some(value => value === 'creator')) return true;
+        const business = user?.activeBusinessMembership?.businessContext
+            || user?.activeBusinessContext || window.CrmBusinessContext?.current?.();
+        if (business === 'event_genix' && roles.includes('admin')) return true;
         const visible = new Set();
         roles.forEach(value => _hrVisibleBucketsForRole(value).forEach(id => visible.add(id)));
         return visible.has(bucketId);

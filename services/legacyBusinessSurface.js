@@ -121,6 +121,7 @@ function requireLegacyBusinessSurface(surface, { parkScheduleRouter = null, park
         throw new TypeError('Park HR company structure read must be mounted on the HR staff surface');
     }
     return (req, res, next) => {
+        if (surface === 'staff' && parkScheduleRouter === 'hr' && req.parkHrHiringAccess === true) return next();
         const access = legacyBusinessSurfaceAccess(req, surface);
         const journalPath = parkCheckinJournalRead && parkStaffScheduleRoutePath(req) === '/checkins';
         const enableJournalRead = () => {

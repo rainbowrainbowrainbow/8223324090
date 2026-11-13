@@ -72,6 +72,16 @@ function renderSidebar(t, role, options = {}) {
     };
 }
 
+test('Park admins can see every team bucket while other business presets stay scoped', t => {
+    const park = renderSidebar(t, 'admin');
+    for (const bucket of ['workers', 'interns', 'reserve', 'blacklist', 'dismissed']) {
+        assert.equal(park.window.HrTeamBucketAccess.canSeeBucket(bucket, park.user), true, bucket);
+    }
+    const foreign = renderSidebar(t, 'admin', { context: 'dar' });
+    assert.equal(foreign.window.HrTeamBucketAccess.canSeeBucket('reserve', foreign.user), false);
+    assert.equal(foreign.window.HrTeamBucketAccess.canSeeBucket('blacklist', foreign.user), false);
+});
+
 test('mobile menu changes once per button activation and never on pointer release alone', t => {
     const { window, document } = renderSidebar(t, 'creator', { withShell: true, mobile: true });
     window.eval('Sidebar.initToggle(); Sidebar.initToggle();');

@@ -20,6 +20,7 @@ const POLL_INTERVAL_MS = 500;
 const ISOLATED_DATABASE_LOCK_NAMESPACE = 'eventgenix-isolated-postgres-runner-v1';
 const MANUAL_MONEY_MODES = new Set(['all', 'finance', 'finance-money', 'finance-money-browser', 'payroll', 'fullstack']);
 const MODES = {
+    'hr-hiring': ['tests/integration/park-hr-hiring.integration.test.js'],
     substitutions: ['tests/integration/staff-substitution-actual-db.integration.test.js'],
     'attendance-ocr-browser': ['tests/browser/hr-attendance-ocr-actual-app-browser-smoke.js'],
     api: ['tests/api.test.js'],

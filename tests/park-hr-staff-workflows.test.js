@@ -8,6 +8,7 @@ const vm = require('node:vm');
 const { withDeletionRouter } = require('./helpers/park-hr-deletion-router');
 
 const RECOVERED = [
+    ['GET', '/staff/9701/role-assignments'],
     ['GET', '/staff/9701/history'],
     ['GET', '/staff/9701/lifecycle-checklist'],
     ['GET', '/staff/9701/documents'],

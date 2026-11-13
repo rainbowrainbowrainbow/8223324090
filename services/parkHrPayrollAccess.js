@@ -37,6 +37,9 @@ function parkHrPayrollCapabilities(req, routerId) {
             || /^\/payroll-profiles\/[1-9]\d*$/.test(path)
             || /^\/staff\/[1-9]\d*\/(?:payroll-conditions|payroll-profile-assignments|payroll-profile-history|payroll-scheme)$/.test(path)) return VIEW;
         if (/^\/staff\/[1-9]\d*\/role-assignments$/.test(path)
+            && !resolveCapability(req.user, 'hr.payroll.view', { type: 'action' }).allowed
+            && resolveCapability(req.user, 'hr.staff.manage', { type: 'action' }).allowed) return null;
+        if (/^\/staff\/[1-9]\d*\/role-assignments$/.test(path)
             || /^\/professions\/workspace\/[^/]+$/.test(path)) return [...VIEW, 'hr.staff.view'];
     }
     if (method === 'POST') {
@@ -52,7 +55,8 @@ function parkHrPayrollCapabilities(req, routerId) {
             || /^\/professions\/[^/]+\/staff\/[1-9]\d*\/conditions$/.test(path)) return [...RULES, 'hr.staff.manage'];
         if (/^\/staff\/[1-9]\d*$/.test(path)) {
             const keys = Object.keys(req.body || {});
-            if (keys.length && keys.every(key => STAFF_PAY_FIELDS.has(key))) return [...RULES, 'hr.staff.manage'];
+            const hasPayChanges = keys.some(key => !['role_type', 'secondary_professions', 'secondaryProfessions'].includes(key));
+            if (hasPayChanges && keys.every(key => STAFF_PAY_FIELDS.has(key))) return [...RULES, 'hr.staff.manage'];
         }
     }
     return null;

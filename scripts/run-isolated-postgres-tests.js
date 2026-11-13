@@ -105,6 +105,9 @@ const MODES = {
     'my-day-browser': [
         'tests/browser/my-day-actual-app-browser-smoke.js'
     ],
+    'hr-reminders-browser': [
+        'tests/browser/hr-reminders-actual-app-browser-smoke.js'
+    ],
     'omni-links': [
         'tests/integration/lead-conversation-links-postgres.test.js',
         'tests/integration/customer-booking-metrics-postgres.test.js',

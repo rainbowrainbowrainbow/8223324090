@@ -21,6 +21,7 @@ let achCatFilter = 'all';
 let leaderboardSort = 'xp';
 let activeTab = 'professions';
 let profileTabRequestSeq = 0;
+let initialHrReminderLinkPending = false;
 const profileResourceStates = new Map();
 let activeProfessionKey = null;
 let profileMaterialsState = {
@@ -1537,6 +1538,8 @@ async function initProfilePage() {
     }
 
     // Load data
+    initialHrReminderLinkPending = isOwnProfile && activeTab === 'myday'
+        && window.location.hash === '#hr-personal-reminders';
     await loadProfileData(viewUserId);
     renderProfile();
     if (isOwnProfile) void checkProfileAutoRewards();
@@ -3510,6 +3513,14 @@ function renderCabinetActiveTab() {
         window.TaskUI?.closeActionMenu?.();
         tabContent.innerHTML = renderTabContent();
         attachProfileListeners();
+        if (initialHrReminderLinkPending) {
+            initialHrReminderLinkPending = false;
+            if (activeTab === 'myday' && window.location.hash === '#hr-personal-reminders') {
+                window.requestAnimationFrame(() => {
+                    document.getElementById('hr-personal-reminders')?.scrollIntoView({ block: 'center' });
+                });
+            }
+        }
     }
 }
 
@@ -7769,9 +7780,9 @@ function renderMyDayCommandCenterTab() {
     return `
         <div class="cabinet-shell cabinet-command-center" id="myDayDayPanel" role="tabpanel" aria-labelledby="myDayModeDay">
             ${window.MyDayHabits?.renderModeTabs?.() || ''}
+            ${renderMyDayHrReminders()}
             ${renderCabinetTaskComposer({ segment: 'personal', mode: 'personal' })}
             ${renderCabinetLoadNotice()}
-            ${renderMyDayHrReminders()}
             ${renderCabinetCompletionPulse()}
             <div class="cabinet-day-workspace cabinet-day-workspace--two-column" id="cabinetMyDaySegmentPanel" role="region" aria-label="Мій день: ${escapeHtml(focusedMeta.statLabel || focusedMeta.title || '')} і прострочені" data-active-today="${activeFocus}" data-active-overdue="${overdue.length}" data-cabinet-my-day-layout="focused-overdue" data-cabinet-focused-preset="${escapeHtml(myDayState.selectedDuePreset)}">
                 <div class="cabinet-day-workspace-toolbar">

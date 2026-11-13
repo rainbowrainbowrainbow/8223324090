@@ -68,6 +68,19 @@ test('payments, close, settlements, bulk and unrelated HR writes remain denied e
     }
 });
 
+test('existing Park membership gateway denies freelance finance endpoints pending an authorized lane', async () => {
+    for (const [method, path] of [
+        ['GET', '/freelance/day'], ['GET', '/freelance/settlement'], ['GET', '/freelance/rates'],
+        ['POST', '/freelance/rates'], ['POST', '/freelance/terms'], ['POST', '/freelance/attendance'],
+        ['POST', '/freelance/payments'], ['POST', '/freelance/reversals'], ['GET', '/payment-options']
+    ]) {
+        const result = await invoke(request(path, method), { routerId: 'payroll' });
+        assert.equal(result.status, 403, `${method} ${path}`);
+        assert.equal(result.passed, false);
+        assert.equal(result.calls, 0);
+    }
+});
+
 test('another business, aggregate, revoked and inconsistent membership cannot use the Park lane', async () => {
     const stale = request(); stale.user.activeBusinessMembership.organizationId = 99;
     for (const req of [request(undefined, undefined, { context: 'dar' }),

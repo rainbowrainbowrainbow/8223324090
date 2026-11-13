@@ -198,6 +198,7 @@ test(
         const pool = createPool(testDb);
         let fixtureStaffId;
         let sentinelKey;
+        let substitutionFixture = false;
         const probeRows = { staff_checkins: [], hr_time_records: [] };
 
         try {
@@ -453,8 +454,66 @@ test(
                 fixtureStaffId,
                 '2099-07-18'
             ));
+
+            // A concurrent first agreement must not slip between the empty-ledger
+            // check and attendance restore. These rows exist only in this verified,
+            // runner-owned disposable database and are removed by its schema reset.
+            assert.equal((await pool.query('SELECT count(*)::int n FROM staff_substitutions')).rows[0].n, 0);
+            const writer = await pool.connect();
+            let pendingRestore;
+            try {
+                await writer.query('BEGIN');
+                await writer.query(`INSERT INTO staff_substitutions
+                    (business_context,staff_id,work_date,source_type,source_id,slot_key,state,version,
+                     input_json,quote_json,source_snapshot,created_by)
+                    VALUES ('event_genix',$1,$2,'standalone','qa-backup','main','active',1,'{}','{}','{}','qa-backup')`,
+                [fixtureStaffId, FIXTURE_DATE]);
+                substitutionFixture = true;
+                pendingRestore = restoreRequest('/api/backup/restore', {
+                    artifact: backupArtifact, restoreSet: 'attendance-v1'
+                });
+                const deadline = Date.now() + 10_000;
+                let blocked = false;
+                while (Date.now() < deadline) {
+                    blocked = (await pool.query(`SELECT EXISTS (
+                        SELECT 1 FROM pg_locks WHERE relation='staff_substitutions'::regclass
+                        AND mode='AccessExclusiveLock' AND NOT granted) AS blocked`)).rows[0].blocked;
+                    if (blocked) break;
+                    await new Promise(resolve => setTimeout(resolve, 25));
+                }
+                assert.equal(blocked, true, 'restore must wait for the in-flight substitution writer');
+                await writer.query('COMMIT');
+                const rejected = await pendingRestore;
+                assert.equal(rejected.status, 409);
+                assert.equal(rejected.data?.error, 'BACKUP_RESTORE_SELECTION_NOT_CLOSED');
+            } finally {
+                await writer.query('ROLLBACK').catch(() => {});
+                writer.release();
+                if (pendingRestore) await pendingRestore.catch(() => {});
+            }
+            const nonemptyArtifact = await downloadCanonicalBackup();
+            const encryptedRejected = await restoreRequest('/api/backup/restore-encrypted', {
+                envelope: encryptedBackup, restoreSet: 'attendance-v1'
+            }, { passphrase });
+            assert.equal(encryptedRejected.status, 409, 'live substitution evidence blocks encrypted restore too');
+            assert.equal(encryptedRejected.data?.error, 'BACKUP_RESTORE_SELECTION_NOT_CLOSED');
+            assertTimeRecordRestored(await loadAttendanceFixture(pool, fixtureStaffId, checkinId, timeRecordId));
+
+            await pool.query(`TRUNCATE staff_substitution_base_claims, staff_substitution_requests,
+                staff_substitution_events, staff_substitutions`);
+            substitutionFixture = false;
+            const artifactRejected = await restoreRequest('/api/backup/restore', {
+                artifact: nonemptyArtifact, restoreSet: 'attendance-v1'
+            });
+            assert.equal(artifactRejected.status, 409, 'artifact-side evidence also requires full recovery');
+            assert.equal(artifactRejected.data?.error, 'BACKUP_RESTORE_SELECTION_NOT_CLOSED');
+            assertTimeRecordRestored(await loadAttendanceFixture(pool, fixtureStaffId, checkinId, timeRecordId));
         } finally {
             try {
+                if (substitutionFixture) {
+                    await pool.query(`TRUNCATE staff_substitution_base_claims, staff_substitution_requests,
+                        staff_substitution_events, staff_substitutions`);
+                }
                 if (probeRows.staff_checkins.length) {
                     await pool.query(
                         'DELETE FROM staff_checkins WHERE id = ANY($1::integer[])',

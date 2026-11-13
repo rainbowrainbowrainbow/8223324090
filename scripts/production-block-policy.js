@@ -214,7 +214,7 @@ const LEAD_UI_CI_CHANGED_PATHS = Object.freeze([
     'tests/task-detail-drawer.test.js',
     'tests/ui-check.js'
 ]);
-const PROFILE_EMPLOYEE_BASE_SHA = '3f41bef21804f61ecb452961902be68e047603be';
+const PROFILE_EMPLOYEE_BASE_SHA = 'e076dcd445fbb128306cb2e7a26e9db2bd2af0c1';
 const PROFILE_EMPLOYEE_AUTH_BLOB = 'e5e8e2303e825d568e3b36983e08fbfdf09cbdec';
 const PROFILE_EMPLOYEE_RELEASE_PATHS = Object.freeze([
     'CHANGELOG.md', 'accounting-deposits.html', 'afisha.html',
@@ -780,7 +780,7 @@ function assertProfileEmployeeAuthBlob(blob) {
 }
 
 function assertProfileEmployeeReleaseScope(base, baseVersion, version, qa, migrations, attempts) {
-    fail(base === PROFILE_EMPLOYEE_BASE_SHA && baseVersion === '0.83.48' && version === '0.83.51'
+    fail(base === PROFILE_EMPLOYEE_BASE_SHA && baseVersion === '0.83.52' && version === '0.83.53'
         && qa.enabled === false && migrations.length === 0 && attempts === 1,
     'Employee profile release base, version, QA, migrations or attempt count differ',
     'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');

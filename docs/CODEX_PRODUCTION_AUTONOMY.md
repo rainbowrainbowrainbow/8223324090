@@ -359,7 +359,7 @@ run against the isolated database. New files outside the exact allowlist require
 a newly reviewed scope rather than a wildcard or controller bypass.
 
 The `profile-employee-release` workflow is limited to the reviewed personal
-profile release from `3f41bef2` (v0.83.48) to v0.83.51. It requires an exact
+profile release from `e076dcd4` (v0.83.52) to v0.83.53. It requires an exact
 file inventory and Git blob for `routes/auth.js`, a prepared release SHA,
 matching live and remote production, and one attempt. It allows no migrations
 or writable production QA. Both production-push CI and Runtime artifact smoke

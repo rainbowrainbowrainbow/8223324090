@@ -58,12 +58,12 @@ const HEAD_SHA = '2'.repeat(40);
 const RELEASE_SHA = '3'.repeat(40);
 
 test('employee profile release pins protected bytes, exact SHA, inventory, and both CI gates', async t => {
-    const base = '3f41bef21804f61ecb452961902be68e047603be';
+    const base = 'e076dcd445fbb128306cb2e7a26e9db2bd2af0c1';
     const options = { protectedWorkflow: 'profile-employee-release', maxReleaseAttempts: 1 };
     const candidate = {
-        live: { commitSha: base, version: '0.83.48', deploymentMetadata: { complete: true } },
+        live: { commitSha: base, version: '0.83.52', deploymentMetadata: { complete: true } },
         remoteSha: base,
-        releaseVersion: '0.83.51',
+        releaseVersion: '0.83.53',
         profileEmployeeAuthBlob: PROFILE_EMPLOYEE_AUTH_BLOB,
         changedPaths: [...PROFILE_EMPLOYEE_RELEASE_PATHS]
     };

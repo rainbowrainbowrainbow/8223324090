@@ -54,7 +54,10 @@ function createPoolFixture() {
                     is_active: true, color: '#22aaaa', shift_start: '10:00', shift_end: '18:00',
                     hr_shift_id: SHIFT_ID, hr_profession_key: 'animator', hr_break_minutes: 30
                 };
-                if (normalized.startsWith('SELECT ss.*')) row.hr_segments = [segment];
+                if (normalized.startsWith('SELECT ss.*')) row.hr_segments = scenario.freelance
+                    ? [{ ...segment, workMode: 'freelance', additionalRoles: [], additionalProfessionKeys: [],
+                        rate: PRIVATE, estimatedAmount: PRIVATE }]
+                    : [segment];
                 rows = [row];
             } else if (normalized.startsWith('SELECT staff.id,')) {
                 rows = [{
@@ -275,6 +278,22 @@ test('Park schedule ownership through the actual Express staff and HR routers', 
                 const text = JSON.stringify(body);
                 assert.equal(text.includes(PRIVATE), false, `${path} excludes private fields`);
                 assert.doesNotMatch(text, /"(?:hourlyRate|hourly_rate|explicitRate|fallbackRate|compensation_snapshot|account_username|ip_address)"/, path);
+            }
+        });
+
+        await t.test('Park schedule serves the freelance mode while financial fields stay private', async () => {
+            state.actor = { deny: ['hr.payroll.view'] };
+            scenario.freelance = true;
+            try {
+                const response = await request(READ_PATHS[1]);
+                assert.equal(response.status, 200);
+                const [block] = response.body.data[0].segments;
+                assert.equal(block.id, segment.id);
+                assert.equal(block.workMode, 'freelance');
+                assert.equal(Object.hasOwn(block, 'rate'), false);
+                assert.equal(Object.hasOwn(block, 'estimatedAmount'), false);
+            } finally {
+                scenario.freelance = false;
             }
         });
 

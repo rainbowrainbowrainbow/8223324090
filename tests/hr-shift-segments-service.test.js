@@ -1320,6 +1320,22 @@ test('diff persistence keeps an unchanged segment id and rejects a foreign segme
     assert.equal(foreign.calls.some(call => /^INSERT INTO hr_shift_segments/.test(call.text)), false);
 });
 
+test('freelance blocks follow the existing overlap, night shift and break rules', () => {
+    const night = normalize({
+        primaryProfessionKey: 'reception',
+        segments: [segment('reception', '22:00', '02:00', { workMode: 'freelance', breakMinutes: 30 })]
+    });
+    assert.equal(night.segments[0].workMode, 'freelance');
+    assert.equal(night.plannedMinutes, 210);
+    assert.throws(() => normalize({
+        primaryProfessionKey: 'reception',
+        segments: [
+            segment('reception', '09:00', '13:00', { workMode: 'regular' }),
+            segment('reception', '12:30', '17:00', { workMode: 'freelance' })
+        ]
+    }), { code: 'HR_SHIFT_PLAN_SEGMENTS_OVERLAP' });
+});
+
 test('persists a mixed work day and returns the same mode on each saved segment', async () => {
     const state = createExistingMultiSegmentClient('regular');
     const saved = await saveHrShiftDayPlan(state.client, {

@@ -151,6 +151,103 @@ const HR_HTML = [
     HR_PAGE_CSS
 ].join('\n');
 const HR_JS = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
+
+test('staff move uses the latest revisions and reports a failed reactivation separately', async () => {
+    const writes = [];
+    const notices = [];
+    let reloads = 0;
+    let reads = 0;
+    let failure = 'activation';
+    const context = vm.createContext({
+        canUseTeamWorkflow: () => true,
+        teamAccessContext: () => 'test-business',
+        teamLoadRequestSeq: 1,
+        bucketForStaff: () => 'dismissed',
+        staffMoveTargetOptions: () => [{ value: 'workers' }],
+        buildStaffMovePayload: () => ({ hr_pool_status: 'core' }),
+        hrFetch: async (path, options) => {
+            if (!options) {
+                reads += 1;
+                return { success: true, data: { profile_revision: '101' } };
+            }
+            writes.push([path, options.headers['X-Staff-Profile-Revision']]);
+            if (path.endsWith('/status')) return { success: false, error: 'Активацію відхилено' };
+            if (failure === 'conflict') return { success: false, status: 409, error: 'Ревізію змінено' };
+            if (failure === 'network') throw new Error('Connection interrupted');
+            return { success: true, data: { profile_revision: '102' } };
+        },
+        showNotification: (message, type) => notices.push([type, message]),
+        loadTeam: async () => { reloads += 1; }
+    });
+    const start = HR_JS.indexOf('const pendingStaffMoves =');
+    const end = HR_JS.indexOf('async function openStaffMoveMenu(', start);
+    assert.ok(start >= 0 && end > start);
+    vm.runInContext(HR_JS.slice(start, end), context);
+    const move = () => vm.runInContext("runStaffMove(41, async () => ({ targetBucket: 'workers' }))", context);
+
+    const firstMove = move();
+    assert.equal(await move(), false);
+    assert.equal(await firstMove, false);
+    assert.equal(reads, 1);
+    assert.deepEqual(writes.splice(0), [['/staff/41', '101'], ['/staff/41/status', '102']]);
+    assert.match(notices.at(-1)[1], /Розділ збережено, але працівника не активовано/);
+    assert.equal(reloads, 1);
+
+    failure = 'conflict';
+    assert.equal(await move(), false);
+    assert.deepEqual(writes.splice(0), [['/staff/41', '101']]);
+    assert.deepEqual(notices.at(-1), ['error', 'Ревізію змінено']);
+
+    failure = 'network';
+    assert.equal(await move(), false);
+    assert.deepEqual(writes, [['/staff/41', '101']]);
+    assert.match(notices.at(-1)[1], /Перевірте картку перед повторною спробою/);
+    assert.equal(reloads, 2);
+});
+
+test('work save reports saved professions when the shift preferences request fails', async () => {
+    const calls = [];
+    const body = { role_type: 'cook', secondary_professions: ['waiter'] };
+    const context = vm.createContext({
+        activeEditStaffId: () => 41,
+        staffProfileSaveIsCurrent: () => () => true,
+        parkStaffProfileEditableFields: null,
+        document: { getElementById: () => ({ dataset: { catalogState: 'ready' } }) },
+        buildStaffWorkPayload: () => body,
+        STAFF_WORK_PAYLOAD_FIELDS: {},
+        buildChangedStaffPayload: (_scope, payload) => ({ body: payload, submittedFields: [] }),
+        staffProfileDirtyScopes: () => ['work', 'shift'],
+        readStaffShiftPreferences: () => ({ ok: true, preferences: [] }),
+        runStaffProfileAction: (_button, _labels, action) => action(),
+        updateStaffProfileFields: async (id, payload) => {
+            calls.push(['profile', id, payload]);
+            return { success: true, data: payload };
+        },
+        mergeFreshStaffProfile: staff => staff,
+        markStaffProfileScopeFieldsClean: () => {},
+        markStaffProfileScopesClean: scopes => calls.push(['clean', scopes]),
+        saveStaffShiftPreferences: async id => {
+            calls.push(['shift', id]);
+            throw new Error('Connection interrupted');
+        },
+        refreshHrStaffScheduleAfterWorkSave: async () => ({ success: true }),
+        showNotification: (message, type) => calls.push([type, message]),
+        loadTeam: async () => {},
+        refreshHrOperationalViews: async () => {}
+    });
+    const start = HR_JS.indexOf('async function saveStaffEdit(');
+    const end = HR_JS.indexOf('async function saveStaffRates(', start);
+    assert.ok(start >= 0 && end > start);
+    vm.runInContext(HR_JS.slice(start, end), context);
+
+    const result = await vm.runInContext("saveStaffEdit({ scope: 'work' })", context);
+    assert.equal(result.partial, true);
+    assert.deepEqual(result.data, body);
+    assert.deepEqual(calls.slice(0, 2), [['profile', 41, body], ['shift', 41]]);
+    assert.equal(calls.length, 3);
+    assert.equal(calls[2][0], 'warning');
+    assert.match(calls[2][1], /Професії збережено/);
+});
 const HR_ATTENDANCE_STATE_JS = fs.readFileSync(path.join(ROOT, 'js', 'hr-attendance-state.js'), 'utf8');
 const HR_ATTENDANCE_SERVICE = fs.readFileSync(path.join(ROOT, 'services', 'hrAttendance.js'), 'utf8');
 const HR_PULSE_SWITCHER_JS = fs.readFileSync(path.join(ROOT, 'js', 'hr-pulse-switcher.js'), 'utf8');

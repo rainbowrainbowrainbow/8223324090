@@ -102,12 +102,74 @@ const { installHarness, requirePlaywright, readRepo, HR_HTML, ROOT } = require('
                 const moveDialog = page.locator('.hr-staff-move-modal');
                 await moveDialog.waitFor({ state: 'visible' });
                 await moveDialog.getByRole('combobox').first().selectOption('reserve');
+                assert.equal(await moveDialog.getByLabel('Основна професія').isVisible(), false);
+                assert.equal(await moveDialog.getByLabel('Причина для чорного списку').isVisible(), false);
+                await moveDialog.getByText('Заплановані виходи від сьогодні без запису відвідування буде прибрано.').waitFor();
+                await page.screenshot({ path: path.join(out, 'move-' + theme + '-' + width + '.png'), fullPage: false });
                 await moveDialog.getByRole('button', { name: 'Перемістити', exact: true }).click();
                 await page.waitForFunction(() => window.__workflowClicks.length === 1);
                 const saved = await page.evaluate(() => window.__workflowClicks[0]);
                 assert.equal(saved.revision, '101');
                 assert.equal(saved.body.hr_pool_status, 'reserve');
+                await page.evaluate(() => {
+                    const transport = hrFetch;
+                    hrFetch = async (url, options = {}) => {
+                        if (url === '/staff/3' && options.method === 'PUT') {
+                            window.__workflowClicks.push({ body: options.body });
+                            return { success: true, data: { profile_revision: '202' } };
+                        }
+                        const response = await transport(url, options);
+                        if (url === '/staff/3' && response?.data) response.data.profile_revision = '201';
+                        return response;
+                    };
+                    window.__hrTeamBrowserSmoke.setBucket('interns');
+                });
+                const internTrigger = page.locator('.hr-team-card[data-staff-id="3"] .hr-team-overflow-trigger');
+                await internTrigger.click();
+                await page.locator('#hrTeamCardMenu3 .hr-team-move').click();
+                await moveDialog.waitFor({ state: 'visible' });
+                const destination = moveDialog.getByRole('combobox').first();
+                await destination.selectOption('workers');
+                assert.equal(await moveDialog.getByLabel('Основна професія').isVisible(), true);
+                await destination.selectOption('blacklist');
+                assert.equal(await moveDialog.getByLabel('Основна професія').isVisible(), false);
+                assert.equal(await moveDialog.getByLabel('Причина для чорного списку').isVisible(), true);
+                await moveDialog.getByRole('button', { name: 'Перемістити', exact: true }).click();
+                assert.equal(await moveDialog.isVisible(), true);
+                assert.equal(await page.evaluate(() => window.__workflowClicks.length), 1);
                 assert.deepEqual(errors, []);
+                if (width === 390 && theme === 'dark') {
+                    await page.evaluate(async () => {
+                        const board = document.createElement('div');
+                        board.id = 'candidatesKanban';
+                        document.body.append(board);
+                        currentVacancyId = 41;
+                        hrFetch = async path => {
+                            assertVacancyRequest(path);
+                            return { success: true, applications: [
+                                { id: 1, name: 'Тестовий кандидат', status: 'offer' },
+                                { id: 2, name: 'Тестовий найнятий', status: 'hired' },
+                                { id: 3, name: 'Тестовий відхилений', status: 'rejected' }
+                            ] };
+                        };
+                        function assertVacancyRequest(path) {
+                            if (path !== '/vacancies/41/applications') throw new Error('Unexpected request: ' + path);
+                        }
+                        await refreshCandidates();
+                    });
+                    const board = page.locator('#candidatesKanban');
+                    assert.equal(await board.locator('.kanban-col').count(), 6);
+                    for (const name of ['Тестовий найнятий', 'Тестовий відхилений']) {
+                        const card = board.locator('.kanban-card').filter({ hasText: name });
+                        assert.equal(await card.count(), 1);
+                        assert.equal(await card.getByRole('button').count(), 1);
+                    }
+                    await page.evaluate(async () => {
+                        hrFetch = async () => ({ success: false, status: 403 });
+                        await refreshCandidates();
+                    });
+                    assert.equal(await board.textContent(), 'Кандидати недоступні для поточного доступу.');
+                }
                 results.push({ width, theme, ...state });
                 await page.close();
             }

@@ -57,6 +57,7 @@ function moveHarness(overrides = {}) {
         teamStaff: [{ id: 9701, name: 'Synthetic Staff', hr_pool_status: 'core' }],
         ensureProfessionsLoaded: async () => {},
         bucketForStaff: () => 'workers',
+        isInternStaff: () => false,
         preferredWorkerRoleForStaff: () => 'animator',
         staffMoveTargetOptions: () => [{ value: 'reserve', label: 'Reserve' }],
         professionSelectOptionsForStaffMove: () => [],

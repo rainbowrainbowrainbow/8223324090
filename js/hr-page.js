@@ -435,12 +435,12 @@ const HR_TEAM_MOVE_TARGETS = [
     {
         id: 'reserve',
         label: 'Резерв',
-        hint: 'Профіль піде в резервний пул без зміни професій.'
+        hint: 'Заплановані виходи від сьогодні без запису відвідування буде прибрано.'
     },
     {
         id: 'blacklist',
         label: 'Чорний список',
-        hint: 'Потрібна причина, професії не змінюються.'
+        hint: 'Заплановані виходи від сьогодні без запису відвідування буде прибрано.'
     }
 ];
 
@@ -1719,7 +1719,7 @@ function staffMoveTargetOptions(currentBucket = 'workers') {
         .filter(target => target.id !== currentBucket && target.id !== 'dismissed' && canSeeHrTeamBucket(target.id))
         .map(target => ({
             value: target.id,
-            label: `${target.label} - ${target.hint}`
+            label: target.label
         }));
 }
 
@@ -8016,7 +8016,7 @@ function buildStaffMovePayload(staff = {}, targetBucket = 'workers', targetRole 
     const nextPrimary = normalizeProfessionKey(targetRole) || preferredWorkerRoleForStaff(staff);
     body.hr_pool_status = 'core';
     body.blacklist_reason = null;
-    if (currentPrimary === 'intern' || currentSecondary.includes('intern')) {
+    if (isInternStaff(staff)) {
         body.role_type = nextPrimary;
         body.secondary_professions = normalizeProfessionList(
             currentSecondary.filter(key => key !== 'intern'),
@@ -8252,42 +8252,39 @@ async function runStaffMove(staffId, chooseDestination, button = null) {
     }
 }
 
-async function openStaffMoveMenu(staffId, button) {
+async function openStaffMoveMenu(staffId, button, fixedTarget = '') {
     return runStaffMove(Number(staffId), async (staff, currentBucket) => {
-        await ensureProfessionsLoaded({ silent: true });
-        const targetOptions = staffMoveTargetOptions(currentBucket);
+        const targetOptions = staffMoveTargetOptions(currentBucket)
+            .filter(option => !fixedTarget || option.value === fixedTarget);
         if (!targetOptions.length) return null;
+        const needsProfession = isInternStaff(staff) && targetOptions.some(option => option.value === 'workers');
+        if (needsProfession) await ensureProfessionsLoaded({ silent: true });
         return formModal(`Перемістити: ${staff.name}`, [
             { key: 'targetBucket', label: 'Куди перемістити', type: 'select',
                 defaultValue: targetOptions[0].value, options: targetOptions },
-            { key: 'targetRole', label: 'Основна професія після повернення зі стажерів', type: 'select',
+            ...(needsProfession ? [{
+                key: 'targetRole', label: 'Основна професія', type: 'select', required: true,
                 defaultValue: preferredWorkerRoleForStaff(staff), options: professionSelectOptionsForStaffMove(staff),
-                hint: 'Використовується тільки для переходу зі стажерів у робітники.' },
+                visibleWhen: values => values.targetBucket === 'workers'
+            }] : []),
+            { key: 'moveImpact', type: 'dynamicNote',
+                render: values => HR_TEAM_MOVE_TARGETS.find(target => target.id === values.targetBucket)?.hint },
             { key: 'reason', label: 'Причина для чорного списку', type: 'textarea',
-                defaultValue: staff.blacklist_reason || '', placeholder: 'Обов’язково для чорного списку' }
+                defaultValue: staff.blacklist_reason || '', required: true,
+                visibleWhen: values => values.targetBucket === 'blacklist' }
         ], { icon: '↔', type: 'info', okText: 'Перемістити', className: 'hr-staff-move-modal' });
     }, button);
 }
 
 window.openStaffMoveMenu = openStaffMoveMenu;
 
-async function moveStaffToBucket(staffId, targetBucket, options = {}) {
+async function moveStaffToBucket(staffId, targetBucket) {
     if (targetBucket === 'dismissed') {
         showNotification('Для звільнення відкрийте профіль і завершіть співпрацю через вкладку завершення співпраці.', 'warning');
         return false;
     }
-    return runStaffMove(Number(staffId), async (staff, currentBucket) => {
-        if (targetBucket === currentBucket) return null;
-        let reason = options.reason || '';
-        if (targetBucket === 'blacklist' && !String(reason || staff.blacklist_reason || '').trim()) {
-            const result = await formModal('Причина чорного списку', [
-                { key: 'reason', label: 'Причина', type: 'textarea', required: true }
-            ], { icon: '!', type: 'warning', okText: 'Перемістити' });
-            if (!result?.reason?.trim()) return null;
-            reason = result.reason.trim();
-        }
-        return { targetBucket, targetRole: options.targetRole || preferredWorkerRoleForStaff(staff), reason };
-    });
+    if (!targetBucket) return false;
+    return openStaffMoveMenu(staffId, null, targetBucket);
 }
 
 
@@ -15330,16 +15327,12 @@ async function saveStaffEdit(options = {}) {
         return { success: true, skipped: true };
     }
     const labels = { loadingLabel: 'Збереження…', successLabel: 'Збережено', errorLabel: 'Помилка', isCurrent };
-    const shouldSaveShiftPreferences = scope === 'work'
+    const shouldSaveShiftPreferences = scope === 'work' && staffProfileDirtyScopes().includes('shift')
         && (Object.prototype.hasOwnProperty.call(body, 'role_type')
             || Object.prototype.hasOwnProperty.call(body, 'secondary_professions'));
     const pendingShiftPreferences = shouldSaveShiftPreferences ? readStaffShiftPreferences() : null;
 
     return runStaffProfileAction(button || (scope === 'work' ? 'editSaveWork' : 'editSave'), labels, async () => {
-        if (pendingShiftPreferences && !pendingShiftPreferences.ok) {
-            showNotification(pendingShiftPreferences.error || 'Перевірте типові години для професій', 'error');
-            return { success: false, error: pendingShiftPreferences.error || 'invalid_shift_preferences' };
-        }
         const data = await updateStaffProfileFields(staffId, body, isCurrent);
         if (!isCurrent()) return { success: false, stale: true };
         if (data?.cancelled) return data;
@@ -15355,6 +15348,7 @@ async function saveStaffEdit(options = {}) {
         markStaffProfileScopeFieldsClean(scope, submittedFields);
         const shiftPreferencesSave = shouldSaveShiftPreferences
             ? await saveStaffShiftPreferences(staffId, { payload: pendingShiftPreferences, isCurrent })
+                .catch(() => ({ success: false, error: 'Не вдалося підтвердити збереження. Перевірте типові години перед повторною спробою.' }))
             : null;
         if (!isCurrent()) return { success: false, stale: true };
         const shiftPreferencesSaveFailed = shouldSaveShiftPreferences && shiftPreferencesSave?.success !== true;
@@ -15369,7 +15363,7 @@ async function saveStaffEdit(options = {}) {
         const reportSave = shiftPreferencesSaveFailed || scheduleRefreshFailed || options?.closeAfterSave ? showNotification : announceStaffProfileStatus;
         reportSave(
             shiftPreferencesSaveFailed
-                ? 'Професії збережено, але типові години не вдалося зберегти'
+                ? `Професії збережено. Типові години: ${shiftPreferencesSave?.error || 'не вдалося зберегти'}`
                 : (scheduleRefreshFailed
                     ? 'Робочі дані збережено, але графік не вдалося оновити автоматично'
                     : (scope === 'work'
@@ -20520,6 +20514,7 @@ let currentApplications = [];
 let currentVacancies = [];
 let activeVacancyWorkspaceTab = 'vacancies';
 let vacancyLoadSequence = 0;
+let candidateLoadSequence = 0;
 let vacancyPlatformTemplates = [];
 let vacancyPlatformAiMeta = null;
 const VAC_STATUS_LABEL = {
@@ -20768,9 +20763,10 @@ async function copyVacancyTemplateOutput() {
 
 async function loadVacancies() {
     const loadSequence = ++vacancyLoadSequence;
+    const context = teamAccessContext();
     initVacancyWorkspaceTabs();
     await loadVacancyPlatformTemplates();
-    if (loadSequence !== vacancyLoadSequence) return;
+    if (loadSequence !== vacancyLoadSequence || context !== teamAccessContext()) return;
     renderVacancyTemplateStudio();
     const status = document.getElementById('vacStatusFilter')?.value || 'open';
     const list = document.getElementById('vacanciesList');
@@ -20782,10 +20778,15 @@ async function loadVacancies() {
     renderVacancyResponses();
     renderInterviewResults();
 
-    const data = await hrFetch(`/vacancies?status=${status}`);
-    if (loadSequence !== vacancyLoadSequence) return;
+    const data = await hrFetch(`/vacancies?status=${status}`).catch(() => null);
+    if (loadSequence !== vacancyLoadSequence || context !== teamAccessContext()) return;
     if (!data?.success) {
-        if (list) list.innerHTML = '<div style="text-align:center;color:var(--danger);padding:24px">Помилка завантаження</div>';
+        currentVacancies = [];
+        document.getElementById('vacStats')?.replaceChildren();
+        renderVacancyTemplateStudio();
+        if (list) list.textContent = data?.status === 403
+            ? 'Вакансії недоступні для поточного доступу.'
+            : 'Не вдалося завантажити вакансії.';
         return;
     }
     const vacancies = data.vacancies || [];
@@ -20905,24 +20906,40 @@ async function editVacancy(id) {
 
 async function openCandidates(vacancyId, title) {
     currentVacancyId = vacancyId;
+    currentApplications = [];
+    renderVacancyResponses();
+    renderInterviewResults();
     document.getElementById('candidatesTitle').textContent = `Кандидати: ${title}`;
     document.getElementById('candidatesSection').style.display = 'block';
+    const kanban = document.getElementById('candidatesKanban');
+    if (kanban) kanban.textContent = 'Завантаження кандидатів…';
     document.getElementById('candidatesSection')?.scrollIntoView({ behavior: 'smooth' });
-    await refreshCandidates();
     document.getElementById('btnAddCandidate').onclick = () => addCandidatePrompt(vacancyId);
+    await refreshCandidates();
     renderVacancyTemplateStudio();
 }
 
 async function refreshCandidates() {
-    if (!currentVacancyId) return;
-    const data = await hrFetch(`/vacancies/${currentVacancyId}/applications`);
-    if (!data?.success) return;
+    const vacancyId = currentVacancyId;
+    if (!vacancyId) return;
+    const kanban = document.getElementById('candidatesKanban');
+    const request = ++candidateLoadSequence;
+    const context = teamAccessContext();
+    const data = await hrFetch(`/vacancies/${vacancyId}/applications`).catch(() => null);
+    if (currentVacancyId !== vacancyId || request !== candidateLoadSequence || context !== teamAccessContext()) return;
+    if (!data?.success) {
+        const message = data?.status === 403 ? 'Кандидати недоступні для поточного доступу.' : 'Не вдалося завантажити кандидатів.';
+        currentApplications = [];
+        [kanban, document.getElementById('vacancyResponsesList'), document.getElementById('vacancyInterviewsList')]
+            .filter(Boolean).forEach(panel => { panel.textContent = message; });
+        return;
+    }
     const apps = data.applications || [];
     currentApplications = apps;
     renderVacancyResponses();
     renderInterviewResults();
-    const statuses = ['new', 'contacted', 'interview', 'offer'];
-    const kanban = document.getElementById('candidatesKanban');
+    const activeStages = ['new', 'contacted', 'interview', 'offer'];
+    const statuses = [...activeStages, 'hired', 'rejected'];
     if (!kanban) return;
     kanban.innerHTML = statuses.map(s => `
         <div class="kanban-col">
@@ -20945,9 +20962,9 @@ async function refreshCandidates() {
                         ${candidateResumeBadgeHtml(a)}
                         <div class="kc-actions">
                             <button type="button" class="kc-btn" onclick="openCandidateDetail(${a.id})">Резюме</button>
-                            ${s !== 'offer' ? `<button type="button" class="kc-btn" onclick="moveCandidate(${a.id},'${nextCandidateStatus(s)}')">→ ${APP_STATUS_LABEL[nextCandidateStatus(s)]}</button>` : ''}
+                            ${activeStages.includes(s) && s !== 'offer' ? `<button type="button" class="kc-btn" onclick="moveCandidate(${a.id},'${nextCandidateStatus(s)}')">→ ${APP_STATUS_LABEL[nextCandidateStatus(s)]}</button>` : ''}
                             ${s === 'offer' ? `<button type="button" class="kc-btn success" onclick="hireCandidate(${a.id}, this)">Найняти</button>` : ''}
-                            <button type="button" class="kc-btn danger" onclick="moveCandidate(${a.id},'rejected')">Відхилити</button>
+                            ${activeStages.includes(s) ? `<button type="button" class="kc-btn danger" onclick="moveCandidate(${a.id},'rejected')">Відхилити</button>` : ''}
                         </div>
                     </div>
                 `).join('') || '<div style="color:var(--gray-400);font-size:12px;padding:8px">Порожньо</div>'}
@@ -21077,8 +21094,12 @@ function nextCandidateStatus(s) {
 }
 
 async function moveCandidate(id, status) {
-    await hrFetch(`/applications/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
-    refreshCandidates();
+    const data = await hrFetch(`/applications/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }).catch(() => null);
+    if (!data?.success) {
+        showNotification(data?.error || 'Не вдалося змінити етап кандидата', 'error');
+        return;
+    }
+    await refreshCandidates();
 }
 
 async function hireCandidate(id, button = null) {

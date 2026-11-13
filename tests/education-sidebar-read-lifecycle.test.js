@@ -6,7 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '../js/components/sidebar.js'), 'utf8');
 function deferred() { let resolve, reject; const promise = new Promise((a,b) => {resolve=a;reject=b;}); return {promise,resolve,reject}; }
-function fixture(kind) {
+function fixture(kind, { timelineAccess = true } = {}) {
     const reads=[],writes=[],timers=[],warnings=[];
     let scope='dar/operator-a/session-1',exiting=false;
     const widget={hidden:false,classList:{toggle:()=>writes.push('class')}};
@@ -20,6 +20,7 @@ function fixture(kind) {
     const context=vm.createContext({document,_state:state,_commandState:{},window:{location:{pathname:'/'},CrmBusinessContext:{apiUrl:url=>url}},localStorage:{getItem:()=> 'synthetic'},
         fetch:(url,options)=>{const read=deferred();reads.push({url,options,...read});return read.promise;},
         _isAuthenticatedSidebarRuntimeReady:()=>true,_sidebarRequestScopeKey:()=>scope,
+        hasAccess:({href})=>href==='/' && timelineAccess,
         _sidebarNormalizeTimelineMode:mode=>mode,_sidebarTimelineBuildSummary:record=>record,
         _sidebarTimelineSummaryCacheKey:()=> 'summary',SIDEBAR_TIMELINE_SUMMARY_CACHE_TTL:60000,SIDEBAR_OPERATIONAL_POLL_MS:300000,
         _setSidebarTimelineSummary:record=>{writes.push(record);return record;},_sidebarTimelineSummaryModeUrl:()=>'/api/bookings/2026-10-03',_sidebarAuthHeaders:()=>({}),_sidebarTimelineCountBookings:rows=>rows.length,
@@ -49,6 +50,13 @@ async function reachFallback(f) {
     assert.ok(f.reads[1],'Actual task fallback reached');assert.equal(f.reads[1].options.keepalive,true);
     return {pending};
 }
+test('sidebar does not request timeline summaries without timeline access', async () => {
+    const f = fixture('summary', { timelineAccess: false });
+    assert.equal(await f.start(), null);
+    assert.equal(f.reads.length, 0);
+    assert.equal(f.writes.length, 0);
+});
+
 test('sidebar summary optional GET survives navigation and completes current state',async()=>{
     const f=fixture('summary'),pending=f.start();assert.equal(f.reads[0].options.keepalive,true);f.answer(0,[{}]);await pending;
     assert.equal(f.writes.at(-1).status,'ready');assert.equal(f.writes.at(-1).count,1);assert.equal(f.state.timelineSummaryPromises.size,0);

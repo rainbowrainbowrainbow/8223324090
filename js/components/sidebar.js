@@ -2540,6 +2540,8 @@ const Sidebar = (() => {
 
     async function _fetchSidebarTimelineSummaryMode(requested, modeKey, options = {}) {
         if (!_isAuthenticatedSidebarRuntimeReady()) return null;
+        const href = (requested.businessContext || _sidebarTimelineContextValue()) === 'maysternya_doli' ? '/maysternya-doli' : '/';
+        if (!hasAccess({ href })) return null;
         const mode = _sidebarNormalizeTimelineMode(modeKey);
         if (!mode) return null;
         const model = _sidebarTimelineBuildSummary({ ...requested, timelineView: mode, status: 'loading' });

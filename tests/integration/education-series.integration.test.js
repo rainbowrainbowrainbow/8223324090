@@ -220,6 +220,18 @@ describe('education lesson series on isolated PostgreSQL', { skip: !enabled, con
         await pool.query("INSERT INTO education_teacher_memberships(business_context,staff_id) VALUES ('maysternya_doli',$1)",[sharedTeacher]);
         const booking = { date: '2034-01-10', time: '12:00', duration: 45, lineId: 'edu-cabinet-1', room: 'Кабінет 1', label: 'Математика навколо нас', skipNotification: true,
             extraData: { educationLesson: { mode: 'education_lesson', teacherId: sharedTeacher, teacherName: 'Олена Ковальчук', title: 'Математика навколо нас' } } };
+        // Give the synthetic operator the private business's canonical timeline access.
+        const { rows: [operator] } = await pool.query('SELECT id FROM users WHERE username = $1', [process.env.TEST_USER]);
+        const { rows: [organization] } = await pool.query(`
+            INSERT INTO organizations (slug, name) VALUES ('education-series-secondary-fixture', 'Education series fixture')
+            RETURNING id`);
+        const { rows: [business] } = await pool.query(`
+            INSERT INTO businesses (organization_id, context_key, label, short_label, access_mode, modules)
+            VALUES ($1, 'maysternya_doli', 'Secondary education fixture', 'Secondary', 'membership', '["timeline"]')
+            RETURNING id`, [organization.id]);
+        await pool.query('INSERT INTO organization_memberships (organization_id, user_id) VALUES ($1, $2)', [organization.id, operator.id]);
+        await pool.query(`INSERT INTO business_memberships (business_id, organization_id, user_id, role)
+            VALUES ($1, $2, $3, 'director')`, [business.id, organization.id, operator.id]);
         const directory = await request('GET', '/api/timeline/resources?businessContext=maysternya_doli&type=cabinet', token);
         assert.equal(directory.status, 200); const cabinet = directory.body.resources.find(row => row.isActive !== false);
         assert.ok(cabinet, 'Secondary context requires its own visible cabinet fixture');

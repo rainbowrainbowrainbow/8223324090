@@ -18,6 +18,13 @@ test('hourly quote retains planned and actual quantities separately', () => {
     assert.equal(value.plannedMinutes, 240);
 });
 
+test('base replacement requires a timed scope before agreement for every pay unit',()=>{
+    for(const payUnit of ['fixed','shift']) {
+        assert.throws(()=>input({payUnit,shiftUnits:'1',payMode:'replace_base',startsAt:null,endsAt:null,breakMinutes:0}),{code:'SUBSTITUTION_TIME_REQUIRED'});
+        assert.equal(input({payUnit,shiftUnits:'1',payMode:'additional',startsAt:null,endsAt:null,breakMinutes:0}).plannedMinutes,null);
+    }
+});
+
 test('shift fractions and fixed scope use exact money with one final rounding', () => {
     assert.equal(c.amountFor(input({ payUnit: 'shift', shiftUnits: '0.5' }), 120000), 60000);
     assert.equal(c.amountFor(input({ payUnit: 'fixed' }), 75000, 300), 75000);

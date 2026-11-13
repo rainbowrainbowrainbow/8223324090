@@ -73,7 +73,7 @@
         }
         const terms = await formModal('Людина на заміну · умови', [
             choice('payUnit', 'Оплата', [['hour','Погодинна'],['shift','За зміну'],['fixed','Фіксована за роботу']]),
-            field('startTime', 'Початок (для погодинної обов’язково)', source?.startTime || '', 'time', false),
+            field('startTime', 'Початок (для погодинної або заміни основної оплати обов’язково)', source?.startTime || '', 'time', false),
             field('endDate', 'Дата завершення', first.workDate, 'date'),
             field('endTime', 'Завершення', source?.endTime || '', 'time', false),
             field('breakMinutes', 'Неоплачувана перерва, хв', String(source?.breakMinutes || 0), 'number'),

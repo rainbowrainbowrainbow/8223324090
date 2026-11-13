@@ -84,6 +84,7 @@ function normalizeInput(raw = {}) {
     const startsAt = raw.startsAt ? instant(raw.startsAt, 'початок') : null;
     const endsAt = raw.endsAt ? instant(raw.endsAt, 'кінець') : null;
     if (Boolean(startsAt) !== Boolean(endsAt) || (payUnit === 'hour' && !startsAt)) fail('SUBSTITUTION_TIME_REQUIRED', 'Для погодинної оплати потрібен час початку й завершення');
+    if (payMode === 'replace_base' && !startsAt) fail('SUBSTITUTION_TIME_REQUIRED', 'Для заміни основної оплати вкажіть точний час роботи, навіть за фіксованої оплати або оплати за зміну');
     const breakMinutes = integer(raw.breakMinutes ?? 0, 'перерва', 0, 1440);
     let plannedMinutes = null;
     if (startsAt) {

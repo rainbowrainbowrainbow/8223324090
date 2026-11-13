@@ -64,7 +64,8 @@ function fail(code, message, details = {}, status = 400) {
 }
 
 function isHrShiftPlanError(error) {
-    return error instanceof HrShiftPlanError || error?.name === 'HrShiftPlanError';
+    return error instanceof HrShiftPlanError || error?.name === 'HrShiftPlanError'
+        || error?.code === 'FREELANCE_MONTHLY_REPLACEMENT_UNSUPPORTED';
 }
 
 function hrShiftPlanErrorPayload(error, extra = {}) {
@@ -1474,6 +1475,13 @@ async function replaceHrShiftSegments(client, hrShiftId, plan, options = {}) {
     );
 
     const existingRows = await loadHrShiftSegments(client, hrShiftId);
+    if (normalizedPlan.segments.some(segment => segment.workMode === 'freelance')) {
+        const { assertFreelanceDoesNotReplaceMonthlyWork } = require('./hrFreelanceWork');
+        await assertFreelanceDoesNotReplaceMonthlyWork(
+            client, expectedStaffId, normalizeShiftDate(locked.rows[0].shift_date),
+            normalizedPlan.segments, existingRows
+        );
+    }
     const beforePlan = {
         segments: existingRows.map(segmentPayloadFromRow)
     };
@@ -1580,6 +1588,16 @@ async function replaceHrShiftSegments(client, hrShiftId, plan, options = {}) {
             for (const role of segment.additionalRoles) {
                 roleInsertPairs.push({ segmentId, ...role });
             }
+        }
+        if (workMode === 'freelance' && existing?.work_mode !== 'freelance') {
+            const { insertDefaultFreelanceTerms } = require('./hrFreelanceWork');
+            await insertDefaultFreelanceTerms(client, {
+                segmentId,
+                staffId: expectedStaffId,
+                professionKey: segment.professionKey,
+                date: locked.rows[0].shift_date,
+                actor
+            });
         }
         persistedSegments.push({ ...segment, id: segmentId, workMode });
     }

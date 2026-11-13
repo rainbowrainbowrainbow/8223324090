@@ -31,6 +31,12 @@ const { PAYROLL_HISTORICAL_CLASSIFICATION_MESSAGES } = require('../services/payr
 const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
 const { requireParkHrPayrollAccess } = require('../services/parkHrPayrollAccess');
 const {
+    agreeFreelanceSegmentTerms, confirmFreelanceAttendance, insertFreelanceRateVersion,
+    listFreelanceRateOptions, listFreelanceSettlement, listFreelanceWorkDay, writeFreelanceMovement
+} = require('../services/hrFreelanceWork');
+const {
+    businessContextFromRequest,
+    DEFAULT_BUSINESS_CONTEXT,
     requireWritableBusinessScope,
     resolveBusinessScope
 } = require('../services/businessContext');
@@ -192,6 +198,52 @@ function writablePayrollBusinessContext(req, res) {
     if (!requireWritableBusinessScope(req, res, scope)) return null;
     return scope.activeContext;
 }
+
+function freelanceWrite(operation) {
+    return async (req, res) => {
+        const businessContext = writablePayrollBusinessContext(req, res);
+        if (!businessContext) return;
+        if (businessContext !== DEFAULT_BUSINESS_CONTEXT) {
+            return res.status(403).json({ success: false, error: 'Графік фрілансу належить Park.' });
+        }
+        let client;
+        try {
+            client = await pool.connect();
+            await client.query('BEGIN');
+            const data = await operation(client, req.body || {}, req.user?.username);
+            await client.query('COMMIT');
+            return res.status(201).json({ success: true, data });
+        } catch (err) {
+            if (client) await client.query('ROLLBACK').catch(() => {});
+            return sendError(res, err);
+        } finally {
+            client?.release();
+        }
+    };
+}
+
+router.post('/freelance/rates', requireAction('manage_payroll_rules'), freelanceWrite(insertFreelanceRateVersion));
+router.post('/freelance/terms', requireAction('manage_payroll_rules'), freelanceWrite(agreeFreelanceSegmentTerms));
+router.post('/freelance/attendance', requireAction('manage_payroll_accrual'), freelanceWrite(confirmFreelanceAttendance));
+router.post('/freelance/payments', requireAction('confirm_payroll_payment'), freelanceWrite(writeFreelanceMovement));
+router.post('/freelance/reversals', requireAction('reverse_payroll_payment'),
+    freelanceWrite((client, input, actor) => writeFreelanceMovement(client, input, actor, true)));
+
+function freelanceRead(read) {
+    return async (req, res) => {
+        if (resolveBusinessScope(req).activeContext !== DEFAULT_BUSINESS_CONTEXT) {
+            return res.status(403).json({ success: false, error: 'Графік фрілансу належить Park.' });
+        }
+        try {
+            return res.json({ success: true, data: await read(pool, req.query.date, req.query.staffId) });
+        } catch (err) {
+            return sendError(res, err);
+        }
+    };
+}
+router.get('/freelance/settlement', requireAction('view_payroll'), freelanceRead(listFreelanceSettlement));
+router.get('/freelance/day', requireAction('view_payroll'), freelanceRead(listFreelanceWorkDay));
+router.get('/freelance/rates', requireAction('manage_payroll_rules'), freelanceRead(listFreelanceRateOptions));
 
 function payrollInstallmentsForExport(row = {}) {
     const installments = Array.isArray(row.installments) ? row.installments : [];

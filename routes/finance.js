@@ -166,7 +166,8 @@ async function assertFinanceTransactionNotPayrollManaged(transactionId, business
     );
     if (!result.rowCount) return false;
     const row = result.rows[0];
-    if (row.payroll_movement_id || row.legacy_payroll_report_id || row.source === 'payroll') {
+    if (row.payroll_movement_id || row.legacy_payroll_report_id
+        || row.source === 'payroll' || row.source === 'hr_freelance') {
         const error = new Error('Payroll-linked finance transaction is managed by payroll workflow');
         error.status = 409;
         error.code = 'PAYROLL_PAYMENT_MANAGED';

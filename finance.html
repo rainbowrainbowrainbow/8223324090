@@ -1425,6 +1425,14 @@
 
             <!-- Salary tab -->
             <div id="tabSalary" style="display:none">
+                <details id="freelancePayrollPanel" class="salary-main-panel" hidden>
+                    <summary>Фріланс — до розрахунку</summary>
+                    <div class="salary-actions">
+                        <label>Робоча дата <input type="date" id="freelancePayrollDate" class="fin-filter-date"></label>
+                        <button type="button" id="freelanceRateButton" class="btn-page-secondary" hidden>Типова ставка</button>
+                    </div>
+                    <div id="freelancePayrollContent" aria-live="polite"></div>
+                </details>
                 <div class="salary-topbar">
                     <input type="month" id="salaryMonth" class="fin-filter-date" style="width:180px">
                     <div class="salary-mode-switch" role="tablist" aria-label="Режими зарплат">

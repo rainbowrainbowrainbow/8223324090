@@ -1231,6 +1231,8 @@ function decorateAttendanceRecord(record = {}, loadedShift = null) {
         ...attendanceAllocationFields(allocation),
         compensationSnapshot,
         compensation_snapshot: compensationSnapshot,
+        ...(loadedShift?.plan?.segments?.some(segment => segment.workMode === 'freelance')
+            ? { currentPlanHasFreelance: true } : {}),
         compensationAllocations: compensationSnapshot?.compensationAllocations || [],
         compensation_allocations: compensationSnapshot?.compensationAllocations || [],
         compensationIssues,

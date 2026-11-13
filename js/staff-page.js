@@ -5329,6 +5329,8 @@ function renderSchedulePlanSegmentCard(scope, segment, index, segmentCount) {
                         <option value="regular">За графіком</option>
                         <option value="freelance" ${segment.workMode === 'freelance' ? 'selected' : ''}>Фріланс</option>
                     </select>
+                    ${scope === 'schedule' && segment.workMode === 'freelance' && scheduleCanViewPayrollAmounts()
+                        ? `<div data-freelance-estimate="${Number(segment.id) || 0}" aria-live="polite"></div>` : ''}
                 </div>
                 <div class="form-group sch-segment-profession-field">
                     <label for="${escapeHtml(professionId)}">Професія</label>
@@ -6189,7 +6191,44 @@ function renderSchedulePlanEditor(scope, rawSegments = [], options = {}) {
     activeCard?.classList.add('is-active');
     updateSchedulePlanPrimaryOptions(scope, options.primaryProfessionKey);
     updateSchedulePlanSummary(scope);
-    if (scope === 'schedule') void refreshScheduleDayPay(scope);
+    if (scope === 'schedule') {
+        void refreshScheduleDayPay(scope);
+        void refreshScheduleFreelanceEstimates(list);
+    }
+}
+
+async function refreshScheduleFreelanceEstimates(list) {
+    const nodes = [...list.querySelectorAll('[data-freelance-estimate]')];
+    if (!nodes.length || !StaffState.editingCell || !scheduleCanViewPayrollAmounts()) return;
+    const { staffId, date } = StaffState.editingCell;
+    const day = new URLSearchParams({ staffId, date, businessContext: 'event_genix' });
+    const update = message => nodes.forEach(node => {
+        if (node.isConnected) node.textContent = message;
+    });
+    update('Завантаження умов…');
+    try {
+        const res = await apiFetchWithAuthRetry(`/api/payroll/freelance/day?${day}`, { headers: getAuthHeaders(false) });
+        if (!res?.ok) {
+            update('Умови оплати недоступні.');
+            return;
+        }
+        const data = await res.json();
+        const segments = data.data?.[0]?.segments || [];
+        nodes.forEach(node => {
+            if (!node.isConnected) return;
+            const block = segments.find(item => Number(item.id) === Number(node.dataset.freelanceEstimate));
+            if (!block?.rate) {
+                node.textContent = Number(node.dataset.freelanceEstimate)
+                    ? 'Не погоджено оплату' : 'Умови застосуються після збереження.';
+                return;
+            }
+            const unit = block.rateUnit === 'hour' ? 'за годину' : 'за вихід';
+            node.textContent = `${block.rate} грн ${unit}`
+                + (Number.isInteger(block.estimatedAmount) ? ` · орієнтовно ${block.estimatedAmount} грн` : '');
+        });
+    } catch {
+        update('Не вдалося завантажити умови.');
+    }
 }
 
 function getActiveScheduleSegmentCard() {
@@ -6245,6 +6284,15 @@ function bindSchedulePlanEditor(scope) {
         if (!event.target.matches('[data-segment-field]')) return;
         const card = event.target.closest('.sch-segment-card');
         if (card && list) list.dataset.activeSegmentIndex = card.dataset.segmentIndex || '0';
+        if (event.target.matches('[data-segment-field="work-mode"]')) {
+            const activeIndex = Number(card?.dataset.segmentIndex || 0);
+            rerender(readSchedulePlanSegments(scope), {
+                primaryProfessionKey: document.getElementById(config.primaryId)?.value,
+                activeIndex
+            });
+            list?.querySelector(`[data-segment-index="${activeIndex}"] [data-segment-field="work-mode"]`)?.focus();
+            return;
+        }
         if (event.target.matches('[data-segment-field="paid-profession"]')) {
             const paidStart = card?.querySelector('[data-segment-field="paid-start"]');
             if (event.target.value && paidStart?.disabled) {

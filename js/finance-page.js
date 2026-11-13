@@ -362,6 +362,7 @@ function clearSalaryWorkspace(availability = salarySurfaceAvailability()) {
 function invalidateSalaryBusinessContext() {
     salaryRequestGeneration++;
     clearSalaryWorkspace();
+    syncFreelancePayrollPanel();
     if (FinState.currentTab === 'salary') void fetchSalaryReport();
 }
 
@@ -1061,6 +1062,187 @@ async function payrollApiRequest(method, url, body, headers = {}) {
 
 async function fetchPayrollPaymentOptions() {
     return payrollApiRequest('GET', payrollApiUrl('/api/payroll/payment-options'));
+}
+
+const freelancePayrollLabels = { unpaid: 'До виплати', partially_paid: 'Частково оплачено', paid: 'Оплачено' };
+
+function freelancePayrollPanelVisible() {
+    return salarySurfaceAvailability().available && payrollBusinessContext() === 'event_genix'
+        && financeCanUsePayrollAction('view_payroll');
+}
+
+function freelanceRateFields() {
+    return [
+        { name: 'rateUnit', label: 'Спосіб розрахунку', type: 'select', required: true,
+            options: '<option value="hour">За годину</option><option value="fixed">За вихід</option>' },
+        { name: 'rate', label: 'Ставка або сума, грн', required: true }
+    ];
+}
+
+async function loadFreelancePayroll() {
+    const panel = document.getElementById('freelancePayrollPanel');
+    const content = document.getElementById('freelancePayrollContent');
+    const input = document.getElementById('freelancePayrollDate');
+    if (!panel || !content || !input || !panel.open || !freelancePayrollPanelVisible()) return;
+    const date = input.value;
+    if (!date) return;
+    content.textContent = 'Завантаження…';
+    try {
+        const [work, settlement] = await Promise.all(['day', 'settlement'].map(path => payrollApiRequest('GET',
+            payrollApiUrl(`/api/payroll/freelance/${path}?date=${encodeURIComponent(date)}`))));
+        if (input.value !== date || !freelancePayrollPanelVisible()) return;
+        const days = work?.data || [];
+        const payments = settlement?.data || [];
+        const canRules = financeCanUsePayrollAction('manage_payroll_rules');
+        const canConfirm = financeCanUsePayrollAction('manage_payroll_accrual');
+        const canPay = financeCanUsePayrollAction('confirm_payroll_payment');
+        const canReverse = financeCanUsePayrollAction('reverse_payroll_payment');
+        content.innerHTML = days.map(day => `
+            <div class="salary-main-panel">
+                <strong>${escapeHtml(day.staff_name)}</strong>
+                ${day.segments.map(block => `<div>
+                    ${escapeHtml(block.shiftStart)}–${escapeHtml(block.shiftEnd)} ·
+                    ${escapeHtml(block.workMode === 'freelance' ? 'Фріланс' : 'За графіком')}
+                    ${block.workMode === 'freelance' ? `
+                        · ${block.rate ? escapeHtml(`${block.rate} грн ${block.rateUnit === 'hour' ? 'за годину' : 'за вихід'}`) : 'Не погоджено оплату'}
+                        ${Number.isInteger(block.estimatedAmount) && !day.confirmed_at
+                            ? ` · Орієнтовно ${formatMoney(block.estimatedAmount)}` : ''}
+                        ${canRules && !day.confirmed_at ? `<button type="button" class="salary-payroll-action"
+                            data-freelance-terms="${Number(block.id)}">Погодити умови</button>` : ''}
+                    ` : ''}
+                </div>`).join('')}
+                <div>${day.confirmed_at ? 'Факт підтверджено' : (day.clock_out
+                    ? `Фактичний час: ${Number(day.actualMinutes || 0)} хв` : 'Очікує завершення виходу')}</div>
+                ${canConfirm && day.clock_out && !day.confirmed_at ? `<button type="button" class="salary-payroll-action"
+                    data-freelance-confirm="${Number(day.shift_id)}">Підтвердити час</button>` : ''}
+            </div>`).join('')
+            + payments.map(row => `<div class="salary-main-panel">
+                <strong>${escapeHtml(row.staff_name)} · ${escapeHtml(row.work_date)}</strong>
+                <div>${escapeHtml(row.planned_start.slice(0, 5))}–${escapeHtml(row.planned_end.slice(0, 5))}
+                    · ${escapeHtml(freelancePayrollLabels[row.status])}</div>
+                <div>Сума ${formatMoney(row.amount)} · Виплачено ${formatMoney(row.paid)} · Залишок ${formatMoney(row.outstanding)}</div>
+                ${canPay && row.outstanding > 0 ? `<button type="button" class="salary-payroll-action"
+                    data-freelance-pay="${Number(row.segment_id)}">Зафіксувати виплату</button>` : ''}
+                ${row.movements.map(move => `<div>${escapeHtml(move.date)} · ${escapeHtml(move.actor)}
+                    · ${move.reversalOf ? 'Сторно ' : ''}${formatMoney(move.amount)}
+                    ${canReverse && !move.reversalOf && !row.movements.some(other => other.reversalOf === move.id)
+                        ? `<button type="button" class="salary-payroll-action"
+                            data-freelance-reverse="${Number(move.id)}" data-freelance-block="${Number(row.segment_id)}">Сторнувати</button>` : ''}
+                </div>`).join('')}
+            </div>`).join('');
+        if (!days.length && !payments.length) content.textContent = 'На цю дату немає фріланс-виходів або прострочених виплат.';
+        content.onclick = async event => {
+            const button = event.target.closest('button');
+            if (!button || button.disabled) return;
+            button.disabled = true;
+            try {
+                const { freelanceTerms, freelanceConfirm, freelancePay, freelanceReverse, freelanceBlock } = button.dataset;
+                if (freelanceTerms) {
+                    const day = days.find(item => item.segments.some(block => Number(block.id) === Number(freelanceTerms)));
+                    const values = await openPayrollDialog({ title: 'Погодити умови виходу', fields: [
+                        ...freelanceRateFields(), { name: 'reason', label: 'Причина', required: true }
+                    ] });
+                    if (values) await payrollApiRequest('POST', payrollApiUrl('/api/payroll/freelance/terms'), {
+                        ...values, staffId: day.staff_id, segmentId: freelanceTerms, date
+                    });
+                } else if (freelanceConfirm) {
+                    const day = days.find(item => Number(item.shift_id) === Number(freelanceConfirm));
+                    const suggested = new Map((day.suggestedAllocations || []).map(item => [Number(item.segmentId), item.minutes]));
+                    const values = await openPayrollDialog({ title: `Підтвердити ${day.actualMinutes || 0} хв за блоками`, fields:
+                        day.segments.map(block => ({
+                            name: String(block.id), label: `${block.shiftStart}–${block.shiftEnd} · ${block.workMode === 'freelance' ? 'Фріланс' : 'За графіком'} (хв)`,
+                            type: 'number', value: suggested.get(Number(block.id)) ?? '', required: true
+                        })) });
+                    if (values) await payrollApiRequest('POST', payrollApiUrl('/api/payroll/freelance/attendance'), {
+                        staffId: day.staff_id, attendanceId: day.attendance_id, date,
+                        allocations: Object.entries(values).map(([segmentId, minutes]) => ({ segmentId, minutes: Number(minutes) }))
+                    });
+                } else if (freelancePay || freelanceReverse) {
+                    const row = payments.find(item => Number(item.segment_id) === Number(freelancePay || freelanceBlock));
+                    await recordFreelanceFinanceMovement(row, freelanceReverse);
+                } else return;
+                await loadFreelancePayroll();
+            } catch (error) {
+                showNotification(error.message, 'error');
+            } finally {
+                button.disabled = false;
+            }
+        };
+    } catch (error) {
+        if (input.value === date) content.textContent = error.message || 'Не вдалося завантажити фріланс.';
+    }
+}
+
+async function recordFreelanceFinanceMovement(row, reversalOf) {
+    const options = await fetchPayrollPaymentOptions();
+    if (!options) return;
+    const original = row.movements.find(move => Number(move.id) === Number(reversalOf));
+    const accounts = reversalOf ? options.accounts.filter(account => Number(account.id) === Number(original?.accountId)) : options.accounts;
+    const methods = reversalOf ? [original?.paymentMethod].filter(Boolean) : options.paymentMethods;
+    const categories = reversalOf ? options.categories.income : options.categories.expense;
+    const values = await openPayrollDialog({ title: reversalOf ? 'Сторнувати фріланс-виплату' : 'Зафіксувати фріланс-виплату', fields: [
+        { name: 'paymentDate', label: 'Фактична дата', type: 'date', value: payrollDateValue(new Date()), required: true },
+        ...(!reversalOf ? [{ name: 'amount', label: 'Сума, грн', type: 'number', value: row.outstanding, required: true }] : []),
+        { name: 'accountId', label: 'Рахунок', type: 'select', options: payrollOptionList(accounts), required: true },
+        { name: 'paymentMethod', label: 'Спосіб оплати', type: 'select', required: true,
+            options: payrollOptionList(methods.map(method => ({ value: method, label: PAYMENT_LABELS[method] || method }))) },
+        { name: 'categoryId', label: 'Категорія', type: 'select', options: payrollOptionList(categories), required: true },
+        { name: 'reason', label: 'Призначення', required: true }
+    ] });
+    if (!values) return;
+    const endpoint = reversalOf ? 'reversals' : 'payments';
+    await payrollApiRequest('POST', payrollApiUrl(`/api/payroll/freelance/${endpoint}`), {
+        ...values, reversalOf, segmentId: row.segment_id,
+        idempotencyKey: payrollIdempotencyKey(`freelance-${endpoint}`, row.segment_id)
+    });
+    showNotification(reversalOf ? 'Сторно зафіксовано' : 'Виплату зафіксовано');
+}
+
+function syncFreelancePayrollPanel() {
+    const panel = document.getElementById('freelancePayrollPanel');
+    if (!panel) return;
+    panel.hidden = !freelancePayrollPanelVisible();
+    const rate = document.getElementById('freelanceRateButton');
+    rate.hidden = !financeCanUsePayrollAction('manage_payroll_rules');
+    if (panel.hidden) {
+        document.getElementById('freelancePayrollContent').replaceChildren();
+        return;
+    }
+    if (panel.dataset.bound) {
+        void loadFreelancePayroll();
+        return;
+    }
+    panel.dataset.bound = 'true';
+    const date = document.getElementById('freelancePayrollDate');
+    date.value = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' }).format(new Date());
+    panel.addEventListener('toggle', () => void loadFreelancePayroll());
+    date.addEventListener('change', () => void loadFreelancePayroll());
+    rate.addEventListener('click', async () => {
+        rate.disabled = true;
+        try {
+            const result = await payrollApiRequest('GET', payrollApiUrl('/api/payroll/freelance/rates'));
+            if (!result) return;
+            const { professions, staff } = result.data;
+            const values = await openPayrollDialog({ title: 'Нова версія фріланс-ставки', fields: [
+                { name: 'professionKey', label: 'Професія', type: 'select', required: true,
+                    options: payrollOptionList(professions.map(item => ({ id: item.key, name: item.title }))) },
+                { name: 'staffId', label: 'Для кого', type: 'select',
+                    options: payrollOptionList([{ id: '', name: 'Для всієї професії' }, ...staff]) },
+                ...freelanceRateFields(),
+                { name: 'effectiveFrom', label: 'Діє з', type: 'date', value: date.value, required: true }
+            ] });
+            if (values) {
+                await payrollApiRequest('POST', payrollApiUrl('/api/payroll/freelance/rates'), {
+                    ...values, staffId: values.staffId || null
+                });
+                showNotification('Версію ставки збережено');
+            }
+        } catch (error) {
+            showNotification(error.message, 'error');
+        } finally {
+            rate.disabled = false;
+        }
+    });
 }
 
 function payrollOptionList(items = []) {
@@ -2695,7 +2877,10 @@ function switchTab(tabName, options = {}) {
     if (tabName === 'dashboard') fetchDashboard();
     if (tabName === 'transactions') fetchTransactions();
     if (tabName === 'monthly') fetchMonthlyReport();
-    if (tabName === 'salary') fetchSalaryReport();
+    if (tabName === 'salary') {
+        fetchSalaryReport();
+        syncFreelancePayrollPanel();
+    }
     if (tabName === 'budget') initBudgetTab();
     if (tabName === 'costing') window.CostingWorkspace?.load();
     if (tabName === 'shift') loadShiftData();

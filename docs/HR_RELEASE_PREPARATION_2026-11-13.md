@@ -1,7 +1,7 @@
 # HR release preparation
 
-The production baseline observed on 2026-11-13 was v0.83.45,
-`dd511e2f0da52da1401502991a68d476eee9ce44` on
+The latest production baseline observed on 2026-11-13 was v0.83.46,
+`481bf7135696e2caabf9f3edc222c4432e48329f` on
 `codex/eventgenix-production`. Railway reported a successful deployment on
 `fortunate-appreciation / production / 8223324090`. The HR branch includes
 that baseline and preserves the prior HR changes.
@@ -48,8 +48,8 @@ that baseline and preserves the prior HR changes.
 
 ## Release envelope preparation
 
-Candidate version: v0.83.47. The parallel HR Team Pulse branch already has a
-v0.83.46 candidate. Refresh live version, remote production SHA, nearby
+Candidate version: v0.83.47. The deployed HR Team Pulse v0.83.46 is included
+as the production base. Refresh live version, remote production SHA, nearby
 release refs and pending Railway deployments before presenting the envelope.
 
 Destination: `codex/eventgenix-production`. Use a normal fast-forward push,

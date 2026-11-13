@@ -9,6 +9,18 @@ const { normalizeBusinessContext } = require('./businessContext');
 const { isAttendanceRecordOpen } = require('../js/hr-attendance-state');
 
 const MINUTES_PER_DAY = 24 * 60;
+const CANCELLED_ARRIVAL_STATUS = 'arrival_cancelled';
+// Match the specific arrival, since a new arrival can reuse the same row ID.
+const HR_TODAY_MANUAL_ARRIVAL_SQL = `tr.clock_in IS NOT NULL AND tr.clock_out IS NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM staff_checkins sc WHERE sc.staff_id = tr.staff_id AND sc.date = tr.record_date
+  ) AND EXISTS (
+    SELECT 1 FROM hr_audit_log a
+    WHERE a.action = 'clock_in' AND a.staff_id = tr.staff_id
+      AND a.details->>'record_id' = tr.id::text
+      AND a.details->>'clock_in' = to_char(tr.clock_in AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+      AND a.details->>'source' = 'hr_today' AND a.details->>'method' = 'manual'
+)`;
 const KYIV_TIME_ZONE = 'Europe/Kyiv';
 const HR_ATTENDANCE_GRACE_MINUTES = Object.freeze({
     late: 5,
@@ -642,7 +654,7 @@ async function loadInitialAttendancePlanSource(db, record = {}) {
                 OR details->>'record_date' = $4
                 OR details->>'date' = $4
            )
-         ORDER BY created_at ASC, id ASC
+         ORDER BY (details->>'clock_in' IS NOT DISTINCT FROM $3) DESC, created_at ASC, id ASC
          LIMIT 5`,
         [Number(record.staff_id), recordId, clockIn, recordDate]
     );
@@ -1252,7 +1264,9 @@ function decorateAttendanceRecord(record = {}, loadedShift = null) {
 }
 
 async function hydrateAttendanceRecords(db, rows = []) {
-    const records = Array.isArray(rows) ? rows : [];
+    const records = Array.isArray(rows)
+        ? rows.filter(row => (row.status || row.time_status) !== CANCELLED_ARRIVAL_STATUS)
+        : [];
     if (!records.length) return [];
     const staffIds = [...new Set(records.map(row => Number(row.staff_id)).filter(Number.isInteger))];
     const dates = records.map(row => dateOnly(row.record_date || row.date)).filter(Boolean).sort();
@@ -1426,6 +1440,60 @@ function attendanceMutationError(code, message, statusCode) {
     error.code = code;
     error.statusCode = statusCode;
     return error;
+}
+
+async function cancelAttendanceClockIn(db, { staffId, recordId, recordDate, clockIn, businessContext, performedBy, ip }) {
+    const { rows: [record] } = await db.query(
+        `SELECT tr.*, ${HR_TODAY_MANUAL_ARRIVAL_SQL} AS manual_arrival
+         FROM hr_time_records tr WHERE tr.staff_id = $1 AND tr.record_date = $2 FOR UPDATE OF tr`,
+        [staffId, recordDate]
+    );
+    const snapshot = parseAttendanceCompensationSnapshot(record?.compensation_snapshot);
+    if (!isAttendanceRecordOpen(record) || Number(record.id) !== recordId
+        || timestampAuditValue(record.clock_in) !== timestampAuditValue(clockIn)
+        || record.business_context !== businessContext || !record.manual_arrival
+        || record.auto_closed || Number(record.total_worked_minutes || 0) !== 0
+        || snapshot?.finalizedAt || snapshot?.state === 'final') {
+        throw attendanceMutationError('ATTENDANCE_ARRIVAL_NOT_CANCELLABLE',
+            'Цей прихід уже змінився або його не можна скасувати. Оновіть дані.', 409);
+    }
+
+    const month = recordDate.slice(0, 7);
+    const { rows: [usage] } = await db.query(
+        `SELECT EXISTS (
+             SELECT 1 FROM payroll_reports pr
+             WHERE pr.staff_id = $1 AND pr.period_month = $2 AND pr.voided_at IS NULL
+               AND (pr.status IN ('approved', 'paid') OR EXISTS (
+                   SELECT 1 FROM payroll_installments pi
+                   WHERE pi.payroll_report_id = pr.id AND pi.workflow_status = 'approved'
+               ))
+         ) OR EXISTS (
+             SELECT 1 FROM costing_management_links WHERE hr_time_record_id = $3
+         ) AS protected`,
+        [staffId, month, recordId]
+    );
+    if (usage.protected) {
+        throw attendanceMutationError('ATTENDANCE_ARRIVAL_ALREADY_ACCOUNTED',
+            'Прихід не можна скасувати, бо за цей період є погоджені нарахування або пов’язаний облік.', 409);
+    }
+
+    await db.query(
+        `UPDATE hr_time_records SET clock_in = NULL, planned_start = NULL, planned_end = NULL,
+             late_minutes = 0, early_leave_minutes = 0, overtime_minutes = 0,
+             status = $2, compensation_snapshot = NULL, ip_address = NULL, user_agent = NULL,
+             original_clock_in = COALESCE(original_clock_in, clock_in), updated_at = NOW()
+         WHERE id = $1`,
+        [recordId, CANCELLED_ARRIVAL_STATUS]
+    );
+    await db.query(
+        `INSERT INTO hr_audit_log (action, staff_id, performed_by, details, ip_address)
+         VALUES ('clock_in_cancelled', $1, $2, $3, $4)`,
+        [staffId, performedBy, JSON.stringify({
+            record_id: recordId, record_date: recordDate, clock_in: timestampAuditValue(record.clock_in),
+            old_status: record.status, planned_start: record.planned_start, planned_end: record.planned_end,
+            late_minutes: record.late_minutes, compensation_snapshot_before: snapshot, source: 'hr_today'
+        }), ip || null]
+    );
 }
 
 const TERMINAL_ATTENDANCE_STATUSES = new Set([
@@ -1623,6 +1691,11 @@ async function recordAttendanceClockOut(db, input = {}) {
             'Спочатку відмітьте прихід',
             400
         );
+    }
+    if (input.expectedClockIn !== undefined
+        && timestampAuditValue(input.expectedClockIn) !== timestampAuditValue(record.clock_in)) {
+        throw attendanceMutationError('ATTENDANCE_ARRIVAL_CHANGED',
+            'Прихід змінився. Оновіть дані перед завершенням зміни.', 409);
     }
     const initialPlanSource = await loadInitialAttendancePlanSource(db, record);
     const storedCompensationSnapshot = parseAttendanceCompensationSnapshot(record.compensation_snapshot);
@@ -1843,6 +1916,9 @@ module.exports = {
     paidMinutesAfterSegmentBreak,
     plannedShiftWorkedMinutes,
     recordAttendanceClockIn,
+    cancelAttendanceClockIn,
+    HR_TODAY_MANUAL_ARRIVAL_SQL,
+    CANCELLED_ARRIVAL_STATUS,
     recordAttendanceClockOut,
     recordAttendanceStatus,
     resolveAttendancePlan,

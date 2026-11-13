@@ -418,6 +418,7 @@ async function loadAttendanceCurrentState(db, staffIds, documentDate, options = 
              FROM hr_time_records
              WHERE staff_id = ANY($1::int[])
                AND record_date = $2::date
+               AND status IS DISTINCT FROM 'arrival_cancelled'
              ORDER BY staff_id ASC${lock}`,
             [ids, documentDate]
         ),

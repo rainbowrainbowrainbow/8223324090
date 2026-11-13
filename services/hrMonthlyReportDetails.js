@@ -1,6 +1,6 @@
 'use strict';
 
-const { attendanceFactMinutes } = require('./hrAttendance');
+const { attendanceFactMinutes, CANCELLED_ARRIVAL_STATUS } = require('./hrAttendance');
 
 function dateText(value) {
     if (value instanceof Date) return value.toISOString().slice(0, 10);
@@ -36,6 +36,7 @@ function reportAttendanceByStaff(staffRows = [], shiftRows = [], recordRows = []
     const shiftsByDay = new Map();
     const recordsByDay = new Map();
     for (const record of recordRows) {
+        if (record.status === CANCELLED_ARRIVAL_STATUS) continue;
         recordsByDay.set(`${Number(record.staff_id)}:${dateText(record.record_date)}`, record);
     }
     for (const shift of shiftRows) {
@@ -55,7 +56,7 @@ function reportAttendanceByStaff(staffRows = [], shiftRows = [], recordRows = []
             clock_in: record?.clock_in || null, clock_out: record?.clock_out || null
         });
     }
-    for (const record of recordRows) {
+    for (const record of recordsByDay.values()) {
         const staffId = Number(record.staff_id);
         const stats = byStaff.get(staffId);
         if (!stats) continue;

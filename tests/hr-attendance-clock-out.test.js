@@ -71,6 +71,20 @@ const baseRecord = {
     status: 'late'
 };
 
+test('a stale close request cannot end a replacement arrival', async () => {
+    const db = {
+        async query(sql) {
+            assert.match(sql, /^SELECT \* FROM hr_time_records/);
+            return { rows: [baseRecord] };
+        }
+    };
+    await assert.rejects(recordAttendanceClockOut(db, {
+        staffId: baseRecord.staff_id,
+        recordDate: baseRecord.record_date,
+        expectedClockIn: '2026-07-17T06:00:00Z'
+    }), { code: 'ATTENDANCE_ARRIVAL_CHANGED' });
+});
+
 test('open attendance means clocked in without a recorded departure', () => {
     assert.equal(isAttendanceRecordOpen, sharedIsAttendanceRecordOpen);
     assert.equal(isAttendanceRecordOpen({ clock_in: baseRecord.clock_in, clock_out: null }), true);

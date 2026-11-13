@@ -40,7 +40,7 @@ function parkHrPayrollCapabilities(req, routerId) {
             || /^\/professions\/workspace\/[^/]+$/.test(path)) return [...VIEW, 'hr.staff.view'];
     }
     if (method === 'POST') {
-        if (['/clock-in', '/clock-out', '/mark-absent'].includes(path)) return ['hr.schedule.manage'];
+        if (['/clock-in', '/clock-in/cancel', '/clock-out', '/mark-absent'].includes(path)) return ['hr.schedule.manage'];
         if (path === '/payroll-profiles/simulator' || /^\/payroll-profiles\/[1-9]\d*\/impact-preview$/.test(path)) return VIEW;
         if (path === '/payroll-profiles' || /^\/payroll-profiles\/[1-9]\d*\/(?:clone|versions|sync-from-base)$/.test(path)) return RULES;
     }

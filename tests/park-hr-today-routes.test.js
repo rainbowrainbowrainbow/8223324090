@@ -51,6 +51,7 @@ function createPoolFixture(state) {
                 rows = staff;
             } else if (normalized === 'SELECT * FROM hr_shifts WHERE shift_date = $1') {
                 assert.deepEqual(params, [TODAY]);
+                if (state.failSchedule) throw new Error(PRIVATE);
                 rows = shifts;
             } else if (normalized.startsWith('SELECT to_jsonb(hs) AS shift_row,')) {
                 assert.deepEqual(params, [[9801, 9802, 9803]]);
@@ -60,8 +61,8 @@ function createPoolFixture(state) {
                     additional_profession_keys: ['host'], additional_roles: [{ professionKey: 'host',
                         compensationMode: 'paid_hourly', payMultiplier: 0.5, policyVersion: 'fixture-v1' }]
                 }));
-            } else if (normalized === 'SELECT * FROM hr_time_records WHERE record_date = $1') {
-                assert.deepEqual(params, [TODAY]);
+            } else if (normalized.startsWith('SELECT tr.*, (tr.clock_in IS NOT NULL')) {
+                assert.deepEqual(params, [TODAY, 'arrival_cancelled']);
                 rows = records;
             } else if (normalized === "SELECT value FROM settings WHERE key = 'hr_company_structure'") {
                 rows = [{ value: { nodes: [] } }];
@@ -208,6 +209,23 @@ test('Park Today recovery through the actual Express HR router', async t => {
             }
         });
 
+        await t.test('a schedule read failure preserves attendance and signals unknown schedule', async () => {
+            state.actor = { allow: ['hr.today.view'] };
+            state.failSchedule = true;
+            try {
+                const result = await request();
+                assert.equal(result.status, 200, result.text);
+                assert.equal(result.body.scheduleAvailable, false);
+                assert.equal(result.body.data.length, 5);
+                assert.equal(result.body.summary.present, 1);
+                assert.equal(result.body.data.find(row => row.staff_id === 9702).record.status, 'late');
+                assert.ok(result.body.data.every(row => row.shift === null));
+                assert.equal(result.text.includes(PRIVATE), false);
+            } finally {
+                state.failSchedule = false;
+            }
+        });
+
         await t.test('non-Park and aggregate business contexts cannot read legacy Today data', async () => {
             state.actor = {};
             for (const context of ['dar', 'crm', 'maysternya_doli']) {
@@ -228,7 +246,7 @@ test('Park Today recovery through the actual Express HR router', async t => {
             state.actor = {};
             for (const [method, path] of [
                 ['HEAD', '/api/hr/today'], ['POST', '/api/hr/today'], ['POST', '/api/hr/clock-in'],
-                ['POST', '/api/hr/clock-out'], ['POST', '/api/hr/mark-absent'],
+                ['POST', '/api/hr/clock-in/cancel'], ['POST', '/api/hr/clock-out'], ['POST', '/api/hr/mark-absent'],
                 ['PUT', '/api/hr/records/9401'], ['DELETE', '/api/hr/records/9401'],
                 ['GET', '/api/hr/shifts'], ['GET', '/api/hr/salary'],
                 ['GET', '/api/hr/report/daily']
@@ -246,7 +264,7 @@ test('Park Today recovery through the actual Express HR router', async t => {
             assert.equal(today.status, 200, today.text);
             assert.deepEqual(today.body.todayAccess, { readOnly: true, businessContext: 'event_genix' });
             const count = calls.length;
-            for (const path of ['/api/hr/clock-in', '/api/hr/clock-out', '/api/hr/mark-absent']) {
+            for (const path of ['/api/hr/clock-in', '/api/hr/clock-in/cancel', '/api/hr/clock-out', '/api/hr/mark-absent']) {
                 assert.equal((await request(path, { method: 'POST' })).status, 403, path);
                 assert.equal(calls.length, count, `${path} cannot reach attendance SQL`);
             }

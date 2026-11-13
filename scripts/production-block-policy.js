@@ -29,6 +29,15 @@ const PROTECTED_WORKFLOWS = Object.freeze({
     FINANCE_MANUAL_QA: 'finance-manual-qa'
 });
 const FREELANCE_BASE = '46df02047c196dfa5159e27f6cfb09fe6e907b11';
+const FREELANCE_FAILED_SHA = '8d3372a2b4c88c12c3caa3603cc9b198a8456e74';
+const FREELANCE_FAILED_RUN = '43517984913';
+const FREELANCE_RECOVERY_PATHS = Object.freeze([
+    'scripts/production-block-controller.js',
+    'scripts/production-block-policy.js',
+    'services/backupRecovery.js',
+    'tests/integration/attendance-backup-roundtrip.integration.test.js',
+    'tests/production-block-controller.test.js'
+]);
 const FREELANCE_RED_PATHS = Object.freeze(['routes/finance.js', 'routes/payroll.js']);
 const FREELANCE_SQL_HASHES = Object.freeze({
     'db/migrations/395_hr_shift_segment_work_mode.sql': '3e6bac7d0515d514ba1764facb8f3e9d3a2737eb7b2b6f811971effcdd015077',
@@ -738,7 +747,7 @@ function validateProtectedWorkflow(workflow, changedPaths = [], redPaths = []) {
     }
     if (workflow === PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS) {
         fail(stableJson(normalizePathList(redPaths)) === stableJson(FREELANCE_RED_PATHS)
-            && stableJson(normalizePathList(changedPaths)) === stableJson(FREELANCE_PATHS),
+            && stableJson(normalizePathList(changedPaths)) === stableJson(normalizePathList([...FREELANCE_PATHS, ...FREELANCE_RECOVERY_PATHS])),
         'Freelance release paths differ from the reviewed inventory', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
         return { enabled: true, kind: workflow, protectedChangedPaths: [...FREELANCE_RED_PATHS] };
     }
@@ -947,6 +956,7 @@ function buildManifest(facts, options = {}) {
     if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS) {
         migrations.forEach((item, index) => { item.sqlHash = migrationSqlHash(facts.migrations[index].sql); });
         validateFreelanceScope(baseLiveSha, facts.live?.version, facts.releaseVersion, qaScope, migrations, maxReleaseAttempts);
+        assertFreelanceRecovery(facts.freelanceRecovery);
     }
     if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA) {
         migrations.forEach((item, index) => {
@@ -1149,6 +1159,13 @@ function validateFreelanceScope(base, baseVersion, version, qa, migrations, atte
     }
 }
 
+function assertFreelanceRecovery(recovery) {
+    fail(recovery?.parent === FREELANCE_FAILED_SHA
+        && stableJson(normalizePathList(recovery.changedPaths)) === stableJson(FREELANCE_RECOVERY_PATHS),
+    'Freelance correction must be one direct commit with the reviewed recovery inventory',
+    'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+}
+
 function validateFinanceScope(qa, migrations) {
     const files = Object.keys(FINANCE_MANUAL_SQL_HASHES).sort();
     fail((qa.enabled === false || qa.kind === 'finance') && Array.isArray(migrations)
@@ -1228,6 +1245,10 @@ module.exports = {
     PROTECTED_WORKFLOWS,
     FREELANCE_PATHS,
     FREELANCE_SQL_HASHES,
+    FREELANCE_FAILED_SHA,
+    FREELANCE_FAILED_RUN,
+    FREELANCE_RECOVERY_PATHS,
+    assertFreelanceRecovery,
     STAFF_DELETION_PATHS,
     STAFF_DELETION_CI_HASH,
     PERFORMANCE_CI_CHANGED_PATHS,

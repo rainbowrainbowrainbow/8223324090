@@ -485,21 +485,29 @@ async function lockRestoreTables(client, selectedTables) {
     );
 }
 
-// Migration 392 adds an attendance child. The original two-table recovery set
-// remains safe only before any substitution evidence exists on either side.
-// Keep the exception specific; unknown dependencies still fail closed.
-async function allowEmptySubstitutionDependency(client, plan, catalog, dependencies) {
-    if (plan.restoreSet !== 'attendance-v1' || dependencies.length !== 1) return false;
-    const dependency = dependencies[0];
-    if (dependency.table !== 'staff_substitution_base_claims'
-        || dependency.referencedTable !== 'hr_time_records'
-        || dependency.columns.join(',') !== 'attendance_id'
-        || dependency.referencedColumns.join(',') !== 'id') return false;
-    const ledgerTables = [
-        'staff_substitutions', 'staff_substitution_events',
-        'staff_substitution_requests', 'staff_substitution_base_claims'
-    ];
-    if (!ledgerTables.every(name => catalog.tableMap.has(name)
+// Attendance-only recovery can preserve these linked journals when their
+// source and target histories are empty. Unknown dependencies still fail closed.
+async function allowEmptyAttendanceDependencies(client, plan, catalog, dependencies) {
+    if (plan.restoreSet !== 'attendance-v1') return false;
+    const ledgersByChild = new Map([
+        ['staff_substitution_base_claims', [
+            'staff_substitutions', 'staff_substitution_events',
+            'staff_substitution_requests', 'staff_substitution_base_claims'
+        ]],
+        ['hr_freelance_attendance_confirmations', [
+            'hr_freelance_attendance_confirmations', 'hr_freelance_confirmed_blocks',
+            'hr_freelance_payment_movements'
+        ]]
+    ]);
+    const ledgerTables = new Set();
+    for (const dependency of dependencies) {
+        const ledger = ledgersByChild.get(dependency.table);
+        if (!ledger || dependency.referencedTable !== 'hr_time_records'
+            || dependency.columns.join(',') !== 'attendance_id'
+            || dependency.referencedColumns.join(',') !== 'id') return false;
+        for (const name of ledger) ledgerTables.add(name);
+    }
+    if (![...ledgerTables].every(name => catalog.tableMap.has(name)
         && plan.payloadMap.get(name)?.rows.length === 0)) return false;
     const isolation = await client.query("SELECT current_setting('transaction_isolation') AS isolation");
     if (isolation.rows[0].isolation !== 'read committed') return false;
@@ -778,7 +786,7 @@ async function executeRestorePlan(client, plan, {
                 && !plan.selectedSet.has(foreignKey.table)
             ));
             if (unsafeDependencies.length > 0
-                && !await allowEmptySubstitutionDependency(client, plan, targetCatalog, unsafeDependencies)) {
+                && !await allowEmptyAttendanceDependencies(client, plan, targetCatalog, unsafeDependencies)) {
                 throw recoveryError(
                     'BACKUP_RESTORE_SELECTION_NOT_CLOSED',
                     'Selective restore set has dependent tables outside the set',

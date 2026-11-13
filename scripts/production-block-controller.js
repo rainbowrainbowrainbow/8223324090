@@ -12,6 +12,9 @@ const {
     STAFF_DELETION_CI_HASH,
     PERFORMANCE_CI_WORKFLOW_HASHES,
     PERFORMANCE_CI_FAILED_SHA,
+    FREELANCE_FAILED_SHA,
+    FREELANCE_FAILED_RUN,
+    assertFreelanceRecovery,
     PERFORMANCE_CI_FAILED_RUN,
     assertPerformanceCiWorkflowHashes,
     assertPerformanceCiRecovery,
@@ -365,6 +368,11 @@ function assertPreparedProductionBase(manifest, live, remoteSha) {
             'Performance CI remote differs from its failed predecessor or corrected SHA', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
         return;
     }
+    if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS) {
+        fail(remoteSha === FREELANCE_FAILED_SHA || remoteSha === manifest.initialHeadSha,
+            'Freelance remote differs from the failed predecessor or corrected SHA', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
+        return;
+    }
     if (manifest.renewalFrom) {
         fail(remoteSha === manifest.renewalFrom.headSha || remoteSha === manifest.initialHeadSha,
             'Renewed production branch differs from its exact failed or corrected candidate', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
@@ -408,6 +416,8 @@ function defaultRuntime() {
             const performanceCi = options.protectedWorkflow === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE;
             const profileEmployee = options.protectedWorkflow === PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE;
             if (performanceCi) assertPerformanceCiRecoveryBase();
+            const freelance = options.protectedWorkflow === PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS;
+            if (freelance) assertFreelanceRecoveryBase();
             return {
                 head,
                 currentBranch,
@@ -424,7 +434,8 @@ function defaultRuntime() {
                     : options.protectedWorkflow === PROTECTED_WORKFLOWS.STAFF_DELETION_CI ? staffDeletionWorkflowHashes() : undefined,
                 staffDeletionGate: options.protectedWorkflow === PROTECTED_WORKFLOWS.STAFF_DELETION_CI
                     ? staffDeletionGateFacts(head) : undefined,
-                performanceCiRecovery: performanceCi ? performanceCiRecoveryFacts(head) : undefined
+                performanceCiRecovery: performanceCi ? performanceCiRecoveryFacts(head) : undefined,
+                freelanceRecovery: freelance ? freelanceRecoveryFacts(head) : undefined
             };
         },
         async drift(manifest) {
@@ -432,6 +443,7 @@ function defaultRuntime() {
             const head = git(['rev-parse', 'HEAD']).toLowerCase();
             const paths = changedPaths(manifest.baseLiveSha, head);
             const performanceCi = manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE;
+            const freelance = manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS;
             return {
                 head,
                 descendsFromBase: gitIsAncestor(manifest.baseLiveSha, head),
@@ -445,7 +457,8 @@ function defaultRuntime() {
                     ? { profileEmployeeAuthBlob: git(['rev-parse', `${head}:routes/auth.js`]) } : {}),
                 workflowHashes: performanceCi ? performanceCiWorkflowHashes(paths)
                     : manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.STAFF_DELETION_CI ? staffDeletionWorkflowHashes() : undefined,
-                performanceCiRecovery: performanceCi ? performanceCiRecoveryFacts(head) : undefined
+                performanceCiRecovery: performanceCi ? performanceCiRecoveryFacts(head) : undefined,
+                freelanceRecovery: freelance ? freelanceRecoveryFacts(head) : undefined
             };
         },
         plan(manifest) {
@@ -512,6 +525,7 @@ function defaultRuntime() {
                 'Migration set drifted after authorization', 'PRODUCTION_BLOCK_MIGRATION_DRIFT');
             if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS) {
                 assertPreparedProductionBase(manifest, await liveVersion(), remoteProductionSha());
+                assertFreelanceRecoveryBase();
             }
             if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE) {
                 assertPreparedProductionBase(manifest, await liveVersion(), remoteProductionSha());
@@ -632,6 +646,25 @@ function assertPerformanceCiRecoveryBase() {
     const run = JSON.parse(commandResult('gh', ['run', 'view', PERFORMANCE_CI_FAILED_RUN, '--json',
         'databaseId,headSha,headBranch,workflowName,event,status,conclusion,jobs']));
     assertFailedPerformanceCiRun(run);
+}
+
+function freelanceRecoveryFacts(head) {
+    const [, parent, ...otherParents] = git(['rev-list', '--parents', '-n', '1', head]).split(/\s+/);
+    return { parent: otherParents.length ? null : parent, changedPaths: changedPaths(FREELANCE_FAILED_SHA, head) };
+}
+
+function assertFreelanceRecoveryBase() {
+    fail(remoteProductionSha() === FREELANCE_FAILED_SHA,
+        'Production branch no longer points at the failed freelance candidate', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
+    const run = JSON.parse(commandResult('gh', ['run', 'view', FREELANCE_FAILED_RUN, '--json',
+        'databaseId,headSha,headBranch,workflowName,event,status,conclusion,jobs']));
+    fail(String(run.databaseId) === FREELANCE_FAILED_RUN && run.headSha === FREELANCE_FAILED_SHA
+        && run.headBranch === TARGET.branch && run.workflowName === 'CI' && run.event === 'push'
+        && run.status === 'completed' && run.conclusion === 'failure'
+        && run.jobs?.some(job => job.name === 'HR and payroll PostgreSQL integration' && job.conclusion === 'failure'
+            && job.steps?.some(step => step.name === 'Run attendance lock and full backup recovery integration'
+                && step.conclusion === 'failure')),
+    'Freelance recovery requires the exact failed attendance restore CI run', 'PRODUCTION_BLOCK_CI_IDENTITY_INVALID');
 }
 
 function isReleaseArtifact(file) {
@@ -1056,6 +1089,9 @@ async function assertExecuteDrift(manifest, runtime) {
         const expectedHashes = Object.fromEntries(manifest.migrationClassifications.map(item => [item.file, item.sqlHash]));
         fail(stableJson(drift.migrationHashes || {}) === stableJson(expectedHashes),
             'Protected migration SQL changed after exact authorization', 'PRODUCTION_BLOCK_MIGRATION_HASH_DRIFT');
+    }
+    if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS) {
+        assertFreelanceRecovery(drift.freelanceRecovery);
     }
     if (manifest.retryFrom) fail(drift.descendsFromRetry === true,
         'Finance retry no longer descends from its exact prior candidate', 'PRODUCTION_BLOCK_RETRY_SHA_INVALID');

@@ -199,6 +199,7 @@ test(
         let fixtureStaffId;
         let sentinelKey;
         let substitutionFixture = false;
+        let freelanceFixture = false;
         const probeRows = { staff_checkins: [], hr_time_records: [] };
 
         try {
@@ -508,8 +509,35 @@ test(
             assert.equal(artifactRejected.status, 409, 'artifact-side evidence also requires full recovery');
             assert.equal(artifactRejected.data?.error, 'BACKUP_RESTORE_SELECTION_NOT_CLOSED');
             assertTimeRecordRestored(await loadAttendanceFixture(pool, fixtureStaffId, checkinId, timeRecordId));
+
+            const shift = await pool.query(`INSERT INTO hr_shifts
+                (staff_id, shift_date, planned_start, planned_end, profession_key)
+                VALUES ($1, $2, '09:00', '13:00', 'animator') RETURNING id`, [fixtureStaffId, FIXTURE_DATE]);
+            await pool.query(`INSERT INTO hr_freelance_attendance_confirmations
+                (attendance_id, hr_shift_id, fact_snapshot, confirmed_by)
+                VALUES ($1, $2, '{}', 'qa-backup')`, [timeRecordId, shift.rows[0].id]);
+            freelanceFixture = true;
+            const freelanceArtifact = await downloadCanonicalBackup();
+            const liveFreelanceRejected = await restoreRequest('/api/backup/restore', {
+                artifact: backupArtifact, restoreSet: 'attendance-v1'
+            });
+            assert.equal(liveFreelanceRejected.status, 409);
+            assert.equal(liveFreelanceRejected.data?.error, 'BACKUP_RESTORE_SELECTION_NOT_CLOSED');
+            await pool.query(`TRUNCATE hr_freelance_payment_movements, hr_freelance_confirmed_blocks,
+                hr_freelance_attendance_confirmations`);
+            freelanceFixture = false;
+            const backupFreelanceRejected = await restoreRequest('/api/backup/restore', {
+                artifact: freelanceArtifact, restoreSet: 'attendance-v1'
+            });
+            assert.equal(backupFreelanceRejected.status, 409);
+            assert.equal(backupFreelanceRejected.data?.error, 'BACKUP_RESTORE_SELECTION_NOT_CLOSED');
+            await pool.query('DELETE FROM hr_shifts WHERE id = $1', [shift.rows[0].id]);
         } finally {
             try {
+                if (freelanceFixture) {
+                    await pool.query(`TRUNCATE hr_freelance_payment_movements, hr_freelance_confirmed_blocks,
+                        hr_freelance_attendance_confirmations`);
+                }
                 if (substitutionFixture) {
                     await pool.query(`TRUNCATE staff_substitution_base_claims, staff_substitution_requests,
                         staff_substitution_events, staff_substitutions`);

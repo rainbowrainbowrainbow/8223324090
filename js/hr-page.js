@@ -8986,7 +8986,7 @@ function renderAccountDetailPanel() {
     const selectedTab = ACCOUNT_DETAIL_TABS.some(tab => tab.id === accountCenterDetailTab) ? accountCenterDetailTab : 'profile';
     const panels = {
         profile: `<div class="hr-account-detail-grid">
-            ${accountDetailCard('Імʼя в CRM', user.name || 'Не задано')}
+            ${accountDetailCard('Імʼя та прізвище', user.name || 'Не задано')}
             ${accountDetailCard('Логін для входу', user.username || 'Не задано')}
             ${accountDetailCard('Статус', active ? 'Активний' : 'Вимкнений')}
             ${accountDetailCard('Створено', formatAccountDateTime(user.created_at || user.createdAt))}
@@ -9918,7 +9918,8 @@ function renderAccountOnboardingReceipt(response) {
     if (!root) return;
     root.setAttribute('tabindex', '-1');
     root.innerHTML = `<h4>${title}</h4><p class="hr-account-receipt-access" role="status" aria-live="polite">${escapeHtml(businessAccessStatusMessage)}</p><p class="hr-account-receipt-access" role="status" aria-live="polite">${escapeHtml(loginMessage)}</p><div class="hr-account-detail-actions">${copyAction}${membershipNextStep}${verifyAction}</div>${recoveredCredential}<div class="hr-account-receipt-grid">${[
-        ['Акаунт', `${receipt.account?.name || response?.user?.name || ''} · ${receipt.account?.username || response?.user?.username || ''}`],
+        ['Імʼя та прізвище', receipt.account?.name || response?.user?.name || 'Імʼя не завантажено'],
+        ['Логін для входу', receipt.account?.username || response?.user?.username || 'Логін не завантажено'],
         ['Картка співробітника', `#${staffId || '—'} · ${receipt.staff?.name || response?.staff?.name || '—'} · ${receipt.staff?.linked === false ? 'зв’язок змінено після створення' : (receipt.staff?.created ? 'створено' : 'прив’язано')}`],
         ['Професії', professionSummary],
         ['Ставка / типовий час', conditionsSummary],
@@ -10149,7 +10150,8 @@ function bindAccountOnboardingControls() {
                 return;
             }
             try {
-                await navigator.clipboard.writeText(`CRM: ${location.origin}/\nБізнес: ${accountOnboardingState.businessLabel}\nЛогін: ${credential.username}\nПароль: ${credential.password}`);
+                const name = accountOnboardingEl('accountOnboardingName')?.value?.trim();
+                await navigator.clipboard.writeText(`CRM: ${location.origin}/\nБізнес: ${accountOnboardingState.businessLabel}${name ? `\nІмʼя та прізвище: ${name}` : ''}\nЛогін для входу: ${credential.username}\nПароль: ${credential.password}`);
                 showNotification('Логін і тимчасовий пароль скопійовано', 'success');
             } catch {
                 showNotification('Не вдалося скопіювати. Скопіюйте дані вручну.', 'error');
@@ -10386,7 +10388,7 @@ async function openAccountProfileModal(userId, button) {
     }
     await loadAccountStaffOptions();
     const result = await formModal(`Профіль акаунта · ${user.username}`, [
-        { key: 'name', label: 'Імʼя в CRM', required: true, defaultValue: user.name || user.username || '' },
+        { key: 'name', label: 'Імʼя та прізвище', required: true, defaultValue: user.name || '' },
         { key: 'usernameReadonly', type: 'note', text: `Логін для входу: ${user.username || 'не задано'} · readonly. Зміна заблокована через legacy references.` },
         { key: 'staffId', label: 'HR staff-профіль', type: 'select', defaultValue: user.staff_id ? String(user.staff_id) : '', options: getAccountStaffSelectOptions(user.id) }
     ], {
@@ -11905,6 +11907,7 @@ function renderStaffMedicalBook(rows = []) {
                 <div class="hr-medical-book-title"><b>Медкнижка</b><span class="hr-medical-book-badge is-${escapeHtml(status)}">${escapeHtml(statusLabel)}</span></div>
                 <span>${escapeHtml(dates || 'Дати не вказано')}</span>
                 <span>${escapeHtml(documentText)}</span>
+                ${item.expires_at && status !== 'revoked' ? renderStaffReminderAvailability() : ''}
                 ${item.notes ? `<span>${escapeHtml(item.notes)}</span>` : ''}
             </div>
             ${actions}
@@ -11956,6 +11959,13 @@ function renderStaffResourceActions(item = {}, options = {}) {
         <button type="button" class="btn-danger hr-staff-action hr-staff-action--danger" onclick="transitionStaffResourceStatus(${Number(item.id)}, 'written_off', this)">Списати</button>`;
 }
 
+function renderStaffReminderAvailability(scopeKnown = true) {
+    const staff = teamStaff.find(item => Number(item.id) === Number(activeEditStaffId()));
+    if (staff && !staffHasCrmAccount(staff)) return '<span>Нагадування HR: привʼяжіть активний CRM-акаунт працівника.</span>';
+    if (!scopeKnown) return '<span>Нагадування HR: у старій видачі не визначено бізнес. Узгодьте повернення з працівником.</span>';
+    return '';
+}
+
 function renderStaffResources(rows = []) {
     const view = currentStaffWorkspaceView('resources');
     const visibleRows = rows.filter(item => view === 'history'
@@ -11982,6 +11992,7 @@ function renderStaffResources(rows = []) {
                 <div class="hr-resource-card-title"><b>${escapeHtml(item.title || 'Ресурс')}</b><span class="hr-resource-status-badge is-${escapeHtml(status)}">${escapeHtml(statusLabel)}</span></div>
                 <span>${escapeHtml(kind)} · ${escapeHtml(item.quantity || 1)} шт. · ${escapeHtml(staffResourceSourceText(item))}</span>
                 <span>${escapeHtml(due)}</span>
+                ${item.due_return_at && status === 'issued' ? renderStaffReminderAvailability(item.reminder_scope_known !== false) : ''}
                 <span>${escapeHtml(issueAudit)}</span>
                 ${terminalAudit ? `<span>${escapeHtml(terminalAudit)}</span>` : ''}
             </div>

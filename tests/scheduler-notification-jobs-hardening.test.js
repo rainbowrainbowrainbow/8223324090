@@ -818,13 +818,18 @@ describe('scheduler notification jobs hardening', () => {
         it('does not send when no certifications are expiring', async () => {
             resetState({ time: '09:15' });
             mockLastSent('cert_expiry_reminder');
-            mockSetLastSent('cert_expiry_reminder');
+            onQuery('expire outdated certifications', queryIncludes("UPDATE staff_certifications SET status = 'expired'"), (_, params) => {
+                assert.deepEqual(params, [state.date]);
+                return rows([], 1);
+            });
             onQuery('cert reminder empty', queryIncludes('FROM staff_certifications sc'), () => rows([]));
             const scheduler = loadScheduler();
 
             await scheduler.checkCertExpiryReminders();
 
             assert.equal(state.sends.length, 0);
+            assert.equal(state.queries.some(query => query.text.includes("SET status = 'expired'")), true);
+            assert.equal(state.queries.some(query => query.text.startsWith('INSERT INTO settings')), false);
         });
 
         it('sends certification expiry reminders when rows are eligible', async () => {
@@ -874,13 +879,33 @@ describe('scheduler notification jobs hardening', () => {
             await scheduler.checkCertExpiryReminders();
 
             assert.equal(state.sends.length, 1);
+            assert.equal(state.queries.some(query => query.text.startsWith('INSERT INTO settings')), false);
             assert.equal(state.logs.some(entry => entry.level === 'error' && entry.args[0] === 'checkCertExpiryReminders error'), true);
+        });
+
+        it('retries a rejected delivery after the original minute and records success once', async () => {
+            resetState({ time: '09:17', sendResult: { ok: false } });
+            onQuery('daily flag', queryIncludes('SELECT value FROM settings'), () => rows([]), { once: false });
+            onQuery('expire outdated', queryIncludes("SET status = 'expired'"), () => rows([]), { once: false });
+            onQuery('upcoming', queryIncludes('FROM staff_certifications sc'), () => rows([
+                { cert_name: 'Safety', expires_at: '2026-07-01', staff_name: 'Test Worker' }
+            ]), { once: false });
+            mockSetLastSent('cert_expiry_reminder');
+            const scheduler = loadScheduler();
+            await scheduler.checkCertExpiryReminders();
+            assert.equal(state.queries.some(query => query.text.startsWith('INSERT INTO settings')), false);
+            state.sendResult = { ok: true };
+            await scheduler.checkCertExpiryReminders();
+            await scheduler.checkCertExpiryReminders();
+            assert.equal(state.sends.length, 2);
+            assert.equal(state.queries.filter(query => query.text.startsWith('INSERT INTO settings')).length, 1);
         });
 
         it('contains certification expiry DB failures', async () => {
             resetState({ time: '09:15' });
             mockLastSent('cert_expiry_reminder');
             mockSetLastSent('cert_expiry_reminder');
+            onQuery('expire outdated', queryIncludes("SET status = 'expired'"), () => rows([]));
             onQuery('cert reminder failure', queryIncludes('FROM staff_certifications sc'), () => {
                 throw new Error('planned cert reminder query failure');
             });

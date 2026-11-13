@@ -3330,3 +3330,11 @@ html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-composer-im
 html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-composer-impact-field legend {
     color: var(--my-day-life-secondary, #cbd5e1);
 }
+#hr-personal-reminders ul {
+    padding-inline-start: 1.25rem;
+    overflow-wrap: anywhere;
+}
+
+#hr-personal-reminders li + li {
+    margin-block-start: 0.75rem;
+}

@@ -8,6 +8,7 @@ const { Pool } = require('pg');
 const { getToken, request } = require('../helpers');
 const { buildMyDayContribution } = require('../../services/myDayContribution');
 const { applyMyDayStarterKit } = require('../../services/myDayStarterKit');
+const { listHrPersonalReminders } = require('../../services/hrPersonalReminders');
 const {
     buildTaskCabinetBucketPage,
     buildTaskCabinetProjection
@@ -422,6 +423,49 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
             await query('DELETE FROM users WHERE username LIKE $1', [`my_day_pg_%_${suffix}`]).catch(() => {});
         }
         await pool?.end();
+    });
+
+    it('projects current HR deadlines for only the linked employee and selected business', async () => {
+        const employee = await createUser('hr_reminder');
+        const other = await createUser('other_reminder');
+        const client = await pool.connect();
+        const scope = { selectedContexts: ['event_genix'] };
+        const reminders = (user = employee) => listHrPersonalReminders(client, user, scope, '2026-11-13');
+        try {
+            await client.query('BEGIN');
+            const staff = (await client.query(`
+                INSERT INTO staff (name, department, position) VALUES ('HR fixture', 'Fixture', 'Fixture') RETURNING id
+            `)).rows[0];
+            await client.query('INSERT INTO employee_profiles (user_id, staff_id, full_name) VALUES ($1, $2, $3)',
+                [employee.id, staff.id, 'HR fixture']);
+            const resource = (await client.query(`
+                INSERT INTO staff_resource_assignments (staff_id, title, due_return_at, business_context)
+                VALUES ($1, 'Test item', '2026-11-12', 'event_genix'),
+                       ($1, 'Other business', '2026-11-12', 'maysternya_doli'),
+                       ($1, 'Unknown legacy business', '2026-11-12', NULL)
+                RETURNING id`, [staff.id])).rows[0];
+            await client.query(`
+                INSERT INTO staff_certifications (staff_id, name, category, issued_at, expires_at, status)
+                VALUES ($1, 'Old book', 'medical_book', '2025-11-01', '2026-11-01', 'expired'),
+                       ($1, 'Current book', 'medical_book', '2026-11-01', '2026-11-16', 'active')`, [staff.id]);
+            const initial = await reminders();
+            assert.deepEqual(initial.map(item => [item.title, item.dueDate, item.stage]), [
+                ['Повернути майно', '2026-11-12', 'overdue'],
+                ['Оновити медкнижку', '2026-11-16', 'upcoming']
+            ]);
+            assert.deepEqual((await reminders()).map(item => item.id), initial.map(item => item.id));
+            assert.deepEqual(await reminders(other), []);
+            await client.query("UPDATE staff_resource_assignments SET due_return_at = '2026-11-14' WHERE id = $1", [resource.id]);
+            const changed = await reminders();
+            assert.equal(changed[0].stage, 'upcoming');
+            assert.notEqual(changed[0].id, initial[0].id);
+            await client.query("UPDATE staff_resource_assignments SET status = 'returned' WHERE id = $1", [resource.id]);
+            await client.query("UPDATE staff_certifications SET expires_at = '2027-11-16' WHERE staff_id = $1 AND name = 'Current book'", [staff.id]);
+            assert.deepEqual(await reminders(), []);
+        } finally {
+            await client.query('ROLLBACK').catch(() => {});
+            client.release();
+        }
     });
 
     it('keeps migration 320 additive with tags column and tag_values constraint intact', async () => {

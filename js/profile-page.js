@@ -1361,7 +1361,8 @@ async function loadMyCabinetProjection(options = {}) {
     const path = focusDate
         ? `/tasks/my-cabinet?focusDate=${encodeURIComponent(focusDate)}`
         : '/tasks/my-cabinet';
-    const cacheKey = path;
+    const reminderScope = cabinetHrReminderScope();
+    const cacheKey = `${reminderScope}:${path}`;
     const now = Date.now();
     if (options.force !== true
         && cabinetProjectionRecent.path === cacheKey
@@ -1385,6 +1386,7 @@ async function loadMyCabinetProjection(options = {}) {
             });
             if (requestSequence !== cabinetProjectionRequestSequence) return myCabinetData;
             if (data && typeof data === 'object') {
+                data.hrReminderScope = reminderScope;
                 cabinetProjectionRecent = { path: cacheKey, at: Date.now(), data };
             }
             return setMyCabinetProjectionData(data, {
@@ -2620,10 +2622,17 @@ function renderProfileProfessionsTab() {
 
 function renderProfileSettingsTab() {
     const avatar = profileAvatarData(profileData);
+    const identity = profileData?.user || {};
     const currentColor = avatar.color || '#f59e0b';
     const crop = normalizeProfileAvatarCrop(avatar.crop);
     return `
         <div class="profile-settings-shell">
+            <section class="profile-work-panel profile-settings-panel" aria-label="Облікові дані">
+                <dl>
+                    <dt>Імʼя та прізвище</dt><dd>${escapeHtml(identity.name || 'Не задано')}</dd>
+                    <dt>Логін для входу</dt><dd>${escapeHtml(identity.username || 'Не задано')}</dd>
+                </dl>
+            </section>
             <section class="profile-work-panel profile-settings-panel">
                 <div class="profile-panel-head">
                     <div>
@@ -7694,6 +7703,28 @@ function renderCabinetMyDaySecondary(activeSegment = getCabinetMyDaySegment(), c
         </aside>`;
 }
 
+function cabinetHrReminderScope() {
+    const scope = window.CrmBusinessContext?.scope?.();
+    return JSON.stringify([scope?.mode, scope?.activeContext, scope?.selectedContexts || []]);
+}
+
+function renderMyDayHrReminders() {
+    if (!isOwnProfile) return '';
+    if (myCabinetData?.hrReminderScope !== cabinetHrReminderScope()) return '';
+    const reminders = myCabinetData?.hrReminders;
+    if (reminders === null) return '<p role="status">Не вдалося завантажити нагадування HR. Оновіть сторінку.</p>';
+    if (!Array.isArray(reminders) || !reminders.length) return '';
+    const stages = { overdue: 'Прострочено', today: 'Сьогодні', upcoming: 'Наближається строк' };
+    return `<section id="hr-personal-reminders" class="profile-work-panel" aria-label="Нагадування HR">
+        <h2>Нагадування HR</h2>
+        <ul>${reminders.map(item => `<li>
+            <strong>${escapeHtml(item.title)}</strong> · ${escapeHtml(stages[item.stage] || '')}
+            <time datetime="${escapeHtml(item.dueDate)}">${escapeHtml(item.dueDate)}</time>
+            <div>${escapeHtml(item.message)}</div>
+        </li>`).join('')}</ul>
+    </section>`;
+}
+
 function renderMyDayCommandCenterTab() {
     if (window.MyDayHabits?.state?.surface === 'setup') {
         return `<div class="my-day-life-shell">${window.MyDayHabits?.renderSetupSurface?.() || ''}</div>`;
@@ -7740,6 +7771,7 @@ function renderMyDayCommandCenterTab() {
             ${window.MyDayHabits?.renderModeTabs?.() || ''}
             ${renderCabinetTaskComposer({ segment: 'personal', mode: 'personal' })}
             ${renderCabinetLoadNotice()}
+            ${renderMyDayHrReminders()}
             ${renderCabinetCompletionPulse()}
             <div class="cabinet-day-workspace cabinet-day-workspace--two-column" id="cabinetMyDaySegmentPanel" role="region" aria-label="Мій день: ${escapeHtml(focusedMeta.statLabel || focusedMeta.title || '')} і прострочені" data-active-today="${activeFocus}" data-active-overdue="${overdue.length}" data-cabinet-my-day-layout="focused-overdue" data-cabinet-focused-preset="${escapeHtml(myDayState.selectedDuePreset)}">
                 <div class="cabinet-day-workspace-toolbar">

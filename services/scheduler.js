@@ -2643,50 +2643,52 @@ async function checkCertExpiryReminders() {
         const todayStr = getKyivDateStr();
         const nowTime = getKyivTimeStr();
 
-        if (nowTime !== '09:15') return;
+        if (nowTime < '09:15') return skipSchedulerTracking();
         if (certExpirySentToday === todayStr) return;
         const dbLast = await getLastSent('cert_expiry_reminder');
         if (dbLast === todayStr) { certExpirySentToday = todayStr; return; }
 
-        certExpirySentToday = todayStr;
-        await setLastSent('cert_expiry_reminder', todayStr);
+        await pool.query(
+            `UPDATE staff_certifications SET status = 'expired'
+             WHERE expires_at < $1::date AND status = 'active'`,
+            [todayStr]
+        );
 
         // Find certs expiring in next 14 days. business_context is optional, so legacy rows remain global.
         const result = await pool.query(`
-            SELECT sc.id, sc.name AS cert_name, sc.expires_at, sc.status, sc.business_context,
+            SELECT sc.id, sc.name AS cert_name, sc.expires_at::text, sc.status, sc.business_context,
                    s.name AS staff_name, s.id AS staff_id
             FROM staff_certifications sc
             JOIN staff s ON s.id = sc.staff_id
             WHERE sc.expires_at IS NOT NULL
               AND sc.status = 'active'
-              AND sc.expires_at BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '14 days'
+              AND sc.category IS DISTINCT FROM 'medical_book'
+              AND sc.expires_at BETWEEN $1::date AND $1::date + 14
             ORDER BY sc.expires_at ASC
-        `);
+        `, [todayStr]);
 
         if (result.rows.length === 0) return;
 
-        // Mark expired ones
-        await pool.query(`
-            UPDATE staff_certifications SET status = 'expired'
-            WHERE expires_at < CURRENT_DATE AND status = 'active'
-        `);
-
         const chatId = await getConfiguredChatId();
-        if (!chatId) return;
+        if (!chatId) return skipSchedulerTracking();
 
-        let text = `📜 <b>Сертифікати: термін спливає</b>\n\n`;
+        let text = `📜 Сертифікати: термін спливає\n\n`;
         for (const cert of result.rows) {
             const daysLeft = Math.ceil((new Date(cert.expires_at) - new Date(todayStr)) / 86400000);
             const urgency = daysLeft <= 3 ? '🔴' : daysLeft <= 7 ? '🟡' : '🟢';
             const scope = cert.business_context ? ` · ${cert.business_context}` : '';
-            text += `${urgency} <b>${cert.staff_name}</b> — ${cert.cert_name}${scope} (${daysLeft} дн.)\n`;
+            text += `${urgency} ${cert.staff_name} — ${cert.cert_name}${scope} (${daysLeft} дн.)\n`;
         }
 
-        await sendTelegramMessage(chatId, text);
+        const delivery = await sendTelegramMessage(chatId, text, { plainText: true });
+        if (!delivery?.ok) return skipSchedulerTracking();
+        certExpirySentToday = todayStr;
+        await setLastSent('cert_expiry_reminder', todayStr);
         log.info(`Cert expiry reminders: ${result.rows.length} certs expiring soon`);
     } catch (err) {
         if (!err.message?.includes('does not exist')) {
             log.error('checkCertExpiryReminders error', err);
         }
+        return skipSchedulerTracking();
     }
 }

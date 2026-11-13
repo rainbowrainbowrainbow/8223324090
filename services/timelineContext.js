@@ -125,6 +125,17 @@ function requireTimelineContext(req, res, context) {
     return false;
 }
 
+function canViewTimelinePage(user, context) {
+    const path = normalizeBusinessContext(context) === 'maysternya_doli' ? MAYSTERNYA_DOLI_PATH : '/';
+    return canAccessTimelineContext(user, context) && resolveCapability(user, path, { type: 'page' }).allowed;
+}
+
+function requireTimelineView(req, res, context) {
+    if (canViewTimelinePage(req.user, context)) return true;
+    res.status(403).json({ success: false, error: 'Timeline is not available for this user' });
+    return false;
+}
+
 function requireTimelineAction(req, res, context, action) {
     if (canUseTimelineAction(req.user, context, action)) return true;
     res.status(403).json({ success: false, error: 'Timeline action is not available for this user' });
@@ -139,7 +150,9 @@ module.exports = {
     normalizeTimelineContext,
     timelineContextFromRequest,
     canAccessTimelineContext,
+    canViewTimelinePage,
     canUseTimelineAction,
     requireTimelineContext,
+    requireTimelineView,
     requireTimelineAction
 };

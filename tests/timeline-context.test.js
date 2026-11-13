@@ -10,12 +10,21 @@ const {
     normalizeTimelineContext,
     timelineContextFromRequest,
     canAccessTimelineContext,
+    requireTimelineView,
     canUseTimelineAction
 } = require('../services/timelineContext');
 const { ACTION_PERMISSIONS } = require('../middleware/auth');
 const { applyMembershipAccess, buildMembershipAccess } = require('../services/businessMembership');
 
 const ROOT = path.join(__dirname, '..');
+
+test('timeline read guard rejects restricted roles even with a saved page grant', () => {
+    for (const role of ['barista', 'waiter', 'instructor']) {
+        const res = { status(code) { assert.equal(code, 403); return this; }, json() {} };
+        assert.equal(requireTimelineView({ user: { role, page_allowlist: ['/'] } }, res, 'event_genix'), false);
+    }
+    assert.equal(requireTimelineView({ user: { role: 'animator' } }, {}, 'event_genix'), true);
+});
 
 function createResourcePresentationTimeline() {
     const source = fs.readFileSync(path.join(ROOT, 'js', 'timeline-context.js'), 'utf8');

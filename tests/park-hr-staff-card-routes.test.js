@@ -149,6 +149,45 @@ async function withActualHrRouter(run) {
 
 test('Park HR staff list and base detail use exact GET and membership boundaries on the real Express router', async t => {
     await withActualHrRouter(async ({ state, calls, request }) => {
+        // Incident characterization, not the desired availability contract.
+        // Replace each denial expectation with a workflow regression when its
+        // bounded Park recovery is approved and implemented.
+        await t.test('2026-11-12 audit reproduces legacy gaps for both director and creator before SQL', async () => {
+            const routes = [
+                ['GET', `/api/hr/staff/${STAFF_ID}/history`],
+                ['GET', `/api/hr/staff/${STAFF_ID}/lifecycle-checklist`],
+                ['GET', `/api/hr/staff/${STAFF_ID}/documents`],
+                ['POST', `/api/hr/staff/${STAFF_ID}/documents`],
+                ['GET', `/api/hr/staff/${STAFF_ID}/medical-book`],
+                ['POST', `/api/hr/staff/${STAFF_ID}/medical-book`],
+                ['GET', `/api/hr/staff/${STAFF_ID}/resources`],
+                ['POST', `/api/hr/staff/${STAFF_ID}/resources`],
+                ['GET', `/api/hr/staff/${STAFF_ID}/offboarding`],
+                ['GET', `/api/hr/staff/${STAFF_ID}/offboarding-readiness`],
+                ['POST', `/api/hr/staff/${STAFF_ID}/offboarding`],
+                ['PUT', `/api/hr/staff/${STAFF_ID}/status`],
+                ['PUT', `/api/hr/staff/${STAFF_ID}/pool-status`],
+                ['GET', `/api/hr/staff/${STAFF_ID}/shifts`],
+                ['PUT', `/api/hr/staff/${STAFF_ID}/onboarding-assignment`],
+                ['PUT', '/api/hr/company-structure']
+            ];
+            for (const role of ['director', 'creator']) {
+                state.actor = { role };
+                assert.equal((await request(`/api/hr/staff/${STAFF_ID}`)).status, 200);
+                for (const [method, path] of routes) {
+                    const count = calls.length;
+                    const response = await request(path, {
+                        method, ...(method === 'GET' ? {} : { body: { confirmation: 'ТАК' } })
+                    });
+                    const label = `${role}: ${method} ${path}`;
+                    assert.equal(response.status, 403, label);
+                    assert.equal(response.body.code, 'staff_not_migrated', label);
+                    assert.match(response.body.error, /Спільні дані працівників/, label);
+                    assert.equal(calls.length, count, `${label}: denied before database access`);
+                }
+            }
+        });
+
         await t.test('full management includes Park staff creation without a delegated grant', async () => {
             state.actor = { role: 'creator' };
             const method = 'POST';

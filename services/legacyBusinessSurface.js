@@ -14,6 +14,7 @@ const { isParkHrCompanyStructureRoute, canReadParkHrCompanyStructure,
     projectParkHrCompanyStructurePayload } = require('./parkHrCompanyStructureRead');
 const { canUseParkLegacySurface } = require('./parkLegacyModuleAccess');
 const { resolveCapability } = require('./accountAccessPolicy');
+const { canDeleteParkHrStaff } = require('./parkHrStaffDeletionAccess');
 
 const SURFACES = Object.freeze({
     catalogs: { code: 'catalogs_not_migrated', label: 'Спільні каталоги' },
@@ -216,6 +217,7 @@ function requireLegacyBusinessSurface(surface, { parkScheduleRouter = null, park
             };
             return next();
         }
+        if (access.code === 'staff_not_migrated' && parkHrStaffCardRead && canDeleteParkHrStaff(req)) return next();
         if (access.code === 'staff_not_migrated' && parkHrStaffCardRead
             && (canReadParkHrStaffCard(req) || (req.method === 'PUT' && parkHrStaffCardEditCapability(req)))) {
             const routePath = parkStaffScheduleRoutePath(req);

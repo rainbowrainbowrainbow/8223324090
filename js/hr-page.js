@@ -7736,7 +7736,15 @@ function renderTeamCardOverflowMenu(staff = {}) {
     const createAccountItem = !staff.has_account && canRunAccountOnboarding()
         ? `<button type="button" role="menuitem" class="hr-team-menu-item" onclick="openAccountCreateForStaff(${id}, this)">Створити CRM</button>`
         : '';
-    const manageItems = canManage
+    const staffLegacyAvailability = typeof getLegacyBusinessSurfaceAvailability === 'function'
+        ? getLegacyBusinessSurfaceAvailability('staff')
+        : { available: false, message: 'Доступ до бізнесу ще не підтверджено. Оновіть сторінку.' };
+    const unavailableReason = escapeHtml(staffLegacyAvailability.message || 'Тимчасово недоступно до розмежування даних за бізнесами.');
+    const manageItems = canManage && staffLegacyAvailability.available !== true
+        ? `<button type="button" role="menuitem" class="hr-team-menu-item hr-team-document" data-ui-contract="hr-staff-document-paperclip" aria-disabled="true" aria-describedby="${menuId}Unavailable">Документи</button>
+           <button type="button" role="menuitem" class="hr-team-menu-item hr-team-move" aria-disabled="true" aria-describedby="${menuId}Unavailable">Перемістити</button>
+           <small id="${menuId}Unavailable">${unavailableReason}</small>`
+        : canManage
         ? `<button type="button" role="menuitem" class="hr-team-menu-item hr-team-document" data-ui-contract="hr-staff-document-paperclip" onclick="openStaffDocuments(${id})">Документи</button>
            <button type="button" role="menuitem" class="hr-team-menu-item hr-team-move" onclick="openStaffMoveMenu(${id}, this)">Перемістити</button>`
         : '';
@@ -7744,12 +7752,12 @@ function renderTeamCardOverflowMenu(staff = {}) {
     const dangerSection = canManage
         ? `<div class="hr-team-menu-section hr-team-menu-section--danger">
                 <small>Повне видалення — тільки для дубля.</small>
-                <button type="button" role="menuitem" class="hr-team-menu-item hr-team-delete" onclick="deleteStaffProfile(${id})">Видалити назавжди</button>
+                <button type="button" role="menuitem" class="hr-team-menu-item hr-team-delete" data-delete-staff-id="${id}" ${pendingStaffDeletions.has(JSON.stringify([teamAccessContext(), id])) ? 'disabled aria-busy="true"' : ''} onclick="deleteStaffProfile(${id})">${pendingStaffDeletions.has(JSON.stringify([teamAccessContext(), id])) ? 'Дія виконується…' : 'Видалити назавжди'}</button>
            </div>`
         : '';
     if (!actionSection && !dangerSection) return '';
     return `<div class="hr-team-overflow">
-        <button type="button" class="hr-team-overflow-trigger" aria-haspopup="menu" aria-expanded="false" aria-controls="${menuId}" aria-label="Дії: ${safeName}" onclick="toggleTeamCardMenu(${id}, this)">⋯</button>
+        <button type="button" class="hr-team-overflow-trigger" aria-haspopup="menu" aria-expanded="false" aria-controls="${menuId}" aria-label="Дії: ${safeName}" onclick="toggleTeamCardMenu(${id}, this)"><svg class="hr-team-overflow-icon" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button>
         <div id="${menuId}" class="hr-team-overflow-menu" data-team-card-menu role="menu" hidden>
             ${actionSection ? `<div class="hr-team-menu-section">${actionSection}</div>` : ''}
             ${dangerSection}
@@ -7973,6 +7981,8 @@ function formatStaffDeleteItems(items = [], emptyText = 'немає') {
     return items.map(item => `${item.label}: ${Number(item.count || 0)}`).join('; ');
 }
 
+const pendingStaffDeletions = new Set();
+
 async function deleteStaffProfile(staffId) {
     if (!canManage) {
         showNotification('Видалення працівників доступне тільки HR/керівникам', 'error');
@@ -7980,8 +7990,24 @@ async function deleteStaffProfile(staffId) {
     }
     const staff = teamStaff.find(item => Number(item.id) === Number(staffId));
     if (!staff) return;
+    const context = teamAccessContext();
+    const requestSeq = teamLoadRequestSeq;
+    const isCurrent = () => context === teamAccessContext() && requestSeq === teamLoadRequestSeq && canManage;
+    const operationKey = JSON.stringify([context, Number(staffId)]);
+    if (pendingStaffDeletions.has(operationKey)) return;
+    pendingStaffDeletions.add(operationKey);
+    const buttons = document.querySelectorAll(`[data-delete-staff-id="${Number(staffId)}"]`);
+    buttons.forEach(button => { button.disabled = true; button.setAttribute('aria-busy', 'true'); button.textContent = 'Дія виконується…'; });
+    try {
 
-    const readiness = await hrFetch(`/staff/${staffId}/delete-readiness`);
+    let readiness;
+    try {
+        readiness = await hrFetch(`/staff/${staffId}/delete-readiness`);
+    } catch {
+        if (isCurrent()) showNotification('Не вдалося перевірити можливість видалення. Перевірте з’єднання та спробуйте ще раз.', 'error');
+        return;
+    }
+    if (!isCurrent()) return;
     if (!readiness?.success) {
         showNotification(readiness?.error || 'Не вдалося перевірити можливість видалення', 'error');
         return;
@@ -8021,19 +8047,35 @@ async function deleteStaffProfile(staffId) {
         cancelText: 'Скасувати',
         closeOnBackdrop: false
     });
-    if (!result) return;
+    if (!result || !isCurrent()) return;
     if (String(result.confirmation || '').trim() !== 'ТАК') {
         showNotification('Видалення скасовано: потрібно ввести рівно ТАК', 'warning');
         return;
     }
 
-    const response = await hrFetch(`/staff/${staffId}`, {
-        method: 'DELETE',
-        body: {
-            confirmation: 'ТАК',
-            reason: result.reason || 'duplicate_cleanup'
+    let response;
+    try {
+        response = await hrFetch(`/staff/${staffId}`, {
+            method: 'DELETE',
+            body: { confirmation: 'ТАК', reason: result.reason || 'duplicate_cleanup' }
+        });
+    } catch {
+        if (!isCurrent()) return;
+        let check;
+        try { check = await hrFetch(`/staff/${staffId}`); } catch {}
+        if (!isCurrent()) return;
+        if (check?.status === 404) {
+            showNotification('Картку не знайдено після втрати відповіді. Оновлюємо список.', 'warning');
+            await loadTeam();
+            await refreshHrOperationalViews();
+        } else if (check?.success) {
+            showNotification('Відповідь на видалення втрачено. Картка ще доступна; перевірте її перед повторною дією.', 'warning');
+        } else {
+            showNotification('Відповідь на видалення втрачено. Не вдалося перевірити стан картки; оновіть список перед повторною дією.', 'error');
         }
-    });
+        return;
+    }
+    if (!isCurrent()) return;
     if (!response?.success) {
         const blockers = response?.data?.blockers ? `: ${formatStaffDeleteItems(response.data.blockers)}` : '';
         showNotification((response?.error || 'Не вдалося видалити працівника') + blockers, 'error');
@@ -8042,6 +8084,16 @@ async function deleteStaffProfile(staffId) {
     showNotification(`Працівника ${staff.name} видалено`, 'success');
     await loadTeam();
     await refreshHrOperationalViews();
+    } finally {
+        pendingStaffDeletions.delete(operationKey);
+        if (context === teamAccessContext()) {
+            document.querySelectorAll(`[data-delete-staff-id="${Number(staffId)}"]`).forEach(button => {
+                button.disabled = false;
+                button.removeAttribute('aria-busy');
+                button.textContent = 'Видалити назавжди';
+            });
+        }
+    }
 }
 
 window.deleteStaffProfile = deleteStaffProfile;

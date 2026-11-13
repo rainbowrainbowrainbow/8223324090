@@ -4527,6 +4527,9 @@ button.hr-team-onboarding-compact:focus-visible {
     position: relative;
 }
 .hr-team-overflow-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     min-width: 30px;
     height: 30px;
     padding: 0 8px;
@@ -4539,6 +4542,12 @@ button.hr-team-onboarding-compact:focus-visible {
     line-height: 1;
     font-weight: 900;
     cursor: pointer;
+}
+.hr-team-overflow-icon {
+    display: block;
+    width: 24px;
+    height: 24px;
+    flex: none;
 }
 .hr-team-overflow-trigger:hover,
 .hr-team-overflow-trigger:focus-visible,
@@ -4578,6 +4587,15 @@ button.hr-team-onboarding-compact:focus-visible {
     display: grid;
     gap: 5px;
 }
+.hr-team-menu-section small {
+    padding: 0 9px 6px;
+    color: var(--gray-700);
+    line-height: 1.35;
+}
+.hr-team-menu-item[aria-disabled="true"] {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
 .hr-team-menu-section--danger {
     padding-top: 8px;
     border-top: 1px solid rgba(239,68,68,0.16);
@@ -4607,6 +4625,10 @@ button.hr-team-onboarding-compact:focus-visible {
     background: rgba(20,184,166,0.08);
     color: #0f766e;
     outline: none;
+}
+.hr-team-menu-item[aria-disabled="true"]:hover {
+    background: transparent;
+    color: var(--gray-700);
 }
 .hr-team-menu-item.hr-team-delete {
     color: #b91c1c;
@@ -8118,6 +8140,10 @@ body.dark-mode .hr-team-menu-item:hover,
 body.dark-mode .hr-team-menu-item:focus-visible {
     background: rgba(45,212,191,0.12);
     color: #5EEAD4;
+}
+body.dark-mode .hr-team-menu-item[aria-disabled="true"]:hover {
+    background: transparent;
+    color: #E2E8F0;
 }
 body.dark-mode .hr-team-status-chip,
 body.dark-mode .hr-team-training-compact,

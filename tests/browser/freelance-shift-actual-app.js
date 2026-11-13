@@ -19,7 +19,11 @@ async function run() {
     const out = path.resolve(__dirname, '../../output/playwright', membership ? 'freelance-shift-park' : 'freelance-shift');
     fs.mkdirSync(out, { recursive: true });
     const suffix = randomUUID().slice(0, 8);
-    const date = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' }).format(new Date());
+    const kyivDate = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
+    const date = kyivDate.format(new Date());
+    // In the first hour of the Kyiv day, UTC is still on the previous date.
+    const browserTime = new Date(Date.parse(date + 'T00:00:00Z') - 90 * 60_000);
+    assert.equal(kyivDate.format(browserTime), date);
     const businesses = {};
     const login = async role => {
         const username = `freelance_qa_${role}_${suffix}`;
@@ -129,6 +133,7 @@ async function run() {
             localStorage.setItem('pzp_staff_schedule_expanded_groups', JSON.stringify(['animators']));
         }, auth);
         const page = await context.newPage();
+        await page.clock.setFixedTime(browserTime);
         const openSchedule = async () => {
             await page.goto(new URL('/staff', base).href, { waitUntil: 'domcontentloaded' });
             await page.waitForFunction(() => window.StaffSchedulePage?.isInitialized());
@@ -212,6 +217,7 @@ async function run() {
             .filter({ has: page.getByRole('button', { name: 'Зафіксувати виплату' }) });
         await paymentPanel.getByRole('button', { name: 'Зафіксувати виплату' }).click();
         dialog = page.getByRole('dialog');
+        assert.equal(await dialog.locator('[name=paymentDate]').inputValue(), date);
         await dialog.locator('[name=accountId]').selectOption({ label: `Freelance account ${suffix}` });
         await dialog.locator('[name=categoryId]').selectOption({ label: `Freelance expense ${suffix}` });
         await dialog.locator('[name=reason]').fill('Synthetic registration only');
@@ -231,6 +237,7 @@ async function run() {
         await content.locator('.salary-main-panel').filter({ hasText: `Synthetic Freelance ${suffix}` })
             .getByRole('button', { name: 'Сторнувати' }).click();
         dialog = page.getByRole('dialog');
+        assert.equal(await dialog.locator('[name=paymentDate]').inputValue(), date);
         await dialog.locator('[name=categoryId]').selectOption({ label: `Freelance reversal ${suffix}` });
         await dialog.locator('[name=reason]').fill('Synthetic reversal only');
         const reversed = page.waitForResponse(response => response.url().includes('/api/payroll/freelance/reversals')

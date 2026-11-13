@@ -1065,6 +1065,7 @@ async function fetchPayrollPaymentOptions() {
 }
 
 const freelancePayrollLabels = { unpaid: 'До виплати', partially_paid: 'Частково оплачено', paid: 'Оплачено' };
+const freelancePayrollDate = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
 
 function freelancePayrollPanelVisible() {
     const scope = window.getCrmBusinessScope?.();
@@ -1182,7 +1183,7 @@ async function recordFreelanceFinanceMovement(row, reversalOf) {
     const methods = reversalOf ? [original?.paymentMethod].filter(Boolean) : options.paymentMethods;
     const categories = reversalOf ? options.categories.income : options.categories.expense;
     const values = await openPayrollDialog({ title: reversalOf ? 'Сторнувати фріланс-виплату' : 'Зафіксувати фріланс-виплату', fields: [
-        { name: 'paymentDate', label: 'Фактична дата', type: 'date', value: payrollDateValue(new Date()), required: true },
+        { name: 'paymentDate', label: 'Фактична дата', type: 'date', value: freelancePayrollDate.format(new Date()), required: true },
         ...(!reversalOf ? [{ name: 'amount', label: 'Сума, грн', type: 'number', value: row.outstanding, required: true }] : []),
         { name: 'accountId', label: 'Рахунок', type: 'select', options: payrollOptionList(accounts), required: true },
         { name: 'paymentMethod', label: 'Спосіб оплати', type: 'select', required: true,
@@ -1215,7 +1216,7 @@ function syncFreelancePayrollPanel() {
     }
     panel.dataset.bound = 'true';
     const date = document.getElementById('freelancePayrollDate');
-    date.value = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' }).format(new Date());
+    date.value = freelancePayrollDate.format(new Date());
     panel.addEventListener('toggle', () => void loadFreelancePayroll());
     date.addEventListener('change', () => void loadFreelancePayroll());
     rate.addEventListener('click', async () => {

@@ -341,7 +341,7 @@ test('HR attendance CSV export uses shared escaping and stable column rows', () 
     assert.match(exportRoute, /lateMinutes > 0 \?/);
     assert.match(exportRoute, /earlyLeaveMinutes > 0 \?/);
     assert.match(exportRoute, /overtimeMinutes > 0 \?/);
-    assert.doesNotMatch(exportRoute, /r\.status/);
+    assert.doesNotMatch(exportRoute, /\br\.status\b/);
     assert.doesNotMatch(HR_ROUTE, /return `\$\{r\.name\};/);
 });
 

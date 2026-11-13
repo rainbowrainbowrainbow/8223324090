@@ -4,6 +4,8 @@ const assert = require('node:assert/strict');
 const {
     calculateAttendanceClockIn,
     HR_ATTENDANCE_PLAN_SOURCES,
+    cancelAttendanceClockIn,
+    hydrateAttendanceRecords,
     recordAttendanceClockIn,
     recordAttendanceStatus
 } = require('../services/hrAttendance');
@@ -73,7 +75,7 @@ function createClockInDb(options = {}) {
                 return { rows: [] };
             }
 
-            if (text.startsWith('SELECT * FROM staff WHERE')) return { rows: [{ id: Number(params?.[0]?.[0] || 7), role_type: 'animator', hourly_rate: 100, rate_unit: 'hour', is_active: true }] };
+            if (text.startsWith('SELECT * FROM staff WHERE')) return { rows: [{ id: Number(params?.[0]?.[0] || 7), role_type: 'animator', hourly_rate: options.hourlyRate ?? 100, rate_unit: 'hour', is_active: true }] };
             if (text.includes('FROM staff_payroll_profile_assignments') || text.includes('FROM payroll_profiles')
                 || text.includes('FROM payroll_day_exceptions') || text.includes('FROM payroll_schemes')
                 || text.includes('FROM hr_compensation_policies') || text.includes('FROM staff_role_assignments')
@@ -88,6 +90,79 @@ const professionCard = {
     staff: { id: 7, role_type: 'animator', is_active: true },
     preference: { start_time: '12:00:00', end_time: '20:00:00', is_active: true }
 };
+
+test('an unscheduled arrival that requires compensation review is still on shift', async () => {
+    const { db } = createClockInDb({ staff: professionCard.staff, hourlyRate: 0 });
+    const { record } = await recordAttendanceClockIn(db, {
+        staffId: 7, recordDate: '2026-07-17', now: '2026-07-17T09:05:00Z'
+    });
+    assert.equal(record.status, 'manual_review');
+    assert.equal(record.plan_source, 'unscheduled');
+    assert.ok(record.clock_in);
+    assert.ok(!record.clock_out);
+});
+
+test('cancel preserves the arrival in audit and the same staff can clock in again', async () => {
+    const input = {
+        staffId: 7, recordId: 901, recordDate: '2026-07-17', clockIn: '2026-07-17T09:05:00.000Z',
+        businessContext: 'event_genix', performedBy: 'synthetic-manager'
+    };
+    const original = {
+        id: 901, staff_id: 7, record_date: input.recordDate, clock_in: new Date(input.clockIn),
+        clock_out: null, business_context: input.businessContext, manual_arrival: true, status: 'manual_review',
+        late_minutes: 12, total_worked_minutes: 0
+    };
+    let current = { ...original };
+    let protectedUsage = false;
+    const audit = [];
+    const db = {
+        async query(sql, params) {
+            if (/SELECT tr\.\*/.test(sql)) return { rows: [current] };
+            if (/SELECT EXISTS/.test(sql)) return { rows: [{ protected: protectedUsage }] };
+            if (/UPDATE hr_time_records/.test(sql)) {
+                assert.match(sql, /clock_in = NULL/);
+                assert.match(sql, /compensation_snapshot = NULL/);
+                assert.equal(params[0], original.id);
+                current = { ...current, clock_in: null, status: params[1], late_minutes: 0 };
+                return { rows: [] };
+            }
+            if (/INSERT INTO hr_audit_log/.test(sql)) {
+                audit.push(JSON.parse(params[2]));
+                return { rows: [] };
+            }
+            assert.fail(sql);
+        }
+    };
+    const unavailable = { code: 'ATTENDANCE_ARRIVAL_NOT_CANCELLABLE' };
+    await assert.rejects(cancelAttendanceClockIn(db, { ...input, clockIn: '2026-07-17T08:00:00Z' }), unavailable);
+    await assert.rejects(cancelAttendanceClockIn(db, { ...input, businessContext: 'dar' }), unavailable);
+    current = { ...original, clock_out: '2026-07-17T16:00:00Z' };
+    await assert.rejects(cancelAttendanceClockIn(db, input), unavailable);
+    current = { ...original, manual_arrival: false };
+    await assert.rejects(cancelAttendanceClockIn(db, input), unavailable);
+    current = { ...original };
+    protectedUsage = true;
+    await assert.rejects(cancelAttendanceClockIn(db, input), { code: 'ATTENDANCE_ARRIVAL_ALREADY_ACCOUNTED' });
+    assert.equal(audit.length, 0);
+    protectedUsage = false;
+    await cancelAttendanceClockIn(db, input);
+    assert.equal(current.clock_in, null);
+    assert.equal(audit.length, 1);
+    assert.equal(audit[0].clock_in, input.clockIn);
+    assert.equal(audit[0].old_status, 'manual_review');
+    assert.deepEqual(await hydrateAttendanceRecords(db, [current]), []);
+    await assert.rejects(cancelAttendanceClockIn(db, input), unavailable);
+
+    const retry = createClockInDb({ ...professionCard, existing: current });
+    const arrived = await recordAttendanceClockIn(retry.db, {
+        ...input, source: 'hr_today', now: '2026-07-17T09:07:00.000Z'
+    });
+    assert.equal(arrived.record.id, original.id);
+    assert.equal(arrived.record.clock_in, '2026-07-17T09:07:00.000Z');
+    assert.equal(arrived.alreadyClockedIn, false);
+    current = arrived.record;
+    await assert.rejects(cancelAttendanceClockIn(db, input), unavailable);
+});
 
 test('HR Today and face check-in use the same profession-card snapshot and five-minute grace', async () => {
     const results = [];

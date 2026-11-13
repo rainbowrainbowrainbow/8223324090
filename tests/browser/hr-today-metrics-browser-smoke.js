@@ -56,15 +56,17 @@ const TODAY_MARKUP = extractDivMarkup(HR_HTML, 'tab-today');
 const CONTEXT_MARKUP = extractDivMarkup(HR_HTML, 'contextMenu');
 const HR_ATTENDANCE_STATE_CODE = readRepo('js', 'hr-attendance-state.js');
 const HR_CODE = readRepo('js', 'hr-page.js');
+const UI_CODE = readRepo('js', 'ui.js');
 const CSS_BUNDLE = [
     readRepo('css', 'base.css'),
     readRepo('css', 'hr-page.css'),
     readRepo('css', 'pages-hr-foundation.css'),
-    readRepo('css', 'pages-hr-staff.css')
+    readRepo('css', 'pages-hr-staff.css'),
+    readRepo('css', 'modals.css')
 ].join('\n');
 
-async function installHarness(page, { recovery = false, todayOnly = false, parkWritable = false } = {}) {
-    await page.exposeFunction('__projectTodayRecovery', payload => ({
+async function installHarness(page, { recovery = false, todayOnly = false, parkWritable = false, persistedRows = null } = {}) {
+    if (recovery || parkWritable) await page.exposeFunction('__projectTodayRecovery', payload => ({
         ...projectParkStaffSchedulePayload('hr', '/today', payload),
         todayAccess: { readOnly: !parkWritable, businessContext: 'event_genix' }
     }));
@@ -116,7 +118,7 @@ async function installHarness(page, { recovery = false, todayOnly = false, parkW
     });
     await page.addScriptTag({ content: HR_ATTENDANCE_STATE_CODE });
     await page.addScriptTag({ content: HR_CODE });
-    await page.evaluate(async ({ markup, contextMarkup, recovery, todayOnly, parkWritable }) => {
+    await page.evaluate(async ({ markup, contextMarkup, recovery, todayOnly, parkWritable, persistedRows }) => {
         document.addEventListener = window.__originalAddEventListener;
         document.body.innerHTML = [
             '<nav id="hrNav"><button type="button" class="hr-tab active" data-tab="today">Сьогодні</button></nav>',
@@ -201,7 +203,7 @@ async function installHarness(page, { recovery = false, todayOnly = false, parkW
         ];
 
         function currentItems() {
-            const rows = structuredClone(openItems);
+            const rows = structuredClone(persistedRows || openItems);
             if (mode === 'closed') {
                 const openRecord = rows.find(item => item.staff_id === 11).record;
                 openRecord.clock_out = '2026-07-16T15:00:00.000Z';
@@ -281,7 +283,7 @@ async function installHarness(page, { recovery = false, todayOnly = false, parkW
                 return requests.filter(request => request.method !== 'GET').length;
             }
         };
-    }, { markup: TODAY_MARKUP, contextMarkup: CONTEXT_MARKUP, recovery, todayOnly, parkWritable });
+    }, { markup: TODAY_MARKUP, contextMarkup: CONTEXT_MARKUP, recovery, todayOnly, parkWritable, persistedRows });
 }
 
 async function metricPeople(page, metric) {
@@ -592,9 +594,139 @@ async function assertWritableParkToday(page) {
     assert.equal(await page.evaluate(() => window.__hrTodayBrowserSmoke.mutationCount()), 0);
 }
 
+async function assertAttendanceTransitions(page) {
+    await installHarness(page);
+    await page.addScriptTag({ content: UI_CODE });
+    await page.evaluate(async () => {
+        const rows = [
+            { staff_id: 51, staff_name: 'Тестова поза графіком', record: null, shift: null },
+            { staff_id: 52, staff_name: 'Тестова за графіком', record: null, shift: { planned_start: '09:00', planned_end: '18:00' } }
+        ];
+        let scheduleAvailable = true;
+        let failMutation = false;
+        let failRefresh = false;
+        const writes = [];
+        const notices = [];
+        const allowed = window.canAccess;
+        window.canAccess = action => action === 'hr.schedule.manage' || allowed(action);
+        window.showNotification = (message, type) => notices.push({ message, type });
+        window.hrFetch = async (requestPath, options) => {
+            if (requestPath === '/today') {
+                if (failRefresh) return { success: false, status: 503 };
+                return { success: true, date: hrTodayKyivDate(), scheduleAvailable,
+                    data: structuredClone(rows.map(row => scheduleAvailable ? row : { ...row, shift: null })) };
+            }
+            writes.push(requestPath);
+            const body = JSON.parse(options.body);
+            await new Promise(resolve => setTimeout(resolve, 100));
+            if (failMutation) return { success: false, error: 'Синтетична помилка' };
+            const row = rows.find(item => item.staff_id === body.staff_id);
+            if (requestPath === '/clock-in') {
+                row.record = { id: row.staff_id, status: row.shift ? 'present' : 'manual_review',
+                    clock_in: new Date().toISOString(), clock_out: null, can_cancel_arrival: true };
+            } else if (requestPath === '/clock-in/cancel') {
+                if (body.record_id !== row.record.id || body.clock_in !== row.record.clock_in) throw new Error('Wrong arrival');
+                row.record = null;
+            } else if (requestPath === '/clock-out') {
+                row.record = { ...row.record, clock_out: new Date().toISOString(), total_worked_minutes: 60 };
+            } else throw new Error(`Unexpected API: ${requestPath}`);
+            return { success: true, data: structuredClone(row.record) };
+        };
+        window.attendanceFixture = {
+            writes, notices,
+            persistedRows: () => structuredClone(rows),
+            setScheduleAvailable(value) { scheduleAvailable = value; },
+            setFailMutation(value) { failMutation = value; },
+            setFailRefresh(value) { failRefresh = value; }
+        };
+        await loadToday();
+    });
+
+    const list = page.locator('#todayList');
+    const scheduled = list.locator('[data-staff-id="52"]');
+    const unscheduled = list.locator('[data-staff-id="51"]');
+    const primary = row => row.locator('.hr-clock-btn');
+    const refresh = () => page.evaluate(() => loadToday());
+    const writes = () => page.evaluate(() => attendanceFixture.writes);
+    assert.deepEqual(await list.locator('h3').allTextContents(), ['Сьогодні за графіком', 'Сьогодні поза графіком']);
+    assert.deepEqual(await list.locator('.hr-staff-row').evaluateAll(rows => rows.map(row => row.dataset.staffId)), ['52', '51']);
+    assert.equal(await list.locator('.hr-today-schedule-group').last().evaluate(node => getComputedStyle(node).borderTopWidth), '1px');
+
+    await primary(scheduled).click();
+    await scheduled.getByRole('button', { name: /На роботі/ }).waitFor();
+    await page.evaluate(() => attendanceFixture.setFailRefresh(true));
+    await primary(unscheduled).dblclick();
+    await unscheduled.getByRole('button', { name: /На роботі/ }).waitFor();
+    assert.deepEqual(await writes(), ['/clock-in', '/clock-in']);
+    assert.equal(await page.locator('#todayOnShiftMetric').textContent(), '2');
+    await page.evaluate(() => attendanceFixture.setFailRefresh(false));
+    await refresh();
+    assert.match(await primary(unscheduled).textContent(), /На роботі/);
+
+    fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+    await list.screenshot({ path: path.join(OUTPUT_DIR, 'attendance-groups-desktop.png') });
+    await page.setViewportSize({ width: 360, height: 800 });
+    await list.screenshot({ path: path.join(OUTPUT_DIR, 'attendance-groups-mobile.png') });
+    assert.equal(await list.evaluate(node => node.scrollWidth <= node.clientWidth), true);
+    const cancel = unscheduled.getByRole('button', { name: 'Скасувати прихід' });
+    await cancel.focus();
+    await page.keyboard.press('Enter');
+    const dialog = page.getByRole('dialog', { name: /Скасувати прихід/ });
+    await dialog.waitFor();
+    await page.screenshot({ path: path.join(OUTPUT_DIR, 'cancel-arrival-mobile.png') });
+    await page.keyboard.press('Escape');
+    await dialog.waitFor({ state: 'detached' });
+    assert.deepEqual(await writes(), ['/clock-in', '/clock-in']);
+    assert.equal(await cancel.evaluate(button => document.activeElement === button), true);
+    await cancel.click();
+    await dialog.getByRole('button', { name: 'Скасувати прихід' }).click();
+    await unscheduled.getByRole('button', { name: 'Відмітити прихід' }).waitFor();
+    assert.equal(await page.locator('#todayOnShiftMetric').textContent(), '1');
+    await refresh();
+    assert.match(await primary(unscheduled).textContent(), /Відмітити прихід/);
+    assert.equal(await primary(unscheduled).evaluate(button => document.activeElement === button), true);
+    await page.evaluate(() => attendanceFixture.setFailMutation(true));
+    await primary(unscheduled).click();
+    await page.waitForFunction(() => attendanceFixture.notices.some(notice => notice.type === 'error'));
+    assert.match(await primary(unscheduled).textContent(), /Відмітити прихід/);
+    await page.evaluate(() => attendanceFixture.setFailMutation(false));
+    await primary(unscheduled).click();
+    await unscheduled.getByRole('button', { name: /На роботі/ }).waitFor();
+    await primary(unscheduled).click();
+    await page.getByRole('dialog', { name: /Завершити зміну/ }).getByRole('button', { name: 'Завершити' }).click();
+    await unscheduled.getByRole('button', { name: /Відпрацював/ }).waitFor();
+    assert.equal(await primary(unscheduled).isDisabled(), true);
+
+    const search = page.locator('#todaySearch');
+    for (const [query, groups] of [['Тестова за графіком', ['Сьогодні за графіком']],
+        ['Тестова поза графіком', ['Сьогодні поза графіком']], ['відсутній результат', []]]) {
+        await search.fill(query);
+        assert.deepEqual(await list.locator('h3').allTextContents(), groups);
+    }
+    await search.fill('');
+    await page.evaluate(() => attendanceFixture.setScheduleAvailable(false));
+    await refresh();
+    assert.equal(await list.locator('h3').count(), 0);
+    assert.equal(await list.locator('.hr-staff-row').count(), 2);
+    assert.equal(await page.getByText('Не вдалося завантажити графік.', { exact: false }).isVisible(), true);
+    assert.equal(await page.locator('#todayAbsentMetric').textContent(), '—');
+    const persistedRows = await page.evaluate(() => attendanceFixture.persistedRows());
+    await page.reload();
+    await installHarness(page, { persistedRows: [] });
+    assert.equal(await list.locator('h3').count(), 0);
+    assert.equal(await list.getByText('Немає активних співробітників').isVisible(), true);
+    await page.reload();
+    await installHarness(page, { persistedRows });
+    assert.match(await primary(scheduled).textContent(), /На роботі/);
+    assert.match(await primary(unscheduled).textContent(), /Відпрацював/);
+}
+
 async function run() {
     const playwright = requirePlaywright();
-    const browser = await playwright.chromium.launch({ headless: HEADLESS });
+    const browser = await playwright.chromium.launch({
+        headless: HEADLESS,
+        executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+    });
     let page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     page.setDefaultTimeout(15000);
     try {
@@ -618,6 +750,10 @@ async function run() {
         page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
         page.setDefaultTimeout(15000);
         await assertWritableParkToday(page);
+        await page.close();
+        page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+        page.setDefaultTimeout(15000);
+        await assertAttendanceTransitions(page);
         console.log('HR Today metrics browser smoke passed');
     } catch (err) {
         fs.mkdirSync(OUTPUT_DIR, { recursive: true });

@@ -268,7 +268,7 @@ async function checkHrNoShow(options = {}) {
              LEFT JOIN hr_time_records tr ON tr.staff_id = hs.staff_id AND tr.record_date = $1
               AND COALESCE(tr.business_context, 'event_genix') = $2
              WHERE hs.shift_date = $1
-               AND (tr.id IS NULL OR (tr.clock_in IS NULL AND tr.status = 'absent'))`,
+               AND (tr.id IS NULL OR (tr.clock_in IS NULL AND tr.status IN ('absent', 'arrival_cancelled')))`,
             [todayStr, DEFAULT_BUSINESS_CONTEXT]
         );
 
@@ -302,7 +302,7 @@ async function checkHrNoShow(options = {}) {
                     && (
                         current.business_context !== DEFAULT_BUSINESS_CONTEXT
                         || current.clock_in
-                        || current.status !== 'absent'
+                        || !['absent', 'arrival_cancelled'].includes(current.status)
                     )
                 ) {
                     await client.query('COMMIT');

@@ -162,6 +162,8 @@ test('Park admin edits professions and owns hiring records on migrated PostgreSQ
                     assert.equal(await page.locator('#editStaffHeaderRole').textContent(), width === 1366 ? 'Бариста' : 'Кухар');
                     await page.waitForFunction(() => document.getElementById('staffProfilePanelWork').dataset.loadState === 'ready');
                     await page.screenshot({ path: path.join(output, 'professions-' + width + '-' + theme + '.png') });
+                    await page.locator('#editCloseTop').click();
+                    await page.locator('#staffEditModal').waitFor({ state: 'hidden' });
                     await page.goto(BASE_URL + '/hr#other', { waitUntil: 'domcontentloaded' });
                     await page.getByText('Вакансій немає.', { exact: false }).waitFor();
                     await page.locator('#vacStatusFilter').selectOption('filled');

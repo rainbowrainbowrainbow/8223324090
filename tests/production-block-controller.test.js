@@ -12,6 +12,8 @@ const {
     confirmationValue,
     manifestHash,
     migrationSqlHash,
+    PROFILE_EMPLOYEE_RELEASE_PATHS,
+    PROFILE_EMPLOYEE_AUTH_BLOB,
     STAFF_DELETION_PATHS,
     STAFF_DELETION_CI_HASH,
     PERFORMANCE_CI_CHANGED_PATHS,
@@ -54,6 +56,35 @@ const { inputs: artifactInputs, requiresBuild } = require('../scripts/runtime-ar
 const LIVE_SHA = '1'.repeat(40);
 const HEAD_SHA = '2'.repeat(40);
 const RELEASE_SHA = '3'.repeat(40);
+
+test('employee profile release pins protected bytes, exact SHA, inventory, and both CI gates', async t => {
+    const base = '3f41bef21804f61ecb452961902be68e047603be';
+    const options = { protectedWorkflow: 'profile-employee-release', maxReleaseAttempts: 1 };
+    const candidate = {
+        live: { commitSha: base, version: '0.83.48', deploymentMetadata: { complete: true } },
+        remoteSha: base,
+        releaseVersion: '0.83.51',
+        profileEmployeeAuthBlob: PROFILE_EMPLOYEE_AUTH_BLOB,
+        changedPaths: [...PROFILE_EMPLOYEE_RELEASE_PATHS]
+    };
+    const value = manifest(options, candidate);
+    const file = blockFile(t, value);
+    const exactDrift = await dryRuntime().drift(value);
+    const dryRun = drift => executeAction({ blockFile: file, confirmation: confirmationValue(value), dryRun: true },
+        dryRuntime({ async drift() { return { ...exactDrift, profileEmployeeAuthBlob: PROFILE_EMPLOYEE_AUTH_BLOB, ...drift }; } }));
+    await assert.doesNotReject(dryRun({}));
+    assert.ok(releaseCommandPlan(value).some(step => step.includes('exact-sha-runtime-artifact-run')));
+    await assert.rejects(dryRun({ head: RELEASE_SHA }), { code: 'PRODUCTION_BLOCK_SHA_DRIFT' });
+    await assert.rejects(dryRun({ profileEmployeeAuthBlob: 'f'.repeat(40) }), { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT' });
+    assert.throws(() => manifest({}, candidate), { code: 'PRODUCTION_BLOCK_RED_PATHS' });
+    assert.throws(() => manifest(options, { ...candidate, changedPaths: [...candidate.changedPaths, 'services/unrelated.js'] }),
+        { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID' });
+    assert.throws(() => manifest(options, { ...candidate, migrations: [{ file: 'db/migrations/399_test.sql', sql: 'SELECT 1' }] }),
+        { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID' });
+    assert.throws(() => manifest(options, { ...candidate, remoteSha: RELEASE_SHA }), { code: 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT' });
+    assert.throws(() => manifest({ ...options, maxReleaseAttempts: 2 }, candidate),
+        { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID' });
+});
 
 function facts(overrides = {}) {
     return {

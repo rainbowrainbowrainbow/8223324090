@@ -17,6 +17,7 @@ const SHA_PATTERN = /^[a-f0-9]{40}$/;
 const BLOCK_ID_PATTERN = /^EG-[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8}$/;
 const SENSITIVE_KEY = /(secret|token|password|database.?url|authorization|cookie)/i;
 const PROTECTED_WORKFLOWS = Object.freeze({
+    PROFILE_EMPLOYEE_RELEASE: 'profile-employee-release',
     SYS_MB_AUTH_CUTOVER: 'sys-mb-auth-cutover',
     CERTIFICATE_QA_ISOLATION: 'certificate-qa-isolation',
     CERTIFICATE_CI_GATE: 'certificate-ci-gate',
@@ -213,6 +214,36 @@ const LEAD_UI_CI_CHANGED_PATHS = Object.freeze([
     'tests/task-detail-drawer.test.js',
     'tests/ui-check.js'
 ]);
+const PROFILE_EMPLOYEE_BASE_SHA = '3f41bef21804f61ecb452961902be68e047603be';
+const PROFILE_EMPLOYEE_AUTH_BLOB = 'e5e8e2303e825d568e3b36983e08fbfdf09cbdec';
+const PROFILE_EMPLOYEE_RELEASE_PATHS = Object.freeze([
+    'CHANGELOG.md', 'accounting-deposits.html', 'afisha.html',
+    'art-director.html', 'attendance-upload.html', 'booking-summary.html',
+    'cashier-payments.html', 'center.html', 'certificates.html',
+    'chat-settings.html', 'chat.html', 'checkin.html',
+    'content.html', 'copilot.html', 'css/assistant-rail.css',
+    'css/pages-shell.css', 'css/pages.css', 'css/sidebar-aurora.css',
+    'customers.html', 'dashboard.html', 'data-deletion.html',
+    'demo.html', 'designer.html', 'designs.html',
+    'docs/CODEX_PRODUCTION_AUTONOMY.md', 'docs/ai-context/pages/profile.md', 'docs/integrations/checkbox/IMPLEMENTATION_STATUS.md',
+    'finance.html', 'game.html', 'graduation.html',
+    'guardian-ops.html', 'hermes-studio.html', 'hr.html',
+    'index.html', 'invite.html', 'js/designs-page.js',
+    'js/profile-page.js', 'landing/index.html', 'leads.html',
+    'omni.html', 'package-lock.json', 'package.json',
+    'privacy-policy.html', 'profile.html', 'programs.html',
+    'quiz.html', 'report-agent.html', 'reports.html',
+    'room.html', 'routes/auth.js', 'scripts/production-block-controller.js',
+    'scripts/production-block-policy.js', 'scripts/run-isolated-postgres-tests.js', 'server.js',
+    'services/payroll.js', 'services/payrollSettlement.js', 'services/profileEmployee.js',
+    'services/profileEmployeeMonths.js', 'shop.html', 'sound.html',
+    'staff.html', 'status.html', 'sw.js',
+    'tasks.html', 'terms-of-service.html', 'tests/browser/profile-employee-cabinet-browser-smoke.js',
+    'tests/customers-profile-async.test.js', 'tests/integration/profile-employee-cabinet.integration.test.js', 'tests/production-block-controller.test.js',
+    'tests/profile-employee-months.test.js', 'tests/ui-check.js', 'timeline-settings.html',
+    'training.html', 'warehouse.html',
+].sort());
+
 const HR_PAYROLL_MIGRATION = 'db/migrations/374_payroll_day_exceptions.sql';
 const HR_PAYROLL_RED_PATHS = Object.freeze(['.github/workflows/ci.yml', 'routes/payroll.js']);
 // Exact reviewed HR implementation and generated release inventory; no path prefixes or globs.
@@ -472,7 +503,8 @@ function migrationSqlHash(sql) {
 
 function isPreparedProtectedWorkflow(kind) {
     return [PROTECTED_WORKFLOWS.HR_PAYROLL, PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA,
-        PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE, PROTECTED_WORKFLOWS.STAFF_DELETION_CI].includes(kind);
+        PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE, PROTECTED_WORKFLOWS.STAFF_DELETION_CI,
+        PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE].includes(kind);
 }
 
 function isPreparedProtectedRelease(manifest) {
@@ -565,6 +597,12 @@ function validateProtectedWorkflow(workflow, changedPaths = [], redPaths = []) {
     }
     fail(Object.values(PROTECTED_WORKFLOWS).includes(workflow),
         'Unsupported protected production workflow', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_INVALID');
+    if (workflow === PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE) {
+        fail(stableJson(redPaths) === stableJson(['routes/auth.js'])
+            && stableJson(normalizePathList(changedPaths)) === stableJson(PROFILE_EMPLOYEE_RELEASE_PATHS),
+        'Employee profile release paths differ from the reviewed inventory', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+        return { enabled: true, kind: workflow, protectedChangedPaths: ['routes/auth.js'] };
+    }
     if (workflow === PROTECTED_WORKFLOWS.STAFF_DELETION_CI) {
         fail(stableJson(redPaths) === stableJson(['.github/workflows/ci.yml'])
             && stableJson(normalizePathList(changedPaths)) === stableJson(STAFF_DELETION_PATHS),
@@ -736,6 +774,18 @@ function buildBlockId(now, head) {
     return `EG-${timestamp}-${head.slice(0, 8)}`;
 }
 
+function assertProfileEmployeeAuthBlob(blob) {
+    fail(blob === PROFILE_EMPLOYEE_AUTH_BLOB, 'Employee profile auth differs from the reviewed Git blob',
+        'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
+}
+
+function assertProfileEmployeeReleaseScope(base, baseVersion, version, qa, migrations, attempts) {
+    fail(base === PROFILE_EMPLOYEE_BASE_SHA && baseVersion === '0.83.48' && version === '0.83.51'
+        && qa.enabled === false && migrations.length === 0 && attempts === 1,
+    'Employee profile release base, version, QA, migrations or attempt count differ',
+    'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+}
+
 function buildManifest(facts, options = {}) {
     const now = options.now instanceof Date ? options.now : new Date(options.now || Date.now());
     const validityMinutes = Number(options.validityMinutes || 360);
@@ -751,6 +801,14 @@ function buildManifest(facts, options = {}) {
     const protectedWorkflow = validateProtectedWorkflow(options.protectedWorkflow || 'none', changed, redPaths);
     const qaScope = validateQaScope(options.qaScope || { enabled: false });
     const maxReleaseAttempts = Number(options.maxReleaseAttempts || DEFAULT_MAX_ATTEMPTS);
+    if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE) {
+        assertProfileEmployeeReleaseScope(baseLiveSha, facts.live?.version, facts.releaseVersion,
+            qaScope, migrations, maxReleaseAttempts);
+        assertProfileEmployeeAuthBlob(facts.profileEmployeeAuthBlob);
+        fail(facts.remoteSha === baseLiveSha && facts.live?.deploymentMetadata?.complete === true,
+            'Employee profile preparation requires matching and verified live and remote production',
+            'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
+    }
     fail(qaScope.kind !== 'finance' || protectedWorkflow.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA,
         'Finance QA scope requires the dedicated finance workflow', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
     if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.STAFF_DELETION_CI) {
@@ -830,6 +888,8 @@ function buildManifest(facts, options = {}) {
         ...(isPreparedProtectedWorkflow(protectedWorkflow.kind) ? {
             preparedRelease: {
                 sha: head, version: facts.releaseVersion, baseVersion: facts.live.version,
+                ...(protectedWorkflow.kind === PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE
+                    ? { profileEmployeeAuthBlob: facts.profileEmployeeAuthBlob } : {}),
                 ...(protectedWorkflow.kind === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE
                     ? { failedPredecessorSha: PERFORMANCE_CI_FAILED_SHA, failedArtifactRun: PERFORMANCE_CI_FAILED_RUN } : {})
             }
@@ -888,6 +948,15 @@ function validateManifest(manifest, options = {}) {
     );
     fail(JSON.stringify(validatedProtectedWorkflow) === JSON.stringify(protectedWorkflow),
         'Protected workflow envelope differs from candidate paths', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
+    if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE) {
+        assertProfileEmployeeReleaseScope(manifest.baseLiveSha, manifest.preparedRelease?.baseVersion,
+            manifest.preparedRelease?.version, qaScope, manifest.migrationClassifications, manifest.maxReleaseAttempts);
+        assertProfileEmployeeAuthBlob(manifest.preparedRelease?.profileEmployeeAuthBlob);
+        fail(manifest.preparedRelease?.sha === manifest.initialHeadSha && manifest.allowedMigrationFiles.length === 0
+            && !manifest.retryFrom && !manifest.renewalFrom,
+        'Employee profile release requires one exact prepared SHA without migrations or retries',
+        'PRODUCTION_BLOCK_RELEASE_NOT_PREPARED');
+    }
     if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.STAFF_DELETION_CI) {
         fail(manifest.baseLiveSha === STAFF_DELETION_BASE && manifest.preparedRelease?.sha === manifest.initialHeadSha
             && manifest.preparedRelease?.baseVersion === '0.83.40' && manifest.preparedRelease?.version === '0.83.41'
@@ -1018,6 +1087,9 @@ function warningText(manifest) {
 }
 
 module.exports = {
+    PROFILE_EMPLOYEE_RELEASE_PATHS,
+    PROFILE_EMPLOYEE_AUTH_BLOB,
+    assertProfileEmployeeAuthBlob,
     DEFAULT_MAX_ATTEMPTS,
     MAX_VALIDITY_MS,
     ProductionBlockError,

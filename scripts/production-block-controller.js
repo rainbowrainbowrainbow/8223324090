@@ -15,6 +15,7 @@ const {
     PERFORMANCE_CI_FAILED_RUN,
     assertPerformanceCiWorkflowHashes,
     assertPerformanceCiRecovery,
+    assertProfileEmployeeAuthBlob,
     isPreparedProtectedRelease,
     migrationSqlHash,
     validateProtectedWorkflow,
@@ -405,6 +406,7 @@ function defaultRuntime() {
             const live = await liveVersion();
             const paths = changedPaths(live.commitSha, head);
             const performanceCi = options.protectedWorkflow === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE;
+            const profileEmployee = options.protectedWorkflow === PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE;
             if (performanceCi) assertPerformanceCiRecoveryBase();
             return {
                 head,
@@ -414,6 +416,10 @@ function defaultRuntime() {
                 descendsFromLive: gitIsAncestor(live.commitSha, head),
                 changedPaths: paths,
                 migrations: loadMigrations(paths),
+                ...(profileEmployee ? {
+                    remoteSha: remoteProductionSha(),
+                    profileEmployeeAuthBlob: git(['rev-parse', `${head}:routes/auth.js`])
+                } : {}),
                 workflowHashes: performanceCi ? performanceCiWorkflowHashes(paths)
                     : options.protectedWorkflow === PROTECTED_WORKFLOWS.STAFF_DELETION_CI ? staffDeletionWorkflowHashes() : undefined,
                 staffDeletionGate: options.protectedWorkflow === PROTECTED_WORKFLOWS.STAFF_DELETION_CI
@@ -435,6 +441,8 @@ function defaultRuntime() {
                 migrations: loadMigrations(paths).map(item => item.file).sort(),
                 migrationHashes: Object.fromEntries(loadMigrations(paths).map(item => [item.file, migrationSqlHash(item.sql)])),
                 changedPaths: paths,
+                ...(manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE
+                    ? { profileEmployeeAuthBlob: git(['rev-parse', `${head}:routes/auth.js`]) } : {}),
                 workflowHashes: performanceCi ? performanceCiWorkflowHashes(paths)
                     : manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.STAFF_DELETION_CI ? staffDeletionWorkflowHashes() : undefined,
                 performanceCiRecovery: performanceCi ? performanceCiRecoveryFacts(head) : undefined
@@ -476,6 +484,7 @@ function defaultRuntime() {
             return scope.kind === 'certificate' ? certificateQaPreflight(scope) : trustedQaPreflight(scope, live);
         },
         async execute(manifest, blockFile) {
+            const profileEmployee = manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE;
             commandResult('npm', ['test'], { inherit: true, isolateReleaseEnv: true });
             if (isPreparedProtectedRelease(manifest)) {
                 commandResult('npm', ['run', 'check:version'], { inherit: true });
@@ -505,11 +514,13 @@ function defaultRuntime() {
                 assertPreparedProductionBase(manifest, await liveVersion(), remoteProductionSha());
                 assertPerformanceCiRecoveryBase();
             }
-            const artifactBase = isPreparedProtectedRelease(manifest) ? null : remoteProductionSha();
+            if (profileEmployee) await assertStandardProductionBase(manifest, manifest.baseLiveSha);
+            const artifactBase = profileEmployee ? manifest.baseLiveSha
+                : isPreparedProtectedRelease(manifest) ? null : remoteProductionSha();
             runAuthorizedReleaseStage(manifest, blockFile,
                 'git', ['push', 'origin', `HEAD:refs/heads/${manifest.allowedBranch}`], { inherit: true });
             const { run: exact, evidence: ci } = waitForProductionCi(releaseSha);
-            if (isPreparedProtectedRelease(manifest)) {
+            if (isPreparedProtectedRelease(manifest) && !profileEmployee) {
                 if (manifest.allowedProtectedWorkflow.kind === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE) {
                     const { evidence: artifact } = waitForProductionCi(releaseSha, 'runtime-artifact.yml', 'Runtime artifact smoke');
                     assertPerformanceCiResult(ci, artifact, releaseSha);
@@ -909,7 +920,9 @@ function releaseCommandPlan(manifest) {
             : [`npm run version:bump -- patch --label "${manifest.releaseLabel}"`]),
         `git push origin HEAD:refs/heads/${manifest.allowedBranch}`,
         'gh run watch <exact-sha-run> --exit-status',
-        ...(!isPreparedProtectedRelease(manifest) || manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE
+        ...(!isPreparedProtectedRelease(manifest)
+            || [PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE, PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE]
+                .includes(manifest.allowedProtectedWorkflow?.kind)
             ? ['gh run watch <exact-sha-runtime-artifact-run> --exit-status'] : []),
         `npm run release:railway-up -- --branch ${manifest.allowedBranch} --project ${manifest.railwayProjectId} --environment ${manifest.railwayEnvironment} --service ${manifest.railwayServiceId}`,
         'npm run version:smoke -- <live-url>',
@@ -1017,6 +1030,9 @@ async function assertExecuteDrift(manifest, runtime) {
         fail(JSON.stringify([...(drift.changedPaths || [])].sort()) === JSON.stringify([...manifest.changedPaths].sort()),
             'Protected release file inventory drifted', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
         validateProtectedWorkflow(manifest.allowedProtectedWorkflow.kind, drift.changedPaths, redChangedPaths(drift.changedPaths));
+    }
+    if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE) {
+        assertProfileEmployeeAuthBlob(drift.profileEmployeeAuthBlob);
     }
     if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE) {
         assertPerformanceCiWorkflowHashes(drift.workflowHashes);

@@ -358,6 +358,14 @@ workflow. Production verification remains read only; lead/link mutation tests
 run against the isolated database. New files outside the exact allowlist require
 a newly reviewed scope rather than a wildcard or controller bypass.
 
+The `profile-employee-release` workflow is limited to the reviewed personal
+profile release from `3f41bef2` (v0.83.48) to v0.83.51. It requires an exact
+file inventory and Git blob for `routes/auth.js`, a prepared release SHA,
+matching live and remote production, and one attempt. It allows no migrations
+or writable production QA. Both production-push CI and Runtime artifact smoke
+must succeed for the exact candidate before the Railway upload. The existing
+Red classification and separate owner authorization still apply.
+
 The `hr-payroll` protected workflow is exclusive to the exact HR-PAY file inventory
 and additive migration 374 in `scripts/production-block-policy.js`. It permits
 `routes/payroll.js` and the HR test/evidence changes in `.github/workflows/ci.yml` without changing their Red classification. It does not reuse

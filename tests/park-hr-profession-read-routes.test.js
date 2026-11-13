@@ -154,6 +154,7 @@ test('EG16/17 exact reads on the actual HR Express router', async t => {
   assert.equal((await request('/api/hr/checklists/dashboard?status=archived')).status,403);
   assert.equal((await request('/api/hr/checklists/dashboard?status=invalid')).status,400);
   for(const path of ['/professions/missing/checklist','/professions/workspace/missing','/professions/animator/staff/999/checklist','/staff/999/onboarding-processes','/staff/999/onboarding-assignment']) assert.equal((await request('/api/hr'+path)).status,404);
+  state.actor={deny:['hr.payroll.view','hr.staff.manage']};
   for(const path of ['/staff/'+STAFF_ID+'/role-assignments','/staff/'+STAFF_ID+'/medical-book','/salary','/report/export']) assert.equal((await request('/api/hr'+path)).status,403);
   for(const path of paths) assert.equal((await request('/api/hr'+path,{method:'PUT'})).status,403);
  });

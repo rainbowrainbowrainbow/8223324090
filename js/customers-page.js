@@ -2319,27 +2319,30 @@ function renderCustomerTable() {
             <td class="customer-list-cell customer-list-cell--last-visit" data-label="${escapeHtml(lastVisitLabel)}"><div>${lastVisit}</div><div class="customer-child customer-metrics-note">Найближче: ${formatDateOnly(c.nextBookingDate)}</div></td>
         </tr>`;
     }).join('');
+}
 
-    // Click handler for rows
-    tbody.querySelectorAll('[data-customer-tag-filter]').forEach(button => {
-        button.addEventListener('click', async event => {
+function bindCustomerTableActions() {
+    const tbody = document.getElementById('customerTableBody');
+    if (!tbody || tbody.dataset.actionsBound === 'true') return;
+    tbody.dataset.actionsBound = 'true';
+    tbody.addEventListener('click', async event => {
+        const row = event.target.closest('tr.customer-list-row[data-id]');
+        if (!row || row.parentElement !== tbody) return;
+        const tag = event.target.closest('[data-customer-tag-filter]');
+        if (tag) {
             event.stopPropagation();
-            await applyCustomerTagFilter(button.dataset.customerTagFilter);
-        });
+            await applyCustomerTagFilter(tag.dataset.customerTagFilter);
+            return;
+        }
+        if (event.target.closest('a, button, summary, details')) return;
+        showCustomerDetail(Number.parseInt(row.dataset.id, 10));
     });
-    tbody.querySelectorAll('tr[data-id]').forEach(row => {
-        row.addEventListener('click', (event) => {
-            if (event.target.closest('a, button, summary, details')) return;
-            const id = parseInt(row.dataset.id);
-            showCustomerDetail(id);
-        });
-        row.addEventListener('keydown', (event) => {
-            if (event.target !== row) return;
-            if (event.key !== 'Enter' && event.key !== ' ') return;
-            event.preventDefault();
-            const id = parseInt(row.dataset.id);
-            showCustomerDetail(id);
-        });
+    tbody.addEventListener('keydown', event => {
+        const row = event.target;
+        if (row.parentElement !== tbody || !row.matches('tr.customer-list-row[data-id]')) return;
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        showCustomerDetail(Number.parseInt(row.dataset.id, 10));
     });
 }
 
@@ -3744,7 +3747,7 @@ function bindCustomerActionsMenu() {
     if (!menu || !toggle) return;
     toggle.addEventListener('click', () => {
         if (menu.classList.contains('is-open')) closeCustomerActionsMenu();
-        else openCustomerActionsMenu();
+        else openCustomerActionsMenu({ focusFirst: true });
     });
     toggle.addEventListener('keydown', (event) => {
         if (event.key !== 'ArrowDown') return;
@@ -3764,6 +3767,9 @@ function bindCustomerActionsMenu() {
         } else if (event.key === 'ArrowUp') {
             event.preventDefault();
             items[(currentIndex - 1 + items.length) % items.length]?.focus();
+        } else if (event.key === 'Home' || event.key === 'End') {
+            event.preventDefault();
+            items[event.key === 'Home' ? 0 : items.length - 1]?.focus();
         }
     });
     menu.addEventListener('click', (event) => {
@@ -3868,6 +3874,7 @@ async function initPage() {
     if (typeof bindLogoutButton === 'function') bindLogoutButton();
     bindCustomerActionsMenu();
     bindCustomerFilterControls();
+    bindCustomerTableActions();
     renderCustomerFilterControls();
 
     bindCustomerSectionNavigation();

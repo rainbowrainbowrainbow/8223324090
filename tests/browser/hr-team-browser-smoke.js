@@ -2187,7 +2187,7 @@ async function run() {
     }
 }
 
-module.exports = { installHarness };
+module.exports = { installHarness, requirePlaywright, readRepo, HR_HTML, ROOT };
 
 if (require.main === module) run()
     .then(async () => {

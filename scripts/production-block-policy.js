@@ -22,9 +22,101 @@ const PROTECTED_WORKFLOWS = Object.freeze({
     CERTIFICATE_CI_GATE: 'certificate-ci-gate',
     LEAD_UI_CI_GATE: 'lead-ui-ci-gate',
     PERFORMANCE_CI_RELEASE: 'performance-ci-release',
+    STAFF_DELETION_CI: 'staff-deletion-ci',
     HR_PAYROLL: 'hr-payroll',
     FINANCE_MANUAL_QA: 'finance-manual-qa'
 });
+const STAFF_DELETION_BASE = 'a6e37b311202fbe7929118aa9c5c3c0422ab0211';
+const STAFF_DELETION_REVIEWED_PARENT = '8290ba7705971a94c0e9b1a1062993b25ce2037c';
+const STAFF_DELETION_GATE_PATHS = Object.freeze(normalizePathList([
+    'docs/STAFF_DELETION_RELEASE_REVIEW_2026-11-12.md',
+    'scripts/production-block-controller.js', 'scripts/production-block-policy.js',
+    'tests/production-block-controller.test.js'
+]));
+const STAFF_DELETION_CI_HASH = 'f7a65094771e813aaff9155cbdae44e20278f42dfa99863a49db3df5b065a54c';
+const STAFF_DELETION_PATHS = Object.freeze(normalizePathList([
+    ".github/workflows/ci.yml",
+    "CHANGELOG.md",
+    "accounting-deposits.html",
+    "afisha.html",
+    "art-director.html",
+    "attendance-upload.html",
+    "booking-summary.html",
+    "cashier-payments.html",
+    "center.html",
+    "certificates.html",
+    "chat-settings.html",
+    "chat.html",
+    "checkin.html",
+    "content.html",
+    "copilot.html",
+    "css/assistant-rail.css",
+    "css/hr-page.css",
+    "css/pages-hr-staff.css",
+    "css/pages-shell.css",
+    "css/pages.css",
+    "css/sidebar-aurora.css",
+    "customers.html",
+    "dashboard.html",
+    "data-deletion.html",
+    "demo.html",
+    "designer.html",
+    "designs.html",
+    "docs/STAFF_DELETE_BUSINESS_BOUNDARY_AUDIT_2026-11-12.md",
+    "docs/STAFF_DELETION_RELEASE_REVIEW_2026-11-12.md",
+    "docs/integrations/checkbox/IMPLEMENTATION_STATUS.md",
+    "docs/release-notes-staff-deletion.json",
+    "finance.html",
+    "game.html",
+    "graduation.html",
+    "guardian-ops.html",
+    "hermes-studio.html",
+    "hr.html",
+    "index.html",
+    "invite.html",
+    "js/designs-page.js",
+    "js/hr-page.js",
+    "landing/index.html",
+    "leads.html",
+    "omni.html",
+    "package-lock.json",
+    "package.json",
+    "privacy-policy.html",
+    "profile.html",
+    "programs.html",
+    "quiz.html",
+    "report-agent.html",
+    "reports.html",
+    "room.html",
+    "routes/hr.js",
+    "scripts/production-block-controller.js",
+    "scripts/production-block-policy.js",
+    "scripts/run-isolated-postgres-tests.js",
+    "server.js",
+    "services/legacyBusinessSurface.js",
+    "services/parkHrStaffDeletionAccess.js",
+    "services/staffDeletionReferences.js",
+    "shop.html",
+    "sound.html",
+    "staff.html",
+    "status.html",
+    "sw.js",
+    "tasks.html",
+    "terms-of-service.html",
+    "tests/browser/hr-staff-deletion-browser-smoke.js",
+    "tests/browser/hr-team-browser-smoke.js",
+    "tests/browser/hr-team-menu-browser-smoke.js",
+    "tests/helpers/park-hr-deletion-router.js",
+    "tests/integration/park-hr-staff-deletion-migrated.test.js",
+    "tests/integration/park-hr-staff-deletion-postgres.test.js",
+    "tests/park-hr-staff-card-routes.test.js",
+    "tests/park-hr-staff-deletion.test.js",
+    "tests/production-block-controller.test.js",
+    "tests/ui-check.js",
+    "timeline-settings.html",
+    "training.html",
+    "warehouse.html"
+]));
 const PERFORMANCE_CI_BASE = '8e5c312d73e9e92f9b81b0e233678b5e0d542238';
 const PERFORMANCE_CI_FAILED_SHA = 'c5204dfb508a0fea8fb52be0075349015b925e24';
 const PERFORMANCE_CI_FAILED_RUN = '42490074963';
@@ -380,7 +472,7 @@ function migrationSqlHash(sql) {
 
 function isPreparedProtectedWorkflow(kind) {
     return [PROTECTED_WORKFLOWS.HR_PAYROLL, PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA,
-        PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE].includes(kind);
+        PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE, PROTECTED_WORKFLOWS.STAFF_DELETION_CI].includes(kind);
 }
 
 function isPreparedProtectedRelease(manifest) {
@@ -473,6 +565,12 @@ function validateProtectedWorkflow(workflow, changedPaths = [], redPaths = []) {
     }
     fail(Object.values(PROTECTED_WORKFLOWS).includes(workflow),
         'Unsupported protected production workflow', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_INVALID');
+    if (workflow === PROTECTED_WORKFLOWS.STAFF_DELETION_CI) {
+        fail(stableJson(redPaths) === stableJson(['.github/workflows/ci.yml'])
+            && stableJson(normalizePathList(changedPaths)) === stableJson(STAFF_DELETION_PATHS),
+        'Staff deletion release paths differ from the reviewed inventory', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+        return { enabled: true, kind: workflow, protectedChangedPaths: ['.github/workflows/ci.yml'] };
+    }
     if (workflow === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE) {
         const expected = Object.keys(PERFORMANCE_CI_WORKFLOW_HASHES);
         fail(stableJson(redPaths) === stableJson(expected), 'Performance CI permits only its two reviewed workflows',
@@ -655,6 +753,14 @@ function buildManifest(facts, options = {}) {
     const maxReleaseAttempts = Number(options.maxReleaseAttempts || DEFAULT_MAX_ATTEMPTS);
     fail(qaScope.kind !== 'finance' || protectedWorkflow.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA,
         'Finance QA scope requires the dedicated finance workflow', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+    if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.STAFF_DELETION_CI) {
+        fail(baseLiveSha === STAFF_DELETION_BASE && facts.live?.version === '0.83.40'
+            && facts.releaseVersion === '0.83.41' && qaScope.enabled === false
+            && migrations.length === 0 && facts.workflowHashes?.['.github/workflows/ci.yml'] === STAFF_DELETION_CI_HASH
+            && facts.staffDeletionGate?.parent === STAFF_DELETION_REVIEWED_PARENT
+            && stableJson(normalizePathList(facts.staffDeletionGate?.changedPaths)) === stableJson(STAFF_DELETION_GATE_PATHS),
+        'Staff deletion release base, version, CI hash, QA or migrations differ', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+    }
     if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.CERTIFICATE_CI_GATE) {
         fail(qaScope.enabled === false && migrations.length === 0,
             'Certificate CI release cannot include migrations or QA records',
@@ -782,6 +888,13 @@ function validateManifest(manifest, options = {}) {
     );
     fail(JSON.stringify(validatedProtectedWorkflow) === JSON.stringify(protectedWorkflow),
         'Protected workflow envelope differs from candidate paths', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
+    if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.STAFF_DELETION_CI) {
+        fail(manifest.baseLiveSha === STAFF_DELETION_BASE && manifest.preparedRelease?.sha === manifest.initialHeadSha
+            && manifest.preparedRelease?.baseVersion === '0.83.40' && manifest.preparedRelease?.version === '0.83.41'
+            && qaScope.enabled === false && manifest.allowedMigrationFiles.length === 0
+            && manifest.migrationClassifications.length === 0,
+        'Staff deletion release envelope differs from the approved scope', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+    }
     if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.CERTIFICATE_CI_GATE) {
         fail(qaScope.enabled === false && manifest.allowedMigrationFiles.length === 0
             && manifest.migrationClassifications.length === 0,
@@ -909,6 +1022,8 @@ module.exports = {
     MAX_VALIDITY_MS,
     ProductionBlockError,
     PROTECTED_WORKFLOWS,
+    STAFF_DELETION_PATHS,
+    STAFF_DELETION_CI_HASH,
     PERFORMANCE_CI_CHANGED_PATHS,
     PERFORMANCE_CI_WORKFLOW_HASHES,
     PERFORMANCE_CI_FAILED_SHA,

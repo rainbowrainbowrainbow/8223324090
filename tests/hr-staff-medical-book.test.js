@@ -104,8 +104,8 @@ function createFakeMedicalBookDb() {
 }
 
 test('medical-book routes keep create and patch mutations behind manage_staff', () => {
-    assert.match(HR_ROUTE, /router\.get\('\/staff\/:id\/medical-book', requireHrManage/);
-    assert.match(HR_ROUTE, /router\.post\('\/staff\/:id\/medical-book', requireHrManage/);
+    assert.match(HR_ROUTE, /router\.get\('\/staff\/:id\/medical-book', requireAction\('hr\.staff\.manage'\)/);
+    assert.match(HR_ROUTE, /router\.post\('\/staff\/:id\/medical-book', requireAction\('hr\.staff\.manage'\)/);
     assert.match(HR_ROUTE, /router\.patch\('\/staff\/:id\/medical-book\/:certificationId', requireHrManage/);
     assert.match(HR_ROUTE, /createStaffMedicalBook/);
     assert.match(HR_ROUTE, /updateStaffMedicalBook/);

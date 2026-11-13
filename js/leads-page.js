@@ -1142,7 +1142,7 @@ async function loadMoreLeads({ stage = '' } = {}) {
     const nextState = { ...state, loadingMore: true };
     if (isKanban) leadKanbanPagination = { ...leadKanbanPagination, [stage]: nextState };
     else leadPagination = nextState;
-    if (isKanban) renderKanban(); else renderTable();
+    if (isKanban) updateKanbanLoadMoreButton(stage); else renderTable();
 
     try {
         const params = leadListParams();
@@ -1157,14 +1157,17 @@ async function loadMoreLeads({ stage = '' } = {}) {
         leadsData = [...leadsData, ...page.leads.filter(lead => !existingIds.has(Number(lead.id)))];
         if (isKanban) leadKanbanPagination = { ...leadKanbanPagination, [stage]: { ...page.pagination, loadingMore: false } };
         else leadPagination = { ...page.pagination, loadingMore: false };
-        if (isKanban) renderKanban(); else renderTable();
+        if (isKanban) {
+            const hasOtherStages = page.leads.some(lead => (lead.pipeline_stage || 'new') !== stage);
+            renderKanban(hasOtherStages ? '' : stage);
+        } else renderTable();
     } catch (err) {
         if (loadSeq !== leadLoadSeq) return;
         console.error('Load more leads error', err);
         if (isKanban) leadKanbanPagination = { ...leadKanbanPagination, [stage]: { ...state, loadingMore: false } };
         else leadPagination = { ...state, loadingMore: false };
         if (typeof showNotification === 'function') showNotification('Не вдалося завантажити наступні ліди. Спробуйте ще раз.', 'error');
-        if (isKanban) renderKanban(); else renderTable();
+        if (isKanban) updateKanbanLoadMoreButton(stage); else renderTable();
     }
 }
 
@@ -3145,7 +3148,23 @@ function renderLeadBookingConversionButton(lead = {}) {
     return `<button type="button" draggable="false" class="kanban-action-btn kanban-booking-convert-btn" data-lead-booking-convert data-kanban-interactive="true" data-lead-id="${leadId}" aria-haspopup="menu" aria-expanded="false" aria-label="Створити бронь: ${escapeHtml(clientName)}" title="Створити бронь">📅</button>`;
 }
 
-function renderKanban() {
+function updateKanbanLoadMoreButton(stage) {
+    const column = findKanbanColumn(document.getElementById('kanbanView'), stage);
+    const button = column?.querySelector('[data-lead-load-more]');
+    if (!button) return;
+    const { loadingMore, total } = leadKanbanPagination[stage];
+    button.disabled = loadingMore;
+    if (loadingMore) button.setAttribute('aria-disabled', 'true');
+    else button.removeAttribute('aria-disabled');
+    const count = column.querySelectorAll('.kanban-card').length;
+    button.textContent = loadingMore ? 'Завантаження…' : `Завантажити ще (${count} з ${total || count})`;
+}
+
+function findKanbanColumn(board, stage) {
+    return Array.from(board?.children || []).find(column => column.dataset?.stage === stage);
+}
+
+function renderKanban(onlyStage = '') {
     const tableWrap = document.getElementById('tableView');
     const kanbanWrap = document.getElementById('kanbanView');
     const mailingWrap = document.getElementById('mailingView');
@@ -3196,7 +3215,9 @@ function renderKanban() {
         }
     }
 
-    kanbanWrap.innerHTML = PIPELINE_STAGES.map(stage => {
+    const column = !kanbanDragState && onlyStage ? findKanbanColumn(kanbanWrap, onlyStage) : null;
+    const stages = column ? PIPELINE_STAGES.filter(stage => stage.key === onlyStage) : PIPELINE_STAGES;
+    const columnsHtml = stages.map(stage => {
         const leads = grouped[stage.key] || [];
         const pagination = leadKanbanPagination[stage.key] || { total: leads.length, hasMore: false, loadingMore: false };
         const total = Number(pagination.total || leads.length);
@@ -3254,16 +3275,25 @@ function renderKanban() {
             </div>`;
     }).join('');
 
-    bindKanbanLeadTypeTriggerControls(kanbanWrap);
-    bindKanbanBookingConversionTriggerControls(kanbanWrap);
-    setupKanbanDragDrop();
+    let rendered = kanbanWrap;
+    if (activeKanbanLeadTypePopover && (!column || column.contains(activeKanbanLeadTypePopover.trigger))) closeKanbanLeadTypeMenus();
+    if (activeKanbanBookingConversionPopover && (!column || column.contains(activeKanbanBookingConversionPopover.trigger))) closeKanbanBookingConversionMenus();
+    if (column) {
+        column.outerHTML = columnsHtml;
+        rendered = findKanbanColumn(kanbanWrap, onlyStage);
+    } else {
+        kanbanWrap.innerHTML = columnsHtml;
+    }
+    bindKanbanLeadTypeTriggerControls(rendered);
+    bindKanbanBookingConversionTriggerControls(rendered);
+    setupKanbanDragDrop(rendered);
     syncLeadReadOnlyUi();
     syncLeadStageMovePendingUi();
 }
 
-function setupKanbanDragDrop() {
-    const cards = document.querySelectorAll('.kanban-card[draggable]');
-    const columns = document.querySelectorAll('.kanban-column');
+function setupKanbanDragDrop(root = document) {
+    const cards = root.querySelectorAll('.kanban-card[draggable]');
+    const columns = root.matches?.('.kanban-column') ? [root] : root.querySelectorAll('.kanban-column');
 
     cards.forEach(card => {
         card.querySelectorAll('a, button, select, [data-kanban-actions]').forEach(control => {
@@ -3790,6 +3820,36 @@ function closestLeadTypeElement(target, selector) {
     return elementTarget?.closest?.(selector) || null;
 }
 
+function prepareLeadKanbanMenu(menu, trigger, close, rect) {
+    const items = [...menu.querySelectorAll('button:not(:disabled)')];
+    menu.style.maxHeight = `${Math.max(0, window.innerHeight - 16)}px`;
+    menu.style.overflowY = 'auto';
+    const height = menu.getBoundingClientRect().height;
+    if (rect.bottom + 8 + height > window.innerHeight - 8) {
+        menu.style.top = `${Math.max(8, rect.top - height - 8)}px`;
+    }
+    menu.addEventListener('keydown', event => {
+        if (event.key === 'Escape' || event.key === 'Tab') {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+            close();
+            trigger.focus({ preventScroll: true });
+            return;
+        }
+        if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key) || !items.length) return;
+        event.preventDefault();
+        const current = items.indexOf(document.activeElement);
+        const last = items.length - 1;
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? last
+            : event.key === 'ArrowDown' ? (current + 1) % items.length
+            : current <= 0 ? last : current - 1;
+        items[next].focus();
+    });
+    items[0]?.focus({ preventScroll: true });
+}
+
 function isKanbanInteractiveTarget(target) {
     return Boolean(closestLeadTypeElement(target, [
         'a',
@@ -3818,16 +3878,17 @@ function handleKanbanLeadTypeTriggerEvent(event) {
     if (!trigger) return;
     event.preventDefault();
     event.stopPropagation();
-    if (trigger.disabled) return;
+    if (trigger.disabled || event.repeat) return;
 
     const leadId = Number(trigger.dataset.leadId || 0);
     if (!leadId) return;
-    const justOpened = kanbanLeadTypeTriggerOpenedLeadId === leadId
-        && Date.now() - kanbanLeadTypeTriggerOpenedAt < 700;
-    if (justOpened) return;
-
-    kanbanLeadTypeTriggerOpenedAt = Date.now();
-    kanbanLeadTypeTriggerOpenedLeadId = leadId;
+    const keyboard = event.type === 'keydown' || (event.type === 'click' && event.detail === 0);
+    if (!keyboard) {
+        const now = Date.now();
+        if (kanbanLeadTypeTriggerOpenedLeadId === leadId && now - kanbanLeadTypeTriggerOpenedAt < 700) return;
+        kanbanLeadTypeTriggerOpenedAt = now;
+        kanbanLeadTypeTriggerOpenedLeadId = leadId;
+    }
     if (isLeadBusinessReadOnly()) {
         showKanbanLeadTypeReadOnlyNotice(trigger);
         return;
@@ -3859,16 +3920,17 @@ function handleKanbanBookingConversionTriggerEvent(event) {
     if (!trigger) return;
     event.preventDefault();
     event.stopPropagation();
-    if (trigger.disabled) return;
+    if (trigger.disabled || event.repeat) return;
 
     const leadId = Number(trigger.dataset.leadId || 0);
     if (!leadId) return;
-    const justOpened = kanbanBookingConversionTriggerOpenedLeadId === leadId
-        && Date.now() - kanbanBookingConversionTriggerOpenedAt < 700;
-    if (justOpened) return;
-
-    kanbanBookingConversionTriggerOpenedAt = Date.now();
-    kanbanBookingConversionTriggerOpenedLeadId = leadId;
+    const keyboard = event.type === 'keydown' || (event.type === 'click' && event.detail === 0);
+    if (!keyboard) {
+        const now = Date.now();
+        if (kanbanBookingConversionTriggerOpenedLeadId === leadId && now - kanbanBookingConversionTriggerOpenedAt < 700) return;
+        kanbanBookingConversionTriggerOpenedAt = now;
+        kanbanBookingConversionTriggerOpenedLeadId = leadId;
+    }
     if (!guardLeadWrite('створювати бронювання з ліда')) return;
 
     showKanbanBookingConversionMenu(leadId, event);
@@ -3967,6 +4029,7 @@ function showKanbanBookingConversionMenu(leadId, event) {
     </button>`).join('');
     document.body.appendChild(menu);
     activeKanbanBookingConversionPopover = { leadId: Number(leadId), trigger, menu };
+    prepareLeadKanbanMenu(menu, trigger, closeKanbanBookingConversionMenus, rect);
 }
 
 async function updateLeadBookingConversionFromKanban(leadId, bookingMode, event) {
@@ -3974,6 +4037,7 @@ async function updateLeadBookingConversionFromKanban(leadId, bookingMode, event)
         event.stopPropagation();
         event.preventDefault();
     }
+    activeKanbanBookingConversionPopover?.trigger.focus({ preventScroll: true });
     closeKanbanBookingConversionMenus();
     if (!leadBookingConversionModeConfig(bookingMode)) return false;
     if (!guardLeadWrite('створювати бронювання з ліда')) return false;
@@ -4102,6 +4166,7 @@ function showKanbanLeadTypeMenu(leadId, event) {
     }).join('');
     document.body.appendChild(menu);
     activeKanbanLeadTypePopover = { leadId: Number(leadId), trigger, menu };
+    prepareLeadKanbanMenu(menu, trigger, closeKanbanLeadTypeMenus, rect);
 }
 
 async function updateLeadTypeFromKanbanSelect(leadId, type, event) {
@@ -4109,6 +4174,7 @@ async function updateLeadTypeFromKanbanSelect(leadId, type, event) {
         event.stopPropagation();
         event.preventDefault();
     }
+    activeKanbanLeadTypePopover?.trigger.focus({ preventScroll: true });
     closeKanbanLeadTypeMenus();
     const select = document.querySelector(`[data-lead-type-select][data-lead-id="${Number(leadId)}"]`);
     const lead = leadsData.find(l => Number(l.id) === Number(leadId));

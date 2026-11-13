@@ -4,6 +4,7 @@
 // employee progress belong exclusively to Park. This lane never reads rates,
 // training, conditions, account identities or the broader workspace catalog.
 const { resolveCapability } = require('./accountAccessPolicy');
+const { resolveBusinessScope } = require('./businessContext');
 const { hasCurrentParkScheduleMembership } = require('./parkStaffScheduleAccess');
 const { classifyChecklistProgress, normalizeDashboardFilters } = require('./professionChecklists');
 
@@ -158,7 +159,12 @@ function requireParkProfessionReads(db) {
         // Preserve the separately authorized compensation workspace for payroll viewers.
         if (route.kind === 'workspace' && resolveCapability(req.user, 'hr.payroll.view', { type: 'action' }).allowed) return next();
         try {
-            if (route.kind.startsWith('onboarding-')) return res.json(await loadOnboarding(db, route, req.query));
+            if (route.kind.startsWith('onboarding-')) {
+                const payload = await loadOnboarding(db, route, req.query);
+                const canManage = resolveCapability(req.user, 'hr.staff.manage', { type: 'action' }).allowed;
+                return res.json({ ...payload, onboardingAccess: { ...payload.onboardingAccess, readOnly: !canManage
+                    || resolveBusinessScope(req).canWrite !== true } });
+            }
             const catalog = await loadCatalog(db, route);
             if (route.kind === 'dashboard') return res.json({ success: true, data: dashboard(catalog, req.query) });
             const profession = catalog.professions[0];

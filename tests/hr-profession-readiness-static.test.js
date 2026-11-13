@@ -246,7 +246,7 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(hrRoute, /syncProfessionOnboardingProgressForProfession/);
         assert.match(hrRoute, /onboarding_sync: onboardingSync\.audit/);
         assert.match(hrRoute, /function loadStaffLifecycleChecklist/);
-        assert.match(hrRoute, /router\.get\('\/staff\/:id\/lifecycle-checklist', requireHrManage/);
+        assert.match(hrRoute, /router\.get\('\/staff\/:id\/lifecycle-checklist', requireAction\('hr\.staff\.manage'\)/);
         assert.match(hrRoute, /candidate_approved/);
         assert.match(hrRoute, /hiring_application: hiringApplication/);
         assert.match(hrRoute, /FROM job_applications a[\s\S]*a\.staff_id = \$1/);

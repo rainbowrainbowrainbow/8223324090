@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.83.38",
+  "version": "0.83.45",
   "eventGenix": {
-    "releaseLabel": "Одна кнопка для імпорту Афіші"
+    "releaseLabel": "Документи й переміщення працівників"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",
@@ -107,7 +107,7 @@
     "test:unit:lead-integrity": "node scripts/run-unit-tests.js tests/lead-reference-integrity.test.js tests/lead-related-records-callers.test.js",
     "test:unit:d05-domain-ownership": "node scripts/run-unit-tests.js tests/d05-income-notification.test.js tests/d05-chat-ai-containment.test.js tests/d05-intake-unavailable-ui.test.js tests/d05-intake-service-containment.test.js",
     "test:sys-mb": "npm run test:unit:legacy-containment && npm run test:unit:business-cabinets && npm run test:unit:lead-integrity && npm run test:unit:d05-domain-ownership && npm run test:staff-schedule-recovery && npm run test:lead-conversation-links",
-    "test:staff-schedule-recovery": "node scripts/run-unit-tests.js tests/park-staff-schedule-access.test.js tests/park-staff-schedule-projection.test.js tests/park-staff-schedule-routes.test.js tests/staff-schedule-business-context.test.js tests/park-hr-today-routes.test.js tests/park-hr-staff-card-routes.test.js tests/park-hr-monthly-report-routes.test.js tests/park-hr-onboarding-routes.test.js tests/hr-team-load-state.test.js tests/hr-onboarding-read-state.test.js tests/hr-today-recovery-ui.test.js tests/hr-today-print.test.js tests/checkin-dependency-states.test.js tests/checkin-reliability-contract.test.js tests/business-split-followup-ui.test.js",
+    "test:staff-schedule-recovery": "node scripts/run-unit-tests.js tests/park-staff-schedule-access.test.js tests/park-staff-schedule-projection.test.js tests/park-staff-schedule-routes.test.js tests/staff-schedule-business-context.test.js tests/park-hr-today-routes.test.js tests/park-hr-staff-card-routes.test.js tests/park-hr-staff-deletion.test.js tests/park-hr-staff-workflows.test.js tests/park-hr-monthly-report-routes.test.js tests/park-hr-onboarding-routes.test.js tests/hr-team-load-state.test.js tests/hr-onboarding-read-state.test.js tests/hr-today-recovery-ui.test.js tests/hr-today-print.test.js tests/checkin-dependency-states.test.js tests/checkin-reliability-contract.test.js tests/business-split-followup-ui.test.js",
     "audit:multibusiness-ownership": "node scripts/audit-multibusiness-ownership.js",
     "test:leads-tasks-pagination-behavior": "node --test tests/leads-tasks-pagination-behavior.test.js",
     "test:staff-schedule": "node --test tests/staff-schedule-history-static.test.js tests/staff-schedule-audit-static.test.js tests/staff-schedule-workbook.test.js",
@@ -144,7 +144,7 @@
     "test:browser:hr-structure": "npx --yes --package playwright node tests/browser/hr-structure-tree-browser-smoke.js && npx --yes --package playwright node tests/browser/hr-structure-loading-browser-smoke.js",
     "test:browser:performance": "npm exec --yes --package=playwright -c \"node tests/browser/hr-structure-loading-browser-smoke.js && node tests/browser/catalog-thumbnail-browser-smoke.js\"",
     "test:browser:hr-today": "npm exec --yes --package=playwright -c \"node tests/browser/hr-today-metrics-browser-smoke.js\"",
-    "test:browser:hr-team": "npm exec --yes --package=playwright -c \"node tests/browser/hr-team-browser-smoke.js\" && npm exec --yes --package=playwright -c \"node tests/browser/checkin-journal-browser-smoke.js\"",
+    "test:browser:hr-team": "npm exec --yes --package=playwright -c \"node tests/browser/hr-team-browser-smoke.js\" && npm exec --yes --package=playwright -c \"node tests/browser/checkin-journal-browser-smoke.js\" && npm exec --yes --package=playwright -c \"node tests/browser/hr-staff-deletion-browser-smoke.js\" && npm exec --yes --package=playwright -c \"node tests/browser/hr-team-menu-browser-smoke.js\"",
     "test:browser:hr-payroll-profiles": "npm exec --yes --package=playwright -c \"node tests/browser/hr-payroll-profiles-browser-smoke.js\"",
     "test:browser:omni": "npm exec --yes --package=playwright -c \"node tests/browser/omni-responsive-browser-smoke.js\"",
     "test:browser:omni:zoom": "npm exec --yes --package=playwright -c \"node tests/browser/omni-native-zoom-smoke.js\"",
@@ -180,6 +180,7 @@
     "test:integration:hr-disposable": "node --test tests/integration/hr-disposable.integration.test.js",
     "test:integration:hr-resources": "node --test tests/integration/hr-staff-resources.integration.test.js",
     "test:integration:hr-disposable:isolated": "node scripts/run-isolated-postgres-tests.js hr",
+    "test:integration:staff-deletion:isolated": "node scripts/run-isolated-postgres-tests.js staff-deletion",
     "test:integration:permissions:isolated": "node scripts/run-isolated-postgres-tests.js permissions",
     "test:integration:finance:isolated": "node scripts/run-isolated-postgres-tests.js finance",
     "test:integration:payroll-profiles:isolated": "node scripts/run-isolated-postgres-tests.js payroll",

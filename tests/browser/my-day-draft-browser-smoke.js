@@ -61,17 +61,18 @@ const BUSINESS_PROFILE = {
 };
 
 function cabinetProjection(state = {}) {
+    const seedTasks = state.seedTasks || [];
     return {
         success: true,
-        all: state.createdTask ? [state.createdTask] : [],
+        all: [...seedTasks, ...(state.createdTask ? [state.createdTask] : [])],
         activeMyDay: [],
-        today: [],
-        overdue: [],
+        today: seedTasks.filter(task => task.bucket === 'today'),
+        overdue: seedTasks.filter(task => task.bucket === 'overdue'),
         waiting: [],
         deferred: [],
         private: [],
         completedHistory: [],
-        planning: {},
+        planning: { all: seedTasks },
         preferences: {},
         stats: { active: 0, today: 0, overdue: 0, completedToday: 0 }
     };
@@ -226,6 +227,110 @@ async function assertDraftSurvivesDueChanges(page, state) {
     assert.equal(await date.inputValue(), '2099-05-31', 'custom date remains selected');
     assert.ok(state.cabinetRequests > beforeCustomRefresh, 'custom date runs a background projection GET');
 }
+
+async function assertComposerListenersStayBoundOnce(page, state) {
+    const session = await page.context().newCDPSession(page);
+    const input = await session.send('Runtime.evaluate', {
+        expression: "document.getElementById('cabinetTaskTitle')",
+        objectGroup: 'my-day-listener-check'
+    });
+    const countInputListeners = async () => {
+        const result = await session.send('DOMDebugger.getEventListeners', { objectId: input.result.objectId });
+        return result.listeners.filter(listener => listener.type === 'input').length;
+    };
+    const initialCount = await countInputListeners();
+    const initialCabinetRequests = state.cabinetRequests;
+    assert.equal(initialCount, 1, 'composer title starts with one input handler');
+    for (let index = 0; index < 20; index += 1) {
+        await page.locator(`[data-cabinet-due-preset="${index % 2 ? 'today' : 'tomorrow'}"]`).click();
+    }
+    assert.equal(await countInputListeners(), 1, 'partial date refreshes do not multiply composer input handlers');
+    assert.equal(state.cabinetRequests, initialCabinetRequests, 'date toggles do not multiply projection requests');
+    await session.detach();
+}
+
+async function assertLargeListsStayAccessible(page, state) {
+    const dates = await page.evaluate(() => ({
+        today: window.TaskCreate.todayStr(),
+        overdue: new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10)
+    }));
+    state.seedTasks = Array.from({ length: 160 }, (_, index) => ({
+        id: 20000 + index,
+        title: `Synthetic task ${index}`,
+        status: 'todo',
+        priority: 'normal',
+        deadline: `${index % 2 ? dates.overdue : dates.today}T10:00:00Z`,
+        bucket: index % 2 ? 'overdue' : 'today'
+    }));
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('[data-cabinet-day-more]');
+    assert.equal(await page.locator('.cabinet-day-primary .cabinet-task-card').count(), 32);
+    assert.equal(await page.locator('.cabinet-day-secondary [data-cabinet-overdue-triage-row]').count(), 32);
+    for (let index = 0; index < 2; index += 1) {
+        await page.locator('[data-cabinet-day-more]').click();
+        await page.locator('[data-cabinet-overdue-more]').click();
+    }
+    assert.equal(await page.locator('.cabinet-day-primary .cabinet-task-card').count(), 80);
+    assert.equal(await page.locator('.cabinet-day-secondary [data-cabinet-overdue-triage-row]').count(), 80);
+    assert.equal(await page.locator('[data-cabinet-day-more], [data-cabinet-overdue-more]').count(), 0);
+}
+
+async function assertCardDetailsPreserveComposer(page, state) {
+    const title = page.locator('#cabinetTaskTitle');
+    const draft = 'Keep this draft while opening task details';
+    await title.fill(draft);
+    const composer = await title.evaluateHandle(element => element.closest('#cabinetTaskComposer'));
+    const requestsBefore = state.cabinetRequests;
+    for (const column of ['primary', 'secondary']) {
+        const card = page.locator(`.cabinet-day-${column} .cabinet-task-card`).first();
+        const toggle = card.locator('[data-cabinet-task-action="toggle-my-day-details"]');
+        await toggle.click();
+        assert.equal(await card.getAttribute('data-my-day-details-expanded'), 'true', `${column} details expand`);
+        assert.equal(await toggle.getAttribute('aria-expanded'), 'true', `${column} toggle announces expanded state`);
+        assert.equal(await title.inputValue(), draft, `${column} detail toggle keeps the draft`);
+        assert.ok(await title.evaluate((element, original) => element.closest('#cabinetTaskComposer') === original, composer),
+            `${column} detail toggle keeps the composer node`);
+        await toggle.click();
+        assert.equal(await card.getAttribute('data-my-day-details-expanded'), 'false', `${column} details collapse`);
+        assert.equal(await title.inputValue(), draft, `${column} collapse keeps the draft`);
+    }
+    for (const mode of ['detailed', 'compact']) {
+        const toggle = page.locator(`[data-cabinet-my-day-view-mode="${mode}"]`);
+        await toggle.click();
+        assert.equal(await toggle.getAttribute('aria-pressed'), 'true', `${mode} view is selected`);
+        assert.equal(await title.inputValue(), draft, `${mode} view keeps the draft`);
+        assert.ok(await title.evaluate((element, original) => element.closest('#cabinetTaskComposer') === original, composer),
+            `${mode} view keeps the composer node`);
+        assert.equal(await page.locator('.cabinet-day-primary .cabinet-task-card').first().getAttribute('data-my-day-view-mode'), mode,
+            `${mode} view updates today cards`);
+        assert.equal(await page.locator('.cabinet-day-secondary .cabinet-task-card').first().getAttribute('data-my-day-view-mode'), mode,
+            `${mode} view updates overdue cards`);
+    }
+    assert.equal(state.cabinetRequests, requestsBefore, 'detail toggles do not fetch the cabinet projection');
+    await composer.dispose();
+}
+
+async function assertFocusedFetchRefreshesOverdue(page, state) {
+    const overdueDate = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+    state.seedTasks = [{
+        id: 19991,
+        title: 'Fresh overdue task from projection',
+        status: 'todo',
+        priority: 'normal',
+        deadline: `${overdueDate}T10:00:00Z`,
+        bucket: 'overdue'
+    }];
+    const projection = page.waitForResponse(response => {
+        const url = new URL(response.url());
+        return url.pathname === '/api/tasks/my-cabinet' && url.searchParams.get('focusDate') === '2099-06-15';
+    });
+    await page.locator('#cabinetTaskDate').fill('2099-06-15');
+    await projection;
+    await page.waitForFunction(() => document.querySelector('#cabinetMyDaySegmentPanel')?.dataset.activeOverdue === '1');
+    assert.equal(await page.locator('.cabinet-day-secondary [data-cabinet-overdue-triage-row]').count(), 1,
+        'focused projection refreshes the overdue column and count');
+}
+
 async function assertFullComposerContract(page, state) {
     const readComposer = () => page.evaluate(() => ({
         title: document.getElementById('cabinetTaskTitle')?.value || '',
@@ -394,7 +499,9 @@ async function run() {
         await page.goto(`${fixture.baseUrl}/profile?tab=myday`, { waitUntil: 'domcontentloaded' });
         await page.waitForSelector('.cabinet-shell.cabinet-command-center');
         await page.waitForSelector('#cabinetTaskTitle');
+        await assertComposerListenersStayBoundOnce(page, state);
         await assertDraftSurvivesDueChanges(page, state);
+        await assertFocusedFetchRefreshesOverdue(page, state);
         await assertFullComposerContract(page, state);
         assert.ok(state.requests.some(item => item.includes('/api/tasks/my-cabinet')), 'browser uses the My Day projection endpoint');
         assert.equal(state.taskCreatePayloads.length, 2, 'browser exercised exactly one failed and one successful create');
@@ -402,6 +509,8 @@ async function run() {
         assert.deepEqual(state.unexpectedMutations, [], 'browser issues no unapproved fixture mutation');
         assert.deepEqual(state.rootNavigations, [], 'authenticated profile fixture did not redirect to root');
         assert.deepEqual(pageErrors, [], `browser runtime has no uncaught errors: ${pageErrors.join('; ')}`);
+        await assertLargeListsStayAccessible(page, state);
+        await assertCardDetailsPreserveComposer(page, state);
         console.log('My Day draft browser smoke passed');
     } catch (error) {
         const body = await page.locator('body').innerText().catch(() => 'body unavailable');

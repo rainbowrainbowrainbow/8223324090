@@ -27,7 +27,7 @@ test('Railway release helper deploys a pushed clean artifact with manifest and m
     assert.match(script, /const DEFAULT_POST_DEPLOY_SMOKE_ATTEMPTS = 36;/);
     assert.match(script, /const DEFAULT_POST_DEPLOY_SMOKE_DELAY_MS = 5000;/);
     assert.match(script, /const DEFAULT_PROJECT = '[0-9a-f-]{36}';/);
-    assert.match(script, /RELEASE_RAILWAY_PROJECT \|\| process\.env\.RAILWAY_PROJECT_ID \|\| DEFAULT_PROJECT/);
+    assert.match(script, /RELEASE_RAILWAY_PROJECT \|\| env\.RAILWAY_PROJECT_ID \|\| DEFAULT_PROJECT/);
     assert.match(script, /assertSafeRailwayTarget\(options\)/);
     assert.match(script, /fetchLiveVersionSnapshot\(liveUrl\)/);
     assert.match(script, /assertPreDeployLiveSafety\(\{/);
@@ -44,6 +44,7 @@ test('Railway release helper deploys a pushed clean artifact with manifest and m
     assert.match(script, /unless local release version is newer than live/);
     assert.match(script, /VERSION_SMOKE_EXPECT_COMMIT: head/);
     assert.match(script, /VERSION_SMOKE_EXPECT_BRANCH: branch/);
+    assert.match(script, /VERSION_SMOKE_ALLOW_MISSING_METADATA: 'false'/);
     assert.match(script, /git archive/);
     assert.match(script, /createCleanExport/);
     assert.match(script, /validateExport/);

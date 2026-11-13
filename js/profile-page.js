@@ -396,8 +396,13 @@ function escapeHtml(str) {
 function formatDate(d) {
     if (!d) return '';
     const dt = new Date(d);
-    return dt.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    return Number.isNaN(dt.getTime()) ? 'Invalid Date' : profileDateFormatter.format(dt);
 }
+
+const profileDateFormatter = new Intl.DateTimeFormat('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' });
+const cabinetKyivDateFormatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Kyiv', year: 'numeric', month: '2-digit', day: '2-digit'
+});
 
 function profileDateOffsetStr(days = 0) {
     const d = new Date();
@@ -3725,12 +3730,7 @@ function cabinetKyivDateKey(value = new Date()) {
     const date = value instanceof Date ? value : new Date(value);
     if (Number.isNaN(date.getTime())) return '';
     try {
-        const parts = new Intl.DateTimeFormat('en-CA', {
-            timeZone: 'Europe/Kyiv',
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit'
-        }).formatToParts(date).reduce((acc, part) => {
+        const parts = cabinetKyivDateFormatter.formatToParts(date).reduce((acc, part) => {
             if (part.type !== 'literal') acc[part.type] = part.value;
             return acc;
         }, {});
@@ -4574,7 +4574,8 @@ function setCabinetMyDayViewMode(mode = 'compact', options = {}) {
         button.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
     if (options.rerender === true && typeof document !== 'undefined' && typeof document.getElementById === 'function') {
-        renderCabinetActiveTab();
+        rerenderCabinetMyDaySegmentPanel({ includeViewMode: true });
+        document.querySelector(`[data-cabinet-my-day-view-mode="${cabinetMyDayViewMode}"]`)?.focus({ preventScroll: true });
     }
     return cabinetMyDayViewMode;
 }
@@ -4591,7 +4592,23 @@ function toggleCabinetMyDayTaskDetails(taskId, options = {}) {
     if (expanded) expandedCabinetMyDayTaskIds.add(id);
     else expandedCabinetMyDayTaskIds.delete(id);
     if (options.rerender === true && typeof document !== 'undefined' && typeof document.getElementById === 'function') {
-        renderCabinetActiveTab();
+        const card = options.card;
+        const task = findCabinetTask(id);
+        if (card?.isConnected && task && card.dataset.taskId === String(id)) {
+            const isOverdue = card.hasAttribute('data-cabinet-overdue-triage-row');
+            const markup = isOverdue
+                ? renderCabinetOverdueTriageRow(task)
+                : renderCabinetTaskCard(task, false, {
+                    surface: 'myday',
+                    activeInlineTaskId: card.classList.contains('is-inline-checklist-active') ? id : 0,
+                    allowInlineChecklist: true
+                });
+            card.insertAdjacentHTML('beforebegin', markup);
+            const updatedCard = card.previousElementSibling;
+            card.remove();
+            attachProfileListeners();
+            updatedCard?.querySelector('[data-cabinet-task-action="toggle-my-day-details"]')?.focus({ preventScroll: true });
+        }
     }
     return expandedCabinetMyDayTaskIds.has(id);
 }
@@ -4854,10 +4871,46 @@ function renderCabinetMyDaySegmentPanelFromState(state = getCabinetMyDayState())
             </div>`;
 }
 
-function rerenderCabinetMyDaySegmentPanel() {
+function rerenderCabinetMyDaySegmentPanel(options = {}) {
     const panel = document.getElementById?.('cabinetMyDaySegmentPanel');
     if (!panel) return false;
-    panel.outerHTML = renderCabinetMyDaySegmentPanelFromState();
+    const primary = panel.querySelector('.cabinet-day-primary');
+    if (!primary) return false;
+    const state = getCabinetMyDayState();
+    const focusedTasks = cabinetFocusedMyDayTasks(state);
+    const focusedMeta = cabinetFocusedMyDayMeta(state);
+    const focusedDropOptions = state.selectedDuePreset === 'today'
+        ? {
+            dropTarget: 'today',
+            dropHint: 'Перетягніть сюди, щоб запланувати на сьогодні',
+            dropLabel: 'Сьогодні: перетягніть сюди прострочену задачу, щоб перенести її на сьогодні'
+        }
+        : {};
+    primary.innerHTML = renderCabinetMyDayTodayPrimary({
+        isAllMode: false,
+        allGroups: [],
+        focusedMeta,
+        focusedTasks,
+        focusedDropOptions,
+        overdue: cabinetMyDayOverdueTasks(),
+        waiting: cabinetList('waiting'),
+        deferred: cabinetList('deferred'),
+        privateTasks: cabinetList('private'),
+        privatePreview: cabinetList('private').slice(0, 4)
+    });
+    if (options.includeViewMode === true) {
+        const toolbar = panel.querySelector('.cabinet-day-workspace-toolbar');
+        const secondary = panel.querySelector('.cabinet-day-secondary');
+        if (toolbar) toolbar.innerHTML = renderCabinetMyDayListModeToggle();
+        if (secondary) {
+            const overdue = cabinetMyDayOverdueTasks();
+            secondary.innerHTML = renderCabinetOverdueTriageList(overdue);
+            panel.dataset.activeOverdue = String(overdue.length);
+        }
+    }
+    panel.dataset.activeToday = String(focusedTasks.length);
+    panel.dataset.focusedPreset = state.selectedDuePreset;
+    panel.setAttribute('aria-label', `Мій день: ${focusedMeta.statLabel || focusedMeta.title || ''} і прострочені`);
     attachProfileListeners();
     return true;
 }
@@ -4872,7 +4925,17 @@ async function refreshCabinetFocusedDatePanel(options = {}) {
             focusDate
         });
     }
-    if (options.rerender !== false && activeTab === 'myday') rerenderCabinetMyDaySegmentPanel();
+    if (options.rerender !== false && activeTab === 'myday') {
+        if (focusDate) {
+            const overduePanel = document.querySelector?.('#cabinetMyDaySegmentPanel .cabinet-day-secondary');
+            if (overduePanel) {
+                const overdue = cabinetMyDayOverdueTasks();
+                overduePanel.innerHTML = renderCabinetOverdueTriageList(overdue);
+                overduePanel.parentElement.dataset.activeOverdue = String(overdue.length);
+            }
+        }
+        rerenderCabinetMyDaySegmentPanel();
+    }
 }
 
 function setCabinetDuePreset(preset = 'today', options = {}) {
@@ -5497,6 +5560,9 @@ async function generateCabinetSubtasks() {
 }
 
 function bindCabinetSubtasks() {
+    const composer = document.getElementById('cabinetTaskComposer');
+    if (!composer || composer.dataset.cabinetSubtasksBound === 'true') return;
+    composer.dataset.cabinetSubtasksBound = 'true';
     document.getElementById('cabinetDecompositionMode')?.addEventListener('change', event => setCabinetDecompositionMode(event.target.value));
     document.getElementById('cabinetSubtaskDraftBtn')?.addEventListener('click', generateCabinetSubtasks);
     document.getElementById('cabinetApplySavedTemplateBtn')?.addEventListener('click', applySelectedCabinetSavedTemplate);
@@ -6989,6 +7055,8 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
 
 function renderCabinetSection(title, list, emptyText, compact = false, options = {}) {
     const visibleList = options.keepOrder ? [...list] : sortCabinetTasksForDisplay(list);
+    const visibleLimit = Number(options.visibleLimit || 0);
+    const renderedList = visibleLimit > 0 ? visibleList.slice(0, visibleLimit) : visibleList;
     const dropTarget = options.dropTarget ? String(options.dropTarget) : '';
     const sectionId = normalizeCabinetAllGroupId(options.sectionId || '');
     const isCollapsible = Boolean(options.collapsible && sectionId);
@@ -7021,8 +7089,11 @@ function renderCabinetSection(title, list, emptyText, compact = false, options =
         : `<h3>${escapeHtml(title)}</h3>`;
     const cardOptions = options.cardOptions || {};
     const bodyContent = visibleList.length
-        ? (isCollapsed ? '' : visibleList.map(task => renderCabinetTaskCard(task, compact, cardOptions)).join(''))
+        ? (isCollapsed ? '' : renderedList.map(task => renderCabinetTaskCard(task, compact, cardOptions)).join(''))
         : (isCollapsed ? '' : `<div class="cabinet-empty">${escapeHtml(emptyText)}</div>`);
+    const moreButton = visibleLimit > 0 && visibleList.length > renderedList.length && !isCollapsed
+        ? `<button type="button" class="cabinet-completion-all" data-cabinet-day-more="${escapeHtml(options.moreKey || '')}">Показати ще · +${Math.min(32, visibleList.length - renderedList.length)}</button>`
+        : '';
     const bodyAttrs = isCollapsible
         ? ` id="${escapeHtml(sectionBodyId)}"${isCollapsed ? ' hidden' : ''}`
         : '';
@@ -7035,7 +7106,7 @@ function renderCabinetSection(title, list, emptyText, compact = false, options =
                     <span>${visibleList.length}</span>
                 </div>
             </div>
-            <div class="cabinet-section-body"${bodyAttrs}>${bodyContent}</div>
+            <div class="cabinet-section-body"${bodyAttrs}>${bodyContent}${moreButton}</div>
         </section>`;
 }
 
@@ -7469,6 +7540,8 @@ function renderCabinetLoadNotice() {
         </div>`;
 }
 
+const cabinetDayVisibleLimits = new Map();
+
 function renderCabinetMyDayTodayPrimary(context = {}) {
     const {
         isAllMode = false,
@@ -7478,9 +7551,18 @@ function renderCabinetMyDayTodayPrimary(context = {}) {
         focusedDropOptions = {}
     } = context;
     if (isAllMode) return renderCabinetAllMyDayGroups(allGroups, { allowInlineChecklist: true });
-    const activeInlineTaskId = cabinetResolveActiveInlineTaskId(focusedTasks);
+    const state = getCabinetMyDayState();
+    const moreKey = `${state.selectedDuePreset}:${state.selectedDueDate || ''}`;
+    const visibleLimit = cabinetDayVisibleLimits.get(moreKey) || 32;
+    const visibleTasks = sortCabinetTasksForDisplay(focusedTasks).slice(0, visibleLimit);
+    const preferredInlineTaskId = cabinetResolveActiveInlineTaskId(focusedTasks);
+    const activeInlineTaskId = visibleTasks.some(task => cabinetTaskNumericId(task) === preferredInlineTaskId)
+        ? preferredInlineTaskId
+        : cabinetResolveActiveInlineTaskId(visibleTasks);
     return renderCabinetSection(focusedMeta.title, focusedTasks, focusedMeta.emptyText, false, {
         ...focusedDropOptions,
+        visibleLimit,
+        moreKey,
         cardOptions: {
             surface: 'myday',
             activeInlineTaskId,
@@ -7534,9 +7616,12 @@ function renderCabinetOverdueTriageRow(task = {}) {
     });
 }
 
+let cabinetOverdueVisibleLimit = 32;
+
 function renderCabinetOverdueTriageList(tasks = []) {
     const visibleList = sortCabinetTasksForDisplay(tasks);
     const count = visibleList.length;
+    const renderedList = visibleList.slice(0, cabinetOverdueVisibleLimit);
     return `<section class="cabinet-task-section cabinet-overdue-triage ${count ? '' : 'is-compact-empty'}" data-cabinet-overdue-triage>
         <div class="cabinet-section-head">
             <h3>Прострочено · ${count}</h3>
@@ -7546,8 +7631,9 @@ function renderCabinetOverdueTriageList(tasks = []) {
         </div>
         <div class="cabinet-overdue-triage-list">
             ${count
-                ? visibleList.map(renderCabinetOverdueTriageRow).join('')
+                ? renderedList.map(renderCabinetOverdueTriageRow).join('')
                 : '<div class="cabinet-empty">Немає прострочених задач.</div>'}
+            ${count > renderedList.length ? `<button type="button" class="cabinet-completion-all" data-cabinet-overdue-more>Показати ще · +${Math.min(32, count - renderedList.length)}</button>` : ''}
             ${renderCabinetBucketMore('overdue', 'Показати ще прострочені')}
         </div>
     </section>`;
@@ -8374,7 +8460,7 @@ async function handleCabinetTaskActionClick(event) {
     }
 
     if (action === 'toggle-my-day-details') {
-        toggleCabinetMyDayTaskDetails(taskId, { rerender: true });
+        toggleCabinetMyDayTaskDetails(taskId, { rerender: true, card: button.closest('.cabinet-task-card') });
         return;
     }
 
@@ -9865,6 +9951,26 @@ function attachProfileListeners() {
             void loadCabinetBucketPage(button);
         });
     });
+    document.querySelectorAll('[data-cabinet-day-more]').forEach(button => {
+        if (button.dataset.cabinetDayMoreBound === 'true') return;
+        button.dataset.cabinetDayMoreBound = 'true';
+        button.addEventListener('click', () => {
+            const key = button.dataset.cabinetDayMore;
+            cabinetDayVisibleLimits.set(key, (cabinetDayVisibleLimits.get(key) || 32) + 32);
+            rerenderCabinetMyDaySegmentPanel();
+        });
+    });
+    document.querySelectorAll('[data-cabinet-overdue-more]').forEach(button => {
+        if (button.dataset.cabinetOverdueMoreBound === 'true') return;
+        button.dataset.cabinetOverdueMoreBound = 'true';
+        button.addEventListener('click', () => {
+            cabinetOverdueVisibleLimit += 32;
+            const current = document.querySelector('[data-cabinet-overdue-triage]');
+            if (!current) return;
+            current.outerHTML = renderCabinetOverdueTriageList(cabinetMyDayOverdueTasks());
+            attachProfileListeners();
+        });
+    });
     document.querySelectorAll('[data-cabinet-priority-preset]').forEach(button => {
         if (button.dataset.cabinetPriorityBound === 'true') return;
         button.dataset.cabinetPriorityBound = 'true';
@@ -9882,8 +9988,7 @@ function attachProfileListeners() {
             setCabinetDuePreset('custom', { rerender: true });
             const focusDate = cabinetSelectedDueDate();
             if (!focusDate) return;
-            refreshMyCabinetTab({ silent: true, keepExistingOnError: true })
-                .then(() => rerenderCabinetMyDaySegmentPanel())
+            refreshCabinetFocusedDatePanel()
                 .catch(error => console.warn('Profile cabinet custom focus refresh failed', error));
         });
     }

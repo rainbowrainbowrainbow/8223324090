@@ -711,12 +711,14 @@ function renderCurrentFinanceMode() {
 
 function renderTransactionTable() {
     const tbody = document.getElementById('transTableBody');
+    const canManageTransactions = financeCanManageTransactions();
+    const actionHeader = document.getElementById('transActionHeader');
+    if (actionHeader) actionHeader.hidden = !canManageTransactions;
     if (!FinState.transactions.length) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--gray-400);padding:24px">Немає транзакцій за період</td></tr>';
+        tbody.innerHTML = `<tr><td colspan="${canManageTransactions ? 8 : 7}" style="text-align:center;color:var(--gray-400);padding:24px">Немає транзакцій за період</td></tr>`;
         return;
     }
 
-    const canManageTransactions = financeCanManageTransactions();
     tbody.innerHTML = FinState.transactions.map(t => `
         <tr${canManageTransactions ? ` onclick="editTransaction(${t.id})" title="Натисніть для редагування"` : ''}>
             <td>${formatDate(t.date)}</td>
@@ -726,6 +728,7 @@ function renderTransactionTable() {
             <td class="fin-amount-${t.type}">${t.type === 'income' ? '+' : '-'}${formatMoney(t.amount)}</td>
             <td>${t.paymentMethod ? `<span class="fin-payment-badge">${PAYMENT_LABELS[t.paymentMethod] || escapeHtml(t.paymentMethod)}</span>` : '—'}</td>
             <td>${escapeHtml(t.createdBy) || '—'}</td>
+            ${canManageTransactions ? `<td><button type="button" class="btn-page-secondary fin-transaction-edit" onclick="event.stopPropagation(); editTransaction(${t.id}, this)">Редагувати</button></td>` : ''}
         </tr>
     `).join('');
 }
@@ -2217,7 +2220,9 @@ function isAccountModalDirty() {
     return getAccountModalState() !== _accountModalInitialState;
 }
 
-function openTransModal(id) {
+let transEditTrigger = null;
+
+function openTransModal(id, trigger = null) {
     if (!financeCanManageTransactions()) {
         showNotification('Недостатньо прав для керування фінансовими транзакціями', 'error');
         return;
@@ -2251,8 +2256,10 @@ function openTransModal(id) {
     }
 
     _transEditInitialState = getTransEditState();
+    transEditTrigger = trigger;
     modal.classList.remove('hidden');
     if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.remember(modal);
+    if (trigger) document.getElementById('editType')?.focus();
 }
 
 async function closeTransModal(force = false) {
@@ -2261,6 +2268,8 @@ async function closeTransModal(force = false) {
         modal?.classList.add('hidden');
         FinState.editingId = null;
         _transEditInitialState = getTransEditState();
+        if (transEditTrigger?.isConnected) transEditTrigger.focus();
+        transEditTrigger = null;
     };
     if (window.UnsafeDismissGuard && modal) {
         return window.UnsafeDismissGuard.attemptCloseEditableSurface(modal, closeNow, {
@@ -2506,8 +2515,8 @@ async function archiveFinanceCategory() {
 }
 
 // Global functions for onclick
-window.editTransaction = function(id) {
-    openTransModal(id);
+window.editTransaction = function(id, trigger) {
+    openTransModal(id, trigger);
 };
 
 window.confirmDeleteTransaction = function(id) {

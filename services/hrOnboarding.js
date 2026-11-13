@@ -616,6 +616,7 @@ async function syncOnboardingTasks(progress, staff, responsible, actor, options 
             `SELECT *
              FROM tasks
              WHERE source_type = $1 AND source_id = $2
+               AND COALESCE(business_context, 'event_genix') = 'event_genix'
              ORDER BY CASE WHEN COALESCE(status, 'todo') NOT IN ('done','completed','archived','cancelled') THEN 0 ELSE 1 END, id ASC
              LIMIT 1`,
             [ONBOARDING_TASK_SOURCE_TYPE, sourceId]
@@ -642,7 +643,7 @@ async function syncOnboardingTasks(progress, staff, responsible, actor, options 
                      checklist_template_key = $8,
                      updated_at = NOW(),
                      version = COALESCE(version, 1) + 1
-                 WHERE id = $1
+                 WHERE id = $1 AND COALESCE(business_context, 'event_genix') = 'event_genix'
                  RETURNING *`,
                 [row.id, title, description, spec.priority, responsible.label, responsible.id, String(progress.id), checklistTemplateKey]
             );
@@ -706,6 +707,7 @@ async function syncOnboardingTasks(progress, staff, responsible, actor, options 
             related_entity_type: 'onboarding_progress',
             related_entity_id: String(progress.id),
             source_module: 'hr_onboarding',
+            business_context: 'event_genix',
             checklist_template_key: checklistTemplateKey,
             created_by: actor?.username || 'system',
             created_by_user_id: normalizeUserId(actor),
@@ -775,7 +777,7 @@ async function assignOnboardingResponsible(staffId, responsibleUserId, actor, op
 
         let responsible;
         try {
-            responsible = await getAssignableTaskOwner(responsibleUserId, { pool: db, actor });
+            responsible = await getAssignableTaskOwner(responsibleUserId, { pool: db, actor, businessContext: 'event_genix' });
         } catch (err) {
             err.message = 'Відповідального не знайдено або його не можна призначити на задачі';
             throw err;

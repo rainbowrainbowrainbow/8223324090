@@ -119,10 +119,33 @@ async function main() {
     const origin = `http://127.0.0.1:${server.address().port}`;
     let browser;
     try {
-        browser = await chromium.launch({ headless: true,
-            executablePath:'C:\\Users\\Plotva\\AppData\\Local\\ms-playwright\\chromium-1243\\chrome-win64\\chrome.exe' });
+        browser = await chromium.launch({ headless: true });
         const page = await browser.newPage({viewport:{width:1440,height:1000}});
         await page.route('**/*', route => route.request().url().startsWith(origin + '/') ? route.continue() : route.abort());
+        if (process.argv.includes('--transaction-editor')) {
+            await page.setViewportSize({ width: 390, height: 844 });
+            await page.goto(origin + '/finance');
+            await page.getByRole('button', { name: 'Рух коштів', exact: true }).click();
+            await page.getByRole('button', { name: 'Транзакції', exact: true }).click();
+            const edit = page.getByRole('button', { name: 'Редагувати', exact: true }).first();
+            await edit.focus();
+            for (const key of ['Enter', 'Space']) {
+                await edit.press(key);
+                assert.equal(await page.locator('#transEditModal').isVisible(), true);
+                assert.equal(await page.locator('#editType').evaluate(el => el === document.activeElement), true);
+                assert.equal(await page.locator('#editAmount').inputValue(), '3200');
+                await page.locator('#cancelTransBtn').click();
+                assert.equal(await page.locator('#transEditModal').isVisible(), false);
+                assert.equal(await edit.evaluate(el => el === document.activeElement), true);
+            }
+            await page.locator('#tabTransactions').screenshot({ path: path.join(output, 'transaction-editor-mobile.png') });
+            await page.goto(origin + '/finance?tab=transactions&fixtureViewer=1');
+            await page.locator('#transTableBody tr').first().waitFor();
+            assert.equal(await page.getByRole('button', { name: 'Редагувати', exact: true }).count(), 0);
+            assert.ok(requests.every(request => request.method === 'GET'));
+            console.log('Transaction editor keyboard and read-only checks passed.');
+            return;
+        }
         await page.goto(`${origin}/finance`);
         await page.locator('#faExecutiveZone .fa-exec-card').first().waitFor();
         assert.ok(await page.locator('#dateFromFilter').isVisible());

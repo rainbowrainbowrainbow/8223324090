@@ -12,6 +12,8 @@ const {
     confirmationValue,
     manifestHash,
     migrationSqlHash,
+    STAFF_DELETION_PATHS,
+    STAFF_DELETION_CI_HASH,
     PERFORMANCE_CI_CHANGED_PATHS,
     PERFORMANCE_CI_WORKFLOW_HASHES,
     PERFORMANCE_CI_FAILED_SHA,
@@ -42,6 +44,8 @@ const {
     runAuthorizedReleaseStage,
     releaseCommandPlan,
     resolveSpawnCommand,
+    waitForProductionCi,
+    withoutReleaseOverrides,
     resumeAuthorizedQa,
     writeBlockFile
 } = require('../scripts/production-block-controller');
@@ -454,10 +458,65 @@ test('manifest and reports redact secrets and database URLs', () => {
 test('release plan requires exact-SHA CI, helper deploy, version proof, and no raw Railway command', () => {
     const plan = releaseCommandPlan(manifest()).join('\n');
     assert.match(plan, /gh run watch <exact-sha-run> --exit-status/);
+    assert.match(plan, /gh run watch <exact-sha-runtime-artifact-run> --exit-status/);
     assert.match(plan, /npm run release:railway-up/);
     assert.match(plan, /npm run version:smoke/);
     assert.match(plan, /npm run release:timeline-proof/);
     assert.doesNotMatch(plan, /(^|\n)railway\s+up\b/);
+});
+
+test('release commands isolate inherited overrides while preserving local tooling and authentication', () => {
+    const env = {
+        RELEASE_DEPLOY_BRANCH: 'codex/eventgenix-production',
+        RELEASE_RAILWAY_UP_PARSE_ONLY: 'true',
+        VERSION_SMOKE_ALLOW_MISSING_METADATA: 'true',
+        CODEX_PRODUCTION_BLOCK_ID: 'old-block',
+        NPM_CONFIG_SKIP_REMOTE_CHECK: 'true',
+        npm_config_branch: 'true',
+        Path: 'portable-toolchain',
+        GIT_BASH_PATH: 'portable-bash',
+        GH_TOKEN: 'fixture',
+        npm_config_cache: 'local-cache'
+    };
+    assert.deepEqual(withoutReleaseOverrides(env), {
+        Path: 'portable-toolchain',
+        GIT_BASH_PATH: 'portable-bash',
+        GH_TOKEN: 'fixture',
+        npm_config_cache: 'local-cache'
+    });
+    assert.equal(env.RELEASE_DEPLOY_BRANCH, 'codex/eventgenix-production');
+});
+
+test('production CI waits on the requested workflow and verifies exact successful push evidence', () => {
+    const workflowName = 'Runtime artifact smoke';
+    const evidence = {
+        headSha: RELEASE_SHA, headBranch: 'codex/eventgenix-production', workflowName,
+        event: 'push', status: 'completed', conclusion: 'success'
+    };
+    const calls = [];
+    const dependencies = {
+        findExactCiRun(sha, options) {
+            assert.equal(sha, RELEASE_SHA);
+            assert.deepEqual(options, { strictProduction: true, workflowFile: 'runtime-artifact.yml', workflowName });
+            return { databaseId: 42 };
+        },
+        commandResult(command, args) {
+            assert.equal(command, 'gh');
+            assert.equal(args[0], 'run');
+            assert.equal(args[2], '42');
+            calls.push(args[1]);
+            return JSON.stringify(evidence);
+        }
+    };
+    assert.deepEqual(waitForProductionCi(RELEASE_SHA, 'runtime-artifact.yml', workflowName, dependencies).evidence, evidence);
+    assert.deepEqual(calls, ['watch', 'view']);
+    evidence.workflowName = 'CI';
+    assert.throws(() => waitForProductionCi(RELEASE_SHA, 'runtime-artifact.yml', workflowName, dependencies),
+        { code: 'PRODUCTION_BLOCK_CI_IDENTITY_INVALID' });
+    evidence.workflowName = workflowName;
+    evidence.conclusion = 'failure';
+    assert.throws(() => waitForProductionCi(RELEASE_SHA, 'runtime-artifact.yml', workflowName, dependencies),
+        { code: 'PRODUCTION_BLOCK_CI_INCOMPLETE' });
 });
 
 test('production controller passes the authorized branch to timeline proof', () => {
@@ -842,6 +901,44 @@ function successfulHrPayrollCi() {
             'HR and payroll PostgreSQL integration', 'My Day PostgreSQL integration', 'My Day browser interactions'
         ].map(name => ({ name, status: 'completed', conclusion: 'success' })) };
 }
+
+test('staff deletion CI release pins exact scope, content and prepared SHA', async t => {
+    const options = { protectedWorkflow: 'staff-deletion-ci' };
+    const scope = {
+        live: { commitSha: 'a6e37b311202fbe7929118aa9c5c3c0422ab0211', version: '0.83.40' },
+        releaseVersion: '0.83.41', changedPaths: STAFF_DELETION_PATHS,
+        workflowHashes: { '.github/workflows/ci.yml': STAFF_DELETION_CI_HASH },
+        staffDeletionGate: { parent: '8290ba7705971a94c0e9b1a1062993b25ce2037c', changedPaths: [
+            'docs/STAFF_DELETION_RELEASE_REVIEW_2026-11-12.md', 'scripts/production-block-controller.js',
+            'scripts/production-block-policy.js', 'tests/production-block-controller.test.js'
+        ] }
+    };
+    const value = manifest(options, scope);
+    assert.equal(validateManifest(value).preparedRelease.sha, HEAD_SHA);
+    for (const override of [
+        { changedPaths: [...scope.changedPaths, 'routes/auth.js'] },
+        { changedPaths: scope.changedPaths.filter(file => file !== 'routes/hr.js') },
+        { live: { ...scope.live, commitSha: LIVE_SHA } },
+        { staffDeletionGate: { ...scope.staffDeletionGate, parent: LIVE_SHA } },
+        { staffDeletionGate: { ...scope.staffDeletionGate, changedPaths: ['routes/hr.js'] } },
+        { releaseVersion: '0.83.42' },
+        { migrations: [{ file: 'db/migrations/999_test.sql', sql: 'CREATE TABLE test(id int);' }] },
+        { workflowHashes: { '.github/workflows/ci.yml': 'f'.repeat(64) } }
+    ]) assert.throws(() => manifest(options, { ...scope, ...override }));
+    assert.throws(() => manifest({ ...options, qaScope: { enabled: true, kind: 'finance' } }, scope));
+    assert.throws(() => manifest({}, scope), error => error.code === 'PRODUCTION_BLOCK_RED_PATHS');
+    const tampered = structuredClone(value);
+    tampered.preparedRelease.version = '0.83.42';
+    tampered.manifestHash = manifestHash(tampered);
+    assert.throws(() => validateManifest(tampered), error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+    const file = blockFile(t, value);
+    const execute = drift => executeAction({ blockFile: file, confirmation: confirmationValue(value), dryRun: true },
+        dryRuntime({ drift: async () => ({ head: HEAD_SHA, changedPaths: scope.changedPaths,
+            descendsFromBase: true, migrations: [], workflowHashes: scope.workflowHashes, ...drift }) }));
+    assert.equal((await execute()).success, true);
+    await assert.rejects(execute({ head: RELEASE_SHA }), error => error.code === 'PRODUCTION_BLOCK_SHA_DRIFT');
+    await assert.rejects(execute({ workflowHashes: {} }), error => error.code === 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
+});
 
 test('performance CI release pins the workflows and its single prepared release scope', async t => {
     const options = { protectedWorkflow: 'performance-ci-release', maxReleaseAttempts: 1 };

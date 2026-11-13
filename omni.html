@@ -11,13 +11,13 @@
     <title>Event Genix | OmniClaw</title>
     <meta name="description" content="Event Genix — OmniClaw омніканальний inbox">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.83.38">
-    <link rel="stylesheet" href="css/layout.css?v=0.83.38">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.83.38">
-    <link rel="stylesheet" href="css/pages-shell.css?v=0.83.38">
-    <link rel="stylesheet" href="css/modals.css?v=0.83.38">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.83.38">
-    <link rel="stylesheet" href="css/responsive.css?v=0.83.38">
+    <link rel="stylesheet" href="css/base.css?v=0.83.45">
+    <link rel="stylesheet" href="css/layout.css?v=0.83.45">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.83.45">
+    <link rel="stylesheet" href="css/pages-shell.css?v=0.83.45">
+    <link rel="stylesheet" href="css/modals.css?v=0.83.45">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.83.45">
+    <link rel="stylesheet" href="css/responsive.css?v=0.83.45">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -1251,6 +1251,14 @@
             border-color: var(--accent-color, #F5C842);
         }
 
+        @supports (field-sizing: content) {
+            .omni-chat-input textarea {
+                field-sizing: content;
+                width: 100%;
+                overflow-y: auto;
+            }
+        }
+
         .omni-reply-toggle {
             min-height: 42px;
             display: inline-flex;
@@ -2106,7 +2114,7 @@
         }
 
     </style>
-    <link rel="stylesheet" href="css/omni-workspace.css?v=0.83.38">
+    <link rel="stylesheet" href="css/omni-workspace.css?v=0.83.45">
 </head>
 <body data-page-group="system">
     <script>
@@ -2393,12 +2401,12 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.83.38"></script>
-    <script src="js/api.js?v=0.83.38"></script>
-    <script src="js/auth.js?v=0.83.38"></script>
-    <script src="js/components/sidebar.js?v=0.83.38"></script>
+    <script src="js/config.js?v=0.83.45"></script>
+    <script src="js/api.js?v=0.83.45"></script>
+    <script src="js/auth.js?v=0.83.45"></script>
+    <script src="js/components/sidebar.js?v=0.83.45"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=0.83.38"></script>
+    <script src="js/ws.js?v=0.83.45"></script>
     <script>
     /**
      * OmniClaw Page — omnichannel inbox UI
@@ -2492,6 +2500,7 @@
         const statusSelect = $('omniStatusSelect');
         const statusFilterValue = $('omniStatusFilterValue');
         const input = $('omniInput');
+        const nativeComposerSizing = window.CSS?.supports?.('field-sizing', 'content') === true;
         const sendBtn = $('omniSendBtn');
         const replyExpectedEl = $('omniReplyExpected');
         const sendTruthEl = $('omniSendTruth');
@@ -5216,8 +5225,7 @@
             const reply = String(text || leadAssistantReplyText() || '').trim();
             if (!reply) return;
             input.value = reply;
-            input.style.height = 'auto';
-            input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+            resizeComposer();
             input.focus();
             leadAssistantNotify('Відповідь вставлено в діалог', 'success');
         }
@@ -5636,7 +5644,6 @@
             messageTotal = 0;
             isSending = false;
             input.value = '';
-            input.style.height = 'auto';
             emptyState.style.display = '';
             chatHeader.style.display = 'none';
             messages.style.display = 'none';
@@ -5667,7 +5674,6 @@
             selectedDraftKey = getOmniBusinessContext() + ':' + convId;
             const draft = conversationDrafts.get(selectedDraftKey) || { text: '', replyExpected: false };
             input.value = draft.text;
-            input.style.height = 'auto';
             isSending = pendingSends.has(selectedDraftKey);
             renderFileComposer(conv);
             assistantRequestSeq++;
@@ -5908,7 +5914,7 @@
             if (res.success && conversationDrafts.get(draftKey)?.text.trim() === text) conversationDrafts.delete(draftKey);
             if (res.success && isCurrent) {
                 input.value = '';
-                input.style.height = 'auto';
+                resizeComposer();
                 if (replyExpectedEl) replyExpectedEl.checked = false;
                 setSendFeedback(res.sendTruth || res.data?.meta?.sendTruth || {
                     status: 'provider_unknown',
@@ -6133,10 +6139,16 @@
 
         // Auto-resize textarea
         function resizeComposer() {
+            if (nativeComposerSizing) return;
+            if (!input.value) {
+                input.style.height = '';
+                return;
+            }
             input.style.height = 'auto';
-            input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+            const borderHeight = input.offsetHeight - input.clientHeight;
+            input.style.height = Math.min(input.scrollHeight + borderHeight, 120) + 'px';
         }
-        input.addEventListener('input', resizeComposer);
+        if (!nativeComposerSizing) input.addEventListener('input', resizeComposer);
         function syncOmniViewport() {
             const viewport = window.visualViewport;
             const height = viewport?.height || window.innerHeight;
@@ -6493,8 +6505,8 @@
         });
     })();
     </script>
-<script src="js/omni-telephony-workspace.js?v=0.83.38"></script>
-<script src="js/ui.js?v=0.83.38"></script>
-    <script src="js/alerts.js?v=0.83.38"></script>
+<script src="js/omni-telephony-workspace.js?v=0.83.45"></script>
+<script src="js/ui.js?v=0.83.45"></script>
+    <script src="js/alerts.js?v=0.83.45"></script>
 </body>
 </html>

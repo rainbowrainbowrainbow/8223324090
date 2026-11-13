@@ -43,8 +43,9 @@ async function listStaffMedicalBooks(staffId, db = pool) {
     const result = await db.query(
         `SELECT sc.*, sd.title AS document_title
          FROM staff_certifications sc
-         LEFT JOIN staff_documents sd ON sd.id = sc.document_id
+         LEFT JOIN staff_documents sd ON sd.id = sc.document_id AND sd.staff_id = sc.staff_id
          WHERE sc.staff_id = $1 AND sc.category = 'medical_book'
+           AND COALESCE(sc.business_context, 'event_genix') = 'event_genix'
          ORDER BY
             CASE sc.status WHEN 'active' THEN 0 WHEN 'expired' THEN 1 ELSE 2 END,
             sc.expires_at DESC NULLS LAST,
@@ -59,8 +60,9 @@ async function loadStaffMedicalBook(staffId, certificationId, db = pool) {
     const result = await db.query(
         `SELECT sc.*, sd.title AS document_title
          FROM staff_certifications sc
-         LEFT JOIN staff_documents sd ON sd.id = sc.document_id
-         WHERE sc.id = $1 AND sc.staff_id = $2 AND sc.category = 'medical_book'`,
+         LEFT JOIN staff_documents sd ON sd.id = sc.document_id AND sd.staff_id = sc.staff_id
+         WHERE sc.id = $1 AND sc.staff_id = $2 AND sc.category = 'medical_book'
+           AND COALESCE(sc.business_context, 'event_genix') = 'event_genix'`,
         [certificationId, staffId]
     );
     return medicalBookMeta(result.rows[0]);
@@ -90,6 +92,7 @@ async function findActiveMedicalBookDuplicate(staffId, issuedAt, expiresAt, excl
          FROM staff_certifications
          WHERE staff_id = $1
            AND category = 'medical_book'
+           AND COALESCE(business_context, 'event_genix') = 'event_genix'
            AND status = 'active'
            AND issued_at IS NOT DISTINCT FROM $2::date
            AND expires_at IS NOT DISTINCT FROM $3::date
@@ -125,7 +128,10 @@ async function createStaffMedicalBook(staffId, payload = {}, actor = null, db = 
     const expiresAt = normalizeMedicalBookDate(payload.expires_at ?? payload.expiresAt);
     const notes = cleanMedicalBookText(payload.notes, 2000);
     const documentId = normalizeMedicalBookDocumentId(payload.document_id ?? payload.documentId);
-    const businessContext = cleanMedicalBookText(payload.business_context ?? payload.businessContext, 64);
+    const businessContext = 'event_genix';
+    if ([payload.business_context, payload.businessContext].some(value => value != null && value !== businessContext)) {
+        throw Object.assign(new Error('Медкнижка належить до іншого бізнесу'), { statusCode: 400 });
+    }
     assertMedicalBookDates(issuedAt, expiresAt);
     const document = await requireOwnedMedicalBookDocument(staffId, documentId, db);
     const status = medicalBookStatusForExpiry(expiresAt);
@@ -173,7 +179,8 @@ async function updateStaffMedicalBook(staffId, certificationId, payload = {}, ac
         const result = await db.query(
             `UPDATE staff_certifications
              SET status = 'revoked'
-             WHERE id = $1 AND staff_id = $2 AND category = 'medical_book' AND status <> 'revoked'
+             WHERE id = $1 AND staff_id = $2 AND category = 'medical_book'
+           AND COALESCE(business_context, 'event_genix') = 'event_genix' AND status <> 'revoked'
              RETURNING *`,
             [certificationId, staffId]
         );
@@ -214,7 +221,8 @@ async function updateStaffMedicalBook(staffId, certificationId, payload = {}, ac
     const result = await db.query(
         `UPDATE staff_certifications
          SET issued_at = $3, expires_at = $4, status = $5, notes = $6, document_id = $7
-         WHERE id = $1 AND staff_id = $2 AND category = 'medical_book' AND status <> 'revoked'
+         WHERE id = $1 AND staff_id = $2 AND category = 'medical_book'
+           AND COALESCE(business_context, 'event_genix') = 'event_genix' AND status <> 'revoked'
          RETURNING *`,
         [certificationId, staffId, issuedAt, expiresAt, status, notes, documentId]
     );

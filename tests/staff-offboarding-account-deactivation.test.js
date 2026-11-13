@@ -130,6 +130,7 @@ function routeHarness(f, readiness = { active_account_count: 1, disable_availabl
         todayKyiv: () => '2026-10-04',
         normalizeStaffOffboardingPoolStatus: () => 'reserve',
         lockOrganizationOwnership: ownerGuard.lockOrganizationOwnership,
+        assertParkLifecycleAccountScope: async () => {},
         loadStaffRowOrNull: async () => ({ id: 42 }),
         loadStaffOffboardingReadiness: async () => readiness,
         loadStaffOutstandingPayrollInstallments: async () => ({ count: 0 }),
@@ -194,6 +195,7 @@ test('readiness checks extra roles on raw accounts and includes active users wit
     const calls = [];
     const context = vm.createContext({
         pool: {},
+        canUseAction: () => true,
         staffOffboardingAccountMeta: row => ({ id: row.id, role: row.role }),
         staffOffboardingResourceMeta: row => row,
         staffOffboardingDocumentAlertMeta: row => row,

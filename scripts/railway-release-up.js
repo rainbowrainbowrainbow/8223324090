@@ -223,23 +223,23 @@ function assertPreDeployLiveSafety({
     };
 }
 
-function parseArgs(argv) {
+function parseArgs(argv, env = process.env) {
     const options = {
-        project: process.env.RELEASE_RAILWAY_PROJECT || process.env.RAILWAY_PROJECT_ID || DEFAULT_PROJECT,
-        service: process.env.RELEASE_RAILWAY_SERVICE || process.env.RAILWAY_SERVICE || DEFAULT_SERVICE,
-        environment: process.env.RELEASE_RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT || DEFAULT_ENVIRONMENT,
-        branch: process.env.RELEASE_DEPLOY_BRANCH || process.env.npm_config_branch || '',
-        commit: process.env.RELEASE_DEPLOY_COMMIT || process.env.npm_config_commit || '',
-        message: process.env.RELEASE_DEPLOY_MESSAGE || process.env.npm_config_message || '',
-        liveUrl: process.env.RELEASE_LIVE_URL || process.env.npm_config_live_url || DEFAULT_LIVE_URL,
-        dryRun: envBoolean(process.env.npm_config_dry_run),
-        parseOnly: process.env.RELEASE_RAILWAY_UP_PARSE_ONLY === 'true',
-        skipRemoteCheck: envBoolean(process.env.npm_config_skip_remote_check),
-        keepExport: process.env.RELEASE_RAILWAY_KEEP_EXPORT === 'true' || envBoolean(process.env.npm_config_keep_export),
-        exportRoot: process.env.RELEASE_RAILWAY_EXPORT_ROOT || process.env.npm_config_export_root || '',
-        recoverMissingLiveMetadataCommit: process.env.RELEASE_RECOVER_MISSING_LIVE_METADATA_COMMIT || process.env.npm_config_recover_missing_live_metadata_commit || '',
-        migrateLiveSourceBranchFrom: process.env.RELEASE_MIGRATE_LIVE_SOURCE_BRANCH_FROM || process.env.npm_config_migrate_live_source_branch_from || '',
-        migrateLiveSourceBranchCommit: process.env.RELEASE_MIGRATE_LIVE_SOURCE_BRANCH_COMMIT || process.env.npm_config_migrate_live_source_branch_commit || ''
+        project: env.RELEASE_RAILWAY_PROJECT || env.RAILWAY_PROJECT_ID || DEFAULT_PROJECT,
+        service: env.RELEASE_RAILWAY_SERVICE || env.RAILWAY_SERVICE || DEFAULT_SERVICE,
+        environment: env.RELEASE_RAILWAY_ENVIRONMENT || env.RAILWAY_ENVIRONMENT || DEFAULT_ENVIRONMENT,
+        branch: env.RELEASE_DEPLOY_BRANCH || env.npm_config_branch || '',
+        commit: env.RELEASE_DEPLOY_COMMIT || env.npm_config_commit || '',
+        message: env.RELEASE_DEPLOY_MESSAGE || env.npm_config_message || '',
+        liveUrl: env.RELEASE_LIVE_URL || env.npm_config_live_url || DEFAULT_LIVE_URL,
+        dryRun: envBoolean(env.npm_config_dry_run),
+        parseOnly: env.RELEASE_RAILWAY_UP_PARSE_ONLY === 'true',
+        skipRemoteCheck: envBoolean(env.npm_config_skip_remote_check),
+        keepExport: env.RELEASE_RAILWAY_KEEP_EXPORT === 'true' || envBoolean(env.npm_config_keep_export),
+        exportRoot: env.RELEASE_RAILWAY_EXPORT_ROOT || env.npm_config_export_root || '',
+        recoverMissingLiveMetadataCommit: env.RELEASE_RECOVER_MISSING_LIVE_METADATA_COMMIT || env.npm_config_recover_missing_live_metadata_commit || '',
+        migrateLiveSourceBranchFrom: env.RELEASE_MIGRATE_LIVE_SOURCE_BRANCH_FROM || env.npm_config_migrate_live_source_branch_from || '',
+        migrateLiveSourceBranchCommit: env.RELEASE_MIGRATE_LIVE_SOURCE_BRANCH_COMMIT || env.npm_config_migrate_live_source_branch_commit || ''
     };
 
     for (let index = 0; index < argv.length; index += 1) {
@@ -280,7 +280,7 @@ function parseArgs(argv) {
             // Accept only exact values already represented in npm config; every
             // unrelated positional argument remains a hard failure.
             continue;
-        } else if (applyForwardedNpmRunPositional(arg, options)) {
+        } else if (applyForwardedNpmRunPositional(arg, options, env)) {
             continue;
         } else {
             fail(`Unknown argument: ${arg}`);
@@ -308,7 +308,7 @@ function isForwardedNpmConfigValue(arg, options) {
     ].some(optionValue => value === String(optionValue || '').trim());
 }
 
-function applyForwardedNpmRunPositional(arg, options) {
+function applyForwardedNpmRunPositional(arg, options, env) {
     const value = String(arg || '').trim();
     if (!value || value.startsWith('--')) return false;
     if (missingOptionValue(options.branch) && /^[A-Za-z0-9._/-]+$/.test(value) && value.includes('/')) {
@@ -336,7 +336,7 @@ function applyForwardedNpmRunPositional(arg, options) {
         options.recoverMissingLiveMetadataCommit = value.toLowerCase();
         return true;
     }
-    if ((!process.env.RELEASE_LIVE_URL && (missingOptionValue(options.liveUrl) || options.liveUrl === DEFAULT_LIVE_URL)) && /^https?:\/\//i.test(value)) {
+    if (!env.RELEASE_LIVE_URL && (missingOptionValue(options.liveUrl) || options.liveUrl === DEFAULT_LIVE_URL) && /^https?:\/\//i.test(value)) {
         options.liveUrl = value;
         return true;
     }
@@ -359,17 +359,20 @@ function commandText(command, args) {
 }
 
 function resolveCommandExecutable(command) {
+    if (command === 'railway') {
+        const explicit = String(process.env.RELEASE_RAILWAY_BIN || '').trim();
+        if (explicit) {
+            if (!fs.existsSync(explicit)) fail(`RELEASE_RAILWAY_BIN does not exist: ${explicit}`);
+            return explicit;
+        }
+    }
     if (process.platform !== 'win32') return command;
-    if (command === 'git') return 'git.exe';
-    if (command === 'tar') return 'tar.exe';
+    if (command === 'git' || command === 'tar') return `${command}.exe`;
     if (command !== 'railway') return command;
 
-    const explicit = String(process.env.RELEASE_RAILWAY_BIN || '').trim();
-    if (explicit) {
-        if (!fs.existsSync(explicit)) fail(`RELEASE_RAILWAY_BIN does not exist: ${explicit}`);
-        return explicit;
-    }
-
+    const native = spawnSync('where.exe', ['railway.exe'], { encoding: 'utf8', windowsHide: true });
+    const executableOnPath = native.status === 0 && native.stdout.split(/\r?\n/).map(value => value.trim()).find(Boolean);
+    if (executableOnPath) return executableOnPath;
     const lookup = spawnSync('where.exe', ['railway.cmd'], {
         encoding: 'utf8',
         shell: false,
@@ -548,6 +551,7 @@ function runPostDeploySmoke(liveUrl, head, branch) {
                 ...process.env,
                 VERSION_SMOKE_EXPECT_COMMIT: head,
                 VERSION_SMOKE_EXPECT_BRANCH: branch,
+                VERSION_SMOKE_ALLOW_MISSING_METADATA: 'false',
                 VERSION_SMOKE_RETRIES: '1',
                 VERSION_SMOKE_TIMEOUT_MS: '10000',
                 VERSION_SMOKE_RETRY_DELAY_MS: '0'

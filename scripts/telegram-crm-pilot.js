@@ -11,7 +11,7 @@ const PILOT = [
     { id: 13, username: 'Zhenya', name: 'Женя', telegramId: '622480549' }
 ];
 
-async function applyPilot(client, { action, botUsername }) {
+async function applyPilot(client, { action, botUsername, expectedBot }) {
     const users = (await client.query('SELECT id,username,name,is_active FROM users WHERE id=ANY($1::int[]) ORDER BY id FOR SHARE', [PILOT.map(row=>row.id)])).rows;
     for (const expected of PILOT) {
         const actual = users.find(row=>Number(row.id)===expected.id);
@@ -33,6 +33,16 @@ async function applyPilot(client, { action, botUsername }) {
             [person.id,person.telegramId]);
         }
         await client.query("INSERT INTO telegram_crm_settings(singleton,mode,bot_username) VALUES(true,'off',$1) ON CONFLICT(singleton) DO NOTHING", [botUsername]);
+    } else if (action === 'switch-bot') {
+        const allowed = new Set(['SecondBrainEvent_bot', 'd1wdd_bot']);
+        if (!allowed.has(expectedBot) || !allowed.has(botUsername) || expectedBot === botUsername) {
+            throw new Error('Exact reviewed old and new bot names required');
+        }
+        const changed = await client.query(
+            'UPDATE telegram_crm_settings SET bot_username=$1,updated_at=NOW() WHERE singleton=true AND bot_username=$2 RETURNING bot_username',
+            [botUsername, expectedBot]
+        );
+        if (changed.rowCount !== 1) throw new Error('Bot configuration drift; no switch applied');
     } else if (['off','read','write'].includes(action)) {
         const config = (await client.query('SELECT mode FROM telegram_crm_settings WHERE singleton=true FOR UPDATE')).rows[0];
         if (!config) throw new Error('Seed the reviewed identities first');
@@ -47,8 +57,9 @@ async function applyPilot(client, { action, botUsername }) {
 
 async function main() {
     const args=process.argv.slice(2);
-    const action=args.find(value=>/^(plan|seed|off|read|write)$/.test(value)) || 'plan';
+    const action=args.find(value=>/^(plan|seed|off|read|write|switch-bot)$/.test(value)) || 'plan';
     const botUsername=args.find(value=>value.startsWith('--bot='))?.slice(6);
+    const expectedBot=args.find(value=>value.startsWith('--expected-bot='))?.slice(15);
     const apply=args.includes('--apply');
     if (action!=='plan' && !apply) throw new Error('Mutation requires --apply');
     const raw=process.env.DATABASE_PUBLIC_URL || process.env.DATABASE_URL;
@@ -65,7 +76,7 @@ async function main() {
     try {
         await client.query('BEGIN');
         await client.query("SET LOCAL statement_timeout='8s'");
-        const result=await applyPilot(client,{action,botUsername});
+        const result=await applyPilot(client,{action,botUsername,expectedBot});
         await client.query(apply?'COMMIT':'ROLLBACK');
         console.log(JSON.stringify(result,null,2));
     } catch(error) { await client.query('ROLLBACK').catch(()=>{}); throw error; }

@@ -214,7 +214,17 @@
             if (data.username) info.append(element('p', `@${data.username}`));
             if (!data.pilotEnabled) info.append(element('p', 'Підключення CRM через бота поки доступне учасникам пілоту.'));
             else if (data.mode === 'off') info.append(element('p', 'Пілот тимчасово вимкнений. CRM працює як звичайно.'));
-            else button(data.telegramId ? 'Змінити Telegram' : 'Підключити Telegram', startConnection);
+            else {
+                if (data.status === 'connected' && /^[A-Za-z0-9_]{5,32}$/.test(data.botUsername || '')) {
+                    info.append(element('p', `Бот: @${data.botUsername}. Ваш акаунт уже підключено — повторна прив’язка не потрібна.`));
+                    actions.append(element('a', 'Мої задачі в Telegram', {
+                        href: `https://t.me/${data.botUsername}?start=crm_tasks`, target: '_blank',
+                        rel: 'noopener noreferrer', referrerpolicy: 'no-referrer'
+                    }));
+                    info.append(element('p', 'У Telegram натисніть Start, якщо з’явиться ця кнопка. Бот відкриє ваші задачі на сьогодні.'));
+                }
+                button(data.telegramId ? 'Змінити Telegram' : 'Підключити Telegram', startConnection);
+            }
             if (data.telegramId || data.proposedTelegramId) button('Від’єднати Telegram', () => passwordForm(true));
             button('Оновити стан', refresh);
             if (pending.has(userId)) showPending();

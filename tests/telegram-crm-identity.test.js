@@ -1,7 +1,45 @@
 'use strict';
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
-const { equalHash, publicBinding, secretHash, telegramId, transaction } = require('../services/telegramCrmIdentity');
+const { createTelegramCrmIdentity, equalHash, publicBinding, secretHash, telegramId, transaction } = require('../services/telegramCrmIdentity');
+const { PILOT, applyPilot } = require('../scripts/telegram-crm-pilot');
+
+test('bot switch is compare-and-set and never rewrites human bindings', async () => {
+    const writes=[];
+    let current='SecondBrainEvent_bot';
+    const client={query:async(sql,args)=>{
+        if(sql.startsWith('SELECT id,username,name,is_active')) return {rows:PILOT};
+        if(sql.startsWith('UPDATE')) {
+            writes.push(sql);
+            if(args[1]!==current) return {rowCount:0,rows:[]};
+            current=args[0]; return {rowCount:1,rows:[{bot_username:current}]};
+        }
+        return {rows:sql.includes('telegram_crm_settings')?[{mode:'write',bot_username:current}]:[]};
+    }};
+    const result=await applyPilot(client,{action:'switch-bot',expectedBot:current,botUsername:'d1wdd_bot'});
+    assert.equal(result.configuration.bot_username,'d1wdd_bot');
+    assert.equal(writes.length,1);
+    assert.ok(writes[0].startsWith('UPDATE telegram_crm_settings SET bot_username='));
+    await assert.rejects(applyPilot(client,{action:'switch-bot',expectedBot:'SecondBrainEvent_bot',botUsername:'d1wdd_bot'}),/drift/);
+    await assert.rejects(applyPilot(client,{action:'switch-bot',expectedBot:'d1wdd_bot',botUsername:'unknown_bot'}),/reviewed/);
+});
+
+test('profile returns validated current bot without changing the human binding', async () => {
+    for (const botUsername of ['d1wdd_bot', 'SecondBrainEvent_bot', 'evil.example/x', null]) {
+        const queries=[];
+        const identity=createTelegramCrmIdentity({pool:{query:async(sql)=>{
+            queries.push(sql);
+            return {rows:sql.includes('telegram_crm_settings')
+                ? [{mode:'write',bot_username:botUsername}]
+                : [{telegram_user_id:'674972415',verified_at:'2026-11-14',version:'2',pilot_enabled:true}]};
+        }}});
+        const result=await identity.status({id:4});
+        assert.equal(result.botUsername, /^[A-Za-z0-9_]{5,32}$/.test(botUsername||'') ? botUsername : null);
+        assert.equal(result.status,'connected');
+        assert.equal(result.version,'2');
+        assert.ok(queries.every(sql=>sql.startsWith('SELECT')));
+    }
+});
 
 test('Telegram IDs do not accept coercion, SQL input, truncated or unsafe numbers', () => {
     assert.equal(telegramId(674972415), '674972415');

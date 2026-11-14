@@ -15,9 +15,9 @@ const root = path.resolve(__dirname, '../..');
 const script = fs.readFileSync(path.join(root,'js/telegram-crm-profile.js'),'utf8');
 const css = fs.readFileSync(path.join(root,'css/telegram-crm-profile.css'),'utf8');
 
-async function setup(page, { mobile=false, disabled=false } = {}) {
+async function setup(page, { mobile=false, disabled=false, connected=false, botUsername='d1wdd_bot' } = {}) {
     if (mobile) await page.setViewportSize({width:375,height:812});
-    let status = 'preassigned', claimed = false;
+    let status = connected ? 'connected' : 'preassigned', claimed = false;
     const calls = [];
     await page.route('https://fixture.example/**', async route => {
         const url = new URL(route.request().url());
@@ -33,7 +33,7 @@ async function setup(page, { mobile=false, disabled=false } = {}) {
             expect(claimed).toBe(true); status='connected';
         } else if (url.pathname.endsWith('/disconnect')) {
             expect(body.password).toBe('fixture-password'); status='disconnected';
-        } else Object.assign(result,{status,mode:disabled?'off':'write',pilotEnabled:true,telegramId:status==='connected'?'10001':null,proposedTelegramId:status==='preassigned'?'10001':null,username:status==='connected'?'fixture_user':null});
+        } else Object.assign(result,{status,mode:disabled?'off':'write',pilotEnabled:true,botUsername,telegramId:status==='connected'?'10001':null,proposedTelegramId:status==='preassigned'?'10001':null,username:status==='connected'?'fixture_user':null});
         return route.fulfill({json:result});
     });
     await page.goto('https://fixture.example/profile');
@@ -75,6 +75,31 @@ test('mobile keyboard flow requires CRM and Telegram confirmation then allows im
     await page.getByRole('button',{name:'Від’єднати Telegram зараз'}).click();
     await expect(page.getByText('Не підключено',{exact:true})).toBeVisible();
     expect(await page.evaluate(()=>JSON.stringify({...localStorage,...sessionStorage}))).not.toContain('qqqqq');
+});
+
+test('connected mobile account opens the current bot without another binding or password',async({page})=>{
+    const calls=await setup(page,{mobile:true,connected:true});
+    const open=page.getByRole('link',{name:'Мої задачі в Telegram',exact:true});
+    await expect(open).toHaveAttribute('href','https://t.me/d1wdd_bot?start=crm_tasks');
+    await expect(page.getByText(/повторна прив’язка не потрібна/)).toBeVisible();
+    await open.focus();
+    await expect(open).toBeFocused();
+    expect(await open.evaluate(el=>getComputedStyle(el).outlineStyle)).not.toBe('none');
+    await page.context().route('https://t.me/**', route=>route.fulfill({contentType:'text/html',body:'<p>Telegram fixture</p>'}));
+    const popupPromise=page.waitForEvent('popup');
+    await page.keyboard.press('Enter');
+    const popup=await popupPromise;
+    await popup.waitForLoadState();
+    expect(popup.url()).toBe('https://t.me/d1wdd_bot?start=crm_tasks');
+    expect(calls.every(call=>call.body===null)).toBe(true);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
+    await page.screenshot({path:'../telegram-easy-connected-mobile.png',fullPage:true});
+});
+
+test('untrusted or unavailable bot names cannot become navigation links',async({page})=>{
+    await setup(page,{connected:true,botUsername:'evil.example/path'});
+    await expect(page.getByRole('link',{name:'Мої задачі в Telegram'})).toHaveCount(0);
+    await expect(page.getByRole('button',{name:'Змінити Telegram',exact:true})).toBeVisible();
 });
 
 test('off switch still allows disconnect and never renders untrusted text as markup',async({page})=>{

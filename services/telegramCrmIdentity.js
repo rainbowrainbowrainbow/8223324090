@@ -121,7 +121,8 @@ function createTelegramCrmIdentity({ pool, comparePassword = bcrypt.compare }) {
             if (error.code !== 'TELEGRAM_CRM_DISABLED') throw error;
             return { mode: 'off' };
         });
-        return { ...publicBinding(binding), mode: config.mode };
+        const botUsername = /^[A-Za-z0-9_]{5,32}$/.test(config.bot_username || '') ? config.bot_username : null;
+        return { ...publicBinding(binding), mode: config.mode, botUsername };
     }
 
     async function begin(actor, password) {

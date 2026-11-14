@@ -235,6 +235,9 @@ function playwright() {
       }
       const json=(body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
       if (layoutOnly && url.pathname === '/api/auth/verify') return json({ success: true, user: session.user });
+      if (layoutOnly && req.method() === 'GET' && url.pathname === '/api/auth/telegram-crm') {
+        return json({ success: true, pilotEnabled: false, mode: 'off', status: 'disconnected' });
+      }
       if (layoutOnly && url.pathname === '/api/auth/business-profile') {
         return json({ success: true, user: session.user, businessProfile: fixtureBusinessProfile });
       }

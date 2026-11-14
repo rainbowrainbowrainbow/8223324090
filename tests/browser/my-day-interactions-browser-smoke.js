@@ -272,7 +272,8 @@ function harnessHtml() {
       history.loading = true;
       history.error = '';
       renderHistoryRows();
-      await new Promise(resolve => setTimeout(resolve, 160));
+      await new Promise(resolve => { state.resolveCompletionHistoryRequest = resolve; });
+      delete state.resolveCompletionHistoryRequest;
       state.completedHistoryApiReads += 1;
       history.loading = false;
       if (state.completedHistoryFetchMode === 'fail') {
@@ -661,11 +662,14 @@ async function runScenario(browser, fixture, { dark, viewport }) {
         await page.evaluate(() => { window.__MY_DAY_INTERACTIONS__.state.completedHistoryFetchMode = 'fail'; });
         await page.locator('[data-cabinet-completion-all]').click();
         await page.waitForSelector('.cabinet-completion-loading');
+        await page.evaluate(() => window.__MY_DAY_INTERACTIONS__.state.resolveCompletionHistoryRequest());
         await page.waitForSelector('.cabinet-completion-error', { timeout: 5_000 });
         assert.match(await page.locator('.cabinet-completion-error').textContent(), /History API down/);
         assert.equal(await page.locator('[data-cabinet-completion-details] .cabinet-completion-row').count(), 3, 'failed API page must preserve loaded History rows');
         await page.evaluate(() => { window.__MY_DAY_INTERACTIONS__.state.completedHistoryFetchMode = 'success'; });
         await page.locator('[data-cabinet-completion-all]').click();
+        await page.waitForSelector('.cabinet-completion-loading');
+        await page.evaluate(() => window.__MY_DAY_INTERACTIONS__.state.resolveCompletionHistoryRequest());
         await page.waitForFunction(() => window.__MY_DAY_INTERACTIONS__.state.completedHistoryApiReads === 2);
         await page.waitForFunction(() => document.querySelectorAll('[data-cabinet-completion-details] .cabinet-completion-row').length === 5);
         const historyRows = await page.locator('[data-cabinet-completion-details] .cabinet-completion-row').evaluateAll(rows => rows.map(row => ({

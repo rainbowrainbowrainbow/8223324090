@@ -57,7 +57,7 @@ async function preview(title = 'Disposable Telegram full-stack task') {
 
 check('real JWT -> one-time Telegram claim -> same authenticated account confirmation', async () => {
     assert.equal((await bot('/me')).status,403);
-    const started = await request('POST', '/api/auth/telegram-crm/link', { password: process.env.TEST_PASS }, jwt);
+    const started = await request('POST', '/api/auth/telegram-crm/link', {}, jwt);
     assert.equal(started.status,201,JSON.stringify(started.data));
     const token = new URL(started.data.url).searchParams.get('start').slice(4);
     assert.equal((await bot('/link/claim', { token, senderId: peerTelegram })).status,200);
@@ -97,6 +97,33 @@ check('canonical task writer, actual membership checks and concurrent confirms s
     assert.deepEqual(peers.data.tasks.find(row=>row.id===task.id).viewerRoles,['executor']);
     const recovered = await bot(`/operations/${id}`);
     assert.equal(recovered.data.receipt.task.id,task.id);
+});
+
+check('date-focused bot list matches My Day dates, snoozing and paginated personal scope', async () => {
+    const today = (await pool.query("SELECT (NOW() AT TIME ZONE 'Europe/Kyiv')::date::text AS day")).rows[0].day;
+    const ids = [];
+    for (let index = 0; index < 7; index++) {
+        const row = (await pool.query(`INSERT INTO tasks(title,owner_user_id,created_by_user_id,created_by,business_context,date,status,visibility)
+            VALUES($1,$2,$2,$3,'event_genix',$4,'todo','team') RETURNING id`,
+        ['Disposable day task '+index,owner.id,owner.username,today])).rows[0];
+        ids.push(row.id);
+    }
+    // Scheduling overrides stale legacy dates; future snoozes are not actionable.
+    await pool.query("UPDATE tasks SET date='2026-03-27',scheduled_start_at=($2::date+TIME '12:00') AT TIME ZONE 'Europe/Kyiv' WHERE id=$1",[ids[0],today]);
+    await pool.query("UPDATE tasks SET snoozed_until=NOW()+INTERVAL '1 hour' WHERE id=$1",[ids[6]]);
+    const path = `/tasks?businessContext=event_genix&view=day&dateFrom=${today}&dateTo=${today}&limit=5`;
+    const first = await bot(path);
+    assert.equal(first.status,200,JSON.stringify(first.data));
+    assert.equal(first.data.pagination.hasMore,true);
+    const second = await bot(path+'&offset='+first.data.pagination.nextOffset);
+    const listed = [...first.data.tasks,...second.data.tasks];
+    assert.equal(new Set(listed.map(t=>t.id)).size,listed.length);
+    assert.deepEqual(listed.map(t=>t.id).sort((a,b)=>a-b),ids.slice(0,6).sort((a,b)=>a-b));
+    assert.ok(listed.every(t=>t.workDate===today));
+    const cabinet = await request('GET','/api/tasks/my-cabinet?businessContext=event_genix',undefined,jwt);
+    assert.equal(cabinet.status,200,JSON.stringify(cabinet.data));
+    assert.deepEqual(cabinet.data.planning.today.map(t=>t.id).sort((a,b)=>a-b),listed.map(t=>t.id).sort((a,b)=>a-b));
+    assert.equal((await bot(path,undefined,peerTelegram)).data.tasks.length,0);
 });
 
 check('normal CRM deletion retains its committed receipt and never recreates the task', async () => {

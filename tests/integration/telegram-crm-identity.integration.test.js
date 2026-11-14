@@ -64,7 +64,7 @@ testDb('only CRM + Telegram + original browser proof establishes a verified iden
     assert.equal(before.status, 'preassigned');
     await assert.rejects(identity.resolve('1001'), { code: 'TELEGRAM_NOT_LINKED' });
     await assert.rejects(identity.begin(actor(1), 'wrong'), { code: 'TELEGRAM_REAUTH_REQUIRED' });
-    const request = await start(1);
+    const request = await identity.begin(actor(1));
     assert.ok(new URL(request.url).searchParams.get('start').length <= 64);
     await assert.rejects(identity.confirm(actor(1), request), { code: 'TELEGRAM_LINK_NOT_CLAIMED' });
     await claim(request, '5001');
@@ -76,6 +76,7 @@ testDb('only CRM + Telegram + original browser proof establishes a verified iden
     assert.equal(pending.telegramId, '5001');
     const confirmed = await identity.confirm(actor(1), request);
     assert.equal(confirmed.status, 'connected');
+    await assert.rejects(identity.begin(actor(1)), { code: 'TELEGRAM_REAUTH_REQUIRED' });
     assert.equal((await identity.resolve('5001')).user.id, 1);
     await assert.rejects(identity.confirm(actor(1), request), { code: 'TELEGRAM_LINK_EXPIRED' });
     const stored = (await pool.query('SELECT * FROM telegram_crm_link_requests WHERE id=$1', [request.requestId])).rows[0];
@@ -132,6 +133,7 @@ testDb('disconnect cancels pending links and drafts, including while integration
         await identity.disconnect(actor(8), password);
     } finally { await pool.query("UPDATE telegram_crm_settings SET mode='write'"); }
     await assert.rejects(identity.resolve('5008'), { code: 'TELEGRAM_NOT_LINKED' });
+    await assert.rejects(identity.begin(actor(8)), { code: 'TELEGRAM_REAUTH_REQUIRED' });
     await assert.rejects(claim(pending, '6008'), { code: 'TELEGRAM_LINK_EXPIRED' });
     assert.equal((await pool.query('SELECT state FROM telegram_crm_task_operations WHERE user_id=8')).rows[0].state, 'cancelled');
 });

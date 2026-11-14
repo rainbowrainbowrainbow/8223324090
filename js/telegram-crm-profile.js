@@ -38,6 +38,8 @@
         const userId = currentUserId();
         let binding;
         let busy = false;
+        let checking = false;
+        let lastChecked = 0;
         const heading = element('h2', 'Telegram і задачі CRM', { id: 'telegramCrmHeading', tabindex: '-1' });
         const info = element('div');
         const actions = element('div', '', { class: 'telegram-crm-actions' });
@@ -64,7 +66,51 @@
                 if (trigger?.isConnected) trigger.disabled = false;
             }
         }
+        async function startConnection() {
+            if (binding.telegramId || Number(binding.version || 1) > 1) return passwordForm(false);
+            try {
+                const data = await request('/link', {});
+                if (currentUserId() !== userId || !root.isConnected) return;
+                pending.set(userId, data);
+                showPending();
+            } catch (error) {
+                if (error.code === 'TELEGRAM_REAUTH_REQUIRED') return passwordForm(false);
+                throw error;
+            }
+        }
+        async function checkPending(manual = false) {
+            const state = pending.get(userId);
+            if (!root.isConnected) {
+                global.removeEventListener('focus', onReturn);
+                document.removeEventListener('visibilitychange', onReturn);
+                return;
+            }
+            if (!state || state.candidate || busy || checking || currentUserId() !== userId) return;
+            if (!manual && Date.now() - lastChecked < 1000) return;
+            checking = true; lastChecked = Date.now();
+            try {
+                const data = await request('/link/status', { requestId: state.requestId, browserProof: state.browserProof });
+                if (pending.get(userId) !== state || currentUserId() !== userId || !root.isConnected) return;
+                if (data.telegramId) {
+                    state.candidate = data;
+                    showPending(data, manual);
+                    status.textContent = 'Telegram знайдено. Залишилося підтвердити, що це ваш акаунт.';
+                } else if (manual) status.textContent = 'Натисніть Start у Telegram, потім поверніться сюди.';
+            } catch (error) {
+                if (pending.get(userId) !== state || currentUserId() !== userId) return;
+                status.textContent = error.message;
+                if (error.code === 'TELEGRAM_LINK_EXPIRED') {
+                    pending.delete(userId); flow.replaceChildren(); actions.hidden = false;
+                }
+            } finally { checking = false; }
+        }
+        function onReturn() {
+            if (document.visibilityState === 'visible') void checkPending();
+        }
+        global.addEventListener('focus', onReturn);
+        document.addEventListener('visibilitychange', onReturn);
         function passwordForm(disconnect) {
+            actions.hidden = true;
             flow.replaceChildren();
             const form = element('form', '', { method: 'post', action: `/api/auth/telegram-crm/${disconnect ? 'disconnect' : 'link'}`, 'aria-labelledby': 'telegramCrmHeading' });
             const help = element('p', disconnect
@@ -114,13 +160,15 @@
                 }, submit);
             });
             flow.append(form);
-            button('Скасувати', () => { flow.replaceChildren(); actions.querySelector('button')?.focus(); }, form);
+            button('Скасувати', () => { flow.replaceChildren(); actions.hidden = false; actions.querySelector('button')?.focus(); }, form);
             input.focus();
         }
-        function showPending(candidate) {
+        function showPending(candidate, moveFocus = true) {
             const state = pending.get(userId);
             flow.replaceChildren();
             if (!state) return;
+            actions.hidden = true;
+            candidate = candidate || state.candidate;
             const title = element('h3', candidate?.telegramId ? 'Підтвердьте свій Telegram' : 'Продовжіть у Telegram', { tabindex: '-1' });
             flow.append(title);
             if (candidate?.telegramId) {
@@ -135,21 +183,20 @@
             } else {
                 const url = new URL(state.url);
                 if (url.origin !== 'https://t.me') throw new Error('Недійсне посилання Telegram.');
-                flow.append(element('p', '1. Відкрийте посилання й натисніть Start. 2. Поверніться сюди та перевірте підключення. Посилання діє 10 хвилин.'));
+                flow.append(element('p', '1. Натисніть «Відкрити Telegram», потім Start. 2. Поверніться в цю вкладку — ми самі знайдемо ваш акаунт. Посилання діє 10 хвилин.'));
                 flow.append(element('a', 'Відкрити Telegram', { href: url.href, target: '_blank', rel: 'noopener noreferrer', referrerpolicy: 'no-referrer' }));
+                const retry = element('button', 'Я вже натиснув Start', { type: 'button' });
+                retry.addEventListener('click', () => void checkPending(true));
+                flow.append(retry);
             }
-            button('Перевірити підключення', async () => {
-                const data = await request('/link/status', { requestId: state.requestId, browserProof: state.browserProof });
-                if (currentUserId() !== userId) return;
-                showPending(data);
-                status.textContent = data.telegramId ? 'Telegram знайдено. Підтвердьте акаунт нижче.' : 'Очікуємо натискання Start у Telegram.';
-            }, flow);
-            title.focus();
+            button('Скасувати підключення', async () => { pending.delete(userId); await refresh(); heading.focus(); }, flow);
+            if (moveFocus) title.focus();
         }
         async function refresh() {
             const data = await request();
             if (currentUserId() !== userId || !root.isConnected) return;
             binding = data;
+            actions.hidden = false;
             info.replaceChildren(); actions.replaceChildren(); flow.replaceChildren();
             const labels = { connected: 'Підтверджено', preassigned: 'Попередньо внесено — потрібне підтвердження', disconnected: 'Не підключено' };
             info.append(element('p', labels[data.status] || 'Не підключено'));
@@ -167,7 +214,7 @@
             if (data.username) info.append(element('p', `@${data.username}`));
             if (!data.pilotEnabled) info.append(element('p', 'Підключення CRM через бота поки доступне учасникам пілоту.'));
             else if (data.mode === 'off') info.append(element('p', 'Пілот тимчасово вимкнений. CRM працює як звичайно.'));
-            else button(data.telegramId ? 'Змінити Telegram' : 'Підключити Telegram', () => passwordForm(false));
+            else button(data.telegramId ? 'Змінити Telegram' : 'Підключити Telegram', startConnection);
             if (data.telegramId || data.proposedTelegramId) button('Від’єднати Telegram', () => passwordForm(true));
             button('Оновити стан', refresh);
             if (pending.has(userId)) showPending();

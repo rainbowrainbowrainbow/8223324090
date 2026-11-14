@@ -11,7 +11,9 @@ verified with the owner: Sergey (4), Natalia (3), Zhenya (13).
 and `staff.telegram_id` retain their notification meaning. Username matching cannot
 grant this integration access. The seeding operator writes **proposed** IDs only.
 
-An authenticated account starts a 10-minute one-time link after password re-entry.
+An authenticated account starts a 10-minute one-time link. First onboarding of an
+admin-preassigned, never-connected binding (version 1) needs no second password.
+Replacement and reconnect require password re-entry, including after revocation.
 Telegram claims the link with its real private-chat sender. The original browser
 must explicitly confirm the discovered ID using a separate in-memory proof. Starting
 a replacement leaves the old identity valid until confirmation. Disconnect requires
@@ -28,10 +30,14 @@ binding versions prevent old commands crossing a new binding.
 Optional first-login prompt links to `/profile?tab=settings#telegram-crm`. Skipping
 does not affect CRM access. The profile shows connection state, copyable ID and
 username, with connect/change/disconnect actions. Proposed IDs are visibly unverified.
-The password and browser proof are not stored in browser storage or URLs.
+The password and browser proof are not stored in browser storage or URLs. Returning
+to the original visible CRM tab checks the pending link once, without background
+polling or automatic confirmation. A manual retry remains available.
 
-- `/tasks` or `мої задачі`: active tasks; executor, author or participant, with roles.
-- `/tasks completed`: completed tasks.
+- `/tasks` or `мої задачі`: today's active My Day tasks in Europe/Kyiv; executor,
+  author or participant, with roles. Tomorrow and Other date buttons navigate dates;
+  additional pages remain within that date. Past overdue work is not mixed into today.
+- `/tasks completed`: completed tasks scheduled for today.
 - `/tasks business=event_genix from=2026-11-01 to=2026-11-30`: optional business/date
   filters; pagination keeps the filters. Actual CRM visibility always applies.
 - `/newtask`: guided title, description, business, eligible pilot assignee and optional
@@ -59,6 +65,8 @@ outbox, with per-user conversations and 20-minute wizard expiry. Each pilot user
 an independent asynchronous worker. A CRM POST timeout triggers one receipt check
 using the original operation ID. Unknown results are reported with a Check result
 button. Neither notes nor nightly processing block this lane.
+Polling explicitly subscribes to `callback_query` as well as dispatcher update types:
+CRM buttons are handled outside the dispatcher, so auto-discovery alone misses them.
 
 Delayed private responses recheck the binding before delivery. Owner diagnostics
 contain only an error code, update ID and diagnostic UUID, never another person's

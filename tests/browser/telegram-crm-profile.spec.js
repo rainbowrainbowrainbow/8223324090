@@ -25,7 +25,7 @@ async function setup(page, { mobile=false, disabled=false } = {}) {
         const body = route.request().postDataJSON(); calls.push({path:url.pathname,body});
         const result = {success:true};
         if (url.pathname.endsWith('/link')) {
-            if (body.password !== 'fixture-password') return route.fulfill({status:401,json:{success:false,code:'TELEGRAM_REAUTH_REQUIRED',error:'Підтвердьте поточний пароль CRM.'}});
+            if (status === 'connected' && body.password !== 'fixture-password') return route.fulfill({status:401,json:{success:false,code:'TELEGRAM_REAUTH_REQUIRED',error:'Підтвердьте поточний пароль CRM.'}});
             Object.assign(result,{requestId:'f8324453-fdc3-4b5d-b92b-4f7f98baafbb',browserProof:'q'.repeat(43),url:'https://t.me/FixtureBot?start=crm_'+'x'.repeat(43)});
         } else if (url.pathname.endsWith('/link/status')) {
             claimed=true; Object.assign(result,{status:'awaiting_confirmation',telegramId:'10001',username:'fixture_user'});
@@ -49,16 +49,14 @@ test('mobile keyboard flow requires CRM and Telegram confirmation then allows im
     await expect(page.getByText('Попередньо внесено — потрібне підтвердження')).toBeVisible();
     await page.getByRole('button',{name:'Підключити Telegram',exact:true}).focus();
     await page.keyboard.press('Enter');
-    await expect(page.getByLabel('Поточний пароль CRM (обов’язково)')).toBeFocused();
-    await page.getByLabel('Поточний пароль CRM (обов’язково)').fill('wrong');
-    await page.keyboard.press('Enter');
-    await expect(page.getByRole('status')).toContainText('Підтвердьте');
-    await expect(page.getByLabel('Поточний пароль CRM (обов’язково)')).toBeFocused();
-    await page.getByLabel('Поточний пароль CRM (обов’язково)').fill('fixture-password');
-    await page.keyboard.press('Enter');
     await expect(page.getByRole('link',{name:'Відкрити Telegram'})).toBeVisible();
+    await expect(page.getByLabel('Поточний пароль CRM (обов’язково)')).toHaveCount(0);
     expect(calls.some(call=>call.path.endsWith('/confirm'))).toBe(false);
-    await page.getByRole('button',{name:'Перевірити підключення'}).click();
+    await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+    await expect(page.getByRole('button',{name:'Це мій Telegram — підключити'})).toBeVisible();
+    expect(calls.some(call=>call.path.endsWith('/confirm'))).toBe(false);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
+    await page.screenshot({path:'../telegram-profile-link-mobile.png',fullPage:true});
     await page.getByRole('button',{name:'Це мій Telegram — підключити'}).click();
     await expect(page.getByText('Підтверджено',{exact:true})).toBeVisible();
     await expect(page.getByLabel('Telegram ID',{exact:true})).toHaveValue('10001');
@@ -66,6 +64,12 @@ test('mobile keyboard flow requires CRM and Telegram confirmation then allows im
     const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
     expect(overflow).toBe(false);
     await page.screenshot({path:'../telegram-profile-mobile.png',fullPage:true});
+    await page.getByRole('button',{name:'Змінити Telegram',exact:true}).click();
+    await expect(page.getByLabel('Поточний пароль CRM (обов’язково)')).toBeFocused();
+    await page.getByLabel('Поточний пароль CRM (обов’язково)').fill('wrong');
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('status')).toContainText('Підтвердьте');
+    await page.getByRole('button',{name:'Скасувати',exact:true}).click();
     await page.getByRole('button',{name:'Від’єднати Telegram',exact:true}).click();
     await page.getByLabel('Поточний пароль CRM (обов’язково)').fill('fixture-password');
     await page.getByRole('button',{name:'Від’єднати Telegram зараз'}).click();

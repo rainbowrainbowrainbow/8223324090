@@ -92,6 +92,7 @@ function createTelegramCrmTasks(options) {
             status: row.status || 'todo', ownerUserId: row.owner_user_id,
             ownerLabel: row.owner_name || row.assigned_to || row.owner || null,
             viewerRoles: taskViewerRoles(actor, row), date: row.date || null, deadline: row.deadline || null,
+            workDate: row.work_date || null, scheduledStartAt: row.scheduled_start_at || null,
             businessContext: scope.activeContext, url: `/tasks?open=${row.id}` };
     }
 
@@ -123,6 +124,8 @@ function createTelegramCrmTasks(options) {
         const from = dateOnly(query.dateFrom, 'dateFrom'), to = dateOnly(query.dateTo, 'dateTo');
         if (from && to && from > to) throw failure(400, 'TELEGRAM_TASK_DATE_INVALID', 'Початок періоду пізніше завершення.');
         const due = taskKpiWorkloadDateSql('t');
+        // Match the date-focused My Day view: deferred work is not actionable yet.
+        if (query.view === 'day') where.push('(t.snoozed_until IS NULL OR t.snoozed_until <= NOW())');
         if (from) { params.push(from); where.push(`${due} >= $${params.length}::date`); }
         if (to) { params.push(to); where.push(`${due} <= $${params.length}::date`); }
         const limit = Number(query.limit || 10), offset = Number(query.offset || 0);
@@ -131,6 +134,7 @@ function createTelegramCrmTasks(options) {
         }
         params.push(limit + 1, offset);
         const rows = (await pool.query(`SELECT t.id,t.title,t.description,t.status,t.owner_user_id,t.assigned_to,t.owner,t.date,t.deadline,
+            t.scheduled_start_at,(${due})::text AS work_date,
             t.created_by_user_id,t.created_by,${personal.roles} AS viewer_roles
             FROM tasks t WHERE ${where.join(' AND ')}
             ORDER BY ${due} ASC NULLS LAST,t.id DESC LIMIT $${params.length-1} OFFSET $${params.length}`, params)).rows;

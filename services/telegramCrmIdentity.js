@@ -125,13 +125,19 @@ function createTelegramCrmIdentity({ pool, comparePassword = bcrypt.compare }) {
     }
 
     async function begin(actor, password) {
-        const proof = await reauthenticate(actor, password);
+        const proof = password === undefined ? null : await reauthenticate(actor, password);
         const token = crypto.randomBytes(32).toString('base64url');
         const browserProof = crypto.randomBytes(32).toString('base64url');
         const requestId = crypto.randomUUID();
         return transaction(pool, async client => {
             const config = await configuration(client);
             const { binding } = await lockAccount(client, actor.id, proof);
+            // First onboarding already has an authenticated CRM session and still
+            // requires proof from Telegram plus explicit confirmation in this tab.
+            // Changes, reconnects and disconnects always require reauthentication.
+            if (!proof && (String(binding.version) !== '1' || binding.verified_at || !binding.proposed_telegram_id)) {
+                throw failure(401, 'TELEGRAM_REAUTH_REQUIRED', 'Підтвердьте поточний пароль CRM.');
+            }
             await client.query(
                 'UPDATE telegram_crm_link_requests SET cancelled_at=NOW() WHERE user_id=$1 AND consumed_at IS NULL AND cancelled_at IS NULL', [actor.id]
             );

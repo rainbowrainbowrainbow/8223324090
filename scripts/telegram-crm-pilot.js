@@ -5,9 +5,10 @@
 // No changes to users.telegram_chat_id, staff.telegram_id, passwords or CRM roles.
 const { Pool } = require('pg');
 const PILOT = [
-    { id: 4, username: 'Sergey', name: 'Шарлай Сергій', telegramId: '674972415' },
-    { id: 3, username: 'Natalia', name: 'Федорова Наталія', telegramId: '606680445' },
-    { id: 13, username: 'Zhenya', name: 'Пасенко Женя', telegramId: '622480549' }
+    // users.name is the account display name; full names live in linked staff cards.
+    { id: 4, username: 'Sergey', name: 'Сергій', telegramId: '674972415' },
+    { id: 3, username: 'Natalia', name: 'Наталія', telegramId: '606680445' },
+    { id: 13, username: 'Zhenya', name: 'Женя', telegramId: '622480549' }
 ];
 
 async function applyPilot(client, { action, botUsername }) {

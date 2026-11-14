@@ -263,6 +263,7 @@ async function assertLargeListsStayAccessible(page, state) {
         title: `Synthetic task ${index}`,
         status: 'todo',
         priority: 'normal',
+        visibility: 'me_only',
         deadline: `${index % 2 ? dates.overdue : dates.today}T10:00:00Z`,
         bucket: index % 2 ? 'overdue' : 'today'
     }));
@@ -288,9 +289,13 @@ async function assertCardDetailsPreserveComposer(page, state) {
     for (const column of ['primary', 'secondary']) {
         const card = page.locator(`.cabinet-day-${column} .cabinet-task-card`).first();
         const toggle = card.locator('[data-cabinet-task-action="toggle-my-day-details"]');
-        await toggle.click();
+        assert.equal(await card.locator('.cabinet-task-visibility').count(), 0, `${column} compact card omits visibility copy`);
+        await toggle.focus();
+        await toggle.press('Enter');
         assert.equal(await card.getAttribute('data-my-day-details-expanded'), 'true', `${column} details expand`);
         assert.equal(await toggle.getAttribute('aria-expanded'), 'true', `${column} toggle announces expanded state`);
+        assert.equal(await card.locator('.cabinet-task-visibility').isVisible(), true, `${column} details show restricted visibility`);
+        assert.equal(await toggle.evaluate(button => document.activeElement === button), true, `${column} toggle keeps keyboard focus`);
         assert.equal(await title.inputValue(), draft, `${column} detail toggle keeps the draft`);
         assert.ok(await title.evaluate((element, original) => element.closest('#cabinetTaskComposer') === original, composer),
             `${column} detail toggle keeps the composer node`);

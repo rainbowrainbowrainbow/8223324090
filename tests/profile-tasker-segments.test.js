@@ -408,13 +408,6 @@ test('profile My Day renders fixed today and overdue columns while hiding duplic
 
 test('profile completion pulse is compact by default and limits expanded rows', () => {
     const ctx = loadProfileTaskerContext();
-    const renderedIconKeys = [];
-    ctx.window.MyDayImpactIcons = {
-        render(impact) {
-            renderedIconKeys.push(impact.icon);
-            return `<svg data-rendered-impact-icon="${impact.icon}" viewBox="0 0 24 24"><path d="M4 12h16"></path></svg>`;
-        }
-    };
     const today = '2026-08-14';
     const iconKeys = ['system', 'processes', 'learning', 'network'];
     const completedTasks = Array.from({ length: 15 }, (_, index) => ({
@@ -441,11 +434,10 @@ test('profile completion pulse is compact by default and limits expanded rows', 
 
     let html = ctx.renderCabinetCompletionPulse();
     assert.match(html, /cabinet-completion-summary/);
-    assert.match(html, /function renderCabinetImpactIcon|cabinet-completion-icon/);
     assert.match(html, /data-cabinet-completion-toggle/);
     assert.match(html, /aria-controls="cabinetCompletionDetails"/);
     assert.match(html, /15 разом/);
-    assert.match(html, /Без впливу/);
+    assert.doesNotMatch(html, /cabinet-completion-impact|Без впливу|Impact \d/);
     assert.doesNotMatch(html, />system</);
     assert.doesNotMatch(html, />processes</);
     assert.doesNotMatch(html, />learning</);
@@ -465,14 +457,7 @@ test('profile completion pulse is compact by default and limits expanded rows', 
     assert.match(html, /data-cabinet-completion-all/);
     assert.match(html, /\+10/);
     assert.match(html, /Задача виконана/);
-    ['system', 'processes', 'learning', 'network'].forEach(icon => {
-        ctx.renderCabinetImpactIcon({ name: icon, color: '#6366F1', icon });
-    });
-    assert.ok(renderedIconKeys.includes('system'), 'system impact uses MyDayImpactIcons renderer');
-    assert.ok(renderedIconKeys.includes('processes'), 'processes impact uses MyDayImpactIcons renderer');
-    assert.ok(renderedIconKeys.includes('learning'), 'learning impact uses MyDayImpactIcons renderer');
-    assert.ok(renderedIconKeys.includes('network'), 'network impact uses MyDayImpactIcons renderer');
-
+    assert.doesNotMatch(html, /cabinet-completion-impact|Без впливу|Impact \d/);
     vm.runInContext('completedDashboardVisibleCount = 10; completedDashboardShowAll = false;', ctx);
     html = ctx.renderCabinetCompletionPulse();
     assert.match(html, /Completed 10/);
@@ -632,7 +617,6 @@ test('profile completion pulse covers 0, 1, 15+ today and 36-row history contrac
     html = ctx.renderCabinetCompletionPulse();
     assert.match(html, /Історія/);
     assert.match(html, /Завантажено 36 із 50/);
-    assert.match(html, /Серед завантажених/);
     assert.match(html, /History case 1/);
     assert.match(html, /History case 5/);
     assert.doesNotMatch(html, /History case 6/);
@@ -750,7 +734,6 @@ test('profile completion History tab paginates from the projection first page', 
     assert.match(html, /Завантажено 72 із 73/);
     assert.match(html, /History cursor 41/);
     assert.doesNotMatch(html, /History cursor 42/);
-    assert.match(html, /Серед завантажених/);
 
     vm.runInContext('window.__SET_FETCH_MODE__("fail"); completedDashboardHistoryVisibleCount = completedDashboardHistoryState.items.length;', ctx);
     await ctx.showMoreCabinetCompletionDetails();

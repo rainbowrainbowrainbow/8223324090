@@ -560,18 +560,8 @@ async function assertMyDayCompletionPulseContracts(page, label = 'My Day', { ope
 
     const expanded = await pulse.evaluate(node => {
         const pulseRect = node.getBoundingClientRect();
-        const rows = Array.from(node.querySelectorAll('.cabinet-completion-impact-row')).filter(row => row.offsetParent !== null);
         return {
             overflow: node.scrollWidth - node.clientWidth,
-            text: node.innerText,
-            impactRowCount: rows.length,
-            svgCount: node.querySelectorAll('.cabinet-completion-impact-row svg, .cabinet-completion-impact-chip svg').length,
-            impactOverlaps: rows.map(row => {
-                const labelRect = row.querySelector('span:nth-child(2)')?.getBoundingClientRect();
-                const barRect = row.querySelector('.cabinet-completion-bar')?.getBoundingClientRect();
-                if (!labelRect || !barRect) return 0;
-                return Math.max(0, Math.round(labelRect.right - barRect.left));
-            }),
             buttonLeaks: Array.from(node.querySelectorAll('button')).filter(button => button.offsetParent !== null).map(button => {
                 const rect = button.getBoundingClientRect();
                 return {
@@ -585,10 +575,10 @@ async function assertMyDayCompletionPulseContracts(page, label = 'My Day', { ope
         };
     });
     assert.ok(expanded.overflow <= 1, `${label}: expanded completion pulse overflows: ${JSON.stringify(expanded)}`);
-    if (expanded.impactRowCount > 0) assert.ok(expanded.svgCount >= expanded.impactRowCount, `${label}: impact rows should render SVG icons: ${JSON.stringify(expanded)}`);
-    assert.doesNotMatch(expanded.text, /\b(system|processes|learning|network)\b/i, `${label}: raw impact keys visible in expanded pulse`);
-    assert.deepEqual(expanded.impactOverlaps.filter(value => value > 1), [], `${label}: impact labels overlap bars: ${JSON.stringify(expanded)}`);
     assert.deepEqual(expanded.buttonLeaks, [], `${label}: completion buttons leak outside pulse: ${JSON.stringify(expanded)}`);
+
+    assert.equal(await pulse.locator('.cabinet-completion-impact-strip, .cabinet-completion-impact-chip').count(), 0,
+        `${label}: impact classifications are absent from completed tasks`);
 
     const firstRow = page.locator('[data-cabinet-completion-details] [data-cabinet-task-action="open"]').first();
     if (openDrawer && await firstRow.count()) {

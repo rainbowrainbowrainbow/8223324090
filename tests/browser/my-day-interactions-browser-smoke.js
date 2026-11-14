@@ -67,9 +67,6 @@ function harnessHtml() {
           <span><b>1</b><small>points</small></span>
           <span><b>4 min</b><small>time</small></span>
         </div>
-        <div class="cabinet-completion-top">
-          <div class="cabinet-completion-impact-bars" data-completion-impact-fixture="summary"></div>
-        </div>
         <div class="cabinet-completion-actions"><button type="button" class="cabinet-completion-toggle" data-cabinet-completion-toggle aria-expanded="false" aria-controls="cabinetCompletionDetails">Details</button></div>
       </div>
       <div class="cabinet-completion-tabs" role="tablist" aria-label="Completion period" hidden>
@@ -77,19 +74,15 @@ function harnessHtml() {
         <button type="button" data-cabinet-completion-tab="history" role="tab" aria-selected="false" aria-controls="cabinetCompletionDetails">History <b>2</b></button>
       </div>
       <div id="cabinetCompletionDetails" class="cabinet-completion-details" data-cabinet-completion-details hidden>
-        <div class="cabinet-completion-impact-strip">
-          <h4>Impacts</h4>
-          <div class="cabinet-completion-impact-bars" data-completion-impact-fixture="details"></div>
-        </div>
         <div class="cabinet-completion-list">
           <div class="cabinet-completion-list-head"><h4>Recent</h4><span>1 of 1</span></div>
           <button type="button" class="cabinet-completion-row" data-cabinet-task-action="open" data-task-id="777">
             <span class="cabinet-completion-row-mark" aria-hidden="true">1</span>
-            <span class="cabinet-completion-row-main"><b>Completed row QA</b><small>Задача виконана · 12:00 · 2 min · 1/2 points</small><span class="cabinet-completion-row-impacts" data-completion-impact-fixture="row"></span></span>
+            <span class="cabinet-completion-row-main"><b>Completed row QA</b><small>Задача виконана · 12:00 · 2 min · 1/2 points</small></span>
           </button>
           <button type="button" class="cabinet-completion-row" data-cabinet-completion-extra hidden data-cabinet-task-action="open" data-task-id="778">
             <span class="cabinet-completion-row-mark" aria-hidden="true">2</span>
-            <span class="cabinet-completion-row-main"><b>Subtask-only row QA</b><small>Виконано 2 підпунктів · 11:50 · 1 min · 2/3 points</small><span class="cabinet-completion-row-impacts"><span class="cabinet-completion-impact-chip is-muted">Без впливу</span></span></span>
+            <span class="cabinet-completion-row-main"><b>Subtask-only row QA</b><small>Виконано 2 підпунктів · 11:50 · 1 min · 2/3 points</small></span>
           </button>
           <button type="button" class="cabinet-completion-all" data-cabinet-completion-all="true">Показати ще · +3</button>
         </div>
@@ -139,21 +132,6 @@ function harnessHtml() {
       { id: 4, name: 'Партнерства / нетворкінг', color: '#8B5CF6', icon: 'network', isActive: true },
       { id: 5, name: 'Якість клієнтського сервісу', color: '#EC4899', icon: 'quality', isActive: true }
     ];
-    const renderCompletionIcon = impact => '<span class="cabinet-completion-icon" style="--my-day-chip-color:' + impact.color + '" aria-hidden="true">' + window.MyDayImpactIcons.render(impact, { size: 14 }) + '</span>';
-    const renderCompletionImpactRow = (impact, count, max) => {
-      const width = Math.max(8, Math.round((count / Math.max(1, max)) * 100));
-      return '<div class="cabinet-completion-impact-row" data-impact-key="' + impact.icon + '">' +
-        renderCompletionIcon(impact) +
-        '<span>' + impact.name + '</span>' +
-        '<div class="cabinet-completion-bar" aria-hidden="true"><i style="width:' + width + '%;--my-day-chip-color:' + impact.color + '"></i></div>' +
-        '<b>' + count + '</b>' +
-        '</div>';
-    };
-    const renderCompletionImpactChip = impact => '<span class="cabinet-completion-impact-chip" style="--my-day-chip-color:' + impact.color + '">' + renderCompletionIcon(impact).replace('cabinet-completion-icon', 'cabinet-completion-icon cabinet-completion-impact-chip-icon') + '<span>' + impact.name + '</span></span>';
-    const completionCounts = [3, 2, 1, 1];
-    document.querySelector('[data-completion-impact-fixture="summary"]').innerHTML = impacts.slice(0, 3).map((impact, index) => renderCompletionImpactRow(impact, completionCounts[index], 3)).join('');
-    document.querySelector('[data-completion-impact-fixture="details"]').innerHTML = impacts.slice(0, 4).map((impact, index) => renderCompletionImpactRow(impact, completionCounts[index], 3)).join('');
-    document.querySelector('[data-completion-impact-fixture="row"]').innerHTML = impacts.slice(0, 2).map(renderCompletionImpactChip).join('') + '<span class="cabinet-completion-impact-chip is-muted">+2</span>';
     const state = {
       aiMode: 'success',
       calls: [],
@@ -226,15 +204,12 @@ function harnessHtml() {
     renderTimeTriggers();
     const completionList = () => document.querySelector('[data-cabinet-completion-details] .cabinet-completion-list');
     const completionTab = name => document.querySelector('[data-cabinet-completion-tab="' + name + '"]');
-    const renderHistoryImpactMarkup = mode => mode === 'row'
-      ? impacts.slice(0, 2).map(renderCompletionImpactChip).join('')
-      : '<span class="cabinet-completion-impact-chip is-muted">Без впливу</span>';
     const renderHistoryRows = () => {
       const history = state.completedHistory;
       const visibleRows = history.loaded.slice(0, history.visible);
       const rows = visibleRows.map((row, index) => '<button type="button" class="cabinet-completion-row" data-cabinet-task-action="open" data-task-id="' + row.id + '">' +
         '<span class="cabinet-completion-row-mark" aria-hidden="true">' + (index + 1) + '</span>' +
-        '<span class="cabinet-completion-row-main"><b>' + row.title + '</b><small>' + row.meta + '</small><span class="cabinet-completion-row-impacts">' + renderHistoryImpactMarkup(row.impacts) + '</span></span>' +
+        '<span class="cabinet-completion-row-main"><b>' + row.title + '</b><small>' + row.meta + '</small></span>' +
         '</button>').join('');
       const canShowMore = history.visible < history.loaded.length || history.hasMore || history.error;
       const footer = canShowMore
@@ -250,8 +225,8 @@ function harnessHtml() {
     const renderTodayRows = () => {
       completionList().innerHTML =
         '<div class="cabinet-completion-list-head"><h4>Recent</h4><span>1 of 1</span></div>' +
-        '<button type="button" class="cabinet-completion-row" data-cabinet-task-action="open" data-task-id="777"><span class="cabinet-completion-row-mark" aria-hidden="true">1</span><span class="cabinet-completion-row-main"><b>Completed row QA</b><small>Задача виконана · 12:00 · 2 min · 1/2 points</small><span class="cabinet-completion-row-impacts" data-completion-impact-fixture="row">' + impacts.slice(0, 2).map(renderCompletionImpactChip).join('') + '<span class="cabinet-completion-impact-chip is-muted">+2</span></span></span></button>' +
-        '<button type="button" class="cabinet-completion-row" data-cabinet-completion-extra hidden data-cabinet-task-action="open" data-task-id="778"><span class="cabinet-completion-row-mark" aria-hidden="true">2</span><span class="cabinet-completion-row-main"><b>Subtask-only row QA</b><small>Виконано 2 підпунктів · 11:50 · 1 min · 2/3 points</small><span class="cabinet-completion-row-impacts"><span class="cabinet-completion-impact-chip is-muted">Без впливу</span></span></span></button>' +
+        '<button type="button" class="cabinet-completion-row" data-cabinet-task-action="open" data-task-id="777"><span class="cabinet-completion-row-mark" aria-hidden="true">1</span><span class="cabinet-completion-row-main"><b>Completed row QA</b><small>Задача виконана · 12:00 · 2 min · 1/2 points</small></span></button>' +
+        '<button type="button" class="cabinet-completion-row" data-cabinet-completion-extra hidden data-cabinet-task-action="open" data-task-id="778"><span class="cabinet-completion-row-mark" aria-hidden="true">2</span><span class="cabinet-completion-row-main"><b>Subtask-only row QA</b><small>Виконано 2 підпунктів · 11:50 · 1 min · 2/3 points</small></span></button>' +
         '<button type="button" class="cabinet-completion-all" data-cabinet-completion-all="true">Показати ще · +3</button>';
     };
     const setCompletionTab = tab => {
@@ -615,14 +590,6 @@ async function runScenario(browser, fixture, { dark, viewport }) {
             overflow: node.scrollWidth - node.clientWidth,
             detailColumns: getComputedStyle(node.querySelector('[data-cabinet-completion-details]')).gridTemplateColumns,
             projectionReads: window.__MY_DAY_INTERACTIONS__.state.completedProjectionReads,
-            svgCount: node.querySelectorAll('.cabinet-completion-impact-row svg, .cabinet-completion-impact-chip svg').length,
-            rawVisibleText: node.innerText,
-            impactOverlaps: Array.from(node.querySelectorAll('.cabinet-completion-impact-row')).filter(row => row.offsetParent !== null).map(row => {
-                const label = row.querySelector('span:nth-child(2)')?.getBoundingClientRect();
-                const bar = row.querySelector('.cabinet-completion-bar')?.getBoundingClientRect();
-                if (!label || !bar) return null;
-                return Math.max(0, Math.round(label.right - bar.left));
-            }).filter(value => value !== null),
             buttonLeaks: Array.from(node.querySelectorAll('button')).filter(button => button.offsetParent !== null).map(button => {
                 const container = node.getBoundingClientRect();
                 const rect = button.getBoundingClientRect();
@@ -637,9 +604,6 @@ async function runScenario(browser, fixture, { dark, viewport }) {
         }));
         assert.ok(completedExpandedMetrics.overflow <= 1, `completed pulse expanded overflows horizontally: ${JSON.stringify(completedExpandedMetrics)}`);
         assert.equal(completedExpandedMetrics.projectionReads, 0, 'completed details toggle must not reload projection');
-        assert.ok(completedExpandedMetrics.svgCount >= 4, `completion impact keys must render SVG icons: ${JSON.stringify(completedExpandedMetrics)}`);
-        assert.doesNotMatch(completedExpandedMetrics.rawVisibleText, /\b(system|processes|learning|network)\b/i, 'raw impact icon keys must not appear after expansion');
-        assert.deepEqual(completedExpandedMetrics.impactOverlaps.filter(value => value > 1), [], `completion impact labels overlap bars: ${JSON.stringify(completedExpandedMetrics)}`);
         assert.deepEqual(completedExpandedMetrics.buttonLeaks, [], `completion buttons leak outside the container: ${JSON.stringify(completedExpandedMetrics)}`);
         assert.equal(await page.locator('[data-cabinet-completion-tab="today"]').getAttribute('aria-controls'), 'cabinetCompletionDetails');
         assert.equal(await page.locator('[data-cabinet-completion-tab="history"]').getAttribute('aria-controls'), 'cabinetCompletionDetails');

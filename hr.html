@@ -159,6 +159,25 @@
                 </details>
                 <div id="todaySummary" class="hr-summary"></div>
                 <div id="todayList" class="hr-staff-list"></div>
+                <dialog id="hrTodayClockDialog" class="hr-today-clock-dialog" aria-labelledby="hrTodayClockTitle">
+                    <form id="hrTodayClockForm">
+                        <header>
+                            <h2 id="hrTodayClockTitle"></h2>
+                            <p id="hrTodayClockStaff"></p>
+                        </header>
+                        <label for="hrTodayClockTime" class="hr-today-clock-field">
+                            <span>Фактичний час <small>за Києвом</small></span>
+                            <input type="time" id="hrTodayClockTime" required autofocus
+                                aria-describedby="hrTodayClockError">
+                        </label>
+                        <p id="hrTodayClockSettlement" hidden>У зарплату буде зараховано планову зміну, якщо вона є. Без графіка — фактичний час.</p>
+                        <p id="hrTodayClockError" role="alert" hidden></p>
+                        <div class="hr-today-clock-footer">
+                            <button type="button" class="btn-page-secondary" id="hrTodayClockCancel">Скасувати</button>
+                            <button type="submit" class="btn-page-primary">Зберегти</button>
+                        </div>
+                    </form>
+                </dialog>
             </div>
 
             <!-- TAB 2: SCHEDULE -->

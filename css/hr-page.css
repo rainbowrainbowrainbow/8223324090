@@ -3194,6 +3194,105 @@ body.dark-mode #tab-kpi .hr-payroll-detail-toggle,
     gap: 3px;
 }
 
+.hr-today-clock-triggers {
+    display: flex;
+    align-items: stretch;
+    gap: 4px;
+}
+
+.hr-today-pick-time {
+    display: grid;
+    place-items: center;
+    flex: none;
+    inline-size: 36px;
+    min-block-size: 36px;
+    padding: 0;
+    border: 1px solid var(--gray-300);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--gray-700);
+    cursor: pointer;
+}
+
+.hr-today-pick-time:hover:not(:disabled) { background: var(--gray-100); }
+.hr-today-pick-time:disabled { opacity: 0.55; cursor: default; }
+.hr-today-pick-time:focus-visible { outline: 2px solid #14b8a6; outline-offset: 2px; }
+
+.hr-today-clock-dialog {
+    box-sizing: border-box;
+    position: fixed;
+    inset: 0;
+    margin: auto;
+    inline-size: min(390px, calc(100% - 32px));
+    max-block-size: calc(100dvh - 24px);
+    overflow: auto;
+    overscroll-behavior: contain;
+    padding: 20px;
+    border: 1px solid var(--gray-300);
+    border-radius: 16px;
+    background: var(--white);
+    color: var(--gray-900);
+    box-shadow: var(--shadow-lg);
+}
+
+.hr-today-clock-dialog::backdrop {
+    background: rgba(10, 12, 26, 0.62);
+    overflow: hidden;
+    overscroll-behavior: contain;
+}
+
+.hr-today-clock-dialog form { display: grid; gap: 14px; }
+.hr-today-clock-dialog :is(h2, p) { margin: 0; }
+.hr-today-clock-dialog h2 { font-size: 1.25rem; }
+.hr-today-clock-dialog header p { margin-block-start: 4px; }
+.hr-today-clock-dialog :is(header p, small, #hrTodayClockSettlement) { color: var(--gray-600); }
+.hr-today-clock-field { display: grid; gap: 6px; }
+.hr-today-clock-field span { display: flex; justify-content: space-between; gap: 8px; }
+.hr-today-clock-field input {
+    box-sizing: border-box;
+    inline-size: 100%;
+    min-block-size: 44px;
+    padding: 6px 12px;
+    font: inherit;
+    font-size: 1rem;
+    border: 1px solid var(--gray-300);
+    border-radius: var(--radius-sm);
+    background: var(--gray-50);
+    color: inherit;
+}
+
+#hrTodayClockError { color: #b91c1c; }
+.hr-today-clock-footer { display: flex; justify-content: flex-end; gap: 8px; }
+
+body.dark-mode .hr-today-pick-time {
+    border-color: #515575;
+    color: #e2e8f0;
+}
+body.dark-mode .hr-today-pick-time:hover:not(:disabled) { background: #3d3d5c; }
+body.dark-mode .hr-today-clock-dialog { background: #292b46; border-color: #515575; color: #f8fafc; }
+body.dark-mode .hr-today-clock-field input { background: #202237; border-color: #616986; }
+body.dark-mode .hr-today-clock-dialog :is(header p, small, #hrTodayClockSettlement) { color: #cbd5e1; }
+body.dark-mode #hrTodayClockError { color: #fecaca; }
+
+@media (pointer: coarse), (max-width: 600px) {
+    #tab-today .hr-today-clock-triggers button,
+    .hr-today-clock-footer button { min-block-size: 44px; min-inline-size: 44px; }
+}
+
+@media (max-width: 600px) {
+    #tab-today .hr-today-clock-triggers .hr-clock-btn { min-width: 44px; padding-inline: 8px; }
+    #tab-today .hr-today-pick-time { inline-size: 44px; }
+    .hr-today-clock-dialog {
+        inset: auto 0 0;
+        margin: 0;
+        inline-size: 100%;
+        max-inline-size: none;
+        padding-block-end: max(16px, env(safe-area-inset-bottom));
+        border-radius: 16px 16px 0 0;
+    }
+    .hr-today-clock-footer button { flex: 1; }
+}
+
 .hr-today-cancel-arrival {
     background: transparent;
     color: var(--gray-600);

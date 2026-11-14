@@ -6705,6 +6705,35 @@ router.post('/attendance/ocr/upload-links/:linkId/revoke', requireAction('hr.sch
 router.post('/attendance/ocr/uploads/:submissionId/recover', requireAction('hr.schedule.manage'), attendanceUploads.recoverSubmission);
 router.get('/attendance/ocr/uploads/:submissionId/photo', requireAction('hr.schedule.manage'), attendanceUploads.photo);
 
+async function resolveHrTodayClockTime(client, body, today) {
+    if (body?.date !== undefined && body.date !== today) {
+        return { error: 'Дата змінилася. Оновіть список і повторіть відмітку.', code: 'ATTENDANCE_DATE_CHANGED', status: 409 };
+    }
+    const time = body?.time;
+    if (time === undefined) return {};
+    if (typeof time !== 'string' || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)) {
+        return { error: 'Введіть час у форматі ГГ:ХХ.', code: 'ATTENDANCE_TIME_INVALID', status: 400 };
+    }
+    const { rows: [result] } = await client.query(
+        `WITH local_time AS (SELECT $1::date + $2::time AS value),
+              instant AS (SELECT value, value AT TIME ZONE 'Europe/Kyiv' AS timestamp FROM local_time)
+         SELECT timestamp AS "actualTime",
+                (timestamp AT TIME ZONE 'Europe/Kyiv') = value AS valid,
+                timestamp > clock_timestamp() AS future
+         FROM instant`,
+        [today, time]
+    );
+    if (!result.valid || result.future) {
+        return {
+            error: result.future && result.valid ? 'Час відмітки не може бути в майбутньому.'
+                : 'Цей час відсутній через переведення годинника.',
+            code: 'ATTENDANCE_TIME_INVALID',
+            status: 400
+        };
+    }
+    return { actualTime: result.actualTime };
+}
+
 // POST /api/hr/clock-in
 router.post('/clock-in', requireHrManage, async (req, res) => {
     const staffId = Number(req.body?.staff_id);
@@ -6714,12 +6743,15 @@ router.post('/clock-in', requireHrManage, async (req, res) => {
     const client = await pool.connect();
     try {
         const today = todayKyiv();
+        const { actualTime, error, code, status } = await resolveHrTodayClockTime(client, req.body, today);
+        if (error) return res.status(status).json({ success: false, error, code });
         const businessContext = hrBusinessContextFromRequest(req);
         await client.query('BEGIN');
         await lockAttendanceWriteTarget(client, { staffId, date: today });
         const clockInResult = await recordAttendanceClockIn(client, {
             staffId,
             recordDate: today,
+            actualTime,
             businessContext,
             performedBy: req.user?.username || 'manual',
             method: 'manual',
@@ -6793,11 +6825,14 @@ router.post('/clock-out', requireHrManage, async (req, res) => {
         const { settlement_mode, settlementMode } = req.body;
 
         const today = todayKyiv();
+        const { actualTime, error, code, status } = await resolveHrTodayClockTime(client, req.body, today);
+        if (error) return res.status(status).json({ success: false, error, code });
         await client.query('BEGIN');
         await lockAttendanceWriteTarget(client, { staffId, date: today });
         const clockOutResult = await recordAttendanceClockOut(client, {
             staffId,
             recordDate: today,
+            actualTime,
             expectedClockIn: req.body.clock_in,
             settlementMode: settlement_mode || settlementMode,
             performedBy: req.user?.username || 'manual',
@@ -6815,7 +6850,7 @@ router.post('/clock-out', requireHrManage, async (req, res) => {
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         log.error('POST /hr/clock-out error', err);
-        if (['ATTENDANCE_CLOCK_IN_REQUIRED', 'ATTENDANCE_ARRIVAL_CHANGED'].includes(err?.code)) {
+        if (['ATTENDANCE_CLOCK_IN_REQUIRED', 'ATTENDANCE_ARRIVAL_CHANGED', 'ATTENDANCE_EXIT_BEFORE_ARRIVAL'].includes(err?.code)) {
             return res.status(err.statusCode || 400).json({ success: false, code: err.code, error: err.message });
         }
         if (sendHrMutationFailure(res, err)) return;

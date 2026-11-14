@@ -59,6 +59,7 @@ const HR_CODE = readRepo('js', 'hr-page.js');
 const UI_CODE = readRepo('js', 'ui.js');
 const CSS_BUNDLE = [
     readRepo('css', 'base.css'),
+    readRepo('css', 'pages-core.css'),
     readRepo('css', 'hr-page.css'),
     readRepo('css', 'pages-hr-foundation.css'),
     readRepo('css', 'pages-hr-staff.css'),
@@ -606,6 +607,7 @@ async function assertAttendanceTransitions(page) {
         let failMutation = false;
         let failRefresh = false;
         const writes = [];
+        const writeBodies = [];
         const notices = [];
         const allowed = window.canAccess;
         window.canAccess = action => action === 'hr.schedule.manage' || allowed(action);
@@ -618,12 +620,14 @@ async function assertAttendanceTransitions(page) {
             }
             writes.push(requestPath);
             const body = JSON.parse(options.body);
+            writeBodies.push(body);
             await new Promise(resolve => setTimeout(resolve, 100));
             if (failMutation) return { success: false, error: 'Синтетична помилка' };
             const row = rows.find(item => item.staff_id === body.staff_id);
             if (requestPath === '/clock-in') {
                 row.record = { id: row.staff_id, status: row.shift ? 'present' : 'manual_review',
-                    clock_in: new Date().toISOString(), clock_out: null, can_cancel_arrival: true };
+                    clock_in: body.time ? '2026-07-16T06:12:00.000Z' : new Date().toISOString(),
+                    clock_out: null, can_cancel_arrival: true };
             } else if (requestPath === '/clock-in/cancel') {
                 if (body.record_id !== row.record.id || body.clock_in !== row.record.clock_in) throw new Error('Wrong arrival');
                 row.record = null;
@@ -633,7 +637,7 @@ async function assertAttendanceTransitions(page) {
             return { success: true, data: structuredClone(row.record) };
         };
         window.attendanceFixture = {
-            writes, notices,
+            writes, writeBodies, notices,
             persistedRows: () => structuredClone(rows),
             setScheduleAvailable(value) { scheduleAvailable = value; },
             setFailMutation(value) { failMutation = value; },
@@ -652,16 +656,52 @@ async function assertAttendanceTransitions(page) {
     assert.deepEqual(await list.locator('.hr-staff-row').evaluateAll(rows => rows.map(row => row.dataset.staffId)), ['52', '51']);
     assert.equal(await list.locator('.hr-today-schedule-group').last().evaluate(node => getComputedStyle(node).borderTopWidth), '1px');
 
-    await primary(scheduled).click();
-    await scheduled.getByRole('button', { name: /На роботі/ }).waitFor();
+    const chooseArrival = scheduled.getByRole('button', { name: /Обрати час приходу/ });
+    const timeDialog = page.getByRole('dialog', { name: 'Відмітити прихід' });
+    await chooseArrival.click();
+    await timeDialog.waitFor();
+    const desktopPanel = await timeDialog.boundingBox();
+    assert.ok(Math.abs(desktopPanel.x + desktopPanel.width / 2 - 720) <= 1);
+    assert.ok(Math.abs(desktopPanel.y + desktopPanel.height / 2 - 450) <= 1);
+    fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+    await page.screenshot({ path: path.join(OUTPUT_DIR, 'choose-time-desktop.png') });
+    await page.keyboard.press('Escape');
+    await timeDialog.waitFor({ state: 'hidden' });
+    assert.deepEqual(await writes(), []);
+    assert.equal(await chooseArrival.evaluate(button => document.activeElement === button), true);
+    await page.setViewportSize({ width: 320, height: 740 });
+    const target = await chooseArrival.boundingBox();
+    assert.ok(target.width >= 44 && target.height >= 44, 'clock hit area is at least 44 by 44');
+    assert.equal(await list.evaluate(node => node.scrollWidth <= node.clientWidth), true);
+    await list.screenshot({ path: path.join(OUTPUT_DIR, 'clock-actions-mobile.png') });
+    await chooseArrival.click();
+    await timeDialog.waitFor();
+    const panel = await timeDialog.boundingBox();
+    assert.ok(panel.x === 0 && panel.width === 320 && Math.abs(panel.y + panel.height - 740) <= 1);
+    await page.screenshot({ path: path.join(OUTPUT_DIR, 'choose-time-mobile.png') });
+    const timeInput = timeDialog.getByLabel(/Фактичний час/);
+    assert.match(await timeInput.inputValue(), /^\d{2}:\d{2}$/);
+    await timeInput.fill('09:12');
+    await page.evaluate(() => attendanceFixture.setFailMutation(true));
+    await timeDialog.getByRole('button', { name: 'Зберегти' }).click();
+    await timeDialog.getByText('Синтетична помилка').waitFor();
+    assert.equal(await timeInput.inputValue(), '09:12');
+    await page.evaluate(() => attendanceFixture.setFailMutation(false));
+    await timeDialog.getByRole('button', { name: 'Зберегти' }).dblclick();
+    await timeDialog.waitFor({ state: 'hidden' });
+    await scheduled.getByRole('button', { name: 'Вихід зараз' }).waitFor();
+    assert.match(await scheduled.textContent(), /Факт: 09:12/);
+    assert.equal(await page.evaluate(() => attendanceFixture.writeBodies[1].time), '09:12');
+    await page.setViewportSize({ width: 1440, height: 900 });
     await page.evaluate(() => attendanceFixture.setFailRefresh(true));
     await primary(unscheduled).dblclick();
-    await unscheduled.getByRole('button', { name: /На роботі/ }).waitFor();
-    assert.deepEqual(await writes(), ['/clock-in', '/clock-in']);
+    await unscheduled.getByRole('button', { name: 'Вихід зараз' }).waitFor();
+    assert.deepEqual(await writes(), ['/clock-in', '/clock-in', '/clock-in']);
+    assert.equal(await page.evaluate(() => attendanceFixture.writeBodies[2].time), undefined);
     assert.equal(await page.locator('#todayOnShiftMetric').textContent(), '2');
     await page.evaluate(() => attendanceFixture.setFailRefresh(false));
     await refresh();
-    assert.match(await primary(unscheduled).textContent(), /На роботі/);
+    assert.match(await primary(unscheduled).textContent(), /Вихід зараз/);
 
     fs.mkdirSync(OUTPUT_DIR, { recursive: true });
     await list.screenshot({ path: path.join(OUTPUT_DIR, 'attendance-groups-desktop.png') });
@@ -676,26 +716,36 @@ async function assertAttendanceTransitions(page) {
     await page.screenshot({ path: path.join(OUTPUT_DIR, 'cancel-arrival-mobile.png') });
     await page.keyboard.press('Escape');
     await dialog.waitFor({ state: 'detached' });
-    assert.deepEqual(await writes(), ['/clock-in', '/clock-in']);
+    assert.deepEqual(await writes(), ['/clock-in', '/clock-in', '/clock-in']);
     assert.equal(await cancel.evaluate(button => document.activeElement === button), true);
     await cancel.click();
     await dialog.getByRole('button', { name: 'Скасувати прихід' }).click();
-    await unscheduled.getByRole('button', { name: 'Відмітити прихід' }).waitFor();
+    await unscheduled.getByRole('button', { name: 'Прихід зараз' }).waitFor();
     assert.equal(await page.locator('#todayOnShiftMetric').textContent(), '1');
     await refresh();
-    assert.match(await primary(unscheduled).textContent(), /Відмітити прихід/);
+    assert.match(await primary(unscheduled).textContent(), /Прихід зараз/);
     assert.equal(await primary(unscheduled).evaluate(button => document.activeElement === button), true);
     await page.evaluate(() => attendanceFixture.setFailMutation(true));
     await primary(unscheduled).click();
     await page.waitForFunction(() => attendanceFixture.notices.some(notice => notice.type === 'error'));
-    assert.match(await primary(unscheduled).textContent(), /Відмітити прихід/);
+    assert.match(await primary(unscheduled).textContent(), /Прихід зараз/);
     await page.evaluate(() => attendanceFixture.setFailMutation(false));
     await primary(unscheduled).click();
-    await unscheduled.getByRole('button', { name: /На роботі/ }).waitFor();
+    await unscheduled.getByRole('button', { name: 'Вихід зараз' }).waitFor();
     await primary(unscheduled).click();
     await page.getByRole('dialog', { name: /Завершити зміну/ }).getByRole('button', { name: 'Завершити' }).click();
     await unscheduled.getByRole('button', { name: /Відпрацював/ }).waitFor();
     assert.equal(await primary(unscheduled).isDisabled(), true);
+    await scheduled.getByRole('button', { name: /Обрати час виходу/ }).click();
+    const exitDialog = page.getByRole('dialog', { name: 'Завершити зміну' });
+    await exitDialog.getByLabel(/Фактичний час/).fill('14:15');
+    await exitDialog.getByRole('button', { name: 'Зберегти' }).click();
+    await exitDialog.waitFor({ state: 'hidden' });
+    assert.deepEqual(await page.evaluate(() => {
+        const { time, settlement_mode, clock_in } = attendanceFixture.writeBodies.at(-1);
+        return [time, settlement_mode, clock_in];
+    }), ['14:15', 'scheduled_shift', '2026-07-16T06:12:00.000Z']);
+    assert.equal(await scheduled.locator('.hr-today-pick-time').count(), 0);
 
     const search = page.locator('#todaySearch');
     for (const [query, groups] of [['Тестова за графіком', ['Сьогодні за графіком']],
@@ -717,7 +767,7 @@ async function assertAttendanceTransitions(page) {
     assert.equal(await list.getByText('Немає активних співробітників').isVisible(), true);
     await page.reload();
     await installHarness(page, { persistedRows });
-    assert.match(await primary(scheduled).textContent(), /На роботі/);
+    assert.match(await primary(scheduled).textContent(), /Відпрацював/);
     assert.match(await primary(unscheduled).textContent(), /Відпрацював/);
 }
 

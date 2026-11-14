@@ -815,9 +815,10 @@ async function recordAttendanceClockIn(db, input = {}) {
     }
 
     const plan = await resolveAttendancePlan(db, staffId, recordDate);
-    const clockInDate = input.now === undefined ? new Date() : new Date(input.now);
-    if (Number.isNaN(clockInDate.getTime())) {
-        throw new TypeError('recordAttendanceClockIn requires a valid server time');
+    const capturedAt = input.now === undefined ? new Date() : new Date(input.now);
+    const clockInDate = input.actualTime === undefined ? capturedAt : new Date(input.actualTime);
+    if (Number.isNaN(capturedAt.getTime()) || Number.isNaN(clockInDate.getTime())) {
+        throw new TypeError('recordAttendanceClockIn requires a valid time');
     }
     const fields = calculateAttendanceClockIn(plan, clockInDate, recordDate);
     const clockIn = clockInDate.toISOString();
@@ -825,7 +826,7 @@ async function recordAttendanceClockIn(db, input = {}) {
         staffId,
         recordDate,
         plan,
-        capturedAt: clockIn
+        capturedAt
     });
     if (compensationSnapshot.manualReview) fields.status = 'manual_review';
     const businessContext = normalizeBusinessContext(
@@ -893,6 +894,7 @@ async function recordAttendanceClockIn(db, input = {}) {
         status: fields.status,
         method,
         source,
+        ...(input.actualTime !== undefined && { time_mode: 'chosen' }),
         plan_source: plan.source,
         profession_key: plan.professionKey || null,
         compensation_snapshot_state: compensationSnapshot.state,
@@ -1751,9 +1753,14 @@ async function recordAttendanceClockOut(db, input = {}) {
         (total, segment) => total + segment.plannedMinutes,
         0
     );
-    const clockOutDate = input.now === undefined ? new Date() : new Date(input.now);
-    if (Number.isNaN(clockOutDate.getTime())) {
-        throw new TypeError('recordAttendanceClockOut requires a valid server time');
+    const finalizedAt = input.now === undefined ? new Date() : new Date(input.now);
+    const clockOutDate = input.actualTime === undefined ? finalizedAt : new Date(input.actualTime);
+    if (Number.isNaN(finalizedAt.getTime()) || Number.isNaN(clockOutDate.getTime())) {
+        throw new TypeError('recordAttendanceClockOut requires a valid time');
+    }
+    if (input.actualTime !== undefined && clockOutDate <= new Date(record.clock_in)) {
+        throw attendanceMutationError('ATTENDANCE_EXIT_BEFORE_ARRIVAL',
+            'Час виходу має бути пізніше за час приходу.', 400);
     }
     const clockOut = clockOutDate.toISOString();
     const payroll = calculateHrClockOutPayroll(record, {
@@ -1784,7 +1791,7 @@ async function recordAttendanceClockOut(db, input = {}) {
         {
             staffId,
             recordDate,
-            finalizedAt: clockOut
+            finalizedAt
         }
     );
     if (compensationSnapshot.manualReview) payroll.status = 'manual_review';
@@ -1832,6 +1839,7 @@ async function recordAttendanceClockOut(db, input = {}) {
         status: payroll.status,
         method,
         source,
+        ...(input.actualTime !== undefined && { time_mode: 'chosen' }),
         plan_source: initialPlanSource
     };
     await db.query(

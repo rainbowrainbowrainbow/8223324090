@@ -3799,7 +3799,7 @@ function renderToday(data) {
     }
 
     const focusedButton = document.activeElement;
-    const focusedRow = focusedButton?.matches('.hr-clock-btn, .hr-today-cancel-arrival')
+    const focusedRow = focusedButton?.matches('.hr-today-clock-actions button')
         && list.contains(focusedButton) && focusedButton.closest('[data-staff-id]');
     const renderStaffRow = item => {
         const rec = item.record;
@@ -3807,7 +3807,7 @@ function renderToday(data) {
         const onShift = isTodayItemOnShift(item);
         let indicator = 'absent';
         let btnClass = 'clock-in';
-        let btnText = 'Відмітити прихід';
+        let btnText = 'Прихід зараз';
         let meta = '';
         let disabled = '';
 
@@ -3825,7 +3825,7 @@ function renderToday(data) {
             if (onShift) {
                 indicator = isLate ? 'late' : 'present';
                 btnClass = isLate ? 'clock-out late' : 'clock-out';
-                btnText = `На роботі (з ${fmtTimeFromISO(rec.clock_in)})`;
+                btnText = 'Вихід зараз';
             } else if (st === 'auto_closed') {
                 indicator = 'auto_closed';
                 btnClass = 'done';
@@ -3855,7 +3855,7 @@ function renderToday(data) {
             } else if (st === 'no_show') {
                 indicator = 'no_show';
                 btnClass = 'clock-in';
-                btnText = 'Не з\'явився — відмітити';
+                meta += ' · Не з’явився';
             }
 
             const attendanceFacts = [];
@@ -3892,6 +3892,7 @@ function renderToday(data) {
         if (recoveryReadOnly) {
             disabled = 'disabled aria-disabled="true" title="Режим перегляду"';
             if (btnClass === 'clock-in') btnText = shift ? 'Прихід не зафіксовано' : 'Немає відмітки';
+            if (onShift) btnText = `На роботі (з ${fmtTimeFromISO(rec.clock_in)})`;
         }
         const staffId = Number(item.staff_id);
         const pending = todayClockPending.has(staffId);
@@ -3909,9 +3910,16 @@ function renderToday(data) {
                 <div class="hr-staff-meta">${roleMeta}${meta ? ' · ' + meta : ''}</div>
             </div>
             <div class="hr-today-clock-actions">
-                <button type="button" class="hr-clock-btn ${btnClass}" ${disabled || (pending ? 'disabled' : '')}
-                    ${recoveryReadOnly ? '' : `onclick="handleClock(${staffId}, '${onShift ? 'out' : 'in'}')"`}
-                >${btnText}</button>
+                <div class="hr-today-clock-triggers">
+                    <button type="button" class="hr-clock-btn ${btnClass}" ${disabled || (pending ? 'disabled' : '')}
+                        ${recoveryReadOnly ? '' : `onclick="handleClock(${staffId}, '${onShift ? 'out' : 'in'}')"`}
+                    >${btnText}</button>
+                    ${disabled ? '' : `<button type="button" class="hr-today-pick-time" ${pending ? 'disabled' : ''}
+                        aria-label="Обрати час ${onShift ? 'виходу' : 'приходу'}: ${escapeHtml(item.staff_name)}"
+                        title="Обрати час" aria-haspopup="dialog" onclick="openTodayClockTime(${staffId}, '${onShift ? 'out' : 'in'}')">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5h4"/></svg>
+                    </button>`}
+                </div>
                 ${canCancel ? `<button type="button" class="hr-today-cancel-arrival" ${pending ? 'disabled' : ''}
                     onclick="handleClock(${staffId}, 'cancel')">Скасувати прихід</button>` : ''}
             </div>
@@ -3932,21 +3940,79 @@ function renderToday(data) {
 }
 
 function focusTodayClockControl(row, previousButton) {
-    const preferred = previousButton.classList.contains('hr-today-cancel-arrival')
-        ? '.hr-today-cancel-arrival:not(:disabled)' : '.hr-clock-btn:not(:disabled)';
+    const control = ['hr-today-cancel-arrival', 'hr-today-pick-time', 'hr-clock-btn']
+        .find(className => previousButton?.classList.contains(className));
+    const preferred = `.${control || 'hr-clock-btn'}:not(:disabled)`;
     (row?.querySelector(preferred) || row?.querySelector('.hr-clock-btn:not(:disabled)') || row)
         ?.focus({ preventScroll: true });
 }
 
-async function handleClock(staffId, action) {
+function openTodayClockTime(staffId, action) {
+    const dialog = document.getElementById('hrTodayClockDialog');
+    const item = todayData?.data?.find(row => Number(row.staff_id) === staffId);
+    if (!dialog || dialog.open || !item || isTodayRecoveryReadOnly() || todayClockPending.has(staffId)) return;
+
+    const form = document.getElementById('hrTodayClockForm');
+    const time = document.getElementById('hrTodayClockTime');
+    const error = document.getElementById('hrTodayClockError');
+    const cancel = document.getElementById('hrTodayClockCancel');
+    const save = form.querySelector('[type="submit"]');
+    const date = todayData.date || hrTodayKyivDate();
+    const context = teamAccessContext();
+    const clockIn = item.record?.clock_in;
+    const isExit = action === 'out';
+    const trigger = document.querySelector(`#todayList [data-staff-id="${staffId}"] .hr-today-pick-time`);
+    document.getElementById('hrTodayClockTitle').textContent = isExit ? 'Завершити зміну' : 'Відмітити прихід';
+    document.getElementById('hrTodayClockStaff').textContent = item.staff_name;
+    document.getElementById('hrTodayClockSettlement').hidden = !isExit;
+    time.value = fmtTimeFromISO(new Date());
+    error.hidden = true;
+
+    const showError = message => {
+        error.textContent = message;
+        error.hidden = false;
+    };
+    cancel.onclick = () => dialog.close();
+    dialog.oncancel = event => {
+        if (save.disabled) event.preventDefault();
+    };
+    dialog.onclose = () => {
+        if (!trigger?.isConnected) focusTodayClockControl(
+            document.querySelector(`#todayList [data-staff-id="${staffId}"]`), trigger
+        );
+    };
+    form.onsubmit = async event => {
+        event.preventDefault();
+        if (save.disabled) return;
+        const current = todayData?.data?.find(row => Number(row.staff_id) === staffId);
+        if (!current || context !== teamAccessContext() || date !== (todayData.date || hrTodayKyivDate())
+            || date !== hrTodayKyivDate() || current.record?.clock_in !== clockIn || isTodayRecoveryReadOnly()
+            || (isExit ? !isTodayItemOnShift(current) : Boolean(current.record?.clock_out))) {
+            showError('Відмітка або дата змінилася. Закрийте вікно й відкрийте його знову.');
+            return;
+        }
+        save.disabled = cancel.disabled = time.disabled = true;
+        error.hidden = true;
+        try {
+            const saved = await handleClock(staffId, action, { time: time.value, showError });
+            if (saved) dialog.close();
+        } finally {
+            save.disabled = cancel.disabled = time.disabled = false;
+        }
+    };
+    dialog.showModal();
+}
+
+async function handleClock(staffId, action, manual = null) {
     if (isTodayRecoveryReadOnly() || todayClockPending.has(staffId)) return;
     const todayItem = todayData?.data?.find(item => Number(item.staff_id) === Number(staffId));
     if (!todayItem) return;
     const onShift = isTodayItemOnShift(todayItem);
     if ((action === 'in') === onShift) return;
+    const showError = manual?.showError || (message => showNotification(message, 'error'));
     if (action === 'cancel' && (!canManageHrSchedule() || todayItem.record?.can_cancel_arrival !== true)) return;
     if (action === 'in' && !isHrScheduleableStaffForDate(todayItem, todayData.date || hrTodayKyivDate())) {
-        showNotification(hrScheduleableStaffErrorMessage({ code: 'STAFF_NOT_SCHEDULEABLE' }), 'error');
+        showError(hrScheduleableStaffErrorMessage({ code: 'STAFF_NOT_SCHEDULEABLE' }));
         return;
     }
     const context = teamAccessContext();
@@ -3959,10 +4025,12 @@ async function handleClock(staffId, action) {
     todayClockPending.add(staffId);
     try {
         const body = { staff_id: staffId };
+        if (action !== 'cancel' && date) body.date = date;
+        if (manual) body.time = manual.time;
         let endpoint = '/clock-in';
         if (action === 'out') {
             const message = `Завершити зміну для ${name}?\nУ зарплату буде зараховано планову зміну, якщо вона є; без графіка - фактичний час.`;
-            if (!await confirmModal(message, { type: 'warning', okText: 'Завершити' })) return;
+            if (!manual && !await confirmModal(message, { type: 'warning', okText: 'Завершити' })) return;
             endpoint = '/clock-out';
             body.settlement_mode = 'scheduled_shift';
             body.clock_in = clockIn;
@@ -3974,12 +4042,12 @@ async function handleClock(staffId, action) {
             body.clock_in = clockIn;
         }
         if (context !== teamAccessContext() || date !== todayData?.date || isTodayRecoveryReadOnly()) return;
-        document.querySelectorAll(`${rowSelector} .hr-clock-btn, ${rowSelector} .hr-today-cancel-arrival`)
+        document.querySelectorAll(`${rowSelector} .hr-today-clock-actions button`)
             .forEach(button => { button.disabled = true; });
         const result = await hrFetch(endpoint, { method: 'POST', body: JSON.stringify(body) });
         if (context !== teamAccessContext() || date !== todayData?.date) return;
         if (!result?.success) {
-            showNotification(hrScheduleableStaffErrorMessage(result, 'Не вдалося зберегти відмітку'), 'error');
+            showError(hrScheduleableStaffErrorMessage(result, 'Не вдалося зберегти відмітку'));
             return;
         }
         // Invalidate earlier reads and show the committed response before the refresh.
@@ -3991,13 +4059,14 @@ async function handleClock(staffId, action) {
         };
         saved = true;
         const worked = fmtMinutes(Number(result.data?.total_worked_minutes));
+        const actual = fmtTimeFromISO(action === 'out' ? result.data?.clock_out : result.data?.clock_in);
         const message = action === 'cancel' ? 'Прихід скасовано'
-            : action === 'out' ? (worked ? `Зміну завершено: ${worked}` : 'Зміну завершено')
-                : 'Прихід відмічено';
+            : action === 'out' ? (actual ? `Вихід о ${actual}${worked ? ` · ${worked}` : ''}` : 'Зміну завершено')
+                : (actual ? `Прихід о ${actual}` : 'Прихід відмічено');
         showNotification(message, 'success');
     } catch (error) {
         console.warn('HR attendance request failed', error);
-        showNotification('Не вдалося зберегти відмітку. Оновіть дані та спробуйте ще раз.', 'error');
+        showError('Не вдалося зберегти відмітку. Оновіть дані та спробуйте ще раз.');
     } finally {
         todayClockPending.delete(staffId);
         if (context === teamAccessContext() && todayData) {
@@ -4008,6 +4077,7 @@ async function handleClock(staffId, action) {
         }
     }
     if (saved) await loadToday({ keepOnError: true });
+    return saved;
 }
 
 function hrTodayKyivDate(now = new Date()) {

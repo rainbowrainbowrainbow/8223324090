@@ -102,6 +102,22 @@ test('an unscheduled arrival that requires compensation review is still on shift
     assert.ok(!record.clock_out);
 });
 
+test('a chosen arrival records the actual time and captures the plan at submission', async () => {
+    const { db, audits } = createClockInDb(professionCard);
+    const { record } = await recordAttendanceClockIn(db, {
+        staffId: 7,
+        recordDate: '2026-07-17',
+        now: '2026-07-17T10:00:00Z',
+        actualTime: '2026-07-17T09:06:00Z'
+    });
+    assert.equal(record.clock_in, '2026-07-17T09:06:00.000Z');
+    assert.equal(record.late_minutes, 6);
+    assert.equal(audits[0].method, 'manual');
+    assert.equal(audits[0].source, 'hr_today');
+    assert.equal(audits[0].time_mode, 'chosen');
+    assert.equal(audits[1].compensationSnapshot.capturedAt, '2026-07-17T10:00:00.000Z');
+});
+
 test('cancel preserves the arrival in audit and the same staff can clock in again', async () => {
     const input = {
         staffId: 7, recordId: 901, recordDate: '2026-07-17', clockIn: '2026-07-17T09:05:00.000Z',

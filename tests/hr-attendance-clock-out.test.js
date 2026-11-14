@@ -85,6 +85,29 @@ test('a stale close request cannot end a replacement arrival', async () => {
     }), { code: 'ATTENDANCE_ARRIVAL_CHANGED' });
 });
 
+test('a chosen departure must follow arrival and retains scheduled settlement', async () => {
+    const { db, calls, audits } = createClockOutDb(baseRecord);
+    const options = {
+        staffId: baseRecord.staff_id,
+        recordDate: baseRecord.record_date,
+        settlementMode: 'scheduled_shift',
+        now: '2026-07-17T15:00:00Z'
+    };
+    await assert.rejects(recordAttendanceClockOut(db, {
+        ...options, actualTime: baseRecord.clock_in
+    }), { code: 'ATTENDANCE_EXIT_BEFORE_ARRIVAL' });
+    assert.equal(calls.some(call => call.text.startsWith('UPDATE hr_time_records')), false);
+
+    const { record } = await recordAttendanceClockOut(db, {
+        ...options, actualTime: '2026-07-17T14:30:00Z'
+    });
+    assert.equal(record.clock_out, '2026-07-17T14:30:00.000Z');
+    assert.equal(record.total_worked_minutes, 540);
+    assert.equal(record.early_leave_minutes, 30);
+    assert.equal(audits[0].time_mode, 'chosen');
+    assert.equal(record.compensation_snapshot.finalizedAt, '2026-07-17T15:00:00.000Z');
+});
+
 test('open attendance means clocked in without a recorded departure', () => {
     assert.equal(isAttendanceRecordOpen, sharedIsAttendanceRecordOpen);
     assert.equal(isAttendanceRecordOpen({ clock_in: baseRecord.clock_in, clock_out: null }), true);

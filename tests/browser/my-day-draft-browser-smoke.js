@@ -205,15 +205,19 @@ async function installFixtureRoutes(context, baseUrl, state) {
 async function assertDraftSurvivesDueChanges(page, state) {
     const title = page.locator('#cabinetTaskTitle');
     const date = page.locator('#cabinetTaskDate');
+    const noDateToggle = page.locator('[data-cabinet-no-date]');
+    const originalDate = await date.inputValue();
     const draft = 'Browser regression draft — do not create';
     await title.click();
     await title.pressSequentially(draft, { delay: 1 });
 
-    for (const preset of ['today', 'tomorrow', 'day_after_tomorrow', 'plus_3_days', 'month_end', 'no_date', 'custom']) {
-        await page.locator(`[data-cabinet-due-preset="${preset}"]`).click();
-        assert.equal(await title.inputValue(), draft, `${preset} keeps the typed task draft`);
-        assert.equal(await page.locator(`[data-cabinet-due-preset="${preset}"]`).getAttribute('aria-pressed'), 'true', `${preset} is selected`);
-    }
+    await noDateToggle.click();
+    assert.equal(await title.inputValue(), draft, 'clearing the date keeps the typed task draft');
+    assert.equal(await date.isDisabled(), true, 'the date input is disabled for an undated task');
+    assert.equal(await page.locator('#cabinetTaskNoDateValue').isVisible(), true, 'the undated state is visible');
+    await noDateToggle.click();
+    assert.equal(await title.inputValue(), draft, 'restoring today keeps the typed task draft');
+    assert.equal(await date.inputValue(), originalDate, 'today is restored in the date input');
 
     const beforeCustomRefresh = state.cabinetRequests;
     const focusedProjection = page.waitForResponse(response => {
@@ -242,7 +246,7 @@ async function assertComposerListenersStayBoundOnce(page, state) {
     const initialCabinetRequests = state.cabinetRequests;
     assert.equal(initialCount, 1, 'composer title starts with one input handler');
     for (let index = 0; index < 20; index += 1) {
-        await page.locator(`[data-cabinet-due-preset="${index % 2 ? 'today' : 'tomorrow'}"]`).click();
+        await page.locator('[data-cabinet-no-date]').click();
     }
     assert.equal(await countInputListeners(), 1, 'partial date refreshes do not multiply composer input handlers');
     assert.equal(state.cabinetRequests, initialCabinetRequests, 'date toggles do not multiply projection requests');
@@ -334,6 +338,7 @@ async function assertFocusedFetchRefreshesOverdue(page, state) {
 async function assertFullComposerContract(page, state) {
     const readComposer = () => page.evaluate(() => ({
         title: document.getElementById('cabinetTaskTitle')?.value || '',
+        description: document.getElementById('cabinetTaskDetails')?.value || '',
         date: document.getElementById('cabinetTaskDate')?.value || '',
         category: document.getElementById('cabinetTaskCategory')?.value || '',
         mode: document.getElementById('cabinetTaskMode')?.value || '',
@@ -348,6 +353,7 @@ async function assertFullComposerContract(page, state) {
     const toggle = page.locator('[data-cabinet-composer-toggle]');
     if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
     await title.fill('Browser full composer create');
+    await page.locator('#cabinetTaskDetails').fill('Browser composer description');
     await page.locator('#cabinetTaskCategory').selectOption('event');
     await page.locator('#cabinetTaskMode').selectOption('personal');
     await page.locator('#cabinetTaskKind').selectOption('action');
@@ -361,16 +367,17 @@ async function assertFullComposerContract(page, state) {
 
     const assertRetained = async label => {
         const actual = await readComposer();
-        for (const key of ['title', 'category', 'mode', 'kind', 'priority', 'visibility', 'reportRequired', 'allowReschedule']) {
+        for (const key of ['title', 'description', 'category', 'mode', 'kind', 'priority', 'visibility', 'reportRequired', 'allowReschedule']) {
             assert.equal(actual[key], expected[key], `${label} keeps ${key}`);
         }
         assert.deepEqual(actual.subtasks, expected.subtasks, `${label} keeps subtasks`);
     };
 
-    for (const preset of ['today', 'tomorrow', 'day_after_tomorrow', 'plus_3_days', 'month_end', 'no_date', 'custom']) {
-        await page.locator(`[data-cabinet-due-preset="${preset}"]`).click();
-        await assertRetained(`${preset} after full composer input`);
-    }
+    const noDateToggle = page.locator('[data-cabinet-no-date]');
+    await noDateToggle.click();
+    await assertRetained('clearing the date');
+    await noDateToggle.click();
+    await assertRetained('restoring today');
 
     const customDate = page.locator('#cabinetTaskDate');
     const customProjection = page.waitForResponse(response => {
@@ -434,6 +441,7 @@ async function assertFullComposerContract(page, state) {
 
     const payload = state.taskCreatePayloads.at(-1);
     assert.equal(payload.title, expected.title, 'payload title is exact');
+    assert.equal(payload.description, expected.description, 'payload description is exact');
     assert.equal(payload.category, 'event', 'payload category is exact');
     assert.equal(payload.task_mode, 'personal', 'payload mode is exact');
     assert.equal(payload.task_kind, 'checklist', 'payload uses checklist for a task with subtasks');
@@ -449,6 +457,7 @@ async function assertFullComposerContract(page, state) {
     const reset = await readComposer();
     assert.deepEqual({
         title: reset.title,
+        description: reset.description,
         category: reset.category,
         mode: reset.mode,
         kind: reset.kind,
@@ -459,6 +468,7 @@ async function assertFullComposerContract(page, state) {
         subtasks: reset.subtasks
     }, {
         title: '',
+        description: '',
         category: 'personal',
         mode: 'personal',
         kind: 'action',

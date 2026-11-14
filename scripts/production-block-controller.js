@@ -12,8 +12,8 @@ const {
     STAFF_DELETION_CI_HASH,
     PERFORMANCE_CI_WORKFLOW_HASHES,
     PERFORMANCE_CI_FAILED_SHA,
-    FREELANCE_FAILED_SHA,
-    FREELANCE_FAILED_RUN,
+    FREELANCE_RECOVERY_PARENT,
+    FREELANCE_RECOVERY_CI_RUN,
     assertFreelanceRecovery,
     PERFORMANCE_CI_FAILED_RUN,
     assertPerformanceCiWorkflowHashes,
@@ -369,8 +369,8 @@ function assertPreparedProductionBase(manifest, live, remoteSha) {
         return;
     }
     if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS) {
-        fail(remoteSha === FREELANCE_FAILED_SHA || remoteSha === manifest.initialHeadSha,
-            'Freelance remote differs from the failed predecessor or corrected SHA', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
+        fail(remoteSha === FREELANCE_RECOVERY_PARENT || remoteSha === manifest.initialHeadSha,
+            'Freelance remote differs from the reviewed predecessor or corrected SHA', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
         return;
     }
     if (manifest.renewalFrom) {
@@ -650,21 +650,20 @@ function assertPerformanceCiRecoveryBase() {
 
 function freelanceRecoveryFacts(head) {
     const [, parent, ...otherParents] = git(['rev-list', '--parents', '-n', '1', head]).split(/\s+/);
-    return { parent: otherParents.length ? null : parent, changedPaths: changedPaths(FREELANCE_FAILED_SHA, head) };
+    return { parent: otherParents.length ? null : parent, changedPaths: changedPaths(FREELANCE_RECOVERY_PARENT, head) };
 }
 
 function assertFreelanceRecoveryBase() {
-    fail(remoteProductionSha() === FREELANCE_FAILED_SHA,
-        'Production branch no longer points at the failed freelance candidate', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
-    const run = JSON.parse(commandResult('gh', ['run', 'view', FREELANCE_FAILED_RUN, '--json',
+    fail(remoteProductionSha() === FREELANCE_RECOVERY_PARENT,
+        'Production branch no longer points at the reviewed freelance predecessor', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
+    const run = JSON.parse(commandResult('gh', ['run', 'view', FREELANCE_RECOVERY_CI_RUN, '--json',
         'databaseId,headSha,headBranch,workflowName,event,status,conclusion,jobs']));
-    fail(String(run.databaseId) === FREELANCE_FAILED_RUN && run.headSha === FREELANCE_FAILED_SHA
-        && run.headBranch === TARGET.branch && run.workflowName === 'CI' && run.event === 'push'
-        && run.status === 'completed' && run.conclusion === 'failure'
-        && run.jobs?.some(job => job.name === 'HR and payroll PostgreSQL integration' && job.conclusion === 'failure'
+    fail(String(run.databaseId) === FREELANCE_RECOVERY_CI_RUN
+        && run.jobs?.some(job => job.name === 'HR and payroll PostgreSQL integration'
             && job.steps?.some(step => step.name === 'Run attendance lock and full backup recovery integration'
-                && step.conclusion === 'failure')),
-    'Freelance recovery requires the exact failed attendance restore CI run', 'PRODUCTION_BLOCK_CI_IDENTITY_INVALID');
+                && step.status === 'completed' && step.conclusion === 'success')),
+    'Freelance recovery requires the exact CI run with successful attendance restore', 'PRODUCTION_BLOCK_CI_IDENTITY_INVALID');
+    assertHrPayrollCiResult(run, FREELANCE_RECOVERY_PARENT);
 }
 
 function isReleaseArtifact(file) {

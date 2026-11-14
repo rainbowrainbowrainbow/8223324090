@@ -14,8 +14,9 @@ const {
     migrationSqlHash,
     FREELANCE_PATHS,
     FREELANCE_SQL_HASHES,
-    FREELANCE_FAILED_SHA,
+    FREELANCE_RECOVERY_PARENT,
     FREELANCE_RECOVERY_PATHS,
+    FREELANCE_ATTENDANCE_RECOVERY_PATHS,
     PROFILE_EMPLOYEE_RELEASE_PATHS,
     PROFILE_EMPLOYEE_AUTH_BLOB,
     STAFF_DELETION_PATHS,
@@ -68,10 +69,10 @@ test('freelance release binds the exact base, inventory, additive SQL and both C
     }));
     const release = {
         live: { commitSha: FREELANCE_BASE, sourceBranch: 'codex/eventgenix-production', version: '0.83.53' },
-        releaseVersion: '0.83.54',
-        changedPaths: [...new Set([...FREELANCE_PATHS, ...FREELANCE_RECOVERY_PATHS])],
+        releaseVersion: '0.83.55',
+        changedPaths: [...FREELANCE_PATHS, ...FREELANCE_ATTENDANCE_RECOVERY_PATHS],
         migrations,
-        freelanceRecovery: { parent: FREELANCE_FAILED_SHA, changedPaths: FREELANCE_RECOVERY_PATHS }
+        freelanceRecovery: { parent: FREELANCE_RECOVERY_PARENT, changedPaths: FREELANCE_RECOVERY_PATHS }
     };
     const options = { protectedWorkflow: 'freelance-shift-blocks', maxReleaseAttempts: 1 };
     const value = manifest(options, release);
@@ -79,7 +80,11 @@ test('freelance release binds the exact base, inventory, additive SQL and both C
     assert.equal(value.rollbackReference.preserveFreelanceHistory, true);
     assert.match(releaseCommandPlan(value).join('\n'), /exact-sha-runtime-artifact-run/);
     assert.throws(() => assertPreparedProductionBase(value, release.live, LIVE_SHA), { code: 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT' });
-    assert.doesNotThrow(() => assertPreparedProductionBase(value, release.live, FREELANCE_FAILED_SHA));
+    assert.doesNotThrow(() => assertPreparedProductionBase(value, release.live, FREELANCE_RECOVERY_PARENT));
+    assert.ok(FREELANCE_RECOVERY_PATHS.some(file => artifactInputs.includes(file)));
+    assert.throws(() => manifest(options, { ...release, freelanceRecovery: {
+        ...release.freelanceRecovery, changedPaths: FREELANCE_RECOVERY_PATHS.filter(file => file !== 'package.json')
+    } }), { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID' });
     assert.throws(() => manifest(options, { ...release, changedPaths: [...release.changedPaths, 'routes/auth.js'] }),
         { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID' });
     assert.throws(() => manifest(options, { ...release, freelanceRecovery: { ...release.freelanceRecovery, parent: LIVE_SHA } }),

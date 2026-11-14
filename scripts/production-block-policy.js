@@ -29,14 +29,74 @@ const PROTECTED_WORKFLOWS = Object.freeze({
     FINANCE_MANUAL_QA: 'finance-manual-qa'
 });
 const FREELANCE_BASE = '46df02047c196dfa5159e27f6cfb09fe6e907b11';
-const FREELANCE_FAILED_SHA = '8d3372a2b4c88c12c3caa3603cc9b198a8456e74';
-const FREELANCE_FAILED_RUN = '43517984913';
-const FREELANCE_RECOVERY_PATHS = Object.freeze([
+const FREELANCE_RECOVERY_PARENT = 'b67cbe8998e13bf762792361bad31534e36e2e88';
+const FREELANCE_RECOVERY_CI_RUN = '43521534310';
+const FREELANCE_RECOVERY_PATHS = Object.freeze(normalizePathList([
+    'CHANGELOG.md',
+    'accounting-deposits.html',
+    'afisha.html',
+    'art-director.html',
+    'attendance-upload.html',
+    'booking-summary.html',
+    'cashier-payments.html',
+    'center.html',
+    'certificates.html',
+    'chat-settings.html',
+    'chat.html',
+    'checkin.html',
+    'content.html',
+    'copilot.html',
+    'css/assistant-rail.css',
+    'css/pages-shell.css',
+    'css/pages.css',
+    'css/sidebar-aurora.css',
+    'customers.html',
+    'dashboard.html',
+    'data-deletion.html',
+    'demo.html',
+    'designer.html',
+    'designs.html',
+    'docs/integrations/checkbox/IMPLEMENTATION_STATUS.md',
+    'finance.html',
+    'game.html',
+    'graduation.html',
+    'guardian-ops.html',
+    'hermes-studio.html',
+    'hr.html',
+    'index.html',
+    'invite.html',
+    'js/designs-page.js',
+    'landing/index.html',
+    'leads.html',
+    'omni.html',
+    'package-lock.json',
+    'package.json',
+    'privacy-policy.html',
+    'profile.html',
+    'programs.html',
+    'quiz.html',
+    'report-agent.html',
+    'reports.html',
+    'room.html',
     'scripts/production-block-controller.js',
     'scripts/production-block-policy.js',
+    'server.js',
+    'shop.html',
+    'sound.html',
+    'staff.html',
+    'status.html',
+    'sw.js',
+    'tasks.html',
+    'terms-of-service.html',
+    'tests/production-block-controller.test.js',
+    'tests/ui-check.js',
+    'timeline-settings.html',
+    'training.html',
+    'warehouse.html'
+]));
+const FREELANCE_ATTENDANCE_RECOVERY_PATHS = Object.freeze([
     'services/backupRecovery.js',
-    'tests/integration/attendance-backup-roundtrip.integration.test.js',
-    'tests/production-block-controller.test.js'
+    'tests/integration/attendance-backup-roundtrip.integration.test.js'
 ]);
 const FREELANCE_RED_PATHS = Object.freeze(['routes/finance.js', 'routes/payroll.js']);
 const FREELANCE_SQL_HASHES = Object.freeze({
@@ -747,7 +807,7 @@ function validateProtectedWorkflow(workflow, changedPaths = [], redPaths = []) {
     }
     if (workflow === PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS) {
         fail(stableJson(normalizePathList(redPaths)) === stableJson(FREELANCE_RED_PATHS)
-            && stableJson(normalizePathList(changedPaths)) === stableJson(normalizePathList([...FREELANCE_PATHS, ...FREELANCE_RECOVERY_PATHS])),
+            && stableJson(normalizePathList(changedPaths)) === stableJson(normalizePathList([...FREELANCE_PATHS, ...FREELANCE_ATTENDANCE_RECOVERY_PATHS])),
         'Freelance release paths differ from the reviewed inventory', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
         return { enabled: true, kind: workflow, protectedChangedPaths: [...FREELANCE_RED_PATHS] };
     }
@@ -1147,7 +1207,7 @@ function validateHrPayrollScope(qa, migrations) {
 }
 
 function validateFreelanceScope(base, baseVersion, version, qa, migrations, attempts) {
-    fail(base === FREELANCE_BASE && baseVersion === '0.83.53' && version === '0.83.54'
+    fail(base === FREELANCE_BASE && baseVersion === '0.83.53' && version === '0.83.55'
         && qa.enabled === false && attempts === 1
         && stableJson(migrations.map(item => item.file).sort()) === stableJson(Object.keys(FREELANCE_SQL_HASHES)),
     'Freelance requires its exact base, patch, migrations, one attempt and read-only QA',
@@ -1160,7 +1220,7 @@ function validateFreelanceScope(base, baseVersion, version, qa, migrations, atte
 }
 
 function assertFreelanceRecovery(recovery) {
-    fail(recovery?.parent === FREELANCE_FAILED_SHA
+    fail(recovery?.parent === FREELANCE_RECOVERY_PARENT
         && stableJson(normalizePathList(recovery.changedPaths)) === stableJson(FREELANCE_RECOVERY_PATHS),
     'Freelance correction must be one direct commit with the reviewed recovery inventory',
     'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
@@ -1245,9 +1305,10 @@ module.exports = {
     PROTECTED_WORKFLOWS,
     FREELANCE_PATHS,
     FREELANCE_SQL_HASHES,
-    FREELANCE_FAILED_SHA,
-    FREELANCE_FAILED_RUN,
+    FREELANCE_RECOVERY_PARENT,
+    FREELANCE_RECOVERY_CI_RUN,
     FREELANCE_RECOVERY_PATHS,
+    FREELANCE_ATTENDANCE_RECOVERY_PATHS,
     assertFreelanceRecovery,
     STAFF_DELETION_PATHS,
     STAFF_DELETION_CI_HASH,

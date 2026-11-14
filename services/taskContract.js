@@ -11,6 +11,7 @@ const {
     taskOwnerState
 } = require('./taskPolicy');
 const { getPermissions } = require('../config/roles');
+const { taskViewerRoles } = require('./taskPersonalScope');
 const { attachTaskSchedule } = require('./taskScheduling');
 const {
     taskCompletionReportId,
@@ -76,6 +77,7 @@ function normalizeTaskPayload(row = {}, options = {}) {
         ownerLabel,
         ownerState,
         ownerUserId: row.owner_user_id || null,
+        viewerRoles: taskViewerRoles(user, row),
         taskMode,
         taskKind,
         visibility,

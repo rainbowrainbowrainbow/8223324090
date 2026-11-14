@@ -13,6 +13,7 @@ function clearProjectionModules() {
         '../services/taskCabinetProjection',
         '../services/myDayTaxonomy',
         '../services/taskPolicy',
+        '../services/taskPersonalScope',
         '../services/taskBusinessScope',
         '../services/taskCompletionHistory',
         '../services/taskDependencies',
@@ -92,7 +93,7 @@ test('cabinet projection returns persisted My Day impacts for an AI-created task
                 };
             }
             if (/SELECT COUNT\(\*\)::int AS total/i.test(sql)) return { rows: [{ total: 1 }] };
-            if (/SELECT t\.\*, u\.name AS owner_name, u\.username AS owner_username FROM tasks t/i.test(sql)) {
+            if (/SELECT t\.\*, u\.name AS owner_name, u\.username AS owner_username.* FROM tasks t/i.test(sql)) {
                 return { rows: [{ ...taskRow, owner_name: 'Route User', owner_username: 'route-user' }] };
             }
             if (/FROM task_subtasks/i.test(sql)) return { rows: [] };
@@ -109,6 +110,7 @@ test('cabinet projection returns persisted My Day impacts for an AI-created task
         }
     });
     installMock('../services/taskPolicy', {
+        ...require('../services/taskPolicy'),
         buildTaskOwnerMatch: () => 'TRUE',
         canMutateTask: () => true,
         canReassignTask: () => true,

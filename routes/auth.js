@@ -31,6 +31,7 @@ const {
     uniquePasswordCandidates
 } = require('../services/credentialInput');
 const { buildTaskOwnerMatch, canMutateTask, normalizeUserId } = require('../services/taskPolicy');
+const { buildTaskPersonalQuery } = require('../services/taskPersonalScope');
 const { canonicalTaskOrderSql } = require('../services/taskScheduling');
 const {
     taskKpiActiveWorkSql,
@@ -522,6 +523,9 @@ router.get('/profile', authenticateToken, async (req, res) => {
         const ownerParams = ownerScope.params;
         const ownerBusinessCondition = pushBusinessScopeCondition(ownerParams, businessScope, 'tasks');
         const ownerWhere = `${ownerScope.match} AND ${ownerBusinessCondition}`;
+        const personalParams = [];
+        const personalScope = buildTaskPersonalQuery(user, personalParams, 'tasks');
+        const personalWhere = `${personalScope.match} AND ${pushBusinessScopeCondition(personalParams, businessScope, 'tasks')}`;
         const ownerT = profileTaskOwnerWhere(user, 't');
         const ownerTBusinessCondition = pushBusinessScopeCondition(ownerT.params, businessScope, 't');
         ownerT.match = `${ownerT.match} AND ${ownerTBusinessCondition}`;
@@ -559,37 +563,37 @@ router.get('/profile', authenticateToken, async (req, res) => {
             // 2: Tasks stats by status
             pool.query(
                 `SELECT status, COUNT(*)::int as count FROM tasks
-                 WHERE ${ownerWhere}
+                 WHERE ${personalWhere}
                  GROUP BY status`,
-                ownerParams
+                personalParams
             ),
             // 3: Overdue tasks WITH DETAILS (not just count)
             pool.query(
-                `SELECT id, title, deadline, scheduled_start_at, scheduled_end_at, schedule_slot, schedule_status, priority, category, task_mode, task_kind, visibility, workflow_state FROM tasks
-                 WHERE ${ownerWhere}
-                 AND status != 'done'
+                `SELECT id, title, deadline, scheduled_start_at, scheduled_end_at, schedule_slot, schedule_status, priority, category, task_mode, task_kind, visibility, workflow_state, ${personalScope.roles} AS viewer_roles FROM tasks
+                 WHERE ${personalWhere}
+                 AND status NOT IN ('done','cancelled','archived')
                  AND ((scheduled_end_at IS NOT NULL AND scheduled_end_at < NOW()) OR (scheduled_end_at IS NULL AND deadline IS NOT NULL AND deadline < NOW()))
                  ORDER BY ${canonicalTaskOrderSql('tasks')} LIMIT 10`,
-                ownerParams
+                personalParams
             ),
             // 4: Upcoming deadline tasks (within 48h — extended from 24h)
             pool.query(
-                `SELECT id, title, deadline, scheduled_start_at, scheduled_end_at, schedule_slot, schedule_status, priority, category, status, task_mode, task_kind, visibility, workflow_state FROM tasks
-                 WHERE ${ownerWhere}
-                 AND status != 'done'
+                `SELECT id, title, deadline, scheduled_start_at, scheduled_end_at, schedule_slot, schedule_status, priority, category, status, task_mode, task_kind, visibility, workflow_state, ${personalScope.roles} AS viewer_roles FROM tasks
+                 WHERE ${personalWhere}
+                 AND status NOT IN ('done','cancelled','archived')
                  AND (
                     (scheduled_start_at IS NOT NULL AND scheduled_start_at > NOW() AND scheduled_start_at < NOW() + INTERVAL '48 hours')
                     OR (scheduled_start_at IS NULL AND deadline IS NOT NULL AND deadline > NOW() AND deadline < NOW() + INTERVAL '48 hours')
                  )
                  ORDER BY ${canonicalTaskOrderSql('tasks')} LIMIT 10`,
-                ownerParams
+                personalParams
             ),
             // 5: Tasks by category
             pool.query(
                 `SELECT COALESCE(category, 'other') as category, COUNT(*)::int as count FROM tasks
-                 WHERE ${ownerWhere} AND status != 'done'
+                 WHERE ${personalWhere} AND status NOT IN ('done','cancelled','archived')
                  GROUP BY category ORDER BY count DESC`,
-                ownerParams
+                personalParams
             ),
             // 6: Avg completion time (hours)
             pool.query(
@@ -656,15 +660,15 @@ router.get('/profile', authenticateToken, async (req, res) => {
             // 14: My tasks list (active, last 15)
             pool.query(
                 `SELECT id, title, status, priority, deadline, scheduled_start_at, scheduled_end_at, schedule_slot, schedule_status, category, dependency_ids,
-                        task_mode, task_kind, visibility, workflow_state, focus_rank, remind_at, snoozed_until
+                        task_mode, task_kind, visibility, workflow_state, focus_rank, remind_at, snoozed_until, ${personalScope.roles} AS viewer_roles
                  FROM tasks
-                 WHERE ${ownerWhere} AND status != 'done'
+                 WHERE ${personalWhere} AND status NOT IN ('done','cancelled','archived')
                  ORDER BY ${canonicalTaskOrderSql('tasks')},
                   CASE WHEN deadline IS NOT NULL AND deadline < NOW() THEN 0 ELSE 1 END,
                   CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
                   deadline ASC NULLS LAST
                  LIMIT 15`,
-                ownerParams
+                personalParams
             ),
             // 15: Today's shift (match user to staff by name)
             pool.query(

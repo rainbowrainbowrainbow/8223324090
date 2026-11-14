@@ -23,6 +23,8 @@ focused route tests in the same pack.
 
 | Mount | Route File | Owner |
 | --- | --- | --- |
+| `/api/auth/telegram-crm` | `routes/telegram-crm.js` | Authenticated own-account Telegram binding lifecycle |
+| `/api/telegram-crm/bot` | `routes/telegram-crm.js` | Service-authenticated private Telegram pilot |
 | `/api/achievements` | `routes/achievements.js` | achievements |
 | `/api/afisha` | `routes/afisha.js` | afisha, atomic schedule changes |
 | `/api/agents` | `routes/agents.js` | agents |

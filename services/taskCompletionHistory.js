@@ -1,9 +1,9 @@
 'use strict';
 
 const {
-    buildTaskOwnerMatch,
     normalizeUserId
 } = require('./taskPolicy');
+const { buildTaskPersonalQuery } = require('./taskPersonalScope');
 const { dateOnly: taskKyivDateOnly } = require('./taskScheduling');
 const { normalizeTaskPayload } = require('./taskContract');
 const { loadTaskClassifications } = require('./myDayTaxonomy');
@@ -90,8 +90,8 @@ function decodeCompletionHistoryCursor(value) {
     return { timestamp: timestamp.toISOString(), id };
 }
 
-function taskCabinetRowSelectSql() {
-    return `SELECT t.*, u.name AS owner_name, u.username AS owner_username
+function taskCabinetRowSelectSql(roles = "'{}'::text[]") {
+    return `SELECT t.*, u.name AS owner_name, u.username AS owner_username, ${roles} AS viewer_roles
          FROM tasks t
          LEFT JOIN users u ON u.id = t.owner_user_id`;
 }
@@ -147,9 +147,10 @@ function attachCompletionHistorySubtasks(rows = [], subtasksByTaskId = new Map()
 
 function taskCompletionHistoryScope(user, businessScope) {
     const params = [];
-    const ownerMatch = buildTaskOwnerMatch(user, params, 't');
+    const personalQuery = buildTaskPersonalQuery(user, params, 't');
+    const ownerMatch = personalQuery.match;
     const businessCondition = appendTaskBusinessScopeSql(params, businessScope, 't');
-    return { params, ownerMatch, businessCondition };
+    return { params, ownerMatch, businessCondition, roles: personalQuery.roles };
 }
 
 async function queryTaskCompletionHistoryPage(queryable, options = {}) {
@@ -180,7 +181,7 @@ async function queryTaskCompletionHistoryPage(queryable, options = {}) {
     const limitParam = pageParams.length + 1;
     pageParams.push(limit + 1);
     const result = await queryable.query(
-        `${taskCabinetRowSelectSql()}
+        `${taskCabinetRowSelectSql(scope.roles)}
          WHERE ${scope.ownerMatch}
            ${scope.businessCondition}
            AND COALESCE(t.status, 'todo') = 'done'

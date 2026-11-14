@@ -280,6 +280,8 @@ app.use('/api/gamification/shop/buy', shopBuyLimiter);
 app.use('/api', apiAudit);
 
 // --- Mount route modules ---
+app.use('/api/auth/telegram-crm', require('./routes/telegram-crm').getRouters().account);
+app.use('/api/telegram-crm/bot', require('./routes/telegram-crm').getRouters().bot);
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/organizations', require('./routes/organizations'));
 app.use('/api/bookings', require('./routes/bookings'));

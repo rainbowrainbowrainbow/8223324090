@@ -636,6 +636,19 @@ function markAuthenticatedRuntimeReady() {
 
     authenticatedRuntimeReady = true;
     window.dispatchEvent(new CustomEvent('crm:authenticated-runtime-ready'));
+    // Optional first-login onboarding; no redirect or dependency in the auth critical path.
+    const authScript = typeof document !== 'undefined'
+        ? Array.from(document.scripts || []).find(script => /\/js\/auth\.js(?:\?|$)/.test(script.src)) : null;
+    if (authScript) {
+        const moduleUrl = authScript.src.replace('/js/auth.js', '/js/telegram-crm-profile.js');
+        if (!document.querySelector('link[href*="telegram-crm-profile.css"]')) {
+            const stylesheet = document.createElement('link');
+            stylesheet.rel = 'stylesheet';
+            stylesheet.href = authScript.src.replace('/js/auth.js', '/css/telegram-crm-profile.css');
+            document.head.appendChild(stylesheet);
+        }
+        void import(moduleUrl).then(() => window.TelegramCrmProfile?.offer()).catch(() => {});
+    }
     return true;
 }
 

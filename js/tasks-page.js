@@ -3920,6 +3920,7 @@ function renderTaskCard(task) {
         </label>
         <div class="task-card-title">${aiCreatedMarker}${escHtml}${priorityIcon ? priorityIcon + ' ' : ''}${escapeHtml(t.title)}${getHealthBadge(t.health_score)}</div>
         <div class="task-card-meta">
+            ${t.viewerRoles?.length ? `<span>${escapeHtml(window.TaskUiShared.taskViewerRoleLabel(t))}</span>` : ''}
             ${typeBadge}
             ${taskModeBadge(t)}
             ${taskKindBadge(t)}

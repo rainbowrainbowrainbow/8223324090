@@ -9,6 +9,8 @@ const CSS_APP_SHELL_PRECACHE = [
 ];
 
 const CSS_SURFACE = [
+    { file: 'css/telegram-crm-profile.css', owner: 'profile', category: 'page-scoped', status: 'active',
+        reason: 'Optional Telegram connection, first-login prompt, accessible confirmation forms.' },
     { file:'css/attendance-upload.css', owner:'hr', category:'page-scoped', status:'active',
         reason:'Standalone mobile worker upload shell and confirmed attendance review.' },
     {

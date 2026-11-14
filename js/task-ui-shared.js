@@ -376,7 +376,13 @@
         normalizeAction: normalizeTaskMutationAction,
         connect: getTaskMutationChannel
     });
+    function taskViewerRoleLabel(task = {}) {
+        const labels = { executor: 'Виконавець', author: 'Автор', participant: 'Учасник' };
+        return [...new Set(task.viewerRoles || task.viewer_roles || [])].map(role => labels[role]).filter(Boolean).join(' · ');
+    }
+
     global.TaskUiShared = Object.freeze({
+        taskViewerRoleLabel,
         TASK_PRIORITY_OPTIONS,
         TASK_WORKFLOW_VALUES,
         normalizeTask,

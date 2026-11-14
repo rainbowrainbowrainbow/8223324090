@@ -11,6 +11,7 @@ const {
 } = require('../services/revenueAccessPolicy');
 const { buildTaskPaginationMetadata } = require('../services/taskPagination');
 const { taskKpiCanonicalOverdueSql } = require('../services/taskPerformancePolicy');
+const { buildTaskPersonalQuery } = require('../services/taskPersonalScope');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
 
 // v39.8: Security — require authentication for all task endpoints
@@ -1428,7 +1429,8 @@ router.get('/', async (req, res) => {
             params.push(workflowFilter);
         }
         if (isTruthy(mine)) {
-            conditions.push(buildTaskOwnerMatch(req.user, params, 't'));
+            conditions.push(buildTaskPersonalQuery(req.user, params, 't').match);
+            if (!status && !workflowFilter && !view) conditions.push("COALESCE(t.status,'todo') NOT IN ('done','cancelled','archived')");
             idx = params.length + 1;
         }
         if (isTruthy(privateOnly)) {
@@ -1712,7 +1714,7 @@ router.get('/', async (req, res) => {
             LIMIT $${idx++} OFFSET $${idx++}`,
             params
         );
-        const tasks = result.rows.map(normalizeTaskPayload);
+        const tasks = result.rows.map(row => normalizeTaskPayload(row, { user: req.user }));
         if (!paginatedResponse) return res.json(tasks);
         const responsePayload = {
             success: true,

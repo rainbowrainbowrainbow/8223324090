@@ -177,6 +177,8 @@ function isAccountContextRequest(req) {
         'POST /auth/logout',
         'POST /auth/security/revoke-sessions'
     ]).has(`${method} ${path}`)) return true;
+    if (path === '/auth/telegram-crm' && method === 'GET') return true;
+    if (method === 'POST' && /^\/auth\/telegram-crm\/(link|link\/status|link\/confirm|disconnect)$/.test(path)) return true;
     // Organization lifecycle routes authorize the current organization manager
     // themselves, including recovery after its last business was deactivated.
     return (method === 'GET' && /^\/organizations\/members\/\d+\/access-profile$/.test(path))

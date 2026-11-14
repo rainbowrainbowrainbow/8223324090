@@ -138,7 +138,7 @@ let profileAutoRewardCheckCompletedKey = '';
 const profileAutoRewardChecksPending = new Map();
 
 const CABINET_TASK_SEGMENTS = [
-    { id: 'all', label: 'Всі мої', hint: 'Усі активні задачі, де ви власник або виконавець' },
+    { id: 'all', label: 'Всі мої', hint: 'Усі активні задачі, де ви виконавець, автор або учасник' },
     { id: 'personal', label: 'Особисті', hint: 'Ваші особисті задачі і задачі категорії personal' },
     { id: 'private', label: 'Приватні', hint: 'Задачі з приватною видимістю тільки для вас' },
     { id: 'work', label: 'Робочі', hint: 'Командні та операційні задачі' },
@@ -1531,6 +1531,10 @@ async function initProfilePage() {
         }
         if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell({ markRuntimeReady: false });
         else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
+        const telegramPanel = document.createElement('section');
+        telegramPanel.className = 'profile-work-panel';
+        document.getElementById('main-content').appendChild(telegramPanel);
+        void window.TelegramCrmProfile?.mount(telegramPanel);
         return;
     }
     const requestedTab = params.get('tab');
@@ -2064,7 +2068,8 @@ function renderProfile() {
                         <div class="profile-identity-meta-row">
                             ${secondaryCount ? `<span>Додаткових професій: ${secondaryCount}</span>` : ''}
                             ${username ? `<span>@${escapeHtml(username)}</span>` : '<span>username не вказано</span>'}
-                            <span class="${p.user?.telegramConnected ? 'is-ok' : ''}">${p.user?.telegramConnected ? 'Telegram підключено' : 'Telegram не підключено'}</span>
+                            <span class="${p.user?.telegramConnected ? 'is-ok' : ''}">${p.user?.telegramConnected ? 'Telegram-сповіщення підключено' : 'Telegram-сповіщення не підключено'}</span>
+                            ${isOwnProfile ? '<a href="/profile?tab=settings#telegram-crm">Telegram для задач CRM</a>' : ''}
                         </div>
                         ${p.user?.bio || p.bio ? `<div class="profile-bio">${escapeHtml(p.user?.bio || p.bio)}</div>` : ''}
                     </div>
@@ -2830,6 +2835,7 @@ function renderProfileSettingsTab() {
     const crop = normalizeProfileAvatarCrop(avatar.crop);
     return `
         <div class="profile-settings-shell">
+            <section id="telegram-crm" class="profile-work-panel profile-settings-panel" data-telegram-crm-profile></section>
             <section class="profile-work-panel profile-settings-panel" aria-label="Облікові дані">
                 <dl>
                     <dt>Імʼя та прізвище</dt><dd>${escapeHtml(identity.name || 'Не задано')}</dd>
@@ -7130,6 +7136,7 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
     ));
     const myDayTimeSummaryHtml = isMyDayCard ? renderCabinetMyDayTimeSummary(task, showMyDayDetails) : '';
     const myDayFactsHtml = isMyDayCard ? [
+        cabinetTaskVisibleBadge('viewer-role', `<span>${escapeHtml(window.TaskUiShared?.taskViewerRoleLabel(task) || '')}</span>`),
         cabinetTaskVisibleBadge('due', renderCabinetDueBadge(task, taskIdAttr, dueState, { suppressOverdueRescheduleMenu: suppressOverdueRescheduleMenu || showMyDayDetails })),
         cabinetTaskVisibleBadge('priority', showMyDayDetails ? '' : renderCabinetTaskPriorityControl(task, taskIdAttr)),
         cabinetTaskVisibleBadge('postponement', renderCabinetPostponementBadge(task)),
@@ -9833,6 +9840,7 @@ function bindCabinetTaskSoundControls(root = document) {
 }
 
 function attachProfileListeners() {
+    if (isOwnProfile) void window.TelegramCrmProfile?.mount(document.querySelector('[data-telegram-crm-profile]'));
     if (!cabinetSnoozeOutsideBound) {
         cabinetSnoozeOutsideBound = true;
         document.addEventListener('click', event => {

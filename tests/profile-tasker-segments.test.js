@@ -6,6 +6,20 @@ const vm = require('node:vm');
 
 const ROOT = path.resolve(__dirname, '..');
 
+function assertPersonalQueryParameters(call, scheduleParameters) {
+    const owner = /t\.owner_user_id = \$(\d+)/.exec(call.text);
+    const author = /t\.created_by_user_id = \$(\d+)/.exec(call.text);
+    const observer = /task_observer_scope\.user_id = \$(\d+)/.exec(call.text);
+    const business = /COALESCE\(t\.business_context, 'event_genix'\) = \$(\d+)/.exec(call.text);
+    for (const reference of [owner, author, observer]) {
+        assert.ok(reference, 'personal scope includes the role');
+        assert.equal(call.params[Number(reference[1]) - 1], 7);
+    }
+    assert.ok(business);
+    assert.equal(call.params[Number(business[1]) - 1], 'event_genix');
+    assert.deepEqual(call.params.slice(Number(business[1])), scheduleParameters);
+}
+
 function loadProfileTaskerContext() {
     const localState = new Map();
     const sandbox = {
@@ -2876,7 +2890,7 @@ test('my cabinet planning projection includes a valid custom focus date beyond m
     assert.equal(projection.meta.calendar.focusDate, '2026-09-15');
     assert.equal(projection.planning.all[0].id, 915);
     assert.ok(planningCall, 'planning query should include custom focus date');
-    assert.deepEqual(planningCall.params, ['serhiy', 'Serhiy', 7, 'event_genix', '2026-07-02', '2026-07-31', '2026-09-15', 261]);
+    assertPersonalQueryParameters(planningCall, ['2026-07-02', '2026-07-31', '2026-09-15', 261]);
 });
 
 test('my cabinet planning projection limits rows and exposes partial meta', async () => {
@@ -2938,7 +2952,7 @@ test('my cabinet planning projection limits rows and exposes partial meta', asyn
 
     assert.ok(planningCall, 'planning query should be limited');
     assert.match(planningCall.text, /ORDER BY[\s\S]*LIMIT \$\d+/);
-    assert.deepEqual(planningCall.params, ['serhiy', 'Serhiy', 7, 'event_genix', '2026-07-02', '2026-07-31', 3]);
+    assertPersonalQueryParameters(planningCall, ['2026-07-02', '2026-07-31', 3]);
     assert.deepEqual(projection.planning.all.map(task => task.id), [201, 202]);
     assert.deepEqual(projection.planning.today.map(task => task.id), [201]);
     assert.deepEqual(projection.planning.tomorrow.map(task => task.id), [202]);
@@ -3015,7 +3029,7 @@ test('my cabinet planning projection keeps owner and business scope guards', asy
     assert.match(planningCall.text, /t\.owner IN \(\$\d+,\$\d+\)/);
     assert.match(planningCall.text, /COALESCE\(t\.business_context, 'event_genix'\) = \$\d+/);
     assert.match(planningCall.text, /COALESCE\(t\.status, 'todo'\) NOT IN \('done','cancelled','archived'\)/);
-    assert.deepEqual(planningCall.params, ['serhiy', 'Serhiy', 7, 'event_genix', '2026-07-02', '2026-07-31', 261]);
+    assertPersonalQueryParameters(planningCall, ['2026-07-02', '2026-07-31', 261]);
 });
 
 test('my cabinet completed today dashboard bucket is exact and independent from 36-row history', async () => {
@@ -3121,7 +3135,7 @@ test('my cabinet completed today dashboard bucket is exact and independent from 
     assert.ok(completedTodayCall, 'completedTodayTasks query should be executed separately');
     assert.match(completedTodayCall.text, /DATE\(t\.completed_at AT TIME ZONE 'Europe\/Kyiv'\)/);
     assert.match(completedTodayCall.text, /today_subtask_exists\.is_done = true/);
-    assert.deepEqual(completedTodayCall.params, ['serhiy', 'Serhiy', 7, 'event_genix', '2026-08-14', 121]);
+    assertPersonalQueryParameters(completedTodayCall, ['2026-08-14', 121]);
     assert.equal(projection.completedHistory.length, 36);
     assert.equal(projection.completedTodayTasks.length, 1);
     assert.equal(projection.completedHistory.some(task => task.id === 500), false);

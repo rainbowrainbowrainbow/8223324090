@@ -20,6 +20,7 @@ const POLL_INTERVAL_MS = 500;
 const ISOLATED_DATABASE_LOCK_NAMESPACE = 'eventgenix-isolated-postgres-runner-v1';
 const MANUAL_MONEY_MODES = new Set(['all', 'finance', 'finance-money', 'finance-money-browser', 'payroll', 'fullstack']);
 const MODES = {
+    'telegram-crm': ['tests/integration/telegram-crm-fullstack.integration.test.js'],
     'hr-hiring': ['tests/integration/park-hr-hiring.integration.test.js'],
     substitutions: ['tests/integration/staff-substitution-actual-db.integration.test.js'],
     'attendance-ocr-browser': ['tests/browser/hr-attendance-ocr-actual-app-browser-smoke.js'],
@@ -105,7 +106,8 @@ const MODES = {
         'tests/integration/catalog-sale-vitalina-local-provider.integration.test.js'
     ],
     'my-day': [
-        'tests/integration/my-day-postgres.integration.test.js'
+        'tests/integration/my-day-postgres.integration.test.js',
+        'tests/integration/telegram-crm-fullstack.integration.test.js'
     ],
     'my-day-browser': [
         'tests/browser/my-day-actual-app-browser-smoke.js'
@@ -443,6 +445,7 @@ function buildServerEnvironment(testDb, port, credentials) {
         TELEGRAM_DEFAULT_CHAT_ID: '',
         REPORT_BOT_TOKEN: '',
         KLESHNYA_WEBHOOK_SECRET: '',
+        HERMES_API_KEY: 'isolated-telegram-crm-fixture-only',
         RATE_LIMIT_MAX: '10000',
         LOGIN_RATE_LIMIT_MAX: '1000'
     });
@@ -763,6 +766,7 @@ async function runSuite(testDb, testFile, suiteMode) {
         RUN_CATALOG_SALE_MIGRATIONS_INTEGRATION: testFile.includes('catalog-sale-migrations') ? 'true' : 'false',
         RUN_CATALOG_SALE_LOCAL_QA_INTEGRATION: catalogSaleLocalQa ? 'true' : 'false',
         RUN_MY_DAY_POSTGRES_INTEGRATION: testFile.includes('my-day-postgres.integration') ? 'true' : 'false',
+        RUN_TELEGRAM_CRM_FULLSTACK: testFile.includes('telegram-crm-fullstack.integration') ? 'true' : 'false',
         RUN_MY_DAY_ACTUAL_APP_BROWSER_SMOKE: testFile.includes('my-day-actual-app-browser-smoke') ? 'true' : 'false',
         RUN_OMNI_LEAD_LINKS_BROWSER: testFile.includes('omni-lead-links-actual-app-browser-smoke') ? 'true' : 'false',
         RUN_PARK_MANAGER_BROWSER_SMOKE: testFile.includes('park-manager-actual-app-browser-smoke') ? 'true' : 'false',

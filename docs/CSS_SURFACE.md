@@ -105,6 +105,7 @@ this document, and `npm run test:ui` coverage in the same pack.
 | `css/pages-shell.css` | shared-ui | `shared` | active | Small runtime entrypoint for shared page primitives and widgets; page-specific modules are linked by each HTML entrypoint. |
 | `css/pages-leads.css` | shared-ui | `shared` | active | Sales funnel kanban stage hint controls and tooltip styles imported by `pages.css`. |
 | `css/pages-profile.css` | shared-ui | `shared` | active | Profile avatar crop controls and compact soon-tab menu styles imported by `pages.css`. |
+| `css/telegram-crm-profile.css` | profile | `page-scoped` | active | Optional Telegram identity connection and first-login prompt. |
 | `css/global-task-timer.css` | tasks-my-day-time | `feature-shared` | active | Authenticated global task timer widget styles lazy-loaded by `auth.js` and mounted in the shared shell/sidebar. |
 | `css/task-ai-draft.css` | tasks-my-day-ai | `feature-shared` | active | Shared AI draft composer preview, review, field-mask, mobile, and dark-mode styles used by Profile My Day and Tasks composer. |
 | `css/my-day-impact-icons.css` | tasks-my-day | `feature-shared` | active | Shared grouped impact selector, semantic SVG icon, selected state, custom catalog link, mobile, and dark-mode styles used by Profile My Day and Tasks. |

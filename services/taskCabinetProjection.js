@@ -1,12 +1,12 @@
 'use strict';
 
 const {
-    buildTaskOwnerMatch,
     canMutateTask,
     canReassignTask,
     canRescheduleTask,
     normalizeUserId
 } = require('./taskPolicy');
+const { buildTaskPersonalQuery } = require('./taskPersonalScope');
 const { getPermissions } = require('../config/roles');
 const {
     attachTaskSchedule,
@@ -474,7 +474,8 @@ async function buildTaskCabinetBucketPage(options = {}) {
     const limit = normalizeTaskCabinetBucketLimit(options.bucketLimit);
     const offset = normalizeTaskCabinetBucketOffset(options.bucketOffset);
     const params = [];
-    const ownMatch = buildTaskOwnerMatch(user, params, 't');
+    const personalQuery = buildTaskPersonalQuery(user, params, 't');
+    const ownMatch = personalQuery.match;
     const ownBusinessCondition = appendTaskBusinessScopeSql(params, businessScope, 't');
     params.push(today);
     const todayParam = params.length;
@@ -551,7 +552,7 @@ async function buildTaskCabinetBucketPage(options = {}) {
         countParams
     );
     const result = await queryable.query(
-        `SELECT t.*, u.name AS owner_name, u.username AS owner_username
+        `SELECT t.*, u.name AS owner_name, u.username AS owner_username, ${personalQuery.roles} AS viewer_roles
          FROM tasks t
          LEFT JOIN users u ON u.id = t.owner_user_id
          WHERE ${ownMatch}
@@ -618,7 +619,8 @@ async function buildTaskCabinetProjection(options = {}) {
 
     const businessScope = options.businessScope;
     const ownParams = [];
-    const ownMatch = buildTaskOwnerMatch(user, ownParams, 't');
+    const personalQuery = buildTaskPersonalQuery(user, ownParams, 't');
+    const ownMatch = personalQuery.match;
     const ownBusinessCondition = appendTaskBusinessScopeSql(ownParams, businessScope, 't');
     const now = options.now instanceof Date ? options.now : new Date();
     const today = todayKyivDate(now);
@@ -634,7 +636,7 @@ async function buildTaskCabinetProjection(options = {}) {
     const completedHistoryLimit = normalizeCompletionHistoryLimit(options.completedHistoryLimit);
 
     const result = await queryable.query(
-        `SELECT t.*, u.name AS owner_name, u.username AS owner_username
+        `SELECT t.*, u.name AS owner_name, u.username AS owner_username, ${personalQuery.roles} AS viewer_roles
          FROM tasks t
          LEFT JOIN users u ON u.id = t.owner_user_id
          WHERE ${ownMatch}
@@ -686,7 +688,7 @@ async function buildTaskCabinetProjection(options = {}) {
         ? `OR ${planningDateSql} = $${planningFocusParam}::date`
         : '';
     const planningResult = await queryable.query(
-        `SELECT t.*, u.name AS owner_name, u.username AS owner_username
+        `SELECT t.*, u.name AS owner_name, u.username AS owner_username, ${personalQuery.roles} AS viewer_roles
          FROM tasks t
          LEFT JOIN users u ON u.id = t.owner_user_id
          WHERE ${ownMatch}
@@ -738,7 +740,7 @@ async function buildTaskCabinetProjection(options = {}) {
     const completedTodayLimitParam = completedTodayParams.length;
     const completedTodayDatePlaceholder = completedTodayParams.length - 1;
     const completedTodayResult = await queryable.query(
-        `SELECT t.*, u.name AS owner_name, u.username AS owner_username
+        `SELECT t.*, u.name AS owner_name, u.username AS owner_username, ${personalQuery.roles} AS viewer_roles
          FROM tasks t
          LEFT JOIN users u ON u.id = t.owner_user_id
          WHERE ${ownMatch}
@@ -924,7 +926,7 @@ async function buildTaskCabinetProjection(options = {}) {
     });
 
     const quickParams = [];
-    const quickOwnerMatch = buildTaskOwnerMatch(user, quickParams, 't');
+    const quickOwnerMatch = buildTaskPersonalQuery(user, quickParams, 't').match;
     const quickBusinessCondition = appendTaskBusinessScopeSql(quickParams, businessScope, 't');
     quickParams.push(today);
     const quickDateSql = taskWorkloadDateSql('t');

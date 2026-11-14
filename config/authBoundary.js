@@ -1,4 +1,8 @@
 const INTEGRATION_AUTH_CONTRACTS = Object.freeze({
+    telegramCrm: { owner: 'telegram-crm', authentication: 'service bearer plus private Telegram sender and verified CRM binding',
+        guardFiles: [{ file: 'routes/telegram-crm.js', needles: ['serviceSecretMatches(req.headers.authorization, env.HERMES_API_KEY)', 'tasks.me(req.telegramSenderId', "req.headers['x-telegram-chat-type'] !== 'private'"] },
+            { file: 'services/telegramCrmTasks.js', needles: ['identity.resolve(senderId', 'assertCreate(actor, scope)', 'buildTaskPersonalQuery(actor, params)'] }],
+        testFiles: ['tests/telegram-crm-routes.test.js', 'tests/telegram-crm-identity.test.js'] },
     attendanceUploadGrant: { owner:'hr', authentication:'expiring upload-only 256-bit bearer grant and fresh reviewer guards',
         guardFiles:[{file:'services/crmAttendanceUploadLinks.js',needles:['CRM_ATTENDANCE_UPLOAD_LINKS_ENABLED','token_hash=$1','expires_at>NOW()','await reviewer(link,pool)']},
             {file:'services/crmAttendanceUploadHttp.js',needles:["req.headers['x-attendance-upload-key']","router.post('/photo',handlers.upload)"]}],
@@ -20,6 +24,14 @@ const INTEGRATION_AUTH_CONTRACTS = Object.freeze({
 });
 
 const PUBLIC_API_ROUTES = [
+    { method: 'POST', path: '/telegram-crm/bot/link/claim', owner: 'telegram-crm', integrationContract: 'telegramCrm', reason: 'Service-authenticated private Telegram proof; never grants CRM access by itself.' },
+    { method: 'GET', path: '/telegram-crm/bot/me', owner: 'telegram-crm', integrationContract: 'telegramCrm', reason: 'Service-authenticated sender resolves only its own verified pilot identity.' },
+    { method: 'GET', path: '/telegram-crm/bot/tasks', owner: 'telegram-crm', integrationContract: 'telegramCrm', reason: 'Verified human identity, personal task scope and current business access.' },
+    { method: 'GET', path: '/telegram-crm/bot/owners', owner: 'telegram-crm', integrationContract: 'telegramCrm', reason: 'Assignable pilot users only, filtered by current human rights.' },
+    { method: 'POST', path: '/telegram-crm/bot/tasks/preview', owner: 'telegram-crm', integrationContract: 'telegramCrm', reason: 'Stores an expiring actor-bound draft; cannot create tasks.' },
+    { method: 'GET', regex: /^\/telegram-crm\/bot\/operations\/[0-9a-f-]{36}$/, label: 'GET /telegram-crm/bot/operations/:id', examplePath: '/telegram-crm/bot/operations/a9a74e26-f328-42ae-b762-edc4ee6ef9c9', owner: 'telegram-crm', integrationContract: 'telegramCrm', reason: 'Only the currently linked author can recover an operation receipt.' },
+    { method: 'POST', regex: /^\/telegram-crm\/bot\/operations\/[0-9a-f-]{36}\/confirm$/, label: 'POST /telegram-crm/bot/operations/:id/confirm', examplePath: '/telegram-crm/bot/operations/a9a74e26-f328-42ae-b762-edc4ee6ef9c9/confirm', owner: 'telegram-crm', integrationContract: 'telegramCrm', reason: 'Explicit confirmation, fresh rights and binding version, atomic task/receipt commit.' },
+    { method: 'POST', regex: /^\/telegram-crm\/bot\/operations\/[0-9a-f-]{36}\/cancel$/, label: 'POST /telegram-crm/bot/operations/:id/cancel', examplePath: '/telegram-crm/bot/operations/a9a74e26-f328-42ae-b762-edc4ee6ef9c9/cancel', owner: 'telegram-crm', integrationContract: 'telegramCrm', reason: 'Cancels only the sender-owned draft; cannot delete a task.' },
     {method:'GET',path:'/attendance-upload/status',owner:'hr',integrationContract:'attendanceUploadGrant',reason:'Upload-only link status; no staff or recognized rows are returned.'},
     {method:'POST',path:'/attendance-upload/photo',owner:'hr',integrationContract:'attendanceUploadGrant',reason:'Bounded worker photo intake with expiring scoped bearer; no attendance apply.'},
     {method:'POST',path:'/attendance-upload/recover',owner:'hr',integrationContract:'attendanceUploadGrant',reason:'Own-link receipt recovery only; cannot initiate paid recognition or read staff data.'},

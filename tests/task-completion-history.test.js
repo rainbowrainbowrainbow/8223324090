@@ -337,7 +337,10 @@ test('completion history keeps owner and business scope on every cursor page', a
     const pageCalls = firstPool.calls.filter(call => /SELECT t\.\*, u\.name AS owner_name/.test(call.text));
     const firstPageCall = pageCalls[0];
 
-    assert.deepEqual(firstPageCall.params.slice(0, 4), ['serhiy', 'Serhiy', 7, 'event_genix']);
+    const ownerPlaceholder = /t\.owner_user_id = \$(\d+)/.exec(firstPageCall.text);
+    const businessPlaceholder = /COALESCE\(t\.business_context, 'event_genix'\) = \$(\d+)/.exec(firstPageCall.text);
+    assert.equal(firstPageCall.params[Number(ownerPlaceholder[1]) - 1], 7);
+    assert.equal(firstPageCall.params[Number(businessPlaceholder[1]) - 1], 'event_genix');
     assert.match(firstPageCall.text, /t\.owner_user_id = \$\d+/);
     assert.match(firstPageCall.text, /COALESCE\(t\.business_context, 'event_genix'\) = \$\d+/);
     assert.equal(second.items.length, 0);

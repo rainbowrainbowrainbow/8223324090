@@ -18,6 +18,27 @@ focused tests.
 
 ## Public API Exceptions
 
+`telegramCrm` uses `routes/telegram-crm.js`. `POST /telegram-crm/bot/link/claim`
+and `GET /telegram-crm/bot/me` require the service bearer, an attested private
+Telegram chat and matching sender/chat identifiers. Claiming a short-lived link
+does not grant access: the original authenticated CRM browser must confirm it.
+Reads additionally require an active pilot account and verified binding. The
+default mode is off. No username matching or machine-administrator fallback is
+accepted. Covered by `tests/telegram-crm-routes.test.js`,
+`tests/telegram-crm-identity.test.js` and the isolated PostgreSQL identity suite.
+Account management under `/auth/telegram-crm` owns its normal CRM JWT guard;
+beginning a link or disconnecting also reauthenticates the current password.
+
+The same contract guards `GET /telegram-crm/bot/tasks`,
+`GET /telegram-crm/bot/owners`, `POST /telegram-crm/bot/tasks/preview`,
+`GET /telegram-crm/bot/operations/:id`,
+`POST /telegram-crm/bot/operations/:id/confirm` and
+`POST /telegram-crm/bot/operations/:id/cancel`. `services/telegramCrmTasks.js`
+uses fresh human membership, task visibility and assignment guards. Drafts and
+receipts are bound to the human and binding generation. Task creation and receipt
+commit share a PostgreSQL transaction and identity lock. A successful receipt
+never expires into permission to create a second task.
+
 `attendanceUploadGrant` is implemented by `services/crmAttendanceUploadLinks.js`
 and `services/crmAttendanceUploadHttp.js`. Its default-off, bounded HTTP guard is
 tested in `tests/crm-attendance-upload-links.test.js`; actual PostgreSQL, worker,

@@ -1454,8 +1454,13 @@ test('Checkbox regression gates are wired into CI and local scripts', () => {
     assert.match(packageJson.scripts['test:checkbox-thin'], /tests\/payment-outbox-wakeup\.test\.js/);
     assert.match(packageJson.scripts['test:checkbox-thin'], /tests\/checkbox-shift-db-invariants\.test\.js/);
     assert.match(packageJson.scripts['test:checkbox-thin'], /tests\/payment-outbox-receipt-mismatch\.test\.js/);
-    assert.match(ci, /npm run check:checkbox-openapi/);
-    assert.match(ci, /npm run check:checkbox-safety/);
+    const fastBaseline = ci.match(/^  fast-baseline:[\s\S]+?(?=^  [\w-]+:)/m)?.[0] || '';
+    assert.match(fastBaseline, /^        run: npm test\s*$/m);
+    assert.ok(packageJson.scripts.test.split(' && ').includes('npm run verify'));
+    const verify = packageJson.scripts.verify.split(' && ');
+    for (const check of ['check:migrations', 'check:checkbox-openapi', 'check:checkbox-safety', 'test:checkbox-openapi-contract']) {
+        assert.ok(verify.includes(`npm run ${check}`), `verify must run ${check}`);
+    }
     assert.match(ci, /npm run test:checkbox-thin/);
     assert.match(ci, /npm run test:integration:checkbox-park-config:isolated/);
     assert.match(ci, /npm run test:integration:checkbox-park-cashier-smoke:isolated/);

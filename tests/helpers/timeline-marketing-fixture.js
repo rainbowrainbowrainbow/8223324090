@@ -64,7 +64,7 @@ async function createFixture() {
         await pool.query(birthdayMigration);
         await pool.query(`CREATE TABLE staff_substitutions (id BIGSERIAL PRIMARY KEY, business_context TEXT,
             source_type TEXT, source_id TEXT, slot_key TEXT, state TEXT, work_date DATE, input_json JSONB, source_snapshot JSONB)`);
-        const occurrenceMigration = fs.readFileSync(path.join(__dirname, '../../db/migrations/404_afisha_occurrence_substitutions.sql'), 'utf8');
+        const occurrenceMigration = fs.readFileSync(path.join(__dirname, '../../db/migrations/409_afisha_occurrence_substitutions.sql'), 'utf8');
         await pool.query(occurrenceMigration);
         require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: { pool } };
         auth = require('../../middleware/auth');

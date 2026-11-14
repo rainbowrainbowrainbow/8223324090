@@ -2517,7 +2517,8 @@ test('education timeline bookings persist lesson details and guard teacher confl
     assert.match(bookingsRoute, /buildEducationLessonSeriesCandidates/);
     assert.match(bookingsRoute, /function validateEducationLessonTeacherConflict/);
     assert.match(bookingsRoute, /seriesRootBookingId/);
-    assert.match(bookingsRoute, /extra_data->'educationLesson'->>'teacherId'/);
+    assert.match(bookingsRoute, /require\('\.\.\/services\/educationLessonBooking'\)/);
+    assert.match(read('services/educationLessonBooking.js'), /extra_data->'educationLesson'->>'teacherId'/);
     assert.match(panelCss, /\.education-lesson-section/);
 });
 

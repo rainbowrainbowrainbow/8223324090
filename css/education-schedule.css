@@ -1,6 +1,15 @@
 /* Education schedule entry and Today list share EventGenix toolbar tokens. */
 .education-schedule-workspace { margin: 0 0 18px; }
 .education-schedule-workspace.hidden { display: none; }
+[data-substitution-business="dar"]:not([hidden]) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-block-end: 12px;
+}
+
+.dar-substitution-accruals .form-modal-note { white-space: pre-line; overflow-wrap: anywhere; }
+
 .education-schedule-tabs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin: 0 0 16px; }
 .education-groups-layout { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(260px, 1.5fr); gap: 24px; }
 .education-groups-layout > div { min-width: 0; }

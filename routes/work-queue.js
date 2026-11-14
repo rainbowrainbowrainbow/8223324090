@@ -79,6 +79,9 @@ function parseConversationIds(value) {
 }
 
 function sendReplyActionError(res, err) {
+    if (err?.constraint === 'staff_substitution_reply_active_guard') {
+        return res.status(409).json({ success:false, code:'SUBSTITUTION_SOURCE_FROZEN', error:'На цю відповідь уже оформлено підміну.' });
+    }
     const status = err?.statusCode || 500;
     if (status >= 500) {
         log.error('Reply backlog action error', err);

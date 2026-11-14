@@ -8,6 +8,34 @@
 
 const PROTECTED_TIMELINE_BLOCKS = [
     {
+        id: 'afisha-greeting-animator-projection',
+        owner: 'timeline',
+        file: 'js/timeline.js',
+        start: '    const allAfisha = showAfisha ? (afishaEvents || []) : [];',
+        end: '    // The Afisha row remains the canonical visual anchor even when staff are assigned.',
+        sha256: '72f3b4c5efe9635ac44c1bbe8743094a079530d0f034a24962b8e9a42f90ee43',
+        approval: {
+            approvedBy: 'Product owner (RED-SUBSTITUTION-AFISHA-LOCAL-05)',
+            approvedOn: '2026-11-14',
+            reason: 'Park Afisha greeting projection and collision checks use the animator assigned to the individual occurrence.'
+        },
+        requiredNeedles: ['ev.birthday_slots.flatMap(slot => slot.line_ids']
+    },
+    {
+        id: 'booking-afisha-occurrence-conflict',
+        owner: 'booking-service',
+        file: 'services/booking.js',
+        start: 'async function checkServerConflicts(client, date, lineId, time, duration, excludeId = null, businessContext = DEFAULT_TIMELINE_CONTEXT)',
+        end: 'async function checkServerDuplicate(client',
+        sha256: '2c543dba32483172593bed6d64155469b5cb8d0fc80a11a4d01e79fe65331585',
+        approval: {
+            approvedBy: 'Product owner (RED-SUBSTITUTION-AFISHA-LOCAL-05)',
+            approvedOn: '2026-11-14',
+            reason: 'Park Afisha greeting projection and collision checks use the animator assigned to the individual occurrence.'
+        },
+        requiredNeedles: ['eventLineIds(event,occurrence.slot)']
+    },
+    {
         id: 'booking-detail-identity',
         owner: 'booking-detail',
         file: 'js/booking.js',

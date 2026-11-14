@@ -9279,6 +9279,11 @@ async function initStaffSchedulePage(options = {}) {
     return staffScheduleInitPromise;
 }
 
+window.addEventListener?.('staff-substitution:changed', () => {
+    if (!staffScheduleInitialized) return;
+    void refreshStaffSchedulePage({ reloadRange: true }).catch(error => console.warn('Schedule refresh after substitution:', error));
+});
+
 window.StaffSchedulePage = {
     init: initStaffSchedulePage,
     refresh: refreshStaffSchedulePage,

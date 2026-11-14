@@ -1146,6 +1146,9 @@ router.patch('/conversations/:id', auth, async (req, res) => {
         res.json({ success: true, data: updated });
     } catch (err) {
         log.error('Update conversation error:', err.message);
+        if (err.constraint === 'staff_substitution_inbox_active_guard') return res.status(409).json({
+            success:false, code:'SUBSTITUTION_SOURCE_FROZEN', error:'Розмова вже має активну підміну відповідального.'
+        });
         if (err.code === 'OMNI_CONVERSATION_CONFLICT') return res.status(409).json({ success: false, code: err.code, error: err.message, data: err.current });
         if (err.statusCode === 404) return res.status(404).json({ success: false, error: 'Розмову не знайдено' });
         res.status(500).json({ success: false, error: 'Помилка оновлення розмови' });

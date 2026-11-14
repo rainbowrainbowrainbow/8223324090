@@ -4346,7 +4346,10 @@ async function renderTimeline() {
     const afishaLineIds = new Set(lines.map(line => String(line.id)));
     const assignedAfishaMap = {};
     allAfisha.filter(ev => !isRoomTimelineView()).forEach(ev => {
-        for (const id of [ev.line_id, ev.second_line_id]) {
+        const ids = ev.birthday_slots?.length
+            ? [...new Set(ev.birthday_slots.flatMap(slot => slot.line_ids ?? [ev.line_id, ev.second_line_id]))]
+            : [ev.line_id, ev.second_line_id];
+        for (const id of ids) {
             if (!id || !afishaLineIds.has(String(id))) continue;
             if (!assignedAfishaMap[id]) assignedAfishaMap[id] = [];
             assignedAfishaMap[id].push(ev);
@@ -4465,7 +4468,7 @@ async function renderTimeline() {
                 }
                 return;
             }
-            ev.birthday_slots.forEach(slot => {
+            ev.birthday_slots.filter(slot => !slot.line_ids || slot.line_ids.includes(String(line.id))).forEach(slot => {
                 const block = createAfishaBlock({ ...ev, time: slot.time, duration: 15, birthdaySlot: slot }, start, lineGrid);
                 if (block) {
                     block.classList.add('afisha-on-line');

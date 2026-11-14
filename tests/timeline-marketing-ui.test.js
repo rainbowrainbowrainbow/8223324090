@@ -570,6 +570,28 @@ test('dragging an animator copy moves or removes only that assignment', async ()
     }
 });
 
+test('week view places each greeting only on its assigned animator line', async () => {
+    const f = fixture();
+    try {
+        f.w.CONFIG.TIMELINE.WEEKDAY_START = 12;
+        f.w.CONFIG.TIMELINE.WEEKDAY_END = 20;
+        f.w.timelineShouldRenderAfisha = () => true;
+        f.w.isRoomTimelineView = () => false;
+        f.w.apiGetAfishaByDate = async () => [{ ...event, type:'birthday', line_id:'1', birthday_slots:[
+            { key:'first', time:'14:00', mode:'auto', line_ids:['2'] },
+            { key:'second', time:'18:00', mode:'auto', line_ids:['1'] }
+        ] }];
+        const container = f.w.document.getElementById('timelineLines');
+        container.innerHTML = '<section class="day-section" data-date="2026-10-19"><div class="mini-timeline-lines">'
+            + '<div class="mini-line-grid" data-line-id="1"></div><div class="mini-line-grid" data-line-id="2"></div></div></section>';
+        await f.w.TimelineAfisha.mountWeek(container,[new Date('2026-10-19T12:00:00Z')],1);
+        assert.deepEqual(Array.from(container.querySelectorAll('.mini-line-grid[data-line-id="afisha"] .afisha-type-birthday'),
+            node=>node.dataset.eventTime),['14:00','18:00']);
+        assert.equal(container.querySelector('.mini-line-grid[data-line-id="1"] .afisha-type-birthday').dataset.eventTime,'18:00');
+        assert.equal(container.querySelector('.mini-line-grid[data-line-id="2"] .afisha-type-birthday').dataset.eventTime,'14:00');
+    } finally { f.close(); }
+});
+
 test('week view keeps the Afisha anchor and both animator copies', async () => {
     const f = fixture();
     try {

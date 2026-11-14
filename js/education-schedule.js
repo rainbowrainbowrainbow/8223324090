@@ -260,6 +260,9 @@
     document.getElementById('educationScheduleTeacherFilter')?.addEventListener('change', render);
     document.getElementById('educationScheduleCabinetFilter')?.addEventListener('change', render);
     document.getElementById('educationScheduleGroupFilter')?.addEventListener('change', render);
+    global.addEventListener('staff-substitution:changed', event => {
+        if (event.detail?.business === business() && state.activeView === 'today') void load(state.date || dateKey(), { force: true });
+    });
     global.addEventListener('timeline:summary-changed', event => {
         if (state.activeView === 'today') void load(event.detail?.date || dateKey());
     });

@@ -791,18 +791,18 @@ async function checkServerConflicts(client, date, lineId, time, duration, exclud
             `SELECT id, date, time, original_time, duration, title, type, line_id, second_line_id FROM afisha
              WHERE date = $1`, [date]
         );
-        const { birthdaySlotsForEvents } = require('./afishaBirthdaySlots');
+        const { birthdaySlotsForEvents, eventLineIds } = require('./afishaBirthdaySlots');
         const projected = await birthdaySlotsForEvents(client, events.rows, {
             excludeBookingIds: excludeIds,
             additionalBookings: [{ date, line_id: lineId, time, duration }]
         });
-        for (const event of projected.filter(item => [item.line_id, item.second_line_id].map(String).includes(String(lineId)))) {
+        for (const event of projected) {
             const occurrences = event.birthday_slots?.length
                 ? event.birthday_slots.map(slot => ({ time: slot.time, duration: 15, slot }))
                 : [{ time: event.time, duration: Number(event.duration) || 60 }];
             for (const occurrence of occurrences) {
                 const start = timeToMinutes(occurrence.time);
-                if (newStart < start + occurrence.duration && newEnd > start) {
+                if (eventLineIds(event,occurrence.slot).includes(String(lineId)) && newStart < start + occurrence.duration && newEnd > start) {
                     return { overlap: true, noPause: false, conflictWith: {
                         id: event.id, time: occurrence.time,
                         label: occurrence.slot?.conflict_kind === 'no_available_slot'

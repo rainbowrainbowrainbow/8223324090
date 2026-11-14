@@ -1285,6 +1285,10 @@ async function refreshHrOperationalViews() {
     await Promise.all(jobs);
 }
 
+window.addEventListener('staff-substitution:changed', () => {
+    void refreshHrOperationalViews();
+});
+
 function isInternStaff(staff = {}) {
     return normalizeProfessionKey(staff.role_type) === 'intern' || staffSecondaryProfessions(staff).includes('intern');
 }

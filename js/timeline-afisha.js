@@ -124,7 +124,10 @@
         hideTooltip();
         const business = M.context();
         const editable = business === 'event_genix' && M.writable('edit_booking');
-        const assignable = editable && event.type !== 'birthday';
+        const assignable = editable && event.type !== 'birthday' && !slot.substitution_state;
+        const slotEditable = editable && !slot.substitution_state;
+        const assignedNames = (slot.line_ids ?? lineIds(event)).map(id => linesFor(event.date)
+            .find(line => String(line.id) === String(id))?.name || `Лінія ${id}`);
         const availableLines = assignable ? linesFor(event.date) : [];
         const availablePromotions = assignable ? promotionsFor(event.date) : [];
         const currentPromotion = event.promotion_id && !availablePromotions.some(item => item.id === event.promotion_id)
@@ -137,11 +140,13 @@
         const modal = M.dialog('Вітання іменинників', `<p>${M.esc(event.date)} · ${M.esc(event.title)} · 15 хв</p>
             <p><strong>${M.esc(slot.time)}–${M.esc(timeString(minutes(slot.time) + 15))}</strong> · ${slot.mode === 'manual' ? 'Вручну' : 'Автоматично'}${slot.mode === 'auto' && slot.time !== slot.base_time ? ` · Було ${M.esc(slot.base_time)}` : ''}</p>
             ${slot.reason ? `<p class="timeline-marketing-description" role="status">${M.esc(slot.reason)}</p>` : ''}
-            ${slot.mode === 'auto' && !lineIds(event).length ? '<p class="timeline-marketing-description">Аніматора не призначено. Автоматичний час враховує бронювання всіх аніматорів.</p>' : ''}
+            ${assignedNames.length ? `<p>Аніматори: ${assignedNames.map(M.esc).join(', ')}</p>` : ''}
+            ${slot.substitution_state ? '<p>Час і виконавець погоджені в розділі «Підміни».</p>' : ''}
+            ${slot.mode === 'auto' && !assignedNames.length ? '<p class="timeline-marketing-description">Аніматора не призначено. Автоматичний час враховує бронювання всіх аніматорів.</p>' : ''}
             ${slot.mode === 'manual' && slot.updated_by ? `<p class="timeline-marketing-description">Змінив: ${M.esc(slot.updated_by)}${changedAt ? ` · ${M.esc(changedAt)}` : ''}</p>` : ''}
             ${slot.conflict ? `<p class="afisha-birthday-warning" role="alert">${unavailable ? 'Немає вільних 15 хвилин у межах ±90 хв. Змініть час іншого заходу або встановіть час вручну після звільнення місця.' : 'Конфлікт часу: оберіть інший час або змініть захід.'}</p>` : ''}
             <p><a href="/afisha?event=${encodeURIComponent(event.id)}&date=${encodeURIComponent(event.date)}">Відкрити подію в афіші</a></p>
-            ${editable ? `<form data-birthday-form class="timeline-marketing-form">
+            ${slotEditable ? `<form data-birthday-form class="timeline-marketing-form">
                 <label>Час вітання<input name="time" type="time" value="${M.esc(slot.time)}" min="${minimum}" max="${maximum}" step="300" required></label>
                 <p>Перенесення вручну зафіксує лише це вітання${slot.key === 'single' ? ' на вибрану дату' : '. Друге залишиться в своєму режимі'}.</p>
                 <div role="alert" data-error></div>
@@ -203,6 +208,7 @@
     }
 
     function initBirthdayDrag(block, event, startHour) {
+        if (event.birthdaySlot?.substitution_state) return;
         if (M.context() !== 'event_genix' || !M.writable('edit_booking')) return;
         block.style.touchAction = 'none';
         block.addEventListener('pointerdown', e => {
@@ -585,15 +591,15 @@
             body.prepend(row);
             const general = row.querySelector('.mini-line-grid');
             (Array.isArray(results[index]) ? results[index] : []).forEach(event => {
-                const assigned = isRoomTimelineView() ? [] : [event.line_id, event.second_line_id]
-                    .filter(Boolean).map(id => [...body.querySelectorAll('.mini-line-grid')]
-                        .find(el => el.dataset.lineId === String(id))).filter(Boolean);
                 const events = event.birthday_slots?.length
                     ? (event.birthday_slots || [{ key: 'first', time: '14:00', base_time: '14:00', mode: 'auto' },
                         { key: 'second', time: '18:00', base_time: '18:00', mode: 'auto' }])
                         .map(slot => ({ ...event, time: slot.time, duration: 15, birthdaySlot: slot }))
                     : [event];
                 events.forEach(value => {
+                    const lineIds = value.birthdaySlot?.line_ids ?? [event.line_id, event.second_line_id];
+                    const assigned = isRoomTimelineView() ? [] : lineIds.filter(Boolean).map(id => [...body.querySelectorAll('.mini-line-grid')]
+                        .find(el => el.dataset.lineId === String(id))).filter(Boolean);
                     for (const grid of [general, ...assigned]) {
                         const flag = create({ ...value, date: dateStr }, start, grid);
                         if (flag) grid.appendChild(flag);

@@ -5,6 +5,7 @@ const contract = require('./staffSubstitutionContract');
 const { acquirePayrollPeriodMutationLock, lockPayrollPeriodMutation, assertPayrollPeriodOpen } = require('./hrPayrollPeriod');
 const { lockScheduleStaffRows } = require('./staffScheduleMutations');
 const { lockAttendanceWriteTargets } = require('./attendanceWriteLock');
+const { matchesSubstitutionBaseAllocation } = require('./staffSubstitutionShift');
 
 function actorName(actor) {
     return contract.text(actor?.username, 'автор', 100);
@@ -36,15 +37,36 @@ function createSubstitutionService(dependencies = {}) {
         return { quote: contract.preview(input, context), source };
     }
 
-    async function list(business, { from, to, staffId } = {}) {
+    function dateRange({ from, to }) {
         const { normalizeAttendanceWriteDate } = require('./attendanceWriteLock');
         from = normalizeAttendanceWriteDate(from);
         to = normalizeAttendanceWriteDate(to);
         if (from > to || (Date.parse(to) - Date.parse(from)) / 86400000 > 366) contract.fail('SUBSTITUTION_RANGE_INVALID', 'Оберіть період до 366 днів');
+        return { from, to };
+    }
+
+    async function list(business, params = {}) {
+        const { from, to } = dateRange(params);
+        const { staffId } = params;
         const result = await db.query(`SELECT * FROM staff_substitutions WHERE business_context=$1 AND work_date BETWEEN $2::date AND $3::date
             AND ($4::int IS NULL OR staff_id=$4 OR original_staff_id=$4) ORDER BY work_date,id LIMIT 1000`,
         [business, from, to, staffId == null ? null : contract.integer(staffId, 'працівник', 1)]);
         return result.rows.map(mapRow);
+    }
+
+    async function darAccruals(params) {
+        const { from, to } = dateRange(params);
+        const accruals = await db.query(`SELECT ss.id::text,ss.staff_id AS "staffId",ss.work_date::text AS date,ss.source_id AS "lessonId",
+            COALESCE(ss.source_snapshot->'replacement'->>'name',s.name) AS "teacherName",
+            (ss.completion_json->>'amountMinor')::bigint AS "amountMinor"
+            FROM staff_substitutions ss JOIN staff s ON s.id=ss.staff_id
+            WHERE ss.business_context='dar' AND ss.source_type='education_lesson' AND ss.state='completed'
+              AND ss.work_date BETWEEN $1::date AND $2::date ORDER BY ss.work_date,ss.id LIMIT 1001`, [from,to]);
+        if (accruals.rowCount > 1000) contract.fail('SUBSTITUTION_RANGE_INVALID', 'Понад 1000 нарахувань. Скоротіть період.');
+        const rows = accruals.rows.map(row => ({ ...row, amountMinor: Number(row.amountMinor) }));
+        const totalMinor = rows.reduce((sum, row) => sum + row.amountMinor, 0);
+        if (!Number.isSafeInteger(totalMinor)) contract.fail('SUBSTITUTION_AMOUNT_INVALID', 'Скоротіть період для точного підсумку.');
+        return { currency: 'UAH', totalMinor, rows };
     }
 
     async function history(business, id) {
@@ -60,14 +82,18 @@ function createSubstitutionService(dependencies = {}) {
 
     async function completionOptions(business, id) {
         const row = await read(db, business, id);
+        if (business === 'dar') return { attendanceId: null, allocations: [] };
         const result = await db.query(`SELECT id,compensation_snapshot,clock_out FROM hr_time_records
             WHERE staff_id=$1 AND record_date=$2 AND business_context=$3`, [row.staff_id,row.work_date,business]);
         const record = result.rows[0];
         const snapshot = typeof record?.compensation_snapshot === 'string' ? JSON.parse(record.compensation_snapshot) : record?.compensation_snapshot;
         const allocations = record?.clock_out && snapshot?.schemaVersion === 2 && !snapshot.manualReview
             ? (snapshot.compensationAllocations || []).flatMap((item,index) => item.allocationType === 'base'
+                && matchesSubstitutionBaseAllocation(row.input_json, snapshot, item)
                 ? [{ index, professionKey: item.professionKey, actualMinutes: Number(item.actualMinutes || 0),
-                    plannedMinutes: Number(item.plannedMinutes || 0), rate: item.conditions?.rate, rateUnit: item.conditions?.rateUnit }] : []) : [];
+                    plannedMinutes: Number(item.plannedMinutes || 0), rate: item.conditions?.rate, rateUnit: item.conditions?.rateUnit,
+                    startTime: snapshot.plan?.segments?.[item.segmentIndex]?.shiftStart,
+                    endTime: snapshot.plan?.segments?.[item.segmentIndex]?.shiftEnd }] : []) : [];
         return { attendanceId: allocations.length ? record.id : null, allocations };
     }
 
@@ -96,14 +122,23 @@ function createSubstitutionService(dependencies = {}) {
                 contract.fail('SUBSTITUTION_SCOPE_CHANGED', 'Для іншого працівника, дати або джерела скасуйте підміну й створіть нову', 409);
             }
             const month = input.workDate.slice(0, 7);
-            // Both existing payroll lock families are acquired in the same order as report generation.
-            await lockPayrollPeriodMutation(month, client);
-            await acquirePayrollPeriodMutationLock(client, month);
-            await assertPayrollPeriodOpen(month, client);
+            const isDar = business === 'dar';
+            if (isDar !== (input.sourceType === 'education_lesson')) {
+                contract.fail('SUBSTITUTION_BUSINESS_UNSUPPORTED', 'Цей вид підміни недоступний у вибраному кабінеті', 403);
+            }
+            if (input.sourceType === 'afisha') {
+                await client.query('SELECT lock_afisha_substitution_days_v404(ARRAY[$1::text])',[input.workDate]);
+            }
             const staffIds = [input.staffId, input.originalStaffId].filter(Boolean).sort((a,b) => a-b);
-            await lockScheduleStaffRows(client, staffIds);
-            const dates = [...new Set([input.workDate, ...(input.endsAt ? [contract.kyivParts(input.endsAt).date] : [])])].sort();
-            await lockAttendanceWriteTargets(client, staffIds.flatMap(staffId => dates.map(date => ({ staffId, date }))));
+            if (!isDar) {
+                // Both existing payroll lock families are acquired in the same order as report generation.
+                await lockPayrollPeriodMutation(month, client);
+                await acquirePayrollPeriodMutationLock(client, month);
+                await assertPayrollPeriodOpen(month, client);
+                await lockScheduleStaffRows(client, staffIds);
+                const dates = [...new Set([input.workDate, ...(input.endsAt ? [contract.kyivParts(input.endsAt).date] : [])])].sort();
+                await lockAttendanceWriteTargets(client, staffIds.flatMap(staffId => dates.map(date => ({ staffId, date }))));
+            }
             await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',
                 [`substitution-source:${business}:${input.sourceType}:${input.sourceId}:${input.slotKey}:${input.workDate}`]);
             const current = observed ? await read(client, business, id, true) : null;
@@ -111,14 +146,17 @@ function createSubstitutionService(dependencies = {}) {
                 contract.fail('SUBSTITUTION_STALE', 'Підміну вже змінено; оновіть дані', 409);
             }
             if (current && current.state !== 'active') contract.fail('SUBSTITUTION_FROZEN', 'Завершену або скасовану підміну не можна переписати', 409);
-            const reports = await client.query(`SELECT pr.id FROM payroll_reports pr
+            if (!isDar) {
+                const reports = await client.query(`SELECT pr.id FROM payroll_reports pr
                 WHERE pr.staff_id=ANY($1::int[]) AND pr.period_month=$2 AND (pr.status <> 'draft' OR EXISTS (
                     SELECT 1 FROM payroll_installments pi WHERE pi.payroll_report_id=pr.id
                     AND (pi.workflow_status <> 'draft' OR EXISTS (
                         SELECT 1 FROM payroll_payment_movements ppm WHERE ppm.installment_id=pi.id)))) FOR UPDATE OF pr`, [staffIds, month]);
-            if (reports.rows.length) contract.fail('SUBSTITUTION_PAYROLL_FROZEN', 'Є погоджений зарплатний звіт; потрібне окреме коригування', 409);
-            await sources.lockScope?.(client, input);
+                if (reports.rows.length) contract.fail('SUBSTITUTION_PAYROLL_FROZEN', 'Є погоджений зарплатний звіт; потрібне окреме коригування', 409);
+            }
+            await sources.lockScope?.(client, input, business, actor);
             let next;
+            let afterCommit;
             const reason = action === 'create' || action === 'revise' ? input.reason : contract.text(payload.reason, 'причина');
             if (action === 'create' || action === 'revise') {
                 const prepared = await prepare(client, business, actor, payload.input, current);
@@ -133,7 +171,8 @@ function createSubstitutionService(dependencies = {}) {
                         JSON.stringify(input),JSON.stringify(prepared.quote),JSON.stringify(prepared.source),author]);
                     next = result.rows[0];
                     await client.query("SELECT set_config('eventgenix.substitution_command',$1,true)", [String(next.id)]);
-                    await sources.applyAssignment(client, business, actor, next, prepared.source);
+                    const assignmentResult = await sources.applyAssignment(client, business, actor, next, prepared.source);
+                    if (typeof assignmentResult === 'function') afterCommit = assignmentResult;
                 } else {
                     await sources.reviseAssignment(client, business, actor, current, input);
                     next = (await client.query(`UPDATE staff_substitutions SET input_json=$1,quote_json=$2,version=version+1,updated_at=NOW() WHERE id=$3 RETURNING *`,
@@ -141,11 +180,16 @@ function createSubstitutionService(dependencies = {}) {
                 }
             } else if (action === 'cancel') {
                 await client.query("SELECT set_config('eventgenix.substitution_command',$1,true)", [String(current.id)]);
-                await sources.restoreAssignment(client, business, actor, current);
+                const assignmentResult = await sources.restoreAssignment(client, business, actor, current);
+                if (typeof assignmentResult === 'function') afterCommit = assignmentResult;
                 next = (await client.query("UPDATE staff_substitutions SET state='cancelled',version=version+1,updated_at=NOW() WHERE id=$1 RETURNING *", [current.id])).rows[0];
             } else {
-                await sources.assertCurrent(client, business, actor, current);
+                await sources.assertCurrent(client, business, actor, current, { completedCycle: true });
                 const completion = await freezeCompletion(client, current, payload, actor);
+                if (current.source_type === 'meeting_action') {
+                    await client.query("SELECT set_config('eventgenix.substitution_command',$1,true)", [String(current.id)]);
+                    await require('./staffSubstitutionMeeting').completeAction(client,current);
+                }
                 next = (await client.query("UPDATE staff_substitutions SET state='completed',completion_json=$1,version=version+1,updated_at=NOW() WHERE id=$2 RETURNING *", [JSON.stringify(completion), current.id])).rows[0];
             }
             await client.query(`INSERT INTO staff_substitution_events(substitution_id,version,action,actor,reason,before_json,after_json)
@@ -154,9 +198,31 @@ function createSubstitutionService(dependencies = {}) {
             await client.query(`INSERT INTO staff_substitution_requests(business_context,actor,request_key,payload_hash,substitution_id,response_json)
                 VALUES($1,$2,$3,$4,$5,$6::jsonb)`, [business,author,requestKey,hash,next.id,JSON.stringify(response)]);
             await client.query('COMMIT');
+            if (afterCommit) queueMicrotask(afterCommit);
             return response;
         } catch (error) {
             await client.query('ROLLBACK').catch(() => {});
+            if (error.constraint === 'staff_substitution_onboarding_alias_guard') {
+                contract.fail('SUBSTITUTION_USE_ONBOARDING_SOURCE', 'Для наставництва й пов’язаних задач діє одне призначення підміни.', 409);
+            }
+            if (require('./afishaBirthdaySlots').isAfishaSubstitutionConflict(error)) {
+                contract.fail('AFISHA_SUBSTITUTION_CONFLICT',error.message,409);
+            }
+            if (error.constraint === 'staff_substitution_meeting_alias_guard') {
+                contract.fail('SUBSTITUTION_MEETING_ALIAS_CLAIMED','Для доручення та пов’язаної задачі доступна одна підміна.',409);
+            }
+            if (error.constraint === 'staff_substitution_reply_alias_guard') {
+                contract.fail('SUBSTITUTION_USE_REPLY_SOURCE','Оплату ескалації погоджують через очікувану відповідь Omni.',409);
+            }
+            if (error.constraint === 'staff_substitution_reply_active_guard' || error.constraint === 'staff_substitution_inbox_active_guard') {
+                contract.fail('SUBSTITUTION_SOURCE_FROZEN', 'Розмова вже має погоджену підміну.', 409);
+            }
+            if (error.constraint === 'staff_substitution_onboarding_active_guard') {
+                contract.fail('SUBSTITUTION_SOURCE_FROZEN', 'Наставництво вже має погоджену підміну.', 409);
+            }
+            if (error.constraint === 'staff_substitution_lead_alias_guard') {
+                contract.fail('SUBSTITUTION_LEAD_ALIAS_CLAIMED', 'Вже є підміна для ліда або пов’язаної задачі.', 409);
+            }
             if (error.code === '23505') contract.fail('SUBSTITUTION_DUPLICATE', 'Цей обсяг роботи вже має підміну або нарахування', 409);
             if (error.code === '23514' && /agreed substitution|Substitution evidence|Substitution history/.test(error.message)) {
                 contract.fail('SUBSTITUTION_SOURCE_FROZEN','Ця робота вже має погоджену підміну; перевірте її історію',409);
@@ -164,7 +230,7 @@ function createSubstitutionService(dependencies = {}) {
             throw error;
         } finally { client.release(); }
     }
-    return { list, history, preview, mutate, completionOptions };
+    return { list, history, preview, mutate, completionOptions, darAccruals };
 }
 
 module.exports = { createSubstitutionService, mapRow };

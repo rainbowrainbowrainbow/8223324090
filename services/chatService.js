@@ -528,8 +528,8 @@ async function getChannelById(channelId) {
 /**
  * Check if user is member of a channel.
  */
-async function isMember(channelId, userId) {
-    const result = await pool.query(
+async function isMember(channelId, userId, db = pool) {
+    const result = await db.query(
         'SELECT 1 FROM chat_channel_members WHERE channel_id = $1 AND user_id = $2',
         [channelId, userId]
     );
@@ -1243,6 +1243,7 @@ module.exports = {
     createTask,
     getTasks,
     updateTask,
+    canManageAllChatTasks,
     findChannelByEntity,
     createBookingChannel,
     getReadReceipts,

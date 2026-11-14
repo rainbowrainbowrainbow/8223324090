@@ -4,7 +4,7 @@ const { createHash } = require('node:crypto');
 const { normalizeAttendanceWriteDate } = require('./attendanceWriteLock');
 
 const RULE_VERSION = 'staff-substitution-v1';
-const SOURCE_TYPES = Object.freeze(['standalone', 'hr_shift', 'task', 'booking', 'afisha', 'education_lesson', 'procurement', 'lead']);
+const SOURCE_TYPES = Object.freeze(['standalone', 'hr_shift', 'task', 'booking', 'afisha', 'education_lesson', 'procurement', 'lead', 'onboarding', 'inbox', 'inbox_reply', 'chat_task', 'meeting_action']);
 
 function fail(code, message, statusCode = 400, details) {
     throw Object.assign(new Error(message), { code, statusCode, details });
@@ -59,11 +59,12 @@ function kyivParts(instant) {
 }
 
 function instant(value, field) {
-    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00(?:Z|[+-]\d{2}:\d{2})$/.test(value)
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:00(?:\.000Z|Z|[+-]\d{2}:\d{2})$/.test(value)
         || !Number.isFinite(Date.parse(value))) fail('SUBSTITUTION_TIME_INVALID', `Укажіть ${field} з часовим поясом`);
     normalizeAttendanceWriteDate(value.slice(0, 10));
     const local = kyivParts(value);
-    if (local.date !== value.slice(0, 10) || local.time !== value.slice(11, 16)) {
+    // Revisions send back the UTC timestamps stored by the original agreement.
+    if (!value.endsWith('Z') && (local.date !== value.slice(0, 10) || local.time !== value.slice(11, 16))) {
         fail('SUBSTITUTION_TIME_INVALID', 'Час або зміщення не відповідає Europe/Kyiv');
     }
     return new Date(value).toISOString();
@@ -95,8 +96,11 @@ function normalizeInput(raw = {}) {
         plannedMinutes = span - breakMinutes;
     } else if (breakMinutes) fail('SUBSTITUTION_TIME_REQUIRED', 'Перерву можна вказати лише для роботи з часом');
     const rateMode = choice(raw.rateMode, ['standard', 'individual'], 'джерело ставки');
-    return { sourceType, sourceId: sourceType === 'standalone' ? text(raw.sourceId, 'ідентифікатор роботи', 100) : String(integer(raw.sourceId, 'джерело', 1)),
-        slotKey: choice(raw.slotKey || 'primary', sourceType==='afisha' ? ['primary','second'] : ['primary'], 'слот'), workDate, staffId, originalStaffId,
+    const sourceSlots = { afisha: ['primary', 'second', 'single:primary','single:second','first:primary','first:second','second:primary','second:second'], booking: ['primary', 'second'], hr_shift: ['primary', 'partial'] };
+    const sourceId = sourceType === 'standalone' ? text(raw.sourceId, 'ідентифікатор роботи', 100)
+        : ['booking', 'education_lesson'].includes(sourceType) ? text(raw.sourceId, 'бронювання', 50) : String(integer(raw.sourceId, 'джерело', 1));
+    return { sourceType, sourceId,
+        slotKey: choice(raw.slotKey || 'primary', sourceSlots[sourceType] || ['primary'], 'слот'), workDate, staffId, originalStaffId,
         professionKey, payUnit, payMode, originalTreatment, startsAt, endsAt, breakMinutes, plannedMinutes,
         shiftUnitsMilli: payUnit === 'shift' ? decimalUnits(raw.shiftUnits, 3, 'кількість змін') : null,
         workload: text(raw.workload, 'обсяг роботи', 1000), reason: text(raw.reason, 'причина'),
@@ -145,11 +149,13 @@ function preview(input, context) {
     const effects = {
         replacement: input.payMode === 'additional' ? 'Звичайна оплата зберігається; підміна нараховується додатково.'
             : 'Звичайна оплата лише за погоджений обсяг замінюється оплатою підміни.',
-        original: input.originalTreatment === 'retain' ? 'Оплата заміненого працівника не змінюється.'
+        original: input.originalTreatment === 'retain' ? (input.sourceType === 'hr_shift'
+            ? 'Оплата переданих годин зберігається окремим рядком після підтвердження підміни.' : 'Оплата заміненого працівника не змінюється.')
             : input.originalTreatment === 'transfer_unworked_scope' ? 'Передається лише невідпрацьований обсяг. Уже зароблена оплата зберігається.' : 'Заміненого працівника немає.'
     };
     const result = { input, rate, estimateMinor, currency: 'UAH', ruleVersion: RULE_VERSION,
-        effects, warnings, blockers, evidence: context.evidence, available: blockers.length === 0 };
+        effects, ...(context.payImpact && { payImpact: context.payImpact }), warnings, blockers,
+        evidence: context.evidence, available: blockers.length === 0 };
     return { ...result, fingerprint: fingerprint(result) };
 }
 

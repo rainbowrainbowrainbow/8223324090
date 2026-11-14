@@ -1142,13 +1142,13 @@ function normalizeOwnerLabel(user) {
   return safeTruncate(String(user?.name || user?.username || '').trim(), 100) || null;
 }
 
-async function findActiveReplyOwnerUser(userId) {
+async function findActiveReplyOwnerUser(userId, db = pool) {
   const ownerUserId = normalizeOptionalPositiveInt(userId);
   if (!ownerUserId) {
     throw replyActionError('INVALID_REPLY_OWNER', 'Valid ownerUserId is required', 400);
   }
 
-  const result = await pool.query(
+  const result = await db.query(
     `SELECT id, username, name, role, is_active
        FROM users
       WHERE id = $1
@@ -1182,15 +1182,22 @@ async function listReplyOwnerCandidates() {
   }));
 }
 
-async function reassignReplyExpectationOwner(conversationId, ownerUserId) {
+async function reassignReplyExpectationOwner(conversationId, ownerUserId, options = {}) {
   const conversationRef = normalizeOptionalPositiveInt(conversationId);
   if (!conversationRef) {
     throw replyActionError('INVALID_CONVERSATION_ID', 'Valid conversationId is required', 400);
   }
 
-  const ownerUser = await findActiveReplyOwnerUser(ownerUserId);
+  const db = options.client || pool;
+  const ownerUser = await findActiveReplyOwnerUser(ownerUserId, db);
   const ownerLabel = normalizeOwnerLabel(ownerUser);
-  const result = await pool.query(
+  const params = [conversationRef, ownerUser.id, ownerLabel];
+  let expected = '';
+  if (options.client) {
+    params.push(options.messageId, options.currentOwnerId, options.businessContext);
+    expected = "AND reply_expected_message_id=$4 AND reply_owner_user_id=$5 AND COALESCE(business_context,'event_genix')=$6";
+  }
+  const result = await db.query(
     `UPDATE conversations
         SET reply_owner_user_id = $2,
             reply_owner = $3,
@@ -1205,8 +1212,9 @@ async function reassignReplyExpectationOwner(conversationId, ownerUserId) {
            WHERE cm.id = conversations.reply_expected_message_id
              AND COALESCE(cm.delivery_status, '') IN ('failed', 'later_failed')
         )
+        ${expected}
       RETURNING *`,
-    [conversationRef, ownerUser.id, ownerLabel]
+    params
   );
   const conversation = mapConversationRow(result.rows[0]);
   if (!conversation) {
@@ -1214,11 +1222,17 @@ async function reassignReplyExpectationOwner(conversationId, ownerUserId) {
   }
 
   if (conversation.replyExpectedMessageId) {
-    await updateActiveReplyEscalationTaskForMessage(
+    const sync = updateActiveReplyEscalationTaskForMessage(
       conversation.replyExpectedMessageId,
       { assignee: ownerLabel, ownerUserId: ownerUser.id },
-      { pool, reason: 'reply_owner_reassigned' }
-    ).catch(err => logger.warn(`Reply escalation owner sync skipped: ${err.message}`));
+      { pool:db, reason:'reply_owner_reassigned', businessContext:options.businessContext }
+    );
+    if (options.client) {
+      const updated = await sync;
+      if (updated.length !== 1 || Number(updated[0].id) !== Number(options.taskId)) {
+        throw replyActionError('SUBSTITUTION_SOURCE_STALE', 'Задача ескалації вже змінилася', 409);
+      }
+    } else await sync.catch(err => logger.warn(`Reply escalation owner sync skipped: ${err.message}`));
   }
 
   return {
@@ -1312,7 +1326,7 @@ async function updateReplyExpectationSla(conversationId, replySlaAt) {
   }
 
   if (conversation.replyExpectedMessageId) {
-    await updateActiveReplyEscalationTaskForMessage(
+    const sync = updateActiveReplyEscalationTaskForMessage(
       conversation.replyExpectedMessageId,
       { deadline: normalizedSlaAt },
       { pool, reason: 'reply_sla_moved' }
@@ -2098,10 +2112,11 @@ async function updateConversationStatus(conversationId, status, assignedTo, meta
   sets.push('updated_at = NOW()');
   params.push(conversationId);
 
+  const ownsTransaction = !options.client;
   let client;
   try {
-    client = await pool.connect();
-    await client.query('BEGIN');
+    client = options.client || await pool.connect();
+    if (ownsTransaction) await client.query('BEGIN');
 
     const businessCondition = businessContext
       ? ` AND ${scopedConversationCondition(params, businessContext)}`
@@ -2132,18 +2147,19 @@ async function updateConversationStatus(conversationId, status, assignedTo, meta
       throw Object.assign(new Error('Розмову не знайдено'), { statusCode: 404 });
     }
 
-    await client.query('COMMIT');
+    if (ownsTransaction) await client.query('COMMIT');
 
     const conversation = mapConversationRow(result.rows[0]);
-    notifyCRM('omni:conversation', { conversation });
+    if (ownsTransaction) notifyCRM('omni:conversation', { conversation });
+    else options.afterCommit?.push(() => notifyCRM('omni:conversation', { conversation }));
 
     return conversation;
   } catch (e) {
-    if (client) await client.query('ROLLBACK').catch(() => {});
+    if (ownsTransaction && client) await client.query('ROLLBACK').catch(() => {});
     logger.error('updateConversationStatus error', { code: e.code || null, message: e.message });
     throw e;
   } finally {
-    if (client) client.release();
+    if (ownsTransaction && client) client.release();
   }
 }
 
@@ -2251,6 +2267,7 @@ module.exports = {
   setReplyExpectation,
   clearReplyExpectationForMessage,
   reassignReplyExpectationOwner,
+  findActiveReplyOwnerUser,
   listReplyOwnerCandidates,
   clearReplyExpectation,
   updateReplyExpectationSla,

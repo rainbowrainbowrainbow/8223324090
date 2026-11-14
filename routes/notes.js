@@ -184,18 +184,26 @@ router.get('/meeting/:id', requireRole(...ANY_ROLE), async (req, res) => {
 
 // POST /api/notes/meeting/:id/create-tasks — create tasks from action items
 router.post('/meeting/:id/create-tasks', requireRole(...ANY_ROLE), async (req, res) => {
+    let client;
+    const afterCommit = [];
     try {
-        const items = await pool.query(
-            'SELECT * FROM meeting_action_items WHERE meeting_id = $1 AND task_id IS NULL',
-            [req.params.id]
-        );
-        if (items.rows.length === 0) return res.json({ success: true, created: 0 });
-
-        const meeting = await pool.query('SELECT title FROM meeting_notes WHERE id = $1', [req.params.id]);
+        client = await pool.connect();
+        await client.query('BEGIN');
+        const items = await client.query(`SELECT a.* FROM meeting_action_items a
+            WHERE a.meeting_id=$1 AND a.task_id IS NULL ORDER BY a.id FOR UPDATE OF a`, [req.params.id]);
+        const claims = await client.query(`SELECT source_id,state FROM staff_substitutions WHERE business_context='event_genix'
+            AND source_type='meeting_action' AND source_id=ANY($1::text[]) AND state<>'cancelled'`,
+        [items.rows.map(item => String(item.id))]);
+        if (claims.rows.some(claim => claim.state === 'active')) {
+            throw Object.assign(new Error('Доручення має погоджену підміну.'), { statusCode:409 });
+        }
+        const completedActions = new Set(claims.rows.map(claim => claim.source_id));
+        const meeting = await client.query('SELECT title FROM meeting_notes WHERE id = $1', [req.params.id]);
         const meetingTitle = meeting.rows[0]?.title || 'Зустріч';
         let created = 0;
 
         for (const item of items.rows) {
+            if (completedActions.has(String(item.id))) continue;
             const taskResult = await getKleshnya().createTask({
                 title: `[${meetingTitle}] ${item.description}`,
                 description: `Задача зі зустрічі: ${meetingTitle}`,
@@ -204,23 +212,27 @@ router.post('/meeting/:id/create-tasks', requireRole(...ANY_ROLE), async (req, r
                 category: 'operational',
                 source_type: 'meeting_action',
                 source_id: String(item.id),
-                source_entity_type: 'meeting',
-                source_entity_id: String(req.params.id),
                 created_by: req.user.username || req.user.name || 'meeting_notes',
                 duplicateMode: 'skip'
-            });
-            await pool.query(
+            }, { pool:client, afterCommit });
+            await client.query(
                 'UPDATE meeting_action_items SET task_id = $1, status = $2 WHERE id = $3',
                 [taskResult.id, taskResult.duplicateSkipped ? 'linked_existing' : 'created', item.id]
             );
             created++;
         }
 
+        await client.query('COMMIT');
+        for (const notify of afterCommit) queueMicrotask(notify);
         res.json({ success: true, created });
     } catch (err) {
+        if (client) await client.query('ROLLBACK').catch(() => {});
+        if (err.statusCode === 409 || err.constraint === 'staff_substitution_meeting_active_guard') {
+            return res.status(409).json({ error:'Доручення має погоджену підміну.', code:'SUBSTITUTION_SOURCE_FROZEN' });
+        }
         log.error('Create tasks from meeting error', err);
         res.status(500).json({ error: 'Internal server error' });
-    }
+    } finally { client?.release(); }
 });
 
 module.exports = router;

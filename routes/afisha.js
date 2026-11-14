@@ -16,7 +16,7 @@ const { insertHistory } = require('../services/historyLog');
 const { moveAfishaSchedule } = require('../services/afishaSchedule');
 const { parseAfishaImport, importAfishaEvents } = require('../services/afishaImport');
 const { createTimelineAfisha, updateTimelineAfisha } = require('../services/afishaTimeline');
-const { birthdaySlotsForEvents, isGreetingEvent, setBirthdaySlot } = require('../services/afishaBirthdaySlots');
+const { birthdaySlotsForEvents, isGreetingEvent, setBirthdaySlot, isAfishaSubstitutionConflict } = require('../services/afishaBirthdaySlots');
 const { DEFAULT_TIMELINE_CONTEXT, timelineContextFromRequest, requireTimelineAction } = require('../services/timelineContext');
 const { resolveCapability } = require('../services/accountAccessPolicy');
 const { businessScopeWriteGuard } = require('../middleware/businessScopeGuard');
@@ -46,6 +46,7 @@ router.post('/timeline', businessScopeWriteGuard, async (req, res) => {
         const item = await createTimelineAfisha(pool, req.body || {}, req.user.username);
         res.status(201).json({ success: true, item });
     } catch (error) {
+        if (isAfishaSubstitutionConflict(error)) return res.status(409).json({ code:'AFISHA_SUBSTITUTION_CONFLICT',error:error.message });
         if (!error.statusCode) log.error('Timeline Afisha create error', error);
         res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Не вдалося створити захід' });
     }
@@ -57,6 +58,7 @@ router.patch('/:id/timeline', businessScopeWriteGuard, async (req, res) => {
         const item = await updateTimelineAfisha(pool, req.params.id, req.body || {}, req.user.username);
         res.json({ success: true, item });
     } catch (error) {
+        if (isAfishaSubstitutionConflict(error)) return res.status(409).json({ code:'AFISHA_SUBSTITUTION_CONFLICT',error:error.message });
         if (!error.statusCode) log.error('Timeline Afisha update error', error);
         res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Не вдалося змінити захід' });
     }
@@ -68,6 +70,7 @@ router.patch('/:id/birthday-slots/:slotKey', businessScopeWriteGuard, async (req
         const slots = await setBirthdaySlot(pool, req.params.id, req.params.slotKey, req.body || {}, req.user.username);
         res.json({ success: true, slots });
     } catch (error) {
+        if (isAfishaSubstitutionConflict(error)) return res.status(409).json({ code:'AFISHA_SUBSTITUTION_CONFLICT',error:error.message });
         if (!error.statusCode) log.error('Birthday slot update error', error);
         res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Не вдалося змінити час вітання' });
     }
@@ -88,6 +91,7 @@ router.patch('/:id/schedule', businessScopeWriteGuard, async (req, res) => {
         const item = await moveAfishaSchedule(pool, req.params.id, req.body || {}, req.user.username, context);
         res.json({ success: true, item });
     } catch (error) {
+        if (isAfishaSubstitutionConflict(error)) return res.status(409).json({ code:'AFISHA_SUBSTITUTION_CONFLICT',error:error.message });
         if (!error.statusCode) log.error('Afisha schedule error', error);
         res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Не вдалося зберегти розклад' });
     }
@@ -780,6 +784,7 @@ router.post('/', async (req, res) => {
         }).catch(err => log.error('History log error', err));
         res.json({ success: true, item });
     } catch (err) {
+        if (isAfishaSubstitutionConflict(err)) return res.status(409).json({ code:'AFISHA_SUBSTITUTION_CONFLICT',error:err.message });
         log.error('Create error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
@@ -849,6 +854,7 @@ router.put('/:id', async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         if (client) await client.query('ROLLBACK').catch(() => {});
+        if (isAfishaSubstitutionConflict(err)) return res.status(409).json({ code:'AFISHA_SUBSTITUTION_CONFLICT',error:err.message });
         if (!err.statusCode) log.error('Update error', err);
         res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Internal server error' });
     } finally { client?.release(); }

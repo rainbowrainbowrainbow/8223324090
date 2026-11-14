@@ -126,6 +126,7 @@ test('new event may take an auto greeting slot but not a manually fixed greeting
         duration: 15, title: 'Іменинники', type: 'greeting', line_id: '1', second_line_id: null };
     let saved = [];
     const client = { async query(sql) {
+        if (sql.includes('FROM staff_substitutions')) return { rows: [] };
         if (sql.includes('FROM afisha_birthday_slots')) return { rows: saved };
         if (sql.includes('FROM afisha')) return { rows: [greeting] };
         return { rows: [] };
@@ -169,6 +170,7 @@ test('Park booking conflict uses the effective birthday slots instead of the leg
     const events = [{ id: 10, date: '2026-10-19', time: '12:00', duration: 15,
         title: 'Іменинники', type: 'birthday', line_id: '1', second_line_id: null }];
     const client = { async query(sql) {
+        if (sql.includes('FROM staff_substitutions')) return { rows: [] };
         if (sql.includes('FROM afisha_birthday_slots')) return { rows: [{ afisha_id: 10,
             slot_key: 'first', time: '14:20', mode: 'manual' }] };
         if (sql.includes('FROM afisha')) return { rows: events };
@@ -230,6 +232,7 @@ test('a booking still conflicts with a manual greeting or an auto greeting with 
     let saved = [{ afisha_id: 21, slot_key: 'single', time: '14:00', mode: 'manual' }];
     let bookings = [];
     const client = { async query(sql) {
+        if (sql.includes('FROM staff_substitutions')) return { rows: [] };
         if (sql.includes('FROM afisha_birthday_slots')) return { rows: saved };
         if (sql.includes('FROM afisha')) return { rows: [greeting] };
         if (sql.includes('FROM bookings')) return { rows: bookings };

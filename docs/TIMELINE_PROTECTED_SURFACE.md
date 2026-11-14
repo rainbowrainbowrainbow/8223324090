@@ -40,6 +40,9 @@ Protected blocks:
 | `route-project-timeline-identity` | `bookings-api` | `routes/bookings.js` | Timeline projection and visibility rules for animator/room views. |
 | `service-booking-row-map` | `booking-service` | `services/booking.js` | DB row to frontend booking identity mapping. |
 
+| `afisha-greeting-animator-projection` | `timeline` | `js/timeline.js` | Day timeline distribution by the animator assigned to each greeting occurrence. |
+| `booking-afisha-occurrence-conflict` | `booking-service` | `services/booking.js` | Park booking overlap uses the effective occurrence time and slot’s assigned animators. |
+
 Forbidden timeline details fallbacks:
 
 - `TL-BK-DETAIL-RECOVERY-OPENED`
@@ -60,6 +63,32 @@ Forbidden timeline details fallbacks:
 Do not update the hash just to make CI green.
 
 ## Approval Log
+
+- 2026-11-14, `RED-SUBSTITUTION-AFISHA-LOCAL-05`: the owner approved local Park
+  occurrence-level greeting assignment in the timeline projection and booking
+  availability checks. The approved flow follows the automatic slot only when
+  the replacement is available. Booking detail and identity retain their existing
+  sources. Regression coverage is in `tests/afisha-birthday-slots.test.js` and
+  `tests/integration/staff-substitution-actual-db.integration.test.js`.
+
+- 2026-11-13, `RED-SUBSTITUTION-BANQUET-LOCAL-04`: owner approved local
+  assignment changes for an animator slot on a Park banquet booking. The
+  existing booking root and technical second-animator child remain the
+  assignment source. Regression coverage is in
+  `tests/integration/staff-substitution-actual-db.integration.test.js`.
+
+- 2026-11-13, `RED-SUBSTITUTION-DAR-LOCAL-03`: owner approved the local
+  DAR teacher substitution adapter and occurrence write guard. The adapter
+  writes the teacher ID and name in the existing lesson aliases on one
+  occurrence. The protected detail entry points and hashes remain intact.
+  Regression coverage is in
+  `tests/integration/staff-substitution-actual-db.integration.test.js`.
+
+- 2026-11-13, `RED-SUBSTITUTION-BOOKING-LOCAL-02`: owner approved the local Park
+  animator substitution adapter and booking write guards. Booking IDs, field
+  priorities, detail renderer, endpoint source and the six protected hashes are
+  preserved. Regression coverage is in
+  `tests/integration/staff-substitution-actual-db.integration.test.js`.
 
 - 2026-10-03, `booking-detail-safe-open` and `timeline-open-diagnostics`: explicit product-owner EDU-FIX-04 approval. Canonical booking details use the shared Escape/focus modal lifecycle, and day/week timeline openers pass their trigger for focus return. Booking identity, API sources, linked fallback, and renderer ownership remain unchanged. Focused regression: `tests/timeline-resources.test.js` canonical detail modal test.
 - 2026-08-14, `booking-detail-safe-open`: explicit product-owner Tasks 1-5 approval. Canonical booking detail now renders destructive cancellation actions only after server readiness, routes active banquet members to canonical banquet cancellation endpoints, and keeps timeline from owning any alternate booking detail renderer.

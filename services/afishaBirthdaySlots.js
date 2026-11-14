@@ -9,6 +9,8 @@ const SLOT_DEFINITIONS = Object.freeze([
 ]);
 const DURATION = 15;
 const MAX_SHIFT = 90;
+const isAfishaSubstitutionConflict = error => ['afisha_substitution_schedule_conflict', 'afisha_substitution_schedule_busy',
+    'afisha_greeting_substitution_active_guard'].includes(error?.constraint);
 const fail = (statusCode, message) => Object.assign(new Error(message), { statusCode });
 const overlaps = (a, b) => a.start < b.end && b.start < a.end;
 // A greeting is identified by its stored type, so renaming it cannot change scheduling rules.
@@ -21,9 +23,14 @@ function slotRange(time) {
     return { start, end: start + DURATION };
 }
 
-function projectBirthdaySlots(events, savedSlots = [], bookings = []) {
+function eventLineIds(event, slot) {
+    return slot?.line_ids ?? [event.line_id, event.second_line_id].filter(Boolean).map(String);
+}
+
+function projectBirthdaySlots(events, savedSlots = [], bookings = [], assignments = []) {
     const byId = new Map(events.map(event => [Number(event.id), { ...event }]));
     const saved = new Map(savedSlots.map(row => [`${row.afisha_id}:${row.slot_key}`, row]));
+    const overrides = new Map(assignments.map(row => [`${row.afisha_id}:${row.occurrence}:${row.role}`, row]));
     const dates = new Map();
     for (const event of byId.values()) {
         if (!dates.has(event.date)) dates.set(event.date, []);
@@ -50,9 +57,14 @@ function projectBirthdaySlots(events, savedSlots = [], bookings = []) {
             for (const definition of definitionsFor(event)) {
                 const row = saved.get(`${event.id}:${definition.key}`);
                 const legacyManual = event.type !== 'birthday' && !row && event.time !== definition.baseTime;
-                const mode = row?.mode === 'manual' || legacyManual ? 'manual' : 'auto';
+                const primary = overrides.get(`${event.id}:${definition.key}:primary`);
+                const second = overrides.get(`${event.id}:${definition.key}:second`);
+                const completedTime = primary?.completed_time || second?.completed_time;
+                const mode = completedTime || row?.mode === 'manual' || legacyManual ? 'manual' : 'auto';
                 const slot = { key: definition.key, base_time: definition.baseTime,
-                    time: mode === 'manual' ? (row?.time || event.time) : definition.baseTime, duration: DURATION, mode,
+                    line_ids: [primary?.line_id || event.line_id, second?.line_id || event.second_line_id].filter(Boolean).map(String),
+                    ...(primary?.state || second?.state ? { substitution_state: completedTime ? 'completed' : 'active' } : {}),
+                    time: completedTime || (mode === 'manual' ? (row?.time || event.time) : definition.baseTime), duration: DURATION, mode,
                     reason: null, conflict: false, conflict_kind: null, updated_by: row?.updated_by || null,
                     updated_at: row?.updated_at || null };
                 event.birthday_slots.push(slot);
@@ -66,7 +78,7 @@ function projectBirthdaySlots(events, savedSlots = [], bookings = []) {
                 label: 'Вручну зафіксоване вітання', kind: 'greeting' });
         }
         function obstacles(event, slot) {
-            const lineIds = [event.line_id, event.second_line_id].filter(Boolean).map(String);
+            const lineIds = eventLineIds(event, slot);
             return [
                 ...eventsOccupied,
                 ...animatorBookings.filter(item => !lineIds.length || lineIds.includes(item.lineId)),
@@ -118,7 +130,17 @@ async function birthdaySlotsForEvents(queryable, events, options = {}) {
     const slotRows = saved.rows.filter(row => !(options.override && Number(row.afisha_id) === Number(options.override.afisha_id)
         && row.slot_key === options.override.slot_key));
     if (options.override) slotRows.push(options.override);
-    const lineIds = [...new Set(birthdayEvents.flatMap(event => [event.line_id, event.second_line_id].filter(Boolean).map(String)))];
+    const assigned = (await queryable.query(`SELECT source_id::integer AS afisha_id,
+        split_part(slot_key,':',1) AS occurrence, split_part(slot_key,':',2) AS role,
+        source_snapshot->>'replacementLineId' AS line_id,
+        state, CASE WHEN state='completed' THEN source_snapshot->>'time' END AS completed_time,
+        id::text AS claim_id FROM staff_substitutions
+        WHERE business_context='event_genix' AND source_type='afisha' AND state<>'cancelled'
+          AND source_id=ANY($1::text[]) AND slot_key LIKE '%:%'`,[ids.map(String)])).rows;
+    const assignments = assigned.filter(row => row.claim_id !== options.excludeClaimId &&
+        !(options.assignment && row.afisha_id === options.assignment.afisha_id && row.occurrence === options.assignment.occurrence && row.role === options.assignment.role));
+    if (options.assignment) assignments.push(options.assignment);
+    const lineIds = [...new Set([...birthdayEvents.flatMap(event => eventLineIds(event)), ...assignments.map(row => row.line_id)])];
     const hasUnassignedGreeting = birthdayEvents.some(event => !event.line_id && !event.second_line_id);
     const dates = [...new Set(birthdayEvents.map(event => event.date))];
     const result = await queryable.query(
@@ -130,7 +152,20 @@ async function birthdaySlotsForEvents(queryable, events, options = {}) {
            AND id::text <> ALL($3::text[])`,
         [dates, hasUnassignedGreeting ? null : lineIds, (options.excludeBookingIds || []).map(String)]
     );
-    return projectBirthdaySlots(events, slotRows, [...result.rows, ...(options.additionalBookings || [])]);
+    return projectBirthdaySlots(events, slotRows, [...result.rows, ...(options.additionalBookings || [])], assignments);
+}
+
+async function assertGreetingRestore(db, row, source) {
+    const date = row.input_json.workDate;
+    const events = (await db.query('SELECT * FROM afisha WHERE date=$1 ORDER BY id',[date])).rows;
+    const projected = await birthdaySlotsForEvents(db,events,{ excludeClaimId:String(row.id) });
+    const target = projected.find(event => String(event.id) === row.source_id)?.birthday_slots?.find(slot => slot.key === source.occurrence);
+    const { getAnimatorTimelineLines, isBookingWithinAvailabilityWindows } = require('./booking');
+    const original = (await getAnimatorTimelineLines(date,db)).find(line => line.id===source.originalLineId && line.assignmentAllowed && !line.isUnavailable);
+    if (!target || target.conflict || !original || new Set(target.line_ids).size !== target.line_ids.length
+        || !isBookingWithinAvailabilityWindows(target.time,target.duration,original.availabilityWindows)) {
+        throw fail(409, 'Попередній аніматор недоступний у час вітання.');
+    }
 }
 
 async function setBirthdaySlot(pool, id, key, input, actor) {
@@ -144,11 +179,18 @@ async function setBirthdaySlot(pool, id, key, input, actor) {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+        const date = (await client.query('SELECT date FROM afisha WHERE id=$1',[id])).rows[0]?.date;
+        if (date) await client.query('SELECT lock_afisha_substitution_days_v404(ARRAY[$1::text])',[date]);
         const found = await client.query('SELECT * FROM afisha WHERE id = $1 FOR UPDATE', [id]);
         const event = found.rows[0];
         if (!event) throw fail(404, 'Вітання не знайдено');
         if (!isGreetingEvent(event) || !definitionsFor(event).some(slot => slot.key === key)) {
             throw fail(400, 'Це не вітання іменинників');
+        }
+        if ((await client.query(`SELECT 1 FROM staff_substitutions WHERE business_context='event_genix'
+            AND source_type='afisha' AND source_id=$1 AND state='active'
+            AND ((slot_key NOT LIKE '%:%' AND source_snapshot->'event'->>'type'='greeting') OR split_part(slot_key,':',1)=$2)`, [String(id),key])).rowCount) {
+            throw fail(409, 'Вітання має активну підміну. Спочатку завершіть або скасуйте її.');
         }
         const definition = definitionsFor(event).find(slot => slot.key === key);
         if (input.mode === 'manual' && (!validateTime(input.time) || timeToMinutes(input.time) % 5 !== 0
@@ -189,4 +231,4 @@ async function setBirthdaySlot(pool, id, key, input, actor) {
 }
 
 module.exports = { SLOT_DEFINITIONS, DURATION, MAX_SHIFT, isGreetingEvent, projectBirthdaySlots,
-    birthdaySlotsForEvents, setBirthdaySlot };
+    birthdaySlotsForEvents, eventLineIds, assertGreetingRestore, isAfishaSubstitutionConflict, setBirthdaySlot };

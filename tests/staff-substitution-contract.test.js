@@ -66,6 +66,21 @@ test('supports explicit DST offsets and overnight work without host timezone ass
     assert.equal(dst.plannedMinutes, 60);
 });
 
+test('stored UTC instants round-trip for revision across the Kyiv date boundary', () => {
+    const original = input({
+        startsAt: '2099-01-13T00:30:00+02:00',
+        endsAt: '2099-01-13T02:45:00+02:00'
+    });
+    assert.equal(original.startsAt, '2099-01-12T22:30:00.000Z');
+    assert.deepEqual(input({ startsAt: original.startsAt, endsAt: original.endsAt }), original);
+    const revised = input({ startsAt: original.startsAt, endsAt: original.endsAt, rate: '225' });
+    assert.equal(revised.startsAt, original.startsAt);
+    assert.equal(revised.plannedMinutes, original.plannedMinutes);
+    assert.equal(revised.rateMinor, 22500);
+    assert.throws(() => input({ startsAt: '2099-01-12T24:00:00.000Z' }), { code: 'SUBSTITUTION_TIME_INVALID' });
+    assert.throws(() => input({ startsAt: '2099-01-12T22:30:00.001Z' }), { code: 'SUBSTITUTION_TIME_INVALID' });
+});
+
 test('adjacency is free, overlaps block and explicit permitted concurrency warns', () => {
     const value = input();
     assert.equal(c.overlap(value, { startsAt: value.endsAt, endsAt: '2099-01-13T16:00:00Z' }), false);

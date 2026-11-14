@@ -174,13 +174,14 @@ describe('EDU-QA-01 extended real PostgreSQL and actual-app browser', { skip: !e
     const check=(name,pass,detail)=>{evidence.checks.push({name,status:pass?'PASS':'FAIL',detail}); fs.writeFileSync(path.join(output,'synthetic-browser.json'),JSON.stringify(evidence,null,2));};
     try {
       const context=await browser.newContext({viewport:{width:1440,height:1000},serviceWorkers:'block'});
-      await context.route('**/*',route=>new URL(route.request().url()).origin===new URL(process.env.TEST_URL).origin?route.continue():route.abort());
+      const appOrigin = new URL(process.env.TEST_URL).origin;
+      await context.route(url => url.origin !== appOrigin, route => route.abort());
       const page=await context.newPage(); page.setDefaultTimeout(15000); page.setDefaultNavigationTimeout(30000); page.on('pageerror',e=>evidence.errors.push(e.message));
       page.on('response',r=>{if(r.status()>=400 && new URL(r.url()).pathname.startsWith('/api/education')) evidence.failed.push({path:new URL(r.url()).pathname,status:r.status()});});
-      await page.goto(process.env.TEST_URL+'/',{waitUntil:'domcontentloaded'});
+      await page.goto(process.env.TEST_URL+'/',{waitUntil:'commit'});
       await page.locator('#username').fill(process.env.TEST_USER); await page.locator('#password').fill(process.env.TEST_PASS); await page.locator('#loginForm button[type="submit"]').click();
       await page.locator('#mainApp').waitFor({state:'visible',timeout:45000});
-      await page.goto(process.env.TEST_URL+'/?businessContext=dar&educationSchedule=groups',{waitUntil:'domcontentloaded'}); await page.locator('#educationGroupsPanel').waitFor({state:'visible'}); await page.waitForFunction(()=>window.EducationGroups.state.listStatus==='ready');
+      await page.goto(process.env.TEST_URL+'/?businessContext=dar&educationSchedule=groups',{waitUntil:'commit'}); await page.locator('#educationGroupsPanel').waitFor({state:'visible'}); await page.waitForFunction(()=>window.EducationGroups.state.listStatus==='ready');
       check('direct groups route',await page.locator('#educationGroupsPanel').isVisible(),new URL(page.url()).search);
       await page.locator('[data-education-schedule-tab="groups"]').click(); await page.waitForFunction(()=>window.EducationGroups.state.listStatus==='ready');
       await page.locator('#educationGroupName').fill('QA UI synthetic group'); await page.locator('#educationGroupCapacity').fill('3');
@@ -194,7 +195,7 @@ describe('EDU-QA-01 extended real PostgreSQL and actual-app browser', { skip: !e
       check('child enrolled through UI',(await request('GET',`/api/education/groups/${uiGroupId}?businessContext=dar`)).data.group.members.length===1);
       const b=lesson('2026-12-15','12:00',1,teacherIds[1]); b.extraData.educationLesson.groupId=Number(uiGroupId);
       const created=await booking(b); assert.equal(created.status,200); const id=created.data.booking.id;
-      await page.goto(process.env.TEST_URL+`/?businessContext=dar&date=${b.date}`,{waitUntil:'domcontentloaded'});
+      await page.goto(process.env.TEST_URL+`/?businessContext=dar&date=${b.date}`,{waitUntil:'commit'});
       await page.locator('[data-education-schedule-tab="today"]').click();
       await page.locator(`[data-education-booking-id="${id}"]`).waitFor({state:'visible',timeout:20000});
       const card=page.locator(`[data-education-booking-id="${id}"]`);
@@ -270,7 +271,7 @@ describe('EDU-QA-01 extended real PostgreSQL and actual-app browser', { skip: !e
       }
       await page.evaluate(()=>{window.fetch=window.__eduQaNativeFetch;});
       await page.locator('#educationGroupForm button[type="submit"]').click(); await page.waitForFunction(()=>document.getElementById('educationGroupsStatus').textContent==='Групу збережено.'); check('group retry succeeds',await page.locator('#educationGroupsStatus').textContent()==='Групу збережено.');
-      await page.reload({waitUntil:'domcontentloaded'}); await page.locator('#educationGroupsPanel').waitFor({state:'visible'}); await page.waitForFunction(()=>window.EducationGroups.state.listStatus==='ready'); check('selected groups tab survives reload',await page.locator('#educationGroupsPanel').isVisible(),new URL(page.url()).search);
+      await page.reload({waitUntil:'commit'}); await page.locator('#educationGroupsPanel').waitFor({state:'visible'}); await page.waitForFunction(()=>window.EducationGroups.state.listStatus==='ready'); check('selected groups tab survives reload',await page.locator('#educationGroupsPanel').isVisible(),new URL(page.url()).search);
       // Capture only synthetic education panel, never credentials or the identity rail.
       await page.locator('[data-education-schedule-tab="groups"]').click(); await page.locator('#educationScheduleWorkspace').screenshot({path:path.join(output,'synthetic-groups-desktop.png')});
       await page.setViewportSize({width:390,height:844}); await page.locator('#educationScheduleWorkspace').screenshot({path:path.join(output,'synthetic-groups-mobile.png')});

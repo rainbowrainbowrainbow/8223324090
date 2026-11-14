@@ -1488,6 +1488,7 @@ async function replaceHrShiftSegments(client, hrShiftId, plan, options = {}) {
     };
     const existingById = new Map(existingRows.map(row => [String(row.id), row]));
     const existingBySortOrder = new Map(existingRows.map(row => [Number(row.sort_order || 0), row]));
+    const requestedIds = new Set(normalizedPlan.segments.filter(segment => segment.id != null).map(segment => String(segment.id)));
     const retainedIds = new Set();
     const persistedSegments = [];
     const roleResetIds = [];
@@ -1497,7 +1498,7 @@ async function replaceHrShiftSegments(client, hrShiftId, plan, options = {}) {
         let existing = requestedId
             ? existingById.get(requestedId)
             : existingBySortOrder.get(segment.sortOrder);
-        if (existing && retainedIds.has(String(existing.id))) existing = null;
+        if (existing && (retainedIds.has(String(existing.id)) || !requestedId && requestedIds.has(String(existing.id)))) existing = null;
         if (requestedId && !existing) {
             fail('HR_SHIFT_SEGMENT_ID_NOT_ON_PARENT', 'Сегмент не належить поточній HR-зміні', {
                 hrShiftId: Number(hrShiftId),

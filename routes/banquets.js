@@ -44,6 +44,8 @@ const {
 } = require('../services/banquetCancellation');
 const { shapeBanquetGroupForRevenueAccess } = require('../services/revenueAccessPolicy');
 const { createLogger } = require('../utils/logger');
+const { isBookingSubstitutionGuard, bookingSubstitutionConflict } = require('../services/staffSubstitutionBooking');
+const { isAfishaSubstitutionConflict } = require('../services/afishaBirthdaySlots');
 
 const log = createLogger('Banquets');
 
@@ -199,6 +201,8 @@ async function sendReadResult(req, res, snapshot) {
 }
 
 function sendWriteError(res, err) {
+    if (isAfishaSubstitutionConflict(err)) return res.status(409).json({ success:false, code:'AFISHA_SUBSTITUTION_CONFLICT',error:err.message });
+    if (isBookingSubstitutionGuard(err)) return bookingSubstitutionConflict(res);
     if (err instanceof AdmissionTicketError || err instanceof BanquetCancellationError) {
         return res.status(err.status || err.statusCode || 422).json({
             success: false,

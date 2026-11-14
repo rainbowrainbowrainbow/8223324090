@@ -795,6 +795,10 @@ async function assignOnboardingResponsible(staffId, responsibleUserId, actor, op
         const current = professionKey
             ? await loadLatestProfessionOnboardingProgressRecord(staff.id, professionKey, db, { lock: true })
             : await loadActiveOnboardingProgressRecord(staff.id, db, { lock: true });
+        if (options.expectedProgressId != null && (!current || String(current.id) !== String(options.expectedProgressId)
+            || current.status === 'completed' || Number(current.responsible_user_id) !== Number(options.expectedResponsibleUserId))) {
+            throw professionOnboardingError('Призначення наставника вже змінилося', 409, 'SUBSTITUTION_SOURCE_STALE');
+        }
         const professionReadiness = professionKey
             ? await loadProfessionReadiness(staff.id, professionKey, db)
             : null;

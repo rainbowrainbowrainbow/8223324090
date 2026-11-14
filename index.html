@@ -183,6 +183,11 @@
             </div>
 
             <section class="education-schedule-workspace hidden" id="educationScheduleWorkspace" aria-label="Розклад занять">
+                <div id="staffSubstitutionActions" data-substitution-business="dar" hidden>
+                    <button type="button" class="btn btn-secondary" data-substitution-action="create">Замінити викладача</button>
+                    <button type="button" class="btn btn-secondary" data-substitution-action="list">Підміни викладачів</button>
+                    <button type="button" class="btn btn-secondary" data-substitution-action="accruals">Нарахування за підміни</button>
+                </div>
                 <div class="education-schedule-tabs" role="group" aria-label="Режим розкладу занять">
                     <button type="button" class="education-schedule-tab active" data-education-schedule-tab="today" aria-pressed="true">
                         <span aria-hidden="true">◷</span><span><strong>Сьогодні</strong><small>Список занять</small></span>
@@ -7433,6 +7438,7 @@
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
     <script src="js/alerts.js?v=0.83.55"></script>
     <script src="js/education-schedule.js?v=0.83.55"></script>
+    <script src="js/staff-substitution.js?v=0.83.55"></script>
     <script src="js/education-groups.js?v=0.83.55"></script>
     <script src="js/education-attendance.js?v=0.83.55"></script>
 </body>

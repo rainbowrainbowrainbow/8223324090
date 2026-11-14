@@ -5,8 +5,8 @@ const { resolveOmniRuntimeConfig } = require('./omni-accounts');
 const { normalizeBusinessContext, canAccessBusinessContext } = require('./businessContext');
 const { resolveCapability } = require('./accountAccessPolicy');
 
-async function listOmniOperators(businessContext) {
-  const result = await pool.query(`SELECT id, username, name, role,
+async function listOmniOperators(businessContext, db = pool) {
+  const result = await db.query(`SELECT id, username, name, role,
     to_jsonb(u)->'roles' AS roles, to_jsonb(u)->'page_allowlist' AS page_allowlist,
     to_jsonb(u)->'page_denylist' AS page_denylist, to_jsonb(u)->'business_contexts' AS business_contexts,
     to_jsonb(u)->>'forced_business_context' AS forced_business_context

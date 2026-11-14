@@ -16,6 +16,18 @@ test('legacy birthday record has two independent 15-minute auto slots', () => {
     ]);
 });
 
+test('slot assignments override only the chosen occurrence and animator position', () => {
+    const event = { ...birthday(), line_id: '10', second_line_id: '20' };
+    const assignment = { afisha_id: event.id, occurrence: 'first', role: 'primary', line_id: '30' };
+    const projected = projectBirthdaySlots([event], [], [{ date, time: '14:00', duration: 15, line_id: '10' }], [assignment]);
+    const [first, second] = projected[0].birthday_slots;
+    assert.deepEqual(first.line_ids, ['30', '20']);
+    assert.deepEqual(second.line_ids, ['10', '20']);
+    assert.equal(first.time, '14:00');
+    const moved = projectBirthdaySlots([event], [], [{ date, time: '14:00', duration: 15, line_id: '30' }], [assignment]);
+    assert.equal(moved[0].birthday_slots[0].time, '14:15');
+});
+
 test('event occupying 14:00 through 15:30 moves the first greeting to the nearest earlier slot', () => {
     const result = slots([birthday(), event(2, '14:00', 90)]);
     assert.equal(result[0].time, '13:45');
@@ -79,8 +91,7 @@ test('unassigned greeting loads animator bookings when projecting database event
             : [] };
     } };
     const projected = await birthdaySlotsForEvents(queryable, [greeting]);
-    assert.equal(queries.length, 2);
-    assert.equal(queries[1].params[1], null);
+    assert.equal(queries.find(query => query.sql.includes('FROM bookings')).params[1], null);
     assert.equal(projected[0].birthday_slots[0].time, '13:45');
 });
 

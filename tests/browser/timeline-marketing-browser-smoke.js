@@ -17,6 +17,7 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, SMOKE_USER } 
     try {
         browser = await requirePlaywright().chromium.launch({
             headless: true,
+            ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } : {}),
             ...(process.env.EVENTGENIX_BROWSER_CHANNEL ? { channel: process.env.EVENTGENIX_BROWSER_CHANNEL } : {})
         });
         context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, serviceWorkers: 'block' });
@@ -126,7 +127,7 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, SMOKE_USER } 
         await verifyFlagGeometry();
         const greetingId = (await fixture.pool.query("SELECT id FROM afisha WHERE title='Іменинники' AND time='14:00' AND date='2026-10-19'")).rows[0].id;
         const greeting = `.afisha-line-grid .afisha-type-birthday[data-afisha-id="${greetingId}"][data-birthday-slot="single"]`;
-        assert.match(await page.locator(greeting).getAttribute('title'), /15:00–15:15 · Авто/);
+        assert.match(await page.locator(greeting).getAttribute('title'), /13:45–14:00 · Авто/);
         await page.locator(greeting).click();
         assert.equal(await page.locator('[data-birthday-form]').count(), 1, 'birthday has an independent time editor');
         await page.waitForFunction(() => !!document.activeElement.closest('.timeline-marketing-modal'));
@@ -135,7 +136,7 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, SMOKE_USER } 
         assert.equal(await page.evaluate(() => document.activeElement.classList.contains('afisha-type-birthday')), true);
         await page.locator(greeting).click();
         await page.locator('[data-birthday-form] input[name="time"]').fill('15:20');
-        await page.getByRole('button', { name: 'Зберегти вручну' }).click();
+        await page.getByRole('button', { name: 'Зберегти час вручну' }).click();
         await page.locator('.timeline-marketing-modal').waitFor({ state: 'detached' });
         assert.deepEqual((await fixture.pool.query('SELECT time, mode FROM afisha_birthday_slots WHERE afisha_id=$1 AND slot_key=$2',
             [greetingId, 'single'])).rows[0], { time: '15:20', mode: 'manual' });
@@ -146,6 +147,30 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, SMOKE_USER } 
         await page.locator('.timeline-marketing-modal').waitFor({ state: 'detached' });
         assert.equal((await fixture.pool.query('SELECT mode FROM afisha_birthday_slots WHERE afisha_id=$1 AND slot_key=$2',
             [greetingId, 'single'])).rows[0].mode, 'auto');
+        const occurrenceFixture = (await fixture.pool.query(`INSERT INTO afisha(date,time,title,duration,type,line_id)
+            VALUES('2026-10-19','12:00','Підміна вітання',15,'birthday','1') RETURNING id`)).rows[0];
+        await fixture.pool.query(`INSERT INTO staff_substitutions(business_context,source_type,source_id,slot_key,state,work_date,source_snapshot)
+            VALUES('event_genix','afisha',$1,'first:primary','completed','2026-10-19',$2)`,
+        [String(occurrenceFixture.id),{replacementLineId:'2',time:'16:00'}]);
+        await page.setViewportSize({ width:390, height:844 });
+        await display();
+        const firstOverride = page.locator(`.line-grid[data-line-id="2"] [data-afisha-id="${occurrenceFixture.id}"][data-birthday-slot="first"]`);
+        await firstOverride.waitFor({state:'attached'});
+        assert.equal(await page.locator(`.line-grid[data-line-id="1"] [data-afisha-id="${occurrenceFixture.id}"][data-birthday-slot="first"]`).count(),0);
+        assert.equal(await page.locator(`.line-grid[data-line-id="1"] [data-afisha-id="${occurrenceFixture.id}"][data-birthday-slot="second"]`).count(),1);
+        await firstOverride.click();
+        await page.getByText('Аніматори: Аніматор 2',{exact:true}).waitFor();
+        assert.equal(await page.locator('[data-birthday-form]').count(),0);
+        await page.screenshot({ path:path.join(output,'afisha-occurrence-mobile.png') });
+        await page.keyboard.press('Escape');
+        if (process.env.AFISHA_OCCURRENCE_SMOKE === 'true') {
+            console.log('PASS: the substituted occurrence renders only on the replacement lane and opens its read-only details at 390 px.');
+            return;
+        }
+        await fixture.pool.query('DELETE FROM staff_substitutions WHERE source_id=$1',[String(occurrenceFixture.id)]);
+        await fixture.pool.query('DELETE FROM afisha WHERE id=$1',[occurrenceFixture.id]);
+        await page.setViewportSize({ width:1440,height:1000 });
+        await display();
         const afishaFlag = '.afisha-line-grid .afisha-flag[data-afisha-id="1"]';
         await page.locator(afishaFlag).waitFor();
         assert.equal(await page.locator(afishaFlag).count(), 1);

@@ -140,6 +140,9 @@ const { shapeBanquetSummaryForRevenueAccess } = require('../services/revenueAcce
 
 const { requireAction, canUseAction, authenticateToken, userHasAnyRole } = require('../middleware/auth');
 const log = createLogger('Bookings');
+const { isBookingSubstitutionGuard, bookingSubstitutionConflict } = require('../services/staffSubstitutionBooking');
+const { isAfishaSubstitutionConflict } = require('../services/afishaBirthdaySlots');
+const { readLesson, overlapsBookingTime, findTeacherConflict } = require('../services/educationLessonBooking');
 
 // v39.8: Security — require authentication for all booking endpoints
 router.use(authenticateToken);
@@ -2391,24 +2394,7 @@ async function resolveBookingTimelineResource(queryable, payload, businessContex
 }
 
 function educationLessonFromPayload(payload = {}) {
-    const extra = parsePayloadExtraData(payload) || {};
-    const lesson = extra.educationLesson
-        || extra.education_lesson
-        || extra.bookingWorkspace?.lesson
-        || null;
-    if (!lesson || typeof lesson !== 'object') return null;
-    const teacherId = String(lesson.teacherId || '').trim();
-    const teacherName = String(lesson.teacherName || '').trim();
-    const title = String(lesson.title || payload.programName || payload.label || '').trim();
-    const groupName = String(lesson.groupName || payload.groupName || '').trim();
-    const courseCode = String(lesson.courseCode || '').trim();
-    if (!teacherId && !teacherName && !title && !groupName && !courseCode && lesson.mode !== 'education_lesson') return null;
-    return {
-        ...lesson,
-        teacherId,
-        teacherName,
-        title: String(title || 'Заняття').trim()
-    };
+    return readLesson(parsePayloadExtraData(payload), payload);
 }
 
 function educationDurationError(payload) {
@@ -2458,47 +2444,9 @@ async function educationJournalChangeError(db, payload, oldRow, businessContext)
     } : null;
 }
 
-function overlapsBookingTime(candidate, other) {
-    const start = timeToMinutes(candidate.time);
-    const end = start + (parseInt(candidate.duration, 10) || 0);
-    const otherStart = timeToMinutes(other.time);
-    const otherEnd = otherStart + (parseInt(other.duration, 10) || 0);
-    return start < otherEnd && end > otherStart;
-}
-
 async function validateEducationLessonTeacherConflict(queryable, payload, businessContext, excludeIds = []) {
     const lesson = educationLessonFromPayload(payload);
-    if (!lesson || !payload?.date || !payload?.time || !(parseInt(payload.duration, 10) > 0)) return null;
-    const filters = [];
-    const params = [
-        payload.date,
-        businessContext || DEFAULT_TIMELINE_CONTEXT,
-        excludeIds.map(String)
-    ];
-    if (lesson.teacherId) {
-        params.push(lesson.teacherId);
-        filters.push(`COALESCE(extra_data->'educationLesson'->>'teacherId', extra_data->'education_lesson'->>'teacherId', extra_data->'bookingWorkspace'->'lesson'->>'teacherId') = $${params.length}`);
-    }
-    if (lesson.teacherName) {
-        params.push(lesson.teacherName.toLowerCase());
-        // Stable IDs distinguish namesakes; name fallback is only for a missing ID.
-        const legacyOnly = lesson.teacherId
-            ? `NULLIF(BTRIM(COALESCE(extra_data->'educationLesson'->>'teacherId', extra_data->'education_lesson'->>'teacherId', extra_data->'bookingWorkspace'->'lesson'->>'teacherId')), '') IS NULL AND `
-            : '';
-        filters.push(`(${legacyOnly}LOWER(COALESCE(extra_data->'educationLesson'->>'teacherName', extra_data->'education_lesson'->>'teacherName', extra_data->'bookingWorkspace'->'lesson'->>'teacherName', '')) = $${params.length})`);
-    }
-    if (!filters.length) return null;
-    const result = await queryable.query(
-        `SELECT id, time, duration, label, program_code, program_name, room, extra_data
-         FROM bookings
-         WHERE date = $1
-           AND ${bookingContextSql('', '$2')}
-           AND ${bookingActiveStatusSql()}
-           AND id != ALL($3::text[])
-           AND (${filters.join(' OR ')})`,
-        params
-    );
-    const conflict = result.rows.find(row => overlapsBookingTime(payload, row));
+    const conflict = await findTeacherConflict(queryable, payload, lesson, businessContext || DEFAULT_TIMELINE_CONTEXT, excludeIds);
     if (!conflict) return null;
     return {
         conflict,
@@ -3005,6 +2953,7 @@ router.post('/education-series/:seriesId/cancel', requireAction('delete_booking'
         res.json({ success: true, seriesId, scope, fromDate, cancelledCount: cancelled.length, bookings: cancelled });
     } catch (err) {
         await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (education-series cancel)', rbErr));
+        if (isBookingSubstitutionGuard(err)) return bookingSubstitutionConflict(res);
         if (err instanceof BookingCancellationGuardError) {
             return res.status(err.status).json({
                 success: false,
@@ -3563,6 +3512,8 @@ router.post('/:id/banquet-links', requireAction('edit_booking'), async (req, res
         res.json({ success: true, link });
     } catch (err) {
         await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (banquet-link create)', rbErr));
+        if (isBookingSubstitutionGuard(err)) return bookingSubstitutionConflict(res);
+        if (isAfishaSubstitutionConflict(err)) return res.status(409).json({ success:false, code:'AFISHA_SUBSTITUTION_CONFLICT',error:err.message });
         log.error('Error creating banquet booking link', err);
         res.status(500).json({ success: false, error: 'Failed to create banquet link' });
     } finally {
@@ -3633,6 +3584,7 @@ router.delete('/:id/banquet-links/:targetId', requireAction('edit_booking'), asy
         res.json({ success: true, removed: deleted.rowCount > 0, link });
     } catch (err) {
         await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (banquet-link delete)', rbErr));
+        if (isBookingSubstitutionGuard(err)) return bookingSubstitutionConflict(res);
         log.error('Error deleting banquet booking link', err);
         res.status(500).json({ success: false, error: 'Failed to delete banquet link' });
     } finally {
@@ -4301,6 +4253,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         });
     } catch (err) {
         await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (create)', rbErr));
+        if (isAfishaSubstitutionConflict(err)) return res.status(409).json({ success:false, code:'AFISHA_SUBSTITUTION_CONFLICT',error:err.message });
         log.error('Error creating booking', err);
         res.status(err.statusCode || err.status || 500).json({
             success: false,
@@ -5345,6 +5298,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         });
     } catch (err) {
         await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (create/full)', rbErr));
+        if (isAfishaSubstitutionConflict(err)) return res.status(409).json({ success:false, code:'AFISHA_SUBSTITUTION_CONFLICT',error:err.message });
         log.error('Error creating full booking', err);
         res.status(err.statusCode || err.status || 500).json({
             success: false,
@@ -5633,6 +5587,8 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
         res.json({ success: true, permanent });
     } catch (err) {
         await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (delete)', rbErr));
+        if (isBookingSubstitutionGuard(err)) return bookingSubstitutionConflict(res);
+        if (isAfishaSubstitutionConflict(err)) return res.status(409).json({ success:false, code:'AFISHA_SUBSTITUTION_CONFLICT',error:err.message });
         log.error('Error deleting booking', err);
         if (isBookingCancellationConcurrencyError(err)) {
             return res.status(409).json({
@@ -5979,6 +5935,7 @@ router.post('/:id/linked-atomic', requireAction('edit_booking'), async (req, res
         res.json({ success: true, booking: mainBooking, linkedBookings });
     } catch (err) {
         await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (linked-atomic)', rbErr));
+        if (isBookingSubstitutionGuard(err)) return bookingSubstitutionConflict(res);
         log.error('Error updating linked booking group atomically', err);
         res.status(500).json({ error: 'Failed to update linked bookings atomically' });
     } finally {
@@ -6869,6 +6826,8 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         res.json({ success: true, booking: savedBooking });
     } catch (err) {
         await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (update)', rbErr));
+        if (isBookingSubstitutionGuard(err)) return bookingSubstitutionConflict(res);
+        if (isAfishaSubstitutionConflict(err)) return res.status(409).json({ success:false, code:'AFISHA_SUBSTITUTION_CONFLICT',error:err.message });
         log.error('Error updating booking', err);
         res.status(err.statusCode || 500).json({
             success: false,

@@ -7862,6 +7862,10 @@ router.put('/staff/:id/onboarding-assignment', requireHrManage, async (req, res)
         });
         res.json({ success: true, ...result });
     } catch (err) {
+        if (err.constraint === 'staff_substitution_onboarding_active_guard') {
+            return res.status(409).json({ success:false, code:'SUBSTITUTION_SOURCE_FROZEN',
+                error:'Наставництво вже має погоджену підміну.' });
+        }
         log.error('PUT /hr/staff/:id/onboarding-assignment error', err);
         res.status(err.statusCode || 500).json({
             success: false,

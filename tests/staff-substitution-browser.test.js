@@ -15,6 +15,12 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
     const index = await fs.readFile(path.join(root, 'index.html'), 'utf8');
     const darActions = index.match(/<div id="staffSubstitutionActions"[^>]+>[\s\S]*?<\/div>/)[0];
     const commands=[];
+    const journalFilters=[];
+    const entry={id:'21',state:'completed',input:{staffId:2,originalStaffId:3,professionKey:'reception',
+        sourceType:'hr_shift',workDate:'2099-01-13',workload:'Підмінити адміністратора на рецепції',payUnit:'hour',
+        startsAt:'2099-01-13T08:00:00.000Z',endsAt:'2099-01-13T10:00:00.000Z'},
+        quote:{rate:{rateMinor:15000},estimateMinor:30000,effects:{replacement:'Додаткова оплата.',original:'Без змін.'}},
+        completion:{amountMinor:30000,actualMinutes:120,rate:{rateMinor:15000}}};
     let loseResponse=true;
     const server=http.createServer(async(req,res)=>{
         const url=new URL(req.url,'http://localhost');
@@ -45,6 +51,16 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
                 professions:[{key:'reception',title:'Адміністратор'}],
                 sources:[{key:'standalone',title:'Окрема робота'},{key:'hr_shift',title:'Зміна графіка'},{key:'booking',title:'Бронювання Park'}]
             }}));
+            if(req.method==='GET' && url.pathname==='/fixture/staff-substitutions') {
+                journalFilters.push(Object.fromEntries(url.searchParams));
+                const staffId=url.searchParams.get('staffId');
+                const matches=!staffId || [entry.input.staffId,entry.input.originalStaffId].includes(Number(staffId));
+                return res.end(JSON.stringify({success:true,data:matches?[entry]:[]}));
+            }
+            if(req.method==='GET' && url.pathname==='/fixture/staff-substitutions/21/history') {
+                return res.end(JSON.stringify({success:true,data:{substitution:entry,
+                    events:[{version:1,action:'create',actor:'synthetic',reason:'Погоджено для перевірки'}]}}));
+            }
             if(url.pathname.endsWith('/sources')) {
                 const booking = url.searchParams.get('sourceType') === 'booking';
                 const source = booking && url.searchParams.get('slotKey') === 'second'
@@ -155,6 +171,31 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
             assert.equal(await page.locator('[data-substitution-action="create"]').evaluate(el=>document.activeElement===el),true,'focus restored');
             await page.close();
         }
+        const journal = await browser.newPage({ viewport:{width:390,height:844} });
+        await journal.goto(`http://127.0.0.1:${server.address().port}`);
+        const journalButton=journal.getByRole('button',{name:'Підміни',exact:true});
+        await journalButton.click();
+        const dialog=journal.locator('.form-modal-overlay:not(.confirm-exit)');
+        await dialog.getByLabel('Працівник',{exact:true}).selectOption('3');
+        await dialog.getByLabel(/Від/).fill('2099-01-13');
+        await dialog.getByLabel(/До/).fill('2099-01-13');
+        await dialog.getByRole('button',{name:'Показати'}).click();
+        await dialog.locator('[data-key="selected"]').selectOption('21');
+        await dialog.getByRole('button',{name:'Відкрити'}).click();
+        await dialog.getByText(/Виконавець: Синтетична менеджерка/).waitFor();
+        const facts=await dialog.locator('.form-modal-note').innerText();
+        assert.match(facts,/Кого замінили: Синтетичний адміністратор/);
+        assert.match(facts,/Роль: Адміністратор/);
+        assert.match(facts,/10:00.*12:00/);
+        assert.match(facts,/Зафіксована ставка: 150,00/);
+        assert.match(facts,/Факт: 300,00/);
+        assert.equal(journalFilters.at(-1).staffId,'3');
+        assert.equal(await journal.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+        await journal.screenshot({path:path.join(output,'park-mobile-substitution-history.png')});
+        await journal.keyboard.press('Escape');
+        await journal.waitForFunction(()=>document.activeElement?.dataset.substitutionAction==='list');
+        await journal.close();
+
         const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
         await page.goto(`http://127.0.0.1:${server.address().port}/?dar`);
         const active = () => page.locator('.form-modal-overlay:not(.confirm-exit)');

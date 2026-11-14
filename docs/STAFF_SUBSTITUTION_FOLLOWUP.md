@@ -77,8 +77,8 @@ Overnight splits with
 a separately dated remainder and arbitrary slices with breaks or simultaneous
 roles need explicit day offsets and break/role allocation. Daytime animator
 transfers use the dated roster and reject any existing booking or Afisha slot
-outside the resulting coverage. Overnight animator assignments and banquet
-or two-slot Afisha birthday transfers remain unsupported. Pre-payroll corrections
+outside the resulting coverage. Overnight animator shift transfers and
+ambiguous historical banquet links remain unsupported. Pre-payroll corrections
 after completion need a separately traceable adjustment path. Dashboard,
 workbook, source-page and employee-facing read models still need substitution
 provenance. The remaining adapters in the inventory need scope and lifecycle
@@ -160,6 +160,32 @@ claim, and skips actions already completed through substitution. Legacy
 text fields on support and content records need validated worker IDs and
 business ownership.
 
+## Operational acceptance
+
+The released substitution package is present in production 0.83.64
+(`23da24bf`). The production branch and public version endpoint agreed when
+verified on 2026-11-15. The exact substitution release was 0.83.56
+(`b817ec71`). An isolated synthetic payroll test covers the manager-to-
+reception flow and preserves the worker's permanent role. It does not prove
+that a particular historical shift was paid.
+
+To reconcile an actual one-off administrator shift, obtain the exact Kyiv
+work date and worked interval from the approved shift or attendance record.
+Match the worker by CRM staff ID and read the approved payroll snapshot when
+one exists. Compare its base and substitution allocations for that interval
+against the reception rate effective on the work date and the agreed pay
+treatment. Close the case only with one matching payable allocation and an
+unchanged permanent role. Record the evidence privately. If the review finds
+a mismatch, prepare an exact correction identifying the record, old and new
+amount, reason, and adjustment path before requesting Red approval. Leave
+approved payroll snapshots intact.
+
+Authenticated production QA is blocked while the required local test
+credentials file is absent. Keep test-account QA separate from any real
+payroll reconciliation. The local journal lets authorized users filter by
+date and either participant and inspect the stored role, planned interval,
+frozen rate, confirmed minutes, amount, and revision history.
+
 ## Acceptance still outstanding
 
 - HR: retained pay under daily or monthly guarantees needs an explicit
@@ -172,8 +198,8 @@ business ownership.
   dependency for each. Protected booking changes and accounting authority are
   outside the currently approved local scope.
 - Read models: workbook, employee and source-page substitution provenance,
-  beyond existing history and payroll lines. No production verification has
-  been authorized for this local follow-up.
+  beyond the journal, existing history and payroll lines. Authenticated
+  production workflows remain unverified.
 
 ## Decisions before expanding protected booking and pay scopes
 
@@ -188,6 +214,18 @@ business ownership.
 - Monthly retention: preserve the guaranteed monthly amount, or use the
   transferred minutes divided by the frozen approved monthly norm and retain
   that proportional value. Existing historical amounts remain frozen.
+- Proposed starting rule for owner review: preserve an existing day or month
+  guarantee once in the worker's ordinary payroll. Put the substitute's
+  approved amount on its own line. A policy that reduces the guarantee or
+  allocates it by hours needs an explicit rule and examples.
+- Overnight, breaks and simultaneous roles: carry an explicit Kyiv date and
+  offset for each interval. Transfer breaks and role allocations only from
+  a recorded interval or an approved allocation. Require manual review when
+  the plan lacks those facts.
+- Corrections after completion: link an append-only correction to the
+  original substitution and record the reason, approving actor and amount.
+  Reconcile it through the authorized payroll adjustment path before touching
+  a frozen report or any cash movement.
 
 ## Afisha occurrence scheduling
 

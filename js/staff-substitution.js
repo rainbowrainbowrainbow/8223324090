@@ -161,18 +161,41 @@
         showNotification('Підміну збережено. Історичну ставку зафіксовано.', 'success');
     }
 
-    async function inspect(row) {
+    function personLabel(people, id) {
+        return people.get(String(id)) || `Працівник №${id}`;
+    }
+
+    function substitutionFacts(details, catalog, people) {
+        const { input, quote, completion } = details;
+        const profession = catalog.professions.find(item => item.key === input.professionKey)?.title || input.professionKey;
+        const source = catalog.sources.find(item => item.key === input.sourceType)?.title || input.sourceType;
+        const format = new Intl.DateTimeFormat('uk-UA', { timeZone:'Europe/Kyiv', dateStyle:'short', timeStyle:'short' });
+        const interval = input.startsAt && input.endsAt
+            ? `${format.format(new Date(input.startsAt))} — ${format.format(new Date(input.endsAt))}` : input.workDate;
+        const rate = completion?.rate || quote.rate;
+        const unit = { hour:'за годину', shift:'за зміну', fixed:'за роботу' }[input.payUnit] || '';
+        return [
+            `Виконавець: ${personLabel(people,input.staffId)}`,
+            input.originalStaffId ? `Кого замінили: ${personLabel(people,input.originalStaffId)}` : 'Кого замінили: окрема робота',
+            `Роль: ${profession} · Джерело: ${source}`,
+            `Час роботи: ${interval}`,
+            rate ? `Зафіксована ставка: ${money(rate.rateMinor)} ${unit}` : null,
+            Number.isInteger(completion?.actualMinutes) ? `Підтверджено: ${completion.actualMinutes} хв` : null
+        ].filter(Boolean).join('\n');
+    }
+
+    async function inspect(row, catalog, people) {
         const history = await request('GET', `/${encodeURIComponent(row.id)}/history`);
         const details = history.substitution;
         const selected = await formModal(`Підміна #${row.id} · ${labels[details.state]}`, [
-            { type: 'note', text: `${details.input.workload}\nПлан: ${money(details.quote.estimateMinor)}\nФакт: ${details.completion ? money(details.completion.amountMinor) : 'ще не підтверджено'}\n`
+            { type: 'note', text: `${details.input.workload}\n${substitutionFacts(details, catalog, people)}\nПлан: ${money(details.quote.estimateMinor)}\nФакт: ${details.completion ? money(details.completion.amountMinor) : 'ще не підтверджено'}\n`
                 + `${details.quote.effects.replacement}\n${details.quote.effects.original}\n`
                 + (details.completion?.originalPay ? `Збережена оплата заміненого: ${money(details.completion.originalPay.amountMinor)}.\n` : '')
                 + history.events.map(event => `Версія ${event.version} · ${actions[event.action] || event.action} · ${event.actor}: ${event.reason}`).join('\n') },
             ...(details.state === 'active' && (!dar() || canManage()) ? [choice('action', 'Дія', [
                 ...(!dar() || canUseAction('manage_payroll_accrual') ? [['complete','Підтвердити виконання']] : []),
                 ['revise','Змінити погоджену ставку до початку роботи'],['cancel','Скасувати підміну']])] : [])
-        ], { okText: details.state === 'active' ? 'Продовжити' : 'Закрити', cancelText: 'Закрити' });
+        ], { okText: details.state === 'active' ? 'Продовжити' : 'Закрити', cancelText: 'Закрити', className:'substitution-history-modal' });
         if (!selected?.action) return;
         if (selected.action === 'revise') {
             const terms=await formModal('Зміна ставки підміни',[
@@ -206,20 +229,32 @@
     }
 
     async function workspace() {
-        const title = dar() ? 'Підміни викладачів · Дар' : 'Підміни · графік і облік';
-        const range = await formModal(title, [field('from', 'Від', today(), 'date'),field('to', 'До', today(), 'date')], { okText: 'Показати' });
-        if (!range) return;
-        const rows = await request('GET', `?${new URLSearchParams(range)}`);
+        const isDar = dar();
+        const title = isDar ? 'Підміни викладачів · Дар' : 'Підміни · графік і облік';
+        const catalog = await request('GET', '/catalog');
+        if (dar() !== isDar) return;
+        const people = new Map(catalog.staff.map(person => [String(person.id),person.name]));
+        const staffFilter = choice('staffId', isDar ? 'Викладач' : 'Працівник', [...people]);
+        staffFilter.required = false;
+        staffFilter.options[0].label = isDar ? 'Усі викладачі' : 'Усі працівники';
+        const range = await formModal(title, [
+            field('from', 'Від', today(), 'date'), field('to', 'До', today(), 'date'), staffFilter
+        ], { okText: 'Показати' });
+        if (!range || dar() !== isDar) return;
+        const params = new URLSearchParams({ from:range.from, to:range.to });
+        if (range.staffId) params.set('staffId',range.staffId);
+        const rows = await request('GET', `?${params}`);
+        if (dar() !== isDar) return;
         const canCreate = !dar() || canManage();
         const choiceResult = await formModal(title, [
             { type: 'note', text: rows.length ? 'Оберіть підміну, щоб переглянути історію або підтвердити виконання.' : 'За обраний період підмін немає.' },
             ...(rows.length || canCreate ? [choice('selected', 'Підміна', [
                 ...(canCreate ? [['new','Створити підміну']] : []),
-                ...rows.map(row => [row.id, `${row.input.workDate} · ${row.input.workload} · ${labels[row.state]} · ${money(row.completion?.amountMinor ?? row.quote.estimateMinor)}`])], canCreate ? 'new' : '')] : [])
+                ...rows.map(row => [row.id, `${row.input.workDate} · ${personLabel(people,row.input.staffId)} · ${row.input.workload} · ${labels[row.state]}`])], canCreate ? 'new' : '')] : [])
         ], { okText: 'Відкрити' });
-        if (!choiceResult?.selected) return;
+        if (!choiceResult?.selected || dar() !== isDar) return;
         if (choiceResult.selected === 'new') return create();
-        return inspect(rows.find(row => row.id === choiceResult.selected));
+        return inspect(rows.find(row => row.id === choiceResult.selected), catalog, people);
     }
 
     async function showDarRates() {

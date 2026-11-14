@@ -4105,3 +4105,8 @@ body.dark-mode .product-sales-table td {
         grid-template-columns: 1fr;
     }
 }
+
+.substitution-history-modal .form-modal-note {
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+}

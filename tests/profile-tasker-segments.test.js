@@ -802,11 +802,11 @@ test('profile My Day overdue segment renders triage rows with existing task acti
     assert.match(html, /data-reschedule-option="custom"/);
     assert.match(html, /data-source-surface="profile_my_cabinet_overdue_triage"/);
     assert.match(html, /data-cabinet-task-action="done"/);
-    assert.match(html, /data-my-day-classification-badges="201"/);
-    assert.match(html, /my-day-task-impact-chips/);
-    assert.match(html, /data-cabinet-task-action="dependencies"/);
-    assert.match(html, /data-cabinet-task-action="ai-classification"/);
-    assert.match(html, /cabinet-task-action-ai/);
+    assert.doesNotMatch(html, /data-my-day-classification-badges="201"/);
+    assert.doesNotMatch(html, /my-day-task-impact-chips/);
+    assert.doesNotMatch(html, /data-cabinet-task-action="dependencies"/);
+    assert.doesNotMatch(html, /data-cabinet-task-action="ai-classification"/);
+    assert.doesNotMatch(html, /cabinet-task-action-ai/);
     assert.match(html, /cabinet-task-action-timer/);
     assert.match(html, /data-cabinet-task-action="time-menu"/);
     assert.equal((html.match(/data-cabinet-task-action="time-menu"/g) || []).length, 1);
@@ -936,85 +936,30 @@ test('profile task-count quick segment keeps users in My Day cockpit', () => {
     assert.doesNotMatch(html, /switchTab\('mytasks'\)/);
 });
 
-test('profile task composer starts collapsed with advanced fields behind an explicit toggle', () => {
+test('profile task composer keeps one date on the quick row and one priority in additional options', () => {
     const ctx = loadProfileTaskerContext();
-    vm.runInContext('cabinetTaskComposerExpanded = false;', ctx);
-    const collapsedHtml = ctx.renderCabinetTaskComposer({ segment: 'personal', mode: 'personal' });
+    const collapsed = ctx.renderCabinetTaskComposer({ segment: 'personal', mode: 'personal' });
 
-    assert.match(collapsedHtml, /cabinet-task-composer is-collapsed/);
-    assert.match(collapsedHtml, /data-cabinet-composer-state="collapsed"/);
-    assert.match(collapsedHtml, /data-cabinet-composer-toggle/);
-    assert.match(collapsedHtml, /Більше параметрів/);
-    assert.match(collapsedHtml, /<textarea id="cabinetTaskTitle"/);
-    assert.match(collapsedHtml, /Що потрібно зробити\?/);
-    assert.match(collapsedHtml, /Наприклад: підготувати кошторис до п’ятниці/);
-    assert.match(collapsedHtml, /aria-describedby="cabinetTaskTitleGuidance cabinetTaskComposerStatus"/);
-    assert.match(collapsedHtml, /id="cabinetTaskTitleGuidance"[^>]*role="status"[^>]*aria-live="polite"/);
-    assert.match(collapsedHtml, /data-cabinet-create-action="plain"[^>]*>Додати задачу</);
-    assert.match(collapsedHtml, /id="cabinetTaskAiFillBtn"[^>]*data-cabinet-create-action="ai"[^>]*data-task-ai-draft-preview[^>]*>Заповнити з AI</);
-    const titleIndex = collapsedHtml.indexOf('id="cabinetTaskTitle"');
-    const plainIndex = collapsedHtml.indexOf('data-cabinet-create-action="plain"');
-    const aiIndex = collapsedHtml.indexOf('id="cabinetTaskAiFillBtn"');
-    const advancedToggleIndex = collapsedHtml.indexOf('data-cabinet-composer-toggle');
-    assert.ok(titleIndex > -1 && plainIndex > -1 && aiIndex > -1, 'composer focus targets are rendered');
-    assert.ok(titleIndex < plainIndex, 'keyboard order reaches the textarea before plain create');
-    assert.ok(plainIndex < aiIndex, 'keyboard order reaches plain create before AI fill');
-    assert.ok(aiIndex < advancedToggleIndex, 'secondary advanced toggle follows the primary create actions');
-    assert.doesNotMatch(collapsedHtml, /Підготувати з AI/);
-    assert.doesNotMatch(collapsedHtml, /Опиши результат або деталі/);
-    assert.match(collapsedHtml, /id="cabinetTaskComposerStatus"[^>]*role="status"[^>]*aria-live="polite"/);
-    assert.match(collapsedHtml, /class="cabinet-due-presets"/);
-    assert.match(collapsedHtml, /data-cabinet-due-preset="today"/);
-    assert.match(collapsedHtml, /data-cabinet-due-preset="tomorrow"/);
-    assert.match(collapsedHtml, /data-cabinet-due-preset="day_after_tomorrow"/);
-    assert.match(collapsedHtml, /data-cabinet-due-preset="plus_3_days"/);
-    assert.match(collapsedHtml, /data-cabinet-due-preset="month_end"/);
-    assert.match(collapsedHtml, /data-cabinet-due-preset="no_date"/);
-    assert.match(collapsedHtml, /data-cabinet-due-preset="custom"/);
-    assert.doesNotMatch(collapsedHtml, /data-cabinet-due-preset="all"/);
-    assert.doesNotMatch(collapsedHtml, /data-cabinet-due-preset="normal"/);
-    assert.match(collapsedHtml, /class="cabinet-priority-presets"/);
-    assert.match(collapsedHtml, /data-cabinet-priority-preset="urgent"/);
-    assert.match(collapsedHtml, /data-cabinet-priority-preset="normal"/);
-    assert.match(collapsedHtml, /Терміново/);
-    assert.doesNotMatch(collapsedHtml, /cabinet-task-composer-hint/);
-    assert.match(collapsedHtml, /data-cabinet-composer-advanced aria-hidden="true"[^>]*hidden/);
+    assert.match(collapsed, /data-cabinet-composer-state="collapsed"/);
+    assert.match(collapsed, /<textarea id="cabinetTaskTitle"[^>]*aria-required="true"/);
+    assert.match(collapsed, /<input id="cabinetTaskDate"[^>]*type="date" value="\d{4}-\d{2}-\d{2}"/);
+    assert.match(collapsed, /data-cabinet-no-date>Без дати/);
+    assert.match(collapsed, /data-cabinet-create-action="plain"[^>]*>Додати задачу/);
+    assert.match(collapsed, /data-cabinet-composer-toggle[^>]*aria-expanded="false"[^>]*>Більше параметрів/);
+    assert.match(collapsed, /id="cabinetTaskAiFillBtn"[^>]*data-task-ai-draft-preview/);
+    assert.match(collapsed, /id="cabinetTaskComposerStatus"[^>]*role="status"/);
+    assert.match(collapsed, /id="cabinetTaskComposerAdvanced"[^>]*hidden[\s\S]*id="cabinetTaskDetails"[\s\S]*id="cabinetTaskPriority"/);
+    assert.equal((collapsed.match(/type="date"/g) || []).length, 1);
+    assert.equal((collapsed.match(/id="cabinetTaskPriority"/g) || []).length, 1);
+    assert.doesNotMatch(collapsed, /cabinet-(due|priority)-preset|data-my-day-composer-impact/);
 
-    vm.runInContext('cabinetTaskComposerExpanded = true;', ctx);
-    const expandedHtml = ctx.renderCabinetTaskComposer({ segment: 'personal', mode: 'personal' });
-    assert.match(expandedHtml, /cabinet-task-composer is-expanded/);
-    assert.match(expandedHtml, /data-cabinet-composer-state="expanded"/);
-    assert.match(expandedHtml, /Згорнути/);
-    assert.doesNotMatch(expandedHtml, /data-cabinet-composer-advanced aria-hidden="true"[^>]*hidden/);
-});
-
-test('profile task composer keeps date presets separate from priority presets', () => {
-    const ctx = loadProfileTaskerContext();
-    vm.runInContext('cabinetTaskComposerExpanded = false; cabinetCreatePriority = "normal"; cabinetCreateDuePreset = "today";', ctx);
-
-    const html = ctx.renderCabinetTaskComposer({ segment: 'personal', mode: 'personal' });
-    const dueRow = html.match(/<div class="cabinet-due-presets"[\s\S]*?<\/div>/)?.[0] || '';
-    const priorityRow = html.match(/<div class="cabinet-priority-presets"[\s\S]*?<\/div>/)?.[0] || '';
-    const normalPriorityLabel = vm.runInContext("CABINET_TASK_PRIORITIES.find(item => item.value === 'normal').label", ctx);
-
-    assert.match(dueRow, /data-cabinet-due-preset="today"/);
-    assert.match(dueRow, /data-cabinet-due-preset="tomorrow"/);
-    assert.match(dueRow, /data-cabinet-due-preset="day_after_tomorrow"/);
-    assert.match(dueRow, /data-cabinet-due-preset="plus_3_days"/);
-    assert.match(dueRow, /data-cabinet-due-preset="month_end"/);
-    assert.match(dueRow, /data-cabinet-due-preset="no_date"/);
-    assert.match(dueRow, /data-cabinet-due-preset="custom"/);
-    assert.doesNotMatch(dueRow, /data-cabinet-priority-preset=/);
-    assert.doesNotMatch(dueRow, /data-cabinet-due-preset="normal"/);
-    assert.equal(dueRow.includes(normalPriorityLabel), false);
-
-    assert.match(priorityRow, /data-cabinet-priority-preset="urgent"/);
-    assert.match(priorityRow, /data-cabinet-priority-preset="high"/);
-    assert.match(priorityRow, /data-cabinet-priority-preset="normal"/);
-    assert.match(priorityRow, /data-cabinet-priority-preset="low"/);
-    assert.match(priorityRow, /aria-pressed="true"/);
-    assert.match(priorityRow, new RegExp(normalPriorityLabel));
-    assert.doesNotMatch(priorityRow, /data-cabinet-due-preset=/);
+    vm.runInContext("cabinetTaskComposerExpanded = true; cabinetCreateDuePreset = 'no_date';", ctx);
+    const expanded = ctx.renderCabinetTaskComposer({ segment: 'personal', mode: 'personal' });
+    assert.match(expanded, /data-cabinet-composer-state="expanded"/);
+    assert.match(expanded, /<input id="cabinetTaskDate"[^>]*value="" disabled>/);
+    assert.match(expanded, /data-cabinet-no-date>На сьогодні/);
+    assert.match(expanded, /data-cabinet-composer-toggle[^>]*aria-expanded="true"[^>]*>Згорнути/);
+    assert.doesNotMatch(expanded, /id="cabinetTaskComposerAdvanced"[^>]*hidden/);
 });
 
 test('shared TaskCreate adapter resolves extended due presets from Kyiv date context', () => {
@@ -1171,7 +1116,7 @@ test('profile My Day due presets update the visible focused task column', () => 
     `, ctx);
 
     let html = ctx.renderMyDayTab();
-    assert.match(html, /data-cabinet-due-preset="tomorrow" aria-pressed="true"/);
+    assert.match(html, /data-cabinet-focused-preset="tomorrow"/);
     assert.match(html, /data-cabinet-my-day-layout="focused-overdue"/);
     assert.match(html, /Tomorrow focus task/);
     assert.match(html, /Overdue focus task/);
@@ -1188,7 +1133,7 @@ test('profile My Day due presets update the visible focused task column', () => 
 
     vm.runInContext(`cabinetCreateDuePreset = 'no_date';`, ctx);
     html = ctx.renderMyDayTab();
-    assert.match(html, /data-cabinet-due-preset="no_date" aria-pressed="true"/);
+    assert.match(html, /data-cabinet-focused-preset="no_date"/);
     assert.match(html, /No date focus task/);
     assert.match(html, /Overdue focus task/);
     assert.doesNotMatch(html, /Today focus task/);
@@ -1196,19 +1141,19 @@ test('profile My Day due presets update the visible focused task column', () => 
 
     vm.runInContext(`cabinetCreateDuePreset = 'day_after_tomorrow';`, ctx);
     html = ctx.renderMyDayTab();
-    assert.match(html, /data-cabinet-due-preset="day_after_tomorrow" aria-pressed="true"/);
+    assert.match(html, /data-cabinet-focused-preset="day_after_tomorrow"/);
     assert.match(html, /After tomorrow focus task/);
     assert.doesNotMatch(html, /Tomorrow focus task/);
 
     vm.runInContext(`cabinetCreateDuePreset = 'plus_3_days';`, ctx);
     html = ctx.renderMyDayTab();
-    assert.match(html, /data-cabinet-due-preset="plus_3_days" aria-pressed="true"/);
+    assert.match(html, /data-cabinet-focused-preset="plus_3_days"/);
     assert.match(html, /Plus three focus task/);
     assert.doesNotMatch(html, /After tomorrow focus task/);
 
     vm.runInContext(`cabinetCreateDuePreset = 'month_end';`, ctx);
     html = ctx.renderMyDayTab();
-    assert.match(html, /data-cabinet-due-preset="month_end" aria-pressed="true"/);
+    assert.match(html, /data-cabinet-focused-preset="month_end"/);
     assert.match(html, /Month end focus task/);
 });
 
@@ -1250,7 +1195,7 @@ test('profile My Day custom date switches the focused visible column', () => {
     const focusedTasks = ctx.cabinetFocusedMyDayTasks(state);
     const html = ctx.renderMyDayTab();
     assert.equal(focusedTasks[0]?.title, 'Custom date focus task');
-    assert.match(html, /data-cabinet-due-preset="custom" aria-pressed="true"/);
+    assert.match(html, /data-cabinet-focused-preset="custom"/);
     assert.match(html, /Custom date focus task/);
     assert.doesNotMatch(html, /Other date focus task/);
 });
@@ -1328,7 +1273,7 @@ test('profile My Day focus helpers render additive planning for the selected pre
     const html = ctx.renderMyDayTab();
 
     assert.equal(focusedTasks[0]?.title, 'Planning month end task');
-    assert.match(html, /data-cabinet-due-preset="month_end" aria-pressed="true"/);
+    assert.match(html, /data-cabinet-focused-preset="month_end"/);
     assert.match(html, /Planning month end task/);
 });
 
@@ -1374,7 +1319,7 @@ test('profile My Day hides all-mode groups while selected due preset drives the 
 
     assert.equal(ctx.getCabinetMyDayState().selectedDuePreset, 'tomorrow');
     assert.equal(ctx.getCabinetMyDayState().listMode, 'all');
-    assert.match(html, /data-cabinet-due-preset="tomorrow" aria-pressed="true"/);
+    assert.match(html, /data-cabinet-focused-preset="tomorrow"/);
     assert.doesNotMatch(html, /cabinet-list-mode-toggle/);
     assert.doesNotMatch(html, /data-cabinet-list-mode="all"/);
     assert.doesNotMatch(html, /data-cabinet-all-group=/);
@@ -1839,8 +1784,8 @@ test('profile My Day plain create rejects long composer text without clearing it
 
     assert.equal(createCalls, 0);
     assert.equal(elements.get('cabinetTaskTitle').value, title);
-    assert.match(elements.get('cabinetTaskComposerStatus').textContent, /до 180 символів/);
-    assert.equal(notices.at(-1)?.type, 'error');
+    assert.match(elements.get('cabinetTaskTitleGuidance').textContent, /до 180 символів/);
+    assert.deepEqual(notices, []);
 });
 
 test('profile My Day direct create reuses the same idempotency key after timeout and changes key for new text', async () => {
@@ -2349,11 +2294,12 @@ test('profile task cards expose move-to-today drag for typed planned tasks', () 
     assert.match(html, /data-cabinet-task-action="move-to-today"/);
 });
 
-test('profile My Day compact cards keep critical badges and move details behind the view toggle', () => {
+test('profile My Day keeps completion requirements visible and expands the description and checklist', () => {
     const ctx = loadProfileTaskerContext();
     const task = {
         id: 44,
         title: 'Long decomposed task with enough metadata to force compact scanning',
+        description: 'Read the customer brief',
         deadline: '2000-01-01T09:00:00.000Z',
         priority: 'high',
         ownerUserId: 7,
@@ -2385,12 +2331,13 @@ test('profile My Day compact cards keep critical badges and move details behind 
     assert.ok(visibleBadgeCount <= 5, `expected max 5 visible badges, got ${visibleBadgeCount}`);
     assert.match(html, /data-cabinet-visible-badge="due"/);
     assert.match(html, /data-cabinet-visible-badge="priority"/);
-    assert.doesNotMatch(html, /data-cabinet-visible-badge="report"/);
+    assert.match(html, /потрібен звіт/);
+    assert.doesNotMatch(html, /Read the customer brief/);
     assert.match(html, /data-task-priority="high"/);
     assert.match(html, /data-task-due-state="overdue"/);
     assert.doesNotMatch(html, /cabinet-subtask-progress/);
     assert.match(html, /data-cabinet-task-action="done"/);
-    assert.match(html, /data-cabinet-task-action="ai-classification"/);
+    assert.doesNotMatch(html, /data-cabinet-task-action="ai-classification"/);
     assert.match(html, /data-cabinet-task-action="toggle-my-day-details"/);
     assert.match(html, /data-cabinet-task-action="more"/);
     assert.match(html, /cabinet-task-action-timer/);
@@ -2398,18 +2345,20 @@ test('profile My Day compact cards keep critical badges and move details behind 
     assert.doesNotMatch(html, /data-cabinet-task-action="timer-start"/);
     assert.ok(
         html.indexOf('data-cabinet-task-action="done"') < html.indexOf('data-cabinet-task-action="time-menu"')
-        && html.indexOf('data-cabinet-task-action="time-menu"') < html.indexOf('data-cabinet-task-action="ai-classification"'),
-        'timer trigger should sit between done and AI actions'
+        && html.indexOf('data-cabinet-task-action="time-menu"') < html.indexOf('data-cabinet-task-action="more"'),
+        'timer trigger sits between completion and more actions'
     );
 
     vm.runInContext(`cabinetMyDayViewMode = 'detailed';`, ctx);
     const detailedHtml = ctx.renderCabinetTaskCard(task, false, { surface: 'myday', activeInlineTaskId: 44 });
-    assert.match(detailedHtml, /data-cabinet-visible-badge="report"/);
-    assert.match(detailedHtml, /cabinet-subtask-progress/);
+    assert.match(detailedHtml, /потрібен звіт/);
+    assert.match(detailedHtml, /Read the customer brief/);
+    assert.match(detailedHtml, /data-cabinet-inline-subtask/);
+    assert.ok(detailedHtml.indexOf("Read the customer brief") < detailedHtml.indexOf("data-cabinet-task-action=\"done\""));
     assert.match(detailedHtml, /data-render-time-summary="44"/);
 });
 
-test('profile My Day shows one active checklist slice and keeps the full checklist behind the toggle', () => {
+test('profile My Day full view displays the full checklists while compact view collapses them', () => {
     const ctx = loadProfileTaskerContext();
     const taskCreateCtx = loadTaskCreateContext();
     const today = taskCreateCtx.TaskCreate.todayStr();
@@ -2465,32 +2414,10 @@ test('profile My Day shows one active checklist slice and keeps the full checkli
 
     vm.runInContext(`cabinetMyDayViewMode = 'detailed';`, ctx);
     html = ctx.renderMyDayTab();
-    assert.equal((html.match(/data-cabinet-active-subtask-slice=/g) || []).length, 1);
-    assert.match(html, /data-cabinet-active-subtask-slice="44"/);
-    assert.doesNotMatch(html, /data-cabinet-active-subtask-slice="45"/);
     assert.match(html, /Second next/);
-    assert.match(html, /data-cabinet-subtasks-panel="44" hidden/);
-    assert.match(html, /data-cabinet-subtask-done/);
-    assert.equal((html.match(/data-cabinet-subtask-summary=/g) || []).length, 2);
-    assert.equal((html.match(/class="cabinet-subtask-progress"/g) || []).length, 2);
-    assert.match(html, /data-task-id="45"[\s\S]*data-cabinet-subtask-summary="45"/);
-    assert.doesNotMatch(html, /cabinet-subtask-compact-summary/);
-    assert.doesNotMatch(html, /cabinet-subtask-inline-head/);
-
-    vm.runInContext(`setCabinetActiveInlineTask(44, { expanded: true });`, ctx);
-    html = ctx.renderMyDayTab();
-    assert.equal((html.match(/data-cabinet-active-subtask-slice=/g) || []).length, 0);
-    assert.match(html, /is-subtasks-expanded/);
-    assert.doesNotMatch(html, /data-cabinet-subtasks-panel="44" hidden/);
-    assert.match(html, /data-cabinet-subtask-summary="44"[\s\S]*aria-expanded="true"/);
-    assert.doesNotMatch(html, /cabinet-subtask-inline-head/);
-    assert.ok((html.match(/data-cabinet-inline-subtask/g) || []).length >= 3);
-
-    vm.runInContext(`setCabinetActiveInlineTask(45, { expanded: false });`, ctx);
-    html = ctx.renderMyDayTab();
-    assert.equal((html.match(/data-cabinet-active-subtask-slice=/g) || []).length, 1);
-    assert.match(html, /data-cabinet-active-subtask-slice="45"/);
     assert.match(html, /Other next/);
+    assert.doesNotMatch(html, /data-cabinet-subtasks-panel="(?:44|45)" hidden/);
+    assert.equal((html.match(/data-cabinet-inline-subtask/g) || []).length, 5);
 });
 
 test('profile task cards respect disabled rescheduling control meta', () => {

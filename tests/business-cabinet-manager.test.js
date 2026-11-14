@@ -96,10 +96,15 @@ test('denial gives safe localized retry message without raw backend details', as
     });
 });
 
-test('cabinet assets and owner recovery integration preserve the existing access editor', () => {
-    const html = fs.readFileSync(path.join(__dirname, '../profile.html'), 'utf8');
-    const code = fs.readFileSync(path.join(__dirname, '../js/profile-page.js'), 'utf8');
-    assert.ok(html.indexOf('js/business-cabinet-manager.js') < html.indexOf('js/profile-page.js'));
-    assert.equal((code.match(/BusinessCabinetManager\?\.mount/g) || []).length, 2);
-    assert.equal((code.match(/BusinessMembershipManager\?\.mount/g) || []).length, 2);
+test('settings reuse the cabinet and membership managers outside the ordinary profile', () => {
+    const profile = fs.readFileSync(path.join(__dirname, '../js/profile-page.js'), 'utf8');
+    const settings = fs.readFileSync(path.join(__dirname, '../js/settings.js'), 'utf8');
+    const assets = fs.readFileSync(path.join(__dirname, '../js/auth.js'), 'utf8');
+    const manager = fs.readFileSync(path.join(__dirname, '../js/business-cabinet-manager.js'), 'utf8');
+    assert.doesNotMatch(profile, /profileBusinessCabinets|profileBusinessMembers|BusinessMembershipManager\?\.mount/);
+    assert.match(settings, /settingsOrganizationEntry/);
+    assert.match(assets, /\/css\/account-access-editor\.css/);
+    assert.match(assets, /\/js\/account-access-editor\.js/);
+    assert.match(manager, /mount\(cabinetsPanel, user\)/);
+    assert.match(manager, /BusinessMembershipManager\.mount\(membersPanel, user\)/);
 });

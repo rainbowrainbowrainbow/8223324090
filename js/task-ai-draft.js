@@ -244,11 +244,11 @@
         return activeBundleTasks(state).filter(task => task.accepted);
     }
 
-    function bundleTaskNeedsIndividualReview(task = {}, preview = {}) {
+    function bundleTaskNeedsIndividualReview(task = {}, preview = {}, hideImpacts = false) {
         const editedFields = task.userEditedFields instanceof Set ? task.userEditedFields : new Set();
         const currentUserId = Number(preview.currentUserId || 0);
         const selectedOwnerId = Number(task.ownerSuggestion?.userId || 0);
-        return !Array.isArray(task.impactIds) || !task.impactIds.length
+        return (!hideImpacts && (!Array.isArray(task.impactIds) || !task.impactIds.length))
             || (Boolean(task.scheduleDate) && !editedFields.has('scheduleDate'))
             || (task.priority !== 'normal' && !editedFields.has('priority'))
             || (currentUserId > 0 && selectedOwnerId > 0 && selectedOwnerId !== currentUserId && !editedFields.has('ownerUserId'));
@@ -278,14 +278,14 @@
         return subtasks.length;
     }
 
-    function renderReviewMetadata(record = {}, preview = {}) {
+    function renderReviewMetadata(record = {}, preview = {}, hideImpacts = false) {
         const date = normalizeScheduleDate(record.scheduleDate || record.schedule_date || record.dueDate || record.due_date);
         const priority = normalizePriorityValue(record.priority) || 'normal';
         return `<dl class="task-ai-review-meta">
             <div><dt>Дата</dt><dd>${escapeHtml(date || 'Без дати')}</dd></div>
             <div><dt>Пріоритет</dt><dd>${escapeHtml(priorityLabel(priority))}</dd></div>
             <div><dt>Виконавець</dt><dd>${escapeHtml(reviewOwnerLabel(record))}</dd></div>
-            <div class="task-ai-review-meta-impacts"><dt>Впливи</dt><dd>${renderImpacts(record.impactIds || [], preview)}</dd></div>
+            ${hideImpacts ? '' : `<div class="task-ai-review-meta-impacts"><dt>Впливи</dt><dd>${renderImpacts(record.impactIds || [], preview)}</dd></div>`}
             <div><dt>Чекліст</dt><dd>${reviewChecklistCount(record)}</dd></div>
         </dl>`;
     }
@@ -306,16 +306,16 @@
         return [...new Set(edited.map(canonicalBundleField).filter(field => BUNDLE_REVIEW_FIELDS.includes(field)))];
     }
 
-    function acceptedBundleFieldMask(task = {}) {
+    function acceptedBundleFieldMask(task = {}, hideImpacts = false) {
         if (!task.accepted || task.rejected) return [];
-        return [...BUNDLE_REVIEW_FIELDS];
+        return BUNDLE_REVIEW_FIELDS.filter(field => !hideImpacts || field !== 'impactIds');
     }
 
-    function renderBundleFieldStates(task = {}) {
-        const accepted = new Set(acceptedBundleFieldMask(task));
+    function renderBundleFieldStates(task = {}, hideImpacts = false) {
+        const accepted = new Set(acceptedBundleFieldMask(task, hideImpacts));
         const edited = new Set(editedBundleFieldMask(task));
         return `<div class="task-ai-bundle-field-states" aria-label="Стан полів задачі">
-            ${BUNDLE_REVIEW_FIELDS.map(field => {
+            ${BUNDLE_REVIEW_FIELDS.filter(field => !hideImpacts || field !== 'impactIds').map(field => {
                 const state = edited.has(field) ? 'редаговано вручну' : (accepted.has(field) ? 'прийнято' : 'очікує підтвердження');
                 return `<span class="task-ai-bundle-field-state ${edited.has(field) ? 'is-user-edited' : (accepted.has(field) ? 'is-accepted' : '')}" data-task-ai-bundle-field-state="${escapeHtml(field)}">${escapeHtml(fieldLabel(field === 'dueDate' ? 'scheduleDate' : field))}: ${escapeHtml(state)}</span>`;
             }).join('')}
@@ -341,7 +341,8 @@
 
     function renderBundleTaskCard(task = {}, index = 0, preview = {}, state = {}) {
         const number = index + 1;
-        const needsImpactReview = !Array.isArray(task.impactIds) || !task.impactIds.length;
+        const hideImpacts = state.config?.hideImpactReview === true;
+        const needsImpactReview = !hideImpacts && (!Array.isArray(task.impactIds) || !task.impactIds.length);
         const isSelected = state.activeBundleClientId === task.clientId && !task.rejected;
         const owners = bundleOwnerCatalog(preview);
         const selectedOwnerId = Number(task.ownerSuggestion?.userId || 0);
@@ -362,7 +363,7 @@
                     <button type="button" data-task-ai-bundle-reject="${escapeHtml(task.clientId)}">${task.rejected ? 'Повернути' : 'Відхилити'}</button>
                 </div>
             </header>
-            ${renderReviewMetadata(task, preview)}
+            ${renderReviewMetadata(task, preview, hideImpacts)}
             ${needsImpactReview && !task.rejected ? '<p class="task-ai-draft-impact-warning">AI не визначив вплив. Оберіть щонайменше один, щоб прийняти задачу.</p>' : ''}
             ${isSelected ? `<div class="task-ai-bundle-fields" data-task-ai-bundle-editor>
                 <label>
@@ -391,12 +392,12 @@
                         ${['urgent', 'high', 'normal', 'low'].map(value => `<option value="${value}" ${task.priority === value ? 'selected' : ''}>${escapeHtml(priorityLabel(value))}</option>`).join('')}
                     </select>
                 </label>
-                <div class="task-ai-bundle-field-wide">
+                ${hideImpacts ? '' : `<div class="task-ai-bundle-field-wide">
                     <span class="task-ai-bundle-field-label">Впливи</span>
                     ${renderBundleImpactEditor(task, preview)}
-                </div>
+                </div>`}
             </div>
-            ${renderBundleFieldStates(task)}
+            ${renderBundleFieldStates(task, hideImpacts)}
             <p class="task-ai-bundle-review-note">Виконавець, дата і пріоритет застосуються тільки після явного підтвердження.</p>` : ''}
         </article>`;
     }
@@ -590,7 +591,8 @@
         const preview = state.preview || {};
         const host = root.querySelector('[data-task-ai-draft-review]');
         if (!host) return;
-        const fields = changedFields(preview);
+        const hideImpacts = state.config?.hideImpactReview === true;
+        const fields = changedFields(preview).filter(field => !hideImpacts || field !== 'impactIds');
         if (!fields.length) {
             host.hidden = false;
             host.innerHTML = `
@@ -645,7 +647,7 @@
                     </div>
                     <span>${reviewedCount}/${fields.length} перевірено</span>
                 </div>
-                ${renderReviewMetadata(proposal, preview)}
+                ${renderReviewMetadata(proposal, preview, hideImpacts)}
                 ${renderStructureSelector(preview, decision === 'checklist' ? 'checklist' : '')}
                 ${fields.includes('impactIds') && !(Array.isArray(fieldAfterValue(preview, 'impactIds')) && fieldAfterValue(preview, 'impactIds').length)
                     ? '<p class="task-ai-draft-impact-warning">AI не зміг надійно визначити вплив. Оберіть його вручну перед прийняттям цього поля.</p>'
@@ -810,7 +812,7 @@
         const state = rootState(root);
         const task = findBundleTask(state, clientId);
         if (!task || task.rejected) return;
-        if (!Array.isArray(task.impactIds) || !task.impactIds.length) {
+        if (!state.config?.hideImpactReview && (!Array.isArray(task.impactIds) || !task.impactIds.length)) {
             state.activeBundleClientId = clientId;
             renderBundleReview(root, state);
             setStatus(root, 'Оберіть щонайменше один вплив перед прийняттям задачі.', 'warning');
@@ -849,7 +851,7 @@
     function acceptAllBundleTasks(root) {
         const state = rootState(root);
         activeBundleTasks(state).forEach(task => {
-            if (!bundleTaskNeedsIndividualReview(task, state.preview)) task.accepted = true;
+            if (!bundleTaskNeedsIndividualReview(task, state.preview, state.config?.hideImpactReview)) task.accepted = true;
         });
         renderBundleReview(root, state);
     }
@@ -861,11 +863,12 @@
         const activeTasks = activeBundleTasks(state);
         if (activeTasks.length < 2) return null;
         const acceptedTasks = acceptedBundleTasks(state);
+        const hideImpacts = state.config?.hideImpactReview === true;
         const tasks = acceptedTasks.map(task => ({
             proposalIndex: task.proposalIndex,
             title: task.title,
             description: task.description || null,
-            impactIds: task.impactIds || [],
+            impactIds: hideImpacts ? [] : (task.impactIds || []),
             subtasks: task.subtasks || [],
             priority: task.priority || 'normal',
             scheduleDate: task.scheduleDate || null,
@@ -889,7 +892,7 @@
             rejectedTaskMask: (state.bundleTasks || []).filter(task => task.rejected).map(task => task.proposalIndex),
             acceptedFieldMasks: acceptedTasks.map(task => ({
                 proposalIndex: task.proposalIndex,
-                fields: acceptedBundleFieldMask(task)
+                fields: acceptedBundleFieldMask(task, hideImpacts)
             })),
             editedFieldMasks: acceptedTasks.map(task => ({
                 proposalIndex: task.proposalIndex,
@@ -1177,7 +1180,7 @@
                 event.preventDefault();
                 const state = rootState(root);
                 safeAutoAcceptFields(state.preview || {}).forEach(field => {
-                    if (!canAutoAcceptField(state, field)) return;
+                    if ((field === 'impactIds' && state.config?.hideImpactReview) || !canAutoAcceptField(state, field)) return;
                     if (state.rejected.has(field)) return;
                     if (state.userEdited.has(field)) {
                         state.accepted.add(field);

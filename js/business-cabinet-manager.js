@@ -59,7 +59,7 @@
 
         function render() {
             const org = organization();
-            container.innerHTML = '<div class="profile-panel-head"><div><span class="profile-kicker">Організація</span><h2>Кабінети та модулі</h2></div></div>'
+            container.innerHTML = '<div class="profile-panel-head"><div><h3>Кабінети та модулі</h3></div></div>'
                 + '<p>Тут показані всі кабінети вибраної організації, незалежно від поточного бізнесу в меню ліворуч. Назву й модулі змінюють у кабінеті, роль працівника — у розділі «Команда та доступи».</p>'
                 + `<div class="profile-avatar-action-row"><button type="button" data-cabinet-action="load" ${busy ? 'disabled' : ''}>${data ? 'Оновити кабінети' : 'Відкрити кабінети'}</button></div>`
                 + `<p role="status" aria-live="polite" tabindex="-1" data-cabinet-status>${escape(message)}</p>`
@@ -237,6 +237,7 @@
             global.removeEventListener('beforeunload', beforeUnload);
         }
         container.__businessCabinetCleanup = cleanup;
+        container.__confirmOrganizationClose = () => !busy && allowDiscard();
         container.addEventListener('click', click);
         container.addEventListener('input', input);
         container.addEventListener('change', change);
@@ -246,5 +247,55 @@
         render();
     }
 
-    global.BusinessCabinetManager = { canManage, moduleOptions, mount, request };
+    function openSettings(user, { members = false, opener } = {}) {
+        if (!canManage(user) || !global.BusinessMembershipManager?.canManage(user)) return;
+        const existing = global.document.getElementById('organizationSettingsModal');
+        if (existing) return;
+        const modal = global.document.createElement('div');
+        modal.id = 'organizationSettingsModal';
+        modal.className = 'modal organization-settings-modal hidden';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        modal.setAttribute('aria-labelledby', 'organizationSettingsTitle');
+        const names = user.businessProfile.organizations
+            .filter(organization => ['owner', 'admin'].includes(organization.role))
+            .map(organization => escape(organization.name || organization.slug || organization.id));
+        modal.innerHTML = `
+            <div class="modal-content modal-large">
+                <button type="button" class="organization-settings-close" aria-label="Закрити налаштування організації">&times;</button>
+                <header class="organization-settings-heading">
+                    <p>Система / Налаштування</p>
+                    <h2 id="organizationSettingsTitle" tabindex="-1">Організація</h2>
+                    <p>${names.join(' · ')}</p>
+                </header>
+                <section data-organization-cabinets></section>
+                <section data-organization-members></section>
+            </div>`;
+        global.document.body.appendChild(modal);
+        const cabinetsPanel = modal.querySelector('[data-organization-cabinets]');
+        const membersPanel = modal.querySelector('[data-organization-members]');
+        const closeButton = modal.querySelector('.organization-settings-close');
+        const close = () => {
+            if (cabinetsPanel.__confirmOrganizationClose?.() !== false) global.closeModal(modal);
+        };
+        modal.addEventListener('click', event => {
+            if (event.target === modal || event.target === closeButton) {
+                event.stopPropagation();
+                close();
+            }
+        });
+        global.openModal(modal, opener, {
+            initialFocus: members ? '#organizationMembersTitle' : '#organizationSettingsTitle',
+            onRequestClose: close,
+            hide: () => {
+                cabinetsPanel.__businessCabinetCleanup?.();
+                membersPanel.__businessMembershipCleanup?.();
+                modal.remove();
+            }
+        });
+        mount(cabinetsPanel, user);
+        global.BusinessMembershipManager.mount(membersPanel, user);
+    }
+
+    global.BusinessCabinetManager = { canManage, moduleOptions, mount, openSettings, request };
 })(typeof window !== 'undefined' ? window : globalThis);

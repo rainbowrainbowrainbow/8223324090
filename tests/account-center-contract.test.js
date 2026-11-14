@@ -169,9 +169,9 @@ test('recovered receipt distinguishes unavailable details from empty data and pr
     assert.match(created.html, /Аніматор/);
 });
 
-test('pending membership receipt offers the canonical profile handoff without granting access', () => {
+test('pending membership receipt offers the canonical organization settings handoff without granting access', () => {
     const { html } = renderReceiptFixture({ accessState: 'pending_membership', businessAccessReady: false, receipt: { account: { id: 17 } } });
-    assert.match(html, /href="\/profile\?tab=settings&assignAccount=17#profileBusinessMembers"/);
+    assert.match(html, /href="\/hr\?tab=accounts&open=organization-members&assignAccount=17#organizationMembersTitle"/);
     assert.match(html, /Призначити доступ акаунту/);
     const response = { accessState: 'pending_membership', businessAccessReady: false, receipt: { account: { id: 17 }, staff: { id: 31 } }, credential: { username: 'qa', password: 'synthetic-only' } };
     const fresh = renderReceiptFixture(response, false);

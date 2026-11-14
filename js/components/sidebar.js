@@ -1676,6 +1676,7 @@ const Sidebar = (() => {
         if (!window.RolePreview?.getPreviewRole?.()
             && _isMaysternyaSidebarContext(user)
             && MAYSTERNYA_ACCESS_OVERRIDES.has(item?.access)) return true;
+        if (item?.href === '#settings' && window.canOpenOrganizationSettings?.(user)) return true;
         if (item?.href === '/certificates') return Boolean(_certificateSidebarLanding());
         const capability = _sidebarPageCapability(item);
         if (!capability) return false;
@@ -5018,6 +5019,8 @@ const Sidebar = (() => {
     window.sidebarOpenSettings = function() {
         if (typeof showSettings === 'function') {
             showSettings();
+        } else if (window.canOpenOrganizationSettings?.(_getCurrentSidebarUser())) {
+            void openOrganizationSettings();
         } else {
             window.location.href = '/?open=settings';
         }

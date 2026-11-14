@@ -74,7 +74,7 @@ test('My Day composer payload sends only impactIds', () => {
     assert.deepEqual(JSON.parse(JSON.stringify(payload)), { impactIds: [20, 21, 22] });
 });
 
-test('My Day composer guards max five impacts and preserves create integration', () => {
+test('Legacy impact selector validates its limit while My Day create needs no classification', () => {
     const context = loadClassificationUi();
     const api = context.window.MyDayClassification;
     const profile = read('js/profile-page.js');
@@ -86,10 +86,7 @@ test('My Day composer guards max five impacts and preserves create integration',
     };
 
     assert.throws(() => api.readComposerClassification());
-    assert.match(profile, /readComposerClassification\?\.\(\)/);
-    assert.match(profile, /myDayClassification\?\.impactIds\?\.length/);
-    assert.doesNotMatch(profile, /myDayClassification\?\.tags\?\.length/);
-    assert.match(profile, /saveTaskClassification\?\.\(verification\.taskId, myDayClassification\)/);
+    assert.doesNotMatch(profile, /readComposerClassification|renderComposerFields|saveTaskClassification/);
 });
 
 test('My Day composer CSS isolates impacts layout without task tag styles', () => {
@@ -225,26 +222,11 @@ test('My Day editable impact chips and task editor have compact responsive CSS s
     assert.match(cabinetCss, /\.cabinet-overdue-triage-row \.my-day-task-chip--editable/);
 });
 
-test('Profile My Day shared task handler removes impact chips through a per-task queue', () => {
+test('My Day cards preserve completion and omit manual impact controls', () => {
     const profile = read('js/profile-page.js');
-
-    assert.match(profile, /if \(action === 'remove-impact'\)/);
-    assert.match(profile, /await removeCabinetTaskImpact\(button,\s*taskId\)/);
-    assert.match(profile, /function queueCabinetTaskClassificationMutation\(taskId,\s*runner\)/);
-    assert.match(profile, /cabinetClassificationMutationQueue/);
-    assert.match(profile, /const currentImpacts = Array\.isArray\(task\?\.myDay\?\.impacts\)/);
-    assert.match(profile, /MyDayClassification\?\.saveTaskClassification\?\.\(taskId,\s*\{[\s\S]*impactIds: remainingImpactIds/);
-    assert.match(profile, /setCabinetTaskClassificationBusy\(taskId,\s*true,\s*\{ impactId \}\)/);
-    assert.match(profile, /setCabinetTaskClassificationBusy\(taskId,\s*false,\s*\{ impactId \}\)/);
-    assert.match(profile, /openTaskEditor\?\.\(anchor,\s*findCabinetTask\(taskId\)/);
-    assert.match(profile, /data-cabinet-task-action="classification"/);
-    assert.match(profile, /data-cabinet-task-action="remove-impact"/);
-    assert.doesNotMatch(profile, /data-cabinet-task-action="reveal-impact"/);
-    assert.match(profile, /refreshCabinetTaskClassificationBadges\(taskId,\s*classification\)/);
-    assert.match(profile, /renderTaskBadges\?\.\(task\.myDay,\s*\{ taskId \}\)/);
-    assert.match(profile, /function bindCabinetTaskActions/);
-    assert.match(profile, /const doneTitle = doneBlocked \? cabinetSubtaskCompletionTitle\(task\) : doneActionLabel/);
-    assert.match(profile, /aria-label="\$\{escapeHtml\(doneBlocked \? doneTitle : doneActionLabel\)\}"/);
+    assert.doesNotMatch(profile, /remove-impact|openTaskEditor|renderTaskBadges|saveTaskClassification/);
+    assert.match(profile, /data-cabinet-task-action="done"/);
+    assert.match(profile, /aria-disabled="true" data-cabinet-completion-blocked="subtasks"/);
 });
 
 test('Profile My Day compact cards use stable zones instead of one mixed meta row', () => {
@@ -254,7 +236,7 @@ test('Profile My Day compact cards use stable zones instead of one mixed meta ro
 
     assert.match(profile, /cabinet-task-zone--header/);
     assert.match(profile, /cabinet-task-zone--facts/);
-    assert.match(profile, /cabinet-task-zone--classification/);
+    assert.match(profile, /cabinet-task-zone--completion/);
     assert.match(profile, /renderCabinetMyDayTimeTrigger/);
     assert.match(profile, /renderCabinetMyDayTimeSummary/);
     assert.match(profile, /cabinet-task-main--my-day/);

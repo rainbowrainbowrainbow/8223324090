@@ -1832,6 +1832,8 @@ async function handleTimelineResourceListClick(event) {
 
 async function showSettings() {
     const canManageSettings = canManageSystemSettings();
+    const organizationEntry = document.getElementById('settingsOrganizationEntry');
+    if (organizationEntry) organizationEntry.hidden = !canOpenOrganizationSettings();
     const animators = getSavedAnimators();
     const animatorsTextarea = document.getElementById('settingsAnimatorsList');
     if (animatorsTextarea) animatorsTextarea.value = animators.join('\n');
@@ -1917,7 +1919,7 @@ async function showSettings() {
 
     // v8.4: Certificates moved to timeline panel (see openCertificatesPanel)
 
-    document.getElementById('settingsModal')?.classList.remove('hidden');
+    openModal(document.getElementById('settingsModal'));
     if (canManageSettings) {
         fetchAndRenderTelegramChats('settingsTelegramChatId', 'settingsTelegramChats');
         fetchAndRenderThreads();

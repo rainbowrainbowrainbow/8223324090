@@ -198,6 +198,7 @@ body.dark-mode .task-priority-select--low {
 }
 
 .task-ui-action-panel {
+    position: relative;
     pointer-events: auto;
     border: 1px solid rgba(148, 163, 184, 0.20);
     border-radius: 14px;
@@ -236,6 +237,8 @@ body.dark-mode .task-priority-select--low {
 }
 
 .task-ui-action-surface.is-sheet .task-ui-action-panel {
+    display: flex;
+    flex-direction: column;
     width: min(560px, 100%);
     max-height: min(92dvh, calc(100dvh - 24px - env(safe-area-inset-bottom, 0px)));
     overflow: hidden;

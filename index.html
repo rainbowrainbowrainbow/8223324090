@@ -1232,9 +1232,13 @@
     <!-- v3.6: Модальне вікно Налаштування -->
     <div id="settingsModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Налаштування">
         <div class="modal-content modal-large">
-            <span class="modal-close">&times;</span>
+            <button type="button" class="modal-close" aria-label="Закрити налаштування">&times;</button>
             <h3>⚙️ Налаштування</h3>
             <div class="settings-sections">
+                <section id="settingsOrganizationEntry" class="settings-section" hidden>
+                    <h4>Організація</h4>
+                    <button type="button" class="btn-secondary" onclick="openOrganizationSettings({ opener: this })">Кабінети, команда та доступи</button>
+                </section>
                 <!-- Режим таймлайну -->
                 <div class="settings-section" id="settingsTimelineDisplaySection">
                     <h4 data-education-copy="Налаштування занять">🧭 Бізнес-кабінет таймлайну</h4>

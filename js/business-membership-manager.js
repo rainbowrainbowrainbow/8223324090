@@ -27,7 +27,7 @@
             user: member, opener, accessProfile,
             canEditAccount: false,
             roles: (catalog.roles || []).filter(role => role !== 'creator').map(role => ({
-                value: role, label: typeof global.profileRoleLabel === 'function' ? global.profileRoleLabel(role) : role
+                value: role, label: global.RoleShell?.getRoleLabel?.(role) || role
             })),
             pages: catalog.pages || [], actions: catalog.actions || [],
             resolveCapability: global.resolveCapability
@@ -42,7 +42,7 @@
         if (container.hidden) return;
         container.className = 'profile-work-panel profile-settings-panel';
         container.setAttribute('aria-label', 'Команда та доступи до бізнесів');
-        container.innerHTML = '<div class="profile-panel-head"><div><span class="profile-kicker">Організація</span><h2>Команда та доступи</h2></div></div>'
+        container.innerHTML = '<div class="profile-panel-head"><div><h3 id="organizationMembersTitle" tabindex="-1">Команда та доступи</h3></div></div>'
             + '<p>Ролі й дозволи працівників у кожному бізнесі.</p>'
             + '<div class="profile-avatar-action-row"><button type="button" class="profile-settings-primary" data-members-load>Працівники та доступи</button></div>'
             + '<p role="status" aria-live="polite" data-members-status></p>'

@@ -2786,6 +2786,11 @@ async function initPage() {
     if (window.CrmAttendanceOcrUi) window.CrmAttendanceOcrUi.init({ canManage: canManageHrSchedule(), afterApply: () => loadToday() });
     const initialTab = getInitialHrTab();
     await activateHrTab(initialTab, { updateHash: false });
+    const organizationLink = document.getElementById('hrOrganizationMembersLink');
+    if (organizationLink) organizationLink.hidden = !canOpenOrganizationSettings(user);
+    if (new URLSearchParams(window.location.search).get('open') === 'organization-members' && canOpenOrganizationSettings(user)) {
+        void openOrganizationSettings({ members: true });
+    }
     await openStaffEditFromLocation();
     await syncProfessionWorkspaceFromLocation({ initial: true });
     window.addEventListener('hashchange', () => syncHrLocationState());
@@ -7016,7 +7021,7 @@ async function loadStaffAccountAccess(staffId) {
             <span>Логін</span><strong>${escapeHtml(user.username || '')}</strong>
             <span>${user.is_active === false ? 'Акаунт деактивовано — вхід заборонено' : 'Акаунт активний'}</span>
             <div class="hr-account-detail-actions">
-                ${window.BusinessMembershipManager?.canManage(AppState.currentUser) ? `<a class="btn-secondary" href="/profile?tab=settings&assignAccount=${id}#profileBusinessMembers">Керувати CRM-доступом</a>` : ''}
+                ${window.BusinessMembershipManager?.canManage(AppState.currentUser) ? `<a class="btn-secondary" href="/hr?tab=accounts&open=organization-members&assignAccount=${id}#organizationMembersTitle">Керувати CRM-доступом</a>` : ''}
                 <button type="button" class="btn-secondary" onclick="copyStaffAccountLogin(${id}, this)">Скопіювати логін</button>
                 <button type="button" class="btn-secondary" onclick="openStaffAccountPasswordModal(${id}, this)"${canReset ? '' : ' disabled'}>Новий пароль</button>
             </div>
@@ -10027,7 +10032,7 @@ function renderAccountOnboardingReceipt(response) {
     const membershipPending = accessState === 'pending_membership' && !businessAccessReady && accountId > 0;
     const membershipNextStep = membershipPending
         ? (window.BusinessMembershipManager?.canManage(AppState.currentUser)
-            ? `<a class="hr-account-primary" href="/profile?tab=settings&assignAccount=${accountId}#profileBusinessMembers" target="_blank" rel="noopener">Призначити доступ акаунту</a>`
+            ? `<a class="hr-account-primary" href="/hr?tab=accounts&open=organization-members&assignAccount=${accountId}#organizationMembersTitle" target="_blank" rel="noopener">Призначити доступ акаунту</a>`
             : `<p class="hr-account-field-note">Передайте ID акаунта #${accountId} власнику або адміністратору організації для призначення доступу.</p>`)
         : '';
     const canShare = accessState === 'active' && businessAccessReady && response?.loginReady === true;
@@ -10391,7 +10396,7 @@ async function openAccountOnboardingWizard(button, context = {}) {
         const linkedUserId = Number(contextStaff?.linked_user_id || contextStaff?.linkedUserId || 0);
         if (linkedUserId > 0) {
             if (loading && window.BusinessMembershipManager?.canManage(AppState.currentUser)) {
-                loading.innerHTML = `<p>Картка #${requestedStaffId} уже прив’язана до акаунта.</p><a class="hr-account-primary" href="/profile?tab=settings&assignAccount=${linkedUserId}#profileBusinessMembers">Керувати CRM-доступом</a>`;
+                loading.innerHTML = `<p>Картка #${requestedStaffId} уже прив’язана до акаунта.</p><a class="hr-account-primary" href="/hr?tab=accounts&open=organization-members&assignAccount=${linkedUserId}#organizationMembersTitle">Керувати CRM-доступом</a>`;
                 loading.querySelector('a')?.focus();
                 return false;
             }

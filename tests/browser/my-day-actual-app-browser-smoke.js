@@ -953,6 +953,7 @@ async function main() {
         await fillCabinetField(page, 'cabinetTaskDetails', 'Перевірити CRM звіти і Hermes статуси сьогодні.');
         await page.locator('[data-task-ai-draft-preview]').click();
         await page.locator('[data-task-ai-draft-review]').filter({ hasText: 'AI пропонує одну складну задачу' }).waitFor({ state: 'visible', timeout: TIMEOUT_MS });
+        assert.equal(await page.locator('[data-task-ai-draft-field="impactIds"]').count(), 0);
         await page.locator('[data-task-ai-draft-accept-all]').click();
         await page.waitForFunction(() => {
             const composer = document.getElementById('cabinetTaskComposer');
@@ -978,6 +979,7 @@ async function main() {
         await fillCabinetField(page, 'cabinetTaskDetails', 'Розклади перевірку звітів на CRM і Hermes задачі.');
         await page.locator('[data-task-ai-draft-preview]').click();
         await page.locator('[data-task-ai-draft-review]').filter({ hasText: 'AI пропонує створити' }).waitFor({ state: 'visible', timeout: TIMEOUT_MS });
+        assert.equal(await page.locator('[data-task-ai-bundle-field="impactIds"]').count(), 0);
         assert.ok(await page.locator('[data-task-ai-bundle-card]').count() >= 3, 'bundle preview renders at least three task cards for accept/reject coverage');
         await page.locator('[data-task-ai-bundle-accept-all]').click();
         const editedBundleTitle = `Bundle CRM edited actual app ${RUN_ID}`;
@@ -1001,7 +1003,8 @@ async function main() {
         assert.deepEqual(bundlePayloadBeforeCommit.acceptedTaskMask, [0, 1], 'bundle review keeps only accepted tasks in the accepted mask');
         assert.deepEqual(bundlePayloadBeforeCommit.rejectedTaskMask, [2], 'bundle review sends rejected task mask');
         assert.ok(bundlePayloadBeforeCommit.acceptedFieldMasks.every(entry => (
-            ['title', 'description', 'impactIds', 'subtasks', 'owner', 'dueDate', 'priority'].every(field => entry.fields.includes(field))
+            ['title', 'description', 'subtasks', 'owner', 'dueDate', 'priority'].every(field => entry.fields.includes(field))
+            && !entry.fields.includes('impactIds')
         )), 'bundle review sends explicit accepted field masks for every accepted task');
         assert.ok(bundlePayloadBeforeCommit.editedFieldMasks[0].fields.includes('title'), 'bundle review marks edited title as user_edited');
         const bundleCommitResponse = waitForApiResponse(page, 'POST', '/api/tasks/ai-draft/bundle/commit');
@@ -1227,6 +1230,7 @@ async function main() {
         assert.deepEqual(requestFailures, [], 'actual-app smoke has no unexpected critical request failures');
         assert.deepEqual(expectedApiFailures, [], 'all expected API failures were observed');
         assert.deepEqual(expectedConsoleFailures, [], 'all expected browser resource failures were observed');
+        console.log('[my-day-actual-app-browser-smoke] UI scenarios passed');
     } finally {
         requests.dispose();
         await browser.close();

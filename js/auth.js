@@ -2458,6 +2458,57 @@ function getCurrentAssetVersion() {
     }
 }
 
+function canOpenOrganizationSettings(user = AppState.currentUser) {
+    // Organization management is scoped separately from the active business.
+    return (user?.businessProfile?.organizations || []).some(organization => ['owner', 'admin'].includes(organization.role));
+}
+
+let organizationSettingsAssets;
+
+function loadOrganizationSettingsAssets() {
+    if (!organizationSettingsAssets) {
+        const suffix = _sharedAssetSuffixFromAuth();
+        const load = (attribute, path, elementName) => {
+            const url = path + suffix;
+            const element = document.createElement(elementName);
+            element[attribute] = url;
+            if (elementName === 'link') element.rel = 'stylesheet';
+            return new Promise((resolve, reject) => {
+                element.onload = resolve;
+                element.onerror = () => {
+                    element.remove();
+                    reject(new Error('Organization settings asset failed to load: ' + path));
+                };
+                document.head.appendChild(element);
+            });
+        };
+        const editorCss = '/css/account-access-editor.css';
+        organizationSettingsAssets = Promise.all([
+            window.BusinessCabinetManager || load('src', '/js/business-cabinet-manager.js', 'script'),
+            window.BusinessMembershipManager || load('src', '/js/business-membership-manager.js', 'script'),
+            window.AccountAccessEditor || load('src', '/js/account-access-editor.js', 'script'),
+            document.querySelector('link[href*="' + editorCss.slice(1) + '"]') || load('href', editorCss, 'link')
+        ]).catch(error => {
+            organizationSettingsAssets = null;
+            throw error;
+        });
+    }
+    return organizationSettingsAssets;
+}
+
+async function openOrganizationSettings({ members = false, opener = document.activeElement } = {}) {
+    const user = AppState.currentUser;
+    if (!canOpenOrganizationSettings(user)) return;
+    try {
+        await loadOrganizationSettingsAssets();
+    } catch (error) {
+        showHeaderSettingsFeedback('Не вдалося відкрити налаштування організації. Спробуйте ще раз.', 'error');
+        return;
+    }
+    if (AppState.currentUser?.id !== user.id || !canOpenOrganizationSettings()) return;
+    window.BusinessCabinetManager.openSettings(AppState.currentUser, { members, opener });
+}
+
 function ensureCrmAssistantRailAssets() {
     if (!isCrmAssistantRailEnabled()) {
         removeCrmAssistantRailSurface();

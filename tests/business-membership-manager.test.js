@@ -176,15 +176,12 @@ test('directory responses from a previous account never populate the current pag
     assert.equal(panel.querySelector('[data-members-picker]').hidden, true);
 });
 
-test('profile registers shared editor assets and recovery path before any operational profile load', () => {
-    const html = fs.readFileSync(path.join(__dirname, '../profile.html'), 'utf8');
+test('profile registers the organization recovery path before any operational profile load', () => {
     const code = fs.readFileSync(path.join(__dirname, '../js/profile-page.js'), 'utf8');
-    assert.match(html, /css\/account-access-editor\.css/);
-    assert.ok(html.indexOf('js/account-access-editor.js') < html.indexOf('js/business-membership-manager.js'));
-    assert.ok(html.indexOf('js/business-membership-manager.js') < html.indexOf('js/profile-page.js'));
     const init = code.slice(code.indexOf('async function initProfilePage()'), code.indexOf('async function loadProfileData'));
     assert.ok(init.indexOf("accessContext.status !== 'ready'") < init.indexOf('await loadProfileData(viewUserId)'));
-    assert.match(init, /BusinessMembershipManager\?\.mount/);
+    assert.match(init, /canOpenOrganizationSettings\(authenticatedProfileUser\)/);
+    assert.match(init, /openOrganizationSettings\(\{ opener: button \}\)/);
     assert.match(init, /if \(!user\.accessContext \|\| user\.accessContext\.status === 'ready'\) \{\s+if \(typeof hydrateActionPermissions/);
     assert.match(init, /showAuthenticatedPageShell\(\{ markRuntimeReady: false \}\)/);
     assert.match(init, /href="\/"[^>]*>Вибрати бізнес/);

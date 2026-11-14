@@ -265,17 +265,12 @@ test('My Day AI route keeps LLM calls outside transactions, detects classificati
     assert.doesNotMatch(serviceSource, /callUnifiedChatCompletion|OPENROUTER_API_KEY|scope: 'chat_ai'|openai\/gpt-5\.4-nano/);
 });
 
-test('My Day card exposes AI classification button, states, immediate impact chips, and undo contract', () => {
+test('My Day cards omit classification controls while the existing API client retains its undo contract', () => {
     const profile = fs.readFileSync(path.join(root, 'js', 'profile-page.js'), 'utf8');
     const ui = fs.readFileSync(path.join(root, 'js', 'my-day-classification.js'), 'utf8');
     const css = fs.readFileSync(path.join(root, 'css', 'pages-profile.css'), 'utf8');
 
-    assert.match(profile, /cabinet-task-action-ai/);
-    assert.match(profile, /data-cabinet-task-action="ai-classification"/);
-    assert.match(profile, /applyCabinetTaskMyDayClassification/);
-    assert.match(profile, /data-my-day-classification-badges/);
-    assert.match(profile, /task_ai_classification/);
-    assert.doesNotMatch(profile, /classification\.tags|myDayClassification\?\.tags/);
+    assert.doesNotMatch(profile, /ai-classification|data-my-day-classification-badges|task_ai_classification/);
     assert.match(ui, /autoClassifyTask/);
     assert.match(ui, /\/classification\/auto/);
     assert.match(ui, /setAiButtonState\(button, 'loading'/);

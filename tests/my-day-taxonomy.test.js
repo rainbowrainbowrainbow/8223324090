@@ -155,7 +155,7 @@ test('archived links retain their label and unclassified tasks remain empty', as
     assert.deepEqual(classificationMap.get(99), { direction: null, impacts: [] });
 });
 
-test('route, projection, migration, and profile UI retain the impacts-only active contract', () => {
+test('route, projection, and migration preserve historical impacts without a profile editor', () => {
     const root = path.resolve(__dirname, '..');
     const route = fs.readFileSync(path.join(root, 'routes', 'my-day.js'), 'utf8');
     const projection = fs.readFileSync(path.join(root, 'services', 'taskCabinetProjection.js'), 'utf8');
@@ -179,9 +179,7 @@ test('route, projection, migration, and profile UI retain the impacts-only activ
     assert.match(projection, /normalizeTaskCabinetRows/);
     assert.match(completionHistory, /loadTaskClassifications/);
     assert.doesNotMatch(projection, /tags: \[\]/);
-    assert.match(profile, /data-cabinet-task-action': 'classification'/);
-    assert.match(profile, /renderTaskBadges/);
-    assert.doesNotMatch(profile, /classification\.tags|myDayClassification\?\.tags/);
+    assert.doesNotMatch(profile, /renderTaskBadges|renderComposerFields|saveTaskClassification/);
     for (const table of ['my_day_directions', 'my_day_impacts', 'my_day_task_metadata', 'my_day_task_impacts']) assert.match(migration, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`));
     assert.match(migration, /PRIMARY KEY \(user_id, task_id\)/);
     assert.match(tagsMigration, /ADD COLUMN IF NOT EXISTS tags TEXT\[\] NOT NULL DEFAULT '\{\}'/);

@@ -126,6 +126,43 @@ check('date-focused bot list matches My Day dates, snoozing and paginated person
     assert.equal((await bot(path,undefined,peerTelegram)).data.tasks.length,0);
 });
 
+check('Telegram changes use canonical task history and reject stale, foreign or repeated writes', async () => {
+    const createdDraft = await preview('Disposable Telegram change task');
+    const created = await bot(`/operations/${createdDraft.data.operationId}/confirm`, { confirmed: true });
+    assert.equal(created.status, 200, JSON.stringify(created.data));
+    const taskId = created.data.receipt.task.id;
+    const change = async (action, extra = {}, sender = telegram) => bot('/tasks/preview', {
+        taskId, action, businessContext: 'event_genix', sourceUpdateId: String(nextUpdate++), ...extra
+    }, sender);
+    const confirm = operationId => bot(`/operations/${operationId}/confirm`, { confirmed: true });
+
+    const stale = await change('reschedule', { date: '2027-02-10' });
+    assert.equal(stale.status, 201, JSON.stringify(stale.data));
+    await pool.query('UPDATE tasks SET version=COALESCE(version,1)+1 WHERE id=$1', [taskId]);
+    assert.equal((await confirm(stale.data.operationId)).data.code, 'TASK_STALE_WRITE');
+
+    const move = await change('reschedule', { date: '2027-02-11' });
+    assert.equal(move.status, 201, JSON.stringify(move.data));
+    const moved = await Promise.all([confirm(move.data.operationId), confirm(move.data.operationId)]);
+    for (const result of moved) {
+        assert.equal(result.status, 200, JSON.stringify(result.data));
+        assert.equal(result.data.receipt.changeAction, 'reschedule');
+    }
+    assert.equal(moved.filter(result => result.data.replay).length, 1);
+    assert.equal((await pool.query('SELECT date::text AS date FROM tasks WHERE id=$1', [taskId])).rows[0].date, '2027-02-11');
+
+    const handoff = await change('reassign', { ownerUserId: owner.id });
+    assert.equal(handoff.status, 201, JSON.stringify(handoff.data));
+    assert.equal((await confirm(handoff.data.operationId)).status, 200);
+    assert.equal((await pool.query('SELECT owner_user_id FROM tasks WHERE id=$1', [taskId])).rows[0].owner_user_id, owner.id);
+    assert.equal((await change('complete', {}, peerTelegram)).status, 404);
+
+    const done = await change('complete');
+    assert.equal(done.status, 201, JSON.stringify(done.data));
+    assert.equal((await confirm(done.data.operationId)).data.receipt.changeAction, 'complete');
+    assert.equal((await pool.query('SELECT status FROM tasks WHERE id=$1', [taskId])).rows[0].status, 'done');
+});
+
 check('normal CRM deletion retains its committed receipt and never recreates the task', async () => {
     const draft = await preview('Disposable deleted Telegram task');
     assert.equal(draft.status,201,JSON.stringify(draft.data));

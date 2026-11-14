@@ -3,8 +3,9 @@
 const crypto = require('node:crypto');
 const { audit, failure, transaction } = require('./telegramCrmIdentity');
 const { buildTaskPersonalQuery, taskViewerRoles } = require('./taskPersonalScope');
-const { canUseTaskRouteCapability } = require('./taskPolicy');
-const { getAssignableTaskOwner, listTaskOwnerCandidates } = require('./taskExecution');
+const { canUseTaskRouteCapability, canMutateTask, canReassignTask, canRescheduleTask } = require('./taskPolicy');
+const { getAssignableTaskOwner, listTaskOwnerCandidates, completeTask, reassignTaskOwner,
+    rescheduleTask, assertPrivateTaskHandoffConfirmed } = require('./taskExecution');
 const { taskKpiWorkloadDateSql } = require('./taskPerformancePolicy');
 const { pushTaskBusinessScopeCondition } = require('./taskBusinessScope');
 
@@ -42,6 +43,27 @@ function normalizeDraft(input = {}) {
     if (!['low','normal','high','urgent'].includes(priority)) throw failure(400, 'TELEGRAM_TASK_PRIORITY_INVALID', 'Некоректний пріоритет.');
     return { title, description: input.description?.trim() || null, ownerUserId, businessContext,
         date: dateOnly(input.date, 'date'), deadline, priority };
+}
+
+function normalizeChange(input) {
+    const { action, taskId, businessContext } = input;
+    if (!['complete', 'reschedule', 'reassign'].includes(action)
+        || !Number.isSafeInteger(taskId) || taskId <= 0
+        || typeof businessContext !== 'string' || !/^[a-z][a-z0-9_]{0,79}$/.test(businessContext)) {
+        throw failure(400, 'TELEGRAM_TASK_CHANGE_INVALID', 'Вкажіть задачу та підтримувану дію.');
+    }
+    const change = { action, taskId, businessContext };
+    if (action === 'reschedule') {
+        change.date = dateOnly(input.date, 'date');
+        if (!change.date) throw failure(400, 'TELEGRAM_TASK_DATE_INVALID', 'Вкажіть нову дату.');
+    }
+    if (action === 'reassign') {
+        if (!Number.isSafeInteger(input.ownerUserId) || input.ownerUserId <= 0) {
+            throw failure(400, 'TELEGRAM_TASK_OWNER_REQUIRED', 'Оберіть виконавця задачі.');
+        }
+        change.ownerUserId = input.ownerUserId;
+    }
+    return change;
 }
 
 async function defaultActorContext(userRow, client, businessContext) {
@@ -93,7 +115,7 @@ function createTelegramCrmTasks(options) {
             ownerLabel: row.owner_name || row.assigned_to || row.owner || null,
             viewerRoles: taskViewerRoles(actor, row), date: row.date || null, deadline: row.deadline || null,
             workDate: row.work_date || null, scheduledStartAt: row.scheduled_start_at || null,
-            businessContext: scope.activeContext, url: `/tasks?open=${row.id}` };
+            businessContext: row.business_context || scope.activeContext, url: `/tasks?open=${row.id}` };
     }
 
     async function assertReceiptVisible(client, actor, scope, taskId) {
@@ -134,7 +156,7 @@ function createTelegramCrmTasks(options) {
         }
         params.push(limit + 1, offset);
         const rows = (await pool.query(`SELECT t.id,t.title,t.description,t.status,t.owner_user_id,t.assigned_to,t.owner,t.date,t.deadline,
-            t.scheduled_start_at,(${due})::text AS work_date,
+            t.scheduled_start_at,t.business_context,(${due})::text AS work_date,
             t.created_by_user_id,t.created_by,${personal.roles} AS viewer_roles
             FROM tasks t WHERE ${where.join(' AND ')}
             ORDER BY ${due} ASC NULLS LAST,t.id DESC LIMIT $${params.length-1} OFFSET $${params.length}`, params)).rows;
@@ -179,12 +201,98 @@ function createTelegramCrmTasks(options) {
         });
     }
 
+    async function changeTarget(client, actor, scope, payload, lock = false) {
+        if (scope.readOnly || scope.canWrite === false || scope.selectedContexts?.length !== 1) {
+            throw failure(403, 'TELEGRAM_BUSINESS_READ_ONLY', 'Цей бізнес доступний лише для перегляду.');
+        }
+        const params = [payload.taskId];
+        const personal = buildTaskPersonalQuery(actor, params);
+        const business = pushTaskBusinessScopeCondition(params, scope, 't');
+        const task = (await client.query(
+            `SELECT t.* FROM tasks t WHERE t.id=$1 AND ${personal.match} AND ${business}${lock ? ' FOR UPDATE' : ''}`,
+            params
+        )).rows[0];
+        if (!task) throw failure(404, 'TASK_NOT_VISIBLE', 'Ця задача більше недоступна.');
+        const permitted = { complete: canMutateTask, reschedule: canRescheduleTask, reassign: canReassignTask };
+        if (!permitted[payload.action](actor, task)) {
+            throw failure(403, 'TASK_ACTION_FORBIDDEN', 'Недостатньо прав для цієї зміни.');
+        }
+        if (['done', 'cancelled', 'archived'].includes(task.status)) {
+            throw failure(409, 'TASK_NOT_ACTIVE', 'Ця задача вже закрита.');
+        }
+        let assignee = null;
+        if (payload.action === 'reassign') {
+            assignee = await owner(client, payload.ownerUserId, actor, scope);
+            await assertPrivateTaskHandoffConfirmed(task, assignee, actor, { pool: client });
+        }
+        return { task, assignee };
+    }
+
+    async function previewChange(senderId, input) {
+        const change = normalizeChange(input);
+        const source = String(input.sourceUpdateId || '');
+        if (!/^[0-9]{1,20}$/.test(source)) {
+            throw failure(400, 'TELEGRAM_UPDATE_INVALID', 'Відсутній номер повідомлення Telegram.');
+        }
+        return transaction(pool, async client => {
+            const { actor, binding, scope } = await context(client, senderId, change.businessContext,
+                true, input.bindingVersion ?? null, input.eventAt ?? null);
+            if ((await identity.configuration(client)).mode !== 'write') {
+                throw failure(403, 'TELEGRAM_CRM_READ_ONLY', 'Поки доступний лише перегляд задач.');
+            }
+            const { task, assignee } = await changeTarget(client, actor, scope, change);
+            const version = task.version || 1;
+            const prior = (await client.query(
+                'SELECT *,expires_at>NOW() AS fresh FROM telegram_crm_task_operations WHERE user_id=$1 AND binding_version=$2 AND source_update_id=$3',
+                [actor.id, binding.version, source]
+            )).rows[0];
+            let operationId = prior?.id;
+            if (prior) {
+                if (!prior.payload.action || JSON.stringify(normalizeChange(prior.payload)) !== JSON.stringify(change)
+                    || prior.payload.version !== version || prior.state !== 'draft' || !prior.fresh) {
+                    throw failure(409, 'TELEGRAM_OPERATION_CONFLICT', 'Стан змінився. Надішліть новий запит.');
+                }
+            } else {
+                operationId = crypto.randomUUID();
+                await client.query(`INSERT INTO telegram_crm_task_operations
+                    (id,user_id,binding_version,source_update_id,business_context,payload,expires_at)
+                    VALUES ($1,$2,$3,$4,$5,$6,NOW()+INTERVAL '20 minutes')`,
+                [operationId, actor.id, binding.version, source, change.businessContext, JSON.stringify({ ...change, version })]);
+                await audit(client, actor.id, 'task_previewed', binding.version, operationId);
+            }
+            return { operationId, change, task: taskReceipt(task, actor, scope), ownerLabel: assignee?.label };
+        });
+    }
+
+    async function applyChange(client, actor, scope, row) {
+        const payload = normalizeChange(row.payload);
+        const { task } = await changeTarget(client, actor, scope, payload, true);
+        if ((task.version || 1) !== row.payload.version) {
+            throw failure(409, 'TASK_STALE_WRITE', 'Задача змінилася. Покажіть її й підтвердьте зміни ще раз.');
+        }
+        const opts = { pool: client, businessScope: scope, sourceSurface: 'hermes', route: 'telegram_crm' };
+        if (payload.action === 'complete') return (await completeTask(task.id, actor, opts)).task;
+        if (payload.action === 'reassign') {
+            return (await reassignTaskOwner(task.id, payload.ownerUserId, actor, opts)).task;
+        }
+        const time = task.scheduled_start_at || task.deadline;
+        const deadline = time ? (await client.query(
+            `SELECT ($1::date + ($2::timestamptz AT TIME ZONE 'Europe/Kyiv')::time)
+                    AT TIME ZONE 'Europe/Kyiv' AS deadline`, [payload.date, time]
+        )).rows[0].deadline : null;
+        return (await rescheduleTask(task.id, { date: payload.date, deadline }, actor, {
+            ...opts, idempotencyKey: row.id
+        })).task;
+    }
+
     async function operation(senderId, id) {
         const { user, binding } = await identity.resolve(senderId);
         const row = (await pool.query('SELECT state,receipt,expires_at,business_context,task_id FROM telegram_crm_task_operations WHERE id=$1 AND user_id=$2 AND binding_version=$3', [id,user.id,binding.version])).rows[0];
         if (!row) throw failure(404, 'TELEGRAM_OPERATION_NOT_FOUND', 'Операцію не знайдено для цього акаунта.');
         const { actor, scope } = await actorContext(user, pool, row.business_context);
-        if (row.state === 'committed') await assertReceiptVisible(pool, actor, scope, row.task_id);
+        if (row.state === 'committed' && !row.receipt?.changeAction) {
+            await assertReceiptVisible(pool, actor, scope, row.task_id);
+        }
         return { operationId: id, state: row.state, receipt: row.receipt, expiresAt: row.expires_at };
     }
 
@@ -208,12 +316,20 @@ function createTelegramCrmTasks(options) {
             // Re-check current business access even for a successful retry/receipt.
             const { actor, scope } = await actorContext(user, client, row.business_context);
             if (row.state === 'committed') {
-                await assertReceiptVisible(client, actor, scope, row.task_id);
+                if (!row.receipt?.changeAction) await assertReceiptVisible(client, actor, scope, row.task_id);
                 return { operationId: id, state: 'committed', receipt: row.receipt, replay: true };
             }
             if (row.state !== 'draft' || !row.fresh) throw failure(410, 'TELEGRAM_DRAFT_EXPIRED', 'Чернетка застаріла або скасована. Створіть нову.');
             const config = await identity.configuration(client);
             if (config.mode !== 'write') throw failure(403, 'TELEGRAM_CRM_READ_ONLY', 'Створення задач тимчасово вимкнене.');
+            if (row.payload.action) {
+                const task = await applyChange(client, actor, scope, row);
+                const receipt = { changeAction: row.payload.action, taskId: task.id };
+                await client.query("UPDATE telegram_crm_task_operations SET state='committed',task_id=$2,receipt=$3,committed_at=NOW() WHERE id=$1",
+                    [id, task.id, JSON.stringify(receipt)]);
+                await audit(client, actor.id, 'task_updated', binding.version, id);
+                return { operationId: id, state: 'committed', receipt, replay: false };
+            }
             assertCreate(actor, scope);
             const payload = normalizeDraft(row.payload);
             const assignee = await owner(client, payload.ownerUserId, actor, scope);
@@ -233,7 +349,7 @@ function createTelegramCrmTasks(options) {
         return result;
     }
 
-    return { cancel, commit, list, me, operation, owners, preview };
+    return { cancel, commit, list, me, operation, owners, preview, previewChange };
 }
 
 module.exports = { createTelegramCrmTasks, dateOnly, defaultActorContext, normalizeDraft };

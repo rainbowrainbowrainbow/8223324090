@@ -20,21 +20,21 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.83.60">
-    <link rel="stylesheet" href="css/auth.css?v=0.83.60">
-    <link rel="stylesheet" href="css/layout.css?v=0.83.60">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.83.60">
-    <link rel="stylesheet" href="css/timeline.css?v=0.83.60">
-    <link rel="stylesheet" href="css/panel.css?v=0.83.60">
-    <link rel="stylesheet" href="css/modals.css?v=0.83.60">
-    <link rel="stylesheet" href="css/controls.css?v=0.83.60">
-    <link rel="stylesheet" href="css/features.css?v=0.83.60">
-    <link rel="stylesheet" href="css/certificate-image-export.css?v=0.83.60">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.83.60">
-    <link rel="stylesheet" href="css/responsive.css?v=0.83.60">
-    <link rel="stylesheet" href="css/education-schedule.css?v=0.83.60">
-    <link rel="stylesheet" href="css/pages-shell.css?v=0.83.60">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.83.60">
+    <link rel="stylesheet" href="css/base.css?v=0.83.61">
+    <link rel="stylesheet" href="css/auth.css?v=0.83.61">
+    <link rel="stylesheet" href="css/layout.css?v=0.83.61">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.83.61">
+    <link rel="stylesheet" href="css/timeline.css?v=0.83.61">
+    <link rel="stylesheet" href="css/panel.css?v=0.83.61">
+    <link rel="stylesheet" href="css/modals.css?v=0.83.61">
+    <link rel="stylesheet" href="css/controls.css?v=0.83.61">
+    <link rel="stylesheet" href="css/features.css?v=0.83.61">
+    <link rel="stylesheet" href="css/certificate-image-export.css?v=0.83.61">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.83.61">
+    <link rel="stylesheet" href="css/responsive.css?v=0.83.61">
+    <link rel="stylesheet" href="css/education-schedule.css?v=0.83.61">
+    <link rel="stylesheet" href="css/pages-shell.css?v=0.83.61">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.83.61">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -54,11 +54,11 @@
                     <span class="login-signal-message login-signal-hello" aria-hidden="true">Привіт!</span>
                     <span class="login-signal-message login-signal-reply" aria-hidden="true">На зв’язку ✨</span>
                 </button>
-                <div class="login-release-badge" aria-label="Поточний реліз 0.83.60">✨ 0.83.60</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.83.61">✨ 0.83.61</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.83.60 — Організація та Мій день</p>
+                <p class="tagline">AI First CRM v0.83.61 — Telegram і задачі CRM</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.83.60</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.83.61</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Логін для входу</label>
@@ -1948,7 +1948,15 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
-                                                                                                                                                <div class="changelog-section">
+                                                                                                                                                                <div class="changelog-section">
+                    <h4>v0.83.61 — Telegram і задачі CRM</h4>
+                    <ul>
+                        <li><b>Telegram у профілі</b> — підключення з підтвердженням, копіювання ID, заміна та від’єднання.</li>
+                        <li><b>Мої задачі</b> — задачі виконавця, автора й учасника з позначенням ролей і без дублів.</li>
+                        <li><b>Пілот Second Brain</b> — персональні списки та створення задач після підтвердження чернетки для учасників пілоту.</li>
+                    </ul>
+                </div>
+<div class="changelog-section">
                     <h4>v0.83.60 — Організація та Мій день</h4>
                     <ul>
                         <li><b>Організація</b> — Кабінети, модулі й доступи команди тепер у системних налаштуваннях. Додано прямий перехід із HR.</li>
@@ -7121,7 +7129,7 @@
                         <li><b>Контрольована write-QA</b> — «Зберегти основне» перевіряється на QA-працівнику з автоматичним відкатом значення.</li>
                     </ul>
                 </div>
-                    <div id="changelogHistory" data-src="changelog-history.fragment?v=0.83.60" aria-live="polite">
+                    <div id="changelogHistory" data-src="changelog-history.fragment?v=0.83.61" aria-live="polite">
                     <div class="center-state"><strong>Повна історія завантажиться за потреби</strong><small>Відкрийте цей журнал, щоб переглянути попередні релізи.</small></div>
                 </div>
             </div>
@@ -7427,56 +7435,56 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.83.60"></script>
-    <script src="js/timeline-visibility.js?v=0.83.60"></script>
-    <script src="js/kitchen-menu-images.js?v=0.83.60"></script>
-    <script src="js/config.js?v=0.83.60"></script>
-    <script src="js/api.js?v=0.83.60"></script>
-    <script src="js/ui.js?v=0.83.60"></script>
-    <script src="js/auth.js?v=0.83.60"></script>
-    <script src="js/crm-create-handoff.js?v=0.83.60"></script>
-    <script src="js/timeline-interaction-model.js?v=0.83.60"></script>
-    <script src="js/timeline-presentation.js?v=0.83.60"></script>
-    <script src="js/timeline-cache.js?v=0.83.60"></script>
-    <script src="js/timeline-resource-identity.js?v=0.83.60"></script>
-    <script src="js/timeline-banquet-inspector-helpers.js?v=0.83.60"></script>
-    <script src="js/event-cards.js?v=0.83.60"></script>
-    <script src="js/invite-config.js?v=0.83.60"></script>
-    <script src="js/invite-share.js?v=0.83.60"></script>
-    <script src="js/timeline-marketing.js?v=0.83.60"></script>
-    <script src="js/afisha-import-form.js?v=0.83.60"></script>
-    <script src="js/timeline-afisha.js?v=0.83.60"></script>
-    <script src="js/timeline-promotions.js?v=0.83.60"></script>
-    <script src="js/timeline.js?v=0.83.60"></script>
-    <script src="js/booking-drawer-state.js?v=0.83.60"></script>
-    <script src="js/booking-banquet-selector.js?v=0.83.60"></script>
-    <script src="js/booking-save-path.js?v=0.83.60"></script>
-    <script src="js/booking-package-renderer.js?v=0.83.60"></script>
-    <script src="js/booking-tickets.js?v=0.83.60"></script>
-    <script src="js/booking-banquet-detail.js?v=0.83.60"></script>
-    <script src="js/booking-activity-schedule.js?v=0.83.60"></script>
-    <script src="js/booking.js?v=0.83.60"></script>
-    <script src="js/certificate-preview.js?v=0.83.60"></script>
-    <script src="js/certificate-image-export.js?v=0.83.60"></script>
-    <script src="js/settings.js?v=0.83.60"></script>
-    <script src="js/booking-form.js?v=0.83.60"></script>
-    <script src="js/booking-linked.js?v=0.83.60"></script>
-    <script src="js/settings-dashboard.js?v=0.83.60"></script>
-    <script src="js/settings-history.js?v=0.83.60"></script>
-    <script src="js/settings-afisha.js?v=0.83.60"></script>
-    <script src="js/settings-certificates.js?v=0.83.60"></script>
-    <script src="js/offline.js?v=0.83.60"></script>
-    <script src="js/crm-feature-registry.js?v=0.83.60"></script>
-    <script src="js/search.js?v=0.83.60"></script>
-    <script src="js/ws.js?v=0.83.60"></script>
-    <script src="js/app.js?v=0.83.60"></script>
-    <script src="js/kleshnya-widget.js?v=0.83.60"></script>
-    <script src="js/components/sidebar.js?v=0.83.60"></script>
+    <script src="js/timeline-context.js?v=0.83.61"></script>
+    <script src="js/timeline-visibility.js?v=0.83.61"></script>
+    <script src="js/kitchen-menu-images.js?v=0.83.61"></script>
+    <script src="js/config.js?v=0.83.61"></script>
+    <script src="js/api.js?v=0.83.61"></script>
+    <script src="js/ui.js?v=0.83.61"></script>
+    <script src="js/auth.js?v=0.83.61"></script>
+    <script src="js/crm-create-handoff.js?v=0.83.61"></script>
+    <script src="js/timeline-interaction-model.js?v=0.83.61"></script>
+    <script src="js/timeline-presentation.js?v=0.83.61"></script>
+    <script src="js/timeline-cache.js?v=0.83.61"></script>
+    <script src="js/timeline-resource-identity.js?v=0.83.61"></script>
+    <script src="js/timeline-banquet-inspector-helpers.js?v=0.83.61"></script>
+    <script src="js/event-cards.js?v=0.83.61"></script>
+    <script src="js/invite-config.js?v=0.83.61"></script>
+    <script src="js/invite-share.js?v=0.83.61"></script>
+    <script src="js/timeline-marketing.js?v=0.83.61"></script>
+    <script src="js/afisha-import-form.js?v=0.83.61"></script>
+    <script src="js/timeline-afisha.js?v=0.83.61"></script>
+    <script src="js/timeline-promotions.js?v=0.83.61"></script>
+    <script src="js/timeline.js?v=0.83.61"></script>
+    <script src="js/booking-drawer-state.js?v=0.83.61"></script>
+    <script src="js/booking-banquet-selector.js?v=0.83.61"></script>
+    <script src="js/booking-save-path.js?v=0.83.61"></script>
+    <script src="js/booking-package-renderer.js?v=0.83.61"></script>
+    <script src="js/booking-tickets.js?v=0.83.61"></script>
+    <script src="js/booking-banquet-detail.js?v=0.83.61"></script>
+    <script src="js/booking-activity-schedule.js?v=0.83.61"></script>
+    <script src="js/booking.js?v=0.83.61"></script>
+    <script src="js/certificate-preview.js?v=0.83.61"></script>
+    <script src="js/certificate-image-export.js?v=0.83.61"></script>
+    <script src="js/settings.js?v=0.83.61"></script>
+    <script src="js/booking-form.js?v=0.83.61"></script>
+    <script src="js/booking-linked.js?v=0.83.61"></script>
+    <script src="js/settings-dashboard.js?v=0.83.61"></script>
+    <script src="js/settings-history.js?v=0.83.61"></script>
+    <script src="js/settings-afisha.js?v=0.83.61"></script>
+    <script src="js/settings-certificates.js?v=0.83.61"></script>
+    <script src="js/offline.js?v=0.83.61"></script>
+    <script src="js/crm-feature-registry.js?v=0.83.61"></script>
+    <script src="js/search.js?v=0.83.61"></script>
+    <script src="js/ws.js?v=0.83.61"></script>
+    <script src="js/app.js?v=0.83.61"></script>
+    <script src="js/kleshnya-widget.js?v=0.83.61"></script>
+    <script src="js/components/sidebar.js?v=0.83.61"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/alerts.js?v=0.83.60"></script>
-    <script src="js/education-schedule.js?v=0.83.60"></script>
-    <script src="js/staff-substitution.js?v=0.83.60"></script>
-    <script src="js/education-groups.js?v=0.83.60"></script>
-    <script src="js/education-attendance.js?v=0.83.60"></script>
+    <script src="js/alerts.js?v=0.83.61"></script>
+    <script src="js/education-schedule.js?v=0.83.61"></script>
+    <script src="js/staff-substitution.js?v=0.83.61"></script>
+    <script src="js/education-groups.js?v=0.83.61"></script>
+    <script src="js/education-attendance.js?v=0.83.61"></script>
 </body>
 </html>

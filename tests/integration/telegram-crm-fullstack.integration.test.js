@@ -99,6 +99,24 @@ check('canonical task writer, actual membership checks and concurrent confirms s
     assert.equal(recovered.data.receipt.task.id,task.id);
 });
 
+check('normal CRM deletion retains its committed receipt and never recreates the task', async () => {
+    const draft = await preview('Disposable deleted Telegram task');
+    assert.equal(draft.status,201,JSON.stringify(draft.data));
+    const id = draft.data.operationId;
+    const created = await bot(`/operations/${id}/confirm`,{confirmed:true});
+    assert.equal(created.status,200,JSON.stringify(created.data));
+    const taskId = created.data.receipt.task.id;
+    const deleted = await request('DELETE',`/api/tasks/${taskId}?businessContext=event_genix`,undefined,jwt);
+    assert.equal(deleted.status,200,JSON.stringify(deleted.data));
+    const stored = (await pool.query('SELECT state,task_id,receipt FROM telegram_crm_task_operations WHERE id=$1',[id])).rows[0];
+    assert.equal(stored.state,'committed');
+    assert.equal(stored.task_id,null);
+    assert.equal(stored.receipt.task.id,taskId);
+    assert.equal((await bot(`/operations/${id}/confirm`,{confirmed:true})).status,403);
+    assert.equal((await bot(`/operations/${id}`)).status,403);
+    assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM tasks WHERE id=$1',[taskId])).rows[0].count,0);
+});
+
 check('current membership revocation and human role changes deny writes, including prepared drafts', async () => {
     const peerAttempt = await bot('/tasks/preview',{title:'Denied peer write',ownerUserId:owner.id,businessContext:'event_genix',sourceUpdateId:String(nextUpdate++)},peerTelegram);
     assert.equal(peerAttempt.status,403,JSON.stringify(peerAttempt.data));

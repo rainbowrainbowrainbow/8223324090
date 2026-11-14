@@ -58,13 +58,15 @@ CREATE TABLE IF NOT EXISTS telegram_crm_task_operations (
     business_context TEXT NOT NULL,
     payload JSONB NOT NULL,
     state TEXT NOT NULL DEFAULT 'draft' CHECK (state IN ('draft', 'committed', 'cancelled')),
-    task_id INTEGER REFERENCES tasks(id),
+    task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
     receipt JSONB,
     expires_at TIMESTAMPTZ NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     committed_at TIMESTAMPTZ,
     UNIQUE(user_id, binding_version, source_update_id),
-    CHECK ((state = 'committed') = (receipt IS NOT NULL AND task_id IS NOT NULL))
+    -- Preserve the idempotency receipt when CRM deletes a task; never recreate it.
+    CHECK ((state = 'committed') = (receipt IS NOT NULL)),
+    CHECK (state = 'committed' OR task_id IS NULL)
 );
 CREATE INDEX IF NOT EXISTS telegram_crm_task_operations_task_idx
     ON telegram_crm_task_operations(task_id) WHERE task_id IS NOT NULL;

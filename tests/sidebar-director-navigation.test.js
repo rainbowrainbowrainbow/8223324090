@@ -57,6 +57,7 @@ function renderSidebar(t, role, options = {}) {
     };
     window.canAccessPage = options.canAccessPage || (page => resolveCapability(options.previewRole
         ? { role: options.previewRole, roles: [options.previewRole] } : user, page, { type: 'page' }).allowed);
+    window.resolveCapability = options.resolveCapability || resolveCapability;
     window.requestAnimationFrame = () => 0;
     window.fetch = async () => ({ ok: true, status: 200, json: async () => ({}) });
     if (options.savedExtras) window.localStorage.setItem('eg_sidebar_extra_menu_items_v3', JSON.stringify(options.savedExtras));
@@ -105,6 +106,34 @@ test('mobile menu changes once per button activation and never on pointer releas
     assert.equal(toggle.getAttribute('aria-expanded'), 'false');
     assert.equal(overlay.getAttribute('aria-hidden'), 'true');
     assert.equal(document.body.classList.contains('sidebar-mobile-open'), false);
+});
+
+test('HR Today attendance can be saved as a favorite and follows the existing tab access', t => {
+    const href = '/hr#today';
+    const checkboxSelector = `[data-sidebar-extra-page][value="${href}"]`;
+    const favoriteSelector = `#sidebarDesignExtras a[href="${href}"]`;
+    const options = { withShell: true, url: 'https://sidebar.test/hr#today' };
+    const { document, window, hr } = renderSidebar(t, 'creator', options);
+
+    assert.ok(!hr.includes(href));
+    assert.equal(document.querySelector(favoriteSelector), null);
+    document.querySelector('[data-sidebar-extra-toggle-editor]').click();
+    const checkbox = document.querySelector(checkboxSelector);
+    assert.match(checkbox.closest('label').textContent, /Відмічалка на сьогодні/);
+    checkbox.click();
+    document.querySelector('[data-sidebar-extra-save]').click();
+
+    const savedExtras = JSON.parse(window.localStorage.getItem('eg_sidebar_extra_menu_items_v3'));
+    assert.ok(savedExtras.some(item => item.href === href));
+    const reopened = renderSidebar(t, 'creator', { ...options, savedExtras });
+    assert.ok(reopened.document.querySelector(favoriteSelector).classList.contains('active'));
+    const denied = renderSidebar(t, 'creator', {
+        ...options, savedExtras,
+        resolveCapability: () => ({ allowed: false })
+    });
+    assert.equal(denied.document.querySelector(favoriteSelector), null);
+    denied.document.querySelector('[data-sidebar-extra-toggle-editor]').click();
+    assert.equal(denied.document.querySelector(checkboxSelector), null);
 });
 
 test('education entry stays visible in default and saved menus only for an allowed education business', t => {

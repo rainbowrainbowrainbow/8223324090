@@ -232,6 +232,17 @@ const Sidebar = (() => {
     const HR_TEAM_BUCKET_IDS = ['workers', 'interns', 'reserve', 'blacklist', 'dismissed'];
     const INTERNAL_SHORTCUT_ITEMS = Object.freeze([
         Object.freeze({
+            href: '/hr#today',
+            icon: '📋',
+            label: 'Відмічалка на сьогодні',
+            access: 'hr_page',
+            pageAccess: '/hr',
+            group: 'team',
+            visible: user => typeof window.resolveCapability === 'function'
+                ? window.resolveCapability(user, 'hr.today.view', { type: 'action' }).allowed === true
+                : window.canAccess?.('hr.today.view') === true
+        }),
+        Object.freeze({
             href: '/designer',
             icon: '📖',
             label: 'Стайлгайд',

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.83.62",
+  "version": "0.83.63",
   "eventGenix": {
-    "releaseLabel": "Мій день у Telegram"
+    "releaseLabel": "Зручніші картки Мого дня"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

@@ -60,19 +60,40 @@ const BUSINESS_PROFILE = {
     }]
 };
 
+const FIXTURE_PAGE_LIMIT = 32;
+
+function fixtureBucketPage(state, bucket, offset = 0, limit = FIXTURE_PAGE_LIMIT) {
+    const matching = (state.seedTasks || []).filter(task => task.bucket === bucket);
+    const tasks = matching.slice(offset, offset + limit);
+    const nextOffset = offset + tasks.length;
+    const hasMore = nextOffset < matching.length;
+    const bucketPage = {
+        total: matching.length,
+        returned: tasks.length,
+        offset,
+        limit,
+        hasMore,
+        nextCursor: hasMore ? { offset: nextOffset, limit } : null
+    };
+    return { tasks, meta: { bucketPage } };
+}
+
 function cabinetProjection(state = {}) {
     const seedTasks = state.seedTasks || [];
+    const today = fixtureBucketPage(state, 'today');
+    const overdue = fixtureBucketPage(state, 'overdue');
     return {
         success: true,
         all: [...seedTasks, ...(state.createdTask ? [state.createdTask] : [])],
         activeMyDay: [],
-        today: seedTasks.filter(task => task.bucket === 'today'),
-        overdue: seedTasks.filter(task => task.bucket === 'overdue'),
+        today: today.tasks,
+        overdue: overdue.tasks,
         waiting: [],
         deferred: [],
         private: [],
         completedHistory: [],
-        planning: { all: seedTasks },
+        planning: { all: [...today.tasks, ...overdue.tasks], today: today.tasks, overdue: overdue.tasks },
+        meta: { buckets: { planning: { today: today.meta.bucketPage, overdue: overdue.meta.bucketPage } } },
         preferences: {},
         stats: { active: 0, today: 0, overdue: 0, completedToday: 0 }
     };
@@ -191,6 +212,12 @@ async function installFixtureRoutes(context, baseUrl, state) {
         });
         if (url.pathname === '/api/tasks/my-cabinet') {
             state.cabinetRequests += 1;
+            const bucket = url.searchParams.get('bucket');
+            if (bucket) {
+                const offset = Number(url.searchParams.get('offset'));
+                const limit = Number(url.searchParams.get('limit'));
+                return json(route, { success: true, ...fixtureBucketPage(state, bucket, offset, limit) });
+            }
             if (url.searchParams.get('focusDate')) await new Promise(resolve => setTimeout(resolve, 120));
             return json(route, cabinetProjection(state));
         }
@@ -264,58 +291,51 @@ async function assertLargeListsStayAccessible(page, state) {
         status: 'todo',
         priority: 'normal',
         visibility: 'me_only',
+        task_mode: 'personal',
         deadline: `${index % 2 ? dates.overdue : dates.today}T10:00:00Z`,
         bucket: index % 2 ? 'overdue' : 'today'
     }));
     await page.reload({ waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('[data-cabinet-day-more]');
-    assert.equal(await page.locator('.cabinet-day-primary .cabinet-task-card').count(), 32);
-    assert.equal(await page.locator('.cabinet-day-secondary [data-cabinet-overdue-triage-row]').count(), 32);
-    for (let index = 0; index < 2; index += 1) {
-        await page.locator('[data-cabinet-day-more]').click();
-        await page.locator('[data-cabinet-overdue-more]').click();
+    for (const bucket of ['today', 'overdue']) {
+        await page.locator(`[data-park-my-day-view="${bucket}"]`).click();
+        const group = page.locator(`[data-park-task-group="${bucket}"]`);
+        const more = group.locator(`[data-cabinet-bucket-more="${bucket}"]`);
+        const cards = group.locator('.park-task-card');
+        await group.getByText('Показано 32 із 80', { exact: true }).waitFor();
+        assert.equal(await cards.count(), 32);
+        for (const count of [64, 80]) {
+            await more.click();
+            await group.getByText(`Показано ${count} із 80`, { exact: true }).waitFor();
+            assert.equal(await cards.count(), count);
+        }
+        assert.equal(await more.count(), 0);
     }
-    assert.equal(await page.locator('.cabinet-day-primary .cabinet-task-card').count(), 80);
-    assert.equal(await page.locator('.cabinet-day-secondary [data-cabinet-overdue-triage-row]').count(), 80);
-    assert.equal(await page.locator('[data-cabinet-day-more], [data-cabinet-overdue-more]').count(), 0);
 }
 
-async function assertCardDetailsPreserveComposer(page, state) {
+async function assertListPreferencesPreserveComposer(page, state) {
     const title = page.locator('#cabinetTaskTitle');
     const draft = 'Keep this draft while opening task details';
     await title.fill(draft);
     const composer = await title.evaluateHandle(element => element.closest('#cabinetTaskComposer'));
     const requestsBefore = state.cabinetRequests;
-    for (const column of ['primary', 'secondary']) {
-        const card = page.locator(`.cabinet-day-${column} .cabinet-task-card`).first();
-        const toggle = card.locator('[data-cabinet-task-action="toggle-my-day-details"]');
-        assert.equal(await card.locator('.cabinet-task-visibility').count(), 0, `${column} compact card omits visibility copy`);
-        await toggle.focus();
-        await toggle.press('Enter');
-        assert.equal(await card.getAttribute('data-my-day-details-expanded'), 'true', `${column} details expand`);
-        assert.equal(await toggle.getAttribute('aria-expanded'), 'true', `${column} toggle announces expanded state`);
-        assert.equal(await card.locator('.cabinet-task-visibility').isVisible(), true, `${column} details show restricted visibility`);
-        assert.equal(await toggle.evaluate(button => document.activeElement === button), true, `${column} toggle keeps keyboard focus`);
-        assert.equal(await title.inputValue(), draft, `${column} detail toggle keeps the draft`);
-        assert.ok(await title.evaluate((element, original) => element.closest('#cabinetTaskComposer') === original, composer),
-            `${column} detail toggle keeps the composer node`);
-        await toggle.click();
-        assert.equal(await card.getAttribute('data-my-day-details-expanded'), 'false', `${column} details collapse`);
-        assert.equal(await title.inputValue(), draft, `${column} collapse keeps the draft`);
+    for (const bucket of ['today', 'overdue']) {
+        const period = page.locator(`[data-park-my-day-view="${bucket}"]`);
+        await period.press('Enter');
+        assert.equal(await period.getAttribute('aria-pressed'), 'true');
+        const card = page.locator(`[data-park-task-group="${bucket}"] .park-task-card`).first();
+        const modeLabel = card.getByText('Особиста', { exact: true });
+        for (const mode of ['detailed', 'compact']) {
+            const toggle = page.locator(`[data-cabinet-my-day-view-mode="${mode}"]`);
+            await toggle.press('Enter');
+            assert.equal(await toggle.getAttribute('aria-pressed'), 'true', `${mode} view is selected`);
+            assert.equal(await toggle.evaluate(button => document.activeElement === button), true, `${mode} view keeps keyboard focus`);
+            assert.equal(await modeLabel.isVisible(), mode === 'detailed');
+            assert.equal(await title.inputValue(), draft, `${mode} view keeps the draft`);
+            assert.ok(await title.evaluate((element, original) => element.closest('#cabinetTaskComposer') === original, composer),
+                `${mode} view keeps the composer node`);
+        }
     }
-    for (const mode of ['detailed', 'compact']) {
-        const toggle = page.locator(`[data-cabinet-my-day-view-mode="${mode}"]`);
-        await toggle.click();
-        assert.equal(await toggle.getAttribute('aria-pressed'), 'true', `${mode} view is selected`);
-        assert.equal(await title.inputValue(), draft, `${mode} view keeps the draft`);
-        assert.ok(await title.evaluate((element, original) => element.closest('#cabinetTaskComposer') === original, composer),
-            `${mode} view keeps the composer node`);
-        assert.equal(await page.locator('.cabinet-day-primary .cabinet-task-card').first().getAttribute('data-my-day-view-mode'), mode,
-            `${mode} view updates today cards`);
-        assert.equal(await page.locator('.cabinet-day-secondary .cabinet-task-card').first().getAttribute('data-my-day-view-mode'), mode,
-            `${mode} view updates overdue cards`);
-    }
-    assert.equal(state.cabinetRequests, requestsBefore, 'detail toggles do not fetch the cabinet projection');
+    assert.equal(state.cabinetRequests, requestsBefore, 'period and display toggles reuse the cabinet projection');
     await composer.dispose();
 }
 
@@ -335,9 +355,13 @@ async function assertFocusedFetchRefreshesOverdue(page, state) {
     });
     await page.locator('#cabinetTaskDate').fill('2099-06-15');
     await projection;
-    await page.waitForFunction(() => document.querySelector('#cabinetMyDaySegmentPanel')?.dataset.activeOverdue === '1');
-    assert.equal(await page.locator('.cabinet-day-secondary [data-cabinet-overdue-triage-row]').count(), 1,
-        'focused projection refreshes the overdue column and count');
+    await page.locator('[data-park-task-group="focusDate"]').waitFor();
+    await page.locator('[data-park-my-day-view="overdue"]').click();
+    const group = page.locator('[data-park-task-group="overdue"]');
+    await group.getByRole('button', { name: 'Fresh overdue task from projection' }).waitFor();
+    await group.getByText('Показано 1 із 1', { exact: true }).waitFor();
+    assert.equal(await group.locator('.park-task-card').count(), 1, 'focused projection refreshes the visible overdue list');
+    await page.locator('[data-park-my-day-view="today"]').click();
 }
 
 async function assertFullComposerContract(page, state) {
@@ -437,8 +461,8 @@ async function assertFullComposerContract(page, state) {
     await page.waitForFunction(() => {
         const form = document.getElementById('cabinetTaskComposer');
         return form
-            && document.getElementById('cabinetTaskCategory')?.value === 'personal'
-            && document.getElementById('cabinetTaskMode')?.value === 'personal'
+            && document.getElementById('cabinetTaskCategory')?.value === 'admin'
+            && document.getElementById('cabinetTaskMode')?.value === 'work'
             && document.getElementById('cabinetTaskReportRequired')?.checked === false
             && document.getElementById('cabinetTaskAllowReschedule')?.checked === true
             && !form.querySelector('[data-cabinet-subtask-title]');
@@ -474,11 +498,11 @@ async function assertFullComposerContract(page, state) {
     }, {
         title: '',
         description: '',
-        category: 'personal',
-        mode: 'personal',
+        category: 'admin',
+        mode: 'work',
         kind: 'action',
         priority: 'normal',
-        visibility: 'me_only',
+        visibility: 'team',
         reportRequired: false,
         allowReschedule: true,
         subtasks: []
@@ -518,14 +542,14 @@ async function run() {
         await assertDraftSurvivesDueChanges(page, state);
         await assertFocusedFetchRefreshesOverdue(page, state);
         await assertFullComposerContract(page, state);
+        await assertLargeListsStayAccessible(page, state);
+        await assertListPreferencesPreserveComposer(page, state);
         assert.ok(state.requests.some(item => item.includes('/api/tasks/my-cabinet')), 'browser uses the My Day projection endpoint');
         assert.equal(state.taskCreatePayloads.length, 2, 'browser exercised exactly one failed and one successful create');
         assert.ok(state.suggestionRequests >= 1, 'browser input uses mocked decomposition suggestions');
         assert.deepEqual(state.unexpectedMutations, [], 'browser issues no unapproved fixture mutation');
         assert.deepEqual(state.rootNavigations, [], 'authenticated profile fixture did not redirect to root');
         assert.deepEqual(pageErrors, [], `browser runtime has no uncaught errors: ${pageErrors.join('; ')}`);
-        await assertLargeListsStayAccessible(page, state);
-        await assertCardDetailsPreserveComposer(page, state);
         console.log('My Day draft browser smoke passed');
     } catch (error) {
         const body = await page.locator('body').innerText().catch(() => 'body unavailable');

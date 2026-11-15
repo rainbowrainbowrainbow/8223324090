@@ -27,7 +27,13 @@ function results(month) {
         checklistCompleted: 2, coursesCompleted: [], ratings: [{ score: 4, date: month + '-08', explanation: 'Тестова оцінка' }] };
     const previous = new Date(month + '-01T00:00:00Z');
     previous.setUTCDate(0);
-    return { month, state: 'ready', current: { ...period, month }, previous: { ...period, month: previous.toISOString().slice(0, 7) } };
+    const previousMonth = previous.toISOString().slice(0, 7);
+    const last = new Date(month + '-01T00:00:00Z');
+    last.setUTCMonth(last.getUTCMonth() + 1, 0);
+    return { month, state: 'ready',
+        current: { ...period, month, from: month + '-01', through: last.toISOString().slice(0, 10) },
+        previous: { ...period, month: previousMonth, from: previousMonth + '-01', through: previous.toISOString().slice(0, 10) }
+    };
 }
 
 async function main() {
@@ -67,7 +73,7 @@ async function main() {
                 return route.fulfill({ json: isSalary ? salary(month, month === '2024-02' ? 2100 : 3450) : results(month) });
             }
             const relative = url.pathname.slice(1);
-            if (!/^(css|images|fonts)\//.test(relative)) return route.abort();
+            if (!/^(css|images|fonts)\//.test(relative) && relative !== 'js/profile-employee-views.js') return route.abort();
             const file = path.join(root, relative);
             return fs.existsSync(file) && fs.statSync(file).isFile() ? route.fulfill({ path: file }) : route.abort();
         });
@@ -112,7 +118,16 @@ async function main() {
         const month = page.locator('#profileEmployeeMonthInput');
         await month.fill('2024-03');
         await page.getByText(/3\s450/).waitFor();
+        const breakdown = page.locator('details.park-employee-disclosure').filter({ has: page.locator('summary', { hasText: 'Розрахунок' }) });
+        assert.equal(await breakdown.getAttribute('open'), null);
+        await breakdown.locator('summary').click();
         await page.getByText(/Оплата за одиницю · 3 од\..*за роботу/).waitFor();
+        for (const label of ['Ставки за професіями', 'Премії та утримання за записами HR', 'Запізнення', 'Аванси й виплати']) {
+            await page.locator('summary').filter({ hasText: label }).click();
+        }
+        for (const amount of [/3\s450/, /100,00/, /500,00/, /2\s850/]) {
+            await page.locator('.profile-employee-summary').getByText(amount).first().waitFor();
+        }
         const olderResponse = page.waitForResponse(response => response.url().includes('/salary?month=2024-02'));
         hold = false;
         pending.splice(0).forEach(resolve => resolve());
@@ -129,10 +144,15 @@ async function main() {
         await page.waitForFunction(() => document.querySelector('#profileEmployeeMonthInput')?.value === '2024-04');
         await page.getByRole('button', { name: 'Мої результати', exact: true }).click();
         await page.getByText('1 із 2', { exact: true }).first().waitFor();
+        assert.match(await page.locator('.profile-employee-comparison thead').innerText(), /01\.04\.24/);
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
         await page.locator('#tabContent').screenshot({ path: path.join(evidence, 'results-mobile.png') });
+        await page.setViewportSize({width:320,height:790});
+        assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+        await page.locator('#tabContent').screenshot({ path: path.join(evidence, 'results-320.png') });
         await open('/profile?tab=salary&month=2024-03');
         await page.getByText(/3\s450/).waitFor();
+        assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
         const requestCount = requests.length;
         await open('/profile?id=77&tab=salary', false);
         assert.equal(await page.getByRole('button', { name: 'Зарплата', exact: true }).count(), 0);

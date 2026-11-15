@@ -1071,8 +1071,6 @@ async function login(username, password) {
             return { success: true };
         }
         showMainApp();
-        // v22.5: Check daily login reward
-        checkDailyLogin();
         return { success: true };
     } catch (err) {
         console.warn('[auth] Post-login bootstrap failed', err);
@@ -3950,7 +3948,6 @@ async function openProfileModal() {
 
         <div class="prof-tabs" role="tablist">
             <button class="prof-tab active" data-tab="today" role="tab">Сьогодні</button>
-            <button class="prof-tab" data-tab="game" role="tab">Гра</button>
             <button class="prof-tab" data-tab="tasks" role="tab">Задачі</button>
             <button class="prof-tab" data-tab="stats" role="tab">Стати</button>
             <button class="prof-tab" data-tab="settings" role="tab">Налашт.</button>
@@ -3983,7 +3980,6 @@ function _profileRenderTab(tabName, data, achDefs) {
 
     switch (tabName) {
         case 'today': container.innerHTML = _profileTabToday(data); break;
-        case 'game': _profileTabGame(container, data); break;
         case 'tasks': container.innerHTML = _profileTabTasks(data); break;
         case 'stats': container.innerHTML = _profileTabStats(data, achDefs); break;
         case 'settings': container.innerHTML = _profileTabSettings(data); break;

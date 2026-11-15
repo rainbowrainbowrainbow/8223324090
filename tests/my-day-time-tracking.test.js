@@ -83,14 +83,14 @@ test('time ledger contract has one active timer, atomic switch, completion stop,
     assert.match(completionHistory, /actualSeconds: timeTotalsByTaskId\.get\(taskId\) \|\| 0/);
 });
 
-test('My Day UI keeps an icon trigger in the header and plan/fact in details', () => {
+test('legacy time controls remain available to the full source but do not bind in the park profile', () => {
     const profile = fs.readFileSync(path.join(root, 'js', 'profile-page.js'), 'utf8');
     const ui = fs.readFileSync(path.join(root, 'js', 'my-day-time-tracking.js'), 'utf8');
     assert.doesNotMatch(profile, /renderActiveTimerStrip/);
     assert.match(profile, /renderTaskTrigger/);
     assert.match(profile, /renderTaskSummary/);
-    assert.match(profile, /myDayTimeTracking\.load\(\)/);
-    assert.match(profile, /myDayTimeTracking\.bind\?\.\(document\)/);
+    assert.doesNotMatch(profile, /myDayTimeTracking\.load\(\)/);
+    assert.doesNotMatch(profile, /myDayTimeTracking\.bind\?\.\(document\)/);
     assert.match(ui, /effortMinutes/);
     assert.match(ui, /actualSeconds/);
     assert.doesNotMatch(ui, /data-my-day-active-timer-elapsed/);

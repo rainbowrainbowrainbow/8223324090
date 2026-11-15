@@ -4,6 +4,7 @@
  * Achievement checking, coin management, inventory, leveling, shop purchases.
  * Integrates with existing user_points, user_achievements, user_streaks.
  */
+const { PARK_PROFILE_MODULES } = require('./parkProfileModules');
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { classifyTaskKpiEligibility } = require('./taskAutomationPolicy');
@@ -241,6 +242,8 @@ async function getCurrentLevel(xp) {
  * Award coins to a user.
  */
 async function awardCoins(username, amount, reason, sourceType = 'admin', sourceId = null) {
+    // Training reviews may still call this compatibility helper; the review remains independent of coins.
+    if (PARK_PROFILE_MODULES.gamification !== 'active') return null;
     if (amount <= 0) return;
 
     await ensureCurrency(username);
@@ -359,6 +362,7 @@ async function awardXP(username, amount) {
  * Called after task completion, booking creation, etc.
  */
 async function checkAchievements(username, context = {}) {
+    if (PARK_PROFILE_MODULES.gamification !== 'active') return [];
     const unlocked = [];
 
     // Get all active achievements user hasn't unlocked yet
@@ -823,6 +827,7 @@ async function giftCoins(fromUser, toUser, amount) {
  * Awards coins + XP + checks achievements.
  */
 async function onTaskComplete(username, task) {
+    if (PARK_PROFILE_MODULES.gamification !== 'active') return undefined;
     try {
         if (!shouldAwardTaskCompletion(task)) {
             return { coins: 0, xp: 0, achievements: [], skipped: 'task_not_kpi_eligible' };
@@ -851,6 +856,7 @@ async function onTaskComplete(username, task) {
  * Hook: called when a booking is created.
  */
 async function onBookingCreate(username) {
+    if (PARK_PROFILE_MODULES.gamification !== 'active') return undefined;
     try {
         await ensureProfile(username);
         await ensureCurrency(username);

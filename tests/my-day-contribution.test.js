@@ -142,7 +142,7 @@ test('contribution service queries current user, business scope, active timers, 
     assert.deepEqual(calls[2].params, [42, '2026-08-01', '2026-08-03']);
 });
 
-test('contribution route and UI expose only the canonical read endpoint and no scoring', () => {
+test('legacy contribution stays read-only and unmounted in the park profile', () => {
     const route = fs.readFileSync(path.join(root, 'routes', 'my-day.js'), 'utf8');
     const service = fs.readFileSync(path.join(root, 'services', 'myDayContribution.js'), 'utf8');
     const profile = fs.readFileSync(path.join(root, 'js', 'profile-page.js'), 'utf8');
@@ -154,7 +154,7 @@ test('contribution route and UI expose only the canonical read endpoint and no s
     assert.match(route, /ensureTaskBusinessScope/);
     assert.match(service, /buildTaskOwnerMatch/);
     assert.match(service, /appendTaskBusinessScopeSql/);
-    assert.match(profile, /MyDayContribution\?\.renderPanel/);
+    assert.doesNotMatch(profile, /MyDayContribution\?\.renderPanel/);
     assert.match(habitsUi, /data-my-day-life-mode="contribution"/);
     assert.match(contributionUi, /\/api\/my-day\/contribution/);
     assert.match(contributionUi, /role="tabpanel"/);
@@ -162,7 +162,7 @@ test('contribution route and UI expose only the canonical read endpoint and no s
     assert.match(contributionUi, /renderImpactGroups/);
     assert.match(contributionUi, /перехресними зрізами/);
     assert.match(contributionUi, /92/);
-    assert.match(html, /js\/my-day-contribution\.js/);
+    assert.doesNotMatch(html, /js\/my-day-contribution\.js/);
     assert.match(css, /my-day-contribution-table-wrap/);
     assert.doesNotMatch(service + contributionUi, /productivityScore|streak|penalt|gamification|recurring/i);
 });

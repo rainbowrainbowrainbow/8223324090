@@ -193,12 +193,12 @@ test('cancelled and stale contribution requests cannot overwrite current state',
     assert.equal(harness.api.state.data.marker, 'fresh');
 });
 
-test('profile binding, mode switch, and smoke guard against contribution request loops', () => {
+test('park does not bind contribution and legacy mode still cancels on exit', () => {
     const profile = fs.readFileSync(path.join(root, 'js', 'profile-page.js'), 'utf8');
     const habits = fs.readFileSync(path.join(root, 'js', 'my-day-habits.js'), 'utf8');
     const smoke = fs.readFileSync(path.join(root, 'scripts', 'live-my-day-smoke.js'), 'utf8');
 
-    assert.match(profile, /MyDayContribution\.state\.loading && !window\.MyDayContribution\.state\.error/);
+    assert.doesNotMatch(profile, /MyDayContribution\.bind/);
     assert.match(habits, /MyDayContribution\?\.cancel\?\.\('mode-exit'\)/);
     assert.match(habits, /!window\.MyDayContribution\.state\.error/);
     assert.match(smoke, /one Contribution open sends exactly one GET/);

@@ -127,13 +127,13 @@ test('habit service is private to taxonomy and does not create tasks, dependenci
     assert.doesNotMatch(service, /INSERT INTO tasks|UPDATE tasks|overdue|recurring/i);
 });
 
-test('profile UI exposes Day and Habits modes, settings, ARIA, skip undo, and compact time entry manager', () => {
+test('legacy habits and time controls remain in source and are not loaded by the park profile', () => {
     const profile = fs.readFileSync(path.join(root, 'js', 'profile-page.js'), 'utf8');
     const habitsUi = fs.readFileSync(path.join(root, 'js', 'my-day-habits.js'), 'utf8');
     const timeUi = fs.readFileSync(path.join(root, 'js', 'my-day-time-tracking.js'), 'utf8');
     const html = fs.readFileSync(path.join(root, 'profile.html'), 'utf8');
     const profileCss = fs.readFileSync(path.join(root, 'css', 'pages-profile.css'), 'utf8');
-    assert.match(profile, /MyDayHabits/);
+    assert.doesNotMatch(profile, /MyDayHabits/);
     assert.match(habitsUi, /role="tablist"/);
     assert.match(habitsUi, /data-my-day-habit-skip/);
     assert.match(habitsUi, /data-my-day-habit-undo/);
@@ -143,6 +143,6 @@ test('profile UI exposes Day and Habits modes, settings, ARIA, skip undo, and co
     assert.match(timeUi, /data-my-day-time-menu-action="time-entries"/);
     assert.match(timeUi, /data-my-day-time-edit/);
     assert.match(timeUi, /data-my-day-time-delete/);
-    assert.match(html, /js\/my-day-habits\.js/);
+    assert.doesNotMatch(html, /js\/my-day-(?:habits|time-tracking)\.js/);
     assert.match(profileCss, /my-day-life-tabs/);
 });

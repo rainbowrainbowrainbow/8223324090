@@ -229,39 +229,15 @@ test('My Day cards preserve completion and omit manual impact controls', () => {
     assert.match(profile, /aria-disabled="true" data-cabinet-completion-blocked="subtasks"/);
 });
 
-test('Profile My Day compact cards use stable zones instead of one mixed meta row', () => {
-    const profile = read('js/profile-page.js');
-    const css = read('css/pages-cabinet.css');
-    const timeUi = read('js/my-day-time-tracking.js');
-
-    assert.match(profile, /cabinet-task-zone--header/);
-    assert.match(profile, /cabinet-task-zone--facts/);
-    assert.match(profile, /cabinet-task-zone--completion/);
-    assert.match(profile, /renderCabinetMyDayTimeTrigger/);
-    assert.match(profile, /renderCabinetMyDayTimeSummary/);
-    assert.match(profile, /cabinet-task-main--my-day/);
-    assert.match(profile, /renderTaskTrigger\(task,\s*\{ buttonClassName \}\)/);
-    assert.match(profile, /renderTaskSummary\?\.\(task\)/);
-    assert.match(profile, /renderCabinetTaskCard\(task,\s*false,\s*\{/);
-    assert.match(profile, /extraCommandsHtml: triageActions/);
-    assert.match(profile, /time-menu/);
-    assert.match(timeUi, /data-cabinet-task-action="time-menu"/);
-    assert.match(timeUi, /data-my-day-time-menu-action="time-entry"/);
-    assert.match(timeUi, /data-my-day-time-menu-action="time-entries"/);
-    const compactTimeControls = timeUi.slice(
-        timeUi.indexOf('function renderTaskTrigger'),
-        timeUi.indexOf('async function addManualEntry')
-    );
-    assert.match(compactTimeControls, /data-cabinet-task-action="time-menu"/);
-    assert.match(compactTimeControls, /Відкрити час задачі/);
-    assert.match(compactTimeControls, /cabinet-task-action-timer/);
-    assert.doesNotMatch(compactTimeControls, /data-cabinet-task-action="time-entry"/);
-    assert.doesNotMatch(compactTimeControls, /data-cabinet-task-action="time-entries"/);
-    assert.doesNotMatch(compactTimeControls, /data-cabinet-task-action="timer-start"/);
-    assert.match(css, /\.cabinet-task-zone--header/);
-    assert.match(css, /-webkit-line-clamp:\s*2/);
-    assert.match(css, /\.cabinet-task-card\.is-my-day-compact-card\[data-task-priority\][\s\S]*background:\s*transparent/);
-    assert.match(css, /\.cabinet-overdue-triage-row\s*\{[\s\S]*background:\s*transparent/);
+test('Park cards use separate facts and actions, without the legacy time UI', () => {
+    const profile = read('js/profile-my-day.js');
+    const html = read('profile.html');
+    assert.match(profile, /park-task-facts/);
+    assert.match(profile, /park-task-actions/);
+    assert.match(profile, /priorityControl/);
+    assert.match(profile, /control\('open'[\s\S]*control\('done', 'Виконати'/);
+    assert.doesNotMatch(profile, /time-menu|timer-start|time-entries/);
+    assert.doesNotMatch(html, /js\/my-day-time-tracking\.js/);
 });
 
 test('Profile My Day card view mode is localStorage-scoped and has per-card expansion', () => {

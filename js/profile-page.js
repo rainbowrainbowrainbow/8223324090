@@ -311,86 +311,6 @@ function renderRewardClaimButton(kind, id, label = 'Забрати', options = {
     return `<button class="${className}" ${pending ? 'disabled aria-busy="true"' : ''} onclick="${click}">${pending ? 'Забираю...' : label}</button>`;
 }
 
-async function refreshProfileRewardSurfaces(options = {}) {
-    const {
-        reloadAchievements = false,
-        reloadQuests = true,
-        reloadWallet = true,
-        reloadSeason = false,
-        reloadProfile = false
-    } = options;
-
-    if (reloadProfile && currentUserId) {
-        profileData = await apiGet(isOwnProfile ? '/auth/profile' : `/auth/profile/${currentUserId}`);
-    }
-    if (reloadAchievements) myAchievements = await apiGet('/achievements') || [];
-    if (reloadQuests && isOwnProfile) questsData = await apiGet('/quests/daily');
-    if (reloadWallet && isOwnProfile) walletData = await apiGet('/wallet');
-    if (reloadSeason && isOwnProfile) {
-        seasonalQuests = null;
-        await loadSeasonalQuests();
-    }
-
-    renderProfile();
-}
-
-function profileAutoRewardContextKey() {
-    const user = (typeof AppState !== 'undefined' && AppState.currentUser) ? AppState.currentUser : {};
-    let sessionGeneration = '';
-    try {
-        sessionGeneration = localStorage.getItem('pzp_auth_session_generation') || '';
-    } catch {}
-    return JSON.stringify({
-        userId: String(user.id ?? user.userId ?? currentUserId ?? ''),
-        username: String(user.username || ''),
-        sessionGeneration
-    });
-}
-
-function isProfileAutoRewardContextCurrent(contextKey) {
-    return isOwnProfile && profileAutoRewardContextKey() === contextKey;
-}
-
-function checkProfileAutoRewards(options = {}) {
-    if (!isOwnProfile) return Promise.resolve();
-    const force = options.force === true;
-    const contextKey = profileAutoRewardContextKey();
-    const pending = profileAutoRewardChecksPending.get(contextKey);
-    if (pending) return pending;
-    if (!force && profileAutoRewardCheckCompletedKey === contextKey) return Promise.resolve();
-
-    const request = (async () => {
-        try {
-            const result = await apiPost('/achievements/check', {});
-            if (!isProfileAutoRewardContextCurrent(contextKey)) return { stale: true };
-            await apiPost('/quests/check-titles', {});
-            if (!isProfileAutoRewardContextCurrent(contextKey)) return { stale: true };
-            profileAutoRewardCheckCompletedKey = contextKey;
-            const awardedCount = result?.count || result?.awarded?.length || 0;
-            if (awardedCount > 0) {
-                if (typeof showNotification === 'function') {
-                    showNotification(`🎉 Нові досягнення: ${awardedCount}. Нагороду зараховано`, 'success');
-                }
-                await refreshProfileRewardSurfaces({
-                    reloadAchievements: true,
-                    reloadQuests: false,
-                    reloadWallet: true
-                });
-            }
-            return { success: true };
-        } catch (error) {
-            console.warn('Profile auto reward check failed', error);
-            return { success: false };
-        } finally {
-            if (profileAutoRewardChecksPending.get(contextKey) === request) {
-                profileAutoRewardChecksPending.delete(contextKey);
-            }
-        }
-    })();
-    profileAutoRewardChecksPending.set(contextKey, request);
-    return request;
-}
-
 function escapeHtml(str) {
     if (str === null || str === undefined) return '';
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -831,8 +751,8 @@ function profileSecondaryTabOrder() {
         ...Object.entries(PROFILE_EMPLOYEE_TABS).map(([id, label]) => ({ id, label, ownOnly: true })),
         { id: 'achievements', label: 'Досягнення' },
         { id: 'leaderboard', label: 'Рейтинг' },
-        { id: 'inventory', label: 'Інвентар', ownOnly: true },
-        { id: 'shop', label: 'Магазин', ownOnly: true },
+        { id: 'inventory', label: 'Інвентар' },
+        { id: 'shop', label: 'Магазин' },
         { id: 'quests', label: 'Щоденні', ownOnly: true },
         { id: 'season', label: 'Сезон' },
         { id: 'teams', label: 'Команди' },
@@ -840,19 +760,12 @@ function profileSecondaryTabOrder() {
     ];
 }
 
-const PROFILE_CREATOR_ONLY_TABS = new Set(['inventory', 'shop']);
-const PROFILE_ALWAYS_SOON_TABS = new Set(['quests', 'season', 'teams', 'referral']);
+const PROFILE_ALWAYS_SOON_TABS = new Set(['shop', 'inventory', 'achievements', 'leaderboard', 'quests', 'season', 'teams', 'referral', 'titles', 'room']);
 const PROFILE_SOON_TAB_COPY = {
-    inventory: {
-        title: 'Інвентар скоро',
-        kicker: 'Creator preview',
-        message: 'Інвентар ще закритий для команди. Після запуску тут будуть робочі нагороди та предмети без тестової візуальної мішанини.'
-    },
-    shop: {
-        title: 'Магазин скоро',
-        kicker: 'Creator preview',
-        message: 'Магазин поки доступний тільки Creator для перевірки балансу і товарів. Для команди покупки закриті до повного запуску.'
-    },
+    inventory: { title: 'Інвентар скоро', kicker: 'Скоро', message: 'Інвентар поки недоступний у версії для парку.' },
+    shop: { title: 'Магазин скоро', kicker: 'Скоро', message: 'Магазин поки недоступний у версії для парку.' },
+    achievements: { title: 'Досягнення скоро', kicker: 'Скоро', message: 'Досягнення поки недоступні у версії для парку.' },
+    leaderboard: { title: 'Рейтинг скоро', kicker: 'Скоро', message: 'Рейтинг поки недоступний у версії для парку.' },
     quests: {
         title: 'Щоденні скоро',
         kicker: 'Coming soon',
@@ -887,9 +800,6 @@ function profileViewerIsCreator() {
 function profileTabLock(tab) {
     if (PROFILE_ALWAYS_SOON_TABS.has(tab)) {
         return { code: 'soon', soon: true, creatorOnly: false };
-    }
-    if (PROFILE_CREATOR_ONLY_TABS.has(tab) && !profileViewerIsCreator()) {
-        return { code: 'creator_only', soon: true, creatorOnly: true };
     }
     return null;
 }
@@ -1569,7 +1479,6 @@ async function initProfilePage() {
     renderProfile();
     if (isOwnProfile && activeTab === 'materials') void loadProfileWorkMaterials();
     if (isOwnProfile && Object.hasOwn(PROFILE_EMPLOYEE_TABS, activeTab)) void loadProfileEmployeeMonth(activeTab);
-    if (isOwnProfile) void checkProfileAutoRewards();
     if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
     else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
 }
@@ -1623,32 +1532,7 @@ function loadProfileResource(key, loader) {
 }
 
 async function ensureProfileTabData(tab = activeTab) {
-    if (!isOwnProfile) {
-        if (tab === 'achievements') {
-            myAchievements = await loadProfileResource('achievements', async () => await apiGet('/achievements') || []);
-        }
-        return;
-    }
-    if (['inventory', 'shop'].includes(tab)) {
-        const inventoryResource = await loadProfileResource('inventory', async () => {
-            const [wallet, inventory] = await Promise.all([apiGet('/wallet'), apiGet('/inventory')]);
-            return { wallet, inventory: inventory || [] };
-        });
-        walletData = inventoryResource.wallet;
-        myInventory = inventoryResource.inventory;
-    }
-    if (tab === 'achievements') {
-        myAchievements = await loadProfileResource('achievements', async () => await apiGet('/achievements') || []);
-    }
-    if (['quests', 'titles'].includes(tab)) {
-        const questResource = await loadProfileResource('quests', async () => {
-            const [quests, titles, streaks] = await Promise.all([apiGet('/quests/daily'), apiGet('/quests/titles'), apiGet('/streaks')]);
-            return { quests, titles, streaks };
-        });
-        questsData = questResource.quests;
-        titlesData = questResource.titles;
-        allStreaks = questResource.streaks;
-    }
+    if (!isOwnProfile || profileTabLock(tab)) return;
     if (isProfileTaskProjectionTab(tab)) {
         await loadProfileResource('cabinet', async () => {
             await loadMyCabinetProjection();
@@ -1940,25 +1824,26 @@ function renderProfileWorkHubTabs(entries = profileProfessionEntries()) {
 }
 
 function renderProfileSecondaryTabs() {
-    const visibleTabs = profileSecondaryTabOrder()
-        .filter(tab => !(tab.ownOnly && !isOwnProfile));
-    const unlockedTabs = visibleTabs.filter(tab => !profileTabLock(tab.id));
-    const lockedTabs = visibleTabs.filter(tab => profileTabLock(tab.id));
-    const body = [
-        unlockedTabs.map(tab => renderProfilePrimaryTab(tab.id, tab.label, { ownOnly: tab.ownOnly })).join(''),
-        renderProfileSoonMenu(lockedTabs)
-    ].filter(Boolean).join('');
-    if (!body) return '';
+    const tabs = profileSecondaryTabOrder().filter(tab => !tab.ownOnly || isOwnProfile);
+    const primaryIds = ['myday', 'results', 'salary'];
+    const render = id => {
+        const tab = tabs.find(item => item.id === id);
+        return tab ? renderProfilePrimaryTab(id, tab.label, tab) : '';
+    };
+    const tools = tabs.filter(tab => !primaryIds.includes(tab.id) && !profileTabLock(tab.id));
+    const soon = tabs.filter(tab => profileTabLock(tab.id));
     return `
-        <nav class="profile-secondary-work-menu" data-profile-tab-rail="true" aria-label="Додаткові розділи профілю">
-            <div class="profile-secondary-work-menu-head">
-                <div>
-                    <span class="profile-kicker">Розділи профілю</span>
-                    <strong>Робота, акаунт і розвиток</strong>
-                </div>
-            </div>
-            <div class="profile-secondary-tabs" role="tablist" aria-label="Додаткові розділи профілю">
-                ${body}
+        <nav class="profile-secondary-work-menu profile-park-nav" aria-label="Розділи профілю">
+            <div class="profile-secondary-tabs">
+                ${primaryIds.map(render).join('')}
+                <details class="profile-park-more" ${primaryIds.includes(activeTab) ? '' : 'open'}>
+                    <summary class="profile-primary-tab">Ще</summary>
+                    <div class="profile-park-more-panel">
+                        <div class="profile-park-more-links">${tools.map(tab => render(tab.id)).join('')}</div>
+                        <p>Скоро</p>
+                        <div class="profile-park-more-links">${soon.map(tab => render(tab.id)).join('')}</div>
+                    </div>
+                </details>
             </div>
         </nav>`;
 }
@@ -2001,8 +1886,8 @@ function renderProfileMyDayCapsule(data = profileData, professionEntries = profi
         <div class="profile-my-day-capsule" data-profile-my-day-capsule>
             ${renderProfileAvatarVisual(`profile-work-avatar profile-my-day-capsule-avatar${isOwnProfile ? ' profile-avatar-clickable' : ''}`, data, avatarAttrs)}
             <div class="profile-my-day-capsule-copy">
-                <span class="profile-kicker">Мій день</span>
-                <strong>${escapeHtml(name)}</strong>
+                <h1>Мій день</h1>
+                <span>${escapeHtml(name)}</span>
             </div>
         </div>`;
 }
@@ -2101,7 +1986,7 @@ async function switchTab(tab, options = {}) {
     if (!options.skipUrl) syncProfileTabToUrl(tab);
     const locked = profileTabLock(tab);
     if (!locked && isProfileTaskProjectionTab(tab)) {
-        myCabinetLoadState = myCabinetData ? 'refreshing' : 'loading';
+        if (!myCabinetData) myCabinetLoadState = 'loading';
         const tabContent = document.getElementById('tabContent');
         if (tabContent) {
             tabContent.innerHTML = renderTabContent();
@@ -2110,12 +1995,6 @@ async function switchTab(tab, options = {}) {
     }
     if (!locked) await ensureProfileTabData(tab);
     if (requestSeq !== profileTabRequestSeq || activeTab !== tab) return false;
-    // Lazy load data for tabs that need it
-    if (!locked && tab === 'shop' && shopItems.length === 0) await loadShopItems();
-    if (!locked && tab === 'leaderboard' && !leaderboardData) await loadLeaderboard();
-    if (!locked && tab === 'season' && !seasonalQuests) await loadSeasonalQuests();
-    if (!locked && tab === 'teams' && !teamsData) await loadTeamsData();
-    if (!locked && tab === 'referral' && !referralData) await loadReferralData();
     if (!locked && tab === 'materials') await loadProfileWorkMaterials(profileActiveProfessionEntry().key);
     if (requestSeq !== profileTabRequestSeq || activeTab !== tab) return false;
 
@@ -2129,20 +2008,16 @@ async function switchTab(tab, options = {}) {
         const tabName = btn.dataset.profileTab || btn.getAttribute('onclick')?.match(/switchTab\('(\w+)'\)/)?.[1];
         const isActive = tabName === tab;
         btn.classList.toggle('active', isActive);
-        btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        if (btn.getAttribute('role') === 'tab') btn.setAttribute('aria-selected', String(isActive));
         if (isActive) btn.setAttribute('aria-current', 'page');
         else btn.removeAttribute('aria-current');
     });
-    const activeSoon = profileSecondaryTabOrder().some(item => item.id === tab && profileTabLock(item.id));
-    document.querySelectorAll('[data-profile-soon-trigger]').forEach(btn => {
-        btn.classList.toggle('active', activeSoon);
-        btn.setAttribute('aria-selected', activeSoon ? 'true' : 'false');
-        if (activeSoon) btn.setAttribute('aria-current', 'page');
-        else btn.removeAttribute('aria-current');
-    });
-    document.querySelectorAll('.profile-soon-menu-item').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.profileTab === tab);
-    });
+    const more = document.querySelector('.profile-park-more');
+    if (more) {
+        const focusWasInside = more.contains(document.activeElement);
+        more.open = !['myday', 'results', 'salary'].includes(tab);
+        if (focusWasInside && !more.open) more.querySelector('summary')?.focus();
+    }
     if (Object.hasOwn(PROFILE_EMPLOYEE_TABS, tab)) void loadProfileEmployeeMonth(tab);
     return true;
 }
@@ -2179,16 +2054,15 @@ function renderTabContent() {
         case 'myday': return renderMyDayTab();
         case 'mytasks': return renderMyDayTab();
         case 'settings': return renderProfileSettingsTab();
-        case 'achievements': return renderAchievements();
-        case 'inventory': return renderInventory();
-        case 'shop': return renderShopTab();
-        case 'leaderboard': return renderLeaderboardTab();
-        case 'room': return '<div style="text-align:center;padding:40px;color:var(--gray-400)">Кімнату прибрано. Використовуй інші розділи!</div>';
-        case 'quests': return renderQuests();
-        case 'titles': return renderTitles();
-        case 'season': return renderSeasonTab();
-        case 'teams': return renderTeamsTab();
-        case 'referral': return renderReferralTab();
+
+
+
+
+
+
+
+
+
         default: return renderProfileProfessionsTab();
     }
 }
@@ -2197,6 +2071,21 @@ function profileEmployeeSelectedMonth() {
     const month = new URLSearchParams(window.location.search).get('month');
     return /^(?:19|20)\d{2}-(?:0[1-9]|1[0-2])$/.test(month || '') ? month
         : new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' }).format(new Date()).slice(0, 7);
+}
+
+let profileEmployeeRenderers;
+let profileEmployeeRenderersPromise;
+
+async function ensureProfileEmployeeRenderers() {
+    if (profileEmployeeRenderers) return profileEmployeeRenderers;
+    profileEmployeeRenderersPromise ||= import('/js/profile-employee-views.js').then(({ createEmployeeRenderers }) =>
+        createEmployeeRenderers({ escapeHtml, profileEmployeeDateText, profileEmployeeTime, profileEmployeeMoney,
+            profileEmployeeNumber, profileProfessionByKey, profileRoleLabel })).catch(error => {
+        profileEmployeeRenderersPromise = null;
+        throw error;
+    });
+    profileEmployeeRenderers = await profileEmployeeRenderersPromise;
+    return profileEmployeeRenderers;
 }
 
 async function loadProfileEmployeeMonth(tab, month = profileEmployeeSelectedMonth()) {
@@ -2221,8 +2110,15 @@ async function loadProfileEmployeeMonth(tab, month = profileEmployeeSelectedMont
         if (restoreFocus) (body.querySelector('button') || selector)?.focus();
     };
     update();
-    const data = await apiGetScoped(`/auth/profile/me/${tab}?month=${encodeURIComponent(month)}`);
-    state.data = data?.month === month ? data : null;
+    try {
+        const [data] = await Promise.all([
+            apiGetScoped(`/auth/profile/me/${tab}?month=${encodeURIComponent(month)}`),
+            ensureProfileEmployeeRenderers()
+        ]);
+        state.data = data?.month === month ? data : null;
+    } catch {
+        state.data = null;
+    }
     state.loading = false;
     update();
 }
@@ -2251,7 +2147,7 @@ function renderProfileEmployeeMonthBody(tab, state) {
     if (!state.data) return `<p role="alert">Не вдалося завантажити дані за цей місяць.</p>
         <button type="button" class="profile-inline-switch" onclick="loadProfileEmployeeMonth('${tab}')">Спробувати ще раз</button>`;
     if (state.data.state === 'unavailable') return '<p role="status">Дані працівника недоступні в цьому кабінеті.</p>';
-    return tab === 'salary' ? renderProfileEmployeeSalary(state.data) : renderProfileEmployeeResults(state.data);
+    return tab === 'salary' ? profileEmployeeRenderers.renderSalary(state.data) : profileEmployeeRenderers.renderResults(state.data);
 }
 
 const profileSalaryFormat = new Intl.NumberFormat('uk-UA', { style: 'currency', currency: 'UAH' });
@@ -2270,129 +2166,6 @@ function profileEmployeeMoney(value) {
 
 function profileEmployeeNumber(value) {
     return value == null ? '—' : profileResultNumber.format(value);
-}
-
-function renderProfileEmployeeDetails(title, rows, empty = 'Даних за цей період немає.') {
-    return `<section class="profile-employee-details"><h3>${title}</h3>${rows.length
-        ? `<ul>${rows.map(([label, value]) => `<li><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></li>`).join('')}</ul>`
-        : `<p>${escapeHtml(empty)}</p>`}</section>`;
-}
-
-function renderProfileEmployeeSalary(data) {
-    const reportStatus = { preview: 'Попередній розрахунок', draft: 'Збережена чернетка', reviewed: 'Перевірено',
-        approved: 'Затверджено', paid: 'Закрито в обліку', voided: 'Скасовано', reversed: 'Сторновано' };
-    const adjustmentStatus = { applied: 'Враховано', pending: 'Очікує погодження', pending_review: 'Очікує погодження',
-        rejected: 'Відхилено', voided: 'Скасовано' };
-    const types = { bonus: 'Премія', kpi_bonus: 'Бонус за показниками', tip: 'Чайові', deduction: 'Утримання',
-        penalty: 'Штраф', advance: 'Аванс', zrs: 'ЗРС' };
-    const units = { hour: 'год', day: 'зміну', shift: 'зміну', month: 'місяць', piece: 'роботу' };
-    const installments = { advance: 'Аванс', final: 'Остаточна виплата' };
-    const paymentStatus = { draft: 'Чернетка', approved: 'Затверджено', paid: 'Виплачено',
-        partially_paid: 'Частково виплачено', cancelled: 'Скасовано' };
-    const detail = data.detail || {};
-    const work = [['Відпрацьовані дні', detail.shifts], ['Фізичні години', detail.physicalHours],
-        ['Години основних професій', detail.baseRoleHours], ['Години додаткових професій', detail.additionalRoleHours]];
-    const rates = (detail.rates || []).map(rate => {
-        const profession = profileProfessionByKey(rate.profession)?.title || profileRoleLabel(rate.profession || '');
-        const day = rate.date ? ` · ${profileEmployeeDateText(rate.date)}` : '';
-        const unit = units[rate.unit] ? ` за ${units[rate.unit]}` : '';
-        const workTime = rate.minutes > 0 ? ` · ${profileEmployeeNumber(rate.minutes / 60)} год`
-            : rate.days > 0 ? ` · змін: ${rate.days}` : '';
-        const period = rate.effectiveFrom || rate.effectiveTo
-            ? ` · дія: ${profileEmployeeDateText(rate.effectiveFrom)} — ${profileEmployeeDateText(rate.effectiveTo)}` : '';
-        return [`${profession}${rate.kind === 'additional' ? ' · додаткова оплата' : ''}${day}${workTime}${period}`,
-            `${profileEmployeeMoney(rate.rate)}${unit} · ${profileEmployeeMoney(rate.amount)}`];
-    });
-    const lines = (detail.lines || []).map(line => {
-        const quantity = line.kind === 'piece' && line.quantity != null
-            ? ` · ${profileEmployeeNumber(line.quantity)} од.` : '';
-        const rate = line.kind === 'piece' && line.rate != null
-            ? ` · ${profileEmployeeMoney(line.rate)} за роботу` : '';
-        return [`${line.label || 'Складова розрахунку'}${quantity}${rate}`, profileEmployeeMoney(line.amount)];
-    });
-    const adjustments = (data.adjustments || []).map(row => [
-        [profileEmployeeDateText(row.date), types[row.type] || 'Коригування', row.reason, adjustmentStatus[row.status] || 'Статус не визначено'].filter(Boolean).join(' · '),
-        profileEmployeeMoney(row.amount)
-    ]);
-    const late = (data.late || []).map(row => [
-        `${profileEmployeeDateText(row.date)} · план ${row.planned?.slice(0, 5) || '—'} · факт ${profileEmployeeDateText(row.actual, profileEmployeeTime)}`,
-        [`${row.minutes} хв`, ...(row.adjustments || []).map(item =>
-            `утримання: ${profileEmployeeMoney(item.amount)} (${adjustmentStatus[item.status] || 'статус не визначено'})`)].join(' · ')
-    ]);
-    const payments = (data.installments || []).flatMap(item => [
-        [[installments[item.kind] || 'Виплата', paymentStatus[item.status] || '', item.scheduled ? profileEmployeeDateText(item.scheduled) : ''].filter(Boolean).join(' · '),
-            item.approved == null ? `Попередньо: ${profileEmployeeMoney(item.calculated)}` : profileEmployeeMoney(item.approved)],
-        ...item.movements.map(movement => [
-            `${movement.kind === 'reversal' ? 'Сторно' : 'Фактична виплата'} · ${profileEmployeeDateText(movement.date)}`,
-            profileEmployeeMoney(movement.amount)
-        ])
-    ]);
-    return `
-        <p role="status">${escapeHtml(reportStatus[data.status] || 'За цей місяць немає збереженого розрахунку.')}
-            ${data.locked ? ' · період закрито' : ''}
-            ${data.updatedAt ? ` · станом на ${profileEmployeeDateText(data.updatedAt)}` : ''}</p>
-        <dl class="profile-employee-summary">
-            ${[['Нараховано', data.gross], ['Утримано', data.deductions], ['Виплачено', data.paid], ['Залишок до виплати', data.balance]]
-                .map(([label, value]) => `<div><dt>${label}</dt><dd>${profileEmployeeMoney(value)}</dd></div>`).join('')}
-        </dl>
-        ${data.legacyAccounted ? '<p>Старий звіт закрито в обліку. Підтверджених дат і сум виплат у цьому джерелі немає.</p>' : ''}
-        ${detail.hasBlockingIssues ? '<p>Розрахунок містить позиції, які потребують звірки.</p>' : ''}
-        ${renderProfileEmployeeDetails('Розрахунок', [
-            ...work.filter(([, value]) => value != null).map(([label, value]) => [label, profileEmployeeNumber(value)]),
-            ...lines,
-            ...(data.net != null ? [['Після утримань і врахованих авансів', profileEmployeeMoney(data.net)]] : [])
-        ])}
-        ${detail.effectiveFrom || detail.effectiveTo ? `<p>Період дії схеми: ${profileEmployeeDateText(detail.effectiveFrom)} — ${profileEmployeeDateText(detail.effectiveTo)}</p>` : ''}
-        ${renderProfileEmployeeDetails('Ставки за професіями', rates, 'За цей місяць немає підтверджених даних про застосовані ставки.')}
-        ${renderProfileEmployeeDetails('Премії та утримання за записами HR', adjustments)}
-        ${renderProfileEmployeeDetails('Запізнення', late, 'Запізнень за журналом присутності не знайдено.')}
-        ${late.length ? '<p>Зв’язок показано для записів HR із датою порушення та правилом про запізнення.</p>' : ''}
-        ${renderProfileEmployeeDetails('Аванси й виплати', payments, 'Підтверджених записів про виплати немає.')}
-    `;
-}
-
-function renderProfileEmployeeResults(data) {
-    const current = data.current;
-    const previous = data.previous;
-    const punctuality = period => period.attendance.measuredArrivals
-        ? `${period.attendance.onTime} із ${period.attendance.measuredArrivals}`
-        : 'Немає даних';
-    const groups = [
-        ['Вчасні приходи (із записів з відомим планом і фактом)', punctuality],
-        ['Зафіксовані приходи', period => period.attendance.present],
-        ['Зафіксовані відсутності', period => period.attendance.absent],
-        ['Запізнення', period => period.attendance.late],
-        ['Хвилини запізнення', period => period.attendance.lateMinutes],
-        ['Задачі, завершені в цьому місяці', period => period.tasks.completed],
-        ['Задачі з дедлайном у цьому місяці, які прострочено', period => period.tasks.overdue],
-        ['Завершені пункти професійних чеклістів', period => period.checklistCompleted],
-        ['Завершені курси', period => period.coursesCompleted.length]
-    ];
-    const courses = current.coursesCompleted.map(course => [course.title, profileEmployeeDateText(course.date)]);
-    const ratings = current.ratings.filter(item => Number(item.score) >= 1 && Number(item.score) <= 5)
-        .map(item => [[profileEmployeeDateText(item.date), item.explanation].filter(Boolean).join(' · '), `${profileEmployeeNumber(Number(item.score))} із 5`]);
-    const admission = { approved: 'Допущено', pending: 'Очікує допуску', blocked: 'Допуск заблоковано', restricted: 'Обмежений допуск' };
-    const assignments = (data.currentAssignments || []).filter(item => admission[item.admissionStatus]).map(item => [
-        profileProfessionByKey(item.key)?.title || profileRoleLabel(item.key), admission[item.admissionStatus]
-    ]);
-    return `
-        <div class="profile-employee-comparison">
-            <table>
-                <caption>Порівняння з попереднім місяцем</caption>
-                <thead><tr><th scope="col">Показник</th><th scope="col">${escapeHtml(current.month.replace('-', '‑'))}</th><th scope="col">${escapeHtml(previous.month.replace('-', '‑'))}</th></tr></thead>
-                <tbody>${groups.map(([label, read], index) => {
-                    const value = period => index > 0 && index < 5 && !period.attendance.daysRecorded ? 'Немає даних' : read(period);
-                    return `<tr><th scope="row">${escapeHtml(label)}</th><td>${escapeHtml(value(current))}</td><td>${escapeHtml(value(previous))}</td></tr>`;
-                }).join('')}</tbody>
-            </table>
-        </div>
-        <p>Джерела: журнал присутності, задачі з прив’язаним акаунтом, записи виконання чеклістів і навчання.
-            Старі задачі без прив’язки до акаунта та зміни, які не потрапили до журналу, не враховані.</p>
-        ${renderProfileEmployeeDetails('Оцінки керівника', ratings, 'За цей місяць оцінок у журналі немає.')}
-        ${renderProfileEmployeeDetails('Завершені курси', courses)}
-        ${renderProfileEmployeeDetails('Поточні допуски', assignments, 'Немає підтверджених записів про допуски.')}
-        <p>Допуски показано за поточним станом. Помісячна історія допусків недоступна.</p>
-    `;
 }
 
 function profileAllProfessionTasks() {
@@ -3490,7 +3263,7 @@ function findCabinetTask(taskId) {
 }
 
 const CABINET_ACTIVE_TASK_BUCKETS = ['all', 'focus', 'today', 'next', 'deferred', 'waiting', 'private', 'overdue', 'inbox', 'createdByMe'];
-const CABINET_PLANNING_TASK_BUCKETS = ['all', 'overdue', 'today', 'tomorrow', 'dayAfterTomorrow', 'plusThreeDays', 'monthEnd', 'noDate'];
+const CABINET_PLANNING_TASK_BUCKETS = ['all', 'overdue', 'today', 'tomorrow', 'dayAfterTomorrow', 'plusThreeDays', 'monthEnd', 'noDate', 'future', 'focusDate'];
 const cabinetBucketLoadStates = new Map();
 const CABINET_PROJECTION_TIMEOUT_MS = 15000;
 const CABINET_BUCKET_PAGE_LIMIT = 80;
@@ -3687,9 +3460,20 @@ function createdCabinetTaskId(result = {}) {
 function renderCabinetActiveTab() {
     const tabContent = document.getElementById('tabContent');
     if (tabContent && isProfileTaskProjectionTab(activeTab)) {
+        const restore = window.ProfileMyDay?.preservePosition(tabContent);
         window.TaskUI?.closeActionMenu?.();
-        tabContent.innerHTML = renderTabContent();
+        const workspace = tabContent.querySelector('.park-my-day #cabinetMyDaySegmentPanel');
+        if (workspace) {
+            workspace.outerHTML = renderParkMyDayWorkspace();
+            tabContent.querySelector('[data-park-my-day-notice]').innerHTML = renderCabinetLoadNotice();
+            tabContent.querySelector('[data-cabinet-completion-pulse]').outerHTML = renderCabinetCompletionPulse();
+            const reminders = tabContent.querySelector('[data-park-my-day-reminders]');
+            if (reminders) reminders.innerHTML = renderMyDayHrReminders();
+        } else {
+            tabContent.innerHTML = renderTabContent();
+        }
         attachProfileListeners();
+        restore?.();
         if (initialHrReminderLinkPending) {
             initialHrReminderLinkPending = false;
             if (activeTab === 'myday' && window.location.hash === '#hr-personal-reminders') {
@@ -3724,7 +3508,7 @@ function renderCabinetBucketMore(bucket = '', label = 'Показати ще') {
     const limit = Number(meta.nextCursor?.limit || meta.limit || CABINET_BUCKET_PAGE_LIMIT);
     const total = Number(meta.total || 0);
     const returned = Number(meta.returned || offset || 0);
-    const countText = total > 0 && returned > 0 ? `<small>Показано ${escapeHtml(returned)} із ${escapeHtml(total)}</small>` : '';
+    const countText = bucket === 'completedToday' && total > 0 ? `<small>Показано ${escapeHtml(returned)} із ${escapeHtml(total)}</small>` : '';
     return `<button type="button" class="cabinet-bucket-more" data-cabinet-bucket-more="${escapeHtml(bucket)}" data-cabinet-bucket-offset="${escapeHtml(offset)}" data-cabinet-bucket-limit="${escapeHtml(limit)}" aria-label="${escapeHtml(label)}">${escapeHtml(label)}${countText}</button>`;
 }
 
@@ -3772,6 +3556,9 @@ async function loadCabinetBucketPage(button) {
     if (!bucket) return;
     const key = bucket;
     if (cabinetBucketLoadStates.get(key) === 'loading') return;
+    const sourceProjection = myCabinetData;
+    const scope = cabinetMyDayViewPreferenceKey();
+    const focusDate = bucket === 'focusDate' ? cabinetSelectedDueDate() : '';
     const offset = Math.max(0, Number(button?.dataset?.cabinetBucketOffset || 0));
     const limit = Math.max(1, Math.min(Number(button?.dataset?.cabinetBucketLimit || CABINET_BUCKET_PAGE_LIMIT), CABINET_BUCKET_PAGE_LIMIT));
     cabinetBucketLoadStates.set(key, 'loading');
@@ -3784,11 +3571,15 @@ async function loadCabinetBucketPage(button) {
             offset: String(offset),
             limit: String(limit)
         });
+        if (focusDate) params.set('focusDate', focusDate);
         const payload = await apiGetScopedJson(`/tasks/my-cabinet?${params.toString()}`, {
             timeoutMs: CABINET_PROJECTION_TIMEOUT_MS
         });
+        if (myCabinetData !== sourceProjection || scope !== cabinetMyDayViewPreferenceKey()
+            || (focusDate && focusDate !== cabinetSelectedDueDate())) return;
         mergeCabinetBucketPage(bucket, payload);
-        renderCabinetActiveTab();
+        if (bucket === 'completedToday') rerenderCabinetCompletionPulse();
+        else rerenderCabinetMyDaySegmentPanel();
     } catch (error) {
         cabinetBucketLoadStates.set(key, 'error');
         window.showNotification?.(error?.message || 'Не вдалося дозавантажити задачі.', 'error');
@@ -3800,6 +3591,17 @@ async function loadCabinetBucketPage(button) {
             button.removeAttribute('aria-busy');
         }
     }
+}
+
+function bindCabinetBucketButtons(root) {
+    root.querySelectorAll('[data-cabinet-bucket-more]').forEach(button => {
+        if (button.dataset.cabinetBucketMoreBound === 'true') return;
+        button.dataset.cabinetBucketMoreBound = 'true';
+        button.addEventListener('click', event => {
+            event.preventDefault();
+            void loadCabinetBucketPage(button);
+        });
+    });
 }
 
 function renderCabinetLoadingSkeleton() {
@@ -4178,12 +3980,10 @@ function cabinetFormatDuration(seconds = 0) {
 function cabinetCompletedTodayMetrics(tasks = cabinetCompletedTodayTasksList()) {
     const parentTasks = tasks.filter(cabinetTaskParentCompletedToday).length;
     const subtasks = tasks.reduce((sum, task) => sum + cabinetTaskCompletedSubtasksToday(task), 0);
-    const seconds = tasks.reduce((sum, task) => sum + Math.max(0, Number(task.actualSecondsToday ?? task.actual_seconds_today ?? 0)), 0);
+    const quick = myCabinetData?.stats?.taskQuick || {};
     return {
-        parentTasks,
-        subtasks,
-        totalUnits: parentTasks + subtasks,
-        seconds
+        parentTasks: Number(quick.completedParentToday ?? parentTasks),
+        subtasks: Number(quick.completedSubtasksToday ?? subtasks)
     };
 }
 
@@ -4213,25 +4013,23 @@ function renderCabinetCompletionTaskRow(task = {}, index = 0, mode = 'today') {
     const progress = subSummary.total
         ? `${formatCabinetPulseCount(subSummary.done)}/${formatCabinetPulseCount(subSummary.total)} пунктів`
         : '';
-    const seconds = mode === 'today'
-        ? Number(task.actualSecondsToday ?? task.actual_seconds_today ?? 0)
-        : Number(task.actualSeconds ?? task.actual_seconds ?? 0);
     const completedMeta = [
         cabinetCompletionRowTypeLabel(task, mode),
         completedAt ? profileFormatTime(completedAt) : '',
-        cabinetFormatDuration(seconds),
         progress
     ].filter(Boolean).join(' · ');
     const actionAttrs = taskId
         ? `data-cabinet-task-action="open" data-task-id="${taskId}"`
         : 'disabled';
-    return `<button type="button" class="cabinet-completion-row" ${actionAttrs} aria-label="${escapeHtml(`Відкрити виконання: ${task.title || 'Без назви'}`)}">
+    return `<div class="park-completed-row"><button type="button" class="cabinet-completion-row" ${actionAttrs} aria-label="${escapeHtml(`Відкрити виконання: ${task.title || 'Без назви'}`)}">
         <span class="cabinet-completion-row-mark" aria-hidden="true">${index + 1}</span>
         <span class="cabinet-completion-row-main">
             <b>${escapeHtml(task.title || 'Без назви')}</b>
             <small>${escapeHtml(completedMeta)}</small>
         </span>
-    </button>`;
+    </button>
+    ${mode === 'history' && taskId ? `<button type="button" class="park-task-secondary" data-cabinet-task-action="restore-completed" data-task-id="${taskId}">Відновити</button>` : ''}
+    </div>`;
 }
 
 function normalizeCabinetCompletionTab(tab = completedDashboardTab) {
@@ -4292,6 +4090,7 @@ function renderCabinetCompletionDetails() {
             ${historyError ? `<div class="cabinet-completion-error" role="status">${escapeHtml(historyError)}</div>` : ''}
             ${historyLoading ? '<div class="cabinet-completion-loading" role="status">Завантажуємо історію…</div>' : ''}
             ${showFooter ? `<button type="button" class="cabinet-completion-all" data-cabinet-completion-all="true" ${historyLoading ? 'disabled aria-busy="true"' : ''}>${escapeHtml(historyError ? 'Повторити' : footerLabel)}</button>` : ''}
+            ${activeTab !== 'history' && !showFooter ? renderCabinetBucketMore('completedToday') : ''}
         </div>
     </div>`;
 }
@@ -4301,21 +4100,20 @@ function renderCabinetCompletionPulse() {
     const historyCounts = cabinetCompletedHistoryCounts();
     const metrics = cabinetCompletedTodayMetrics(tasks);
     const expanded = Boolean(completedDashboardExpanded);
-    const hasData = tasks.length > 0 || metrics.totalUnits > 0;
+    const hasData = tasks.length > 0 || metrics.parentTasks > 0 || metrics.subtasks > 0;
     const allTimeLabel = `${formatCabinetPulseCount(Math.max(historyCounts.total, historyCounts.shown))} за весь час`;
     return `<section class="cabinet-completion-pulse ${hasData ? '' : 'is-empty'} ${expanded ? 'is-expanded' : ''}" data-cabinet-completion-pulse aria-label="Виконано">
         <div class="cabinet-completion-summary">
             <div class="cabinet-completion-head">
                 <div class="cabinet-completion-title">
                     <span class="cabinet-kicker">Виконано</span>
-                    <h3>${hasData ? `${formatCabinetPulseCount(metrics.totalUnits)} разом` : 'Ще немає виконань'}</h3>
+                    <h3>${hasData ? 'Виконано сьогодні' : 'Ще немає виконань'}</h3>
                     <p>${escapeHtml(allTimeLabel)} · останні ${formatCabinetPulseCount(historyCounts.shown)} задач</p>
                 </div>
             </div>
             <div class="cabinet-completion-metrics">
                 <span><b>${formatCabinetPulseCount(metrics.parentTasks)}</b><small>задач</small></span>
-                <span><b>${formatCabinetPulseCount(metrics.subtasks)}</b><small>пункти</small></span>
-                <span><b>${escapeHtml(cabinetFormatDuration(metrics.seconds))}</b><small>час</small></span>
+                <span><b>${formatCabinetPulseCount(metrics.subtasks)}</b><small>пункти чеклістів</small></span>
             </div>
             <div class="cabinet-completion-actions">
                 <button type="button" class="cabinet-completion-toggle" data-cabinet-completion-toggle aria-expanded="${expanded ? 'true' : 'false'}" aria-controls="cabinetCompletionDetails">
@@ -4339,6 +4137,7 @@ function rerenderCabinetCompletionPulse() {
     if (!next) return;
     bindCabinetTaskActions(next);
     bindCabinetCompletionPulse(next);
+    bindCabinetBucketButtons(next);
 }
 
 function rerenderCabinetCompletedTodayDashboard() {
@@ -4937,69 +4736,24 @@ function renderCabinetMyDaySegmentPanelFromState(state = getCabinetMyDayState())
             </div>`;
 }
 
-function rerenderCabinetMyDaySegmentPanel(options = {}) {
-    const panel = document.getElementById?.('cabinetMyDaySegmentPanel');
+function rerenderCabinetMyDaySegmentPanel() {
+    const panel = document.getElementById('cabinetMyDaySegmentPanel');
     if (!panel) return false;
-    const primary = panel.querySelector('.cabinet-day-primary');
-    if (!primary) return false;
-    const state = getCabinetMyDayState();
-    const focusedTasks = cabinetFocusedMyDayTasks(state);
-    const focusedMeta = cabinetFocusedMyDayMeta(state);
-    const focusedDropOptions = state.selectedDuePreset === 'today'
-        ? {
-            dropTarget: 'today',
-            dropHint: 'Перетягніть сюди, щоб запланувати на сьогодні',
-            dropLabel: 'Сьогодні: перетягніть сюди прострочену задачу, щоб перенести її на сьогодні'
-        }
-        : {};
-    primary.innerHTML = renderCabinetMyDayTodayPrimary({
-        isAllMode: false,
-        allGroups: [],
-        focusedMeta,
-        focusedTasks,
-        focusedDropOptions,
-        overdue: cabinetMyDayOverdueTasks(),
-        waiting: cabinetList('waiting'),
-        deferred: cabinetList('deferred'),
-        privateTasks: cabinetList('private'),
-        privatePreview: cabinetList('private').slice(0, 4)
-    });
-    if (options.includeViewMode === true) {
-        const toolbar = panel.querySelector('.cabinet-day-workspace-toolbar');
-        const secondary = panel.querySelector('.cabinet-day-secondary');
-        if (toolbar) toolbar.innerHTML = renderCabinetMyDayListModeToggle();
-        if (secondary) {
-            const overdue = cabinetMyDayOverdueTasks();
-            secondary.innerHTML = renderCabinetOverdueTriageList(overdue);
-            panel.dataset.activeOverdue = String(overdue.length);
-        }
-    }
-    panel.dataset.activeToday = String(focusedTasks.length);
-    panel.dataset.focusedPreset = state.selectedDuePreset;
-    panel.setAttribute('aria-label', `Мій день: ${focusedMeta.statLabel || focusedMeta.title || ''} і прострочені`);
+    const restore = window.ProfileMyDay?.preservePosition(panel.parentElement);
+    panel.outerHTML = renderParkMyDayWorkspace();
     attachProfileListeners();
+    restore?.();
     return true;
 }
 
 async function refreshCabinetFocusedDatePanel(options = {}) {
     const state = getCabinetMyDayState();
-    const focusDate = cabinetSelectedFocusDateNeedsFetch(state);
-    if (focusDate) {
-        await refreshMyCabinetTab({
-            silent: true,
-            keepExistingOnError: true,
-            focusDate
-        });
+    if (state.selectedDueDate && state.selectedDueDate !== cabinetDateKeyOffset(0)) {
+        await refreshMyCabinetTab({ silent: true, keepExistingOnError: true, focusDate: state.selectedDueDate });
     }
     if (options.rerender !== false && activeTab === 'myday') {
-        if (focusDate) {
-            const overduePanel = document.querySelector?.('#cabinetMyDaySegmentPanel .cabinet-day-secondary');
-            if (overduePanel) {
-                const overdue = cabinetMyDayOverdueTasks();
-                overduePanel.innerHTML = renderCabinetOverdueTriageList(overdue);
-                overduePanel.parentElement.dataset.activeOverdue = String(overdue.length);
-            }
-        }
+        const notice = document.querySelector('[data-park-my-day-notice]');
+        if (notice) notice.innerHTML = renderCabinetLoadNotice();
         rerenderCabinetMyDaySegmentPanel();
     }
 }
@@ -5017,6 +4771,7 @@ function setCabinetDuePreset(preset = 'today', options = {}) {
         if (selection) selection.hidden = !undated;
     }
     if (options.refreshList === true) {
+        window.ProfileMyDay?.setView(cabinetMyDayViewPreferenceKey(), 'today');
         refreshCabinetFocusedDatePanel({ rerender: options.rerender !== false })
             .catch(error => console.warn('Profile cabinet focused date refresh failed', error));
     } else if (options.rerender === true) {
@@ -5040,7 +4795,7 @@ function syncCabinetTaskCreateMode() {
     const visibility = document.getElementById('cabinetTaskVisibility');
     const category = document.getElementById('cabinetTaskCategory');
     if (visibility) {
-        visibility.options[0].disabled = mode !== 'work';
+        if (visibility.options?.[0]) visibility.options[0].disabled = mode !== 'work';
         visibility.value = mode === 'private' ? 'private' : (mode === 'personal' ? 'me_only' : 'team');
         syncCabinetTaskVisibilityHint();
     }
@@ -6147,9 +5902,7 @@ function cabinetTaskMoveTargets(task = {}) {
         { id: 'tomorrow', label: 'Завтра', detail: 'перепланувати на завтра', enabled: canReschedule },
         { id: 'snooze_hour', label: 'Відкласти... +1 год', detail: 'через наявний snooze', enabled: canReschedule },
         { id: 'snooze_custom', label: 'Відкласти... інша дата', detail: 'обрати дату вручну', enabled: canReschedule },
-        { id: 'no_date', label: 'Без дати', detail: hasFixedSchedule ? 'недоступно для задачі зі слотом' : 'прибрати дату і дедлайн', enabled: canReschedule && !hasFixedSchedule },
-        { id: 'waiting', label: 'Чекаю', detail: 'перевести в очікування', enabled: true },
-        { id: 'private', label: 'Приватне', detail: 'видимість тільки для себе', enabled: cabinetTaskVisibility(task) !== 'private' }
+        { id: 'no_date', label: 'Без дати', detail: hasFixedSchedule ? 'недоступно для задачі зі слотом' : 'прибрати дату і дедлайн', enabled: canReschedule && !hasFixedSchedule }
     ];
 }
 
@@ -6172,15 +5925,7 @@ function renderCabinetMoveMenuItems(task = {}) {
 function openCabinetTaskActionMenu(button) {
     const taskId = normalizeCabinetTaskId(button?.dataset?.taskId);
     const task = findCabinetTask(taskId) || {};
-    const menuHtml = `
-        ${renderCabinetMoveMenuItems(task)}
-        ${window.TaskUI?.renderMenuItems([
-            { label: 'Відкрити у повному списку', detail: 'деталі, історія, спостерігачі', attrs: { 'data-cabinet-task-action': 'open', 'data-task-id': taskId } }
-,
-            ...(activeTab === 'myday' ? [{ label: 'Змінити пріоритет', attrs: { 'data-cabinet-task-action': 'priority-menu', 'data-task-id': taskId } }] : []),
-            { label: '\u041f\u043e\u0442\u0440\u0456\u0431\u043d\u043e \u0441\u043f\u043e\u0447\u0430\u0442\u043a\u0443', detail: '\u0434\u043e\u0434\u0430\u0442\u0438 \u0430\u0431\u043e \u0441\u0442\u0432\u043e\u0440\u0438\u0442\u0438 \u0437\u0430\u0434\u0430\u0447\u0443-\u043f\u0435\u0440\u0435\u0434\u0443\u043c\u043e\u0432\u0443', attrs: { 'data-cabinet-task-action': 'dependencies', 'data-task-id': taskId } },
-            ...(task.isBlocked ? [{ label: '\u0417\u0430\u0432\u0435\u0440\u0448\u0438\u0442\u0438 \u043f\u043e\u043f\u0440\u0438 \u0431\u043b\u043e\u043a\u0435\u0440', detail: '\u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u043d\u044f \u043d\u0435 \u0431\u043b\u043e\u043a\u0443\u0454\u0442\u044c\u0441\u044f \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u043d\u043e', attrs: { 'data-cabinet-task-action': 'complete-despite-blocker', 'data-task-id': taskId } }] : []),
-        ]) || ''}`;
+    const menuHtml = renderCabinetMoveMenuItems(task);
     const root = window.TaskUI?.openActionMenu(button, menuHtml, { title: 'Дії із задачею' });
     root?.querySelectorAll('[data-cabinet-task-action]').forEach(actionButton => {
         actionButton.addEventListener('click', handleCabinetTaskActionClick);
@@ -6973,6 +6718,28 @@ function renderCabinetMyDayDetailToggle(taskIdAttr = '', expanded = false, butto
 }
 
 function renderCabinetTaskCard(task, compact = false, options = {}) {
+    if (options.surface === 'myday' && activeTab === 'myday' && window.ProfileMyDay) {
+        const id = normalizeCabinetTaskId(task.id || task.taskId || task.task_id);
+        const due = getCabinetTaskDueState(task, cabinetTaskDueValue(task));
+        const title = task.title || 'Без назви';
+        const checklist = cabinetSubtaskSummary(task);
+        const taskBlocked = task.isBlocked || (Array.isArray(task.dependencies)
+            && task.dependencies.some(item => item?.isOpen !== false && !['done', 'archived', 'cancelled'].includes(item?.status)));
+        const checklistBlocked = cabinetTaskCompletionBlockedBySubtasks(task);
+        const blocked = taskBlocked ? 'Спочатку виконайте задачу, від якої залежить ця.' :
+            checklistBlocked ? cabinetSubtaskCompletionTitle(task) : '';
+        return window.ProfileMyDay.renderCard({
+            id, title, status: cabinetTaskStatus(task), due: cabinetTaskFocusDateKey(task),
+            priority: normalizeCabinetPriority(task.priority),
+            modeLabel: taskModeLabel(task),
+            detailed: getCabinetMyDayViewMode() === 'detailed',
+            checklist, blocked, report: cabinetTaskReportBadge(task),
+            postponementBadge: renderCabinetPostponementBadge(task),
+            isAi: window.TaskAiDraft?.isAiTask?.(task) === true,
+            dueState: due.key,
+            priorityControl: renderCabinetTaskPriorityControl(task, String(id || ''))
+        });
+    }
     const taskId = Number(task.id || task.taskId || task.task_id || 0);
     const taskIdAttr = Number.isInteger(taskId) && taskId > 0 ? String(taskId) : '';
     const due = cabinetTaskDueValue(task);
@@ -7160,15 +6927,15 @@ function renderCabinetSection(title, list, emptyText, compact = false, options =
         ? ` id="${escapeHtml(sectionBodyId)}"${isCollapsed ? ' hidden' : ''}`
         : '';
     return `
-        <section class="${sectionClass}"${dropAttrs}${groupAttrs}>
+        <section class="${sectionClass}"${dropAttrs}${groupAttrs}${options.sectionAttrs ? ` ${options.sectionAttrs}` : ''}>
             <div class="cabinet-section-head">
                 ${titleMarkup}
                 <div class="cabinet-section-head-meta">
                     ${dropHint}
-                    <span>${visibleList.length}</span>
+                    <span>${escapeHtml(options.countLabel || visibleList.length)}</span>
                 </div>
             </div>
-            <div class="cabinet-section-body"${bodyAttrs}>${bodyContent}${moreButton}</div>
+            <div class="cabinet-section-body"${bodyAttrs}>${bodyContent}${moreButton}${options.footer || ''}</div>
         </section>`;
 }
 
@@ -7197,7 +6964,7 @@ function renderCabinetTaskComposer(options = {}) {
     ).join('');
 
     return `
-        <form class="cabinet-capture cabinet-task-composer ${expanded ? 'is-expanded' : 'is-collapsed'}" id="cabinetTaskComposer" data-source-surface="profile_${escapeHtml(activeTab)}" data-cabinet-composer-state="${expanded ? 'expanded' : 'collapsed'}" aria-label="Нова задача" aria-describedby="cabinetTaskComposerStatus" onsubmit="createCabinetTask(event, '${escapeHtml(options.mode || '')}')">
+        <form class="cabinet-capture cabinet-task-composer ${expanded ? 'is-expanded' : 'is-collapsed'}" id="cabinetTaskComposer" data-source-surface="profile_${escapeHtml(activeTab)}" data-cabinet-composer-state="${expanded ? 'expanded' : 'collapsed'}" aria-label="Нова задача" aria-describedby="cabinetTaskComposerStatus" onsubmit="createCabinetTask(event)">
             <div class="cabinet-task-composer-main">
                 <label class="cabinet-task-title-field" for="cabinetTaskTitle">
                     <span>Назва задачі</span>
@@ -7212,8 +6979,16 @@ function renderCabinetTaskComposer(options = {}) {
                     </label>
                     <button type="button" class="cabinet-task-composer-toggle" data-cabinet-no-date>${dateValue ? 'Без дати' : 'На сьогодні'}</button>
                 </div>
+                <label class="park-task-mode" for="cabinetTaskMode">
+                    <span>Вид задачі</span>
+                    <select id="cabinetTaskMode" aria-describedby="cabinetTaskVisibilityHint" onchange="syncCabinetTaskCreateMode()">
+                        <option value="work" ${defaults.mode === 'work' ? 'selected' : ''}>Робоча</option>
+                        <option value="personal" ${defaults.mode === 'personal' ? 'selected' : ''}>Особиста</option>
+                    </select>
+                </label>
                 <button type="submit" class="cabinet-task-create-submit" data-cabinet-create-action="plain" aria-busy="false">Додати задачу</button>
             </div>
+            <p id="cabinetTaskVisibilityHint" class="park-task-visibility">${cabinetTaskVisibilityHint(defaults.visibility)}</p>
             <div class="cabinet-task-composer-actions">
                 <button type="button" class="cabinet-task-composer-toggle" data-cabinet-composer-toggle aria-expanded="${expanded ? 'true' : 'false'}" aria-controls="cabinetTaskComposerAdvanced">${expanded ? 'Згорнути' : 'Більше параметрів'}</button>
                 <button type="button" class="cabinet-task-ai-fill task-ai-draft-trigger" id="cabinetTaskAiFillBtn" data-cabinet-create-action="ai" data-task-ai-draft-preview aria-busy="false">Заповнити з AI</button>
@@ -7231,14 +7006,6 @@ function renderCabinetTaskComposer(options = {}) {
                     <label for="cabinetTaskCategory">
                         <span>Категорія</span>
                         <select id="cabinetTaskCategory">${categories}</select>
-                    </label>
-                    <label for="cabinetTaskMode">
-                        <span>Режим</span>
-                        <select id="cabinetTaskMode" onchange="syncCabinetTaskCreateMode()">
-                            <option value="work" ${defaults.mode === 'work' ? 'selected' : ''}>Робоча</option>
-                            <option value="personal" ${defaults.mode === 'personal' ? 'selected' : ''}>Особиста</option>
-                            <option value="private" ${defaults.mode === 'private' ? 'selected' : ''}>Приватна</option>
-                        </select>
                     </label>
                     <label for="cabinetTaskKind">
                         <span>Тип</span>
@@ -7258,9 +7025,9 @@ function renderCabinetTaskComposer(options = {}) {
                         <select id="cabinetTaskVisibility" name="visibility" aria-describedby="cabinetTaskVisibilityHint">
                             <option value="team" ${defaults.mode !== 'work' ? 'disabled' : ''} ${defaults.visibility === 'team' ? 'selected' : ''}>Командна</option>
                             <option value="me_only" ${defaults.visibility === 'me_only' ? 'selected' : ''}>Тільки мені</option>
-                            <option value="private" ${defaults.visibility === 'private' ? 'selected' : ''}>Приватна</option>
+
                         </select>
-                        <small id="cabinetTaskVisibilityHint">${cabinetTaskVisibilityHint(defaults.visibility)}</small>
+
                     </label>
                     <label class="cabinet-task-report-toggle" for="cabinetTaskReportRequired">
                         <input id="cabinetTaskReportRequired" type="checkbox">
@@ -7553,20 +7320,24 @@ function renderMyTasksTab() {
 }
 
 function renderCabinetLoadNotice() {
-    if (myCabinetLoadState === 'loading' && !myCabinetData) {
+    const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+    if (!offline && myCabinetLoadState === 'loading' && !myCabinetData) {
         return `<div class="cabinet-load-notice is-loading" role="status" aria-live="polite">
             <span>Завантажую Мій день…</span>
         </div>`;
     }
-    if (myCabinetLoadState === 'refreshing' && myCabinetData) {
+    if (!offline && myCabinetLoadState === 'refreshing' && myCabinetData) {
         return `<div class="cabinet-load-notice is-loading is-refreshing" role="status" aria-live="polite">
             <span>Оновлюю задачі, поточні дані залишаються на екрані.</span>
         </div>`;
     }
-    if (!myCabinetLoadError) return '';
+    const updated = myCabinetLastLoadedAt
+        ? `Оновлено ${profileFormatTime(new Date(myCabinetLastLoadedAt).toISOString())}` : '';
+    if (!myCabinetLoadError && !offline) return updated ? `<p class="park-task-visibility">${escapeHtml(updated)}</p>` : '';
+    const message = offline ? 'Немає з’єднання. Після підключення повторіть завантаження.' : myCabinetLoadError;
     return `
         <div class="cabinet-load-notice" role="status" aria-live="polite">
-            <span>${escapeHtml(myCabinetLoadError)}</span>
+            <span>${escapeHtml([message, updated].filter(Boolean).join(' '))}</span>
             <button type="button" data-cabinet-refresh>Повторити</button>
         </div>`;
 }
@@ -7747,65 +7518,56 @@ function renderMyDayHrReminders() {
     </section>`;
 }
 
-function renderMyDayCommandCenterTab() {
-    if (window.MyDayHabits?.state?.surface === 'setup') {
-        return `<div class="my-day-life-shell">${window.MyDayHabits?.renderSetupSurface?.() || ''}</div>`;
-    }
-    const myDayState = getCabinetMyDayState();
-    const focusedTasks = cabinetFocusedMyDayTasks(myDayState);
-    const focusedMeta = cabinetFocusedMyDayMeta(myDayState);
-    const overdue = cabinetMyDayOverdueTasks();
-    const deferred = cabinetList('deferred');
-    const waiting = cabinetList('waiting');
-    const privateTasks = cabinetList('private');
-    const privatePreview = privateTasks.slice(0, 4);
-    const activeFocus = focusedTasks.length;
-    const focusedDropOptions = {
-        dropTarget: 'today',
-        dropHint: 'Перетягніть сюди, щоб запланувати на сьогодні',
-        dropLabel: 'Сьогодні: перетягніть сюди задачу, щоб перенести її на сьогодні'
+function renderParkMyDayWorkspace() {
+    const selected = window.ProfileMyDay?.getView(cabinetMyDayViewPreferenceKey()) || 'today';
+    const date = cabinetSelectedDueDate();
+    const today = cabinetDateKeyOffset(0);
+    const group = (bucket, title, empty, options = {}) => {
+        const projected = myCabinetData?.planning?.[bucket];
+        const list = Array.isArray(projected) ? projected : cabinetActiveMyDaySourceTasks().filter(task => {
+            if (!cabinetTaskIsOpenForMyDay(task) || isCabinetDeferredTask(task)) return false;
+            const due = cabinetTaskFocusDateKey(task);
+            return bucket === 'overdue' ? due && due < today
+                : bucket === 'future' ? due > today
+                : bucket === 'noDate' ? !due : due === (bucket === 'focusDate' ? date : today);
+        });
+        const metadata = cabinetBucketMeta(bucket);
+        const total = metadata ? Number(metadata.total) : list.length;
+        return renderCabinetSection(title, list, metadata?.hasMore && !list.length ? 'Задачі цієї групи ще не завантажено.' : empty, false, {
+            ...options,
+            keepOrder: true,
+            cardOptions: { surface: 'myday' },
+            countLabel: `Показано ${list.length} із ${total}`,
+            footer: renderCabinetBucketMore(bucket),
+            sectionAttrs: `data-park-task-group="${bucket}" aria-label="${escapeHtml(title)}" tabindex="-1"`
+        });
     };
-    if (myDayState.selectedDuePreset !== 'today') {
-        focusedDropOptions.dropTarget = '';
-        focusedDropOptions.dropHint = '';
-        focusedDropOptions.dropLabel = '';
-    }
-    const primaryContext = {
-        isAllMode: false,
-        allGroups: [],
-        focusedMeta,
-        focusedTasks,
-        focusedDropOptions,
-        overdue,
-        waiting,
-        deferred,
-        privateTasks,
-        privatePreview
-    };
-    if (window.MyDayHabits?.state?.mode === 'habits') {
-        return `<div class="my-day-life-shell">${window.MyDayHabits?.renderModeTabs?.() || ''}${window.MyDayHabits?.renderPanel?.() || ''}</div>`;
-    }
-    if (window.MyDayHabits?.state?.mode === 'contribution') {
-        return `<div class="my-day-life-shell">${window.MyDayHabits?.renderModeTabs?.() || ''}${window.MyDayContribution?.renderPanel?.() || ''}</div>`;
-    }
+    let content;
+    if (myCabinetLoadState === 'loading' && !myCabinetData) content = renderCabinetLoadingSkeleton();
+    else if (!myCabinetData && myCabinetLoadError) content = '';
+    else if (selected === 'overdue') content = group('overdue', 'Прострочені', 'Немає прострочених задач.');
+    else if (selected === 'future') content = group('future', 'Майбутні', 'Немає майбутніх задач.');
+    else if (!date) content = group('noDate', 'Без дати', 'Задач без дати немає.');
+    else if (date !== today) content = group('focusDate', `Задачі на ${profileEmployeeDateText(date)}`, 'На цю дату немає активних задач.');
+    else content = group('today', 'Сьогодні', 'На сьогодні задач немає.') + group('noDate', 'Без дати', 'Задач без дати немає.');
     return `
-        <div class="cabinet-shell cabinet-command-center" id="myDayDayPanel" role="tabpanel" aria-labelledby="myDayModeDay">
-            ${window.MyDayHabits?.renderModeTabs?.() || ''}
-            ${renderMyDayHrReminders()}
-            ${renderCabinetTaskComposer({ segment: 'personal', mode: 'personal' })}
-            ${renderCabinetLoadNotice()}
-            ${renderCabinetCompletionPulse()}
-            <div class="cabinet-day-workspace cabinet-day-workspace--two-column" id="cabinetMyDaySegmentPanel" role="region" aria-label="Мій день: ${escapeHtml(focusedMeta.statLabel || focusedMeta.title || '')} і прострочені" data-active-today="${activeFocus}" data-active-overdue="${overdue.length}" data-cabinet-my-day-layout="focused-overdue" data-cabinet-focused-preset="${escapeHtml(myDayState.selectedDuePreset)}">
-                <div class="cabinet-day-workspace-toolbar">
-                    ${renderCabinetMyDayListModeToggle()}
-                </div>
-                <div class="cabinet-day-primary cabinet-day-column cabinet-day-column--today">
-                    ${myCabinetLoadState === 'loading' && !myCabinetData ? renderCabinetLoadingSkeleton() : renderCabinetMyDayTodayPrimary(primaryContext)}
-                </div>
-                <div class="cabinet-day-secondary cabinet-day-column cabinet-day-column--overdue">
-                    ${myCabinetLoadState === 'loading' && !myCabinetData ? renderCabinetLoadingSkeleton() : renderCabinetOverdueTriageList(overdue)}
-                </div>
+        <section id="cabinetMyDaySegmentPanel" class="park-my-day-workspace" aria-label="Список задач">
+            <div class="park-my-day-toolbar">
+                ${window.ProfileMyDay?.renderViews(selected) || ''}
+                ${renderCabinetMyDayListModeToggle()}
             </div>
+            <div class="park-my-day-groups">${content}</div>
+        </section>`;
+}
+
+function renderMyDayCommandCenterTab() {
+    return `
+        <div class="cabinet-shell cabinet-command-center park-my-day" id="myDayDayPanel">
+            <div data-park-my-day-reminders>${renderMyDayHrReminders()}</div>
+            ${renderCabinetTaskComposer({ segment: 'all', mode: 'work' })}
+            <div data-park-my-day-notice>${renderCabinetLoadNotice()}</div>
+            ${renderParkMyDayWorkspace()}
+            ${renderCabinetCompletionPulse()}
         </div>`;
 }
 
@@ -8319,35 +8081,52 @@ function showCabinetTaskUndoToast(taskId, restoreStatus = 'todo') {
         <span>Задачу виконано</span>
         <button type="button" data-cabinet-undo-task="${taskId}">Скасувати</button>`;
     const undoBtn = toast.querySelector('[data-cabinet-undo-task]');
-    const scheduleDismiss = (delay = 6000) => {
+    let remaining = 12000;
+    let expiresAt = 0;
+    let busy = false;
+    const pause = () => {
         if (cabinetUndoToastTimer) clearTimeout(cabinetUndoToastTimer);
+        cabinetUndoToastTimer = null;
+        if (expiresAt) remaining = Math.max(0, expiresAt - Date.now());
+        expiresAt = 0;
+    };
+    const scheduleDismiss = () => {
+        if (busy || toast.matches(':hover') || toast.contains(document.activeElement) || !toast.isConnected) return;
+        if (cabinetUndoToastTimer) clearTimeout(cabinetUndoToastTimer);
+        expiresAt = Date.now() + remaining;
         cabinetUndoToastTimer = setTimeout(() => {
             toast.classList.remove('is-visible');
             setTimeout(() => toast.remove(), 240);
             cabinetUndoToastTimer = null;
-        }, delay);
+        }, remaining);
     };
+    toast.addEventListener('pointerenter', pause);
+    toast.addEventListener('pointerleave', scheduleDismiss);
+    toast.addEventListener('focusin', pause);
+    toast.addEventListener('focusout', () => queueMicrotask(scheduleDismiss));
     undoBtn?.addEventListener('click', async () => {
-        if (cabinetUndoToastTimer) {
-            clearTimeout(cabinetUndoToastTimer);
-            cabinetUndoToastTimer = null;
-        }
+        busy = true;
+        pause();
         undoBtn.disabled = true;
         undoBtn.setAttribute('aria-busy', 'true');
         try {
             await setCabinetTaskStatus(taskId, normalizeCabinetRestoreStatus(restoreStatus), { silent: true, allowUndo: false });
             if (typeof showNotification === 'function') showNotification('Задачу повернуто', 'success');
             toast.remove();
+            document.querySelector(`.park-task-card[data-task-id="${taskId}"] [data-cabinet-task-action="open"]`)?.focus();
         } catch (error) {
             undoBtn.disabled = false;
             undoBtn.removeAttribute('aria-busy');
-            scheduleDismiss(9000);
+            busy = false;
+            remaining = 12000;
+            scheduleDismiss();
             if (typeof showNotification === 'function') showNotification(error?.message || 'Не вдалося скасувати виконання', 'error');
         }
     });
     document.body.appendChild(toast);
     requestAnimationFrame(() => toast.classList.add('is-visible'));
     scheduleDismiss();
+    return undoBtn;
 }
 
 function unlockCabinetTaskCompletionSound() {
@@ -8429,22 +8208,8 @@ async function handleCabinetTaskActionClick(event) {
         return;
     }
 
-    if (['timer-start', 'timer-stop', 'time-entry', 'time-entries', 'time-menu'].includes(action)) {
-        try { await window.MyDayTimeTracking?.handleAction?.(action, taskId, () => refreshMyCabinetTab({ silent: false, keepExistingOnError: true }), button, findCabinetTask(taskId) || {}); }
-        catch (error) { if (typeof showNotification === 'function') showNotification(error.message || 'Time update failed', 'error'); }
-        return;
-    }
-
     if (action === 'postponement-explanation') {
         openCabinetPostponementExplanation(button);
-        return;
-    }
-
-    if (action === 'dependencies') {
-        const anchor = stableCabinetTaskSurfaceAnchor(button, taskId, 'dependencies');
-        await window.MyDayDependencies?.openManager?.(anchor, findCabinetTask(taskId) || {}, async () => {
-            await refreshMyCabinetTab({ silent: false, keepExistingOnError: true });
-        });
         return;
     }
 
@@ -8455,17 +8220,6 @@ async function handleCabinetTaskActionClick(event) {
             await loadCabinetTaskSubtasks(taskId);
             document.querySelector(`.cabinet-task-card[data-task-id="${taskId}"] [data-cabinet-task-action="toggle-my-day-details"]`)?.focus({ preventScroll: true });
         }
-        return;
-    }
-
-    if (action === 'dependency-open') {
-        if (window.TaskDetailDrawer?.open) window.TaskDetailDrawer.open(taskId, { view: 'my', sourceSurface: 'profile_my_day_dependency' });
-        else window.location.href = `/tasks?view=my&open=${encodeURIComponent(taskId)}`;
-        return;
-    }
-
-    if (action === 'complete-despite-blocker') {
-        await setCabinetTaskStatus(taskId, 'done', { previousStatus: 'todo', task: findCabinetTask(taskId) || {} });
         return;
     }
 
@@ -8516,6 +8270,12 @@ async function handleCabinetTaskActionClick(event) {
         return;
     }
 
+    if (action === 'restore-completed') {
+        try { await setCabinetTaskStatus(taskId, 'todo'); }
+        catch (error) { window.showNotification?.(error.message, 'error'); }
+        return;
+    }
+
     if (action === 'open') {
         if (window.TaskDetailDrawer?.open) {
             window.TaskDetailDrawer.open(taskId, { view: 'my', sourceSurface: 'profile_my_day' });
@@ -8554,6 +8314,8 @@ async function handleCabinetTaskActionClick(event) {
 
     const card = button.closest('.cabinet-task-card, .cabinet-overdue-triage-row');
     const previousStatus = normalizeCabinetRestoreStatus(card?.dataset?.taskStatus || 'todo');
+    const restore = action === 'done' && document.activeElement === button
+        ? window.ProfileMyDay?.preservePosition(document.getElementById('tabContent')) : null;
     if (action === 'done') {
         const task = findCabinetTask(taskId) || {};
         if (cabinetTaskCompletionBlockedBySubtasks(task)) {
@@ -8567,7 +8329,9 @@ async function handleCabinetTaskActionClick(event) {
     try {
         if (action === 'done') {
             unlockCabinetTaskCompletionSound();
-            await setCabinetTaskStatus(taskId, 'done', { previousStatus, task: findCabinetTask(taskId) || {}, card });
+            await setCabinetTaskStatus(taskId, 'done', {
+                previousStatus, task: findCabinetTask(taskId) || {}, card, restore, focusUndo: event.detail === 0
+            });
         } else if (action === 'snooze') {
             closeCabinetSnoozeMenus();
             let minutes = button.dataset.minutes || 60;
@@ -8749,16 +8513,19 @@ async function setCabinetTaskStatus(taskId, status, options = {}) {
     const appliedLocal = status === 'done'
         ? applyCabinetTaskStatusToProjection(id, status, updatedTask, options.task || {})
         : false;
+    let undo;
     if (!options.silent && status === 'done' && options.allowUndo !== false) {
         playCabinetTaskCompletionFeedback();
         await waitForCabinetCompletionAnimation(options.card);
-        showCabinetTaskUndoToast(id, options.previousStatus || 'todo');
+        undo = showCabinetTaskUndoToast(id, options.previousStatus || 'todo');
     } else if (!options.silent && typeof showNotification === 'function') {
         showNotification(status === 'done' ? 'Задачу виконано' : 'Статус задачі оновлено', 'success');
     }
     if (status === 'done') {
         if (!appliedLocal) await refreshMyCabinetTab({ silent: true });
         renderCabinetActiveTab();
+        options.restore?.();
+        if (options.focusUndo) undo?.focus();
         scheduleCabinetProjectionRefresh();
     } else {
         await refreshMyCabinetTab({ silent: true });
@@ -8898,12 +8665,12 @@ async function executeCabinetMoveTarget(taskId, target, options = {}) {
     throw new Error('Невідома дія перенесення');
 }
 
-async function createCabinetTask(event, mode) {
+async function createCabinetTask(event) {
     event.preventDefault();
     if (cabinetTaskCreatePending) return;
     const input = document.getElementById('cabinetTaskTitle');
     const kind = document.getElementById('cabinetTaskKind')?.value || 'action';
-    const selectedMode = document.getElementById('cabinetTaskMode')?.value || mode || cabinetCreateDefaultsForSegment(myTasksSegment).mode;
+    const selectedMode = document.getElementById('cabinetTaskMode')?.value === 'personal' ? 'personal' : 'work';
     const selectedDate = document.getElementById('cabinetTaskDate')?.value || '';
     const current = (typeof AppState !== 'undefined' && AppState.currentUser) ? AppState.currentUser : {};
     const title = String(input?.value || '').trim();
@@ -9104,6 +8871,8 @@ async function createCabinetTask(event, mode) {
         window.TaskAiDraft?.markCommittedTaskId?.(verification.taskId);
     }
     notifyTaskWidgetsChanged({ action: 'create', taskId: verification.taskId });
+    // The list refresh keeps the composer mounted. Restore its defaults after a confirmed save.
+    composer?.reset?.();
     if (input) input.value = '';
     setCabinetTaskTitleGuidance('');
     const details = document.getElementById('cabinetTaskDetails');
@@ -9118,8 +8887,13 @@ async function createCabinetTask(event, mode) {
     setCabinetSubtaskDraftStatus('');
     document.getElementById('cabinetSubtaskAcceptDraftBtn')?.setAttribute('hidden', '');
     setCabinetDecompositionMode('none', { keepRows: true, keepStatus: true });
-    cabinetCreateDuePreset = 'today';
-    cabinetTaskComposerExpanded = false;
+    setCabinetDuePreset('today');
+    setCabinetTaskComposerExpanded(false);
+    const modeSelect = document.getElementById('cabinetTaskMode');
+    if (modeSelect) modeSelect.value = 'work';
+    const reportToggle = document.getElementById('cabinetTaskReportRequired');
+    if (reportToggle) reportToggle.checked = false;
+    syncCabinetTaskCreateMode();
     if (typeof showNotification === 'function') {
         showCabinetTaskCreateSuccessToast(result, draft, verification, postCreateWarningCount);
     }
@@ -9136,98 +8910,6 @@ async function createCabinetTask(event, mode) {
 // ==========================================
 // INVENTORY
 // ==========================================
-function renderInventory() {
-    if (profileTabLock('inventory')) return renderProfileComingSoon('inventory');
-    const items = myInventory || [];
-
-    if (items.length === 0) {
-        return `<div class="inventory-empty-state" style="text-align:center;padding:48px 20px">
-            <div style="font-size:16px;font-weight:700;color:var(--gray-700);margin-bottom:4px">Інвентар порожній</div>
-            <div style="font-size:13px;color:var(--gray-400)">Купуй предмети в магазині або отримуй за ачивки</div>
-            <button onclick="switchTab('shop')" style="margin-top:16px;padding:10px 24px;border:none;border-radius:10px;background:var(--primary);color:#fff;font-weight:700;cursor:pointer;font-family:inherit">🛒 Перейти в магазин</button>
-        </div>`;
-    }
-
-    const cardsHtml = items.map(item => {
-        const emoji = CATEGORY_EMOJIS[item.category] || '📦';
-        const rarityColor = { common: '#9ca3af', uncommon: '#22c55e', rare: '#3b82f6', epic: '#a855f7', legendary: '#f59e0b' }[item.rarity] || '#9ca3af';
-        return `<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--gray-50,#f9fafb);border-radius:12px;border-left:4px solid ${rarityColor}">
-            <div style="font-size:28px;flex-shrink:0">${escapeHtml(emoji)}</div>
-            <div style="flex:1;min-width:0">
-                <div style="font-size:14px;font-weight:700;color:var(--gray-800)">${escapeHtml(item.name)}</div>
-                <div style="font-size:12px;color:var(--gray-400)">${RARITY_LABELS[item.rarity] || item.rarity}${item.quantity > 1 ? ' · x' + item.quantity : ''}</div>
-            </div>
-            ${item.isEquipped ? '<span style="padding:4px 10px;border-radius:6px;background:var(--primary);color:#fff;font-size:11px;font-weight:700">Одягнено</span>' : ''}
-        </div>`;
-    }).join('');
-
-    return `<div style="margin-top:16px">
-        <h3 style="margin-bottom:12px">Інвентар (${items.length})</h3>
-        <div style="display:flex;flex-direction:column;gap:8px">${cardsHtml}</div>
-    </div>`;
-}
-
-// ==========================================
-// ACHIEVEMENTS (with category filter)
-// ==========================================
-const ACH_CATEGORIES = [
-    { id: 'all', label: 'Всі' },
-    { id: 'work', label: '🔨 Робота' },
-    { id: 'minigame', label: '🎮 Ігри' },
-    { id: 'quiz', label: '📊 Квізи' },
-    { id: 'social', label: '💬 Соціальні' },
-    { id: 'streaks', label: '🔥 Стріки' },
-    { id: 'special', label: '⭐ Особливі' },
-];
-
-function setAchCat(cat) {
-    achCatFilter = cat;
-    switchTab('achievements');
-}
-
-function renderAchievements() {
-    const visible = myAchievements.filter(a => !a.isSecret || a.completed);
-    const filtered = achCatFilter === 'all' ? visible : visible.filter(a => a.category === achCatFilter);
-
-    const tabsHtml = ACH_CATEGORIES.map(c =>
-        `<button class="profile-secondary-tab ${achCatFilter === c.id ? 'active' : ''}"
-                 onclick="setAchCat('${c.id}')">${c.label}</button>`
-    ).join('');
-
-    let cardsHtml = filtered.map(a => {
-        const pct = a.target > 1 ? Math.min(100, Math.round((a.progress / a.target) * 100)) : (a.completed ? 100 : 0);
-        const rewardState = a.completed
-            ? '<span class="achievement-state achievement-state--claimed">Нагороду зараховано</span>'
-            : (a.progress > 0
-                ? '<span class="achievement-state achievement-state--progress">У процесі</span>'
-                : '<span class="achievement-state achievement-state--locked">Заблоковано</span>');
-        return `
-        <div class="achievement-card ${a.completed ? 'completed unlocked' : ''} ${!a.completed && a.progress === 0 ? 'locked' : ''}">
-            <div class="achievement-icon">${a.icon}</div>
-            <div class="achievement-info">
-                <h3>${escapeHtml(a.name)} <span class="rarity-badge rarity-${a.rarity}">${RARITY_LABELS[a.rarity] || a.rarity}</span></h3>
-                <p>${escapeHtml(a.description)}</p>
-                <div class="achievement-reward">+${a.rewardCoins} 💰 ${rewardState}</div>
-                ${a.target > 1 ? `
-                <div class="achievement-progress" style="height:6px;background:var(--gray-200);border-radius:3px;margin-top:6px">
-                    <div class="achievement-progress-fill" style="width:${pct}%;height:100%;border-radius:3px;background:var(--primary);transition:width 0.4s"></div>
-                </div>
-                <div style="font-size:11px;color:var(--gray-400);margin-top:2px">${a.progress}/${a.target}</div>
-                ` : ''}
-            </div>
-        </div>`;
-    }).join('');
-
-    if (!cardsHtml) cardsHtml = '<div class="empty-state"><div class="empty-state-icon">🏆</div><div class="empty-state-text">Немає ачивок в цій категорії</div></div>';
-
-    return `
-    <div class="achievements-section" style="margin-top:16px">
-        <h3 style="margin-bottom:12px">🏆 Ачивки (${visible.filter(a => a.completed).length}/${visible.length})</h3>
-        <div class="profile-secondary-tabs">${tabsHtml}</div>
-        <div class="achievements-grid">${cardsHtml}</div>
-    </div>`;
-}
-
 // ==========================================
 // NOTES
 // ==========================================
@@ -9260,311 +8942,6 @@ function renderNotes() {
 // ==========================================
 // QUESTS
 // ==========================================
-function renderDailyPreview() {
-    if (!questsData?.quests || questsData.quests.length === 0) return '';
-    const unclaimed = questsData.quests.filter(q => q.completed && !q.claimed).length;
-    const done = questsData.quests.filter(q => q.completed).length;
-    const total = questsData.quests.length;
-    const totalCoins = questsData.quests.reduce((s, q) => s + (q.rewardCoins || 0), 0);
-    const earnedCoins = questsData.quests.filter(q => q.claimed).reduce((s, q) => s + (q.rewardCoins || 0), 0);
-
-    // Show first 3 incomplete quests as preview
-    const preview = questsData.quests.filter(q => !q.claimed).slice(0, 3);
-    const previewHtml = preview.map(q => {
-        const icon = QUEST_ICONS[q.questType] || '📋';
-        const pct = q.targetValue > 0 ? Math.min(100, Math.round((q.progress / q.targetValue) * 100)) : 0;
-        const canClaim = q.completed && !q.claimed;
-        const pending = isRewardClaimPending('quest', q.id);
-        return `
-        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;${canClaim || pending ? 'opacity:1' : ''}">
-            <span style="font-size:18px;flex-shrink:0">${icon}</span>
-            <div style="flex:1;min-width:0">
-                <div style="font-size:13px;font-weight:600;color:var(--gray-700);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(q.title)}</div>
-                <div style="height:4px;background:var(--gray-200);border-radius:2px;margin-top:3px;overflow:hidden">
-                    <div style="height:100%;width:${pct}%;background:${canClaim ? '#22c55e' : 'var(--primary)'};border-radius:2px;transition:width 0.4s"></div>
-                </div>
-            </div>
-            <span style="font-size:11px;color:var(--gray-400);flex-shrink:0">${q.progress}/${q.targetValue}</span>
-            ${canClaim || pending ? renderRewardClaimButton('quest', q.id, 'Забрати', { stopPropagation: true, compact: true }) : ''}
-        </div>`;
-    }).join('');
-
-    return `
-    <div style="margin-bottom:16px;padding:16px;background:var(--gray-50,#f9fafb);border-radius:12px;border:1px solid var(--gray-100,#f3f4f6)">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-            <h3 style="margin:0;font-size:15px;font-weight:700">📋 Щоденні завдання</h3>
-            <div style="display:flex;gap:12px;align-items:center">
-                <span style="font-size:12px;color:var(--gray-400)">💰 ${earnedCoins}/${totalCoins}</span>
-                <span style="font-size:13px;font-weight:700;color:var(--primary)">${done}/${total}</span>
-            </div>
-        </div>
-        <div style="height:6px;background:var(--gray-200);border-radius:3px;overflow:hidden;margin-bottom:10px">
-            <div style="height:100%;width:${total > 0 ? Math.round(done/total*100) : 0}%;background:var(--primary);border-radius:3px;transition:width 0.4s"></div>
-        </div>
-        ${unclaimed > 0 ? `<div style="color:#22c55e;font-size:13px;font-weight:600;margin-bottom:8px;animation:badge-pulse 1.5s infinite">🎁 ${unclaimed} нагород готові до збору!</div>` : ''}
-        ${previewHtml}
-        ${questsData.quests.length > 3 ? `<button onclick="switchTab('quests')" style="margin-top:8px;width:100%;padding:8px 16px;border:none;border-radius:8px;background:var(--primary);color:#fff;font-weight:600;cursor:pointer;font-family:inherit;font-size:13px">Всі завдання →</button>` : ''}
-    </div>`;
-}
-
-function renderQuests() {
-    if (profileTabLock('quests')) return renderProfileComingSoon('quests');
-    if (!questsData?.quests) return '<div style="text-align:center;padding:40px;color:var(--gray-500)">Квести завантажуються...</div>';
-
-    const quests = questsData.quests;
-    let html = '<div class="quests-container" style="margin-top:16px">';
-    html += '<h3>Щоденні квести</h3>';
-
-    for (const q of quests) {
-        const icon = QUEST_ICONS[q.questType] || '📋';
-        const pct = q.targetValue > 0 ? Math.min(100, Math.round((q.progress / q.targetValue) * 100)) : 0;
-        const canClaim = q.completed && !q.claimed;
-        const pending = isRewardClaimPending('quest', q.id);
-
-        html += `
-        <div class="quest-card ${q.completed ? 'completed' : ''} ${q.claimed ? 'claimed' : ''}">
-            <div class="quest-icon">${icon}</div>
-            <div class="quest-info">
-                <div class="quest-title">${escapeHtml(q.title)}</div>
-                <div class="quest-desc">${escapeHtml(q.description)} (${q.progress}/${q.targetValue})</div>
-                <div class="quest-progress-bar"><div class="quest-progress-fill" style="width:${pct}%"></div></div>
-            </div>
-            <div style="text-align:right">
-                <div class="quest-reward">+${q.rewardCoins} \ud83d\udcb0</div>
-                ${canClaim || pending ? renderRewardClaimButton('quest', q.id, 'Забрати') : ''}
-                ${q.claimed ? '<span class="reward-state-badge reward-state-badge--claimed">Отримано</span>' : ''}
-            </div>
-        </div>`;
-    }
-
-    html += '</div>';
-    return html;
-}
-
-// ==========================================
-// TITLES
-// ==========================================
-function renderTitles() {
-    if (!titlesData?.titles) return '<div style="text-align:center;padding:40px;color:var(--gray-500)">Титули завантажуються...</div>';
-
-    let html = '<div style="margin-top:16px"><h3>Титули</h3>';
-    html += '<div class="titles-grid">';
-
-    for (const t of titlesData.titles) {
-        const isActive = titlesData.activeTitle === t.code;
-        html += `
-        <div class="title-card ${t.earned ? '' : 'locked'} ${isActive ? 'active' : ''}"
-             ${t.earned ? `onclick="setTitle('${escapeHtml(t.code)}')"` : ''}>
-            <div class="title-card-icon">${t.icon}</div>
-            <div>
-                <div class="title-card-name">${escapeHtml(t.name)} <span class="rarity-badge ${t.rarity}">${RARITY_LABELS[t.rarity]}</span></div>
-                <div class="title-card-desc">${escapeHtml(t.description)}</div>
-                ${!t.earned ? `<div style="font-size:10px;color:var(--gray-400);margin-top:2px">${escapeHtml(t.conditionType)}: ${t.conditionValue}</div>` : ''}
-            </div>
-        </div>`;
-    }
-
-    html += '</div>';
-    if (titlesData.activeTitle) {
-        html += `<button onclick="setTitle('')" style="margin-top:8px;padding:4px 12px;font-size:12px;border:1px solid var(--gray-300);border-radius:var(--radius-sm);background:none;cursor:pointer;color:var(--gray-500)">Зняти титул</button>`;
-    }
-    html += '</div>';
-    return html;
-}
-
-// ==========================================
-// SHOP TAB
-// ==========================================
-async function loadShopItems() {
-    if (profileTabLock('shop')) return;
-    const data = await apiGet('/gamification/shop');
-    shopItems = data || [];
-}
-
-function renderShopTab() {
-    if (profileTabLock('shop')) return renderProfileComingSoon('shop');
-    if (!shopItems.length) return '<div class="empty-state"><div class="empty-state-icon">🛒</div><div class="empty-state-text">Магазин порожній</div></div>';
-
-    const ownedCodes = new Set((myInventory || []).map(i => i.code));
-    const coins = walletData?.coins || 0;
-
-    let cardsHtml = shopItems.map(item => {
-        const owned = ownedCodes.has(item.code);
-        const canAfford = coins >= (item.priceCoins || item.price_coins || 0);
-        const price = item.priceCoins || item.price_coins || 0;
-        const emoji = CATEGORY_EMOJIS[item.category] || '📦';
-
-        return `
-        <div class="shop-card ${owned ? 'owned' : ''}" ${item.featured ? 'style="border-color:#fbbf24"' : ''}>
-            <div class="shop-icon">${emoji}</div>
-            <div class="shop-name">${escapeHtml(item.name)}</div>
-            ${item.description ? `<div class="shop-desc">${escapeHtml(item.description)}</div>` : ''}
-            <span class="rarity-badge rarity-${item.rarity}">${RARITY_LABELS[item.rarity] || item.rarity}</span>
-            <div class="shop-price" style="margin-top:8px">${price === 0 ? 'Безкоштовно' : `💰 ${formatCoins(price)}`}</div>
-            ${owned
-                ? '<button class="shop-buy-btn" disabled>✅ У вас є</button>'
-                : `<button class="shop-buy-btn" ${!canAfford ? 'disabled' : ''} onclick="buyItem(${item.id},'${escapeHtml(item.name).replace(/'/g, "\\'")}')">
-                    ${canAfford ? '🛒 Купити' : '🔒 Замало монет'}
-                   </button>`
-            }
-        </div>`;
-    }).join('');
-
-    return `
-    <div style="margin-top:16px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-            <h3>🛒 Магазин</h3>
-            <span class="coins-balance">🪙 ${formatCoins(coins)}</span>
-        </div>
-        <div class="shop-grid">${cardsHtml}</div>
-    </div>`;
-}
-
-async function buyItem(itemId, itemName) {
-    if (profileTabLock('shop')) {
-        if (typeof showNotification === 'function') showNotification('Магазин поки закритий для цієї ролі', 'warning');
-        return;
-    }
-    if (!await confirmModal(`Купити "${itemName}"?`, { okText: 'Купити', cancelText: 'Скасувати' })) return;
-    const result = await apiPost('/gamification/shop/buy', { itemId });
-    if (result?.success) {
-        if (typeof showNotification === 'function') showNotification(`Придбано: ${itemName}!`, 'success');
-        // Refresh data
-        walletData = await apiGet('/wallet');
-        myInventory = await apiGet('/inventory') || [];
-        await loadShopItems();
-        switchTab('shop');
-    } else {
-        if (typeof showNotification === 'function') showNotification(result?.error || 'Помилка покупки', 'error');
-    }
-}
-
-// ==========================================
-// LEADERBOARD TAB
-// ==========================================
-async function loadLeaderboard() {
-    leaderboardData = await apiGet(`/gamification/leaderboard?sort=${leaderboardSort}`);
-}
-
-function setLeaderboardSort(sort) {
-    leaderboardSort = sort;
-    leaderboardData = null;
-    switchTab('leaderboard');
-}
-
-function renderLeaderboardTab() {
-    // Mode toggle: Overall vs Monthly
-    const modeHtml = `
-    <div class="profile-secondary-tabs">
-        <button class="profile-secondary-tab ${leaderboardMode === 'overall' ? 'active' : ''}"
-                onclick="setLeaderboardMode('overall')">🏅 Загальний</button>
-        <button class="profile-secondary-tab ${leaderboardMode === 'monthly' ? 'active' : ''}"
-                onclick="setLeaderboardMode('monthly')">📅 Щомісячний</button>
-    </div>`;
-
-    if (leaderboardMode === 'monthly') {
-        return modeHtml + renderMonthlyLeaderboard();
-    }
-
-    if (!leaderboardData) return modeHtml + '<div class="empty-state"><div class="empty-state-icon">📊</div><div class="empty-state-text">Завантаження рейтингу...</div></div>';
-
-    const list = Array.isArray(leaderboardData) ? leaderboardData : (leaderboardData.leaderboard || []);
-    if (!list.length) return modeHtml + '<div class="empty-state"><div class="empty-state-icon">📊</div><div class="empty-state-text">Рейтинг поки порожній</div></div>';
-
-    const sortTabs = [
-        { id: 'xp', label: 'За XP' },
-        { id: 'coins', label: 'За монети' },
-        { id: 'achievements', label: 'За ачивки' }
-    ];
-
-    const tabsHtml = sortTabs.map(s =>
-        `<button class="profile-secondary-tab ${leaderboardSort === s.id ? 'active' : ''}"
-                 onclick="setLeaderboardSort('${s.id}')">${s.label}</button>`
-    ).join('');
-
-    const rankIcons = ['🥇', '🥈', '🥉'];
-    const listHtml = list.map((u, i) => {
-        const isMe = u.id === currentUserId || u.userId === currentUserId;
-        const avatarLetter = (u.displayName || u.username || '?')[0].toUpperCase();
-        const scoreValue = leaderboardSort === 'coins' ? formatCoins(u.coins) :
-                          leaderboardSort === 'achievements' ? (u.achievementsCount || u.achievements || 0) :
-                          formatCoins(u.xp || 0);
-        const scoreLabel = leaderboardSort === 'coins' ? 'монет' :
-                          leaderboardSort === 'achievements' ? 'ачивок' : 'XP';
-
-        return `
-        <div class="leaderboard-item ${isMe ? 'is-me' : ''}">
-            <div class="leaderboard-rank ${i < 3 ? `top-${i + 1}` : ''}">${rankIcons[i] || (i + 1)}</div>
-            <div class="leaderboard-avatar">${avatarLetter}</div>
-            <div class="leaderboard-user">
-                <div class="leaderboard-name">${escapeHtml(u.displayName || u.username)}</div>
-                <div class="leaderboard-title-text">${escapeHtml(u.activeTitle || u.role || '')}</div>
-            </div>
-            <div class="leaderboard-score">
-                <div class="leaderboard-score-value">${scoreValue}</div>
-                <div class="leaderboard-score-label">${scoreLabel}</div>
-            </div>
-        </div>`;
-    }).join('');
-
-    return `
-    <div style="margin-top:16px">
-        <h3 style="margin-bottom:12px">📊 Рейтинг</h3>
-        ${modeHtml}
-        <div class="profile-secondary-tabs">${tabsHtml}</div>
-        <div class="leaderboard-list">${listHtml}</div>
-    </div>`;
-}
-
-function renderMonthlyLeaderboard() {
-    const months = ['Січень','Лютий','Березень','Квітень','Травень','Червень','Липень','Серпень','Вересень','Жовтень','Листопад','Грудень'];
-    const categories = [
-        { id: 'overall', label: 'Загальний' },
-        { id: 'bookings', label: 'Бронювання' },
-        { id: 'tasks', label: 'Задачі' },
-        { id: 'xp', label: 'XP' },
-        { id: 'coins', label: 'Монети' }
-    ];
-
-    const catTabs = categories.map(c =>
-        `<button class="profile-secondary-tab ${monthlyCategory === c.id ? 'active' : ''}"
-                 onclick="setMonthlyFilter('${c.id}')">${c.label}</button>`
-    ).join('');
-
-    let listHtml = '';
-    const data = monthlyLeaderboard;
-    const list = data?.leaderboard || [];
-
-    if (list.length === 0) {
-        listHtml = '<div class="empty-state" style="padding:20px"><div class="empty-state-text">Немає даних за цей місяць. Рейтинг оновлюється автоматично.</div></div>';
-    } else {
-        const rankIcons = ['🥇', '🥈', '🥉'];
-        listHtml = `<div class="leaderboard-list">${list.map((u, i) => `
-            <div class="leaderboard-item">
-                <div class="leaderboard-rank ${i < 3 ? `top-${i + 1}` : ''}">${rankIcons[i] || u.rank || (i + 1)}</div>
-                <div class="leaderboard-avatar">${(u.display_name || u.username || '?')[0].toUpperCase()}</div>
-                <div class="leaderboard-user">
-                    <div class="leaderboard-name">${escapeHtml(u.display_name || u.username)}</div>
-                    <div class="leaderboard-title-text">${escapeHtml(u.title || '')}</div>
-                </div>
-                <div class="leaderboard-score">
-                    <div class="leaderboard-score-value">${formatCoins(u.score)}</div>
-                    <div class="leaderboard-score-label">${monthlyCategory}</div>
-                </div>
-            </div>
-        `).join('')}</div>`;
-    }
-
-    return `
-    <div style="margin-top:8px">
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
-            <h4>📅 ${months[monthlyMonth - 1]} ${monthlyYear}</h4>
-        </div>
-        <div class="profile-secondary-tabs">${catTabs}</div>
-        ${listHtml}
-    </div>`;
-}
-
 // ==========================================
 // MINI AVATAR (for chat)
 // ==========================================
@@ -9868,6 +9245,10 @@ function attachProfileListeners() {
         button.dataset.cabinetListModeBound = 'true';
         button.addEventListener('click', () => setCabinetMyDayListMode(button.dataset.cabinetListMode, { rerender: true }));
     });
+    window.ProfileMyDay?.bindViews(document.getElementById('cabinetMyDaySegmentPanel'), view => {
+        window.ProfileMyDay.setView(cabinetMyDayViewPreferenceKey(), view);
+        rerenderCabinetMyDaySegmentPanel();
+    });
     document.querySelectorAll('[data-cabinet-my-day-view-mode]').forEach(button => {
         if (button.dataset.cabinetMyDayViewModeBound === 'true') return;
         button.dataset.cabinetMyDayViewModeBound = 'true';
@@ -9892,22 +9273,14 @@ function attachProfileListeners() {
             button.disabled = true;
             button.classList.add('is-busy');
             try {
-                await refreshMyCabinetTab({ silent: false, keepExistingOnError: true });
+                await refreshMyCabinetTab({ force: true, silent: false, keepExistingOnError: true });
             } finally {
                 button.disabled = false;
                 button.classList.remove('is-busy');
             }
         });
     });
-    document.querySelectorAll('[data-cabinet-bucket-more]').forEach(button => {
-        if (button.dataset.cabinetBucketMoreBound === 'true') return;
-        button.dataset.cabinetBucketMoreBound = 'true';
-        button.addEventListener('click', event => {
-            event.preventDefault();
-            event.stopPropagation();
-            void loadCabinetBucketPage(button);
-        });
-    });
+    bindCabinetBucketButtons(document);
     document.querySelectorAll('[data-cabinet-day-more]').forEach(button => {
         if (button.dataset.cabinetDayMoreBound === 'true') return;
         button.dataset.cabinetDayMoreBound = 'true';
@@ -9961,32 +9334,6 @@ function attachProfileListeners() {
     bindCabinetSubtaskDragDrop();
     bindCabinetSubtasks();
 
-    const myDayTimeTracking = window.MyDayTimeTracking;
-    if (myDayTimeTracking) {
-        if (activeTab === 'myday') myDayTimeTracking.bind?.(document);
-        else myDayTimeTracking.syncTicker?.(false);
-    }
-    if (myDayTimeTracking && activeTab === 'myday' && !myDayTimeTracking.state.loaded && !myDayTimeTracking.state.loading) {
-        myDayTimeTracking.load().then(() => {
-            if (activeTab === 'myday') renderCabinetActiveTab();
-        }).catch(error => console.warn('My Day timer load failed', error));
-    }
-
-    const myDayClassification = window.MyDayClassification;
-    if (myDayClassification && activeTab === 'myday' && window.MyDayHabits?.state?.mode === 'habits') {
-        const rerenderMyDayClassificationSurface = async () => {
-            renderCabinetActiveTab();
-        };
-        myDayClassification.bind(document, rerenderMyDayClassificationSurface);
-        if (!myDayClassification.state.loaded && !myDayClassification.state.loading && !myDayClassification.state.error) {
-            const taxonomyLoad = myDayClassification.load();
-            if (myDayClassification.state.loading) rerenderMyDayClassificationSurface();
-            taxonomyLoad.then(rerenderMyDayClassificationSurface).catch(() => {
-                rerenderMyDayClassificationSurface();
-            });
-        }
-    }
-
     if (window.TaskAiDraft && activeTab === 'myday') {
         const composer = document.getElementById('cabinetTaskComposer');
         window.TaskAiDraft.bindComposer(composer, {
@@ -9999,32 +9346,6 @@ function attachProfileListeners() {
             requestSubmit: () => composer?.requestSubmit?.(),
             commitBundle: window.TaskCreate?.commitAiDraftBundle
         });
-    }
-
-    const myDayHabits = window.MyDayHabits;
-    if (myDayHabits && activeTab === 'myday') {
-        const rerenderMyDayHabitsSurface = async () => {
-            renderCabinetActiveTab();
-        };
-        myDayHabits.bind(document, rerenderMyDayHabitsSurface);
-        if (activeTab === 'myday' && myDayHabits.state.mode === 'habits' && !myDayHabits.state.loaded && !myDayHabits.state.loading) {
-            const habitsLoad = myDayHabits.load();
-            if (myDayHabits.state.loading) rerenderMyDayHabitsSurface();
-            habitsLoad.then(rerenderMyDayHabitsSurface).catch(rerenderMyDayHabitsSurface);
-        }
-        if (activeTab === 'myday' && myDayHabits.state.mode === 'contribution' && window.MyDayContribution && !window.MyDayContribution.state.loaded && !window.MyDayContribution.state.loading && !window.MyDayContribution.state.error) {
-            const contributionLoad = window.MyDayContribution.load();
-            if (window.MyDayContribution.state.loading) rerenderMyDayHabitsSurface();
-            contributionLoad.then(rerenderMyDayHabitsSurface).catch(rerenderMyDayHabitsSurface);
-        }
-        if (activeTab === 'myday' && window.MyDayContribution) {
-            window.MyDayContribution.bind(document, rerenderMyDayHabitsSurface);
-        }
-        if (myDayHabits.state.surface === 'setup' && !myDayHabits.state.settingsLoaded && !myDayHabits.state.settingsLoading) {
-            const settingsLoad = myDayHabits.loadSettings();
-            if (myDayHabits.state.settingsLoading) rerenderMyDayHabitsSurface();
-            settingsLoad.then(rerenderMyDayHabitsSurface).catch(rerenderMyDayHabitsSurface);
-        }
     }
 
     // Inventory slot click — equip/unequip
@@ -10699,6 +10020,11 @@ function setMonthlyFilter(category) {
 // ==========================================
 if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
     let profileTaskProjectionRefreshTimer = null;
+    for (const eventName of ['online', 'offline']) {
+        window.addEventListener(eventName, () => {
+            if (activeTab === 'myday') renderCabinetActiveTab();
+        });
+    }
     window.addEventListener('workingRoleChanged', () => {
         if (profileData && isOwnProfile) renderProfile();
     });
@@ -10716,21 +10042,6 @@ if (typeof window !== 'undefined' && typeof window.addEventListener === 'functio
                 console.warn('Profile task projection refresh failed', error);
             });
         }, 300);
-    });
-    window.addEventListener('crm:timer-updated', (event) => {
-        if (event?.detail?.source !== 'global') return;
-        if (!profileData || !isOwnProfile || activeTab !== 'myday') return;
-        window.clearTimeout(profileTaskProjectionRefreshTimer);
-        profileTaskProjectionRefreshTimer = window.setTimeout(async () => {
-            try {
-                await window.MyDayTimeTracking?.load?.();
-            } catch (error) {
-                console.warn('Profile My Day timer state refresh failed', error);
-            }
-            refreshMyCabinetTab({ silent: true, keepExistingOnError: true }).catch(error => {
-                console.warn('Profile My Day timer refresh failed', error);
-            });
-        }, 120);
     });
     window.addEventListener('task-ai-draft-bundle-committed', (event) => {
         if (!profileData || !isOwnProfile || !isProfileTaskProjectionTab(activeTab)) return;

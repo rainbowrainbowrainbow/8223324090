@@ -1,0 +1,136 @@
+export function createEmployeeRenderers({ escapeHtml, profileEmployeeDateText, profileEmployeeTime, profileEmployeeMoney,
+    profileEmployeeNumber, profileProfessionByKey, profileRoleLabel }) {
+    function renderProfileEmployeeDetails(title, rows, empty = 'Даних за цей період немає.', collapsed = false) {
+        const body = rows.length
+            ? `<ul>${rows.map(([label, value]) => `<li><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></li>`).join('')}</ul>`
+            : `<p>${escapeHtml(empty)}</p>`;
+        return collapsed
+            ? `<details class="profile-employee-details park-employee-disclosure"><summary>${title}</summary>${body}</details>`
+            : `<section class="profile-employee-details"><h3>${title}</h3>${body}</section>`;
+    }
+
+    function renderSalary(data) {
+        const disclosure = (title, rows, empty) => renderProfileEmployeeDetails(title, rows, empty, true);
+        const reportStatus = { preview: 'Попередній розрахунок', draft: 'Збережена чернетка', reviewed: 'Перевірено',
+            approved: 'Затверджено', paid: 'Закрито в обліку', voided: 'Скасовано', reversed: 'Сторновано' };
+        const adjustmentStatus = { applied: 'Враховано', pending: 'Очікує погодження', pending_review: 'Очікує погодження',
+            rejected: 'Відхилено', voided: 'Скасовано' };
+        const types = { bonus: 'Премія', kpi_bonus: 'Бонус за показниками', tip: 'Чайові', deduction: 'Утримання',
+            penalty: 'Штраф', advance: 'Аванс', zrs: 'ЗРС' };
+        const units = { hour: 'год', day: 'зміну', shift: 'зміну', month: 'місяць', piece: 'роботу' };
+        const installments = { advance: 'Аванс', final: 'Остаточна виплата' };
+        const paymentStatus = { draft: 'Чернетка', approved: 'Затверджено', paid: 'Виплачено',
+            partially_paid: 'Частково виплачено', cancelled: 'Скасовано' };
+        const detail = data.detail || {};
+        const work = [['Відпрацьовані дні', detail.shifts], ['Фізичні години', detail.physicalHours],
+            ['Години основних професій', detail.baseRoleHours], ['Години додаткових професій', detail.additionalRoleHours]];
+        const rates = (detail.rates || []).map(rate => {
+            const profession = profileProfessionByKey(rate.profession)?.title || profileRoleLabel(rate.profession || '');
+            const day = rate.date ? ` · ${profileEmployeeDateText(rate.date)}` : '';
+            const unit = units[rate.unit] ? ` за ${units[rate.unit]}` : '';
+            const workTime = rate.minutes > 0 ? ` · ${profileEmployeeNumber(rate.minutes / 60)} год`
+                : rate.days > 0 ? ` · змін: ${rate.days}` : '';
+            const period = rate.effectiveFrom || rate.effectiveTo
+                ? ` · дія: ${profileEmployeeDateText(rate.effectiveFrom)} — ${profileEmployeeDateText(rate.effectiveTo)}` : '';
+            return [`${profession}${rate.kind === 'additional' ? ' · додаткова оплата' : ''}${day}${workTime}${period}`,
+                `${profileEmployeeMoney(rate.rate)}${unit} · ${profileEmployeeMoney(rate.amount)}`];
+        });
+        const lines = (detail.lines || []).map(line => {
+            const quantity = line.kind === 'piece' && line.quantity != null
+                ? ` · ${profileEmployeeNumber(line.quantity)} од.` : '';
+            const rate = line.kind === 'piece' && line.rate != null
+                ? ` · ${profileEmployeeMoney(line.rate)} за роботу` : '';
+            return [`${line.label || 'Складова розрахунку'}${quantity}${rate}`, profileEmployeeMoney(line.amount)];
+        });
+        const adjustments = (data.adjustments || []).map(row => [
+            [profileEmployeeDateText(row.date), types[row.type] || 'Коригування', row.reason, adjustmentStatus[row.status] || 'Статус не визначено'].filter(Boolean).join(' · '),
+            profileEmployeeMoney(row.amount)
+        ]);
+        const late = (data.late || []).map(row => [
+            `${profileEmployeeDateText(row.date)} · план ${row.planned?.slice(0, 5) || '—'} · факт ${profileEmployeeDateText(row.actual, profileEmployeeTime)}`,
+            [`${row.minutes} хв`, ...(row.adjustments || []).map(item =>
+                `утримання: ${profileEmployeeMoney(item.amount)} (${adjustmentStatus[item.status] || 'статус не визначено'})`)].join(' · ')
+        ]);
+        const payments = (data.installments || []).flatMap(item => [
+            [[installments[item.kind] || 'Виплата', paymentStatus[item.status] || '', item.scheduled ? profileEmployeeDateText(item.scheduled) : ''].filter(Boolean).join(' · '),
+                item.approved == null ? `Попередньо: ${profileEmployeeMoney(item.calculated)}` : profileEmployeeMoney(item.approved)],
+            ...item.movements.map(movement => [
+                `${movement.kind === 'reversal' ? 'Сторно' : 'Фактична виплата'} · ${profileEmployeeDateText(movement.date)}`,
+                profileEmployeeMoney(movement.amount)
+            ])
+        ]);
+        return `
+            <p role="status">${escapeHtml(reportStatus[data.status] || 'За цей місяць немає збереженого розрахунку.')}
+                ${data.locked ? ' · період закрито' : ''}
+                ${data.updatedAt ? ` · станом на ${profileEmployeeDateText(data.updatedAt)}` : ''}</p>
+            <dl class="profile-employee-summary">
+                ${[['Нараховано', data.gross], ['Утримано', data.deductions], ['Виплачено', data.paid], ['Залишок до виплати', data.balance]]
+                    .map(([label, value]) => `<div><dt>${label}</dt><dd>${profileEmployeeMoney(value)}</dd></div>`).join('')}
+            </dl>
+            ${data.legacyAccounted ? '<p>Старий звіт закрито в обліку. Підтверджених дат і сум виплат у цьому джерелі немає.</p>' : ''}
+            ${detail.hasBlockingIssues ? '<p>Розрахунок містить позиції, які потребують звірки.</p>' : ''}
+            ${disclosure('Розрахунок', [
+                ...work.filter(([, value]) => value != null).map(([label, value]) => [label, profileEmployeeNumber(value)]),
+                ...lines,
+                ...(data.net != null ? [['Після утримань і врахованих авансів', profileEmployeeMoney(data.net)]] : [])
+            ])}
+            ${detail.effectiveFrom || detail.effectiveTo ? `<p>Період дії схеми: ${profileEmployeeDateText(detail.effectiveFrom)} — ${profileEmployeeDateText(detail.effectiveTo)}</p>` : ''}
+            ${disclosure('Ставки за професіями', rates, 'За цей місяць немає підтверджених даних про застосовані ставки.')}
+            ${disclosure('Премії та утримання за записами HR', adjustments)}
+            ${disclosure('Запізнення', late, 'Запізнень за журналом присутності не знайдено.')}
+            ${late.length ? '<p>Зв’язок показано для записів HR із датою порушення та правилом про запізнення.</p>' : ''}
+            ${disclosure('Аванси й виплати', payments, 'Підтверджених записів про виплати немає.')}
+        `;
+    }
+
+    function renderResults(data) {
+        const current = data.current;
+        const previous = data.previous;
+        const dateLabel = period => period.from && period.through
+            ? `${profileEmployeeDateText(period.from)} – ${profileEmployeeDateText(period.through)}`
+            : period.month;
+        const punctuality = period => period.attendance.measuredArrivals
+            ? `${period.attendance.onTime} із ${period.attendance.measuredArrivals}`
+            : 'Немає даних';
+        const groups = [
+            ['Вчасні приходи (із записів з відомим планом і фактом)', punctuality],
+            ['Зафіксовані приходи', period => period.attendance.present],
+            ['Зафіксовані відсутності', period => period.attendance.absent],
+            ['Запізнення', period => period.attendance.late],
+            ['Хвилини запізнення', period => period.attendance.lateMinutes],
+            ['Виконані робочі задачі', period => period.tasks.completed],
+            ['Прострочені робочі задачі', period => period.tasks.overdue],
+            ['Завершені пункти професійних чеклістів', period => period.checklistCompleted],
+            ['Завершені курси', period => period.coursesCompleted.length]
+        ];
+        const courses = current.coursesCompleted.map(course => [course.title, profileEmployeeDateText(course.date)]);
+        const ratings = current.ratings.filter(item => Number(item.score) >= 1 && Number(item.score) <= 5)
+            .map(item => [[profileEmployeeDateText(item.date), item.explanation].filter(Boolean).join(' · '), `${profileEmployeeNumber(Number(item.score))} із 5`]);
+        const admission = { approved: 'Допущено', pending: 'Очікує допуску', blocked: 'Допуск заблоковано', restricted: 'Обмежений допуск' };
+        const assignments = (data.currentAssignments || []).filter(item => admission[item.admissionStatus]).map(item => [
+            profileProfessionByKey(item.key)?.title || profileRoleLabel(item.key), admission[item.admissionStatus]
+        ]);
+        return `
+            <div class="profile-employee-comparison">
+                <table>
+                    <caption>Порівняння з попереднім місяцем</caption>
+                    <thead><tr><th scope="col">Показник</th><th scope="col">${escapeHtml(dateLabel(current))}</th><th scope="col">${escapeHtml(dateLabel(previous))}</th></tr></thead>
+                    <tbody>${groups.map(([label, read], index) => {
+                        const value = period => index > 0 && index < 5 && !period.attendance.daysRecorded ? 'Немає даних' : read(period);
+                        return `<tr><th scope="row">${escapeHtml(label)}</th><td>${escapeHtml(value(current))}</td><td>${escapeHtml(value(previous))}</td></tr>`;
+                    }).join('')}</tbody>
+                </table>
+            </div>
+            <p>Відвідуваність: журнал присутності. Задачі: командні робочі задачі, прив’язані до вашого акаунта,
+                за датою виконання або дедлайну. Особисті й приватні задачі не входять у показники.
+                Для поточного місяця зіставляємо однакову кількість календарних днів.</p>
+            <p><a href="/profile?tab=myday">Мої задачі</a> · <a href="/profile?tab=checklists">Чеклісти професій</a> · <a href="/profile?tab=materials">Навчальні матеріали</a></p>
+            ${renderProfileEmployeeDetails('Оцінки керівника', ratings, 'За цей місяць оцінок у журналі немає.')}
+            ${renderProfileEmployeeDetails('Завершені курси', courses)}
+            ${renderProfileEmployeeDetails('Поточні допуски', assignments, 'Немає підтверджених записів про допуски.')}
+            <p>Допуски показано за поточним станом. Помісячна історія допусків недоступна.</p>
+        `;
+    }
+
+    return { renderSalary, renderResults };
+}

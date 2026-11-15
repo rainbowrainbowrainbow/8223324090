@@ -52,6 +52,13 @@ steps together occupied one second at the Actions API timestamp resolution.
 | [`checkbox-openapi-contract.test.js` in `test:checkbox-thin`](https://github.com/rainbowrainbowrainbow/8223324090/blob/50dee4768720ab3967c38d63ed2a66ad32a7e578/package.json#L230) | `npm run test:checkbox-openapi-contract` remains in `npm test -> verify`. The file constructs its own official-shaped fixture and catches semantic drift, including response codes and required fields. Both original calls were Linux/Node 22 and used no database, browser, or job-specific fixture. The focused thin command continues to run its own remaining twelve files. To run both locally, use these two focused commands. |
 | [`buildCustomerSearchQuery` presence assertion inside `tests/booking-package-contract.test.js`](https://github.com/rainbowrainbowrainbow/8223324090/blob/50dee4768720ab3967c38d63ed2a66ad32a7e578/tests/booking-package-contract.test.js#L4732) | The identical source assertion remains in `tests/customer-search-query.test.js`, registered in the same aggregate unit list. It also checks that the route does not inline a second phone condition. A process-local source-read substitution hid the builder identifier and the retained assertion failed at the expected regular expression. The unmodified source passed. The surrounding booking assertions, including the phone digit assertion, retain their coverage. |
 
+The cleanup removes 171 repeated Node test-case executions per full workflow
+run based on the retained test-file results. The total includes 91 Railway
+pre-deploy cases, 42 scheduler notification cases, 18 scheduler guard cases,
+18 Education series cases and 2 Checkbox OpenAPI cases. The three duplicate
+source-check commands are counted separately. The only test-body deletion is
+one duplicate assertion, and every test case remains registered.
+
 For the Education shard commands, use installed Playwright Chromium and the
 existing guarded, disposable `eventgenix_education_ready_fixture_test` target.
 
@@ -120,7 +127,7 @@ was updated.
 | --- | --- |
 | `npm run check:runtime` | Node 22.23.4 / npm 10.9.9 passed. |
 | Education shard contract, isolated database flow, Railway predeploy and Railway static contract | 118 passed, 0 failed or skipped. |
-| Scheduler contracts and Checkbox OpenAPI contract | 66 passed, 0 failed. |
+| Scheduler contracts and Checkbox OpenAPI contract | 62 passed, 0 failed or skipped (42 scheduler notification, 18 scheduler guard, 2 Checkbox OpenAPI). |
 | `npm run check:migrations`, `npm run check:checkbox-openapi`, `npm run check:checkbox-safety` | All passed. |
 | Booking package, customer query and Checkbox OpenAPI contracts | 142 passed, 0 failed or skipped. |
 | `npm run test:checkbox-thin` | 281 passed, 0 failed or skipped, after correcting the gate wiring assertion. |

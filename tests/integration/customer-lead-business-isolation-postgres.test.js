@@ -74,6 +74,8 @@ test('customer and lead domains enforce business membership and related-record o
                 pipeline_stage TEXT DEFAULT 'new', lead_type TEXT DEFAULT 'quality', quality_category TEXT, milestone_tags TEXT[],
                 kanban_position NUMERIC, potential_value INT, lost_reason TEXT, external_id TEXT,
                 created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW(), last_contact_at TIMESTAMP, booked_at TIMESTAMP);
+            CREATE TABLE staff_substitutions (id BIGINT PRIMARY KEY, business_context TEXT NOT NULL,
+                work_date DATE NOT NULL, source_type TEXT NOT NULL, source_id TEXT NOT NULL, state TEXT NOT NULL);
             CREATE TABLE customer_cards (id SERIAL PRIMARY KEY, lead_id INT REFERENCES leads(id), business_context TEXT NOT NULL,
                 budget_approx INT, updated_at TIMESTAMP DEFAULT NOW());
             CREATE TABLE lead_event_preferences (id SERIAL PRIMARY KEY, lead_id INT REFERENCES leads(id), business_context TEXT,
@@ -136,6 +138,10 @@ test('customer and lead domains enforce business membership and related-record o
             INSERT INTO leads(id,business_context,client_name,phone,program_id,created_at) VALUES
                 (101,'dar','Fixture shared customer','+380000000111','dar-product',NOW()-INTERVAL '2 days'),
                 (102,'event_genix','Foreign lead','+380000000111','park-product',NOW()-INTERVAL '2 days');
+            INSERT INTO staff_substitutions(id,business_context,work_date,source_type,source_id,state)
+            VALUES
+                (501,'dar','2099-01-01','lead','101','active'),
+                (502,'event_genix','2099-01-02','lead','101','active');
             SELECT setval('leads_id_seq', 200);
             INSERT INTO customer_children(id,business_context,customer_id,name,source_kind) VALUES
                 (301,'dar',10,'Dar child','manual'),(302,'event_genix',10,'Foreign poisoned child','manual');
@@ -367,6 +373,7 @@ test('customer and lead domains enforce business membership and related-record o
             assert.equal(customer.body.context.live.exactConversations[0].replyDeliveryStatus, null);
             const lead = await request('GET', '/api/leads/101/workspace');
             assert.equal(lead.status, 200, JSON.stringify(lead.body));
+            assert.deepEqual(lead.body.workspace.lead.substitution, { id: '501', state: 'active' });
             assert.deepEqual(lead.body.workspace.conversations, [], 'phone/name matches are not confirmed lead links');
             assert.deepEqual(lead.body.workspace.conversationContext.suggestions.map(row => row.id).sort(), [201, 203]);
             assert.equal(lead.body.workspace.conversationContext.resolution.action, 'link');

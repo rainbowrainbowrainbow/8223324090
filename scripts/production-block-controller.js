@@ -4,7 +4,7 @@ const childProcess = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { requiresBuild: requiresArtifactBuild } = require('./runtime-artifact-inputs');
+const { inputs: artifactInputs, requiresBuild: requiresArtifactBuild } = require('./runtime-artifact-inputs');
 const {
     ProductionBlockError,
     MAX_VALIDITY_MS,
@@ -344,6 +344,15 @@ function changedPaths(base, head) {
     return output ? output.split(/\r?\n/).filter(Boolean) : [];
 }
 
+function assertRuntimeArtifactPushPaths(remoteSha, releaseSha, readGit = git) {
+    // An existing production SHA may already have its exact push workflow on retry.
+    if (remoteSha === releaseSha) return;
+    const matchingPaths = readGit(['diff', '--name-only', '--no-renames', remoteSha, releaseSha, '--', ...artifactInputs]);
+    fail(Boolean(matchingPaths),
+        'This push would not trigger Runtime artifact smoke. Prepare a release candidate with a version bump and verify the production ref before retrying.',
+        'PRODUCTION_BLOCK_ARTIFACT_TRIGGER_MISSING', { remoteSha, releaseSha });
+}
+
 function loadMigrations(paths) {
     return paths
         .filter(file => /^db\/migrations\/\d{3}_[a-z0-9_]+\.sql$/.test(file.replaceAll('\\', '/')))
@@ -516,28 +525,33 @@ function defaultRuntime() {
                 commandResult('git', ['add', '--', ...releasePaths]);
                 const versionStatus = git(['status', '--porcelain']);
                 if (versionStatus) commandResult('git', ['commit', '-m', `Release ${manifest.releaseLabel}`], { inherit: true });
-                }
+            }
             const releaseSha = git(['rev-parse', 'HEAD']).toLowerCase();
             fail(gitIsAncestor(manifest.initialHeadSha, releaseSha),
                 'Release commit is not a descendant of the authorized functional SHA', 'PRODUCTION_BLOCK_RELEASE_SHA_DRIFT');
             const migrationFiles = loadMigrations(changedPaths(manifest.baseLiveSha, releaseSha)).map(item => item.file).sort();
             fail(JSON.stringify(migrationFiles) === JSON.stringify(manifest.allowedMigrationFiles),
                 'Migration set drifted after authorization', 'PRODUCTION_BLOCK_MIGRATION_DRIFT');
-            if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS) {
-                assertPreparedProductionBase(manifest, await liveVersion(), remoteProductionSha());
+            const protectedRelease = isPreparedProtectedRelease(manifest);
+            const workflow = manifest.allowedProtectedWorkflow?.kind;
+            const remoteSha = remoteProductionSha();
+            if (workflow === PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS) {
+                assertPreparedProductionBase(manifest, await liveVersion(), remoteSha);
                 assertFreelanceRecoveryBase();
             }
-            if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE) {
-                assertPreparedProductionBase(manifest, await liveVersion(), remoteProductionSha());
+            if (workflow === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE) {
+                assertPreparedProductionBase(manifest, await liveVersion(), remoteSha);
                 assertPerformanceCiRecoveryBase();
             }
             if (profileEmployee) await assertStandardProductionBase(manifest, manifest.baseLiveSha);
-            const artifactBase = profileEmployee ? manifest.baseLiveSha
-                : isPreparedProtectedRelease(manifest) ? null : remoteProductionSha();
+            if (needsRuntimeArtifactRun(manifest)) assertRuntimeArtifactPushPaths(remoteSha, releaseSha);
+            fail(remoteProductionSha() === remoteSha,
+                'Remote production changed while verifying push checks', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
+            const artifactBase = profileEmployee ? manifest.baseLiveSha : remoteSha;
             runAuthorizedReleaseStage(manifest, blockFile,
-                'git', ['push', 'origin', `HEAD:refs/heads/${manifest.allowedBranch}`], { inherit: true });
+                'git', ['push', 'origin', `${releaseSha}:refs/heads/${manifest.allowedBranch}`], { inherit: true });
             const { run: exact, evidence: ci } = waitForProductionCi(releaseSha);
-            if (isPreparedProtectedRelease(manifest) && !profileEmployee) {
+            if (protectedRelease && !profileEmployee) {
                 if (manifest.allowedProtectedWorkflow.kind === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE) {
                     const { evidence: artifact } = waitForProductionCi(releaseSha, 'runtime-artifact.yml', 'Runtime artifact smoke');
                     assertPerformanceCiResult(ci, artifact, releaseSha);
@@ -958,12 +972,10 @@ function releaseCommandPlan(manifest) {
         ...(isPreparedProtectedRelease(manifest)
             ? ['npm run check:version (prepared exact SHA)']
             : [`npm run version:bump -- patch --label "${manifest.releaseLabel}"`]),
-        `git push origin HEAD:refs/heads/${manifest.allowedBranch}`,
+        ...(needsRuntimeArtifactRun(manifest) ? ['Verify Runtime artifact smoke trigger against the production push diff'] : []),
+        `git push origin <exact-release-sha>:refs/heads/${manifest.allowedBranch}`,
         'gh run watch <exact-sha-run> --exit-status',
-        ...(!isPreparedProtectedRelease(manifest)
-            || [PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE, PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE,
-                PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS]
-                .includes(manifest.allowedProtectedWorkflow?.kind)
+        ...(needsRuntimeArtifactRun(manifest)
             ? ['gh run watch <exact-sha-runtime-artifact-run> --exit-status'] : []),
         `npm run release:railway-up -- --branch ${manifest.allowedBranch} --project ${manifest.railwayProjectId} --environment ${manifest.railwayEnvironment} --service ${manifest.railwayServiceId}`,
         'npm run version:smoke -- <live-url>',
@@ -975,6 +987,12 @@ function releaseCommandPlan(manifest) {
             : manifest.allowedQaScope?.enabled
                 ? ['npm run qa:timeline:controller -- --action run <authorized-scope>'] : [])
     ];
+}
+
+function needsRuntimeArtifactRun(manifest) {
+    return !isPreparedProtectedRelease(manifest)
+        || [PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE, PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE,
+            PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS].includes(manifest.allowedProtectedWorkflow?.kind);
 }
 
 async function prepareAction(options, runtime) {
@@ -1263,6 +1281,7 @@ module.exports = {
     assertExecuteDrift,
     assertHrPayrollProductionBase: assertPreparedProductionBase,
     assertPreparedProductionBase,
+    assertRuntimeArtifactPushPaths,
     assertFailedFinanceRetryCi,
     assertHrPayrollCiResult,
     assertPerformanceCiResult,

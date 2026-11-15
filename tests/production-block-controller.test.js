@@ -35,6 +35,7 @@ const {
     applyReleaseNotes,
     assertHrPayrollProductionBase,
     assertPreparedProductionBase,
+    assertRuntimeArtifactPushPaths,
     assertHrPayrollCiResult,
     assertPerformanceCiResult,
     assertFailedPerformanceCiRun,
@@ -1117,6 +1118,27 @@ test('runtime artifact probe ignores version metadata and builds when packaging 
     for (const file of artifactInputs.filter(file => !Object.hasOwn(before, file))) assert.equal(compare([file]), true);
     assert.equal(requiresBuild(LIVE_SHA, HEAD_SHA, () => { throw new Error('Missing shallow history'); }), true);
     assert.equal(requiresBuild('not-a-sha', HEAD_SHA), true);
+});
+
+test('release requires a runtime artifact trigger in the production push diff', () => {
+    const expectDiff = output => args => {
+        assert.deepEqual(args, ['diff', '--name-only', '--no-renames', HEAD_SHA, RELEASE_SHA, '--', ...artifactInputs]);
+        return output;
+    };
+    assert.throws(() => assertRuntimeArtifactPushPaths(HEAD_SHA, RELEASE_SHA, expectDiff('')),
+        { code: 'PRODUCTION_BLOCK_ARTIFACT_TRIGGER_MISSING' });
+    assert.doesNotThrow(() => assertRuntimeArtifactPushPaths(HEAD_SHA, RELEASE_SHA, expectDiff('package.json')));
+    assert.doesNotThrow(() => assertRuntimeArtifactPushPaths(RELEASE_SHA, RELEASE_SHA, () => {
+        assert.fail('A retry of an existing production SHA must use its existing exact workflow run');
+    }));
+});
+
+test('runtime artifact push paths match the controller preflight inputs', () => {
+    const workflow = fs.readFileSync(path.join(__dirname, '../.github/workflows/runtime-artifact.yml'), 'utf8');
+    const pushPaths = workflow.match(/^  push:\r?\n    paths:\r?\n((?:      - [^\r\n]+\r?\n)+)/m);
+    assert.ok(pushPaths, 'Expected an explicit push paths filter');
+    assert.deepEqual(pushPaths[1].trim().split(/\r?\n/).map(line => line.trim().slice(2)).sort(),
+        [...artifactInputs].sort());
 });
 
 test('HR/payroll selects only the latest exact production push CI', () => {

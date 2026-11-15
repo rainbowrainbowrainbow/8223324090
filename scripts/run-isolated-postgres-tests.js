@@ -176,9 +176,11 @@ const MODES = {
     backfill: ['tests/integration/hr-legacy-hire-backfill.integration.test.js'],
     'upload-backfill': ['tests/integration/legacy-upload-backfill.integration.test.js'],
     fullstack: ['tests/integration/staff-account-boundary.integration.test.js', 'tests/integration/hr-fixture-qa.integration.test.js',
+        'tests/integration/freelance-shift-blocks.integration.test.js',
         'tests/browser/hr-staff-creation-browser-smoke.js',
         'tests/browser/hr-onboarding-fullstack-browser-smoke.js', 'tests/browser/hr-pay-actual-app-browser-smoke.js',
-        'tests/browser/hr-attendance-ocr-actual-app-browser-smoke.js', 'tests/browser/finance-money-actual-app-browser-smoke.js'],
+        'tests/browser/hr-attendance-ocr-actual-app-browser-smoke.js', 'tests/browser/finance-money-actual-app-browser-smoke.js',
+        'tests/browser/freelance-shift-actual-app.js'],
     qa: [
         'tests/integration/live-multi-segment-qa.integration.test.js',
         'tests/integration/live-multi-segment-runner.integration.test.js'
@@ -589,10 +591,13 @@ function assertLocalManualMoneyDatabase(testDb) {
 }
 
 async function runSuite(testDb, testFile, suiteMode) {
+    const freelanceBrowser = testFile === 'tests/browser/freelance-shift-actual-app.js';
+    const freelanceIntegration = testFile === 'tests/integration/freelance-shift-blocks.integration.test.js';
     if (testFile.includes('finance-money-movements.integration.test.js')
         || testFile.includes('finance-money-qa.integration.test.js')
         || testFile.includes('finance-qa-report-scope.test.js')
-        || testFile.includes('finance-money-actual-app-browser-smoke.js')) {
+        || testFile.includes('finance-money-actual-app-browser-smoke.js')
+        || freelanceBrowser || freelanceIntegration) {
         assertLocalManualMoneyDatabase(testDb);
     }
     const port = await reservePort();
@@ -804,6 +809,8 @@ async function runSuite(testDb, testFile, suiteMode) {
         RUN_LEGACY_UPLOAD_BACKFILL_INTEGRATION: testFile.includes('legacy-upload-backfill.integration') ? 'true' : 'false',
         RUN_HR_PAY_ACTUAL_APP_BROWSER: testFile.includes('hr-pay-actual-app-browser-smoke') ? 'true' : 'false',
         RUN_HR_ONBOARDING_FULLSTACK_BROWSER: testFile.includes('hr-onboarding-fullstack-browser-smoke') ? 'true' : 'false',
+        RUN_FREELANCE_SHIFT_INTEGRATION: freelanceIntegration ? 'true' : 'false',
+        ...(freelanceBrowser ? { RUN_FREELANCE_SHIFT_BROWSER: 'true', FREELANCE_BROWSER_MEMBERSHIP: 'true' } : {}),
         RUN_FRESH_DB_STARTUP_INTEGRATION: testFile.includes('fresh-db-startup') ? 'true' : 'false',
         RUN_LIVE_MULTI_SEGMENT_QA_INTEGRATION: testFile.includes('live-multi-segment') ? 'true' : 'false'
     };

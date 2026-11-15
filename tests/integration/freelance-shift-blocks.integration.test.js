@@ -51,8 +51,8 @@ test('mixed shift mode survives PostgreSQL reload and cannot enter payroll befor
         const separateSegmentId = separate.plan.segments[0].id;
         const substitution = await loadSubstitutionScope(client, 'event_genix', {}, {
             sourceType: 'hr_shift', sourceId: separate.shift.id, slotKey: 'primary', workDate: separateDate,
-            originalStaffId: staff.id, staffId: staff.id + 1, professionKey: profession, breakMinutes: 0,
-            startsAt: '2026-11-12T09:00:00+02:00', endsAt: '2026-11-12T12:00:00+02:00',
+            originalStaffId: staff.id, staffId: staff.id + 1, professionKey: profession, breakMinutes: separate.plan.breakMinutes,
+            startsAt: '2026-11-12T07:00:00.000Z', endsAt: '2026-11-12T10:00:00.000Z',
             payMode: 'replace_base', originalTreatment: 'transfer_unworked_scope'
         });
         assert.deepEqual(substitution.blockers.map(item => item.code), ['SUBSTITUTION_FREELANCE_SHIFT_UNSUPPORTED']);

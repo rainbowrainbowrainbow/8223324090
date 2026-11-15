@@ -296,7 +296,11 @@ Inside a valid Yellow envelope:
 1. Confirm HEAD, branch, live base and remote state still match the envelope
    and the expected release stage. Recheck live and remote again before upload.
 2. Confirm no new migration or Red-scope file appeared.
-3. Push only the exact approved candidate to
+3. When the release requires `Runtime artifact smoke`, verify that the exact
+   candidate's diff against the current remote production tip matches its push
+   paths filter. If the candidate is already on the remote, the controller
+   still requires its existing exact production-push workflow run.
+   Push only the exact approved candidate to
    `codex/eventgenix-production`.
 4. Record the resulting 40-character SHA.
 5. Wait for the `CI` workflow for the exact production push. An ordinary

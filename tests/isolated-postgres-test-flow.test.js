@@ -432,7 +432,21 @@ describe('isolated PostgreSQL test flow safety', () => {
         assert.match(runner, /backfill:\s*\[\s*'tests\/integration\/hr-legacy-hire-backfill\.integration\.test\.js'\s*\]/);
         assert.match(runner, /'upload-backfill':\s*\[\s*'tests\/integration\/legacy-upload-backfill\.integration\.test\.js'\s*\]/);
         assert.match(runner, /RUN_LEGACY_UPLOAD_BACKFILL_INTEGRATION/);
-        assert.match(runner, /fullstack:\s*\[\s*'tests\/integration\/staff-account-boundary\.integration\.test\.js',\s*'tests\/integration\/hr-fixture-qa\.integration\.test\.js',\s*'tests\/browser\/hr-staff-creation-browser-smoke\.js',\s*'tests\/browser\/hr-onboarding-fullstack-browser-smoke\.js',\s*'tests\/browser\/hr-pay-actual-app-browser-smoke\.js',\s*'tests\/browser\/hr-attendance-ocr-actual-app-browser-smoke\.js',\s*'tests\/browser\/finance-money-actual-app-browser-smoke\.js'\s*\]/);
+        const fullstack = runner.match(/\bfullstack:\s*\[([^\]]+)\]/);
+        assert.ok(fullstack);
+        assert.deepEqual([...fullstack[1].matchAll(/'([^']+)'/g)].map(([, file]) => file), [
+            'tests/integration/staff-account-boundary.integration.test.js',
+            'tests/integration/hr-fixture-qa.integration.test.js',
+            'tests/integration/freelance-shift-blocks.integration.test.js',
+            'tests/browser/hr-staff-creation-browser-smoke.js',
+            'tests/browser/hr-onboarding-fullstack-browser-smoke.js',
+            'tests/browser/hr-pay-actual-app-browser-smoke.js',
+            'tests/browser/hr-attendance-ocr-actual-app-browser-smoke.js',
+            'tests/browser/finance-money-actual-app-browser-smoke.js',
+            'tests/browser/freelance-shift-actual-app.js'
+        ]);
+        assert.match(runner, /RUN_FREELANCE_SHIFT_INTEGRATION/);
+        assert.match(runner, /RUN_FREELANCE_SHIFT_BROWSER/);
         assert.match(onboardingSuite, /RUN_HR_ONBOARDING_INTEGRATION/);
         assert.match(runner, /RUN_ACCOUNT_ONBOARDING_INTEGRATION/);
         assert.match(accountOnboardingSuite, /transactional account onboarding on isolated PostgreSQL/);

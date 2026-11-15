@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const bcrypt = require('bcryptjs');
 const { Pool } = require('pg');
-const { chromium } = require('playwright');
+const { chromium } = require('../helpers/playwright')();
 const { assertSafeIsolatedTestUrl, assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
 
 async function run() {
@@ -244,7 +244,9 @@ async function run() {
                     return box && box.left >= -0.01 && box.right <= width + 0.01 && box.height >= 43.99;
                 });
             }, width);
-            await saveScreenshot(`schedule-actions-${width}`);
+            await page.locator('.staff-schedule-command-bar').screenshot({
+                path: path.join(out, `schedule-actions-${width}.png`), animations: 'disabled'
+            });
             await page.keyboard.press('Tab');
             assert.equal(await copy.evaluate(node => document.activeElement === node), true);
             await copy.press('Escape');

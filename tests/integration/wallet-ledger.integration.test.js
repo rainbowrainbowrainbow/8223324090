@@ -1,6 +1,6 @@
 'use strict';
 
-// Real HTTP/auth/routes/PostgreSQL. The existing runner owns the disposable DB.
+// Real HTTP/auth/routes/PostgreSQL with a test-only mount for the retired Wallet router.
 // TEST_DATABASE_URL + TEST_DATABASE_RESET_CONFIRM are required; no production fallback.
 // node tests/integration/wallet-ledger.integration.test.js --isolated
 const assert = require('node:assert/strict');
@@ -35,16 +35,37 @@ if (process.argv.includes('--isolated')) {
         assert.equal(process.env.REQUIRE_ISOLATED_TEST_TARGET, 'true');
         const target = assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env);
         assert.equal(target.isLocal, true);
-        assertSafeIsolatedTestUrl(process.env.TEST_URL);
-        const db = new Pool({ connectionString: target.url.toString(), max: 2, ssl: false });
-        const base = new URL(process.env.TEST_URL).origin;
-        const timezone = (await db.query('SHOW TimeZone')).rows[0].TimeZone;
+        assert.equal(process.env.DATABASE_URL, '');
+        assert.equal(process.env.PGHOST, target.hostname);
+        assert.equal(process.env.PGPORT, target.url.port || '5432');
+        assert.equal(process.env.PGDATABASE, target.databaseName);
+        const base = assertSafeIsolatedTestUrl(process.env.TEST_URL).origin;
         const variant = process.env.WALLET_SCHEMA_VARIANT;
         assert.ok(['migrated', 'deployed'].includes(variant));
         const deployed = variant === 'deployed';
-        const evidence = { scope: 'Disposable loopback app, actual auth/Wallet routes/PostgreSQL', timezone, variant, checks: [], blockers: [] };
-        const request = async (user, endpoint, body, expected = 200) => {
-            const response = await fetch(`${base}/api/${endpoint}`, {
+
+        const express = require('express');
+        const { pool: walletPool } = require('../../db');
+        const { authenticateToken } = require('../../middleware/auth');
+        const { requestIdMiddleware } = require('../../middleware/requestId');
+        const { errorResponseMetadata } = require('../../middleware/errorResponseMetadata');
+        const walletApp = express();
+        walletApp.use(express.json(), requestIdMiddleware, errorResponseMetadata);
+        walletApp.use('/api/wallet', authenticateToken, require('../../routes/wallet'));
+        const server = walletApp.listen(0, '127.0.0.1');
+        t.after(async () => {
+            server.closeAllConnections();
+            await new Promise(resolve => server.close(resolve));
+            await walletPool.end();
+        });
+        await require('node:events').once(server, 'listening');
+        const walletBase = `http://127.0.0.1:${server.address().port}`;
+
+        const db = new Pool({ connectionString: target.url.toString(), max: 2, ssl: false });
+        const timezone = (await db.query('SHOW TimeZone')).rows[0].TimeZone;
+        const evidence = { scope: 'Disposable CRM auth and route retirement, isolated Wallet router and PostgreSQL ledger', timezone, variant, checks: [], blockers: [] };
+        const request = async (user, endpoint, body, expected = 200, origin = walletBase) => {
+            const response = await fetch(`${origin}/api/${endpoint}`, {
                 method: body ? 'POST' : 'GET',
                 headers: { 'Content-Type': 'application/json', ...(user?.token ? { Authorization: `Bearer ${user.token}` } : {}) },
                 body: body ? JSON.stringify(body) : undefined,
@@ -60,7 +81,7 @@ if (process.argv.includes('--isolated')) {
                 [username, await bcrypt.hash(password, 4), 'QA Wallet Synthetic', 'animator']);
             const id = result.rows[0].id;
             if (coins !== null) await db.query('INSERT INTO game_wallets (user_id, coins, total_earned) VALUES ($1, $2, $2)', [id, coins]);
-            const session = await request(null, 'auth/login', { username, password });
+            const session = await request(null, 'auth/login', { username, password }, 200, base);
             const token = session.accessToken || session.token;
             assert.ok(token, 'Authenticated synthetic user');
             return { id, username, token };
@@ -94,6 +115,24 @@ if (process.argv.includes('--isolated')) {
                     username VARCHAR(50), CONSTRAINT qa_wallet_inventory_pk PRIMARY KEY(id),
                     CONSTRAINT qa_wallet_inventory_owner_item UNIQUE(user_id,item_id))`);
             }
+            await check('CRM rejects retired Wallet requests without changing the ledger', async () => {
+                const sender = await fixture(100);
+                const recipient = await fixture(0);
+                const senderBefore = await balance(sender);
+                const recipientBefore = await balance(recipient);
+                for (const [endpoint, body] of [
+                    ['wallet'],
+                    ['wallet/daily-login', {}],
+                    ['wallet/transfer', { to_user_id: recipient.id, amount: 15 }]
+                ]) {
+                    const result = await request(sender, endpoint, body, 410, base);
+                    assert.equal(result.code, 'MODULE_UNAVAILABLE');
+                }
+                assert.deepEqual(await balance(sender), senderBefore);
+                assert.deepEqual(await balance(recipient), recipientBefore);
+                assert.deepEqual(await ledger(sender), []);
+                assert.deepEqual(await ledger(recipient), []);
+            });
             await check('concurrent first wallet reads create exactly one starter ledger entry', async () => {
                 const user = await fixture();
                 const blocker = await db.connect();

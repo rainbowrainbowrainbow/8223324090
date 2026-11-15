@@ -251,8 +251,14 @@ async function run() {
         const desktopCopyBox=await copyButton.boundingBox();
         assert.ok(desktopCopyBox&&desktopCopyBox.width>=34&&desktopCopyBox.height>=34,'copy action keeps a usable desktop target');
         await page.setViewportSize({width:390,height:844});
+        const scheduleActions=page.getByRole('button',{name:'Дії графіка'});
+        await scheduleActions.waitFor({state:'visible'});
+        assert.equal(await scheduleActions.getAttribute('aria-expanded'),'false');
+        assert.equal(await copyButton.isVisible(),false,'copy is behind the mobile disclosure');
+        await scheduleActions.click();
+        await copyButton.waitFor({state:'visible'});
         const mobileCopyBox=await copyButton.boundingBox();
-        assert.ok(mobileCopyBox&&mobileCopyBox.width>=34&&mobileCopyBox.height>=34,'copy action keeps a usable mobile target');
+        assert.ok(mobileCopyBox&&mobileCopyBox.width>=43.5&&mobileCopyBox.height>=43.5,'copy action keeps a usable mobile target');
         await page.setViewportSize({width:1440,height:1000});
         assert.equal((await db.query('SELECT id FROM payroll_day_exceptions WHERE staff_id=$1 AND work_date=$2',[staffId,copiedDay])).rows.length,0);
         assert.ok((await db.query('SELECT id FROM hr_shifts WHERE staff_id=$1 AND shift_date=$2',[staffId,copiedDay])).rows.length>0,'copied schedule has a canonical HR shift');

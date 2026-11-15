@@ -2214,7 +2214,7 @@ async function assertNarrowMobileContract(page, label, options) {
         const command = document.querySelector('.staff-schedule-command-bar');
         const week = document.querySelector('.staff-schedule-command-bar .week-nav');
         const range = document.querySelector('.staff-schedule-range-row');
-        const actions = document.querySelector('.staff-schedule-header-actions');
+        const actions = document.querySelector('.staff-schedule-operations');
         const search = document.querySelector('.staff-schedule-search-row');
         const departments = document.querySelector('#deptFilter');
         const wrapper = document.querySelector('#scheduleWrapper');
@@ -2244,6 +2244,7 @@ async function assertNarrowMobileContract(page, label, options) {
             '#scheduleDateTo',
             '#applyScheduleRangeBtn',
             '.staff-schedule-range-preset',
+            '#staffScheduleActionsToggle',
             '#exportExcelBtn',
             '#printBtn',
             '#scheduleStaffSearch',
@@ -2335,7 +2336,7 @@ async function assertNarrowMobileContract(page, label, options) {
         assert.equal(scroll.lastReachable, true, `${label}: the last ${name} item is fully reachable`);
     }
 
-    assert.ok(metrics.weekBox && metrics.rangeBox && metrics.actionsBox && metrics.searchBox && metrics.departmentBox, `${label}: mobile command rows are measurable`);
+    assert.ok(metrics.weekBox && metrics.rangeBox && metrics.actionsBox?.width > 0 && metrics.searchBox && metrics.departmentBox, `${label}: mobile command rows are measurable`);
     assert.ok(metrics.rangeBox.top >= metrics.weekBox.bottom - 2, `${label}: range controls follow week navigation`);
     assert.ok(metrics.actionsBox.top >= metrics.rangeBox.bottom - 2, `${label}: actions follow range controls`);
     assert.ok(metrics.searchBox.top >= metrics.actionsBox.bottom - 2, `${label}: search follows actions`);
@@ -4109,6 +4110,12 @@ async function runMobileFlow(browser, base, viewport = { width: 390, height: 844
         await expandAllScheduleGroups(page);
         await applyPreset(page, 'first-half');
         await waitForDayColumns(page, 15);
+        const actionsToggle = page.getByRole('button', { name: 'Дії графіка' });
+        assert.equal(await actionsToggle.getAttribute('aria-expanded'), 'false');
+        assert.equal(await page.locator('#printBtn').isVisible(), false);
+        await actionsToggle.tap();
+        assert.equal(await actionsToggle.getAttribute('aria-expanded'), 'true');
+        await page.locator('#printBtn').waitFor({ state: 'visible' });
         await assertNoControlOverlap(page, `${label} first-half`);
         await assertDepartmentChipsFit(page, `${label} first-half`);
         await applyManualRange(page, '2026-07-01', '2026-07-31');

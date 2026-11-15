@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.83.77",
+  "version": "0.83.78",
   "eventGenix": {
-    "releaseLabel": "Задачі Telegram у Моєму дні"
+    "releaseLabel": "Журнал і робочі процеси підмін"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

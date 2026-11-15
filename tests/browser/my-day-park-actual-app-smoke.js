@@ -173,9 +173,15 @@ async function run() {
         assert.equal(Number(await todayBadge.textContent()), beforeCompletion);
 
         const titleButton = work.locator('[data-cabinet-task-action=open]');
+        const workId = await work.getAttribute('data-task-id');
+        const taskDialog = page.getByRole('dialog', { name: 'Підготувати матеріали до зустрічі ' + suffix });
         await titleButton.click();
-        await page.waitForURL(url => url.pathname === '/tasks' && url.searchParams.has('open'));
+        await page.waitForURL(url => url.pathname === '/profile'
+            && url.searchParams.get('tab') === 'myday' && url.searchParams.get('open') === workId);
+        await taskDialog.getByText('Виконую', { exact: true }).waitFor();
+        assert.ok(await taskDialog.getByRole('button', { name: 'Закрити' }).evaluate(node => node === document.activeElement));
         await page.goBack();
+        await taskDialog.waitFor({ state: 'hidden' });
         await work.waitFor();
         await page.locator('[data-park-my-day-view=future]').click();
         await page.reload();
@@ -198,6 +204,12 @@ async function run() {
         await dateDialog.locator('.confirm-ok').click();
         assert.ok((await rescheduled).ok());
         await page.locator('[data-park-my-day-view=future]').click();
+        await work.waitFor();
+        await page.goto(origin + `/profile?tab=myday&open=${workId}&date=${futureDate}`);
+        await taskDialog.getByText('Виконую', { exact: true }).waitFor();
+        await taskDialog.locator(`time[datetime="${futureDate}"]`).waitFor();
+        await page.keyboard.press('Escape');
+        await page.waitForURL(url => url.pathname === '/profile' && !url.searchParams.has('open'));
         await work.waitFor();
         await work.getByRole('button', { name: 'Редагувати' }).click();
         await page.waitForURL(url => url.pathname === '/tasks' && url.searchParams.get('mode') === 'edit');

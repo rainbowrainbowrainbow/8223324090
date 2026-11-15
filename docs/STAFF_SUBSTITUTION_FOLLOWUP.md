@@ -196,7 +196,10 @@ Authenticated production QA is blocked while the required local test
 credentials file is absent. Keep test-account QA separate from any real
 payroll reconciliation. The local journal lets authorized users filter by
 date and either participant and inspect the stored role, planned interval,
-frozen rate, confirmed minutes, amount, and revision history.
+frozen rate, confirmed minutes, amount, and revision history. A write whose
+response was lost can be retried from its original Park or DAR cabinet using
+the same request key. Switching cabinets preserves that pending request for
+later retry in the original cabinet.
 
 ## Acceptance still outstanding
 

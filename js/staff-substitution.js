@@ -2,11 +2,17 @@
 (function () {
     'use strict';
     let busy = false;
-    let pendingCommand = null;
+    const pendingCommands = new Map();
+    let operationBusiness = null;
     const host = () => document.getElementById('staffSubstitutionActions');
     const dar = () => host()?.dataset.substitutionBusiness === 'dar';
     const timelineBusiness = () => window.TimelineBusinessContext?.current?.()?.apiValue;
     const isDarSchedule = () => timelineBusiness() === 'dar' && window.TimelineBusinessContext?.presentation?.()?.mode === 'education';
+    function currentCabinet() {
+        if (dar()) return isDarSchedule() ? 'dar' : null;
+        const business = window.CrmBusinessContext ? window.CrmBusinessContext.current() : 'event_genix';
+        return business === 'event_genix' ? business : null;
+    }
     const canManage = () => ['hr.schedule.manage','hr.payroll.manage','manage_payroll_rules','edit_booking'].every(action => canUseAction(action));
     const labels = { active: 'Заплановано', completed: 'Виконано', cancelled: 'Скасовано' };
     const actions = {create:'Створено',revise:'Умови змінено',complete:'Виконання підтверджено',cancel:'Скасовано'};
@@ -17,26 +23,33 @@
     const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 
     async function request(method, path, body) {
-        if (dar()) {
-            if (!isDarSchedule()) throw new Error('Поверніться до навчального розкладу Дару, щоб продовжити.');
-            path += `${path.includes('?') ? '&' : '?'}businessContext=dar`;
+        const business = operationBusiness;
+        if (!business || business !== currentCabinet()) {
+            throw new Error('Кабінет змінився. Поверніться до нього, щоб продовжити.');
         }
-        const response = await apiCall(method, `/staff-substitutions${path}`, body);
+        const isCommand = body != null && pendingCommands.get(business)?.body === body;
+        const scope = `${path.includes('?') ? '&' : '?'}businessContext=${business}`;
+        const response = await apiCall(method, `/staff-substitutions${path}${scope}`, body);
+        if (isCommand && response?.success === false && response?.code) pendingCommands.delete(business);
+        if (!isCommand && business !== currentCabinet()) throw new Error('Кабінет змінився. Відкрийте підміни ще раз.');
         if (!response?.success) {
-            if (response?.success === false && response?.code) pendingCommand = null;
-            throw new Error(response?.error || 'З’єднання перервано. Запит збережено до повторної спроби на цій сторінці.');
+            throw new Error(response?.error || (isCommand
+                ? 'З’єднання перервано. Запит збережено до повторної спроби в цьому кабінеті.'
+                : 'З’єднання перервано. Повторіть дію.'));
         }
         return response.data;
     }
     async function saveCommand(path, body) {
-        pendingCommand = { path, body: { ...body, requestKey: crypto.randomUUID() } };
+        if (operationBusiness !== currentCabinet()) throw new Error('Кабінет змінився. Відкрийте підміни ще раз.');
+        pendingCommands.set(operationBusiness, { path, body: { ...body, requestKey: crypto.randomUUID() } });
         return resumeCommand();
     }
     async function resumeCommand() {
-        const command = pendingCommand;
+        const business = operationBusiness;
+        const command = pendingCommands.get(business);
         const result = await request('POST', command.path, command.body);
-        pendingCommand = null;
-        window.dispatchEvent(new CustomEvent('staff-substitution:changed', { detail: { business: dar() ? 'dar' : 'event_genix' } }));
+        pendingCommands.delete(business);
+        window.dispatchEvent(new CustomEvent('staff-substitution:changed', { detail: { business } }));
         return result;
     }
     function localTime(date, time, offset) {
@@ -341,11 +354,14 @@
 
     async function run(work) {
         if (busy) return;
+        const business = currentCabinet();
+        if (!business) return;
         busy = true;
+        operationBusiness = business;
         const trigger = document.activeElement;
         if (trigger instanceof HTMLButtonElement) trigger.disabled = true;
         try {
-            if (pendingCommand) {
+            if (pendingCommands.has(business)) {
                 const retry = await confirmModal('Попередній запит не отримав підтвердження. Повторити його з тим самим ключем, щоб уникнути подвійної підміни?', {okText:'Повторити запит',cancelText:'Закрити'});
                 if (retry) { await resumeCommand(); showNotification('Запит підтверджено без повторного нарахування','success'); }
                 return;
@@ -353,13 +369,13 @@
             await work();
         }
         catch (error) { showNotification(error.message, 'error'); }
-        finally { busy = false; if (trigger instanceof HTMLButtonElement) trigger.disabled = false; trigger?.focus?.(); }
+        finally { operationBusiness = null; busy = false; if (trigger instanceof HTMLButtonElement) trigger.disabled = false; trigger?.focus?.(); }
     }
     function install() {
         const container = host();
         if (!container) return;
         container.hidden = !(typeof canUseAction === 'function' && canUseAction('hr.staff.view') && canUseAction('hr.payroll.view')
-            && (!dar() || isDarSchedule()));
+            && currentCabinet());
         if (dar()) container.querySelector('[data-substitution-action="create"]').hidden = !(!container.hidden && canManage());
         if (container.dataset.ready) return;
         container.dataset.ready = 'true';
@@ -376,9 +392,10 @@
     window.addEventListener('timeline:business-context-changed', install);
     window.addEventListener('timeline:display-settings-changed', install);
     window.addEventListener('crmBusinessProfileChanged', install);
+    window.addEventListener('crmBusinessContextChanged', install);
     window.addEventListener('popstate', install);
     window.addEventListener('crm:auth-cleared', () => {
-        pendingCommand = null;
+        pendingCommands.clear();
         const container = host();
         if (container) container.hidden = true;
     });

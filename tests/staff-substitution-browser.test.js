@@ -15,6 +15,7 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
     const index = await fs.readFile(path.join(root, 'index.html'), 'utf8');
     const darActions = index.match(/<div id="staffSubstitutionActions"[^>]+>[\s\S]*?<\/div>/)[0];
     const commands=[];
+    const commandBusinesses=[];
     const journalFilters=[];
     const entry={id:'21',state:'completed',input:{staffId:2,originalStaffId:3,professionKey:'reception',
         sourceType:'hr_shift',workDate:'2099-01-13',workload:'Підмінити адміністратора на рецепції',payUnit:'hour',
@@ -90,6 +91,7 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
                 return res.end(JSON.stringify({success:true,data:contract.preview(input,{blockers:[],commitments:[],payImpact,evidence:{source}})}));
             }
             commands.push(payload);
+            commandBusinesses.push(url.searchParams.get('businessContext'));
             if(loseResponse){loseResponse=false;res.end('{"success":');return;}
             return res.end(JSON.stringify({success:true,data:{id:'1',state:'active'}}));
         }
@@ -164,11 +166,34 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
             await page.getByRole('button',{name:'Погоджую наслідки та зберігаю'}).click();
             await page.waitForFunction(()=>!document.querySelector('[data-substitution-action="create"]').disabled);
             if(name==='desktop'){
+                assert.equal(commands.length, before + 1);
+                await page.getByRole('button', { name: 'Людина на заміну', exact: true }).click();
+                await page.getByRole('button', { name: 'Повторити запит', exact: true }).waitFor();
+                await page.evaluate(() => {
+                    document.getElementById('staffSubstitutionActions').dataset.substitutionBusiness = 'dar';
+                    window.TimelineBusinessContext = { current: () => ({ apiValue: 'dar' }), presentation: () => ({ mode: 'education' }) };
+                    window.dispatchEvent(new Event('timeline:business-context-changed'));
+                });
+                await page.getByRole('button', { name: 'Повторити запит', exact: true }).click();
+                await page.waitForFunction(() => !document.querySelector('[data-substitution-action="create"]').disabled);
+                assert.equal(commands.length, before + 1, 'a confirmation opened in Park cannot write after switching to DAR');
+                await page.getByRole('button', { name: 'Підміни', exact: true }).click();
+                await active().getByLabel('Викладач', { exact: true }).waitFor();
+                assert.equal(await page.getByRole('button', { name: 'Повторити запит', exact: true }).count(), 0);
+                assert.equal(commands.length, before + 1, 'the Park write is not replayed in DAR');
+                await active().getByRole('button', { name: 'Скасувати', exact: true }).click();
+                await page.waitForFunction(() => !document.querySelector('[data-substitution-action="list"]').disabled);
+                await page.evaluate(() => {
+                    delete document.getElementById('staffSubstitutionActions').dataset.substitutionBusiness;
+                    window.CrmBusinessContext = { current: () => 'event_genix' };
+                    window.dispatchEvent(new Event('crmBusinessContextChanged'));
+                });
                 await page.getByRole('button',{name:'Людина на заміну',exact:true}).click();
                 await page.getByRole('button',{name:'Повторити запит',exact:true}).click();
                 await page.waitForFunction(()=>!document.querySelector('[data-substitution-action="create"]').disabled);
                 assert.equal(commands.length,before+2);
                 assert.deepEqual(commands.at(-1),commands.at(-2),'lost-response retry preserves request identity and payload');
+                assert.deepEqual(commandBusinesses.slice(-2), ['event_genix', 'event_genix']);
             }else {
                 assert.equal(commands.length,before+1);
                 assert.equal(commands.at(-1).input.slotKey, name === 'mobile' ? 'partial' : 'second');

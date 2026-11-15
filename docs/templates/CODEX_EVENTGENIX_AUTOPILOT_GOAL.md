@@ -10,19 +10,21 @@ Constraints:
 - Work in one isolated clean worktree.
 - Preserve the dirty main checkout and unrelated changes.
 - Green work continues automatically.
-- Production work uses one bounded Yellow controller block.
-- Red actions stop for a separate exact decision.
+- Explicit production delivery in this Goal authorizes the ordinary release
+  through one bounded Yellow controller block without a second confirmation.
+- Migrations, production writes, and protected workflows need exact approval.
 
 Acceptance criteria:
 - Final code and required tests are complete.
-- Exact-SHA CI is green.
+- Exact-SHA CI is green when production is in scope.
 - Deploy and live proof exist when production is in scope.
-- Disposable QA state and cleanup/TTL evidence exist when live QA is in scope.
+- Disposable QA state and cleanup/TTL evidence exist when write QA is authorized.
 - UI screenshots/report exist when UI is in scope.
 - Remaining risks and rollback path are documented.
 
 Allowed side effects:
-<feature commits/push, production release, disposable QA scope, or none>
+<local implementation, or ship this task to production with read-only live QA>
+<if needed, record exact additional authorization and its scope>
 
 Stopping rules:
 - Stop on Red scope, real-data risk, target drift, expired authorization,

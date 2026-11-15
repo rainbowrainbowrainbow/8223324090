@@ -56,10 +56,20 @@ A Yellow authorization is valid only:
 - for no longer than six hours;
 - for no more than three release attempts.
 
-The authorization may be present in the current request or supplied as the exact
-named block confirmation. Once supplied, do not ask again while all envelope
-boundaries still match. Managed policy or tool approval may still require a
-platform-level review; never treat auto-review as broader permission.
+An explicit request or Goal to ship this task to production authorizes the
+ordinary release below. Record the request and its deadline, prepare the
+controller manifest, and proceed without asking the owner to repeat approval.
+Implementation-only requests and Goals authorize local work by default.
+
+An ordinary release covers the task's code, tests, release metadata, commit,
+production push, exact-SHA CI, Railway helper deploy, and read-only live QA. It
+uses the fixed production branch and service below. Migrations, data-fixes,
+disposable production writes and cleanup need exact bounded approval. Red scope
+and protected release workflows require their own exact approval. See the
+runbook for binding the owner authorization to the controller manifest.
+
+Once authorization is supplied, continue while all envelope boundaries match.
+Managed policy or tool approval may still require platform-level review.
 
 ### Red - always require separate explicit approval
 
@@ -70,7 +80,8 @@ Red work includes:
 - authentication, authorization, roles, permissions, or sessions;
 - payments, invoices, billing, or payroll;
 - production secrets or environment variables;
-- Railway/GitHub project, service, environment, or deployment settings;
+- Railway/GitHub project, service, environment, or deployment settings, and
+  changes to GitHub workflows;
 - force-push, destructive rollback, dropping data, or rewriting shared history;
 - changing the protected booking contract or protected-surface manifest.
 
@@ -78,7 +89,7 @@ Stop with an exact blocker before a Red action, even when a Yellow envelope exis
 
 ## Warning Format
 
-Before every Yellow or Red block, show:
+When exact owner approval is still needed for a Yellow or Red block, show:
 
 ```text
 УВАГА · <BLOCK-ID>
@@ -98,8 +109,10 @@ Before every Yellow or Red block, show:
 ```
 
 Do not fragment one production release into repeated approval questions.
-Before presenting a Yellow release block, check the current live/remote refs,
-parallel release markers, and the release helper's same-version guard. When the
+Before executing an already authorized ordinary release, share the target and
+scope as a short status update and proceed. Before preparing any Yellow release
+block, check the current live/remote refs, parallel release markers, and the
+release helper's same-version guard. When the
 owner has not pinned an exact version, propose the next free patch and state any
 allowed descendant rule in that one block. Keep the approved scope and all
 existing drift, expiry, CI, and Red stop conditions intact.
@@ -145,8 +158,12 @@ The normal delivery path is:
   `docs/templates/`. The skill coordinates existing policy; it grants no new
   production permission.
 
-- If the user explicitly asks to deliver/release/deploy/ship end-to-end, proceed through the authorized stages without repeated confirmation.
+- If the user explicitly asks to ship to production, use the bounded controller
+  and proceed through the authorized stages without repeated confirmation.
 - Production-write stages still require a valid Yellow envelope; Red actions are never implied.
+- Run focused checks during development. The production controller runs the
+  local `npm test` baseline once per attempt before push. Run only additional
+  checks required by the change, then require green CI for the exact release SHA.
 - Diagnose failed CI before deployment.
 - Do not claim checks ran when they did not.
 - Do not commit, push, create a PR, or deploy unless the current request or active authorization includes that stage.

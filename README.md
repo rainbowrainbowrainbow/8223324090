@@ -165,7 +165,7 @@ Notes:
 - `npm run qa:live:multi-segment -- https://<crm-host>` runs the opt-in disposable live acceptance flow documented in [docs/LIVE_MULTI_SEGMENT_QA.md](docs/LIVE_MULTI_SEGMENT_QA.md).
 - `npm run test:integration` runs the broader `tests/*.test.js` suite and also expects a configured local app/database.
 - `node --test tests/<file>.test.js` is still preferred for focused service or route tests.
-- `npm run release:gate` is the pre-deploy gate: it checks current version/branch state and runs the full local verification baseline; with a live URL it also runs live smoke/proof.
+- `npm run release:gate` is a standalone diagnostic for version, branch, and the full local baseline. With a live URL it also runs live smoke/proof. The production controller runs the local baseline as part of the release.
 - `npm run smoke:live -- https://<live-crm-host>` is the post-deploy smoke: version, light health, readiness/deep schema diagnostics, and authenticated bookings/lines/leads contracts.
 - `npm run qa:live:authenticated` is the manual authenticated production release gate for HR, Staff, Training, Finance and Check-in. It reads only the dedicated local QA credentials, blocks browser business mutations, and restores the QA role in `finally`; see [docs/LIVE_AUTHENTICATED_SURFACE_QA.md](docs/LIVE_AUTHENTICATED_SURFACE_QA.md).
 - `npm run smoke:my-day -- https://<live-crm-host>` is the read-only browser smoke for `Profile -> Мій день`: compact capsule, two-column today/overdue workspace, collapsed completion history, responsive overflow, and no task mutation requests.
@@ -231,7 +231,7 @@ For user-visible or deployable product changes:
 3. Update `CHANGELOG.md` when the change is release-relevant.
 4. Run `npm run version:sync` only when you intend to update generated version references.
 5. Run `npm run check:version`; it must fail on any drift between `package.json`, visible UI, cache-bust tags, changelog, service-worker caches, or `/api/version` ownership.
-6. Before deploy, run `npm run release:gate` and do not deploy if it fails.
+6. For production delivery, use the bounded controller. It runs `npm test` before push and waits for green CI on the exact release SHA. A separate `release:gate` run is unnecessary in this flow.
 7. After deploy, run `npm run smoke:live -- https://<live-crm-host>` and `npm run version:smoke -- https://<live-crm-host>`; treat a mismatch or `schema.status != ok` as an incomplete deploy.
 8. For timeline releases, also run `npm run release:timeline-proof -- https://<live-crm-host>`; it proves `/`, `/maysternya-doli`, timeline assets, and Service Worker cache names are all on the current version.
 
@@ -246,7 +246,11 @@ the v0.81.13 marker-hygiene release. Confirm the live `/api/version` branch and
 exact SHA before every release or rollback. Keep
 `codex/checkbox-hardening-release-v080103` as the pre-v0.81.13 rollback marker.
 
-- Do not deploy unless explicitly asked.
+- An explicit request or Goal to ship to production authorizes the ordinary
+  code release through live read-only QA without a second confirmation. Use
+  the [production runbook](docs/CODEX_PRODUCTION_AUTONOMY.md#ordinary-release-authorized-by-the-task)
+  for the controller manifest and the exact approval required for migrations,
+  production writes, or protected workflows.
 - Railway GitHub auto-deploy is disabled for the production app service.
   Production deploys must be promoted manually only after the required GitHub
   CI checks are green for the exact release SHA. Deploy the exact validated SHA; use `npm run release:railway-up`, which deploys a clean git-archive export by default, and do not rely on an implicit local-directory upload for production release.

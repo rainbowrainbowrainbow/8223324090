@@ -39,8 +39,30 @@ The envelope expires at the earliest of:
 - branch, service, action scope, or data-boundary drift;
 - three release attempts.
 
-An authorization in the current request is valid when it names the same protected
-action and boundaries. Otherwise, use the exact warning template below.
+#### Ordinary release authorized by the task
+
+An explicit instruction in the current task or Goal to ship to production
+(for example, `доведи до продакшену`) authorizes one ordinary release of that
+task. This includes functional and release commits, push to the fixed production
+branch, exact-SHA CI, deploy to the fixed Railway service, and read-only live QA.
+An implementation-only Goal authorizes local work by default.
+
+Use this scope only when the full live-to-candidate diff contains no migrations,
+production data-fix or write-QA work, or Red/protected release changes. Consider
+runtime side effects such as new startup jobs that write real data. Each migration,
+disposable QA write or cleanup, and protected workflow needs exact bounded owner
+authorization under its applicable Yellow or Red rules. An exact authorization
+already supplied in the current task remains valid within those bounds.
+
+Record the user instruction and its time, the task scope, the fixed destination,
+the initial candidate and permitted descendants, the live base, and the rollback
+reference. Start the six-hour cap at the user's production instruction and use
+the earlier of that deadline and the manifest expiry. Set `--validity-minutes`
+to no more than the remaining whole minutes. If less than the controller's
+five-minute minimum remains, stop before preparing a new manifest. Keep the same
+deadline and total limit of three attempts across any retry or handoff. If a
+new manifest is required within the same scope, set `--max-release-attempts` to
+no more than the remaining budget and retain the prior attempt evidence.
 
 ### Red
 
@@ -51,13 +73,17 @@ Always stop for a separate exact approval before:
 - auth, role, permission, or session changes;
 - payment, invoice, billing, or payroll operations;
 - production secret or environment changes;
-- Railway/GitHub project or service settings;
+- Railway/GitHub project or service settings and changes to GitHub workflows;
 - force-push, destructive rollback, history rewrite, or data drop;
 - protected booking contract or protected manifest changes.
 
 Yellow authorization never implies Red authorization.
 
 ## 2. Owner Warning Template
+
+Use the template only when exact owner authorization is still needed. For an
+already authorized ordinary release, send a short status update with the scope,
+target and deadline and proceed.
 
 ```text
 УВАГА · <BLOCK-ID>
@@ -89,7 +115,7 @@ A production block should name:
 Do not request a second approval for normal push, CI wait, deploy, version proof,
 and approved disposable QA inside the same valid envelope.
 
-Before drafting that single warning, check both live and remote production,
+Before preparing the block, check both live and remote production,
 nearby in-flight releases, the current patch marker, and the Railway helper's
 same-version guard. If a deployable candidate needs a version bump, describe it
 as the next free patch unless the owner requires an exact version. State the
@@ -154,11 +180,17 @@ Never stash, reset, checkout, delete, or rewrite another user's dirty work.
 
 ## 5. Read-Only Production Preflight
 
-Before asking for Yellow authorization:
+Before preparing or executing a Yellow release:
 
 1. Read live `/api/version`.
-2. Confirm the active source branch and exact live SHA.
-3. Confirm the candidate is a descendant of the live SHA.
+2. Confirm the active source branch, exact live SHA and current remote production
+   SHA. For an ordinary first attempt, require live and remote to match, or
+   verify that remote is ahead only by the policy documentation commits defined
+   below. On a scoped retry, the remote may hold only the recorded candidate
+   pushed by this block, with the original live base still in place. Check for
+   in-flight releases and resolve a version collision before attempting to push.
+3. Confirm the candidate is a descendant of the live SHA and, for an ordinary
+   release, of the verified remote tip.
 4. Inspect `railway status --json` without changing settings.
 5. Confirm project `fortunate-appreciation`, environment `production`, service
    `8223324090`, and the intended domain.
@@ -171,10 +203,31 @@ Before asking for Yellow authorization:
    - `mixed`.
 8. Define the live QA scope and whether it is read-only or disposable-write.
 9. Define the previous live SHA and migration rollback mapping.
-10. Generate the owner warning and wait once.
+10. For an ordinary release with explicit production intent, record the existing
+    authorization and proceed to the controller. If exact owner approval is
+    missing for the required scope, show one warning and wait for that decision.
 
 Preparation must not push, deploy, execute migrations, create QA records, or
 change production state.
+
+### Policy documentation on the production branch
+
+When the owner authorizes publishing policy documentation to the production
+branch, push the reviewed documentation commits without a version bump or
+Railway upload. For the next ordinary release, an ahead-of-live remote tip is
+acceptable if live is its ancestor, the intervening commits contain no merges,
+and each commit changes only these files:
+
+- `AGENTS.md` and `README.md`;
+- `docs/CODEX_PRODUCTION_AUTONOMY.md` and `docs/RELEASE_RELIABILITY.md`;
+- `docs/templates/CODEX_EVENTGENIX_AUTOPILOT_GOAL.md` and
+  `docs/templates/CODEX_EVENTGENIX_HEARTBEAT.md`.
+
+Inspect each commit between live and remote with rename detection disabled. If
+any commit falls outside that list, stop and reconcile the branch before the
+ordinary release. Include the verified remote tip in the next candidate and
+keep the actual live SHA as the release manifest's live base. The next runtime
+release follows normal versioning, CI, and live proof.
 
 ## 6. Migration Safety
 
@@ -204,17 +257,11 @@ Never execute arbitrary SQL as part of a generic release command.
 
 ## 7. Validation Before Push
 
-Run checks proportional to the change. The normal production baseline is:
-
-1. targeted tests for the changed area;
-2. `npm run check:runtime`;
-3. `npm run check:migrations`;
-4. `npm run check:syntax`;
-5. `npm run test:unit`;
-6. `npm run test:ui`;
-7. `npm run check:timeline-protected-surface` when booking/timeline code is in
-   scope;
-8. full `npm test` for the release candidate.
+Run focused tests during development and any additional checks required by the
+change. The controller runs the full local `npm test` baseline once per release
+attempt before push. Skip a separate `release:gate` invocation and individual
+baseline checks that would merely repeat that run. The standalone `release:gate`
+command remains available for manual validation or diagnosis.
 
 `npm test` is the fast repository baseline. It includes runtime/version guards,
 access/auth/static/CSS/API/storage/service-worker/scheduler/DB-startup ownership,
@@ -246,7 +293,8 @@ Do not report skipped checks as passed.
 
 Inside a valid Yellow envelope:
 
-1. Confirm HEAD and branch still match the envelope.
+1. Confirm HEAD, branch, live base and remote state still match the envelope
+   and the expected release stage. Recheck live and remote again before upload.
 2. Confirm no new migration or Red-scope file appeared.
 3. Push only the exact approved candidate to
    `codex/eventgenix-production`.
@@ -291,8 +339,16 @@ double-boundary form above.
 manifest under the operating-system temporary directory. It records the exact
 live/candidate SHAs, fixed branch and Railway target, migration classifications,
 QA scope, rollback reference, six-hour maximum lifetime, and three-attempt
-maximum. It prints one authorization warning and the exact controller
-confirmation. `execute` rejects expired manifests, target/SHA/migration drift,
+maximum. It prints a warning and the exact controller confirmation. For an
+ordinary release already authorized by the task, use the `confirmation` value
+returned by that `prepare` invocation with the same `blockFile`. The value
+binds `execute` to the manifest. Owner authorization comes from the recorded
+request. Run `prepare` with `--qa-scope none` and confirm the manifest has no
+migrations and no protected workflow before executing. For a release needing
+exact owner approval, obtain or verify that approval for the bound scope before
+using the confirmation value.
+
+`execute` rejects expired manifests, target/SHA/migration drift,
 Red paths, unknown/cleanup/mixed migrations, attempt exhaustion, and any
 confirmation mismatch. `--dry-run` validates the full envelope and prints only
 the fixed orchestration plan; it performs no push, deploy, migration, or QA
@@ -633,12 +689,13 @@ Long EventGenix work may be launched explicitly with
 idle turn, attach one same-task, 15-minute bounded heartbeat using
 `docs/templates/CODEX_EVENTGENIX_HEARTBEAT.md`.
 
-The heartbeat observes active work, resumes only idle incomplete Green work,
-waits for in-flight commands, continues an already-authorized Yellow envelope,
-and stops on a new Red requirement. It must be disabled when acceptance is
-complete or the Goal is stopped. Reconnect by reopening the same task and
-auditing Goal/worktree/block/CI/QA state before resuming; never start a second
-writer on the same branch/worktree.
+The heartbeat observes active work, resumes idle incomplete Green work, waits
+for in-flight commands, and continues authorized Yellow work. It may prepare an
+ordinary manifest when the Goal already authorizes production delivery. It stops
+when the next action requires additional exact approval. Disable it when
+acceptance is complete or the Goal is stopped. Reconnect by reopening the same
+task and auditing Goal/worktree/block/CI/QA state before resuming; never start a
+second writer on the same branch/worktree.
 
 ## 17. Instruction Discovery And Restart
 

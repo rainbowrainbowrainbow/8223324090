@@ -113,24 +113,17 @@ documented exception.
 
 ## Перед Деплоєм
 
-Запустити:
+Штатний реліз проходить через
+[production controller](CODEX_PRODUCTION_AUTONOMY.md#10-railway-deployment).
+Контролер виконує локальний `npm test` перед пушем і чекає на зелений CI для
+точного SHA перед деплоєм. Окремий запуск `release:gate` у цьому процесі зайвий.
 
-```bash
-npm run release:gate
-```
-
-Команда виконує:
-- `npm run version:current`;
-- повний `npm test`;
-- якщо передано live URL, також `smoke:live` і `release:timeline-proof`.
-
-Приклад із live URL:
+Для окремої діагностики можна запустити перевірку версії, локальні тести й live
+smoke однією командою:
 
 ```bash
 npm run release:gate -- https://<live-crm-host>
 ```
-
-Якщо `release:gate` червоний, деплой не починати.
 
 ## Після Деплою
 
@@ -188,7 +181,7 @@ runtime-схема готова, але їх треба розбирати як 
 
 ## Зміна Підходу
 
-- Не деплоїти без зеленого `release:gate`.
+- Деплоїти після успішної локальної перевірки та зеленого CI на точному SHA.
 - Не вважати реліз готовим без live smoke.
 - Public-only smoke достатній тільки для перевірки, що app ожив після deploy;
   повне закриття релізу потребує `LIVE_SMOKE_TOKEN` або live login/password.

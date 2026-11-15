@@ -39,7 +39,17 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
             res.setHeader('Content-Type','application/json');
             const dar = url.searchParams.get('businessContext') === 'dar';
             if (dar && url.pathname.endsWith('/accruals')) return res.end(JSON.stringify({success:true,
-                data:{totalMinor:32550,rows:[{date:'2099-02-10',teacherName:'Синтетична викладачка',lessonId:'DAR-QA',amountMinor:32550}]}}));
+                data:{totalMinor:45100,rows:[
+                    {id:'31',date:'2099-02-10',teacherName:'Синтетична викладачка',lessonId:'DAR-QA',amountMinor:32550},
+                    {id:'32',date:'2099-02-10',teacherName:'Синтетична викладачка',lessonId:'DAR-QA-B',amountMinor:12550}
+                ]}}));
+            if (dar && url.pathname.endsWith('/32/history')) return res.end(JSON.stringify({ success: true, data: {
+                substitution: { ...entry, id: '32', input: { ...entry.input, professionKey: 'teacher',
+                    sourceType: 'education_lesson', sourceId: 'DAR-QA-B', workDate: '2099-02-10',
+                    workload: 'Синтетична підміна другого заняття', startsAt: '2099-02-10T10:00:00Z', endsAt: '2099-02-10T11:00:00Z' },
+                    quote: { ...entry.quote, estimateMinor: 12550 },
+                    completion: { ...entry.completion, actualMinutes: 60, amountMinor: 12550 } }, events: []
+            } }));
             if (dar && url.pathname.endsWith('/catalog')) return res.end(JSON.stringify({success:true,data:{
                 staff:[{id:2,name:'Синтетична викладачка'},{id:3,name:'Синтетичний викладач'}],professions:[{key:'teacher',title:'Викладач'}],
                 sources:[{key:'education_lesson',title:'Навчальне заняття'}]
@@ -235,9 +245,24 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
         assert.equal(commands.at(-1).input.payMode,'additional');
         await page.getByRole('button',{name:'Нарахування за підміни',exact:true}).click();
         await active().getByRole('button',{name:'Продовжити'}).click();
-        await active().getByText(/Синтетична викладачка · заняття №DAR-QA/).waitFor();
+        const report = active().locator('.form-modal-note');
+        assert.match(await report.innerText(), /заняття №DAR-QA · підміна №31 · 325,50/);
+        assert.match(await report.innerText(), /заняття №DAR-QA-B · підміна №32 · 125,50/);
         assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
         await page.screenshot({path:path.join(output,'dar-mobile-accruals.png'),fullPage:true});
+        await active().getByRole('combobox', { name: /^Підміна/ }).selectOption('32');
+        const historyRequest = page.waitForResponse(response => {
+            const url = new URL(response.url());
+            return url.pathname.endsWith('/32/history') && url.searchParams.get('businessContext') === 'dar';
+        });
+        await active().getByRole('button', { name: 'Відкрити підміну' }).click();
+        assert.equal((await historyRequest).ok(), true);
+        const darHistory = page.getByRole('dialog', { name: 'Підміна #32 · Виконано' });
+        await darHistory.getByText(/Синтетична підміна другого заняття/).waitFor();
+        assert.match(await darHistory.innerText(), /Факт: 125,50/);
+        assert.equal(await darHistory.getByRole('button').count(), 1);
+        await darHistory.getByRole('button', { name: 'Закрити' }).click();
+        await page.waitForFunction(() => document.activeElement?.dataset.substitutionAction === 'accruals');
         await page.close();
     }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
 });

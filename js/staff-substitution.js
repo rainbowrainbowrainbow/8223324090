@@ -209,15 +209,17 @@
         });
     }
 
-    async function inspect(row, catalog, people) {
+    async function inspect(row, catalog, people, { readOnly = false } = {}) {
+        const isDar = dar();
         const history = await request('GET', `/${encodeURIComponent(row.id)}/history`);
+        if (dar() !== isDar || (isDar && !isDarSchedule())) return;
         const details = history.substitution;
         const title = `Підміна #${row.id} · ${labels[details.state]}`;
         const note = `${details.input.workload}\n${substitutionFacts(details, catalog, people)}\nПлан: ${money(details.quote.estimateMinor)}\nФакт: ${details.completion ? money(details.completion.amountMinor) : 'ще не підтверджено'}\n`
             + `${details.quote.effects.replacement}\n${details.quote.effects.original}\n`
             + (details.completion?.originalPay ? `Збережена оплата заміненого: ${money(details.completion.originalPay.amountMinor)}.\n` : '')
             + history.events.map(event => `Версія ${event.version} · ${actions[event.action] || event.action} · ${event.actor}: ${event.reason}`).join('\n');
-        if (details.state !== 'active' || (dar() && !canManage())) return showSubstitutionHistory(title, note);
+        if (readOnly || details.state !== 'active' || (isDar && !canManage())) return showSubstitutionHistory(title, note);
         const selected = await formModal(title, [
             { type: 'note', text: note },
             choice('action', 'Дія', [
@@ -322,9 +324,19 @@
         if (range.action === 'rate') return addDarRate();
         if (range.action === 'rates') return showDarRates();
         const { rows, totalMinor } = await request('GET', `/accruals?${new URLSearchParams({from:range.from,to:range.to})}`);
-        const lines = rows.map(row => `${row.date} · ${row.teacherName} · заняття №${row.lessonId} · ${money(row.amountMinor)}`);
-        await formModal(title, [{ type: 'note', text: rows.length ? [`Разом ${money(totalMinor)}`, ...lines].join('\n') : 'За обраний період нарахувань немає.' }],
-            { okText:'Готово', cancelText:'Закрити', className:'dar-substitution-accruals' });
+        if (!isDarSchedule()) return;
+        const lines = rows.map(row => `${row.date} · ${row.teacherName} · заняття №${row.lessonId} · підміна №${row.id} · ${money(row.amountMinor)}`);
+        const selection = await formModal(title, [
+            { type: 'note', text: rows.length ? [`Разом ${money(totalMinor)}`, ...lines].join('\n') : 'За обраний період нарахувань немає.' },
+            ...(rows.length ? [choice('substitutionId', 'Підміна', rows.map(row => [row.id,
+                `№${row.id} · заняття №${row.lessonId} · ${row.teacherName}`]), rows.length === 1 ? rows[0].id : '')] : [])
+        ], { okText: rows.length ? 'Відкрити підміну' : 'Готово', cancelText: 'Закрити', className: 'dar-substitution-accruals' });
+        const row = rows.find(item => String(item.id) === selection?.substitutionId);
+        if (!row || !isDarSchedule()) return;
+        const catalog = await request('GET', '/catalog');
+        if (!isDarSchedule()) return;
+        const people = new Map(catalog.staff.map(person => [String(person.id), person.name]));
+        return inspect(row, catalog, people, { readOnly: true });
     }
 
     async function run(work) {

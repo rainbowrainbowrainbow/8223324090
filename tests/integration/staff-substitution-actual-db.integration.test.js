@@ -1174,6 +1174,14 @@ test('DAR substitutes one lesson occurrence and accrues teacher pay inside DAR',
         assert.equal(accruals.status, 200);
         assert.equal(accruals.data.data.totalMinor, 32550);
         assert.equal(accruals.data.data.rows.length, 1);
+        assert.equal(accruals.data.data.rows[0].id, String(newId));
+        assert.equal(accruals.data.data.rows[0].lessonId, lessonId);
+        const history = await api('GET', `/${accruals.data.data.rows[0].id}/history`);
+        assert.equal(history.status, 200, JSON.stringify(history.data));
+        assert.equal(history.data.data.substitution.input.sourceId, lessonId);
+        assert.equal(history.data.data.substitution.completion.amountMinor, 32550);
+        const parkHistory = await authRequest('GET', `/api/staff-substitutions/${newId}/history?businessContext=event_genix`);
+        assert.ok([403, 404].includes(parkHistory.status));
         const park = await require('../../services/staffSubstitutionPayroll').loadPayrollSubstitutions(db, [replacement.id], date, date);
         assert.equal(park.size, 0);
         assert.ok((await preview({ ...input, originalStaffId: replacement.id, staffId: original.id })).blockers
@@ -1201,11 +1209,20 @@ test('DAR substitutes one lesson occurrence and accrues teacher pay inside DAR',
                 await modal.locator('[data-key="from"]').fill(date);
                 await modal.locator('[data-key="to"]').fill(date);
                 await modal.getByRole('button', { name: 'Продовжити' }).click();
-                await modal.getByText(/QA DAR replacement/).waitFor();
+                const report = modal.locator('.form-modal-note');
+                await report.filter({ hasText: /QA DAR replacement/ }).waitFor();
+                assert.ok((await report.innerText()).includes(`заняття №${lessonId} · підміна №${newId}`));
                 assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
                 const output = require('node:path').join(__dirname, '../../output/substitution-browser');
                 await require('node:fs/promises').mkdir(output, { recursive: true });
                 await page.screenshot({ path: require('node:path').join(output, 'dar-actual-mobile-accruals.png') });
+                assert.equal(await modal.getByRole('combobox', { name: /^Підміна/ }).inputValue(), String(newId));
+                await modal.getByRole('button', { name: 'Відкрити підміну' }).click();
+                const details = page.getByRole('dialog', { name: `Підміна #${newId} · Виконано` });
+                await details.getByText(/Факт: 325,50/).waitFor();
+                assert.equal(await details.getByRole('button').count(), 1);
+                await details.screenshot({ path: require('node:path').join(output, 'dar-actual-mobile-accrual-history.png') });
+                await details.getByRole('button', { name: 'Закрити' }).click();
             } finally {
                 await browser.close();
             }

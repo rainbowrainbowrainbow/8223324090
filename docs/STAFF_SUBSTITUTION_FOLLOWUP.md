@@ -216,7 +216,9 @@ frozen rate, confirmed minutes, amount, and revision history.
   agreement for the specific animator role and the effective greeting time.
   The lead workspace shows the direct lead agreement alongside the responsible
   user in Overview and Details. HR managers see the mentor agreement on the
-  employee's exact general or profession onboarding process. Other source pages still need provenance beyond the staff schedule, workbook, personal results,
+  employee's exact general or profession onboarding process. The DAR accrual
+  report displays each lesson occurrence with its agreement number and opens the
+  completed agreement history under the existing report access. Other source pages still need provenance beyond the staff schedule, workbook, personal results,
   journal, history and payroll lines. Authenticated production workflows
   remain unverified.
 

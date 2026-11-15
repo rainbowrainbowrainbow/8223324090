@@ -4,6 +4,13 @@
 
 ---
 
+## v0.83.70 - CRM-доступ із картки працівника
+
+### Release / Versioning / (15.11.2026) [codex]
+- **CRM-доступ із картки працівника** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.83.69 - Особисті й робочі задачі з Telegram
 
 ### Release / Versioning / (15.11.2026) [codex]

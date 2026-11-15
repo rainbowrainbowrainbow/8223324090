@@ -2840,6 +2840,7 @@ async function runShiftProvenanceFlow(browser, base) {
     const originalLabel = 'Частину передано №42';
     const replacementLabel = 'Часткова підміна №42';
     const { context, page } = await openStaffPage(browser, base, { width: 390, height: 844 }, {
+        hasTouch: true,
         serviceWorkers: 'block',
         preparePage: async page => {
             page.setDefaultNavigationTimeout(60000);
@@ -2888,8 +2889,15 @@ async function runShiftProvenanceFlow(browser, base) {
         await page.locator('#schCancelBtn').click();
         await dialog.waitFor({ state:'hidden' });
 
-        const pending = page.waitForEvent('download');
-        await page.locator('#exportExcelBtn').click();
+        await page.locator('#staffScheduleActionsToggle').click();
+        const [downloadPage, exportResponse] = await Promise.all([
+            context.waitForEvent('page'),
+            page.waitForResponse(response => new URL(response.url()).pathname === '/api/staff/schedule/export-xlsx'),
+            page.locator('#exportExcelBtn').click()
+        ]);
+        assert.equal(exportResponse.ok(), true, `Workbook export returned HTTP ${exportResponse.status()}`);
+        const pending = downloadPage.waitForEvent('download');
+        await downloadPage.getByRole('link', { name: 'Відкрити / зберегти файл' }).click();
         const workbook = new ExcelJS.Workbook();
         await workbook.xlsx.readFile(await (await pending).path());
         const dateCells = new Map();

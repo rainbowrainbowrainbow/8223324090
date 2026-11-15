@@ -85,6 +85,7 @@ async function run() {
             await composer.locator('button[type=submit]').click();
             const mutation = await finished;
             assert.ok(mutation.ok(), 'task creation failed: ' + mutation.status());
+            await page.locator('#cabinetTaskComposer[data-cabinet-create-busy="false"] #cabinetTaskComposerStatus.success').waitFor();
             const body = await mutation.json();
             const id = Number(body.task?.id || body.id || body.data?.id);
             assert.ok(id > 0);
@@ -154,7 +155,8 @@ async function run() {
             await page.evaluate(theme => window.applyCrmThemeMode(theme === 'dark'), theme);
             await page.locator('#cabinetMyDaySegmentPanel').waitFor();
             assert.equal(await page.locator('[data-park-period]:visible').count(), visiblePeriods);
-            assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+            // The application shell can still be settling after a resize or theme change.
+            await page.waitForFunction(() => document.documentElement.scrollWidth <= innerWidth, null, { timeout: 2000 });
             await page.evaluate(() => window.scrollTo(0, 0));
             await page.screenshot({ path: path.join(evidence, `my-day-${width}-${theme}.png`) });
             await page.locator('.park-day-board').screenshot({ path: path.join(evidence, `my-day-board-${width}-${theme}.png`) });
@@ -205,7 +207,7 @@ async function run() {
         assert.ok((await rescheduled).ok());
         await page.locator('[data-park-my-day-view=future]').click();
         await work.waitFor();
-        await page.goto(origin + `/profile?tab=myday&open=${workId}&date=${futureDate}`);
+        await page.goto(origin + `/profile?tab=myday&period=future&open=${workId}&date=${futureDate}`);
         await taskDialog.getByText('Виконую', { exact: true }).waitFor();
         await taskDialog.locator(`time[datetime="${futureDate}"]`).waitFor();
         await page.keyboard.press('Escape');

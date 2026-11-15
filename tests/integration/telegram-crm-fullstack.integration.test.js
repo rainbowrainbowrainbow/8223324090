@@ -99,6 +99,44 @@ check('canonical task writer, actual membership checks and concurrent confirms s
     assert.equal(recovered.data.receipt.task.id,task.id);
 });
 
+check('Telegram personal creation stays self-only and team tasks remain team-visible', async () => {
+    const draft = (taskMode, ownerUserId) => bot('/tasks/preview', {
+        title: 'Disposable visibility fixture ' + taskMode, ownerUserId, taskMode,
+        businessContext: 'event_genix', sourceUpdateId: String(nextUpdate++)
+    });
+    const rejected = await draft('personal', peer.id);
+    assert.equal(rejected.data.code, 'TELEGRAM_PERSONAL_TASK_SELF_ONLY');
+    // The pilot animator has own-task scope. A director is a stronger privacy
+    // check: working tasks are visible, but the personal task must stay hidden.
+    const username = 'telegram.fixture.director';
+    const password = 'fixture-only-director-password';
+    const viewer = (await pool.query(`INSERT INTO users(username,name,role,password_hash,business_contexts,default_business_context)
+        VALUES ($1,'Fixture Director','director',$2,ARRAY['event_genix'],'event_genix') RETURNING id`,
+    [username, await bcrypt.hash(password, 4)])).rows[0];
+    await pool.query("INSERT INTO organization_memberships(organization_id,user_id,role) VALUES($1,$2,'member')",
+        [business.organization_id, viewer.id]);
+    await pool.query("INSERT INTO business_memberships(business_id,organization_id,user_id,role,is_default) VALUES($1,$2,$3,'director',true)",
+        [business.id, business.organization_id, viewer.id]);
+    const peerSession = await request('POST', '/api/auth/login', {
+        username, password
+    });
+    assert.equal(peerSession.status, 200, JSON.stringify(peerSession.data));
+    for (const [taskMode, visibility] of [['personal', 'me_only'], ['work', 'team']]) {
+        const preview = await draft(taskMode, owner.id);
+        assert.equal(preview.status, 201, JSON.stringify(preview.data));
+        assert.equal(preview.data.draft.taskMode, taskMode);
+        const result = await bot(`/operations/${preview.data.operationId}/confirm`, {confirmed:true});
+        assert.equal(result.status, 200, JSON.stringify(result.data));
+        const id = result.data.receipt.task.id;
+        const { rows: [stored] } = await pool.query('SELECT visibility, task_mode FROM tasks WHERE id=$1',[id]);
+        assert.deepEqual(stored, { visibility, task_mode: taskMode });
+        const ownerView = await request('GET', `/api/tasks/${id}?businessContext=event_genix`, undefined, jwt);
+        assert.equal(ownerView.status, 200);
+        const peerView = await request('GET', `/api/tasks/${id}?businessContext=event_genix`, undefined, peerSession.data.token);
+        assert.equal(peerView.status, taskMode === 'work' ? 200 : 404, JSON.stringify(peerView.data));
+    }
+});
+
 check('date-focused bot list matches My Day dates, snoozing and paginated personal scope', async () => {
     const today = (await pool.query("SELECT (NOW() AT TIME ZONE 'Europe/Kyiv')::date::text AS day")).rows[0].day;
     const ids = [];

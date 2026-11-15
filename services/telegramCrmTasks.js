@@ -41,8 +41,18 @@ function normalizeDraft(input = {}) {
     }
     const priority = input.priority || 'normal';
     if (!['low','normal','high','urgent'].includes(priority)) throw failure(400, 'TELEGRAM_TASK_PRIORITY_INVALID', 'Некоректний пріоритет.');
+    const taskMode = input.taskMode === undefined ? 'work' : input.taskMode;
+    if (!['personal', 'work'].includes(taskMode)) {
+        throw failure(400, 'TELEGRAM_TASK_MODE_INVALID', 'Оберіть особисту або робочу задачу.');
+    }
     return { title, description: input.description?.trim() || null, ownerUserId, businessContext,
-        date: dateOnly(input.date, 'date'), deadline, priority };
+        date: dateOnly(input.date, 'date'), deadline, priority, taskMode };
+}
+
+function assertPersonalOwner(payload, actor) {
+    if (payload.taskMode === 'personal' && payload.ownerUserId !== Number(actor.id)) {
+        throw failure(400, 'TELEGRAM_PERSONAL_TASK_SELF_ONLY', 'Особисту задачу можна створити лише для себе.');
+    }
 }
 
 function normalizeChange(input) {
@@ -181,6 +191,7 @@ function createTelegramCrmTasks(options) {
             const config = await identity.configuration(client);
             if (config.mode !== 'write') throw failure(403, 'TELEGRAM_CRM_READ_ONLY', 'Поки увімкнено лише перегляд задач.');
             assertCreate(actor, scope);
+            assertPersonalOwner(payload, actor);
             const assignee = await owner(client, payload.ownerUserId, actor, scope);
             const prior = (await client.query(
                 'SELECT *,expires_at>NOW() AS fresh FROM telegram_crm_task_operations WHERE user_id=$1 AND binding_version=$2 AND source_update_id=$3',
@@ -332,12 +343,16 @@ function createTelegramCrmTasks(options) {
             }
             assertCreate(actor, scope);
             const payload = normalizeDraft(row.payload);
+            assertPersonalOwner(payload, actor);
+            const personal = payload.taskMode === 'personal';
             const assignee = await owner(client, payload.ownerUserId, actor, scope);
             const task = await createTask({ ...payload, owner_user_id: assignee.id, owner: assignee.label, assigned_to: assignee.label,
-                created_by: actor.username, created_by_user_id: actor.id, task_type: 'human', task_mode: 'work', task_kind: 'action',
-                visibility: 'team', workflow_state: 'todo', category: 'admin', source_type: 'manual', source_module: 'telegram_crm',
+                created_by: actor.username, created_by_user_id: actor.id, task_type: 'human', task_mode: payload.taskMode, task_kind: 'action',
+                visibility: personal ? 'me_only' : 'team', workflow_state: 'todo',
+                category: personal ? 'personal' : 'admin', source_type: 'manual', source_module: 'telegram_crm',
                 control_meta: { integration: 'second-brain-crm', operationId: id }, duplicateMode: 'reject'
-            }, { pool: client, afterCommit: callbacks, skipNotifications: options.skipNotifications === true });
+            }, { pool: client, afterCommit: callbacks, skipHermesOutbox: personal,
+                skipNotifications: personal || options.skipNotifications === true });
             const receipt = { task: taskReceipt(task, actor, scope), integration: 'second-brain-crm', actorUserId: actor.id };
             await client.query("UPDATE telegram_crm_task_operations SET state='committed',task_id=$2,receipt=$3,committed_at=NOW() WHERE id=$1", [id, task.id, JSON.stringify(receipt)]);
             await audit(client, actor.id, 'task_created', binding.version, id);

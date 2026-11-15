@@ -169,16 +169,16 @@ test('Park HR QA writes register exact fixtures, suppress chat and retire the ru
     assert.equal(firstAccount.data.receipt.staff.id, firstId);
     const second = await runBrowser(owner, 1440, async page => {
         await page.locator('#hrCreateStaffBtn').waitFor({ state: 'visible' });
-        await page.waitForFunction(() => typeof canRunAccountOnboarding === 'function' && canRunAccountOnboarding());
-        assert.equal(await page.evaluate(() => openAccountOnboardingWizard(null)), true);
-        await page.locator('input[name="accountOnboardingStaffMode"][value="new"]').check();
-        await page.locator('#accountOnboardingName').fill(staffName(2));
-        await page.locator('#accountOnboardingDepartment').selectOption({ index: 1 });
-        await page.locator('#accountOnboardingPosition').selectOption({ index: 1 });
-        await page.locator('#accountOnboardingProfession-animator').check();
-        await page.locator('#accountOnboardingPrimaryProfession-animator').check();
-        const next = page.locator('#accountOnboardingNext');
-        await next.click();
+        await page.locator('#hrCreateStaffBtn').click();
+        const dialog = page.locator('#hrCreateStaffDialog');
+        await dialog.locator('[name="name"]').fill(staffName(2));
+        await dialog.locator('[name="department"]').selectOption({ index: 1 });
+        await dialog.locator('[name="position"]').selectOption({ index: 1 });
+        await dialog.locator('[name="role_type"]').selectOption('animator');
+        const staff = await clickSubmit(page, '/api/staff', dialog.locator('[type="submit"]'));
+        assert.equal(staff.status, 200);
+        await page.locator('#staffEditModal').getByRole('button', { name: 'Створити CRM-акаунт', exact: true }).click();
+        await page.locator('#accountOnboardingEditSetup').check();
         await page.locator('#accountOnboardingUsername').fill(`${runId}-account-2`);
         await page.locator('#accountOnboardingRole').selectOption('animator');
         return clickSubmit(page, '/api/users/onboarding', page.locator('#accountOnboardingSubmit'));

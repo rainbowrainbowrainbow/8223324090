@@ -85,9 +85,10 @@ test('account center is a dense master-detail surface with conflict drill-down',
     assert.match(HR_CSS, /\.hr-account-row-open\s*\{/);
 });
 
-test('account creation uses one access form with a separate step for new staff details', () => {
-    assert.equal((HR_HTML.match(/data-account-onboarding-step="\d"/g) || []).length, 2);
-    assert.match(HR_PAGE_CODE, /\[2, 5\] : \[5\]/);
+test('account creation uses an existing staff card in one access form', () => {
+    assert.doesNotMatch(HR_HTML, /accountOnboardingStaffMode|accountOnboardingNewStaffFields|data-account-onboarding-step=/);
+    assert.match(HR_HTML, /Надати CRM-доступ працівнику/);
+    assert.match(HR_PAGE_CODE, /staff = \{ mode: 'existing'/);
     assert.match(HR_HTML, /id="accountOnboardingReceipt"/);
     assert.match(HR_HTML, /id="accountOnboardingPassword" type="password"/);
     assert.match(HR_PAGE_CODE, /async function openAccountOnboardingWizard/);
@@ -269,7 +270,7 @@ for (const changed of ['business', 'session', 'closed', 'replacement']) {
         const context = {
             accountOnboardingState: { open: true, submitting: false, payload: { staff: { id: 123 } } },
             accountOnboardingRequestSeq: 1,
-            accountOnboardingSteps: () => [5], validateAccountOnboardingStep: () => true,
+            validateAccountOnboardingStep: () => true,
             buildAccountOnboardingPayload: () => ({ staff: { id: 123 } }), accountOnboardingEl: () => submit,
             setAccountOnboardingStatus() {}, teamAccessContext: () => identity,
             submitStaffCreation: async () => { calls++; return pending; },

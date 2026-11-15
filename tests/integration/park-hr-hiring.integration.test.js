@@ -98,6 +98,35 @@ test('Park admin edits professions and owns hiring records on migrated PostgreSQ
             hire_mode: 'new_staff', department: 'qa', start_profession_onboarding: false
         });
         assert.equal(hire.status, 200, JSON.stringify(hire.body));
+        const hiredStaffId = hire.body.staff_id;
+        const assignmentsBeforeAccess = (await db.query(
+            'SELECT profession_key, is_primary, hourly_rate FROM staff_role_assignments WHERE staff_id=$1 ORDER BY profession_key',
+            [hiredStaffId]
+        )).rows;
+        const hiredUsername = username + '_hired';
+        const hiredPassword = crypto.randomBytes(24).toString('base64url');
+        const access = await api('POST', '/api/users/onboarding', {
+            personal: { name: 'Disposable candidate', username: hiredUsername },
+            staff: { mode: 'existing', id: hiredStaffId },
+            access: { role: 'animator', businessContexts: ['event_genix'], defaultBusinessContext: 'event_genix', activateMembership: true },
+            issueOneTime: true, initialPassword: hiredPassword
+        });
+        assert.equal(access.status, 200, JSON.stringify(access.body.error));
+        assert.equal(access.body.receipt.staff.id, hiredStaffId);
+        assert.deepEqual((await db.query(
+            'SELECT profession_key, is_primary, hourly_rate FROM staff_role_assignments WHERE staff_id=$1 ORDER BY profession_key',
+            [hiredStaffId]
+        )).rows, assignmentsBeforeAccess);
+        const hiredLogin = await fetch(BASE_URL + '/api/auth/login', { method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Business-Context': 'event_genix' },
+            body: JSON.stringify({ username: hiredUsername, password: hiredPassword }) });
+        assert.equal(hiredLogin.status, 200);
+        const hiredSession = await hiredLogin.json();
+        assert.equal(hiredSession.user.role, 'animator');
+        const hiredMembership = await db.query(`SELECT bm.role, bm.is_active FROM business_memberships bm
+            JOIN users u ON u.id=bm.user_id JOIN businesses b ON b.id=bm.business_id
+            WHERE u.username=$1 AND b.context_key='event_genix'`, [hiredUsername]);
+        assert.deepEqual(hiredMembership.rows, [{ role: 'animator', is_active: true }]);
         const repeated = await api('POST', '/api/hr/applications/' + applicationId + '/hire', {
             hire_mode: 'new_staff'
         });
@@ -200,6 +229,42 @@ test('Park admin edits professions and owns hiring records on migrated PostgreSQ
                     await page.locator('[data-vacancy-tab="vacancies"]').click();
                     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
                     await page.screenshot({ path: path.join(output, 'hiring-' + width + '-' + theme + '.png') });
+                    if (width === 1366) {
+                        const browserVacancy = await api('POST', '/api/hr/vacancies', {
+                            title: 'Browser hiring fixture', role_type: 'animator', target_hires: 1
+                        });
+                        const browserCandidate = await api('POST', `/api/hr/vacancies/${browserVacancy.body.vacancy.id}/applications`, {
+                            name: 'Browser hired fixture', source: 'other'
+                        });
+                        const browserCandidateId = browserCandidate.body.application.id;
+                        assert.equal((await api('PATCH', `/api/hr/applications/${browserCandidateId}`, { status: 'offer' })).status, 200);
+                        await page.goto(BASE_URL + '/hr#other', { waitUntil: 'domcontentloaded' });
+                        await page.waitForFunction(() => typeof document.getElementById('vacStatusFilter')?.onchange === 'function');
+                        await page.locator('#vacStatusFilter').selectOption('all');
+                        await page.getByRole('button', { name: 'Browser hiring fixture', exact: true }).click();
+                        const candidateCard = page.locator('#candidatesKanban .kanban-card').filter({ hasText: 'Browser hired fixture' });
+                        await candidateCard.getByRole('button', { name: 'Найняти', exact: true }).click();
+                        await page.locator('#fm_startOnboarding').selectOption('no');
+                        const [hireResponse] = await Promise.all([
+                            page.waitForResponse(response => response.request().method() === 'POST'
+                                && new URL(response.url()).pathname === `/api/hr/applications/${browserCandidateId}/hire`),
+                            page.getByRole('button', { name: 'Підтвердити найм' }).click()
+                        ]);
+                        assert.equal(hireResponse.status(), 200);
+                        const browserHiredId = (await hireResponse.json()).staff_id;
+                        await page.goto(BASE_URL + '/hr?tab=team', { waitUntil: 'domcontentloaded' });
+                        await page.locator('#teamSearch').fill('Browser hired fixture');
+                        await page.locator(`.hr-team-card[data-staff-id="${browserHiredId}"]`).getByRole('button', { name: /відкрити/i }).click();
+                        await page.locator('#staffEditModal').getByRole('button', { name: 'Створити CRM-акаунт', exact: true }).click();
+                        await page.locator('#accountOnboardingUsername').fill(username + '_browser_hired');
+                        const [accessResponse] = await Promise.all([
+                            page.waitForResponse(response => response.request().method() === 'POST'
+                                && new URL(response.url()).pathname === '/api/users/onboarding'),
+                            page.locator('#accountOnboardingSubmit').click()
+                        ]);
+                        assert.equal(accessResponse.status(), 200);
+                        assert.equal((await accessResponse.json()).receipt.staff.id, browserHiredId);
+                    }
                     await page.close();
                 }
             } finally {

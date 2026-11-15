@@ -378,7 +378,7 @@
                     </div>
                     <div class="hr-account-actions">
                         <a id="hrOrganizationMembersLink" class="hr-account-toggle" href="/hr?tab=accounts&amp;open=organization-members#organizationMembersTitle" hidden>Команда та доступи</a>
-                        <button type="button" id="accountCreateBtn" class="hr-account-primary" onclick="openAccountCreateModal(this)">+ Створити акаунт</button>
+                        <button type="button" id="accountCreateBtn" class="hr-account-primary" onclick="openAccountCreateModal(this)">+ Надати CRM-доступ працівнику</button>
                         <button type="button" id="accountCenterRefreshBtn" class="hr-account-toggle" onclick="refreshAccountCenter(this)">Оновити список</button>
                     </div>
                 </div>
@@ -417,34 +417,16 @@
                         <button type="button" id="accountOnboardingClose" class="hr-account-icon-btn" aria-label="Закрити створення акаунта">×</button>
                     </header>
                     <div id="accountOnboardingLoading" class="hr-account-onboarding-loading hidden" role="status">Завантаження довідників…</div>
-                    <ol id="accountOnboardingSteps" class="hr-account-onboarding-steps" aria-label="Кроки створення акаунта"></ol>
                     <form id="accountOnboardingForm" class="hr-account-onboarding-form" novalidate>
-<div id="accountOnboardingModeChoice" class="hr-account-choice-row" role="radiogroup" aria-label="Тип картки співробітника">
-                                <label><input type="radio" name="accountOnboardingStaffMode" value="existing" checked> Наявний співробітник</label>
-                                <label><input type="radio" name="accountOnboardingStaffMode" value="new"> Новий співробітник</label>
-                            </div>
-<section data-account-onboarding-step="2" class="hr-account-onboarding-panel" hidden>
-                            <div class="hr-account-onboarding-panel-head"><h4>Дані співробітника</h4><p>Заповніть основні дані нової людини.</p></div>
-
-
-                            <div id="accountOnboardingNewPersonalFields"></div>
-                            <div id="accountOnboardingNewStaffFields" class="hr-account-form-grid" hidden></div>
-                        <div id="accountOnboardingProfessionSetup" class="hr-account-onboarding-panel">
-                            <div class="hr-account-onboarding-panel-head"><h4>Структура та професії</h4><p>Оберіть вузол і щонайменше одну професію; одна має бути основною.</p></div>
-                            <div class="hr-account-form-grid">
-                                <label class="is-wide"><span>Вузол структури</span><select id="accountOnboardingStructureNode"><option value="">Без вузла</option></select></label>
-                            </div>
-                            <div id="accountOnboardingProfessions" class="hr-account-option-list" role="group" aria-label="Професії" tabindex="-1"></div>
-                        </div></section>
-<section data-account-onboarding-step="5" class="hr-account-onboarding-panel" hidden>
+<section class="hr-account-onboarding-panel">
                             <div id="accountOnboardingExistingStaffFields" class="hr-account-form-grid">
-                                <label class="is-wide"><span>Картка співробітника *</span><select id="accountOnboardingStaffId"><option value="">Оберіть співробітника</option></select><small>Вже зайняті профілі недоступні для вибору.</small></label>
+                                <label for="accountOnboardingStaffId" class="is-wide"><span>Картка співробітника *</span><select id="accountOnboardingStaffId" required><option value="">Оберіть співробітника</option></select><small>Вже зайняті профілі недоступні для вибору.</small></label>
                             </div>
                             <div id="accountOnboardingIdentityFields" class="hr-account-form-grid">
                                 <div id="accountOnboardingPersonalFields" class="hr-account-form-grid is-wide"></div>
-                                <label><span>Логін для входу *</span><input id="accountOnboardingUsername" name="username" maxlength="50" pattern="[a-zA-Z0-9._-]{3,50}" autocomplete="off" required><small>Після створення логін не змінюється.</small></label>
+                                <label for="accountOnboardingUsername"><span>Логін для входу *</span><input id="accountOnboardingUsername" name="username" maxlength="50" pattern="[a-zA-Z0-9._-]{3,50}" autocomplete="off" required><small>Після створення логін не змінюється.</small></label>
                                 <div class="is-wide">
-                                    <label><span>Початковий пароль *</span><input id="accountOnboardingPassword" type="password" autocomplete="new-password" minlength="12" maxlength="72" aria-describedby="accountOnboardingPasswordHint" required></label>
+                                    <label for="accountOnboardingPassword"><span>Початковий пароль *</span><input id="accountOnboardingPassword" type="password" autocomplete="new-password" minlength="12" maxlength="72" aria-describedby="accountOnboardingPasswordHint" required></label>
                                     <small id="accountOnboardingPasswordHint">Можна відредагувати. Від 12 символів, без крайніх пробілів, крапки з комою та переносів рядка.</small>
                                     <div class="hr-account-choice-row">
                                         <button type="button" id="accountOnboardingPasswordToggle" class="hr-account-toggle" aria-controls="accountOnboardingPassword" aria-pressed="false">Показати пароль</button>
@@ -452,7 +434,13 @@
                                     </div>
                                 </div>
                             </div>
-                        <div id="accountOnboardingExistingSetup" hidden><label class="hr-account-option"><input id="accountOnboardingEditSetup" type="checkbox"> Змінити професії та структуру цієї картки</label><div id="accountOnboardingExistingProfessionFields" hidden></div></div>
+                        <div id="accountOnboardingExistingSetup" hidden><label class="hr-account-option"><input id="accountOnboardingEditSetup" type="checkbox"> Змінити професії та структуру цієї картки</label><div id="accountOnboardingExistingProfessionFields" hidden><div id="accountOnboardingProfessionSetup" class="hr-account-onboarding-panel">
+                            <div class="hr-account-onboarding-panel-head"><h4>Структура та професії</h4><p>Оберіть вузол і щонайменше одну професію; одна має бути основною.</p></div>
+                            <div class="hr-account-form-grid">
+                                <label class="is-wide"><span>Вузол структури</span><select id="accountOnboardingStructureNode"><option value="">Без вузла</option></select></label>
+                            </div>
+                            <div id="accountOnboardingProfessions" class="hr-account-option-list" role="group" aria-label="Професії" tabindex="-1"></div>
+                        </div></div></div>
                             <div class="hr-account-onboarding-panel-head"><h4>Роль у CRM і бізнес</h4><p>Оберіть роль, яка відповідає роботі співробітника.</p></div>
                             <div id="accountOnboardingRolePresets" class="hr-account-preset-grid" aria-label="Швидкі пакети ролей"></div>
                             <div class="hr-account-form-grid">
@@ -485,10 +473,7 @@
                     <section id="accountOnboardingReceipt" class="hr-account-receipt hidden" aria-live="polite"></section>
                     <div id="accountOnboardingStatus" class="hr-account-onboarding-status" role="alert" aria-live="assertive"></div>
                     <footer id="accountOnboardingActions" class="hr-account-onboarding-actions">
-                        <button type="button" id="accountOnboardingBack" class="hr-account-toggle" disabled>Назад</button>
-                        <span id="accountOnboardingProgress">Крок 1</span>
-                        <button type="button" id="accountOnboardingNext" class="hr-account-primary">Далі</button>
-                        <button type="button" id="accountOnboardingSubmit" class="hr-account-primary hidden">Створити CRM-акаунт</button>
+                        <button type="submit" form="accountOnboardingForm" id="accountOnboardingSubmit" class="hr-account-primary">Створити CRM-акаунт</button>
                     </footer>
                 </section>
             </div>

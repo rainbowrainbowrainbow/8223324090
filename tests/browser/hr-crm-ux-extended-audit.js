@@ -29,7 +29,7 @@ async function runHrCrmExtendedAudit({ browser, pool, actors, login, target, out
         const cases = ['light', 'dark'].flatMap(theme => [
             { theme, mode: 'existing', width: 390, height: 844, zoom: 1, advanced: true },
             { theme, mode: 'existing', width: 1366, height: 768, zoom: 2 },
-            { theme, mode: 'new', width: 1366, height: 768, zoom: 2 }
+            { theme, mode: 'center', width: 1366, height: 768, zoom: 2 }
         ]);
         for (const scenario of cases) {
             const { width, height, theme, mode, zoom, advanced } = scenario;
@@ -59,7 +59,7 @@ async function runHrCrmExtendedAudit({ browser, pool, actors, login, target, out
             };
             try {
                 let staffId;
-                if (mode === 'existing') {
+                {
                     const { rows: [person] } = await pool.query(`INSERT INTO staff (name, department, position, role_type, hourly_rate)
                         VALUES ($1, 'Анімація', 'Аніматор', 'animator', 123) RETURNING id`, [name]);
                     staffId = person.id;
@@ -111,20 +111,8 @@ async function runHrCrmExtendedAudit({ browser, pool, actors, login, target, out
                     await page.locator('#accountCreateBtn').click();
                 }
                 const overlay = page.locator('#accountOnboardingOverlay');
-                const next = page.locator('#accountOnboardingNext');
                 await overlay.waitFor({ state: 'visible' });
-                if (mode === 'new') {
-                    await page.locator('#accountOnboardingName').fill(name);
-                    await page.locator('#accountOnboardingDepartment').selectOption({ index: 1 });
-                    await page.locator('#accountOnboardingPosition').selectOption({ index: 1 });
-                    await page.locator('#accountOnboardingProfession-animator').check();
-                    await page.locator('#accountOnboardingPrimaryProfession-animator').check();
-                    for (const selector of ['.hr-account-profession-copy', '.hr-account-primary-label']) {
-                        assert.equal(await page.locator(selector).first().evaluate(el => el.getBoundingClientRect().height >= 44), true);
-                    }
-                    await capture('person');
-                    await next.click();
-                }
+                if (mode === 'center') await page.locator('#accountOnboardingStaffId').selectOption(String(staffId));
                 await page.locator('#accountOnboardingUsername').fill(username);
                 if (advanced) {
                     await page.locator('#accountOnboardingEditSetup').check();

@@ -251,6 +251,12 @@ async function runActor(browser, pool, actor, existingAccountId) {
             await wizard.waitFor({ state: 'visible' });
             const username = `qa_staff_link_${actor.label}_${runId}`;
             await page.locator('#accountOnboardingUsername').fill(username);
+            if (actor.parkWorker) await page.keyboard.press('Escape');
+            else await page.locator('#accountOnboardingClose').click();
+            const discardPrompt = page.getByRole('dialog').filter({ hasText: 'Є незбережені зміни' });
+            await discardPrompt.getByRole('button', { name: 'Продовжити редагування' }).click();
+            assert.equal(await page.locator('#accountOnboardingUsername').inputValue(), username);
+            assert.equal(await wizard.isVisible(), true);
             const initialPassword = 'Browser-Initial-Password-827';
             const passwordInput = page.locator('#accountOnboardingPassword');
             assert.equal((await passwordInput.inputValue()).length, 16);
@@ -260,9 +266,17 @@ async function runActor(browser, pool, actor, existingAccountId) {
             await page.locator('#accountOnboardingPasswordToggle').click();
             assert.equal(await passwordInput.getAttribute('type'), 'password');
             assert.equal(await page.locator('#accountOnboardingStaffId').inputValue(), String(staff.id));
-            assert.equal(await page.locator('#accountOnboardingNext').isVisible(), false);
+            assert.equal(await page.locator('[name="accountOnboardingStaffMode"]').count(), 0);
+            const workBefore = (await pool.query(`SELECT role_type, secondary_professions, company_structure_node_id, hourly_rate
+                FROM staff WHERE id=$1`, [staff.id])).rows[0];
+            const rolesBefore = (await pool.query(`SELECT profession_key, is_primary, hourly_rate FROM staff_role_assignments
+                WHERE staff_id=$1 ORDER BY profession_key`, [staff.id])).rows;
             assert.match(await page.locator('#accountOnboardingSubmit').innerText(), /Створити акаунт і надати доступ/);
             assert.equal(await wizard.evaluate(el => el.scrollWidth <= el.clientWidth + 1), true);
+            if (actor.width <= 600) {
+                assert.ok((await page.locator('#accountOnboardingSubmit').boundingBox()).height >= 48);
+                assert.ok(parseFloat(await passwordInput.evaluate(el => getComputedStyle(el).fontSize)) >= 16);
+            }
             await captureSupplement('crm-access-form');
             const [linked] = await Promise.all([
                 waitForResponse(page, 'POST', '/api/users/onboarding'),
@@ -277,6 +291,20 @@ async function runActor(browser, pool, actor, existingAccountId) {
             );
             assert.equal(binding.staff_id, staff.id);
             assert.equal((await pool.query('SELECT id FROM staff WHERE name = $1', [name])).rowCount, 1);
+            assert.deepEqual((await pool.query(`SELECT role_type, secondary_professions, company_structure_node_id, hourly_rate
+                FROM staff WHERE id=$1`, [staff.id])).rows[0], workBefore);
+            assert.deepEqual((await pool.query(`SELECT profession_key, is_primary, hourly_rate FROM staff_role_assignments
+                WHERE staff_id=$1 ORDER BY profession_key`, [staff.id])).rows, rolesBefore);
+            const createdSession = await login(username, initialPassword);
+            assert.equal(createdSession.user.role, linkedResult.receipt.account.role);
+            const membership = await pool.query(
+                `SELECT bm.role, bm.is_active FROM business_memberships bm
+                 JOIN businesses b ON b.id = bm.business_id JOIN users u ON u.id = bm.user_id
+                 WHERE u.username = $1 AND b.context_key = 'event_genix'`, [username]
+            );
+            assert.equal(membership.rowCount, 1);
+            assert.equal(membership.rows[0].is_active, true);
+            assert.equal(membership.rows[0].role, createdSession.user.role);
             const receipt = page.locator('#accountOnboardingReceipt');
             if (actor.parkWorker) {
                 await receipt.getByText('Доступ до вибраного бізнесу активний.', { exact: false }).waitFor();
@@ -340,18 +368,34 @@ async function runActor(browser, pool, actor, existingAccountId) {
             );
             assert.deepEqual(existingBindings, [{ staff_id: otherStaff.id }]);
 
-            await page.evaluate(() => openAccountOnboardingWizard(null));
             const newName = `QA CRM Recovery ${runId}`;
             const newUsername = `qa_crm_recovery_${runId}`;
-            await page.locator('#accountOnboardingName').fill(newName);
-            await page.locator('input[name="accountOnboardingStaffMode"][value="new"]').check();
-            await page.locator('#accountOnboardingDepartment').selectOption({ index: 1 });
-            await page.locator('#accountOnboardingPosition').selectOption({ index: 1 });
-            await page.locator('#accountOnboardingProfession-animator').check();
-            await page.locator('#accountOnboardingPrimaryProfession-animator').check();
-            await page.locator('#accountOnboardingNext').click();
+            await createButton.click();
+            await dialog.locator('[name="name"]').fill(newName);
+            await dialog.locator('[name="department"]').selectOption({ index: 1 });
+            await dialog.locator('[name="position"]').selectOption({ index: 1 });
+            await dialog.locator('[name="role_type"]').selectOption('animator');
+            const [recoveryCard] = await Promise.all([
+                waitForResponse(page, 'POST', '/api/staff'),
+                dialog.getByRole('button', { name: 'Створити картку', exact: true }).click()
+            ]);
+            assert.equal(recoveryCard.status(), 200);
+            const recoveryStaff = (await recoveryCard.json()).data;
+            await profile.waitFor({ state: 'visible' });
+            await page.goto(new URL('/hr?tab=accounts', target).href);
+            const centerAction = page.getByRole('button', { name: /Надати CRM-доступ працівнику/ });
+            await centerAction.waitFor({ state: 'visible' });
+            await page.route('**/api/users/onboarding/options', route => route.fulfill({ status: 503, json: { success: false } }), { times: 1 });
+            await centerAction.click();
+            await page.locator('[data-account-onboarding-retry]').click();
+            await page.locator('#accountOnboardingSubmit').click();
+            assert.match(await page.locator('#accountOnboardingStatus').textContent(), /Оберіть картку/);
+            assert.equal(await page.locator('#accountOnboardingStaffId').evaluate(el => el === document.activeElement), true);
+            assert.equal(await page.locator('#accountOnboardingStaffId').getAttribute('aria-invalid'), 'true');
+            await page.locator('#accountOnboardingStaffId').selectOption(String(recoveryStaff.id));
+            assert.equal(await page.locator('#accountOnboardingStaffId').getAttribute('aria-invalid'), null);
             await page.locator('#accountOnboardingUsername').fill(newUsername);
-            assert.equal(await page.locator('#accountOnboardingNext').isVisible(), false);
+            assert.equal(await page.locator('#accountOnboardingStaffId').inputValue(), String(recoveryStaff.id));
             await page.route('**/api/users/onboarding', async route => {
                 if (route.request().method() !== 'POST') return route.continue();
                 const committed = await route.fetch();
@@ -373,6 +417,7 @@ async function runActor(browser, pool, actor, existingAccountId) {
             assert.deepEqual(recoveredStaff, [{ id: recovery.receipt.staff.id }]);
             await page.locator('[data-account-onboarding-finish]').click();
 
+            await page.goto(new URL('/hr?tab=team', target).href);
             await otherCard.getByRole('button', { name: /відкрити/i }).click();
             await profile.locator('#editPhone').fill('+380009998899');
             await expectDelayedStaffSaveIgnored(page, otherStaff.id, async () => {

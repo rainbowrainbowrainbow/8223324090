@@ -7337,8 +7337,11 @@ function mountNewStaffFields(container, prefix, fieldNames) {
     const fields = template.content.cloneNode(true);
     for (const field of fields.querySelectorAll('[data-staff-field]')) {
         const name = field.dataset.staffField;
-        if (fieldNames.includes(name)) field.querySelector('input, select').id = prefix + name;
-        else field.remove();
+        if (fieldNames.includes(name)) {
+            const input = field.querySelector('input, select');
+            input.id = prefix + name;
+            field.htmlFor = input.id;
+        } else field.remove();
     }
     container.append(fields);
 }
@@ -9365,10 +9368,6 @@ function accountOnboardingEl(id) {
     return document.getElementById(id);
 }
 
-function accountOnboardingStaffMode() {
-    return document.querySelector('input[name="accountOnboardingStaffMode"]:checked')?.value || 'existing';
-}
-
 function parseAccountProfessionKeys(value) {
     if (Array.isArray(value)) return value.map(normalizeProfessionKey).filter(Boolean);
     const raw = String(value || '').trim();
@@ -9651,7 +9650,7 @@ function renderAccountOnboardingBusinessControls(selectedInput = null, defaultIn
 
 function syncAccountOnboardingProfessionDependants(options = {}) {
     let selected = accountOnboardingSelectedProfessions();
-    if (accountOnboardingStaffMode() === 'existing' && !accountOnboardingChangesSetup()) {
+    if (!accountOnboardingChangesSetup()) {
         const staff = accountOnboardingOptions?.staff?.find(item => Number(item.id) === Number(accountOnboardingEl('accountOnboardingStaffId')?.value));
         const assignments = Array.isArray(staff?.role_assignments) ? staff.role_assignments : [];
         const primary = assignments.find(item => item.isPrimary === true || item.is_primary === true);
@@ -9735,48 +9734,29 @@ function prefillAccountOnboardingCondition(staff, professionKey, options = {}) {
 }
 
 function prefillSelectedAccountOnboardingCondition(options = {}) {
-    if (accountOnboardingStaffMode() !== 'existing') return;
     const staffId = Number(accountOnboardingEl('accountOnboardingStaffId')?.value || 0);
     const staff = accountOnboardingOptions?.staff?.find(item => Number(item.id) === staffId);
     prefillAccountOnboardingCondition(staff, accountOnboardingEl('accountOnboardingConditionProfession')?.value, options);
     updateAccountOnboardingPayrollProfileHint();
 }
 
-function syncAccountOnboardingStaffMode() {
-    const existing = accountOnboardingStaffMode() === 'existing';
+function syncAccountOnboardingForm() {
     const lockedStaff = Number(accountOnboardingState.context?.staffId || accountOnboardingState.context?.staff?.id || 0);
-    const personal = accountOnboardingEl('accountOnboardingPersonalFields');
-    const accountPanel = accountOnboardingEl('accountOnboardingIdentityFields');
-    (existing ? accountPanel : accountOnboardingEl('accountOnboardingNewPersonalFields'))?.prepend(personal);
-    for (const id of ['accountOnboardingName', 'accountOnboardingPhone']) accountOnboardingEl(id).readOnly = existing;
-    accountOnboardingEl('accountOnboardingPhone').closest('label')?.classList.toggle('hidden', existing);
+    accountOnboardingEl('accountOnboardingName').readOnly = true;
     accountOnboardingEl('accountOnboardingStaffId').disabled = Boolean(lockedStaff);
-    document.querySelectorAll('input[name="accountOnboardingStaffMode"]').forEach(input => { input.disabled = Boolean(lockedStaff); });
-    accountOnboardingEl('accountOnboardingExistingSetup').hidden = !existing || !canManageAccountSecurity();
-    const setup = accountOnboardingEl('accountOnboardingProfessionSetup');
-    (existing ? accountOnboardingEl('accountOnboardingExistingProfessionFields') : document.querySelector('[data-account-onboarding-step="2"]'))?.append(setup);
+    accountOnboardingEl('accountOnboardingExistingSetup').hidden = !canManageAccountSecurity();
     accountOnboardingEl('accountOnboardingExistingProfessionFields').hidden = !accountOnboardingChangesSetup();
     accountOnboardingEl('accountOnboardingConditionsDetails').hidden = accountOnboardingOptions?.canManagePayrollRules !== true;
     accountOnboardingEl('accountOnboardingAccessDetails').hidden = !canManageAccountSecurity();
     accountOnboardingEl('accountOnboardingConditions').disabled = !accountOnboardingChangesConditions();
     accountOnboardingEl('accountOnboardingAdvancedAccess').disabled = !canManageAccountSecurity() || !accountOnboardingEl('accountOnboardingEditAccess').checked;
-    accountOnboardingEl('accountOnboardingTitle').textContent = existing ? 'Надати CRM-доступ' : 'Співробітник і CRM-доступ';
     const activateAccess = accountOnboardingOptions?.parkWorkerOnboarding || accountOnboardingOptions?.membershipBusinesses?.length;
     accountOnboardingEl('accountOnboardingSubmit').textContent = activateAccess
         ? 'Створити акаунт і надати доступ'
-        : existing ? 'Створити CRM-акаунт' : 'Створити співробітника й CRM-акаунт';
-    if (accountOnboardingEl('accountOnboardingExistingStaffFields')) accountOnboardingEl('accountOnboardingExistingStaffFields').hidden = !existing || Boolean(lockedStaff);
-    if (accountOnboardingEl('accountOnboardingNewStaffFields')) accountOnboardingEl('accountOnboardingNewStaffFields').hidden = existing;
+        : 'Створити CRM-акаунт';
+    if (accountOnboardingEl('accountOnboardingExistingStaffFields')) accountOnboardingEl('accountOnboardingExistingStaffFields').hidden = Boolean(lockedStaff);
     const rateMode = accountOnboardingEl('accountOnboardingRateMode');
-    const previousStaffMode = rateMode?.dataset.staffMode || '';
-    if (!existing && previousStaffMode !== 'new') {
-        ['accountOnboardingHourlyRate', 'accountOnboardingWeekdayStart', 'accountOnboardingWeekdayEnd', 'accountOnboardingWeekendStart', 'accountOnboardingWeekendEnd']
-            .forEach(id => { const input = accountOnboardingEl(id); if (input) input.value = ''; });
-    }
-    if (rateMode && !existing && rateMode.value === 'keep') rateMode.value = 'unchanged';
-    if (rateMode && existing && !rateMode.dataset.userChanged) rateMode.value = 'keep';
-    if (rateMode) rateMode.dataset.staffMode = existing ? 'existing' : 'new';
-    if (existing && previousStaffMode === 'new') prefillSelectedAccountOnboardingCondition();
+    if (rateMode && !rateMode.dataset.userChanged) rateMode.value = 'keep';
     syncAccountOnboardingRateControls();
     updateAccountOnboardingPayrollProfileHint();
 }
@@ -9785,10 +9765,8 @@ function prefillAccountOnboardingFromStaff(staffId, options = {}) {
     const staff = accountOnboardingOptions?.staff?.find(item => Number(item.id) === Number(staffId));
     if (!staff) return;
     const name = accountOnboardingEl('accountOnboardingName');
-    const phone = accountOnboardingEl('accountOnboardingPhone');
     const username = accountOnboardingEl('accountOnboardingUsername');
     if (name && (!name.value || options.force)) name.value = staff.name || '';
-    if (phone && (!phone.value || options.force)) phone.value = staff.phone || '';
     if (username && (!username.value || options.force)) username.value = suggestAccountUsernameFromStaff(staff);
     if (accountOnboardingEl('accountOnboardingStructureNode')) accountOnboardingEl('accountOnboardingStructureNode').value = staff.company_structure_node_id || '';
     const assignments = Array.isArray(staff.role_assignments) ? staff.role_assignments : [];
@@ -9815,6 +9793,7 @@ function setAccountOnboardingStatus(message = '', type = 'error') {
 
 function focusInvalidAccountOnboarding(message, element) {
     setAccountOnboardingStatus(message, 'error');
+    element?.setAttribute('aria-invalid', 'true');
     let ancestor = element?.parentElement;
     while (ancestor && ancestor !== accountOnboardingEl('accountOnboardingForm')) {
         if (ancestor.tagName === 'DETAILS') ancestor.open = true;
@@ -9841,16 +9820,10 @@ function validateAccountOnboardingSection(step) {
         }
     }
     if (step === 2) {
-        if (accountOnboardingStaffMode() === 'existing') {
-            const select = accountOnboardingEl('accountOnboardingStaffId');
-            const selectedStaff = accountOnboardingOptions?.staff?.find(item => Number(item.id) === Number(select?.value));
-            if (!select?.value || !selectedStaff || selectedStaff.linked_user_id || selectedStaff.linkedUserId || select.selectedOptions?.[0]?.disabled) {
-                return focusInvalidAccountOnboarding('Оберіть картку без прив’язаного CRM-акаунта.', select);
-            }
-        }
-        if (accountOnboardingStaffMode() === 'new') {
-            if (!String(accountOnboardingEl('accountOnboardingDepartment')?.value || '').trim()) return focusInvalidAccountOnboarding('Вкажіть відділ співробітника.', accountOnboardingEl('accountOnboardingDepartment'));
-            if (!String(accountOnboardingEl('accountOnboardingPosition')?.value || '').trim()) return focusInvalidAccountOnboarding('Вкажіть посаду співробітника.', accountOnboardingEl('accountOnboardingPosition'));
+        const select = accountOnboardingEl('accountOnboardingStaffId');
+        const selectedStaff = accountOnboardingOptions?.staff?.find(item => Number(item.id) === Number(select?.value));
+        if (!select?.value || !selectedStaff || selectedStaff.linked_user_id || selectedStaff.linkedUserId || select.selectedOptions?.[0]?.disabled) {
+            return focusInvalidAccountOnboarding('Оберіть картку без прив’язаного CRM-акаунта.', select);
         }
     }
     if (step === 3) {
@@ -9876,32 +9849,17 @@ function validateAccountOnboardingSection(step) {
     return true;
 }
 
-function validateAccountOnboardingStep(step) {
-    const existing = accountOnboardingStaffMode() === 'existing';
-    let sections = [step];
-    if (step === 5) sections = existing ? [2, 1, 5] : [1, 5];
-    if (step === 2 && !existing) {
-        const name = accountOnboardingEl('accountOnboardingName');
-        if (!name.value.trim()) return focusInvalidAccountOnboarding('Вкажіть ім’я співробітника.', name);
-        sections = [2, 3];
-    }
-    if (step === 5 && existing && accountOnboardingChangesSetup()) sections.push(3);
-    if (step === 5 && accountOnboardingChangesConditions()) sections.push(4);
+function validateAccountOnboardingStep() {
+    const sections = [2, 1, 5];
+    if (accountOnboardingChangesSetup()) sections.push(3);
+    if (accountOnboardingChangesConditions()) sections.push(4);
     return sections.every(validateAccountOnboardingSection);
 }
 
 function buildAccountOnboardingPayload() {
-    const staffMode = accountOnboardingStaffMode();
     const rateMode = accountOnboardingChangesConditions() ? accountOnboardingEl('accountOnboardingRateMode').value : 'keep';
     const rateValue = String(accountOnboardingEl('accountOnboardingHourlyRate')?.value || '').trim();
-    const staff = staffMode === 'existing'
-        ? { mode: 'existing', id: Number(accountOnboardingEl('accountOnboardingStaffId')?.value) }
-        : {
-            mode: 'new',
-            department: String(accountOnboardingEl('accountOnboardingDepartment')?.value || '').trim(),
-            position: String(accountOnboardingEl('accountOnboardingPosition')?.value || '').trim(),
-            hireDate: accountOnboardingEl('accountOnboardingHireDate')?.value || null
-        };
+    const staff = { mode: 'existing', id: Number(accountOnboardingEl('accountOnboardingStaffId')?.value) };
     if (rateMode === 'fallback' && rateValue !== '') {
         staff.hourlyRate = Number(rateValue);
         staff.rateUnit = 'hour';
@@ -9916,8 +9874,7 @@ function buildAccountOnboardingPayload() {
     const payload = {
         personal: {
             name: String(accountOnboardingEl('accountOnboardingName')?.value || '').trim(),
-            username: String(accountOnboardingEl('accountOnboardingUsername')?.value || '').trim(),
-            phone: staffMode === 'new' ? String(accountOnboardingEl('accountOnboardingPhone')?.value || '').trim() || undefined : undefined
+            username: String(accountOnboardingEl('accountOnboardingUsername')?.value || '').trim()
         },
         staff,
         access: {
@@ -9954,48 +9911,13 @@ function buildAccountOnboardingPayload() {
     return payload;
 }
 
-function accountOnboardingSteps() {
-    return accountOnboardingStaffMode() === 'new' ? [2, 5] : [5];
-}
-
 function accountOnboardingChangesSetup() {
-    return accountOnboardingStaffMode() === 'new'
-        || (canManageAccountSecurity() && accountOnboardingEl('accountOnboardingEditSetup')?.checked === true);
+    return canManageAccountSecurity() && accountOnboardingEl('accountOnboardingEditSetup')?.checked === true;
 }
 
 function accountOnboardingChangesConditions() {
     return accountOnboardingOptions?.canManagePayrollRules === true
         && accountOnboardingEl('accountOnboardingEditConditions')?.checked === true;
-}
-
-function showAccountOnboardingStep(step) {
-    const steps = accountOnboardingSteps();
-    const safeStep = steps.includes(Number(step)) ? Number(step) : steps[0];
-    const index = steps.indexOf(safeStep);
-    accountOnboardingState.step = safeStep;
-    if (safeStep === 5 && accountOnboardingStaffMode() === 'new') {
-        const username = accountOnboardingEl('accountOnboardingUsername');
-        if (!username.value) username.value = suggestAccountUsernameFromStaff({ name: accountOnboardingEl('accountOnboardingName').value });
-    }
-    document.querySelectorAll('[data-account-onboarding-step]').forEach(panel => {
-        panel.hidden = Number(panel.dataset.accountOnboardingStep) !== safeStep;
-    });
-    const labels = { 2: 'Працівник', 5: 'CRM-доступ' };
-    accountOnboardingEl('accountOnboardingSteps').hidden = steps.length === 1;
-    accountOnboardingEl('accountOnboardingSteps').innerHTML = steps.map((id, position) =>
-        `<li data-account-onboarding-step-label="${id}" class="${position === index ? 'is-active' : position < index ? 'is-complete' : ''}"${position === index ? ' aria-current="step"' : ''}><span>${position + 1}</span>${labels[id]}</li>`
-    ).join('');
-    accountOnboardingEl('accountOnboardingBack').disabled = index === 0;
-    accountOnboardingEl('accountOnboardingBack').classList.toggle('hidden', steps.length === 1);
-    accountOnboardingEl('accountOnboardingModeChoice').hidden = index !== 0
-        || Boolean(accountOnboardingState.context?.staffId || accountOnboardingState.context?.staff?.id);
-    const finalStep = index === steps.length - 1;
-    accountOnboardingEl('accountOnboardingNext').classList.toggle('hidden', finalStep);
-    accountOnboardingEl('accountOnboardingSubmit').classList.toggle('hidden', !finalStep);
-    accountOnboardingEl('accountOnboardingProgress').textContent = steps.length === 1 ? '' : `Крок ${index + 1} з ${steps.length}`;
-    const panel = document.querySelector(`[data-account-onboarding-step="${safeStep}"]`);
-    panel?.querySelector('input:not([disabled]):not([readonly]), select:not([disabled]), button:not([disabled])')?.focus();
-    accountOnboardingEl('accountOnboardingForm').scrollTop = 0;
 }
 
 function renderAccountOnboardingReceipt(response) {
@@ -10075,7 +9997,6 @@ function renderAccountOnboardingReceipt(response) {
     ].map(([label, value]) => `<div class="hr-account-detail-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || 'Не задано')}</strong></div>`).join('')}</div>${credential && canShare ? `<div class="hr-account-credential"><strong>Тимчасовий пароль, показується один раз</strong><code>Логін: ${escapeHtml(credential.username || '')}</code><code>Тимчасовий пароль: ${escapeHtml(credential.password || '')}</code></div>` : ''}${warnings.length ? `<div class="hr-account-receipt-warnings"><strong>Створено з попередженнями:</strong><ul>${warnings.map(warning => `<li>${escapeHtml(warning.message || warning.code || '')}</li>`).join('')}</ul></div>` : ''}<div class="hr-account-detail-actions">${staffId ? `<button type="button" class="hr-account-toggle" data-account-onboarding-open-staff="${staffId}">Відкрити картку співробітника</button><button type="button" class="hr-account-toggle" data-account-onboarding-open-documents="${staffId}">Додати документи</button><button type="button" class="hr-account-toggle" data-account-onboarding-open-resources="${staffId}">Видати ресурси</button>` : ''}${professionKey ? `<button type="button" class="hr-account-toggle" data-account-onboarding-open-checklist="${escapeHtml(professionKey)}">Відкрити навчання</button>` : ''}<button type="button" class="hr-account-primary" data-account-onboarding-finish>Готово</button></div>`;
     root.classList.remove('hidden');
     accountOnboardingEl('accountOnboardingForm')?.classList.add('hidden');
-    accountOnboardingEl('accountOnboardingSteps')?.classList.add('hidden');
     accountOnboardingEl('accountOnboardingActions')?.classList.add('hidden');
     setAccountOnboardingStatus(warnings.length ? 'Основні дані створено. Перевірте попередження у квитанції.' : '', warnings.length ? 'warning' : 'success');
     root.scrollTop = 0;
@@ -10084,15 +10005,7 @@ function renderAccountOnboardingReceipt(response) {
 
 async function submitAccountOnboarding() {
     if (accountOnboardingState.submitting) return;
-    for (const step of accountOnboardingSteps()) {
-        if (!validateAccountOnboardingStep(step)) {
-            if (accountOnboardingState.step !== step) {
-                showAccountOnboardingStep(step);
-                validateAccountOnboardingStep(step);
-            }
-            return;
-        }
-    }
+    if (!validateAccountOnboardingStep()) return;
     accountOnboardingState.payload = buildAccountOnboardingPayload();
     const submit = accountOnboardingEl('accountOnboardingSubmit');
     accountOnboardingState.submitting = true;
@@ -10151,16 +10064,15 @@ function closeAccountOnboardingWizard({ force = false } = {}) {
     overlay?.classList.add('hidden');
     overlay?.setAttribute('aria-hidden', 'true');
     accountOnboardingEl('accountOnboardingForm')?.reset();
+    accountOnboardingEl('accountOnboardingForm')?.querySelectorAll('[aria-invalid="true"]').forEach(element => element.removeAttribute('aria-invalid'));
     accountOnboardingEl('accountOnboardingPassword').type = 'password';
     const passwordToggle = accountOnboardingEl('accountOnboardingPasswordToggle');
     passwordToggle.setAttribute('aria-pressed', 'false');
     passwordToggle.textContent = 'Показати пароль';
     if (accountOnboardingEl('accountOnboardingRateMode')) {
         delete accountOnboardingEl('accountOnboardingRateMode').dataset.userChanged;
-        delete accountOnboardingEl('accountOnboardingRateMode').dataset.staffMode;
     }
     accountOnboardingEl('accountOnboardingForm')?.classList.remove('hidden');
-    accountOnboardingEl('accountOnboardingSteps')?.classList.remove('hidden');
     accountOnboardingEl('accountOnboardingActions')?.classList.remove('hidden');
     accountOnboardingEl('accountOnboardingReceipt')?.classList.add('hidden');
     if (accountOnboardingEl('accountOnboardingReceipt')) accountOnboardingEl('accountOnboardingReceipt').innerHTML = '';
@@ -10171,6 +10083,20 @@ function closeAccountOnboardingWizard({ force = false } = {}) {
         ? returnFocus
         : accountFocusFallback();
     safeReturnFocus?.focus?.({ preventScroll: true });
+}
+
+async function requestCloseAccountOnboardingWizard() {
+    const state = accountOnboardingState;
+    if (state.submitting || state.confirmingClose) return;
+    if (state.dirty && !state.receipt) {
+        state.confirmingClose = true;
+        const confirmed = await confirmModal('Є незбережені зміни. Закрити без збереження?', {
+            type: 'warning', okText: 'Закрити без збереження', cancelText: 'Продовжити редагування'
+        });
+        state.confirmingClose = false;
+        if (!confirmed || state !== accountOnboardingState || !state.open) return;
+    }
+    closeAccountOnboardingWizard();
 }
 
 function setAccountOnboardingBackgroundInert(inert) {
@@ -10204,28 +10130,24 @@ function bindAccountOnboardingControls() {
         password.dispatchEvent(new Event('input', { bubbles: true }));
     });
     for (const eventName of ['input', 'change']) {
-        accountOnboardingEl('accountOnboardingForm').addEventListener(eventName, () => {
-            if (!accountOnboardingState.submitting) setAccountOnboardingStatus('');
+        accountOnboardingEl('accountOnboardingForm').addEventListener(eventName, event => {
+            if (!accountOnboardingState.submitting) {
+                accountOnboardingState.dirty = true;
+                event.target.removeAttribute('aria-invalid');
+                setAccountOnboardingStatus('');
+            }
         });
     }
     if (overlay.parentElement !== document.body) document.body.appendChild(overlay);
-    mountNewStaffFields(accountOnboardingEl('accountOnboardingPersonalFields'), 'accountOnboarding', ['Name', 'Phone']);
-    mountNewStaffFields(accountOnboardingEl('accountOnboardingNewStaffFields'), 'accountOnboarding', ['Department', 'Position', 'HireDate']);
+    mountNewStaffFields(accountOnboardingEl('accountOnboardingPersonalFields'), 'accountOnboarding', ['Name']);
     overlay.dataset.bound = 'true';
-    accountOnboardingEl('accountOnboardingClose')?.addEventListener('click', closeAccountOnboardingWizard);
-    accountOnboardingEl('accountOnboardingBack')?.addEventListener('click', () => showAccountOnboardingStep(accountOnboardingSteps()[accountOnboardingSteps().indexOf(accountOnboardingState.step) - 1]));
-    accountOnboardingEl('accountOnboardingNext')?.addEventListener('click', () => {
-        if (validateAccountOnboardingStep(accountOnboardingState.step)) showAccountOnboardingStep(accountOnboardingSteps()[accountOnboardingSteps().indexOf(accountOnboardingState.step) + 1]);
+    accountOnboardingEl('accountOnboardingClose')?.addEventListener('click', requestCloseAccountOnboardingWizard);
+    accountOnboardingEl('accountOnboardingForm')?.addEventListener('submit', event => {
+        event.preventDefault();
+        void submitAccountOnboarding();
     });
-    accountOnboardingEl('accountOnboardingSubmit')?.addEventListener('click', submitAccountOnboarding);
-    accountOnboardingEl('accountOnboardingForm')?.addEventListener('submit', event => event.preventDefault());
-    document.querySelectorAll('input[name="accountOnboardingStaffMode"]').forEach(input => input.addEventListener('change', () => {
-        syncAccountOnboardingStaffMode();
-        if (accountOnboardingStaffMode() === 'existing') prefillAccountOnboardingFromStaff(accountOnboardingEl('accountOnboardingStaffId').value, { force: true });
-        showAccountOnboardingStep(accountOnboardingSteps()[0]);
-    }));
     accountOnboardingEl('accountOnboardingEditSetup')?.addEventListener('change', () => {
-        syncAccountOnboardingStaffMode();
+        syncAccountOnboardingForm();
         syncAccountOnboardingProfessionDependants();
     });
     accountOnboardingEl('accountOnboardingEditConditions')?.addEventListener('change', event => {
@@ -10325,7 +10247,7 @@ function bindAccountOnboardingControls() {
         if (event.target === overlay) accountOnboardingEl('accountOnboardingClose')?.focus();
     });
     overlay.addEventListener('keydown', event => {
-        if (event.key === 'Escape') return closeAccountOnboardingWizard();
+        if (event.key === 'Escape') return void requestCloseAccountOnboardingWizard();
         if (event.key !== 'Tab') return;
         const focusable = Array.from(overlay.querySelectorAll('button:not([disabled]):not(.hidden), input:not([disabled]), select:not([disabled]), a[href], summary, [tabindex]:not([tabindex="-1"])')).filter(element => {
             if (element.matches(':disabled') || !element.getClientRects().length) return false;
@@ -10351,7 +10273,7 @@ async function openAccountOnboardingWizard(button, context = {}) {
     const requestSeq = ++accountOnboardingRequestSeq;
     accountOnboardingPayrollProfiles = null;
     accountOnboardingPayrollProfilesError = '';
-    accountOnboardingState = { open: true, step: 1, requestSeq, returnFocus: button || document.activeElement, context, accessContext: teamAccessContext(), submitting: false, receipt: null, credential: null, payload: null };
+    accountOnboardingState = { open: true, requestSeq, returnFocus: button || document.activeElement, context, accessContext: teamAccessContext(), submitting: false, receipt: null, credential: null, payload: null };
     bindAccountOnboardingControls();
     overlay.classList.remove('hidden');
     overlay.removeAttribute('aria-hidden');
@@ -10362,7 +10284,6 @@ async function openAccountOnboardingWizard(button, context = {}) {
         loading.classList.remove('hidden');
     }
     accountOnboardingEl('accountOnboardingForm')?.classList.add('hidden');
-    accountOnboardingEl('accountOnboardingSteps')?.classList.add('hidden');
     accountOnboardingEl('accountOnboardingActions')?.classList.add('hidden');
     accountOnboardingEl('accountOnboardingReceipt')?.classList.add('hidden');
     setAccountOnboardingStatus('');
@@ -10381,7 +10302,6 @@ async function openAccountOnboardingWizard(button, context = {}) {
         if (!accountOnboardingState.open || requestSeq !== accountOnboardingRequestSeq) return false;
         if (!loadedOptions) return false;
 
-        populateNewStaffDirectories('accountOnboarding', accountOnboardingOptions.staff || [], accountOnboardingOptions.professions || []);
         renderAccountOnboardingStaffOptions();
         renderAccountOnboardingStructureOptions();
         renderAccountOnboardingProfessions();
@@ -10403,18 +10323,12 @@ async function openAccountOnboardingWizard(button, context = {}) {
             throw new Error(`Картка #${requestedStaffId} уже прив’язана до акаунта. Перевірте зв’язок у HR → Акаунти.`);
         }
         if (contextStaff) {
-            document.querySelector('input[name="accountOnboardingStaffMode"][value="existing"]').checked = true;
             accountOnboardingEl('accountOnboardingStaffId').value = String(contextStaff.id);
             prefillAccountOnboardingFromStaff(contextStaff.id, { force: true });
-        } else {
-            document.querySelector('input[name="accountOnboardingStaffMode"][value="new"]').checked = true;
-            if (context.name) accountOnboardingEl('accountOnboardingName').value = context.name;
-            if (context.username) accountOnboardingEl('accountOnboardingUsername').value = context.username;
         }
         accountOnboardingEl('accountOnboardingPassword').value = generateInitialAccountPassword();
-        syncAccountOnboardingStaffMode();
+        syncAccountOnboardingForm();
         syncAccountOnboardingProfessionDependants();
-        showAccountOnboardingStep(accountOnboardingSteps()[0]);
         loaded = true;
     } catch (error) {
         if (!accountOnboardingState.open || requestSeq !== accountOnboardingRequestSeq) return false;
@@ -10425,7 +10339,6 @@ async function openAccountOnboardingWizard(button, context = {}) {
         if (accountOnboardingState.open && requestSeq === accountOnboardingRequestSeq) {
             loading?.classList.toggle('hidden', loaded);
             accountOnboardingEl('accountOnboardingForm')?.classList.toggle('hidden', !loaded);
-            accountOnboardingEl('accountOnboardingSteps')?.classList.toggle('hidden', !loaded);
             accountOnboardingEl('accountOnboardingActions')?.classList.toggle('hidden', !loaded);
         }
     }

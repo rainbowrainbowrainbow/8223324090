@@ -5586,43 +5586,9 @@ button.hr-team-onboarding-compact:focus-visible {
     text-align: center;
     font-weight: 850;
 }
-.hr-account-onboarding-steps {
-    display: grid;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
-    gap: 4px;
-    margin: 0;
-    padding: 10px 16px;
-    border-bottom: 1px solid rgba(148,163,184,0.14);
-    list-style: none;
-}
-.hr-account-onboarding-steps[hidden],
 #accountOnboardingExistingStaffFields[hidden] {
     display: none;
 }
-
-.hr-account-onboarding-steps li {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    min-width: 0;
-    color: var(--gray-400);
-    font-size: 9px;
-    font-weight: 900;
-    white-space: nowrap;
-}
-.hr-account-onboarding-steps li span {
-    display: grid;
-    flex: 0 0 22px;
-    place-items: center;
-    width: 22px;
-    height: 22px;
-    border-radius: 999px;
-    background: rgba(148,163,184,0.14);
-}
-.hr-account-onboarding-steps li.is-active,
-.hr-account-onboarding-steps li.is-complete { color: #047857; }
-.hr-account-onboarding-steps li.is-active span,
-.hr-account-onboarding-steps li.is-complete span { background: rgba(16,185,129,0.15); }
 .hr-account-onboarding-form,
 .hr-account-receipt {
     min-height: 0;
@@ -5651,6 +5617,7 @@ button.hr-team-onboarding-compact:focus-visible {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
 }
+#accountOnboardingPersonalFields { grid-template-columns: minmax(0, 1fr); }
 .hr-account-form-grid > label,
 .hr-account-time-grid label {
     display: grid;
@@ -5827,12 +5794,6 @@ button.hr-team-onboarding-compact:focus-visible {
     gap: 9px;
     padding: 12px 18px;
     border-top: 1px solid rgba(148,163,184,0.16);
-}
-.hr-account-onboarding-actions span {
-    margin-right: auto;
-    color: var(--gray-500);
-    font-size: 11px;
-    font-weight: 800;
 }
 .hr-account-receipt {
     display: grid;
@@ -8940,13 +8901,6 @@ body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
     .hr-account-list {
         max-height: 520px;
     }
-    .hr-account-onboarding-steps li {
-        justify-content: center;
-        font-size: 0;
-    }
-    .hr-account-onboarding-steps li span {
-        font-size: 9px;
-    }
     .hr-account-preset-grid,
     .hr-account-option-list.is-compact {
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -9329,9 +9283,6 @@ body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
     }
     .hr-account-onboarding-head p {
         display: none;
-    }
-    .hr-account-onboarding-steps {
-        padding: 8px 10px;
     }
     .hr-account-onboarding-panel,
     .hr-account-receipt {
@@ -11223,13 +11174,10 @@ body.dark-mode #accountOnboardingOverlay .hr-account-option-list > label:has(inp
 body.dark-mode #accountOnboardingOverlay .hr-account-profession-copy strong { color: inherit; }
 body.dark-mode #accountOnboardingOverlay .hr-account-profession-copy small,
 body.dark-mode #accountOnboardingOverlay .hr-account-primary-label { color: #cbd5e1; }
-#accountOnboardingModeChoice[hidden] { display: none; }
 body.dark-mode #accountOnboardingOverlay .hr-account-preset-grid button { color: #a7f3d0; background: #193a36; }
 #staffEditModal .hr-staff-profile-card[hidden] { display: none; }
 #staffEditModal .hr-staff-profile-save-scope { position: sticky; bottom: -12px; z-index: 2; background: var(--white); }
 body.dark-mode #staffEditModal .hr-staff-profile-save-scope { background: #202039; }
-body.dark-mode #accountOnboardingOverlay .hr-account-onboarding-steps li.is-active,
-body.dark-mode #accountOnboardingOverlay .hr-account-onboarding-steps li.is-complete,
 body.dark-mode #accountOnboardingOverlay .hr-account-receipt h4,
 body.dark-mode #accountOnboardingOverlay .hr-account-eyebrow { color: #6ee7b7; }
 #accountOnboardingOverlay .hr-account-onboarding-actions { flex-wrap: wrap; }
@@ -11237,7 +11185,11 @@ body.dark-mode #accountOnboardingOverlay .hr-account-eyebrow { color: #6ee7b7; }
 @media (max-width: 600px) {
     #staffEditModal .hr-staff-profile-save-scope span { display: none; }
     #staffEditModal .hr-staff-profile-save-scope { padding: 8px; }
-    #accountOnboardingProgress { font-size: 12px; }
+    #accountOnboardingOverlay button,
+    #accountOnboardingOverlay select,
+    #accountOnboardingOverlay input:not([type="checkbox"]):not([type="radio"]) { min-height: 48px; }
+    #accountOnboardingOverlay select,
+    #accountOnboardingOverlay input:not([type="checkbox"]):not([type="radio"]) { font-size: max(1rem, 1em); }
     #accountOnboardingSubmit { flex: 1 1 180px; }
 }
 

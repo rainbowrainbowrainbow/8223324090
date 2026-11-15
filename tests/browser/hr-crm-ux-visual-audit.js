@@ -29,12 +29,12 @@ async function runHrCrmVisualAudit({ browser, pool, actors, login, target, outpu
             page.on('pageerror', error => errors.push(error.message));
             await page.route('**/*', route => new URL(route.request().url()).origin === new URL(target).origin ? route.continue() : route.abort());
             try {
-                for (const mode of ['existing', 'new']) {
+                for (const mode of ['existing', 'center']) {
                     const key = `${actor.label}-${width}-${theme}-${mode}`;
                     const name = `Олена Коваль (демо ${key})`;
                     const username = `ux_${runId}_${evidence.length}_${mode}`;
                     let existingId;
-                    if (mode === 'existing') {
+                    {
                         const { rows: [person] } = await pool.query(`INSERT INTO staff
                             (name, department, position, role_type, hourly_rate)
                             VALUES ($1, 'Анімація', 'Аніматор', 'animator', 123) RETURNING id`, [name]);
@@ -61,8 +61,6 @@ async function runHrCrmVisualAudit({ browser, pool, actors, login, target, outpu
                         await capture('profile');
                         await profile.getByRole('button', { name: 'Створити CRM-акаунт', exact: true }).click();
                     } else {
-                        // The role's entry point is tested separately by runActor.
-                        // This matrix exercises the canonical new-person wizard itself.
                         if (actor.role === 'creator') {
                             await page.evaluate(() => activateHrTab('accounts'));
                             await page.locator('#accountCreateBtn').click();
@@ -72,16 +70,16 @@ async function runHrCrmVisualAudit({ browser, pool, actors, login, target, outpu
                     }
                     const overlay = page.locator('#accountOnboardingOverlay');
                     await overlay.waitFor({ state: 'visible' });
-                    const next = page.locator('#accountOnboardingNext');
+                    if (mode === 'center') await page.locator('#accountOnboardingStaffId').selectOption(String(existingId));
                     const assertLayout = async () => {
                         const result = await overlay.evaluate(root => {
-                            const button = root.querySelector('#accountOnboardingSubmit:not(.hidden)') || root.querySelector('#accountOnboardingNext');
+                            const button = root.querySelector('#accountOnboardingSubmit');
                             const rect = button.getBoundingClientRect();
                             const form = root.querySelector('#accountOnboardingForm');
                             return { horizontalOverflow: form.scrollWidth > form.clientWidth + 1,
                                 actionInViewport: rect.left >= 0 && rect.right <= innerWidth + 1 && rect.top >= 0 && rect.bottom <= innerHeight + 1,
                                 actionReachable: button.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)),
-                                touchHeight: rect.height >= 44 };
+                                touchHeight: rect.height >= (innerWidth <= 600 ? 48 : 44) };
                         });
                         assert.deepEqual(result, { horizontalOverflow: false, actionInViewport: true, actionReachable: true, touchHeight: true }, key);
                     };
@@ -108,29 +106,10 @@ async function runHrCrmVisualAudit({ browser, pool, actors, login, target, outpu
                             return { text: el.textContent.trim(), ratio: (values[1] + .05) / (values[0] + .05) };
                         });
                     }, selector);
-                    if (mode === 'new') {
-                        await next.click();
-                        assert.match(await page.locator('#accountOnboardingStatus').textContent(), /ім’я/);
-                        assert.equal(await page.locator('#accountOnboardingName').evaluate(el => el === document.activeElement), true);
-                        await capture('validation');
-                        await page.locator('#accountOnboardingName').fill(name);
-                        await page.locator('#accountOnboardingPhone').fill(`+38000${String(evidence.length).padStart(7, '0')}`);
-                        await page.locator('#accountOnboardingDepartment').selectOption({ index: 1 });
-                        await page.locator('#accountOnboardingPosition').selectOption({ index: 1 });
-                        await page.locator('#accountOnboardingProfession-animator').check();
-                        await page.locator('#accountOnboardingPrimaryProfession-animator').check();
-                        await assertLayout();
-                        record.contrast = await measureContrast('.hr-account-profession-copy strong, .hr-account-profession-copy small, .hr-account-primary-label');
-                        assert.ok(record.contrast.every(item => item.ratio >= 4.5), JSON.stringify(record.contrast));
-                        await capture('professions');
-                        await page.locator('#accountOnboardingForm').evaluate(el => { el.scrollTop = 0; });
-                        await capture('person');
-                        await next.click();
-                    }
                     await page.locator('#accountOnboardingUsername').fill(username);
                     await assertLayout();
                     await capture('account');
-                    await page.locator('[data-account-onboarding-step="5"]').waitFor({ state: 'visible' });
+                    await page.locator('#accountOnboardingRole').waitFor({ state: 'visible' });
                     const roleSelect = page.locator('#accountOnboardingRole');
                     const businessSelect = page.locator('#accountOnboardingDefaultBusiness');
                     if (await businessSelect.isVisible()) {
@@ -142,17 +121,12 @@ async function runHrCrmVisualAudit({ browser, pool, actors, login, target, outpu
                         await businessSelect.selectOption('event_genix');
                     }
                     await roleSelect.selectOption('animator');
-                    record.contrast = [...(record.contrast || []), ...await measureContrast('.hr-account-eyebrow, .hr-account-preset-grid button strong, .hr-account-preset-grid button small, [data-account-onboarding-step="5"] .hr-account-onboarding-panel-head p, #accountOnboardingBusinesses > label:not(.is-disabled)')];
+                    record.contrast = [...(record.contrast || []), ...await measureContrast('.hr-account-eyebrow, .hr-account-preset-grid button strong, .hr-account-preset-grid button small, #accountOnboardingForm .hr-account-onboarding-panel-head p, #accountOnboardingBusinesses > label:not(.is-disabled)')];
                     assert.ok(record.contrast.every(item => item.ratio >= 4.5), JSON.stringify(record.contrast));
                     await assertLayout();
                     assert.equal(await page.locator('#accountOnboardingBusinessChoices').isVisible(), false);
                     if (actor.parkWorker) assert.match(await page.locator('#accountOnboardingSingleBusiness').innerText(), /Парк/);
                     await capture('access');
-                    if (mode === 'new') {
-                        await page.locator('#accountOnboardingBack').click();
-                        await next.click();
-                        assert.equal(await page.locator('#accountOnboardingUsername').inputValue(), username);
-                    }
                     await assertLayout();
                     const [response] = await Promise.all([
                         page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/users/onboarding'),
@@ -160,7 +134,7 @@ async function runHrCrmVisualAudit({ browser, pool, actors, login, target, outpu
                     ]);
                     const result = await response.json();
                     assert.equal(response.status(), 200, `${key}: ${result.code || ''}`);
-                    assert.equal(result.receipt.staff.created, mode === 'new');
+                    assert.equal(result.receipt.staff.created, false);
                     if (existingId) {
                         assert.equal(result.receipt.staff.id, existingId);
                         assert.equal((await pool.query('SELECT hourly_rate FROM staff WHERE id=$1', [existingId])).rows[0].hourly_rate, '123.00');

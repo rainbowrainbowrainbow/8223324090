@@ -1201,6 +1201,14 @@ test('DAR substitutes one lesson occurrence and accrues teacher pay inside DAR',
                 await page.locator('#password').fill(process.env.TEST_PASS);
                 await page.locator('#loginForm button[type="submit"]').click();
                 await page.locator('#mainApp').waitFor({ state: 'visible' });
+                await page.goto(`${process.env.TEST_URL}/staff?businessContext=event_genix`, { waitUntil: 'commit' });
+                const parkCatalog = page.waitForResponse(response => {
+                    const url = new URL(response.url());
+                    return url.pathname === '/api/staff-substitutions/catalog' && url.searchParams.get('businessContext') === 'event_genix';
+                });
+                await page.getByRole('button', { name: 'Підміни · графік і облік', exact: true }).click();
+                assert.equal((await parkCatalog).ok(), true);
+                await page.getByRole('combobox', { name: 'Працівник', exact: true }).waitFor();
                 await page.goto(`${process.env.TEST_URL}/?businessContext=dar&date=${date}`, { waitUntil: 'commit' });
                 const container = page.locator('#staffSubstitutionActions');
                 await container.getByRole('button', { name: 'Підміни викладачів' }).waitFor();

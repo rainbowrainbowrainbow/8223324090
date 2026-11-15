@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.83.66",
+  "version": "0.83.67",
   "eventGenix": {
-    "releaseLabel": "Перевірки CRM перед релізом"
+    "releaseLabel": "Фріланс-розрахунки Park"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

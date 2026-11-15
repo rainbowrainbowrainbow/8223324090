@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { Pool } = require('pg');
 const { assertSafeIsolatedTestUrl } = require('../../scripts/test-db-safety');
+const { requirePlaywright } = require('./timeline-room-summary-browser-smoke');
 
 async function run() {
     assert.equal(process.env.RUN_MY_DAY_PARK_ACTUAL_BROWSER, 'true');
@@ -19,7 +20,7 @@ async function run() {
     const session = await response.json();
     assert.ok(session.token && session.user);
 
-    const { chromium } = require('playwright');
+    const { chromium } = requirePlaywright();
     const browser = await chromium.launch();
     const evidence = path.resolve(__dirname, '../../output/qa');
     fs.mkdirSync(evidence, { recursive: true });

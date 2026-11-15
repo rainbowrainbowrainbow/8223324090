@@ -4,6 +4,13 @@
 
 ---
 
+## v0.83.65 - Керування задачами через Telegram
+
+### Release / Versioning / (15.11.2026) [codex]
+- **Керування задачами через Telegram** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.83.64 - Зручний доступ до задач у Telegram
 
 ### Release / Versioning / (14.11.2026) [codex]

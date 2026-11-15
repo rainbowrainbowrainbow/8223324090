@@ -46,25 +46,25 @@ function createEscalationPool(rows, { existingTask = false } = {}) {
             if (/WITH stale AS/i.test(text)) {
                 return { rows: [] };
             }
-            if (/FROM conversations c/i.test(text) && /reply_expected IS TRUE/i.test(text)) {
+            if (/FROM conversations c/i.test(text) && /reply_expected IS TRUE/i.test(text) && !/INSERT INTO tasks/i.test(text)) {
                 return { rows };
             }
-            if (/WITH inserted AS/i.test(text) && /INSERT INTO tasks/i.test(text)) {
+            if (/WITH current_expectation AS/i.test(text) && /INSERT INTO tasks/i.test(text)) {
                 assert.equal(params[0], 'maysternya_doli');
-                assert.equal(params[9], REPLY_ESCALATION_SOURCE_TYPE);
-                assert.equal(params[10], '1201');
+                assert.equal(params[5], REPLY_ESCALATION_SOURCE_TYPE);
+                assert.equal(params[6], '1201');
                 return {
                     rows: [{
                         id: existingTask ? 91 : 90,
                         business_context: params[0],
                         title: params[1],
-                        description: params[2],
+                        description: `${params[2]}\nReply owner user id: ${rows[0].reply_owner_user_id}`,
                         status: existingTask ? 'done' : 'todo',
                         priority: 'high',
-                        owner_user_id: params[6],
-                        deadline: params[8],
-                        source_type: params[9],
-                        source_id: params[10],
+                        owner_user_id: rows[0].reply_owner_user_id,
+                        deadline: rows[0].reply_sla_at,
+                        source_type: params[5],
+                        source_id: params[6],
                         created: !existingTask
                     }]
                 };

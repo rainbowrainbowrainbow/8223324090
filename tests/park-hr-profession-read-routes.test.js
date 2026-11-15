@@ -46,7 +46,8 @@ async function withActualHrRouter(run) {
             else if (normalized.includes('FROM staff_role_assignments a JOIN staff s')) rows=params[1] && params[1] !== STAFF_ID ? [] : [{id:1,staff_id:STAFF_ID,profession_key:'animator',status:'active',is_primary:true,name:'Synthetic',is_active:true,profession_title:'Animator',department:'show'}];
             else if (normalized.includes('FROM hr_staff_profession_checklist_progress x')) rows=[{staff_id:STAFF_ID,profession_key:'animator',checklist_item_id:1,completed_at:'2026-01-01'}];
             else if (normalized.startsWith('SELECT id, name, department FROM staff')) rows=params[0]===STAFF_ID?[{id:STAFF_ID,name:'Synthetic',department:'show'}]:[];
-            else if (normalized.includes('FROM onboarding_progress o')) rows=[{id:1,staff_id:STAFF_ID,profession_key:'animator',status:'active',items:[],task_total:1}];
+            else if (normalized.includes('FROM onboarding_progress o')) rows=[{id:1,staff_id:STAFF_ID,profession_key:'animator',status:'active',items:[],task_total:1,
+                ...(normalized.includes('FROM staff_substitutions s') ? { substitution: { id: '901', state: 'active' } } : {})}];
             rows=rows.map(row=>({...row, notes:PRIVATE, hourly_rate:12345, username:PRIVATE, medical:PRIVATE}));
             return { rows: structuredClone(rows), rowCount: rows.length };
         }
@@ -150,6 +151,16 @@ test('EG16/17 exact reads on the actual HR Express router', async t => {
    for(const options of [{context:'dar'},{scope:'all'},{scope:'multi'}]) {const before=calls.length;result=await request('/api/hr'+path,options);assert.equal(result.status,403,result.text);assert.equal(calls.length,before);}
    state.actor={deny:['hr.payroll.view'],queryFailure:true};result=await request('/api/hr'+path);assert.equal(result.status,500,result.text);
   });
+  const processesPath = '/api/hr/staff/' + STAFF_ID + '/onboarding-processes';
+  state.actor = { role: 'waiter', allow: ['hr.staff.view'], deny: ['hr.staff.manage', 'hr.payroll.view'] };
+  const observer = await request(processesPath);
+  assert.equal(observer.status, 200, observer.text);
+  assert.equal(observer.body.data.professions[0].substitution, undefined);
+  state.actor = { role: 'manager', allow: ['hr.staff.view', 'hr.staff.manage'], deny: ['hr.payroll.view'] };
+  const manager = await request(processesPath);
+  assert.equal(manager.status, 200, manager.text);
+  assert.deepEqual(manager.body.data.professions[0].substitution, { id: '901', state: 'active' });
+  assert.equal(manager.body.data.professions[0].responsible_restricted, true);
   state.actor={deny:['hr.payroll.view']};
   assert.equal((await request('/api/hr/checklists/dashboard?status=archived')).status,403);
   assert.equal((await request('/api/hr/checklists/dashboard?status=invalid')).status,400);

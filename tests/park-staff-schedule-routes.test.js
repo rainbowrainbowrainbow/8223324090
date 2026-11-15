@@ -45,6 +45,9 @@ function createPoolFixture() {
             let rows;
             if (normalized.startsWith('SELECT EXISTS ( SELECT 1 FROM hr_time_records WHERE business_context IS DISTINCT FROM $1')) {
                 rows = [{ ownership_conflict: false }];
+            } else if (normalized.includes('FROM staff_substitutions agreement')) {
+                assert.deepEqual(params, ['2026-09-13', '2026-09-21', 'event_genix']);
+                rows = [{ id:'42', date:'2026-09-14', staff_id:STAFF_ID, role:'replacement', partial:true, hourlyRate:PRIVATE }];
             } else if (normalized.includes('FROM staff_schedule ss')) {
                 assert.deepEqual(params, ['2026-09-13', '2026-09-21']);
                 const row = {
@@ -262,6 +265,9 @@ test('Park schedule ownership through the actual Express staff and HR routers', 
             assert.equal(schedule.data[0].shift_end, '18:00');
             assert.equal(schedule.data[0].plannedMinutes, 450);
             assert.equal(schedule.data[0].segments[0].professionKey, 'animator');
+            assert.deepEqual(schedule.shiftSubstitutions, [
+                { id:'42', date:'2026-09-14', staff_id:STAFF_ID, role:'replacement', partial:true }
+            ]);
             assert.deepEqual(schedule.scheduleAccess, {
                 readOnly: false,
                 editable: true,

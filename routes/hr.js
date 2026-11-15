@@ -7856,7 +7856,8 @@ router.get('/staff/:id/onboarding-assignment', requireHrManage, async (req, res)
         const staff = await loadStaffForOnboarding(req.params.id);
         if (!staff) return res.status(404).json({ success: false, error: 'Працівника не знайдено' });
         const professionKey = normalizeProfessionKey(req.query.profession_key ?? req.query.professionKey);
-        const progress = await loadActiveOnboardingProgress(staff.id, pool, { professionKey });
+        const includeSubstitution = hrBusinessContextFromRequest(req) === DEFAULT_BUSINESS_CONTEXT;
+        const progress = await loadActiveOnboardingProgress(staff.id, pool, { professionKey, includeSubstitution });
         res.json({
             success: true,
             staff,
@@ -7873,7 +7874,8 @@ router.get('/staff/:id/onboarding-processes', requireHrManage, async (req, res) 
     try {
         const staff = await loadStaffForOnboarding(req.params.id);
         if (!staff) return res.status(404).json({ success: false, error: 'Працівника не знайдено' });
-        const data = await loadOnboardingProcessesForStaff(staff.id);
+        const includeSubstitution = hrBusinessContextFromRequest(req) === DEFAULT_BUSINESS_CONTEXT;
+        const data = await loadOnboardingProcessesForStaff(staff.id, pool, { includeSubstitution });
         res.json({ success: true, staff, data });
     } catch (err) {
         log.error('GET /hr/staff/:id/onboarding-processes error', err);

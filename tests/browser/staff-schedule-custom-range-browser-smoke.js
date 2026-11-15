@@ -2835,6 +2835,77 @@ async function runScheduleHistoryIsolationFlow(browser, base) {
     }
 }
 
+async function runShiftProvenanceFlow(browser, base) {
+    const date = '2026-07-11';
+    const originalLabel = 'Частину передано №42';
+    const replacementLabel = 'Часткова підміна №42';
+    const { context, page } = await openStaffPage(browser, base, { width: 390, height: 844 }, {
+        serviceWorkers: 'block',
+        preparePage: async page => {
+            page.setDefaultNavigationTimeout(60000);
+            await page.route('**/*', route => new URL(route.request().url()).origin === base
+                ? route.fallback() : route.abort());
+            await page.route('**/api/staff/schedule?**', async route => {
+                const url = new URL(route.request().url());
+                const response = await route.fetch();
+                const data = await response.json();
+                if (url.searchParams.get('from') <= date && url.searchParams.get('to') >= date) {
+                    data.data = data.data.filter(row => row.staff_id !== 102 || row.date !== date);
+                    data.shiftSubstitutions = [
+                        { id:'42', staff_id:102, date, role:'original', partial:true },
+                        { id:'42', staff_id:101, date, role:'replacement', partial:true }
+                    ];
+                }
+                await route.fulfill({ response, json:data });
+            });
+        }
+    });
+    try {
+        await applyManualRange(page, date, '2026-07-12');
+        await expandAllScheduleGroups(page);
+        const original = page.locator(`.sch-cell[data-staff="102"][data-date="${date}"]`);
+        const replacement = page.locator(`.sch-cell[data-staff="101"][data-date="${date}"]`);
+        assert.equal(await original.locator('.sch-substitution-label').innerText(), originalLabel);
+        assert.equal(await original.getAttribute('data-schedule-id'), '');
+        assert.equal(await replacement.locator('.sch-substitution-label').innerText(), replacementLabel);
+        assert.ok((await original.getAttribute('aria-label')).includes(originalLabel));
+        assert.ok((await replacement.getAttribute('aria-label')).includes(replacementLabel));
+        await page.locator('#scheduleWrapper').evaluate(wrapper => { wrapper.scrollLeft = 0; });
+        for (const cell of [original, replacement]) {
+            assert.equal(await cell.locator('.sch-substitution-label').evaluate(label => {
+                const range = document.createRange();
+                range.selectNodeContents(label);
+                const text = range.getBoundingClientRect();
+                const wrapper = document.querySelector('#scheduleWrapper').getBoundingClientRect();
+                return text.left >= wrapper.left && text.right <= wrapper.right;
+            }), true, 'the full substitution label is visible in the first date column');
+        }
+        await captureStableScheduleScreenshot(page, 'shift-provenance-mobile.png', '#scheduleWrapper');
+
+        await replacement.press('Enter');
+        const dialog = page.getByRole('dialog', { name: /План дня:.+2026-07-11/ });
+        await dialog.waitFor({ state:'visible' });
+        await page.locator('#schCancelBtn').click();
+        await dialog.waitFor({ state:'hidden' });
+
+        const pending = page.waitForEvent('download');
+        await page.locator('#exportExcelBtn').click();
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.readFile(await (await pending).path());
+        const dateCells = new Map();
+        workbook.eachSheet(sheet => {
+            sheet.eachRow(row => {
+                const staffId = row.getCell(1).value;
+                if (staffId === 101 || staffId === 102) dateCells.set(staffId, String(row.getCell(7).value));
+            });
+        });
+        assert.equal(dateCells.get(102), originalLabel);
+        assert.ok(dateCells.get(101)?.includes(replacementLabel));
+    } finally {
+        await context.close();
+    }
+}
+
 async function runScheduleKeyboardAccessibilityFlow(browser, base) {
     const { context, page } = await openStaffPage(browser, base, { width: 1440, height: 900 });
     try {
@@ -4446,6 +4517,11 @@ if (require.main === module) (async () => {
     const { server, base } = await createServer();
     const browser = await chromium.launch({ headless: HEADLESS });
     try {
+        if (process.argv.includes('--shift-provenance-only')) {
+            await runShiftProvenanceFlow(browser, base);
+            console.log('Staff schedule shift provenance browser smoke passed');
+            return;
+        }
         if (process.argv.includes('--pay-calculation-only')) {
             await runPaidAdditionalProfessionFlow(browser, base);
             console.log('Schedule paid calculation browser smoke passed');
@@ -4468,6 +4544,7 @@ if (require.main === module) (async () => {
         await runPeriodReliabilityFlow(browser, base);
         await runScheduleHistoryIsolationFlow(browser, base);
         await runScheduleKeyboardAccessibilityFlow(browser, base);
+        await runShiftProvenanceFlow(browser, base);
         await runMembershipGroupingFlow(browser, base);
         await runDeterministicSubgroupReadinessFlow(browser, base);
         await runSegmentCellPresentationFlow(browser, base);

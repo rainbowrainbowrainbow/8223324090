@@ -7,6 +7,7 @@ const root = path.resolve(__dirname, '../..');
 const artifactDir = path.resolve(process.env.OMNI_BROWSER_ARTIFACT_DIR || path.join(root, 'output', 'playwright', 'omni-completion'));
 fs.mkdirSync(artifactDir, { recursive: true });
 const layoutOnly = process.env.OMNI_LAYOUT_ONLY === '1';
+const substitutionOnly = layoutOnly && process.env.OMNI_SUBSTITUTION_ONLY === '1';
 const composerOnly = layoutOnly && process.env.OMNI_COMPOSER_ONLY === '1';
 const forceComposerFallback = composerOnly && process.env.OMNI_COMPOSER_FALLBACK === '1';
 const nativeZoom = process.env.OMNI_NATIVE_ZOOM === '1';
@@ -203,6 +204,14 @@ function playwright() {
         createdAt: '2099-01-01T12:04:00Z'
       };
     }
+    if (substitutionOnly) {
+      conversations[0].customerName = 'Тестова розмова з підміною';
+      conversations[0].ownerSubstitution = { id:'71', state:'active' };
+      conversations[0].unreadCount = 0;
+      Object.assign(history.get(9001).at(-1), {
+        direction:'outbound', replySubstitution:{ id:'72', state:'completed' },
+      });
+    }
     let delayA=false, sendResolve, sendStartedResolve;
     let sendStarted=new Promise(resolve=>{sendStartedResolve=resolve;});
     let conversationFixtureMode = 'normal';
@@ -362,6 +371,34 @@ function playwright() {
     const errors=[];page.on('pageerror',e=>{ errors.push(e.message.slice(0,120)); runReport.pageErrors = errors.slice(); });
     await page.goto(base+'/omni?businessContext=event_genix',{waitUntil:'domcontentloaded'});
     await page.waitForSelector('body.shell-ready .omni-conv-item',{timeout:60000});
+    if (substitutionOnly) {
+      await page.setViewportSize({width:390,height:844});
+      await page.locator('.omni-conv-item[data-id="9001"]').click();
+      const owner = page.locator('#omniOwnerSubstitution');
+      const reply = page.locator('#omniMessages [data-omni-reply-substitution]');
+      await reply.waitFor({state:'visible'});
+      assert.equal(await owner.innerText(),'Підміна відповідального №71 · погоджено');
+      assert.equal(await reply.innerText(),'Підміна для відповіді №72 · завершено');
+      for (const marker of [owner, reply]) {
+        assert.ok(await marker.evaluate(node => {
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          const bounds = range.getBoundingClientRect();
+          return bounds.left >= 0 && bounds.right <= innerWidth;
+        }), 'agreement text fits the phone viewport');
+      }
+      await page.screenshot({path:path.join(artifactDir,'substitution-mobile.png')});
+      await page.locator('#omniMobileBack').click();
+      await page.locator('.omni-conv-item[data-id="9002"]').click();
+      await page.locator('#omniMessages').getByText('Діалог 9002 повідомлення 2').waitFor();
+      assert.equal(await owner.isVisible(),false);
+      assert.equal(await reply.count(),0);
+      assert.deepEqual(errors,[]);
+      assert.deepEqual(unexpectedFixtureRequests,[]);
+      runReport.scenarios = { substitutions:true };
+      runReport.status = 'passed';
+      return;
+    }
     if (composerOnly) {
       await page.setViewportSize({width:390,height:844});
       await page.locator('.omni-conv-item').first().click();

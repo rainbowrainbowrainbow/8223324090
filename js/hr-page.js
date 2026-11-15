@@ -1495,6 +1495,9 @@ function renderStaffOnboardingScopeCard(staff, assignment = null, process = null
         ? 'Загальний корпоративний онбординг'
         : (assignment?.profession_title || process?.profession_title || professionTitle(professionKey));
     const roleType = isGeneral ? 'Корпоративний setup' : (assignment?.is_primary ? 'Основна професія' : 'Додаткова професія');
+    const { id: substitutionId, state: substitutionState } = process?.substitution || {};
+    const substitution = substitutionId && ['active', 'completed'].includes(substitutionState)
+        ? `<span>Підміна №${escapeHtml(substitutionId)} · ${substitutionState === 'active' ? 'погоджено' : 'завершено'}</span>` : '';
     const actionLabel = completed ? 'Процес завершено' : (process ? 'Змінити відповідального' : (isGeneral ? 'Запустити загальний онбординг' : 'Запустити онбординг професії'));
     const canAct = canManage && !staffOnboardingDialogState?.readOnly && assignmentActive && !completed;
     const professionArg = professionKey ? `'${escapeJsString(professionKey)}'` : "''";
@@ -1509,6 +1512,7 @@ function renderStaffOnboardingScopeCard(staff, assignment = null, process = null
         <div class="hr-onboarding-scope-meta">
             <span>${escapeHtml(status)}</span>
             <span>Відповідальний: ${escapeHtml(responsible)}</span>
+            ${substitution}
             <span>Чекліст: ${Number(readiness.completed || 0)}/${Number(readiness.total || 0)}</span>
             ${isGeneral ? '' : `<span>${escapeHtml(onboardingInternshipLabel(assignment?.internship_status || process?.internship_status))}</span>
                 <span>${escapeHtml(onboardingAdmissionLabel(assignment?.admission_status || process?.admission_status))}</span>`}

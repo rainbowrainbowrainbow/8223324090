@@ -5,7 +5,8 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 function assertBusinessScope(sql, params, context) {
-    const column = sql.includes('FROM leads l') ? 'l.business_context' : 'business_context';
+    const alias = sql.match(/FROM (?:conversations|leads) ([cl])\b/)?.[1];
+    const column = alias ? `${alias}.business_context` : 'business_context';
     assert.ok(sql.includes(`COALESCE(${column}, 'event_genix') = $${params.length}`));
     assert.equal(params.at(-1), context);
 }
@@ -53,7 +54,7 @@ describe('Omni Case Link v1', () => {
         const hub = loadHubWithQuery(async (sql, params = []) => {
             const text = String(sql).replace(/\s+/g, ' ').trim();
             assertBusinessScope(text, params, 'maysternya_doli');
-            if (/SELECT \* FROM conversations WHERE id = \$1 /i.test(text)) {
+            if (/FROM conversations c WHERE c\.id = \$1 /i.test(text)) {
                 return { rows: [{ id: params[0], business_context: 'maysternya_doli', channel: 'telegram', external_id: 'tg-1', customer_name: 'Exact Customer', customer_phone: '+380000000001', customer_id: 701, status: 'open', meta: {} }] };
             }
             if (/SELECT \* FROM customers WHERE id = \$1 /i.test(text)) {
@@ -85,7 +86,7 @@ describe('Omni Case Link v1', () => {
         const hub = loadHubWithQuery(async (sql, params = []) => {
             const text = String(sql).replace(/\s+/g, ' ').trim();
             assertBusinessScope(text, params, 'maysternya_doli');
-            if (/SELECT \* FROM conversations WHERE id = \$1 /i.test(text)) {
+            if (/FROM conversations c WHERE c\.id = \$1 /i.test(text)) {
                 return { rows: [{ id: params[0], business_context: 'maysternya_doli', channel: 'viber', external_id: 'vb-1', customer_name: 'Suggested Customer', customer_phone: '+380000000002', customer_id: null, status: 'open', meta: {} }] };
             }
             if (/FROM customers WHERE COALESCE\(business_context/i.test(text)) {
@@ -114,7 +115,7 @@ describe('Omni Case Link v1', () => {
         const hub = loadHubWithQuery(async (sql, params = []) => {
             const text = String(sql).replace(/\s+/g, ' ').trim();
             assertBusinessScope(text, params, 'maysternya_doli');
-            if (/SELECT \* FROM conversations WHERE id = \$1 /i.test(text)) {
+            if (/FROM conversations c WHERE c\.id = \$1 /i.test(text)) {
                 return {
                     rows: [{
                         id: params[0], business_context: 'maysternya_doli', channel: 'instagram', external_id: 'ig-1',

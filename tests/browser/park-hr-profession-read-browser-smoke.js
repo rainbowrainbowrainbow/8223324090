@@ -31,7 +31,8 @@ const { install, requirePlaywright } = require('./hr-checklists-async-browser-sm
                         checklistTemplate: qa.template('qa_a'), access: { partial: true, readOnly: true }
                     } };
                     return { success: true, staff: { id: 1, name: context + ' person' }, assignments: [],
-                        data: { general: null, professions: [], history: [] }, onboardingAccess: { readOnly: true } };
+                        data: { general: qa.onboardingProcess || null, professions: [], history: [] },
+                        onboardingAccess: { readOnly: !canManage } };
                 }
                 return original(path, options);
             };
@@ -59,8 +60,35 @@ const { install, requirePlaywright } = require('./hr-checklists-async-browser-sm
             assert.equal(await page.locator('#professionWorkspaceOverlay').isVisible(), false);
             assert.equal(await page.evaluate(() => professionWorkspaceState.data), null);
         }
-        await page.evaluate(() => { qa.context = 'park'; return openStaffOnboardingAssignment(1); });
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.evaluate(() => {
+            qa.context = 'park';
+            canManage = true;
+            qa.onboardingProcess = { id: 77, status: 'in_progress', responsible_restricted: true,
+                substitution: { id: '901', state: 'active' } };
+            return openStaffOnboardingAssignment(1);
+        });
         assert.equal(await page.locator('#staffOnboardingScopeBody').getAttribute('aria-busy'), 'false');
+        const agreement = page.getByText('Підміна №901 · погоджено', { exact: true });
+        await agreement.waitFor({ state: 'visible' });
+        assert.ok(await agreement.evaluate(node => {
+            const range = document.createRange();
+            range.selectNodeContents(node);
+            const bounds = range.getBoundingClientRect();
+            return bounds.left >= 0 && bounds.right <= innerWidth;
+        }), 'The mentor agreement fits the mobile viewport');
+        const onboardingOutput = path.resolve(__dirname, '../../output/playwright/park-profession-read');
+        fs.mkdirSync(onboardingOutput, { recursive: true });
+        await page.locator('#staffOnboardingScopeOverlay [role="dialog"]').screenshot({
+            path: path.join(onboardingOutput, 'onboarding-substitution-mobile.png'), animations: 'disabled'
+        });
+        await page.locator('#staffOnboardingScopeOverlay').getByRole('button', { name: 'Закрити', exact: true }).click();
+        await page.evaluate(() => {
+            canManage = false;
+            qa.onboardingProcess = null;
+            return openStaffOnboardingAssignment(1);
+        });
+        assert.equal(await agreement.count(), 0);
         for (const failure of [403, 500, 'offline']) {
             await page.evaluate(failure => { qa.failure = failure; return refreshStaffOnboardingDialog(1); }, failure);
             assert.equal(await page.locator('#staffOnboardingScopeBody [role="alert"]').count(), 1);

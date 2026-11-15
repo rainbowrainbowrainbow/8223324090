@@ -115,6 +115,16 @@ export function createEmployeeRenderers({ escapeHtml, profileEmployeeDateText, p
         const assignments = (data.currentAssignments || []).filter(item => admission[item.admissionStatus]).map(item => [
             profileProfessionByKey(item.key)?.title || profileRoleLabel(item.key), admission[item.admissionStatus]
         ]);
+        const substitutionStates = { active: 'Погоджено', completed: 'Завершено', cancelled: 'Скасовано' };
+        const substitutions = (data.substitutions || []).map(item => {
+            const role = item.role === 'original'
+                ? (item.partial ? 'Частину зміни передано' : 'Роботу передано')
+                : (item.partial ? 'Часткова підміна' : 'Підміна');
+            const profession = item.professionKey
+                ? (profileProfessionByKey(item.professionKey)?.title || profileRoleLabel(item.professionKey)) : '';
+            const label = [profileEmployeeDateText(item.date), `${role} №${item.id}`, profession].filter(Boolean).join(' · ');
+            return [label, substitutionStates[item.state]];
+        });
         return `
             <dl class="profile-results-highlights">
                 ${highlights.map(([label, read, href, action]) => `<div>
@@ -137,6 +147,8 @@ export function createEmployeeRenderers({ escapeHtml, profileEmployeeDateText, p
                 за датою виконання або дедлайну. Особисті й приватні задачі не входять у показники.
                 Для поточного місяця зіставляємо однакову кількість календарних днів.</p>
             <p><a href="/profile?tab=workbase#work-base-materials">Навчальні матеріали</a></p>
+            ${Array.isArray(data.substitutions)
+                ? renderProfileEmployeeDetails('Мої підміни', substitutions, 'За цей місяць підмін немає.') : ''}
             ${renderProfileEmployeeDetails('Оцінки керівника', ratings, 'За цей місяць оцінок у журналі немає.')}
             ${renderProfileEmployeeDetails('Завершені курси', courses)}
             ${renderProfileEmployeeDetails('Поточні допуски', assignments, 'Немає підтверджених записів про допуски.')}

@@ -316,16 +316,16 @@ function createFakePool() {
                 }] };
             }
 
-            if (/WITH inserted AS/i.test(text) && /INSERT INTO tasks/i.test(text) && /conversation_reply/i.test(text)) {
+            if (/WITH current_expectation AS/i.test(text) && /INSERT INTO tasks/i.test(text) && /conversation_reply/i.test(text)) {
                 return { rows: [{
                     id: 710,
                     title: 'Overdue reply escalation',
                     status: 'todo',
                     business_context: params[0],
                     source_type: 'conversation_reply',
-                    source_id: String(params[10]),
-                    owner_user_id: params[6],
-                    deadline: params[8],
+                    source_id: String(params[6]),
+                    owner_user_id: null,
+                    deadline: '2026-05-13T08:00:00Z',
                     created: true
                 }] };
             }
@@ -1113,10 +1113,10 @@ describe('work queue endpoint', () => {
         assert.match(expectationQuery.text, /awaiting_reply_since IS NOT NULL/i);
         assert.match(expectationQuery.text, /COALESCE\(cm\.delivery_status, ''\) NOT IN \('failed', 'later_failed'\)/i);
 
-        const insertQuery = queries.find(q => /WITH inserted AS/i.test(q.text) && /INSERT INTO tasks/i.test(q.text));
+        const insertQuery = queries.find(q => /WITH current_expectation AS/i.test(q.text) && /INSERT INTO tasks/i.test(q.text));
         assert.ok(insertQuery, 'manual escalation should reuse the idempotent conversation_reply task creation path');
-        assert.equal(insertQuery.params[9], 'conversation_reply');
-        assert.equal(insertQuery.params[10], '1204');
+        assert.equal(insertQuery.params[5], 'conversation_reply');
+        assert.equal(insertQuery.params[6], '1204');
 
         const historyInsert = queries.find(q => /INSERT INTO reply_action_history/i.test(q.text) && q.params[2] === 'reply_escalated');
         assert.ok(historyInsert, 'manual reply escalation must leave durable action history');

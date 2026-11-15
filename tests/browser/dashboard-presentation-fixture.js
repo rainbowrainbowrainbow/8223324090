@@ -71,7 +71,7 @@ function startFixture(port = 0) {
             if (options.error === 'all' || options.error === type || options.denied) return res.status(options.denied ? 403 : 503).json({ success: false, error: 'Тестове джерело недоступне' });
             const title = options.long ? 'ПеревіритиРеквізитТаУзгодитиСценарій'.repeat(9) : 'Перевірити реквізит до неонового шоу';
             const allTasks = options.empty ? [] : [
-                { id: 501, title, status: 'in_progress', priority: 'high', ownerLabel: 'Тестова команда', deadline: '2026-09-13T12:00:00Z', effectiveDate: '2026-09-13', effectiveDueAt: '2026-09-13T12:00:00Z', dueState: 'today', isOverdue: false },
+                { id: 501, title, ...(options.substitution ? { substitution: { id: '901', state: 'active' } } : {}), status: 'in_progress', priority: 'high', ownerLabel: 'Тестова команда', deadline: '2026-09-13T12:00:00Z', effectiveDate: '2026-09-13', effectiveDueAt: '2026-09-13T12:00:00Z', dueState: 'today', isOverdue: false },
                 { id: 502, title: 'Підготувати залу до приходу гостей', status: 'todo', priority: 'medium', ownerLabel: 'Тестова команда', effectiveDate: null, effectiveDueAt: null, dueState: 'unscheduled', isOverdue: false }
             ].map(task => ({ ...task, status: doneTasks.has(task.id) ? 'done' : task.status, focus_rank: focusedTasks.has(task.id) ? 1 : 0, isSelectedFocus: focusedTasks.has(task.id), snoozed_until: snoozedTasks.has(task.id) ? '2026-09-14T10:00:00Z' : null }));
             const tasks = allTasks.filter(task => task.status !== 'done' && !snoozedTasks.has(task.id));

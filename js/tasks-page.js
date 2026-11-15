@@ -6313,15 +6313,19 @@ function openBanquetDepositTaskForCompletion(taskId) {
 
 function renderTaskDetailSource(task = {}) {
     const source = task.drawer?.source || task.taskContext?.source || null;
+    const { id, state } = task.substitution || {};
+    const substitution = id && ['active', 'completed'].includes(state)
+        ? `<span data-task-substitution>Підміна №${escapeHtml(id)} · ${state === 'active' ? 'погоджено' : 'завершено'}</span>`
+        : '';
     if (!source || (!source.type && !source.id && !source.module && !source.surface)) {
-        return '<section class="task-detail-source-card"><strong>Джерело задачі</strong><span>Створено вручну або джерело не вказано</span></section>';
+        return `<section class="task-detail-source-card"><strong>Джерело задачі</strong><span>Створено вручну або джерело не вказано</span>${substitution}</section>`;
     }
     const label = source.label || source.type || source.module || 'Джерело задачі';
     const meta = [source.id ? `#${source.id}` : '', source.module, source.surface].filter(Boolean).join(' · ');
     const link = source.href
         ? `<a href="${escapeHtml(source.href)}" data-task-source-link>Відкрити CRM-джерело</a>`
         : '<span class="task-detail-source-unavailable">CRM-перехід недоступний для цього типу джерела</span>';
-    return `<section class="task-detail-source-card"><strong>Джерело задачі</strong><span>${escapeHtml(label)}${meta ? ` · ${escapeHtml(meta)}` : ''}</span>${link}</section>`;
+    return `<section class="task-detail-source-card"><strong>Джерело задачі</strong><span>${escapeHtml(label)}${meta ? ` · ${escapeHtml(meta)}` : ''}</span>${substitution}${link}</section>`;
 }
 
 function renderTaskDetailContext(task = {}) {

@@ -34,7 +34,7 @@ function workbookPayload(overrides = {}) {
                     employee: 'Працівник Reception',
                     role: 'Менеджер',
                     cells: [
-                        { status: 'working', text: '09:00-18:00 · Менеджер\nРазом: 8 год' },
+                        { status: 'working', text: '09:00-18:00 · Менеджер\nРазом: 8 год\nПідміна №42' },
                         { status: 'dayoff', text: 'Вихідний' }
                     ]
                 }]
@@ -50,7 +50,7 @@ function workbookPayload(overrides = {}) {
                     employee: 'Працівник Admin',
                     role: 'Адміністратор',
                     cells: [
-                        { status: 'remote', text: '10:00-19:00 · Адміністратор' },
+                        { status: 'unset', text: 'Зміну передано №42' },
                         { status: 'sick', text: 'Лікарняний' }
                     ]
                 }]
@@ -77,6 +77,8 @@ test('staff schedule export creates real worksheets with department-owned rows',
     assert.equal(reception.getCell('B4').value, 'reception');
     assert.equal(reception.getCell('E4').value, 'Працівник Reception');
     assert.match(String(reception.getCell('G4').value), /09:00-18:00/);
+    assert.match(String(reception.getCell('G4').value), /Підміна №42/);
+    assert.equal(admin.getCell('G4').value, 'Зміну передано №42');
     assert.equal(reception.getCell('A5').value, null, 'admin row must not leak into Reception');
     assert.equal(admin.getCell('A4').value, 202);
     assert.equal(admin.getCell('B4').value, 'admin');

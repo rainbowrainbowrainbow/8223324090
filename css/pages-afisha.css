@@ -337,6 +337,12 @@
     color: #334155;
 }
 
+.afisha-substitution {
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    overflow-wrap: anywhere;
+}
+
 .afisha-item-actions {
     justify-content: flex-end;
 }

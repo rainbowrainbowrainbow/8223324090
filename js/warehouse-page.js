@@ -1282,6 +1282,7 @@ function noteWarehouseLegacyFailure(result, context) {
 }
 
 window.addEventListener('crmBusinessContextChanged', () => {
+    closeProcDetail();
     syncWarehouseLegacyActions();
     void loadWarehouseContractors();
     void loadProcLists();
@@ -1465,6 +1466,7 @@ async function copyContractorDraft() {
 let procLists = [];
 let currentProcListId = null;
 let currentProcDetail = null;
+let procurementDetailRequest = 0;
 let procurementKitchenDemand = [];
 
 async function loadProcurementKitchenDemand() {
@@ -1547,6 +1549,12 @@ async function loadProcLists() {
     renderProcLists();
 }
 
+function renderProcurementSubstitution(substitution) {
+    const { id, state } = substitution || {};
+    if (!id || !['active', 'completed'].includes(state)) return '';
+    return `<span data-procurement-substitution>Підміна №${escapeHtml(id)} · ${state === 'active' ? 'погоджено' : 'завершено'}</span>`;
+}
+
 function renderProcLists() {
     const container = document.getElementById('procListCards');
     const empty = document.getElementById('procEmptyState');
@@ -1572,6 +1580,7 @@ function renderProcLists() {
                 <span>${escapeHtml(list.departmentLabel)}</span>
                 ${list.plannedDate ? `<span>📅 ${list.plannedDate}</span>` : ''}
                 ${list.assignedName ? `<span>👤 ${escapeHtml(list.assignedName)}</span>` : ''}
+                ${renderProcurementSubstitution(list.substitution)}
                 ${list.targetLocationName ? `<span>🏬 ${escapeHtml(list.targetLocationName)}</span>` : ''}
                 ${list.contractorName ? `<span>🤝 ${escapeHtml(list.contractorName)}</span>` : ''}
                 <span>${list.itemCount || 0} позицій</span>
@@ -1658,9 +1667,12 @@ async function saveProcList() {
 }
 
 async function openProcDetail(listId) {
-    currentProcListId = listId;
+    const request = ++procurementDetailRequest;
+    const context = window.getLegacyBusinessSurfaceContextKey?.('contractors_procurement');
     const data = await apiGetProcurementList(listId);
-    if (!data) return;
+    if (!data || request !== procurementDetailRequest
+        || context !== window.getLegacyBusinessSurfaceContextKey?.('contractors_procurement')) return;
+    currentProcListId = listId;
     currentProcDetail = data;
 
     document.getElementById('procDetailTitle').textContent = data.title;
@@ -1668,6 +1680,8 @@ async function openProcDetail(listId) {
     const statusBadge = `<span class="proc-status-badge proc-status-${data.status}">${escapeHtml(data.statusLabel)}</span>`;
     document.getElementById('procDetailMeta').innerHTML =
         `${data.departmentLabel} ${statusBadge} ${data.plannedDate ? `· 📅 ${data.plannedDate}` : ''} ${data.assignedName ? `· 👤 ${escapeHtml(data.assignedName)}` : ''} ${data.targetLocationName ? `· 🏬 ${escapeHtml(data.targetLocationName)}` : ''} ${data.contractorName ? `· 🤝 ${escapeHtml(data.contractorName)}` : ''}`;
+    const substitution = renderProcurementSubstitution(data.substitution);
+    if (substitution) document.getElementById('procDetailMeta').insertAdjacentHTML('beforeend', `<div>${substitution}</div>`);
     const pdContractor = document.getElementById('pd-item-contractor');
     if (pdContractor) pdContractor.value = data.contractorId || '';
 
@@ -1710,6 +1724,7 @@ function renderProcDetailItems(items) {
 }
 
 function closeProcDetail() {
+    procurementDetailRequest++;
     document.getElementById('procDetailModal').style.display = 'none';
     currentProcListId = null;
     currentProcDetail = null;

@@ -357,7 +357,7 @@ async function installFixtureRoutes(context, baseUrl, state) {
         if (url.pathname === '/api/tasks/42/history') return json(route, { success: true, history: [] });
         if (url.pathname === '/api/tasks/42/observers') return json(route, { success: true, observers: [] });
         if (url.pathname === '/api/tasks/42/subtasks') return json(route, { success: true, subtasks: [] });
-        if (url.pathname === '/api/tasks/42') return json(route, { success: true, task: TASK });
+        if (url.pathname === '/api/tasks/42') return json(route, { success: true, task: { ...TASK, substitution: state.substitution } });
         if (url.pathname === '/api/task-templates') return json(route, []);
         if (url.pathname === '/api/dashboard/alerts') return json(route, { alerts: [] });
         if (url.pathname === '/api/tasks') {
@@ -899,7 +899,9 @@ async function run() {
     const { chromium } = requirePlaywright();
     const fixture = await createStaticServer();
     const browser = await chromium.launch({ headless: HEADLESS });
-    const context = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 1440, height: 900 } });
+    const substitutionOnly = process.argv.includes('--substitution-only');
+    const viewport = substitutionOnly ? { width: 390, height: 844 } : { width: 1440, height: 900 };
+    const context = await browser.newContext({ serviceWorkers: 'block', viewport });
     const state = { overview: 'normal', canCreateTasks: false, requests: [], mutations: [], rootNavigations: [] };
     const pageErrors = [];
     await context.addInitScript(user => {
@@ -913,6 +915,32 @@ async function run() {
     page.setDefaultTimeout(25000);
     page.on('pageerror', error => pageErrors.push(error.message));
     try {
+        if (substitutionOnly) {
+            state.substitution = { id: '901', state: 'active' };
+            await verifyDrawer(page, fixture.baseUrl);
+            const label = page.locator('.task-detail-source-card [data-task-substitution]');
+            assert.equal(await label.innerText(), 'Підміна №901 · погоджено');
+            await label.scrollIntoViewIfNeeded();
+            assert.ok(await label.evaluate(node => {
+                const range = document.createRange();
+                range.selectNodeContents(node);
+                const bounds = range.getBoundingClientRect();
+                return bounds.left >= 0 && bounds.right <= innerWidth;
+            }), 'substitution agreement text fits the phone viewport');
+            const evidence = path.join(ROOT, 'output/playwright');
+            fs.mkdirSync(evidence, { recursive: true });
+            await page.locator('.task-detail-source-card').screenshot({
+                path: path.join(evidence, 'task-detail-substitution-mobile.png'), animations: 'disabled'
+            });
+            const overlay = page.locator('#taskDetailOverlay');
+            await overlay.getByRole('button', { name: '✕', exact: true }).click();
+            await overlay.waitFor({ state: 'hidden' });
+            state.substitution = null;
+            await verifyDrawer(page, fixture.baseUrl);
+            assert.equal(await label.count(), 0);
+            console.log('Task detail substitution mobile smoke passed.');
+            return;
+        }
         await verifyModesAndUrl(page, fixture.baseUrl);
         await verifyLegacyLinks(page, fixture.baseUrl);
         await verifyArchiveExplanation(page, fixture.baseUrl);

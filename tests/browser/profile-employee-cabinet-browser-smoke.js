@@ -33,7 +33,11 @@ function results(month) {
     last.setUTCMonth(last.getUTCMonth() + 1, 0);
     return { month, state: 'ready',
         current: { ...period, month, from: month + '-01', through: last.toISOString().slice(0, 10) },
-        previous: { ...period, month: previousMonth, from: previousMonth + '-01', through: previous.toISOString().slice(0, 10) }
+        previous: { ...period, month: previousMonth, from: previousMonth + '-01', through: previous.toISOString().slice(0, 10) },
+        substitutions: month === '2024-04' ? [
+            { id:'91', date:'2024-04-08', role:'replacement', state:'active', partial:true, professionKey:'animator' },
+            { id:'89', date:'2024-04-01', role:'original', state:'cancelled', partial:false, professionKey:'host' }
+        ] : []
     };
 }
 
@@ -172,8 +176,15 @@ async function main() {
         await page.getByRole('button', { name: 'Мої результати', exact: true }).click();
         await page.getByText('1 із 2', { exact: true }).first().waitFor();
         assert.match(await page.locator('.profile-employee-comparison thead').innerText(), /01\.04\.24/);
+        const substitutions = page.locator('.profile-employee-details').filter({ has: page.getByRole('heading', {name:'Мої підміни'}) });
+        assert.match(await substitutions.innerText(), /Часткова підміна №91 · Аніматор\s+Погоджено/);
+        assert.match(await substitutions.innerText(), /Роботу передано №89 · Ведучий\s+Скасовано/);
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+        await substitutions.screenshot({ path: path.join(evidence, 'substitutions-mobile.png') });
         await page.locator('#tabContent').screenshot({ path: path.join(evidence, 'results-mobile.png') });
+        await page.locator('#profileEmployeeMonthInput').fill('2024-03');
+        await substitutions.getByText('За цей місяць підмін немає.', { exact: true }).waitFor();
+        assert.equal(await substitutions.locator('li').count(), 0);
         await page.setViewportSize({width:320,height:790});
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
         await page.locator('#tabContent').screenshot({ path: path.join(evidence, 'results-320.png') });

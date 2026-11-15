@@ -11,6 +11,7 @@ const { createLogger } = require('../utils/logger');
 const { getKyivDateStr } = require('../services/booking');
 const { buildTaskVisibilityScope, normalizeUserId, taskOwnerState, userNameTokens } = require('../services/taskPolicy');
 const { normalizeSubtaskSummary } = require('../services/taskSubtasks');
+const { TASK_SUBSTITUTION_SELECT } = require('../services/taskSubstitutionReadModel');
 const { buildTaskOperationsSummary, deriveTaskIntelligence } = require('../services/taskIntelligence');
 const { getOnlineUserIds } = require('../services/websocket');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
@@ -132,6 +133,7 @@ const TASK_WIDGET_SUBTASK_SELECT = `
                            COALESCE(subtask_rows.subtasks, '[]'::json) AS subtasks,
                            COALESCE(st.total, 0)::int AS subtask_count,
                            COALESCE(st.done, 0)::int AS subtask_done_count`;
+const TASK_WIDGET_DETAIL_SELECT = `${TASK_WIDGET_SUBTASK_SELECT}, ${TASK_SUBSTITUTION_SELECT}`;
 
 const TASK_WIDGET_SUBTASK_JOINS = `
                     LEFT JOIN (
@@ -473,7 +475,7 @@ async function loadNearestEventWidgetData(user, businessScope, options = {}) {
                t.task_mode, t.task_kind, t.visibility, t.workflow_state, t.focus_rank,
                ${dashboardTaskTimingSelect('t')},
                u.name AS owner_name, u.username AS owner_username,
-               ${TASK_WIDGET_SUBTASK_SELECT},
+               ${TASK_WIDGET_DETAIL_SELECT},
                COUNT(*) OVER ()::int AS preparation_total,
                COUNT(*) FILTER (WHERE LOWER(COALESCE(t.status, 'todo')) NOT IN ('done','completed','complete')) OVER ()::int AS preparation_open,
                COUNT(*) FILTER (WHERE LOWER(COALESCE(t.status, 'todo')) IN ('done','completed','complete')) OVER ()::int AS preparation_done,
@@ -1333,7 +1335,7 @@ router.get('/widgets/:type', requireDashboardWidgetRevenue, allowDashboardPublic
                            t.task_mode, t.task_kind, t.visibility, t.workflow_state, t.focus_rank,
                            ${dashboardTaskTimingSelect('t')},
                            u.name AS owner_name, u.username AS owner_username,
-                           ${TASK_WIDGET_SUBTASK_SELECT}
+                           ${TASK_WIDGET_DETAIL_SELECT}
                     FROM tasks t
                     LEFT JOIN users u ON u.id = t.owner_user_id
                     ${TASK_WIDGET_SUBTASK_JOINS}
@@ -1366,7 +1368,7 @@ router.get('/widgets/:type', requireDashboardWidgetRevenue, allowDashboardPublic
                            ${dashboardTaskTimingSelect('t')},
                            u.name AS owner_name, u.username AS owner_username,
                            cu.name AS creator_name, cu.username AS creator_username,
-                           ${TASK_WIDGET_SUBTASK_SELECT}
+                           ${TASK_WIDGET_DETAIL_SELECT}
                     FROM tasks t
                     LEFT JOIN users u ON u.id = t.owner_user_id
                     LEFT JOIN users cu ON cu.id = t.created_by_user_id
@@ -1456,7 +1458,7 @@ router.get('/widgets/:type', requireDashboardWidgetRevenue, allowDashboardPublic
                                t.task_mode, t.task_kind, t.visibility, t.workflow_state, t.focus_rank,
                                ${dashboardTaskTimingSelect('t')},
                                u.name AS owner_name, u.username AS owner_username,
-                               ${TASK_WIDGET_SUBTASK_SELECT},
+                               ${TASK_WIDGET_DETAIL_SELECT},
                                ROW_NUMBER() OVER (
                                    PARTITION BY (COALESCE(t.focus_rank, 0) > 0)
                                    ORDER BY
@@ -2210,7 +2212,7 @@ router.get('/widgets/:type', requireDashboardWidgetRevenue, allowDashboardPublic
                            u.name AS owner_name, u.username AS owner_username,
                            t.status, t.priority, t.deadline, t.updated_at, t.created_at,
                            ${dashboardTaskTimingSelect('t')},
-                           ${TASK_WIDGET_SUBTASK_SELECT}
+                           ${TASK_WIDGET_DETAIL_SELECT}
                     FROM tasks t
                     LEFT JOIN users u ON u.id = t.owner_user_id
                     ${TASK_WIDGET_SUBTASK_JOINS}

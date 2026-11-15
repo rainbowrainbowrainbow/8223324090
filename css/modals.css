@@ -4106,7 +4106,42 @@ body.dark-mode .product-sales-table td {
     }
 }
 
+dialog.substitution-history-modal {
+    position: fixed;
+    inset: 0;
+    margin: auto;
+    height: fit-content;
+    border: 0;
+    overscroll-behavior: contain;
+}
+
+dialog.substitution-history-modal:not([open]) {
+    display: none;
+}
+
+dialog.substitution-history-modal::backdrop {
+    background: rgba(15, 15, 35, 0.6);
+    backdrop-filter: blur(8px);
+    overflow: hidden;
+    overscroll-behavior: contain;
+}
+
 .substitution-history-modal .form-modal-note {
     white-space: pre-line;
     overflow-wrap: anywhere;
+}
+
+dialog.substitution-history-modal .confirm-message {
+    font-size: 17px;
+    font-weight: 700;
+}
+
+dialog.substitution-history-modal .form-modal-note {
+    margin: 0;
+    padding: 12px;
+    border-radius: var(--radius-sm);
+    background: var(--gray-50);
+    color: var(--gray-700);
+    text-align: left;
+    font-size: 13px;
 }

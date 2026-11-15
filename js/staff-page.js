@@ -79,6 +79,7 @@ const StaffState = {
     schedule: {},       // { staffId_date: entry }
     scheduleLoadedRange: null,
     scheduleRawEntries: [], // raw rows for health duplicate/overlap checks
+    shiftSubstitutionLabels: {},
     attendance: {},      // { staffId_date: payroll-ready hr_time_records/staff_checkins row }
     attendanceSummary: null,
     attendanceUnavailable: false,
@@ -857,7 +858,7 @@ function scheduleEntryTitle(emp, date, entry, shiftStart, shiftEnd) {
     return parts.join(' | ');
 }
 
-function scheduleCellAriaLabel(emp, date, entry, status, shiftStart, shiftEnd, attendanceDetails = {}, healthIssues = []) {
+function scheduleCellAriaLabel(emp, date, entry, status, shiftStart, shiftEnd, attendanceDetails = {}, healthIssues = [], substitutionLabels = []) {
     const employeeName = String(emp.display_name || emp.name || '').trim() || 'Співробітник';
     const statusLabel = status === 'unset'
         ? 'Не заповнено'
@@ -885,6 +886,7 @@ function scheduleCellAriaLabel(emp, date, entry, status, shiftStart, shiftEnd, a
     if (attendanceDetails.status) {
         parts.push(`attendance ${attendanceDetails.label}`);
     }
+    parts.push(...substitutionLabels);
     const healthSummary = scheduleHealthIssueSummary(healthIssues);
     if (healthSummary) parts.push(healthSummary);
     parts.push(StaffState.canManageSchedule ? 'Enter або пробіл відкриває редагування' : 'Enter або пробіл відкриває перегляд');
@@ -3561,10 +3563,19 @@ async function fetchSchedule(from, to, options = {}) {
             scheduleRawEntries.push(normalizedEntry);
             schedule[`${normalizedEntry.staff_id}_${normalizedEntry.date}`] = normalizedEntry;
         }
+        const shiftSubstitutionLabels = {};
+        for (const item of (parsed.data.shiftSubstitutions || [])) {
+            const key = `${item.staff_id}_${item.date}`;
+            const label = item.role === 'original'
+                ? (item.partial ? 'Частину передано' : 'Зміну передано')
+                : (item.partial ? 'Часткова підміна' : 'Підміна');
+            (shiftSubstitutionLabels[key] ||= []).push(`${label} №${item.id}`);
+        }
         return {
             success: true,
             schedule,
             scheduleRawEntries,
+            shiftSubstitutionLabels,
             displayGroups: normalizeScheduleDisplayGroups(
                 parsed.data.displayGroups || parsed.data.display_groups || StaffState.displayGroups
             ),
@@ -4363,11 +4374,13 @@ function renderEmpRow(emp, dates, today, health = null, options = {}) {
         if (entry?.note) {
             metaContent.push(`<span class="sch-note">${escapeHtml(entry.note)}</span>`);
         }
+        const substitutionLabels = StaffState.shiftSubstitutionLabels?.[`${emp.id}_${ds}`] || [];
+        const substitutionContent = substitutionLabels.map(label => `<span class="sch-substitution-label">${escapeHtml(label)}</span>`).join('');
         const attendanceIndicator = renderScheduleAttendanceIndicator(emp.id, ds, entry);
-        const cellContent = `<span class="sch-cell-main">${primaryContent}</span>${metaContent.length ? `<span class="sch-cell-meta">${metaContent.join('')}</span>` : ''}${attendanceIndicator ? `<span class="sch-cell-attendance">${attendanceIndicator}</span>` : ''}`;
+        const cellContent = `<span class="sch-cell-main">${primaryContent}</span>${metaContent.length ? `<span class="sch-cell-meta">${metaContent.join('')}</span>` : ''}${substitutionContent}${attendanceIndicator ? `<span class="sch-cell-attendance">${attendanceIndicator}</span>` : ''}`;
 
         const cellTitle = [scheduleEntryTitle(emp, ds, entry, shiftStart, shiftEnd), attendanceDetails.status ? `attendance ${attendanceDetails.label}` : '', scheduleHealthIssueSummary(cellHealthIssues)].filter(Boolean).join(' | ');
-        const cellAriaLabel = scheduleCellAriaLabel(emp, ds, entry, status, shiftStart, shiftEnd, attendanceDetails, cellHealthIssues);
+        const cellAriaLabel = scheduleCellAriaLabel(emp, ds, entry, status, shiftStart, shiftEnd, attendanceDetails, cellHealthIssues, substitutionLabels);
 
         html += `<td class="schedule-day-cell status-${status} ${isToday ? 'today-col' : ''} ${isReplacement ? 'is-replacement' : ''} ${cellHealthClass}">
             <div class="sch-cell status-${status} ${loadClass} ${isToday ? 'today-col' : ''} ${isReplacement ? 'is-replacement' : ''} ${cellHealthClass}"
@@ -7398,6 +7411,7 @@ async function goToScheduleRange(startValue, endValue, mode = 'custom') {
         // Atomic latest-only commit: no individual read mutates committed schedule state.
         StaffState.schedule = scheduleResult.schedule;
         StaffState.scheduleRawEntries = scheduleResult.scheduleRawEntries;
+        StaffState.shiftSubstitutionLabels = scheduleResult.shiftSubstitutionLabels;
         StaffState.displayGroups = scheduleResult.displayGroups;
         StaffState.scheduleCategoryContract = scheduleResult.scheduleCategoryContract;
         StaffState.attendance = attendanceResult.attendance;
@@ -8572,7 +8586,7 @@ function scheduleExportVisibleStaff() {
     return scheduleFinalVisibleStaffSnapshot(StaffState.staff, getScheduleDates()).visible;
 }
 
-function scheduleExportCell(entry) {
+function scheduleExportCell(entry, substitutionLabels = []) {
     const status = entry ? normalizeScheduleStatus(entry.status) : 'unset';
     const label = STAFF_SCHEDULE_STATUS_LABELS[status] || status || '';
     const note = String(entry?.note || '').trim();
@@ -8592,6 +8606,7 @@ function scheduleExportCell(entry) {
     if (status && status !== 'working' && status !== 'unset') lines.push(label);
     if (!segments.length && status === 'working') lines.push(label);
     if (note) lines.push(note);
+    lines.push(...substitutionLabels);
     return {
         status: String(status || 'unset').replace(/[^a-z0-9_-]/gi, ''),
         text: lines.join('\n'),
@@ -8649,7 +8664,7 @@ function buildScheduleWorkbookModel() {
             for (const d of dates) {
                 const ds = formatDateStr(d);
                 const entry = StaffState.schedule[`${emp.id}_${ds}`];
-                cells.push(scheduleExportCell(entry));
+                cells.push(scheduleExportCell(entry, StaffState.shiftSubstitutionLabels?.[`${emp.id}_${ds}`]));
             }
             rows.push({
                 staffId,
@@ -8969,7 +8984,7 @@ function clearStaffScheduleAccessState() {
     closeBulkResults();
     Object.assign(StaffState, {
         staff: [], professions: [], departments: {}, displayGroups: [], scheduleCategoryContract: null,
-        schedule: {}, scheduleRawEntries: [], scheduleLoadedRange: null, attendance: {}, attendanceSummary: null,
+        schedule: {}, scheduleRawEntries: [], shiftSubstitutionLabels: {}, scheduleLoadedRange: null, attendance: {}, attendanceSummary: null,
         attendanceUnavailable: true, hoursData: null, scheduleHistory: {}, shiftPreferences: {},
         linkData: [], linkStats: null, allUsers: [], bulkResults: null,
         staffingForecast: null, staffingForecastBookings: {}, staffingForecastAvailable: false,

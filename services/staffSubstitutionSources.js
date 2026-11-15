@@ -340,7 +340,8 @@ async function restoreAssignment(db, business, actor, row) {
         return chatTask.changeAssignment(db,business,actor,row,await assertCurrent(db,business,actor,row),true);
     }
     if (row.source_type === 'inbox_reply') {
-        return reply.changeAssignment(db,business,actor,row,await assertCurrent(db,business,actor,row),true);
+        const scope = await assertCurrent(db,business,actor,row,{ restoring:true });
+        return reply.changeAssignment(db,business,actor,row,scope,true);
     }
     if (row.source_type === 'inbox') {
         const source = await assertCurrent(db, business, actor, row);

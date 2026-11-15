@@ -11,6 +11,7 @@ const { createLogger } = require('../utils/logger');
 const { canUseAction, requireAction, requireRole } = require('../middleware/auth');
 const { installRevenueResponseShaper } = require('../services/revenueAccessPolicy');
 const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
+const { DEFAULT_BUSINESS_CONTEXT } = require('../services/businessContext');
 const log = createLogger('Procurement');
 
 // RBAC: Procurement — management + admin only
@@ -66,6 +67,16 @@ function toMoney(value) {
     return Number.isFinite(n) && n >= 0 ? n : 0;
 }
 
+const PROCUREMENT_SUBSTITUTION_SELECT = `(
+    SELECT jsonb_build_object('id', s.id::text, 'state', s.state)
+    FROM staff_substitutions s
+    WHERE s.business_context = '${DEFAULT_BUSINESS_CONTEXT}'
+      AND s.source_type = 'procurement' AND s.source_id = pl.id::text
+      AND s.state <> 'cancelled'
+    ORDER BY (s.state = 'active') DESC, s.work_date DESC, s.id DESC
+    LIMIT 1
+) AS substitution`;
+
 function mapListRow(row) {
     return {
         id: row.id,
@@ -79,6 +90,7 @@ function mapListRow(row) {
         totalActual: row.total_actual,
         assignedTo: row.assigned_to,
         assignedName: row.assigned_name || null,
+        ...(Object.hasOwn(row, 'substitution') ? { substitution: row.substitution } : {}),
         notes: row.notes,
         createdBy: row.created_by,
         createdAt: row.created_at,
@@ -240,6 +252,7 @@ router.get('/', async (req, res) => {
                 c.name AS contractor_name,
                 c.phone AS contractor_phone,
                 c.telegram_username AS contractor_telegram_username,
+                ${PROCUREMENT_SUBSTITUTION_SELECT},
                 COUNT(pi.id)::int AS item_count,
                 COUNT(pi.id) FILTER (WHERE pi.is_purchased = true)::int AS purchased_count
             FROM procurement_lists pl
@@ -280,7 +293,8 @@ router.get('/:id', async (req, res) => {
                    wl.name AS target_location_name,
                    c.name AS contractor_name,
                    c.phone AS contractor_phone,
-                   c.telegram_username AS contractor_telegram_username
+                   c.telegram_username AS contractor_telegram_username,
+                   ${PROCUREMENT_SUBSTITUTION_SELECT}
             FROM procurement_lists pl
             LEFT JOIN staff s ON pl.assigned_to = s.id
             LEFT JOIN warehouse_locations wl ON wl.id = pl.target_location_id

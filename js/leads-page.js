@@ -2880,10 +2880,17 @@ function workspaceCompactList(items, renderer, emptyText) {
         + (rows.length > 3 ? `<details class="workspace-list-more"><summary>Показати решту (${rows.length - 3})</summary>${workspaceList(rows.slice(3), renderer, emptyText)}</details>` : '');
 }
 
+function workspaceLeadSubstitutionText(substitution) {
+    const { id, state } = substitution || {};
+    if (!id || !['active', 'completed'].includes(state)) return '';
+    return `№${escapeHtml(id)} · ${state === 'active' ? 'погоджено' : 'завершено'}`;
+}
+
 function renderWorkspaceLeadData(lead) {
     const preference = leadEventPreferenceFromLead({ ...lead, children_count: lead.childrenCount ?? lead.children_count });
     const rawPreference = parseJsonObject(lead.eventPreference || lead.event_preference);
     const hasGuestSummary = String(lead.notes || '').includes(LEAD_GUEST_NOTE_PREFIX);
+    const substitution = workspaceLeadSubstitutionText(lead.substitution);
     const hasChildren = [rawPreference.childrenCount, rawPreference.children_count, lead.childrenCount, lead.children_count]
         .some(value => value !== null && value !== undefined && value !== '') || hasGuestSummary;
     const hasAdults = [rawPreference.adultsCount, rawPreference.adults_count]
@@ -2893,6 +2900,7 @@ function renderWorkspaceLeadData(lead) {
         ['Ім’я', workspaceText(lead.clientName)],
         ['Телефон', workspaceText(lead.phone)],
         ['Відповідальний', workspaceText(lead.assignedName)],
+        ...(substitution ? [['Підміна', substitution]] : []),
         ['Джерело', workspaceText(leadSourceLabel(lead))],
         ['Бажана дата', workspaceDate(preference.preferredDate)],
         [maysternyaMode ? 'Консультація' : 'Програма', workspaceText(lead.programName || lead.sessionType)],
@@ -3014,12 +3022,14 @@ function renderLeadWorkspaceContent(workspace) {
             ${renderLeadInboundSection(lead)}
         </div>
     `;
+    const substitution = workspaceLeadSubstitutionText(lead.substitution);
     const overviewHtml = `
         ${renderManagerActionStrip(workspace)}
         <section class="workspace-section">
             <h3>Коротко про лід</h3>
             <dl class="workspace-kv">
                 <dt>Відповідальний</dt><dd>${workspaceText(lead.assignedName)}</dd>
+                ${substitution ? `<dt>Підміна</dt><dd>${substitution}</dd>` : ''}
                 <dt>Бажана дата</dt><dd>${workspaceDate(lead.eventDate)}</dd>
                 <dt>Клієнт</dt><dd>${customer ? workspaceLink(customerHref, customer.name || 'Відкрити клієнта') : 'Ще не прив’язано'}</dd>
             </dl>

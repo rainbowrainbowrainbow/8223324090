@@ -421,7 +421,7 @@ function inboundHarness(profileResponse, { existing = false, customerName = 'Unk
             return { rows: [{ ...state.row }] };
         }
         if (text.startsWith('SELECT * FROM conversation_messages')) return { rows: state.messages.filter(m => m.conversation_id === params[0] && m.external_message_id === params[1]) };
-        if (text.startsWith('SELECT reply_expected_message_id')) return { rows: [] };
+        if (text.includes('AS reply_expected_message_id FROM conversations')) return { rows: [] };
         if (text.startsWith('INSERT INTO conversation_messages')) {
             const row = { id: state.messages.length + 1, conversation_id: params[0], direction: 'inbound',
                 sender_name: params[1], content: params[2], content_type: params[3], external_message_id: params[5], meta: JSON.parse(params[6]) };

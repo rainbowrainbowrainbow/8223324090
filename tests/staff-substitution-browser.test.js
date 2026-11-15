@@ -174,15 +174,22 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
         const journal = await browser.newPage({ viewport:{width:390,height:844} });
         await journal.goto(`http://127.0.0.1:${server.address().port}`);
         const journalButton=journal.getByRole('button',{name:'Підміни',exact:true});
-        await journalButton.click();
-        const dialog=journal.locator('.form-modal-overlay:not(.confirm-exit)');
-        await dialog.getByLabel('Працівник',{exact:true}).selectOption('3');
-        await dialog.getByLabel(/Від/).fill('2099-01-13');
-        await dialog.getByLabel(/До/).fill('2099-01-13');
-        await dialog.getByRole('button',{name:'Показати'}).click();
-        await dialog.locator('[data-key="selected"]').selectOption('21');
-        await dialog.getByRole('button',{name:'Відкрити'}).click();
-        await dialog.getByText(/Виконавець: Синтетична менеджерка/).waitFor();
+        const dialog = journal.getByRole('dialog', { name: 'Підміна #21 · Виконано' });
+        const closeButton = dialog.getByRole('button', { name: 'Закрити', exact: true });
+        const openHistory = async () => {
+            await journalButton.click();
+            const form = journal.locator('.form-modal-overlay:not(.confirm-exit)');
+            await form.getByLabel('Працівник', { exact: true }).selectOption('3');
+            await form.getByLabel(/Від/).fill('2099-01-13');
+            await form.getByLabel(/До/).fill('2099-01-13');
+            await form.getByRole('button', { name: 'Показати' }).click();
+            await form.locator('[data-key="selected"]').selectOption('21');
+            await form.getByRole('button', { name: 'Відкрити' }).click();
+            await dialog.waitFor({ state: 'visible' });
+        };
+        await openHistory();
+        assert.equal(await dialog.getByRole('button').count(), 1);
+        assert.equal(await closeButton.evaluate(button => document.activeElement === button), true);
         const facts=await dialog.locator('.form-modal-note').innerText();
         assert.match(facts,/Кого замінили: Синтетичний адміністратор/);
         assert.match(facts,/Роль: Адміністратор/);
@@ -194,6 +201,11 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
         await journal.screenshot({path:path.join(output,'park-mobile-substitution-history.png')});
         await journal.keyboard.press('Escape');
         await journal.waitForFunction(()=>document.activeElement?.dataset.substitutionAction==='list');
+        await dialog.waitFor({ state: 'detached' });
+        await openHistory();
+        await closeButton.click();
+        await dialog.waitFor({ state: 'detached' });
+        await journal.waitForFunction(() => document.activeElement?.dataset.substitutionAction === 'list');
         await journal.close();
 
         const page = await browser.newPage({ viewport: { width: 390, height: 844 } });

@@ -109,6 +109,11 @@ test('results compare Kyiv calendar months using linked staff and typed task own
             return { rows: [{ completed: current ? 5 : 2, overdue: 1 }] };
         }
         assert.equal(params[0], 3);
+        if (sql.includes('FROM staff_substitutions')) {
+            assert.deepEqual(params, [3, '2024-01-01', '2024-02-01', 'event_genix']);
+            assert.match(sql, /staff_id = \$1 OR original_staff_id = \$1/);
+            return { rows: [{ id:'91', date:'2024-01-08', role:'original', state:'completed', partial:true }] };
+        }
         if (sql.includes('FROM hr_time_records')) return { rows: current ? [
             { actual: '2024-01-02T08:00:00Z', planned: '10:00', lateMinutes: 0 },
             { actual: '2024-01-03T08:05:00Z', planned: '10:00', lateMinutes: 5 },
@@ -122,6 +127,7 @@ test('results compare Kyiv calendar months using linked staff and typed task own
         daysRecorded: 4, present: 3, absent: 1, measuredArrivals: 2, onTime: 1, late: 1, lateMinutes: 5
     });
     assert.equal(results.previous.tasks.completed, 2);
+    assert.deepEqual(results.substitutions, [{ id:'91', date:'2024-01-08', role:'original', state:'completed', partial:true }]);
 });
 
 test('open Kyiv month compares equal elapsed days when the previous month is shorter', () => {

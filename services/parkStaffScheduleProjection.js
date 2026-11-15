@@ -241,7 +241,13 @@ function projectParkStaffSchedulePayload(routerId, routePath, payload, options =
     const projected = pick(payload, ['success', 'departments', 'displayGroups', 'displayGroupOptions',
         'scheduleCategoryContract', 'from', 'to', 'summary', 'source']);
     if (path === '/') projected.data = mapRows(payload.data, projectRoster);
-    else if (path === '/schedule') projected.data = mapRows(payload.data, projectSchedule);
+    else if (path === '/schedule') {
+        projected.data = mapRows(payload.data, projectSchedule);
+        if (Array.isArray(payload.shiftSubstitutions)) {
+            projected.shiftSubstitutions = mapRows(payload.shiftSubstitutions,
+                row => pick(row, ['id', 'date', 'staff_id', 'role', 'partial']));
+        }
+    }
     else if (path === '/attendance') projected.data = mapRows(payload.data, projectAttendance);
     else if (/^\/schedule\/history\/\d+\/\d{4}-\d{2}-\d{2}$/.test(path)) projected.data = mapRows(payload.data, projectHistory);
     else if (/^\/[1-9]\d*\/shift-preferences$/.test(path)) {

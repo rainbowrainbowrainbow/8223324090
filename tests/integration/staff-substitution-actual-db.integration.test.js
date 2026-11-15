@@ -53,6 +53,17 @@ test('default services use the migrated schema for an unrelated permanent occupa
         assert.deepEqual(hrQuote.blockers,[]);
         const assigned=await service.mutate('event_genix',actor,'create',{input:hrInput,previewFingerprint:hrQuote.fingerprint,effectsAcknowledged:true,requestKey:randomUUID()});
         assert.equal((await db.query('SELECT staff_id FROM hr_shifts WHERE id=$1',[shift.id])).rows[0].staff_id,staff.id);
+        const shiftSchedulePath = '/api/staff/schedule?from=2099-01-14&to=2099-01-14';
+        const activeSchedule = await authRequest('GET', shiftSchedulePath);
+        assert.equal(activeSchedule.status,200,JSON.stringify(activeSchedule.data));
+        assert.equal(activeSchedule.data.data.some(row => row.staff_id === original.id),false);
+        const shiftProvenance = activeSchedule.data.shiftSubstitutions
+            .filter(item => item.id === String(assigned.id))
+            .sort((a,b) => a.staff_id-b.staff_id);
+        assert.deepEqual(shiftProvenance,[
+            { id:String(assigned.id), date:'2099-01-14', staff_id:staff.id, role:'replacement', partial:false },
+            { id:String(assigned.id), date:'2099-01-14', staff_id:original.id, role:'original', partial:false }
+        ]);
         await assert.rejects(db.query("UPDATE hr_shifts SET planned_end='14:00' WHERE id=$1",[shift.id]),{code:'23514'});
         const revisedInput = { ...assigned.input, rate: '800.25', rateReason: 'Synthetic revised rate' };
         const revisedQuote = await service.preview('event_genix', actor, revisedInput, assigned.id);
@@ -67,6 +78,9 @@ test('default services use the migrated schema for an unrelated permanent occupa
         assert.equal(events[1].after_json.quote.estimateMinor, 80025);
         await service.mutate('event_genix',actor,'cancel',{expectedVersion:2,reason:'Synthetic restore',requestKey:randomUUID()},assigned.id);
         assert.equal((await db.query('SELECT staff_id FROM hr_shifts WHERE id=$1',[shift.id])).rows[0].staff_id,original.id);
+        const restoredSchedule = await authRequest('GET', shiftSchedulePath);
+        assert.equal(restoredSchedule.status,200,JSON.stringify(restoredSchedule.data));
+        assert.equal(restoredSchedule.data.shiftSubstitutions.some(item => item.id === String(assigned.id)),false);
         assert.equal((await db.query('SELECT staff_id FROM staff_schedule WHERE staff_id=$1 AND date=$2',[original.id,'2099-01-14'])).rows.length,1);
         const fromShift = (await db.query(`INSERT INTO hr_shifts (staff_id,shift_date,planned_start,planned_end,profession_key)
             VALUES($1,'2099-01-18','09:00','14:00','reception') RETURNING id`, [original.id])).rows[0];
@@ -207,9 +221,20 @@ test('default services use the migrated schema for an unrelated permanent occupa
         const saved=await authRequest('POST','/api/staff-substitutions',{input:officeInput,previewFingerprint:previewResponse.data.data.fingerprint,effectsAcknowledged:true,requestKey:randomUUID()});
         assert.equal(saved.status,200,JSON.stringify(saved.data));
         assert.equal((await db.query('SELECT assigned_to FROM procurement_lists WHERE id=$1',[procurement.id])).rows[0].assigned_to,staff.id);
+        const procDetailPath = `/api/procurement/${procurement.id}`;
+        const procDetail = await authRequest('GET',procDetailPath);
+        assert.equal(procDetail.status,200,JSON.stringify(procDetail.data));
+        const procurementAgreement = {id:String(saved.data.data.id),state:'active'};
+        assert.deepEqual(procDetail.data.substitution,procurementAgreement);
+        const procLists = await authRequest('GET','/api/procurement');
+        assert.equal(procLists.status,200,JSON.stringify(procLists.data));
+        assert.deepEqual(procLists.data.lists.find(item=>item.id===procurement.id)?.substitution,procurementAgreement);
         const cancelled=await authRequest('POST',`/api/staff-substitutions/${saved.data.data.id}/cancel`,{expectedVersion:1,reason:'Synthetic restore',requestKey:randomUUID()});
         assert.equal(cancelled.status,200,JSON.stringify(cancelled.data));
         assert.equal((await db.query('SELECT assigned_to FROM procurement_lists WHERE id=$1',[procurement.id])).rows[0].assigned_to,original.id);
+        const restoredProcDetail = await authRequest('GET',procDetailPath);
+        assert.equal(restoredProcDetail.status,200,JSON.stringify(restoredProcDetail.data));
+        assert.equal(restoredProcDetail.data.substitution,null);
         const users=[];
         for(const person of [original,staff]) {
             const user=(await db.query(`INSERT INTO users(username,password_hash,name,role,is_active) VALUES($1,'synthetic-no-login','Synthetic linked manager','manager',true) RETURNING id`,[`sub_${randomUUID()}`])).rows[0];
@@ -219,14 +244,50 @@ test('default services use the migrated schema for an unrelated permanent occupa
         const task=(await db.query(`INSERT INTO tasks(title,status,priority,owner_user_id,business_context,created_by,visibility)
             VALUES('Synthetic bounded task','todo','normal',$1,'event_genix',$2,'team') RETURNING id`,[users[0].id,actor.username])).rows[0];
         const lead=(await db.query("INSERT INTO leads(client_name,assigned_to,business_context) VALUES('Synthetic lead',$1,'event_genix') RETURNING id",[users[0].id])).rows[0];
+        const leadWorkspacePath = `/api/leads/${lead.id}/workspace`;
+        const loadLeadWorkspace = async () => {
+            const response = await authRequest('GET', leadWorkspacePath);
+            assert.equal(response.status, 200, JSON.stringify(response.data));
+            return response.data.workspace.lead;
+        };
+        const dashboardTasks = async () => {
+            const result = await authRequest('GET', '/api/dashboard/widgets/personal_tasker');
+            assert.equal(result.status, 200, JSON.stringify(result.data));
+            return result.data.data.views.all_tasks.tasks;
+        };
         for(const [sourceType,sourceId,table,field] of [['task',task.id,'tasks','owner_user_id'],['lead',lead.id,'leads','assigned_to']]) {
             const assignment={...officeInput,sourceType,sourceId:String(sourceId),workDate:'2099-01-16'};
             const quoted=await service.preview('event_genix',actor,assignment);
             assert.deepEqual(quoted.blockers,[],sourceType);
             const savedRow=await service.mutate('event_genix',actor,'create',{input:assignment,previewFingerprint:quoted.fingerprint,effectsAcknowledged:true,requestKey:randomUUID()});
             assert.equal((await db.query(`SELECT ${field} AS owner FROM ${table} WHERE id=$1`,[sourceId])).rows[0].owner,users[1].id);
+            if (sourceType === 'task') {
+                const visibleTask = (await dashboardTasks()).find(item => item.id === task.id);
+                const expected = { id:String(savedRow.id), state:'active' };
+                assert.deepEqual(visibleTask?.substitution, expected);
+                const detail = await authRequest('GET', `/api/tasks/${task.id}`);
+                assert.equal(detail.status,200,JSON.stringify(detail.data));
+                assert.deepEqual(detail.data.substitution, expected);
+                const otherBusiness = await authRequest('GET', `/api/tasks/${task.id}?businessContext=dar`);
+                assert.ok([403,404].includes(otherBusiness.status), JSON.stringify(otherBusiness.data));
+            } else {
+                const visibleLead = await loadLeadWorkspace();
+                assert.equal(visibleLead.assignedTo, users[1].id);
+                assert.deepEqual(visibleLead.substitution, { id: String(savedRow.id), state: 'active' });
+                const otherBusiness = await authRequest('GET', `${leadWorkspacePath}?businessContext=dar`);
+                assert.ok([403,404].includes(otherBusiness.status), JSON.stringify(otherBusiness.data));
+            }
             await service.mutate('event_genix',actor,'cancel',{expectedVersion:1,reason:'Synthetic restore',requestKey:randomUUID()},savedRow.id);
             assert.equal((await db.query(`SELECT ${field} AS owner FROM ${table} WHERE id=$1`,[sourceId])).rows[0].owner,users[0].id);
+            if (sourceType === 'task') {
+                const detail = await authRequest('GET', `/api/tasks/${task.id}`);
+                assert.equal(detail.status,200,JSON.stringify(detail.data));
+                assert.equal(detail.data.substitution,null);
+            } else {
+                const restoredLead = await loadLeadWorkspace();
+                assert.equal(restoredLead.assignedTo, users[0].id);
+                assert.equal(restoredLead.substitution, null);
+            }
         }
         const onboarded = (await db.query("INSERT INTO staff(name,department,position) VALUES('Synthetic trainee','admin','QA') RETURNING id")).rows[0];
         const mentorScope = (await db.query(`INSERT INTO onboarding_progress(staff_id,responsible_user_id,status)
@@ -240,10 +301,22 @@ test('default services use the migrated schema for an unrelated permanent occupa
         const saveMentor = quote => service.mutate('event_genix', actor, 'create', { input:mentorInput, requestKey:randomUUID(),
             previewFingerprint:quote.fingerprint, effectsAcknowledged:true });
         const mentorClaim = await saveMentor(mentorQuote);
+        const assertMentorProjection = async expected => {
+            for (const suffix of ['onboarding-assignment', 'onboarding-processes']) {
+                const response = await authRequest('GET', `/api/hr/staff/${onboarded.id}/${suffix}`);
+                assert.equal(response.status, 200, JSON.stringify(response.data));
+                const process = suffix === 'onboarding-assignment' ? response.data.data : response.data.data.general;
+                assert.equal(process.id, mentorScope.id);
+                assert.deepEqual(process.substitution, expected);
+            }
+        };
+        await assertMentorProjection({ id: String(mentorClaim.id), state: 'active' });
         const taskOwners = async () => (await db.query(`SELECT id,owner_user_id FROM tasks WHERE source_type='onboarding'
             AND split_part(source_id,':',1)=$1 ORDER BY id`, [mentorInput.sourceId])).rows;
         const synced = await taskOwners();
         assert.ok(synced.length > 0 && synced.every(item => item.owner_user_id === users[1].id));
+        const visibleMentorTask = (await dashboardTasks()).find(item => item.id === synced[0].id);
+        assert.deepEqual(visibleMentorTask?.substitution, { id:String(mentorClaim.id), state:'active' });
         await assert.rejects(service.preview('event_genix', actor, { ...mentorInput, sourceType:'task', sourceId:String(synced[0].id),
             staffId:original.id, originalStaffId:staff.id }), { code:'SUBSTITUTION_USE_ONBOARDING_SOURCE' });
         await assert.rejects(db.query('UPDATE onboarding_progress SET responsible_user_id=$2 WHERE id=$1',
@@ -251,11 +324,13 @@ test('default services use the migrated schema for an unrelated permanent occupa
         await service.mutate('event_genix',actor,'cancel',{ expectedVersion:1, reason:'Synthetic mentor restoration', requestKey:randomUUID() },mentorClaim.id);
         assert.ok((await taskOwners()).every(item => item.owner_user_id === users[0].id));
         assert.equal((await db.query('SELECT responsible_user_id FROM onboarding_progress WHERE id=$1',[mentorScope.id])).rows[0].responsible_user_id, users[0].id);
+        await assertMentorProjection(null);
         const payableMentor = await saveMentor(await service.preview('event_genix',actor,mentorInput));
         const finishMentor = { expectedVersion:1, reason:'Synthetic mentoring done', requestKey:randomUUID(),
             workEvidence:'Synthetic mentoring checklist reviewed', workConfirmed:true };
         const mentorCompletion = await service.mutate('event_genix',actor,'complete',finishMentor,payableMentor.id);
         assert.equal(mentorCompletion.completion.amountMinor, 75037);
+        await assertMentorProjection({ id: String(payableMentor.id), state: 'completed' });
         assert.deepEqual((await service.mutate('event_genix',actor,'complete',finishMentor,payableMentor.id)).completion, mentorCompletion.completion);
         const caseUsernames = (await db.query('SELECT username FROM users WHERE id=ANY($1::int[]) ORDER BY id',
             [users.map(user => user.id)])).rows.map(user => user.username);
@@ -271,19 +346,31 @@ test('default services use the migrated schema for an unrelated permanent occupa
         const caseClaim = await service.mutate('event_genix',actor,'create',{ input:caseInput, requestKey:randomUUID(),
             effectsAcknowledged:true, previewFingerprint:caseQuote.fingerprint });
         const assignee = async () => (await db.query('SELECT assigned_to FROM conversations WHERE id=$1',[conversation.id])).rows[0].assigned_to;
+        const omniContext = async () => {
+            const response = await authRequest('GET', `/api/omni/conversations/${conversation.id}/context`);
+            assert.equal(response.status,200,JSON.stringify(response.data));
+            return response.data.data.conversation;
+        };
         assert.equal(await assignee(),caseUsernames[1]);
+        assert.deepEqual((await omniContext()).ownerSubstitution,{id:String(caseClaim.id),state:'active'});
+        const inboxList = await authRequest('GET','/api/omni/conversations?limit=100');
+        assert.equal(inboxList.status,200,JSON.stringify(inboxList.data));
+        assert.deepEqual(inboxList.data.data.conversations.find(item=>item.id===conversation.id)?.ownerSubstitution,
+            {id:String(caseClaim.id),state:'active'});
         const blockedCaseEdit = await authRequest('PATCH',`/api/omni/conversations/${conversation.id}`,{ assigned_to:caseUsernames[0] });
         assert.equal(blockedCaseEdit.status,409,JSON.stringify(blockedCaseEdit.data));
         assert.equal(await assignee(),caseUsernames[1]);
         await service.mutate('event_genix',actor,'cancel',{ expectedVersion:1, reason:'Synthetic inbox restoration',
             requestKey:randomUUID() },caseClaim.id);
         assert.equal(await assignee(),caseUsernames[0]);
+        assert.equal((await omniContext()).ownerSubstitution,null);
         const freshCase = await service.preview('event_genix',actor,caseInput);
         const payableCase = await service.mutate('event_genix',actor,'create',{ input:caseInput, requestKey:randomUUID(),
             effectsAcknowledged:true, previewFingerprint:freshCase.fingerprint });
         const caseCompletion = await service.mutate('event_genix',actor,'complete',{ expectedVersion:1, reason:'Synthetic case completed',
             workConfirmed:true, workEvidence:'Synthetic case triage checked', requestKey:randomUUID() },payableCase.id);
         assert.equal(caseCompletion.completion.amountMinor,75037);
+        assert.deepEqual((await omniContext()).ownerSubstitution,{id:String(payableCase.id),state:'completed'});
         const caseEarnings = (await require('../../services/payroll').getPayrollRangePreview(
             { month:'2099-01', from:caseInput.workDate, to:caseInput.workDate, staffId:staff.id },db)).staff[0];
         assert.deepEqual(caseEarnings.lines.filter(line => line.lineType === 'staff_substitution').map(line => line.amount),[750.37]);
@@ -303,6 +390,12 @@ test('default services use the migrated schema for an unrelated permanent occupa
         const saveReply = async input => service.mutate('event_genix',actor,'create',{input,requestKey:randomUUID(),
             effectsAcknowledged:true,previewFingerprint:(await service.preview('event_genix',actor,input)).fingerprint});
         const replyClaim = await saveReply(replyInput);
+        const omniMessage = async messageId => {
+            const response = await authRequest('GET', `/api/omni/conversations/${conversation.id}/messages?latest=true`);
+            assert.equal(response.status,200,JSON.stringify(response.data));
+            return response.data.data.messages.find(item=>item.id===messageId);
+        };
+        assert.deepEqual((await omniMessage(msg.id))?.replySubstitution,{id:String(replyClaim.id),state:'active'});
         const owners = async () => (await db.query(`SELECT c.reply_owner_user_id,t.owner_user_id,c.assigned_to, c.reply_expected_message_id
             FROM conversations c CROSS JOIN tasks t WHERE c.id=$1 AND t.id=$2`,[conversation.id,escalation.id])).rows[0];
         assert.deepEqual(await owners(),{reply_owner_user_id:users[1].id,owner_user_id:users[1].id,
@@ -314,6 +407,7 @@ test('default services use the migrated schema for an unrelated permanent occupa
         await service.mutate('event_genix',actor,'cancel',{expectedVersion:1,requestKey:randomUUID(),reason:'Synthetic reply undo'},replyClaim.id);
         assert.equal((await owners()).owner_user_id,users[0].id);
         assert.equal((await owners()).reply_owner_user_id,users[0].id);
+        assert.equal((await omniMessage(msg.id))?.replySubstitution,null);
         const payableReply = await saveReply(replyInput);
         await db.query(`UPDATE conversations SET reply_expected=false,reply_expected_message_id=NULL,
             reply_owner_user_id=NULL,reply_owner=NULL WHERE id=$1`,[conversation.id]);
@@ -321,6 +415,7 @@ test('default services use the migrated schema for an unrelated permanent occupa
         const finishedReply = await service.mutate('event_genix',actor,'complete',{expectedVersion:1,requestKey:randomUUID(),
             reason:'Synthetic response received',workConfirmed:true,workEvidence:'Synthetic message handled'},payableReply.id);
         assert.equal(finishedReply.completion.amountMinor,75037);
+        assert.deepEqual((await omniMessage(msg.id))?.replySubstitution,{id:String(payableReply.id),state:'completed'});
         assert.equal((await db.query("SELECT count(*)::int AS count FROM reply_action_history WHERE conversation_id=$1 AND meta_json->>'substitutionId'=$2",
             [conversation.id,payableReply.id])).rows[0].count,1);
         const nextMsg = (await db.query(`INSERT INTO conversation_messages(conversation_id,direction,content)
@@ -334,6 +429,61 @@ test('default services use the migrated schema for an unrelated permanent occupa
         assert.notEqual(nextReply.id,payableReply.id);
         assert.equal((await owners()).reply_expected_message_id,nextMsg.id);
         await service.mutate('event_genix',actor,'cancel',{expectedVersion:1,requestKey:randomUUID(),reason:'Synthetic next reply undo'},nextReply.id);
+        const { createOrReuseReplyEscalationTask, findActiveReplyExpectationByConversation } = require('../../services/replyEscalation');
+        const { saveInboundMessage, clearReplyExpectation } = require('../../services/omni-hub');
+        const pendingMessage = async (content) => {
+            const pending = (await db.query(`INSERT INTO conversation_messages(conversation_id,direction,content)
+                VALUES($1,'outbound',$2) RETURNING id`, [conversation.id, content])).rows[0];
+            await db.query(`UPDATE conversations SET reply_expected=true,awaiting_reply_since=NOW(),
+                reply_expected_message_id=$2,reply_owner=$3,reply_owner_user_id=$4,
+                reply_sla_at=NOW()+INTERVAL '30 minutes' WHERE id=$1`,
+            [conversation.id,pending.id,caseUsernames[0],users[0].id]);
+            return { ...replyInput, sourceId:String(pending.id) };
+        };
+        const pending = await pendingMessage('Synthetic pending escalation');
+        const pendingPicker = await authRequest('GET',`/api/staff-substitutions/sources?sourceType=inbox_reply&workDate=2099-01-28&originalStaffId=${original.id}`);
+        assert.equal(pendingPicker.status,200,JSON.stringify(pendingPicker.data));
+        assert.ok(pendingPicker.data.data.some(item=>item.id===pending.sourceId));
+        const beforeHandoff = await findActiveReplyExpectationByConversation(conversation.id,{pool:db});
+        const pendingClaim = await saveReply(pending);
+        assert.equal((await owners()).reply_owner_user_id,users[1].id);
+        const newEscalation = await createOrReuseReplyEscalationTask(beforeHandoff,{
+            pool:db,now:'2099-01-28T12:00:00.000Z',today:'2099-01-28',skipHermesOutbox:true
+        });
+        assert.equal(newEscalation.created,true, newEscalation.reason);
+        assert.equal(newEscalation.task.owner_user_id,users[1].id);
+        assert.match(newEscalation.task.description,new RegExp(`Reply owner user id: ${users[1].id}$`));
+        const visibleEscalation = (await dashboardTasks()).find(item => item.id === newEscalation.task.id);
+        assert.deepEqual(visibleEscalation?.substitution, { id:String(pendingClaim.id), state:'active' });
+        await service.mutate('event_genix',actor,'cancel',{expectedVersion:1,requestKey:randomUUID(),
+            reason:'Synthetic pending reply undo'},pendingClaim.id);
+        assert.equal((await db.query('SELECT owner_user_id FROM tasks WHERE id=$1',[newEscalation.task.id])).rows[0].owner_user_id,users[0].id);
+        const restoredEscalation = (await dashboardTasks()).find(item => item.id === newEscalation.task.id);
+        assert.ok(restoredEscalation);
+        assert.equal(restoredEscalation.substitution, null);
+        assert.equal((await owners()).reply_owner_user_id,users[0].id);
+
+        const cleared = await pendingMessage('Synthetic manual clear before escalation');
+        const clearedClaim = await saveReply(cleared);
+        await clearReplyExpectation(conversation.id);
+        const answered = await pendingMessage('Synthetic response before escalation');
+        const answeredClaim = await saveReply(answered);
+        const beforeAnswer = await findActiveReplyExpectationByConversation(conversation.id,{pool:db});
+        await saveInboundMessage(conversation.id,{channel:'telegram',content:'Synthetic inbound response',externalMessageId:randomUUID()});
+        const replyConfirmation = {expectedVersion:1,requestKey:randomUUID(),reason:'Synthetic response received',
+            workConfirmed:true,workEvidence:'Synthetic message handled'};
+        await assert.rejects(service.mutate('event_genix',actor,'complete',replyConfirmation,clearedClaim.id),
+            {code:'SUBSTITUTION_SOURCE_STALE'});
+        await service.mutate('event_genix',actor,'cancel',{expectedVersion:1,requestKey:randomUUID(),
+            reason:'Synthetic manual clear ended work'},clearedClaim.id);
+        const answeredResult = await service.mutate('event_genix',actor,'complete',replyConfirmation,answeredClaim.id);
+        assert.equal(answeredResult.completion.amountMinor,75037);
+        assert.deepEqual((await service.mutate('event_genix',actor,'complete',replyConfirmation,answeredClaim.id)).completion,answeredResult.completion);
+        const staleEscalation = await createOrReuseReplyEscalationTask(beforeAnswer,{
+            pool:db,now:'2099-01-28T12:00:00.000Z',today:'2099-01-28',skipHermesOutbox:true
+        });
+        assert.equal(staleEscalation.skipped,true);
+        assert.equal(staleEscalation.task,null);
         const chatBookingId = `SUB-${randomUUID()}`;
         await db.query(`INSERT INTO bookings(id,date,time,duration,line_id,status,room,room_resource_id,business_context)
             VALUES($1,'2099-01-29','10:00',60,'banquet-service','confirmed','На виніс','room-takeaway','event_genix')`,[chatBookingId]);
@@ -343,6 +493,22 @@ test('default services use the migrated schema for an unrelated permanent occupa
         const directChat = (await db.query(`INSERT INTO chat_tasks(channel_id,assigned_to,assigned_by,title)
             VALUES($1,$2,$3,'Synthetic chat task') RETURNING id`,[channel.id,users[0].id,actor.id])).rows[0];
         const chatInput={ ...officeInput, sourceType:'chat_task',sourceId:String(directChat.id),workDate:'2099-01-29' };
+        const message = (await db.query(`INSERT INTO chat_messages(channel_id,user_id,seq,content)
+            VALUES($1,$2,1,'Synthetic task source message') RETURNING id`, [channel.id,actor.id])).rows[0];
+        const unscopedChannel = (await db.query(`INSERT INTO chat_channels(slug,name)
+            VALUES($1,'Synthetic channel without booking') RETURNING id`, [`sub-${randomUUID()}`])).rows[0];
+        await db.query(`INSERT INTO chat_channel_members(channel_id,user_id) VALUES($1,$2),($1,$3)`,
+            [unscopedChannel.id,actor.id,users[0].id]);
+        const unsupportedTasks = (await db.query(`INSERT INTO chat_tasks(channel_id,message_id,assigned_to,assigned_by,title)
+            VALUES($1,$2,$4,$5,'Synthetic message task'),($3,NULL,$4,$5,'Synthetic unscoped task') RETURNING id`,
+            [channel.id,message.id,unscopedChannel.id,users[0].id,actor.id])).rows;
+        const chatPicker = await authRequest('GET', `/api/staff-substitutions/sources?sourceType=chat_task&workDate=2099-01-29&originalStaffId=${original.id}`);
+        assert.equal(chatPicker.status, 200, JSON.stringify(chatPicker.data));
+        assert.deepEqual(chatPicker.data.data.map(item => item.id), [chatInput.sourceId]);
+        for (const task of unsupportedTasks) {
+            await assert.rejects(service.preview('event_genix', actor, { ...chatInput, sourceId: String(task.id) }),
+                { code: 'SUBSTITUTION_SOURCE_NOT_FOUND' });
+        }
         assert.ok((await service.preview('event_genix',actor,chatInput)).blockers.some(item=>item.code==='SUBSTITUTION_CHAT_MEMBER_REQUIRED'));
         await db.query('INSERT INTO chat_channel_members(channel_id,user_id) VALUES($1,$2)',[channel.id,users[1].id]);
         const chatClaim=await saveReply(chatInput);
@@ -363,12 +529,14 @@ test('default services use the migrated schema for an unrelated permanent occupa
             VALUES($1,'Synthetic meeting action',$2,'2099-01-30') RETURNING id`,[meeting.id,users[0].id])).rows[0];
         const unscopedMeeting = (await db.query(`INSERT INTO meeting_notes(title,meeting_date,created_by)
             VALUES('Synthetic unscoped meeting','2099-01-30',$1) RETURNING id`,[actor.id])).rows[0];
-        await db.query(`INSERT INTO meeting_action_items(meeting_id,description,assigned_to)
-            VALUES($1,'Synthetic unscoped action',$2)`,[unscopedMeeting.id,users[0].id]);
+        const unscopedAction = (await db.query(`INSERT INTO meeting_action_items(meeting_id,description,assigned_to)
+            VALUES($1,'Synthetic unscoped action',$2) RETURNING id`,[unscopedMeeting.id,users[0].id])).rows[0];
         const meetingInput={...officeInput,sourceType:'meeting_action',sourceId:String(action.id),workDate:'2099-01-30'};
         const listMeeting=await authRequest('GET',`/api/staff-substitutions/sources?sourceType=meeting_action&workDate=2099-01-30&originalStaffId=${original.id}`);
         assert.equal(listMeeting.status,200,JSON.stringify(listMeeting.data));
         assert.deepEqual(listMeeting.data.data.map(item=>item.id),[meetingInput.sourceId]);
+        await assert.rejects(service.preview('event_genix', actor, { ...meetingInput, sourceId: String(unscopedAction.id) }),
+            { code: 'SUBSTITUTION_SOURCE_NOT_FOUND' });
         await assert.rejects(service.preview('event_genix',{...actor,id:users[0].id},meetingInput),
             {code:'SUBSTITUTION_SOURCE_NOT_FOUND'});
         const meetingClaim=await saveReply(meetingInput);
@@ -437,6 +605,7 @@ test('default services use the migrated schema for an unrelated permanent occupa
         const losingQuote = await service.preview('event_genix', actor, wonLead ? taskAlias : leadAlias);
         assert.ok(losingQuote.blockers.some(item => item.code === 'SUBSTITUTION_LEAD_ALIAS_CLAIMED'));
         const winner = aliasRace[wonLead ? 0 : 1].value;
+        assert.deepEqual((await loadLeadWorkspace()).substitution, wonLead ? { id: String(winner.id), state: 'active' } : null);
         const other = wonLead ? taskAlias : leadAlias;
         await assert.rejects(db.query(`INSERT INTO staff_substitutions
             (business_context,staff_id,original_staff_id,work_date,source_type,source_id,slot_key,state,version,input_json,quote_json,source_snapshot,created_by)
@@ -462,6 +631,13 @@ test('default services use the migrated schema for an unrelated permanent occupa
             animators.push(person.id);
         }
         await require('../../services/staffScheduleMutations').reconcileAnimatorRosterDates(db,['2099-01-16','2099-01-17']);
+        const getAfishaEvent = async (id, query = 'includeSubstitutions=true') => {
+            const result = await authRequest('GET', `/api/afisha?${query}`);
+            assert.equal(result.status, 200, JSON.stringify(result.data));
+            const event = result.data.find(item => item.id === id);
+            assert.ok(event, `Missing Afisha event ${id}`);
+            return event;
+        };
         for(const [slotKey,hour] of [['primary',13],['second',14]]) {
             const event=(await db.query(`INSERT INTO afisha(date,time,title,duration,type,line_id,second_line_id)
                 VALUES('2099-01-17',$1,'Synthetic substitution event',60,'event',$2,$3) RETURNING id`,
@@ -480,7 +656,13 @@ test('default services use the migrated schema for an unrelated permanent occupa
             const savedRow=await service.mutate('event_genix',actor,'create',{input:assignment,previewFingerprint:quoted.fingerprint,effectsAcknowledged:true,requestKey:randomUUID()});
             const field=slotKey==='primary'?'line_id':'second_line_id';
             assert.equal(String((await db.query(`SELECT ${field} AS owner FROM afisha WHERE id=$1`,[event.id])).rows[0].owner),String(animators[1]));
+            assert.deepEqual((await getAfishaEvent(event.id)).substitutions, [
+                { id: String(savedRow.id), slotKey, state: 'active', animatorName: 'QA Animator 1' }
+            ]);
+            assert.equal((await getAfishaEvent(event.id, 'type=event')).substitutions, undefined);
+            assert.equal((await getAfishaEvent(event.id, 'type=event&includeSubstitutions=true&businessContext=dar')).substitutions, undefined);
             await service.mutate('event_genix',actor,'cancel',{expectedVersion:1,reason:'Synthetic restore',requestKey:randomUUID()},savedRow.id);
+            assert.deepEqual((await getAfishaEvent(event.id)).substitutions, []);
             assert.equal(String((await db.query(`SELECT ${field} AS owner FROM afisha WHERE id=$1`,[event.id])).rows[0].owner),String(animators[0]));
         }
         const greeting = (await db.query(`INSERT INTO afisha(date,time,original_time,title,duration,type,line_id)
@@ -539,6 +721,11 @@ test('default services use the migrated schema for an unrelated permanent occupa
         await db.query(`INSERT INTO bookings(id,date,time,duration,line_id,status,business_context,room,room_resource_id)
             VALUES($1,'2099-01-16',$2,15,$3,'confirmed','event_genix','На виніс','room-takeaway')`,[obstacle,first.time,String(animators[1])]);
         const slotsAfter = (await apiEvent()).birthday_slots;
+        const afishaAfter = await getAfishaEvent(auto.id, 'type=birthday&includeSubstitutions=true');
+        assert.deepEqual(afishaAfter.substitutions, [
+            { id: String(automatic.id), slotKey: 'first:primary', state: 'active', animatorName: 'QA Animator 1' }
+        ]);
+        assert.equal(afishaAfter.birthday_slots[0].time, slotsAfter[0].time);
         assert.notEqual(slotsAfter[0].time,slotsBefore[0].time);
         assert.deepEqual(slotsAfter[1],slotsBefore[1]);
         const movedClaim = await service.history('event_genix',automatic.id);
@@ -566,6 +753,9 @@ test('default services use the migrated schema for an unrelated permanent occupa
         const completedGreeting = await service.mutate('event_genix',actor,'complete',{expectedVersion:2,requestKey:randomUUID(),
             reason:'Synthetic moved greeting completed',workConfirmed:true,workEvidence:'Synthetic slot presence verified'},automatic.id);
         assert.equal(completedGreeting.completion.amountMinor,75037);
+        assert.deepEqual((await getAfishaEvent(auto.id)).substitutions, [
+            { id: String(automatic.id), slotKey: 'first:primary', state: 'completed', animatorName: 'QA Animator 1' }
+        ]);
         const greetingPayroll = (await require('../../services/payroll').getPayrollRangePreview(
             {month:'2099-01',from:autoInput.workDate,to:autoInput.workDate,staffId:animators[1]},db)).staff[0];
         assert.deepEqual(greetingPayroll.lines.filter(line=>line.lineType==='staff_substitution').map(line=>line.amount),[750.37]);

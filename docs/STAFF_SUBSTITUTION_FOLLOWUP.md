@@ -51,7 +51,7 @@ allocation and frozen periods.
 | Park bookings, linked events and banquet members | Booking animator conflict checks, linked-booking contract, dated animator roster | Ordinary and active canonical banquet primary/activity members support primary and unambiguous second-animator slots locally. Legacy-only banquet links and ambiguous technical children remain outside the adapter. |
 | Education lessons, recurring lessons and group teachers | Booking occurrence lesson metadata, `assertLessonTeacher`, `education_teacher_memberships`, `education_groups.teacher_id` | Local DAR lesson occurrence adapter and teacher-specific accruals. Group and series defaults stay intact. |
 | HR onboarding mentor and generated learning tasks | `onboarding_progress.responsible_user_id`, `assignOnboardingResponsible`, `syncOnboardingTasks` | A current Park progress record and its generated tasks move through the existing assignment service in one transaction. Generated tasks cannot be separately claimed. |
-| Inbox assignments and reply expectations | `conversations.assigned_to`, `reply_owner_user_id`, reply escalation task | The general assignee of open or pending Park conversations supports local substitution with existing Omni eligibility. An expected reply with an active escalation task supports a separate claim keyed by its outbound message. The reply owner, escalation task owner and audit history change atomically. |
+| Inbox assignments and reply expectations | `conversations.assigned_to`, `reply_owner_user_id`, reply escalation task | The general assignee of open or pending Park conversations supports local substitution with existing Omni eligibility. A pending expected reply supports a separate claim keyed by its outbound message. The reply owner, any existing escalation task owner and audit history change atomically. |
 | Chat tasks | `chat_tasks.assigned_to` → `users.id` | Direct tasks in an active Park booking channel support local substitution through the task creator or an existing chat-task manager who belongs to the channel. The replacement must already have business and channel access. |
 | Meeting actions | `meeting_action_items.assigned_to`, `task_id`, generated `tasks` | A meeting creator can substitute a pending action in an active Park booking channel they belong to. The replacement must already have business and channel access. Converted actions use the linked task. |
 | Support tickets | `support_tickets.assigned_to` | Legacy free-text field and no durable worker link. Requires scoped identity and a precise work item before exposing payable substitution. |
@@ -79,10 +79,11 @@ roles need explicit day offsets and break/role allocation. Daytime animator
 transfers use the dated roster and reject any existing booking or Afisha slot
 outside the resulting coverage. Overnight animator shift transfers and
 ambiguous historical banquet links remain unsupported. Pre-payroll corrections
-after completion need a separately traceable adjustment path. Dashboard,
-workbook, source-page and employee-facing read models still need substitution
-provenance. The remaining adapters in the inventory need scope and lifecycle
-tests, including cross-source duplicates. Authenticated live QA requires the
+after completion need a separately traceable adjustment path. The Park staff
+schedule and workbook show both participants in agreed HR shift substitutions.
+The employee's personal results show their own Park substitutions for the
+selected month, with their role and agreement status. The remaining adapters
+in the inventory need scope and lifecycle tests, including cross-source duplicates. Authenticated live QA requires the
 test credentials file and an appropriately scoped production authorization.
 
 ## Park animator booking integration
@@ -151,12 +152,23 @@ occurrence identity, dates, teacher assignment and agreed terms.
 Onboarding uses the existing reassignment function in a caller-owned
 transaction for the exact progress record, generated tasks and audit history.
 Reply handoff changes only the reply owner and escalation task identified by
-the current outbound anchor. A later message can have a separate claim.
+the current outbound anchor. A later escalation uses the current reply owner.
+An inbound response records the outbound anchor before clearing it, so a
+completed agreement can be confirmed even if no escalation task was needed.
+A claim retired without a task or a recorded reply can be cancelled without
+changing the next expectation. A later message can have a separate claim.
 Direct chat tasks require an active channel linked to a Park booking and
-existing member access. Chat message-derived tasks, DMs and channels without
-an unambiguous business link need additional scope. Direct meeting actions use one payable claim. Conversion locks the action row,
-keeps task creation and linking atomic, rejects conversion during an active
-claim, and skips actions already completed through substitution. Legacy
+existing member access. The source picker and preview exclude tasks created
+from messages and tasks in channels without a booking link. To expand to
+message-derived tasks, confirm whether an existing Park booking link and a
+message in the same channel define sufficient ownership. That would let staff
+substitute the task while preserving the message and its author. DMs and
+channels without a business link need a separate ownership rule. The chat
+workspace has no current client for the separate `/api/chat/tasks` list.
+Direct meeting actions use one payable claim and require a Park booking channel.
+Conversion locks the action row, keeps task creation and linking atomic,
+rejects conversion during an active claim, and skips actions already
+completed through substitution. Legacy
 text fields on support and content records need validated worker IDs and
 business ownership.
 
@@ -192,14 +204,21 @@ frozen rate, confirmed minutes, amount, and revision history.
   allocation rule. Post-midnight segments on a separate date, simultaneous
   roles, arbitrary breaks and chained reversals remain open.
 - Sources: Park legacy-only banquet links and ambiguous linked bookings,
-  reply expectations pending escalation,
   other chat tasks, meeting actions without a scoped Park channel, free-text support/content
   assignees, training delivery occurrences and report work. The inventory above names the canonical
   dependency for each. Protected booking changes and accounting authority are
   outside the currently approved local scope.
-- Read models: workbook, employee and source-page substitution provenance,
-  beyond the journal, existing history and payroll lines. Authenticated
-  production workflows remain unverified.
+- Read models: dashboard task cards and the task detail drawer show the
+  agreement identifier and status for direct task, onboarding and Omni reply
+  substitutions. Omni shows the agreement on the conversation header or its
+  exact outbound message. Procurement shows the same information in the list
+  and its detail view. The standalone Afisha list and event workspace show the
+  agreement for the specific animator role and the effective greeting time.
+  The lead workspace shows the direct lead agreement alongside the responsible
+  user in Overview and Details. HR managers see the mentor agreement on the
+  employee's exact general or profession onboarding process. Other source pages still need provenance beyond the staff schedule, workbook, personal results,
+  journal, history and payroll lines. Authenticated production workflows
+  remain unverified.
 
 ## Decisions before expanding protected booking and pay scopes
 

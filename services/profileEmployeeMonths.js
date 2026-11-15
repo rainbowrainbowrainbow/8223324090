@@ -225,12 +225,24 @@ function employeeComparisonRanges(range, today) {
 
 async function loadEmployeeResults(db, employee, userId, scope, range, options = {}) {
     const [currentRange, previousRange] = employeeComparisonRanges(range, kyivDate.format(options.now || new Date()));
-    const [current, previous] = await Promise.all([
+    const [current, previous, substitutions] = await Promise.all([
         loadResultPeriod(db, employee.id, userId, scope, currentRange),
-        loadResultPeriod(db, employee.id, userId, scope, previousRange)
+        loadResultPeriod(db, employee.id, userId, scope, previousRange),
+        scope.activeContext === DEFAULT_BUSINESS_CONTEXT ? db.query(
+            `SELECT id::text AS id, work_date::text AS date, state,
+                    CASE WHEN staff_id = $1 THEN 'replacement' ELSE 'original' END AS role,
+                    (source_type = 'hr_shift' AND slot_key = 'partial') AS partial,
+                    input_json->>'professionKey' AS "professionKey"
+             FROM staff_substitutions
+             WHERE business_context = $4 AND (staff_id = $1 OR original_staff_id = $1)
+               AND work_date >= $2::date AND work_date < $3::date
+             ORDER BY work_date DESC, staff_substitutions.id DESC`,
+            [employee.id, range.from, range.to, DEFAULT_BUSINESS_CONTEXT]
+        ) : null
     ]);
     return { state: 'ready', month: range.month, current, previous,
-        currentAssignments: employee.profession_assignments || [] };
+        currentAssignments: employee.profession_assignments || [],
+        ...(substitutions ? { substitutions: substitutions.rows } : {}) };
 }
 
 module.exports = { employeeMonthRange, loadEmployeeSalary, loadEmployeeResults, employeeComparisonRanges };

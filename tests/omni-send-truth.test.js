@@ -99,7 +99,7 @@ function createManualSendPool(conversation) {
             if (text === 'BEGIN' || text === 'COMMIT' || text === 'ROLLBACK') return { rows: [] };
             if (text === 'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))') { assert.match(params[0], /omni-send/); return { rows: [] }; }
             if (/meta->>'clientRequestId'/i.test(text)) return { rows: state.prior ? [state.prior] : [] };
-            if (/SELECT reply_expected_message_id FROM conversations/i.test(text)) {
+            if (/SELECT reply_expected_message_id FROM conversations|AS reply_expected_message_id FROM conversations/i.test(text)) {
                 return { rows: [] };
             }
             if (/INSERT INTO conversation_messages/i.test(text)) {
@@ -251,7 +251,7 @@ function createInboundPool() {
                 state.duplicateCheck = { conversationId: params[0], externalMessageId: params[1] };
                 return { rows: [] };
             }
-            if (/SELECT reply_expected_message_id FROM conversations/i.test(text)) {
+            if (/SELECT reply_expected_message_id FROM conversations|AS reply_expected_message_id FROM conversations/i.test(text)) {
                 return { rows: [] };
             }
             if (/INSERT INTO conversation_messages/i.test(text)) {

@@ -2639,6 +2639,15 @@ body[data-page-group="hr"] .schedule-table .sch-cell .sch-replacement-from {
     color: var(--warning-dark);
 }
 
+body[data-page-group="hr"] .schedule-table .sch-cell .sch-substitution-label {
+    display: block;
+    width: 100%;
+    font-size: 0.6875rem;
+    line-height: 1.2;
+    text-align: start;
+    overflow-wrap: anywhere;
+}
+
 body[data-page-group="hr"] .schedule-table .sch-cell .sch-replacement-badge {
     display: inline-flex;
     align-items: center;

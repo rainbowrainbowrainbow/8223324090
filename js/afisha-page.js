@@ -142,6 +142,7 @@
             duration: Number(item.duration || 60),
             type: TYPE_META[item.type] ? item.type : 'event',
             birthdaySlots: Array.isArray(item.birthday_slots) ? item.birthday_slots : [],
+            substitutions: Array.isArray(item.substitutions) ? item.substitutions : [],
             description: item.description || '',
             lineIds: [item.line_id, item.second_line_id].filter(Boolean).map(String),
             animatorNames: [[item.line_id, item.line_name], [item.second_line_id, item.second_line_name]]
@@ -223,6 +224,27 @@
         }).join(' / ');
     }
 
+    function renderAfishaSubstitutions(item) {
+        return item.substitutions.map(({ id, slotKey, state, animatorName }) => {
+            const parts = String(slotKey || '').split(':');
+            const role = parts.at(-1);
+            if (!id || !['primary', 'second'].includes(role) || !['active', 'completed'].includes(state)) return '';
+            const slot = item.birthdaySlots.find(entry => entry.key === (parts.length === 2 ? parts[0] : 'single'));
+            if (parts.length === 2 && !slot) return '';
+            const time = slot ? `${esc(slot.time)} · ` : '';
+            const assignment = role === 'second' ? 'другий аніматор' : 'основний аніматор';
+            const status = state === 'completed' ? 'завершено' : 'погоджено';
+            return `<span class="afisha-substitution">${time}${assignment}: ${esc(animatorName)} · Підміна №${esc(id)} · ${status}</span>`;
+        }).join('');
+    }
+
+    function renderAnimatorSummary(item, noAssignment) {
+        if (!item.animatorNames.length) return noAssignment;
+        const label = item.birthdaySlots.length && item.substitutions.some(claim => String(claim.slotKey).includes(':'))
+            ? 'Аніматори за основним розкладом' : 'Аніматори';
+        return `${label}: ${item.animatorNames.map(esc).join(', ')}`;
+    }
+
     function formatFileSize(size) {
         const bytes = Number(size || 0);
         if (!bytes) return '';
@@ -274,7 +296,8 @@
                             <h3>${esc(item.title)}</h3>
                             ${item.description ? `<p>${esc(item.description)}</p>` : ''}
                             <div class="afisha-item-meta">
-                                <span>${item.animatorNames.length ? `Аніматори: ${item.animatorNames.map(esc).join(', ')}` : 'Без аніматора'}</span>
+                                <span>${renderAnimatorSummary(item, 'Без аніматора')}</span>
+                                ${renderAfishaSubstitutions(item)}
                                 ${item.promotionId ? `<span>${item.promotionActive === false ? 'Архівована акція' : 'Акція'}: ${esc(item.promotionTitle || `#${item.promotionId}`)}</span>` : ''}
                                 <span>Папка: ${materials ? esc(materials.length) : '...'}</span>
                                 ${item.templateId ? `<span>Шаблон #${esc(item.templateId)}</span>` : ''}
@@ -342,7 +365,8 @@
                     ${item.description ? `<p>${esc(item.description)}</p>` : '<p>Опис для команди ще не додано.</p>'}
                     <div class="afisha-event-facts">
                         <span>Папка матеріалів: ${String(state.loadingMaterialsId || '') === String(item.id) ? 'оновлюється' : materials.length}</span>
-                        <span>${item.animatorNames.length ? `Аніматори: ${item.animatorNames.map(esc).join(', ')}` : 'Аніматорів не призначено'}</span>
+                        <span>${renderAnimatorSummary(item, 'Аніматорів не призначено')}</span>
+                        ${renderAfishaSubstitutions(item)}
                         ${item.promotionId ? `<span>${item.promotionActive === false ? 'Архівована акція' : 'Акція'}: ${esc(item.promotionTitle || `#${item.promotionId}`)}</span>` : ''}
                         ${item.templateId ? `<span>Recurring шаблон #${esc(item.templateId)}</span>` : '<span>Manual event</span>'}
                     </div>
@@ -445,7 +469,7 @@
     async function loadData() {
         try {
             const [items, templates] = await Promise.all([
-                api('GET', '/afisha'),
+                api('GET', '/afisha?includeSubstitutions=true'),
                 api('GET', '/afisha/templates/list')
             ]);
             state.items = Array.isArray(items) ? items.map(normalizeEvent) : [];

@@ -1131,6 +1131,14 @@ a.dashboard-funnel-metric:focus-visible {
     overflow-wrap: anywhere;
 }
 
+.dashboard-task-substitution {
+    display: block;
+    font-size: 0.75rem;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+    color: var(--dash-text);
+}
+
 .widget-task-meta {
     font-size: 12px;
     color: var(--gray-500, #a0aec0);

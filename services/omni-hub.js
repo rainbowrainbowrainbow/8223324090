@@ -40,6 +40,8 @@ const {
   updateActiveReplyEscalationTaskForMessage,
 } = require('./replyEscalation');
 
+const { logReplyActionEvent, REPLY_ACTION_TYPES } = require('./replyActionHistory');
+
 const logger = createLogger('omni-hub');
 
 const VALID_CHANNELS = ['telegram', 'viber', 'sms', 'facebook', 'instagram', 'whatsapp', 'binotel'];
@@ -420,6 +422,7 @@ function mapConversationRow(row) {
     customerId: row.customer_id,
     status: row.status,
     assignedTo: row.assigned_to,
+    ...(Object.hasOwn(row, 'owner_substitution') ? { ownerSubstitution: row.owner_substitution } : {}),
     lastMessageAt: row.last_message_at,
     lastInboundAt: row.last_inbound_at,
     lastOutboundAt: row.last_outbound_at,
@@ -463,6 +466,7 @@ function mapMessageRow(row) {
     id: row.id,
     conversationId: row.conversation_id,
     direction: row.direction,
+    ...(Object.hasOwn(row, 'reply_substitution') ? { replySubstitution: row.reply_substitution } : {}),
     senderName: row.sender_name,
     content: row.content,
     contentType: row.content_type,
@@ -661,6 +665,15 @@ function buildCaseLinks(exact, suggestions) {
   return { links, suggestedLinks };
 }
 
+const OMNI_OWNER_SUBSTITUTION_SELECT = `(
+  SELECT jsonb_build_object('id', s.id::text, 'state', s.state)
+  FROM staff_substitutions s
+  WHERE s.business_context = COALESCE(c.business_context, '${DEFAULT_BUSINESS_CONTEXT}')
+    AND s.source_type = 'inbox' AND s.source_id = c.id::text AND s.state <> 'cancelled'
+  ORDER BY (s.state = 'active') DESC, s.work_date DESC, s.id DESC
+  LIMIT 1
+) AS owner_substitution`;
+
 async function resolveConversationContext(conversationId, options = {}) {
   const id = Number.parseInt(conversationId, 10);
   if (!Number.isInteger(id) || id <= 0) {
@@ -669,10 +682,10 @@ async function resolveConversationContext(conversationId, options = {}) {
 
   const params = [id];
   const businessCondition = options.businessContext
-    ? ` AND ${scopedConversationCondition(params, options.businessContext)}`
+    ? ` AND ${scopedConversationCondition(params, options.businessContext, 'c')}`
     : '';
   const conversationResult = await pool.query(
-    `SELECT * FROM conversations WHERE id = $1${businessCondition} LIMIT 1`,
+    `SELECT c.*, ${OMNI_OWNER_SUBSTITUTION_SELECT} FROM conversations c WHERE c.id = $1${businessCondition} LIMIT 1`,
     params
   );
   const rawConversation = conversationResult.rows[0];
@@ -896,13 +909,9 @@ async function saveInboundMessage(conversationId, normalized) {
     }
 
     const activeReply = await client.query(
-      `SELECT reply_expected_message_id
-         FROM conversations
-        WHERE id = $1
-          AND reply_expected IS TRUE
-          AND awaiting_reply_since IS NOT NULL
-          AND awaiting_reply_since <= NOW()
-        LIMIT 1`,
+      `SELECT CASE WHEN reply_expected IS TRUE AND awaiting_reply_since <= NOW()
+              THEN reply_expected_message_id END AS reply_expected_message_id
+         FROM conversations WHERE id = $1 FOR NO KEY UPDATE`,
       [conversationId]
     );
     clearedReplyMessageId = activeReply.rows[0]?.reply_expected_message_id || null;
@@ -976,6 +985,18 @@ async function saveInboundMessage(conversationId, normalized) {
       [conversationId]
     );
 
+    if (clearedReplyMessageId && (await client.query(
+      `SELECT 1 FROM staff_substitutions WHERE business_context = 'event_genix'
+          AND source_type = 'inbox_reply' AND source_id = $1 AND state = 'active'
+          AND source_snapshot->>'conversationId' = $2 AND source_snapshot->>'taskId' IS NULL`,
+      [String(clearedReplyMessageId), String(conversationId)]
+    )).rowCount) {
+      await logReplyActionEvent({
+        conversationId, replyExpectedMessageId: clearedReplyMessageId,
+        actionType: REPLY_ACTION_TYPES.EXPECTATION_CLEARED, sourceSurface: 'omni_inbound',
+        meta: { reason: 'inbound_reply', inboundMessageId: msg.rows[0].id },
+      }, { pool: client });
+    }
     await client.query('COMMIT');
     if (clearedReplyMessageId) {
       await closeReplyEscalationForMessage(clearedReplyMessageId, { pool, reason: 'inbound_reply' })
@@ -1229,7 +1250,8 @@ async function reassignReplyExpectationOwner(conversationId, ownerUserId, option
     );
     if (options.client) {
       const updated = await sync;
-      if (updated.length !== 1 || Number(updated[0].id) !== Number(options.taskId)) {
+      if (options.taskId == null ? updated.length !== 0
+        : updated.length !== 1 || Number(updated[0].id) !== Number(options.taskId)) {
         throw replyActionError('SUBSTITUTION_SOURCE_STALE', 'Задача ескалації вже змінилася', 409);
       }
     } else await sync.catch(err => logger.warn(`Reply escalation owner sync skipped: ${err.message}`));
@@ -1721,7 +1743,7 @@ async function getConversations(filters = {}) {
   const offsetIdx = idx++;
 
   const result = await pool.query(
-    `SELECT c.*,
+    `SELECT c.*, ${OMNI_OWNER_SUBSTITUTION_SELECT},
             (SELECT cm.content FROM conversation_messages cm
              WHERE cm.conversation_id = c.id
              ORDER BY cm.created_at DESC LIMIT 1) AS last_message
@@ -1759,7 +1781,15 @@ async function getMessages(conversationId, limit = 50, offset = 0, options = {})
     ? ` AND ${scopedConversationCondition(params, businessContext, 'c')}`
     : '';
   const result = await pool.query(
-    `SELECT cm.*
+    `SELECT cm.*,
+            (
+              SELECT jsonb_build_object('id', s.id::text, 'state', s.state)
+              FROM staff_substitutions s
+              WHERE cm.direction = 'outbound'
+                AND s.business_context = COALESCE(c.business_context, '${DEFAULT_BUSINESS_CONTEXT}')
+                AND s.source_type = 'inbox_reply' AND s.source_id = cm.id::text AND s.state <> 'cancelled'
+              LIMIT 1
+            ) AS reply_substitution
        FROM conversation_messages cm
        JOIN conversations c ON c.id = cm.conversation_id
       WHERE cm.conversation_id = $1${businessCondition}

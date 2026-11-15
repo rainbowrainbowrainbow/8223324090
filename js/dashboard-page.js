@@ -7947,6 +7947,7 @@ const DashboardPage = (() => {
                 <div class="widget-task-info">
                     <div class="widget-task-title">${escapeHtml(t.title)}</div>
                     <div class="widget-task-meta">${catIcon} ${statusLabel}${deadline ? ' · ' + deadline : ''}</div>
+                    ${renderDashboardTaskSubstitution(t)}
                     ${subtaskPreview}
                 </div>
                 <div class="widget-task-arrow">›</div>
@@ -8025,6 +8026,13 @@ ${focusButton}
         `;
     }
 
+    function renderDashboardTaskSubstitution(task) {
+        const { id, state } = task.substitution || {};
+        if (!id || !['active', 'completed'].includes(state)) return '';
+        const label = state === 'active' ? 'погоджено' : 'завершено';
+        return `<span class="dashboard-task-substitution">Підміна №${escapeHtml(id)} · ${label}</span>`;
+    }
+
     function dashboardTaskDueLabel(task) {
         const date = task.effectiveDate;
         if (task.effectiveDueAt) return new Date(task.effectiveDueAt).toLocaleString('uk-UA', { timeZone:'Europe/Kyiv', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
@@ -8053,6 +8061,7 @@ ${focusButton}
                 + '<div class="widget-task-info"><div class="focus-task-head"><span class="focus-task-source">' + escapeHtml(candidate.source || '') + '</span><span class="focus-task-status">' + escapeHtml(status) + '</span></div>'
                 + '<a class="widget-task-title focus-task-detail-link" href="' + escapeHtml(candidate.href) + '">' + escapeHtml(t.title || 'Задача без назви') + '</a>'
                 + '<div class="widget-task-meta">' + escapeHtml(dashboardTaskDueLabel(t)) + (t.ownerLabel ? ' · ' + escapeHtml(t.ownerLabel) : '') + '</div>'
+                + renderDashboardTaskSubstitution(t)
                 + renderDashboardTaskSubtasks(t, { preview:false })
                 + renderFocusTaskActions(t) + '</div></div>';
         }).join('');
@@ -8121,6 +8130,7 @@ ${focusButton}
                 <div class="personal-tasker-row-main">
                     <strong>${escapeHtml(t.title || 'Задача без назви')}</strong>
                     <em>${escapeHtml(taskerStatusLabel(t.status))} · ${escapeHtml(deadline)}${owner ? ' · ' + escapeHtml(owner) : ''}${creator && fullscreen ? ' · поставив ' + escapeHtml(creator) : ''}</em>
+                    ${renderDashboardTaskSubstitution(t)}
                     ${subtaskPreview}
                 </div>
                 <span class="personal-tasker-open">›</span>
@@ -8282,6 +8292,7 @@ ${focusButton}
                     <div class="nearest-event-task-main">
                         <strong>${escapeHtml(task.title || 'Підготовча задача')}</strong>
                         <span>${escapeHtml(status)}${deadline ? ` · ${escapeHtml(deadline)}` : ''}${owner}</span>
+                        ${renderDashboardTaskSubstitution(task)}
                     </div>
                     ${subtaskPreview}
                 </div>
@@ -8784,6 +8795,7 @@ ${focusButton}
                         ${t.assigned_to ? '👤 ' + escapeHtml(t.assigned_to) : '— нікому'}
                         · ${escapeHtml(dashboardTaskDueLabel(t))}
                     </div>
+                    ${renderDashboardTaskSubstitution(t)}
                     ${subtaskPreview}
                 </div>`;
             });

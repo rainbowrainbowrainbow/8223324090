@@ -45,6 +45,7 @@ const { listTaskActionHistory, logTaskActionEvent, TASK_ACTION_TYPES } = require
 const { isTerminalStatus } = require('../services/taskAutomationPolicy');
 const { normalizeTaskPayload: normalizeTaskContractPayload } = require('../services/taskContract');
 const { withTaskDrawerContract } = require('../services/taskDetailContract');
+const { TASK_SUBSTITUTION_SELECT } = require('../services/taskSubstitutionReadModel');
 const { buildTaskOverview } = require('../services/taskOverviewProjection');
 const { buildTaskTeamControlProjection } = require('../services/taskTeamControlProjection');
 const { loadTaskOwnerCapacity, normalizeTaskPlanningRange } = require('../services/taskTeamCapacityReadModel');
@@ -2809,7 +2810,8 @@ router.get('/:id', async (req, res) => {
                     COALESCE(dep.total, 0)::int AS dependency_count,
                     COALESCE(dep.open, 0)::int AS open_dependency_count,
                     dep.blocked_by_titles,
-                    COALESCE(dep.dependencies, '[]'::json) AS dependencies
+                    COALESCE(dep.dependencies, '[]'::json) AS dependencies,
+                    ${TASK_SUBSTITUTION_SELECT}
              FROM tasks t
              LEFT JOIN users u ON u.id = t.owner_user_id
              LEFT JOIN (

@@ -2500,7 +2500,7 @@ function createFakePool() {
                 hrState.onboardingTemplates.set(id, template);
                 return { rows: [template], rowCount: 1 };
             }
-            if (/FROM onboarding_progress op LEFT JOIN onboarding_templates ot ON ot\.id = op\.template_id LEFT JOIN users u ON u\.id = op\.responsible_user_id LEFT JOIN tasks t ON t\.source_type = \$2/i.test(text) && /WHERE op\.staff_id = \$1/i.test(text) && /LIMIT 1/i.test(text)) {
+            if (/FROM onboarding_progress op LEFT JOIN onboarding_templates ot ON ot\.id = op\.template_id LEFT JOIN users u ON u\.id = op\.responsible_user_id LEFT JOIN tasks t ON t\.source_type = \$2/i.test(text) && /WHERE op\.staff_id = \$1/i.test(text) && /LIMIT 1\s*$/i.test(text)) {
                 const professionKey = /op\.profession_key = \$3/i.test(text) ? String(params[2]) : null;
                 const progress = Array.from(hrState.onboardingProgress.values())
                     .filter(row => Number(row.staff_id) === Number(params[0])

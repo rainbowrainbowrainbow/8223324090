@@ -1209,6 +1209,11 @@
             color: #fff;
         }
 
+        .omni-substitution-note {
+            font-size: 0.75rem;
+            line-height: 1.35;
+            overflow-wrap: anywhere;
+        }
         .omni-msg-time {
             font-size: 10px;
             opacity: 0.6;
@@ -2297,6 +2302,7 @@
                         <div class="omni-chat-identity">
                             <div class="omni-chat-header-name" id="omniChatName"></div>
                             <div class="omni-chat-header-channel" id="omniChatChannel"></div>
+                            <div class="omni-substitution-note" id="omniOwnerSubstitution" hidden></div>
                         </div>
                         </div>
                         <div class="omni-chat-header-actions">
@@ -4280,6 +4286,11 @@
                 '<button type="submit" class="omni-secondary-action">Зберегти перевірку</button></form></details></div>';
         }
 
+        function omniSubstitutionText(agreement, label) {
+            if (!agreement?.id || !['active', 'completed'].includes(agreement.state)) return '';
+            return label + ' №' + agreement.id + ' · ' + (agreement.state === 'active' ? 'погоджено' : 'завершено');
+        }
+
         function renderMessages(msgs, options = {}) {
             messages.innerHTML = msgs.map(m => {
                 const dir = m.direction;
@@ -4290,6 +4301,7 @@
                 const truth = dir === 'outbound' ? sendTruthFromMessage(m) : null;
                 const metaState = dir === 'outbound' ? metaSendState(truth) : null;
                 const sendTruthHtml = dir === 'outbound' && !metaState ? renderSendTruthState(truth) : '';
+                const substitution = dir === 'outbound' ? omniSubstitutionText(m.replySubstitution, 'Підміна для відповіді') : '';
                 const timeHtml = '<div class="omni-msg-time">' + formatTime(m.createdAt) + '</div>';
                 const labelHtml = metaState ? '<span class="omni-status-label">' + esc(metaState.label) + '</span>' : '';
                 const statusHtml = !metaState ? '' : metaState.hint
@@ -4304,6 +4316,7 @@
                     sendTruthHtml +
                     errorHtml +
                     renderDeliveryReview(m) +
+                    (substitution ? '<div class="omni-substitution-note" data-omni-reply-substitution>' + esc(substitution) + '</div>' : '') +
                     (metaState ? '<div class="omni-msg-footer">' + timeHtml + statusHtml + '</div>' : timeHtml) +
                 '</div>';
             }).join('');
@@ -5732,6 +5745,9 @@
 
         function syncConversationControls(conv, force = false) {
             if (!conv || conv.id !== currentConvId) return;
+            const substitution = $('omniOwnerSubstitution');
+            substitution.textContent = omniSubstitutionText(conv.ownerSubstitution, 'Підміна відповідального');
+            substitution.hidden = !substitution.textContent;
             for (const [field, controlId, value] of [
                 ['status', 'omniConversationStatus', conv.status || 'open'],
                 ['assigned_to', 'omniAssignee', conv.assignedTo || null]

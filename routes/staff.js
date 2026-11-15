@@ -892,12 +892,27 @@ router.get('/schedule', requireAction('hr.schedule.view'), async (req, res) => {
              ORDER BY s.department, s.name, ss.date`,
             [from, to]
         );
+        const shiftSubstitutions = await pool.query(
+            `SELECT agreement.id::text AS id, agreement.work_date::text AS date,
+                    participant.staff_id, participant.role, (agreement.slot_key = 'partial') AS partial
+               FROM staff_substitutions agreement
+               CROSS JOIN LATERAL (VALUES
+                   (agreement.staff_id, 'replacement'), (agreement.original_staff_id, 'original')
+               ) AS participant(staff_id, role)
+               JOIN staff s ON s.id = participant.staff_id
+              WHERE agreement.business_context = $3 AND agreement.source_type = 'hr_shift'
+                AND agreement.state IN ('active', 'completed') AND agreement.work_date BETWEEN $1::date AND $2::date
+                AND ${activeScheduleStaffWhere('s', 'agreement.work_date')}
+              ORDER BY agreement.work_date, agreement.id`,
+            [from, to, DEFAULT_BUSINESS_CONTEXT]
+        );
         const displayGroupContext = await loadStaffDisplayGroupContext(pool);
         const rowsWithPlans = await attachScheduleDayPlans(result.rows);
         const rows = decorateStaffRowsWithDisplayGroups(rowsWithPlans, { displayGroupContext });
         res.json({
             success: true,
             data: rows,
+            shiftSubstitutions: shiftSubstitutions.rows,
             displayGroups: listStaffDisplayGroups(),
             scheduleCategoryContract: listStaffScheduleCategoryContract()
         });

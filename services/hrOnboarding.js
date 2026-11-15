@@ -6,6 +6,7 @@ const { normalizeUserId } = require('./taskPolicy');
 const { TASK_ACTION_TYPES, logTaskActionEvent } = require('./taskActionHistory');
 const { emitTaskAssignedToOwner } = require('./taskNotifications');
 const { normalizeProfessionKey } = require('./professions');
+const { onboardingSubstitutionColumn } = require('./onboardingSubstitutionReadModel');
 const {
     loadProfessionChecklistTemplate,
     loadProfessionChecklistProgressBatch
@@ -197,6 +198,7 @@ function onboardingProgressMeta(row = {}) {
         profession_title: row.profession_title || professionKey || null,
         professionTitle: row.profession_title || professionKey || null,
         scope: professionKey ? 'profession' : 'general',
+        ...(Object.hasOwn(row, 'substitution') ? { substitution: row.substitution } : {}),
         is_primary: row.is_primary === true,
         assignment_status: row.assignment_status || null,
         admission_status: row.admission_status || null,
@@ -443,7 +445,7 @@ async function loadActiveOnboardingProgressRecord(staffId, db = pool, { lock = f
     return result.rows[0] || null;
 }
 
-async function loadActiveOnboardingProgress(staffId, db = pool, { professionKey = null } = {}) {
+async function loadActiveOnboardingProgress(staffId, db = pool, { professionKey = null, includeSubstitution = false } = {}) {
     const key = normalizeOnboardingProfessionKey(professionKey);
     const scopeSql = key ? 'op.profession_key = $3' : 'op.profession_key IS NULL';
     const params = key
@@ -451,6 +453,7 @@ async function loadActiveOnboardingProgress(staffId, db = pool, { professionKey 
         : [staffId, ONBOARDING_TASK_SOURCE_TYPE];
     const result = await db.query(
         `SELECT op.*, ot.name AS template_name,
+                ${includeSubstitution ? `${onboardingSubstitutionColumn('op')},` : ''}
                 u.name AS responsible_name, u.username AS responsible_username, u.role AS responsible_role,
                 COUNT(t.id)::int AS generated_task_count,
                 COUNT(t.id) FILTER (WHERE COALESCE(t.status, 'todo') NOT IN ('done','completed','archived','cancelled'))::int AS active_task_count,
@@ -471,9 +474,10 @@ async function loadActiveOnboardingProgress(staffId, db = pool, { professionKey 
     return result.rows[0] || null;
 }
 
-async function loadOnboardingProcessesForStaff(staffId, db = pool) {
+async function loadOnboardingProcessesForStaff(staffId, db = pool, { includeSubstitution = false } = {}) {
     const result = await db.query(
         `SELECT op.*, ot.name AS template_name,
+                ${includeSubstitution ? `${onboardingSubstitutionColumn('op')},` : ''}
                 u.name AS responsible_name, u.username AS responsible_username, u.role AS responsible_role,
                 COUNT(t.id)::int AS generated_task_count,
                 COUNT(t.id) FILTER (WHERE COALESCE(t.status, 'todo') NOT IN ('done','completed','archived','cancelled'))::int AS active_task_count,

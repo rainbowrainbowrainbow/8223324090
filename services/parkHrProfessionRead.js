@@ -7,6 +7,7 @@ const { resolveCapability } = require('./accountAccessPolicy');
 const { resolveBusinessScope } = require('./businessContext');
 const { hasCurrentParkScheduleMembership } = require('./parkStaffScheduleAccess');
 const { classifyChecklistProgress, normalizeDashboardFilters } = require('./professionChecklists');
+const { onboardingSubstitutionColumn } = require('./onboardingSubstitutionReadModel');
 
 function matchParkProfessionRead(req) {
     if (req.method !== 'GET') return null;
@@ -109,7 +110,7 @@ function dashboard(catalog, query) {
             returned: selected.slice(filters.offset, filters.offset + filters.limit).length } },
         access: { ...access, excluded: [...access.excluded, 'archived_history', 'orphaned_history'] } };
 }
-async function loadOnboarding(db, route, query) {
+async function loadOnboarding(db, route, query, { includeSubstitution = false } = {}) {
     const staff = (await db.query('SELECT id, name, department FROM staff WHERE id = $1', [route.staffId])).rows[0];
     if (!staff) throw missing();
     const catalog = await loadCatalog(db, { staffId: route.staffId });
@@ -117,6 +118,7 @@ async function loadOnboarding(db, route, query) {
         ['staff_id', 'profession_key', 'profession_title', 'status', 'is_primary', 'admission_status', 'internship_status']));
     const rows = (await db.query(`SELECT o.id, o.staff_id, o.profession_key, o.status, o.training_status,
         o.started_at, o.completed_at, o.items, o.completed_items, o.total_items, t.name AS template_name,
+        ${includeSubstitution ? `${onboardingSubstitutionColumn('o')},` : ''}
         (SELECT count(*)::int FROM tasks x WHERE x.source_type = 'onboarding'
             AND x.source_id LIKE o.id::text || ':%' AND x.business_context = 'event_genix') AS task_total,
         (SELECT count(*)::int FROM tasks x WHERE x.source_type = 'onboarding'
@@ -140,6 +142,7 @@ async function loadOnboarding(db, route, query) {
             scope: row.profession_key ? 'profession' : 'general', profession_title: assignment?.profession_title || null,
             total_items: total, completed_items: completed, percent: total ? Math.round(completed / total * 100) : 0,
             readiness: progress, items: progress ? [] : items, responsible_restricted: true,
+            ...pick(row, ['substitution']),
             task_summary: { total: Number(row.task_total) || 0, active: Number(row.task_active) || 0, completed: Number(row.task_completed) || 0 } };
     });
     const data = route.kind === 'onboarding-assignment'
@@ -160,8 +163,8 @@ function requireParkProfessionReads(db) {
         if (route.kind === 'workspace' && resolveCapability(req.user, 'hr.payroll.view', { type: 'action' }).allowed) return next();
         try {
             if (route.kind.startsWith('onboarding-')) {
-                const payload = await loadOnboarding(db, route, req.query);
                 const canManage = resolveCapability(req.user, 'hr.staff.manage', { type: 'action' }).allowed;
+                const payload = await loadOnboarding(db, route, req.query, { includeSubstitution: canManage });
                 return res.json({ ...payload, onboardingAccess: { ...payload.onboardingAccess, readOnly: !canManage
                     || resolveBusinessScope(req).canWrite !== true } });
             }

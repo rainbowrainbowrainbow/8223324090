@@ -2276,6 +2276,7 @@ function mapWorkspaceLead(row) {
         pipelineStage: stage,
         assignedTo: row.assigned_to,
         assignedName: row.assigned_name || row.assigned_username || null,
+        substitution: row.substitution,
         leadType: row.lead_type,
         qualityCategory: row.quality_category,
         eventDate: row.event_date,
@@ -3871,7 +3872,13 @@ router.get('/:id/workspace', shapeRevenueResponse, async (req, res) => {
         const leadResult = await pool.query(`
             SELECT l.*, u.name AS assigned_name, u.username AS assigned_username,
                    p.label AS program_name, p.name AS program_full_name,
-                   ${LEAD_EVENT_PREFERENCE_JSON_SQL} AS event_preference
+                   ${LEAD_EVENT_PREFERENCE_JSON_SQL} AS event_preference,
+                   (SELECT jsonb_build_object('id', s.id::text, 'state', s.state)
+                    FROM staff_substitutions s
+                    WHERE s.business_context = $2 AND s.source_type = 'lead'
+                      AND s.source_id = l.id::text AND s.state <> 'cancelled'
+                    ORDER BY (s.state = 'active') DESC, s.work_date DESC, s.id DESC
+                    LIMIT 1) AS substitution
             FROM leads l
             LEFT JOIN users u ON l.assigned_to = u.id
             LEFT JOIN products p ON l.program_id = p.id

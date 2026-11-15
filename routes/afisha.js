@@ -17,7 +17,8 @@ const { moveAfishaSchedule } = require('../services/afishaSchedule');
 const { parseAfishaImport, importAfishaEvents } = require('../services/afishaImport');
 const { createTimelineAfisha, updateTimelineAfisha } = require('../services/afishaTimeline');
 const { birthdaySlotsForEvents, isGreetingEvent, setBirthdaySlot, isAfishaSubstitutionConflict } = require('../services/afishaBirthdaySlots');
-const { DEFAULT_TIMELINE_CONTEXT, timelineContextFromRequest, requireTimelineAction } = require('../services/timelineContext');
+const { DEFAULT_TIMELINE_CONTEXT, timelineContextFromRequest, canAccessTimelineContext,
+    requireTimelineAction } = require('../services/timelineContext');
 const { resolveCapability } = require('../services/accountAccessPolicy');
 const { businessScopeWriteGuard } = require('../middleware/businessScopeGuard');
 
@@ -211,12 +212,25 @@ const afishaReadColumns = `a.*, p.title AS promotion_title, p.is_active AS promo
     (SELECT l.name FROM lines_by_date l WHERE l.date = a.date AND l.line_id = a.second_line_id
         AND COALESCE(l.business_context, 'event_genix') = 'event_genix' ORDER BY l.id DESC LIMIT 1) AS second_line_name`;
 
+const afishaSubstitutionColumn = `COALESCE((
+    SELECT jsonb_agg(jsonb_build_object('id', s.id::text, 'slotKey', s.slot_key,
+        'state', s.state, 'animatorName', animator.name) ORDER BY s.id)
+    FROM staff_substitutions s JOIN staff animator ON animator.id = s.staff_id
+    WHERE s.business_context = '${DEFAULT_TIMELINE_CONTEXT}' AND s.source_type = 'afisha'
+      AND s.source_id = a.id::text AND s.work_date::text = a.date AND s.state <> 'cancelled'
+), '[]'::jsonb) AS substitutions`;
+
 router.get('/', async (req, res) => {
     try {
-        const { type } = req.query;
+        const { type, includeSubstitutions } = req.query;
+        const showSubstitutions = includeSubstitutions === 'true'
+            && timelineContextFromRequest(req) === DEFAULT_TIMELINE_CONTEXT
+            && canAccessTimelineContext(req.user, DEFAULT_TIMELINE_CONTEXT)
+            && resolveCapability(req.user, '/afisha', { type: 'page' }).allowed;
+        const columns = showSubstitutions ? `${afishaReadColumns}, ${afishaSubstitutionColumn}` : afishaReadColumns;
         const validTypes = ['event', 'birthday', 'greeting', 'regular'];
         if (type && validTypes.includes(type)) {
-            const result = await pool.query(`SELECT ${afishaReadColumns}
+            const result = await pool.query(`SELECT ${columns}
                 FROM afisha a LEFT JOIN timeline_promotions p ON p.id = a.promotion_id
                 WHERE a.type = $1 ORDER BY a.date, a.time LIMIT 1000`, [type]);
             const dates = [...new Set(result.rows.filter(isGreetingEvent).map(row => row.date))];
@@ -228,7 +242,7 @@ router.get('/', async (req, res) => {
             return res.json(result.rows.map(row => byId.has(Number(row.id))
                 ? { ...row, birthday_slots: byId.get(Number(row.id)) } : row));
         }
-        const result = await pool.query(`SELECT ${afishaReadColumns}
+        const result = await pool.query(`SELECT ${columns}
             FROM afisha a LEFT JOIN timeline_promotions p ON p.id = a.promotion_id
             ORDER BY a.date, a.time LIMIT 1000`);
         res.json(await birthdaySlotsForEvents(pool, result.rows));

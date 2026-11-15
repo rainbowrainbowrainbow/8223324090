@@ -29,10 +29,6 @@ function taskAnchor(row) {
     return String(id);
 }
 
-function taskAssignee(row) {
-    return row?.reply_owner || row?.assigned_to || null;
-}
-
 function conversationName(row) {
     return row?.customer_name || row?.customer_phone || `Conversation #${row?.conversation_id || 'unknown'}`;
 }
@@ -45,7 +41,6 @@ function taskDescription(row) {
         row.awaiting_reply_since ? `Waiting since: ${isoValue(row.awaiting_reply_since)}` : null,
         row.reply_sla_at ? `Reply SLA: ${isoValue(row.reply_sla_at)}` : null,
         row.reply_expected_message_id ? `Reply anchor message: ${row.reply_expected_message_id}` : null,
-        row.reply_owner_user_id ? `Reply owner user id: ${row.reply_owner_user_id}` : null,
         'This is separate from callback_due and follow_up_due.'
     ].filter(Boolean).join('\n');
 }
@@ -241,39 +236,54 @@ async function createOrReuseReplyEscalationTask(row, options = {}) {
         return { task: null, created: false, skipped: true, reason: 'not_overdue' };
     }
 
-    const assignee = taskAssignee(row);
     const date = options.today || getKyivDateStr();
     const businessContext = rowBusinessContext(row);
     const title = `Прострочена відповідь: ${conversationName(row)}`;
     const description = taskDescription(row);
     const result = await db.query(
-        `WITH inserted AS (
+        `WITH current_expectation AS MATERIALIZED (
+            SELECT COALESCE(NULLIF(c.reply_owner, ''), c.assigned_to) AS assignee,
+                   c.reply_owner_user_id, c.reply_sla_at
+              FROM conversations c JOIN conversation_messages cm
+                ON cm.id = c.reply_expected_message_id AND cm.conversation_id = c.id
+             WHERE c.id = $8 AND c.reply_expected_message_id::text = $7
+               AND COALESCE(c.business_context, '${DEFAULT_TASK_BUSINESS_CONTEXT}') = $1
+               AND c.reply_expected IS TRUE AND c.awaiting_reply_since IS NOT NULL
+               AND c.reply_sla_at <= $9::timestamp
+               AND COALESCE(c.status, 'open') NOT IN ('closed', 'spam')
+               AND (c.last_inbound_at IS NULL OR c.last_inbound_at <= c.awaiting_reply_since)
+               AND COALESCE(cm.delivery_status, '') NOT IN ('failed', 'later_failed')
+             FOR NO KEY UPDATE OF c
+        ), inserted AS (
             INSERT INTO tasks (
                 business_context, title, description, date, status, priority, assigned_to, owner, owner_user_id, created_by,
                 task_type, deadline, source_type, source_id, category, type
             )
-            SELECT $1, $2, $3, $4, 'todo', 'high', $5, $6, $7, $8,
-                   'human', $9::timestamp, $10, $11, 'admin', 'auto'
-            WHERE NOT EXISTS (
+            SELECT $1::text, $2, concat_ws(chr(10), $3::text, CASE WHEN reply_owner_user_id IS NOT NULL
+                       THEN 'Reply owner user id: ' || reply_owner_user_id END),
+                   $4, 'todo', 'high', assignee, assignee, reply_owner_user_id, $5,
+                   'human', reply_sla_at, $6::text, $7::text, 'admin', 'auto'
+            FROM current_expectation WHERE NOT EXISTS (
                 SELECT 1
                 FROM tasks
-                WHERE source_type = $10
-                  AND source_id = $11
+                WHERE source_type = $6
+                  AND source_id = $7
                   AND COALESCE(business_context, '${DEFAULT_TASK_BUSINESS_CONTEXT}') = $1
             )
             ON CONFLICT (source_id)
                 WHERE source_type = 'conversation_reply'
                   AND source_id IS NOT NULL
             DO NOTHING
-            RETURNING *, true AS created
+            RETURNING *
         )
         SELECT *, true AS created
         FROM inserted
         UNION ALL
         SELECT t.*, false AS created
         FROM tasks t
-        WHERE t.source_type = $10
-          AND t.source_id = $11
+        WHERE t.source_type = $6
+          AND t.source_id = $7
+          AND EXISTS (SELECT 1 FROM current_expectation)
           AND COALESCE(t.business_context, '${DEFAULT_TASK_BUSINESS_CONTEXT}') = $1
           AND NOT EXISTS (SELECT 1 FROM inserted)
         ORDER BY created DESC, id DESC
@@ -283,17 +293,16 @@ async function createOrReuseReplyEscalationTask(row, options = {}) {
             title,
             description,
             date,
-            assignee,
-            assignee,
-            row.reply_owner_user_id || null,
             REPLY_ESCALATION_CREATED_BY,
-            row.reply_sla_at,
             REPLY_ESCALATION_SOURCE_TYPE,
-            sourceId
+            sourceId,
+            row.conversation_id,
+            new Date(now)
         ]
     );
 
     const task = result.rows?.[0] || null;
+    if (!task) return { task: null, created: false, skipped: true, reason: 'expectation_changed_or_concurrent_creation' };
     const created = task?.created === true || task?.created === 't' || task?.created === 1;
     if (created) {
         await logTaskAction(db, task.id, 'created', `reply escalation for message ${sourceId}`);

@@ -184,18 +184,46 @@
         ].filter(Boolean).join('\n');
     }
 
+    function showSubstitutionHistory(title, text) {
+        return new Promise(resolve => {
+            const dialog = document.createElement('dialog');
+            dialog.className = 'confirm-dialog success form-modal-dialog substitution-history-modal';
+            dialog.setAttribute('aria-labelledby', 'substitution-history-heading');
+            dialog.innerHTML = `
+                <div class="confirm-icon" aria-hidden="true">✅</div>
+                <h2 class="confirm-message" id="substitution-history-heading"></h2>
+                <div class="form-modal-fields" tabindex="0" role="region" aria-label="Подробиці та історія підміни">
+                    <p class="form-modal-note"></p>
+                </div>
+                <form class="confirm-actions" method="dialog">
+                    <button class="confirm-btn confirm-ok success" autofocus type="submit">Закрити</button>
+                </form>`;
+            dialog.querySelector('h2').textContent = title;
+            dialog.querySelector('.form-modal-note').textContent = text;
+            dialog.addEventListener('close', () => {
+                dialog.remove();
+                resolve();
+            }, { once: true });
+            document.body.append(dialog);
+            dialog.showModal();
+        });
+    }
+
     async function inspect(row, catalog, people) {
         const history = await request('GET', `/${encodeURIComponent(row.id)}/history`);
         const details = history.substitution;
-        const selected = await formModal(`Підміна #${row.id} · ${labels[details.state]}`, [
-            { type: 'note', text: `${details.input.workload}\n${substitutionFacts(details, catalog, people)}\nПлан: ${money(details.quote.estimateMinor)}\nФакт: ${details.completion ? money(details.completion.amountMinor) : 'ще не підтверджено'}\n`
-                + `${details.quote.effects.replacement}\n${details.quote.effects.original}\n`
-                + (details.completion?.originalPay ? `Збережена оплата заміненого: ${money(details.completion.originalPay.amountMinor)}.\n` : '')
-                + history.events.map(event => `Версія ${event.version} · ${actions[event.action] || event.action} · ${event.actor}: ${event.reason}`).join('\n') },
-            ...(details.state === 'active' && (!dar() || canManage()) ? [choice('action', 'Дія', [
+        const title = `Підміна #${row.id} · ${labels[details.state]}`;
+        const note = `${details.input.workload}\n${substitutionFacts(details, catalog, people)}\nПлан: ${money(details.quote.estimateMinor)}\nФакт: ${details.completion ? money(details.completion.amountMinor) : 'ще не підтверджено'}\n`
+            + `${details.quote.effects.replacement}\n${details.quote.effects.original}\n`
+            + (details.completion?.originalPay ? `Збережена оплата заміненого: ${money(details.completion.originalPay.amountMinor)}.\n` : '')
+            + history.events.map(event => `Версія ${event.version} · ${actions[event.action] || event.action} · ${event.actor}: ${event.reason}`).join('\n');
+        if (details.state !== 'active' || (dar() && !canManage())) return showSubstitutionHistory(title, note);
+        const selected = await formModal(title, [
+            { type: 'note', text: note },
+            choice('action', 'Дія', [
                 ...(!dar() || canUseAction('manage_payroll_accrual') ? [['complete','Підтвердити виконання']] : []),
-                ['revise','Змінити погоджену ставку до початку роботи'],['cancel','Скасувати підміну']])] : [])
-        ], { okText: details.state === 'active' ? 'Продовжити' : 'Закрити', cancelText: 'Закрити', className:'substitution-history-modal' });
+                ['revise','Змінити погоджену ставку до початку роботи'],['cancel','Скасувати підміну']])
+        ], { okText: 'Продовжити', cancelText: 'Закрити', className:'substitution-history-modal' });
         if (!selected?.action) return;
         if (selected.action === 'revise') {
             const terms=await formModal('Зміна ставки підміни',[

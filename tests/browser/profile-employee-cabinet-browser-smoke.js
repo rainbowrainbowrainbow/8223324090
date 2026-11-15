@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { version } = require('../../package.json');
 
 const root = path.resolve(__dirname, '../..');
 const evidence = path.join(root, 'output', 'profile-proof');
@@ -48,6 +49,7 @@ async function main() {
         page.setDefaultTimeout(7000);
         page.on('pageerror', error => console.error(error));
         const requests = [];
+        const employeeRendererVersions = [];
         const errors = [];
         page.on('pageerror', error => errors.push(error.message));
         const pending = [];
@@ -84,14 +86,15 @@ async function main() {
             }
             if (url.pathname === '/api/training/materials') return route.fulfill({ json: { materials: [] } });
             const relative = url.pathname.slice(1);
-            if (!/^(css|images|fonts)\//.test(relative) && relative !== 'js/profile-employee-views.js') return route.abort();
+            if (relative === 'js/profile-employee-views.js') employeeRendererVersions.push(url.searchParams.get('v'));
+            if (!/^(css|images|fonts)\//.test(relative) && !['js/profile-page.js', 'js/profile-employee-views.js'].includes(relative)) return route.abort();
             const file = path.join(root, relative);
             return fs.existsSync(file) && fs.statSync(file).isFile() ? route.fulfill({ path: file }) : route.abort();
         });
         async function open(url, own = true) {
             await page.goto(origin + url);
             await page.addScriptTag({ path: path.join(root, 'js/telegram-crm-profile.js') });
-            await page.addScriptTag({ path: path.join(root, 'js/profile-page.js') });
+            await page.addScriptTag({ url: `${origin}/js/profile-page.js?v=${version}` });
             await page.evaluate(ownProfile => {
                 document.body.classList.add('shell-ready');
                 document.getElementById('mainApp')?.classList.remove('hidden');
@@ -209,6 +212,8 @@ async function main() {
         assert.equal(await page.getByRole('button', { name: 'Зарплата', exact: true }).count(), 0);
         assert.equal(await page.getByRole('button', { name: 'Мої результати', exact: true }).count(), 0);
         assert.equal(requests.length, requestCount);
+        assert.ok(employeeRendererVersions.length > 0);
+        assert.ok(employeeRendererVersions.every(requestedVersion => requestedVersion === version));
         assert.deepEqual(errors, []);
         console.log('Profile browser checks passed: Work Base, deep links, settings, results, salary and access.');
     } finally {

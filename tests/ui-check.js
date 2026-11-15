@@ -2755,6 +2755,9 @@ const contentCss = fs.readFileSync(path.join(ROOT, 'css', 'content.css'), 'utf8'
 const achievementsCss = fs.readFileSync(path.join(ROOT, 'css', 'achievements.css'), 'utf8');
 const profilePageHtml = fs.readFileSync(path.join(ROOT, 'profile.html'), 'utf8');
 const profileCode = fs.readFileSync(path.join(ROOT, 'js', 'profile-page.js'), 'utf8');
+check('Profile redesign assets use the current release cache key',
+    ['css/profile-my-day.css', 'js/profile-my-day.js', 'js/profile-page.js', 'js/telegram-crm-profile.js']
+        .every(asset => profilePageHtml.includes(`"${asset}?v=${pkg.version}"`)));
 const profileApiCode = fs.readFileSync(path.join(ROOT, 'js', 'api.js'), 'utf8');
 const profileSidebarCode = fs.readFileSync(path.join(ROOT, 'js', 'components', 'sidebar.js'), 'utf8');
 const reportsPageCode = fs.readFileSync(path.join(ROOT, 'js', 'reports-page.js'), 'utf8');

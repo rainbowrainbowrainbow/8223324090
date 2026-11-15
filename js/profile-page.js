@@ -2102,10 +2102,12 @@ function profileEmployeeSelectedMonth() {
 
 let profileEmployeeRenderers;
 let profileEmployeeRenderersPromise;
+const profilePageScript = typeof document === 'undefined' ? null : document.currentScript;
+const profileAssetQuery = profilePageScript?.src ? new URL(profilePageScript.src).search : '';
 
 async function ensureProfileEmployeeRenderers() {
     if (profileEmployeeRenderers) return profileEmployeeRenderers;
-    profileEmployeeRenderersPromise ||= import('/js/profile-employee-views.js').then(({ createEmployeeRenderers }) =>
+    profileEmployeeRenderersPromise ||= import(`/js/profile-employee-views.js${profileAssetQuery}`).then(({ createEmployeeRenderers }) =>
         createEmployeeRenderers({ escapeHtml, profileEmployeeDateText, profileEmployeeTime, profileEmployeeMoney,
             profileEmployeeNumber, profileProfessionByKey, profileRoleLabel })).catch(error => {
         profileEmployeeRenderersPromise = null;

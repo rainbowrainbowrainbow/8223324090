@@ -60,12 +60,12 @@ export function createEmployeeRenderers({ escapeHtml, profileEmployeeDateText, p
             ])
         ]);
         return `
-            <p role="status">${escapeHtml(reportStatus[data.status] || 'За цей місяць немає збереженого розрахунку.')}
+            <p class="profile-pay-status" role="status">${escapeHtml(reportStatus[data.status] || 'За цей місяць немає збереженого розрахунку.')}
                 ${data.locked ? ' · період закрито' : ''}
                 ${data.updatedAt ? ` · станом на ${profileEmployeeDateText(data.updatedAt)}` : ''}</p>
-            <dl class="profile-employee-summary">
+            <dl class="profile-employee-summary profile-pay-summary">
                 ${[['Нараховано', data.gross], ['Утримано', data.deductions], ['Виплачено', data.paid], ['Залишок до виплати', data.balance]]
-                    .map(([label, value]) => `<div><dt>${label}</dt><dd>${profileEmployeeMoney(value)}</dd></div>`).join('')}
+                    .map(([label, value], index) => `<div${index === 3 ? ' class="profile-pay-balance"' : ''}><dt>${label}</dt><dd>${profileEmployeeMoney(value)}</dd></div>`).join('')}
             </dl>
             ${data.legacyAccounted ? '<p>Старий звіт закрито в обліку. Підтверджених дат і сум виплат у цьому джерелі немає.</p>' : ''}
             ${detail.hasBlockingIssues ? '<p>Розрахунок містить позиції, які потребують звірки.</p>' : ''}
@@ -103,6 +103,11 @@ export function createEmployeeRenderers({ escapeHtml, profileEmployeeDateText, p
             ['Завершені пункти професійних чеклістів', period => period.checklistCompleted],
             ['Завершені курси', period => period.coursesCompleted.length]
         ];
+        const highlights = [
+            ['Виконані робочі задачі', period => period.tasks.completed, '/profile?tab=myday&period=today', 'Мої задачі'],
+            ['Пункти професійних чеклістів', period => period.checklistCompleted, '/profile?tab=workbase#work-base-checklists', 'Чеклісти професій'],
+            ['Вчасні приходи', punctuality]
+        ];
         const courses = current.coursesCompleted.map(course => [course.title, profileEmployeeDateText(course.date)]);
         const ratings = current.ratings.filter(item => Number(item.score) >= 1 && Number(item.score) <= 5)
             .map(item => [[profileEmployeeDateText(item.date), item.explanation].filter(Boolean).join(' · '), `${profileEmployeeNumber(Number(item.score))} із 5`]);
@@ -111,6 +116,13 @@ export function createEmployeeRenderers({ escapeHtml, profileEmployeeDateText, p
             profileProfessionByKey(item.key)?.title || profileRoleLabel(item.key), admission[item.admissionStatus]
         ]);
         return `
+            <dl class="profile-results-highlights">
+                ${highlights.map(([label, read, href, action]) => `<div>
+                    <dt>${label}</dt>
+                    <dd><strong>${escapeHtml(read(current))}</strong><span>${escapeHtml(dateLabel(previous))} · ${escapeHtml(read(previous))}</span></dd>
+                    ${href ? `<dd><a href="${href}">${action} <span aria-hidden="true">→</span></a></dd>` : ''}
+                </div>`).join('')}
+            </dl>
             <div class="profile-employee-comparison">
                 <table>
                     <caption>Порівняння з попереднім місяцем</caption>
@@ -124,7 +136,7 @@ export function createEmployeeRenderers({ escapeHtml, profileEmployeeDateText, p
             <p>Відвідуваність: журнал присутності. Задачі: командні робочі задачі, прив’язані до вашого акаунта,
                 за датою виконання або дедлайну. Особисті й приватні задачі не входять у показники.
                 Для поточного місяця зіставляємо однакову кількість календарних днів.</p>
-            <p><a href="/profile?tab=myday">Мої задачі</a> · <a href="/profile?tab=checklists">Чеклісти професій</a> · <a href="/profile?tab=materials">Навчальні матеріали</a></p>
+            <p><a href="/profile?tab=workbase#work-base-materials">Навчальні матеріали</a></p>
             ${renderProfileEmployeeDetails('Оцінки керівника', ratings, 'За цей місяць оцінок у журналі немає.')}
             ${renderProfileEmployeeDetails('Завершені курси', courses)}
             ${renderProfileEmployeeDetails('Поточні допуски', assignments, 'Немає підтверджених записів про допуски.')}

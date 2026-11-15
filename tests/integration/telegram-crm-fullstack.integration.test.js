@@ -268,7 +268,7 @@ check('bounded pilot seeding is repeatable, unverified and preserves notificatio
     } finally {await client.query('ROLLBACK');client.release();}
 });
 
-test('actual profile browser loads optional identity controls without business-page failures', {skip:!enabled || !process.env.CRM_PILOT_BROWSER_MODULE}, async()=>{
+test('actual profile browser reconnects Telegram with password and explicit account confirmation', {skip:!enabled || !process.env.CRM_PILOT_BROWSER_MODULE}, async()=>{
     const { chromium }=require(process.env.CRM_PILOT_BROWSER_MODULE);
     const session=await request('POST','/api/auth/login',{username:process.env.TEST_USER,password:process.env.TEST_PASS});
     assert.equal(session.status,200);
@@ -283,21 +283,35 @@ test('actual profile browser loads optional identity controls without business-p
             localStorage.setItem('pzp_crm_business_context','event_genix');
             localStorage.setItem('pzp_dark_mode','false');
         },session.data);
-        await context.route('https://www.clarity.ms/**',route=>route.fulfill({status:204,body:''}));
-        await context.route('https://fonts.googleapis.com/**',route=>route.fulfill({status:204,body:''}));
-        await context.route('https://fonts.gstatic.com/**',route=>route.fulfill({status:204,body:''}));
+        await context.route('https://**/*',route=>route.abort());
         const page=await context.newPage();
         const errors=[];page.on('pageerror',error=>errors.push(error.message));
         await page.goto(BASE_URL+'/profile?tab=settings');
         await page.getByRole('button',{name:'Підключити Telegram',exact:true}).waitFor();
+        assert.equal(await page.getByRole('button',{name:'Оновити стан',exact:true}).count(),0);
         await page.getByRole('button',{name:'Підключити Telegram',exact:true}).click();
-        await page.getByLabel('Поточний пароль CRM (обов’язково)').fill(process.env.TEST_PASS);
+        const password=page.getByLabel('Поточний пароль CRM (обов’язково)');
+        assert.ok(await password.evaluate(input=>document.activeElement===input));
+        await password.fill(process.env.TEST_PASS);
         await page.getByRole('button',{name:'Отримати посилання'}).click();
-        await page.getByRole('link',{name:'Відкрити Telegram'}).waitFor();
-        // Do not capture the one-time link or proof in evidence.
-        await page.goto(BASE_URL+'/profile?tab=settings');
-        await page.getByRole('button',{name:'Підключити Telegram',exact:true}).waitFor();
-        await page.screenshot({path:require('node:path').resolve(__dirname,'../../../telegram-profile-actual-mobile.png'),fullPage:true});
+        const openTelegram=page.getByRole('link',{name:'Відкрити Telegram'});
+        await openTelegram.waitFor();
+        const link=new URL(await openTelegram.getAttribute('href'));
+        assert.equal(link.origin,'https://t.me');
+        const senderId='900000000003';
+        const claim=await bot('/link/claim',{token:link.searchParams.get('start').slice(4)},senderId);
+        assert.equal(claim.status,200);
+        assert.equal((await bot('/me',undefined,senderId)).status,403);
+        await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+        const confirm=page.getByRole('button',{name:'Це мій Telegram — підключити',exact:true});
+        await confirm.waitFor();
+        await confirm.click();
+        const openTasks=page.getByRole('link',{name:'Мої задачі в Telegram',exact:true});
+        await openTasks.waitFor();
+        const binding=await request('GET','/api/auth/telegram-crm',undefined,session.data.token);
+        assert.equal(binding.status,200);
+        assert.equal(binding.data.status,'connected');
+        assert.equal(String(binding.data.telegramId),senderId);
         assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
         assert.deepEqual(errors,[]);
     } finally {await browser.close();}

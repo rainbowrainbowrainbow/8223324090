@@ -150,7 +150,7 @@ test('setup Back restores the previous My Day mode without changing Day or Contr
     assert.match(habitsUi, /state\.returnMode = options\.returnMode \|\| currentMode/);
     assert.match(habitsUi, /state\.mode = state\.returnMode === 'habits' \|\| state\.returnMode === 'contribution'/);
     assert.match(habitsUi, /MyDayContribution\?\.cancel\?\.\('setup-open'\)/);
-    assert.match(profile, /renderCabinetTaskComposer\(\{ segment: 'all', mode: 'work' \}\)/);
+    assert.match(profile, /renderCabinetTaskComposer\(\{ segment: 'all', mode: 'work', simple: true \}\)/);
     assert.doesNotMatch(profile, /MyDayContribution\?\.renderPanel/);
 });
 

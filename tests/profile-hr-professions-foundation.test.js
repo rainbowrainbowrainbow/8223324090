@@ -111,7 +111,7 @@ describe('profile, HR professions, and timeline compatibility foundation', () =>
         assert.match(profileHtml, /\.profile-profession-card/);
     });
 
-    it('makes profile top menu a real work hub for checklists and materials', () => {
+    it('puts profession checklists and materials in one accessible work base', () => {
         assert.match(profilePage, /case 'checklists': return renderProfileChecklistsTab\(\)/);
         assert.match(profilePage, /case 'materials': return renderProfileMaterialsTab\(\)/);
         assert.match(profilePage, /apiGet\(`\/training\/knowledge-base\?role=\$\{trainingRole\}`\)/);
@@ -124,7 +124,10 @@ describe('profile, HR professions, and timeline compatibility foundation', () =>
         assert.match(profileHtml, /\.profile-material-grid/);
         assert.match(profileHtml, /\.profile-secondary-work-menu/);
         assert.match(profilePage, /<nav class="profile-secondary-work-menu profile-park-nav"/);
-        assert.match(profilePage, /<details class="profile-park-more"/);
+        assert.match(profilePage, /case 'workbase': return isOwnProfile \? renderProfileWorkBase\(\) : renderProfileProfessionsTab\(\)/);
+        assert.match(profilePage, /id="work-base-checklists"/);
+        assert.match(profilePage, /id="work-base-materials"/);
+        assert.doesNotMatch(profilePage, /<details class="profile-park-more"/);
         assert.doesNotMatch(profilePage, /<details class="profile-secondary-work-menu"/);
         assert.doesNotMatch(profilePage, /<summary>Ще в профілі<\/summary>/);
         assert.match(profileHtml, /\.profile-secondary-tabs[\s\S]*flex-wrap:\s*wrap/);

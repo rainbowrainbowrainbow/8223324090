@@ -235,7 +235,8 @@ test('Park cards use separate facts and actions, without the legacy time UI', ()
     assert.match(profile, /park-task-facts/);
     assert.match(profile, /park-task-actions/);
     assert.match(profile, /priorityControl/);
-    assert.match(profile, /control\('open'[\s\S]*control\('done', 'Виконати'/);
+    assert.match(profile, /control\('open'[\s\S]*control\('done',[\s\S]*Виконати/);
+    assert.match(profile, /control\('reschedule-date'[\s\S]*control\('edit'/);
     assert.doesNotMatch(profile, /time-menu|timer-start|time-entries/);
     assert.doesNotMatch(html, /js\/my-day-time-tracking\.js/);
 });

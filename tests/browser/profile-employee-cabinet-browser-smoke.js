@@ -48,6 +48,8 @@ async function main() {
         page.setDefaultTimeout(7000);
         page.on('pageerror', error => console.error(error));
         const requests = [];
+        const errors = [];
+        page.on('pageerror', error => errors.push(error.message));
         const pending = [];
         let hold = true;
         let failedOnce = false;
@@ -72,6 +74,15 @@ async function main() {
                 }
                 return route.fulfill({ json: isSalary ? salary(month, month === '2024-02' ? 2100 : 3450) : results(month) });
             }
+            if (url.pathname === '/api/auth/telegram-crm') {
+                return route.fulfill({ json: { success: true, status: 'disconnected', pilotEnabled: true, mode: 'on' } });
+            }
+            if (url.pathname === '/api/auth/security') return route.fulfill({ json: { success: true } });
+            if (url.pathname === '/api/training/knowledge-base') {
+                const title = url.searchParams.get('role') === 'manager' ? 'Гайд арт-директора' : 'Гайд ведучого';
+                return route.fulfill({ json: { articles: [{ id: 7, title, summary: 'Тестовий навчальний матеріал' }] } });
+            }
+            if (url.pathname === '/api/training/materials') return route.fulfill({ json: { materials: [] } });
             const relative = url.pathname.slice(1);
             if (!/^(css|images|fonts)\//.test(relative) && relative !== 'js/profile-employee-views.js') return route.abort();
             const file = path.join(root, relative);
@@ -79,6 +90,7 @@ async function main() {
         });
         async function open(url, own = true) {
             await page.goto(origin + url);
+            await page.addScriptTag({ path: path.join(root, 'js/telegram-crm-profile.js') });
             await page.addScriptTag({ path: path.join(root, 'js/profile-page.js') });
             await page.evaluate(ownProfile => {
                 document.body.classList.add('shell-ready');
@@ -88,31 +100,43 @@ async function main() {
                     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
                 window.getAuthHeaders = () => ({});
                 window.handleAuthError = () => false;
+                window.apiGet = async path => (await fetch(`/api${path}`)).json();
+                window.AppState = { currentUser: { id: 77 } };
                 isOwnProfile = ownProfile;
                 profileData = { user: { name: 'Тестовий працівник', username: 'fixture', role: 'admin' },
-                    staffProfile: { role_type: 'animator', secondary_professions: ['host'] },
+                    staffProfile: { role_type: 'art_director', secondary_professions: ['host', 'art_director', 'host'] },
                     professionCatalog: [
-                        { key: 'animator', title: 'Аніматор', checklist: ['Підготувати реквізит'] },
+                        { key: 'art_director', title: 'Арт-директор', department: 'Креатив', checklist: ['Перевірити дизайни'] },
                         { key: 'host', title: 'Ведучий', checklist: [] }
                     ], myTasks: [{ id: 1, title: 'Загальна задача', category: 'checklist' }] };
                 const query = new URLSearchParams(location.search);
-                activeTab = ownProfile ? query.get('tab') || 'professions' : 'professions';
-                window.addEventListener('popstate', () => switchTab(new URLSearchParams(location.search).get('tab') || 'professions', { skipUrl: true }));
+                activeTab = ownProfile ? normalizeProfileTab(query.get('tab')) || 'workbase' : 'professions';
+                window.addEventListener('popstate', () => switchTab(new URLSearchParams(location.search).get('tab') || 'workbase', { skipUrl: true }));
                 renderProfile();
+                if (ownProfile && activeTab === 'workbase') {
+                    void loadProfileWorkMaterials();
+                    focusProfileWorkBaseSection();
+                }
                 if (ownProfile && Object.hasOwn(PROFILE_EMPLOYEE_TABS, activeTab)) void loadProfileEmployeeMonth(activeTab);
             }, own);
         }
         await open('/profile?month=2024-02');
-        const selected = page.locator('.profile-profession-switch[data-profile-profession="host"]');
+        assert.equal(await page.locator('.profile-park-nav .profile-primary-tab').count(), 5);
+        assert.equal(await page.locator('.profile-park-nav').getByText(/^(Ще|Скоро)$/).count(), 0);
+        assert.equal(await page.getByText('Арт-директор', { exact: true }).count(), 1);
+        assert.equal(await page.locator('[data-profile-profession="art_director"]').innerText(), 'Арт-директор\nКреатив\nОсновна');
+        await page.getByText('Перевірити дизайни', { exact: true }).waitFor();
+        await page.getByText('Гайд арт-директора', { exact: true }).waitFor();
+        await page.locator('#tabContent').screenshot({ path: path.join(evidence, 'work-base-mobile.png') });
+        const selected = page.locator('.profile-work-base-profession[data-profile-profession="host"]');
         await selected.focus();
         await selected.press('Enter');
-        await page.locator('.profile-profession-switch[data-profile-profession="host"][aria-pressed="true"]').waitFor();
+        await page.locator('.profile-work-base-profession[data-profile-profession="host"][aria-pressed="true"]').waitFor();
         assert.equal(await selected.getAttribute('aria-pressed'), 'true');
         assert.equal(await selected.evaluate(node => node === document.activeElement), true);
-        assert.equal(await page.locator('.profile-profession-roster .is-primary').count(), 1);
-        assert.match(await page.locator('.profile-profession-checklist-panel').innerText(), /ще не доданий/);
+        await page.getByText('Гайд ведучого', { exact: true }).waitFor();
+        assert.match(await page.locator('#work-base-checklists').innerText(), /ще не доданий/);
         assert.equal(await page.getByText('Редагувати в HR', { exact: true }).count(), 0);
-        await page.locator('#tabContent').screenshot({ path: path.join(evidence, 'professions-mobile.png') });
         await page.getByRole('button', { name: 'Зарплата', exact: true }).click();
         await page.getByText('Завантаження…', { exact: true }).waitFor();
         const month = page.locator('#profileEmployeeMonthInput');
@@ -150,6 +174,33 @@ async function main() {
         await page.setViewportSize({width:320,height:790});
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
         await page.locator('#tabContent').screenshot({ path: path.join(evidence, 'results-320.png') });
+        assert.equal(await page.getByRole('link', { name: 'Мої задачі', exact: true }).getAttribute('href'), '/profile?tab=myday&period=today');
+        await page.getByRole('link', { name: 'Чеклісти професій', exact: true }).click();
+        await page.waitForURL('**/profile?tab=workbase#work-base-checklists');
+        await open('/profile?tab=workbase#work-base-checklists');
+        await page.waitForFunction(() => document.activeElement?.id === 'work-base-checklists');
+        await page.getByRole('button', { name: 'Налаштування', exact: true }).click();
+        await page.getByRole('heading', { name: 'Telegram', exact: true }).waitFor();
+        await page.getByRole('button', { name: 'Підключити Telegram', exact: true }).waitFor();
+        await page.getByText('Логін для входу', { exact: true }).waitFor();
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await page.screenshot({ path: path.join(evidence, 'settings-mobile.png'), timeout: 30000 });
+        await page.setViewportSize({ width: 1440, height: 1000 });
+        await page.evaluate(() => document.body.classList.add('dark-mode'));
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await page.screenshot({ path: path.join(evidence, 'settings-desktop-dark.png'), timeout: 30000 });
+        for (const [tab, target, file] of [
+            ['Робоча база', '#workBaseProfessionsTitle', 'work-base'],
+            ['Мої результати', '.profile-results-highlights', 'results'],
+            ['Зарплата', '.profile-pay-summary', 'salary']
+        ]) {
+            await page.getByRole('button', { name: tab, exact: true }).click();
+            await page.locator(target).waitFor();
+            await page.evaluate(() => window.scrollTo(0, 0));
+            await page.screenshot({ path: path.join(evidence, `${file}-desktop-dark.png`), timeout: 30000 });
+        }
+        await page.setViewportSize({ width: 320, height: 790 });
         await open('/profile?tab=salary&month=2024-03');
         await page.getByText(/3\s450/).waitFor();
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
@@ -158,7 +209,8 @@ async function main() {
         assert.equal(await page.getByRole('button', { name: 'Зарплата', exact: true }).count(), 0);
         assert.equal(await page.getByRole('button', { name: 'Мої результати', exact: true }).count(), 0);
         assert.equal(requests.length, requestCount);
-        console.log('Employee profile mobile browser checks passed.');
+        assert.deepEqual(errors, []);
+        console.log('Profile browser checks passed: Work Base, deep links, settings, results, salary and access.');
     } finally {
         await browser.close();
     }

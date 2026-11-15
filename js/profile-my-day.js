@@ -1,7 +1,7 @@
 (function (global) {
     'use strict';
 
-    const views = [['today', 'Сьогодні'], ['overdue', 'Прострочені'], ['future', 'Майбутні']];
+    const views = [['overdue', 'Прострочені'], ['today', 'Сьогодні'], ['future', 'Майбутні']];
     const selectedViews = new Map();
     const positionAttrs = ['data-park-my-day-view', 'data-cabinet-my-day-view-mode', 'data-cabinet-bucket-more',
         'data-cabinet-task-priority-select', 'data-cabinet-task-action', 'data-cabinet-completion-toggle',
@@ -25,9 +25,9 @@
         try { global.localStorage.setItem(`${scope}:list`, selected); } catch {}
     }
 
-    function renderViews(selected) {
+    function renderViews(selected, counts) {
         return `<div class="park-my-day-views" role="group" aria-label="Період задач">
-            ${views.map(([id, label]) => `<button type="button" data-park-my-day-view="${id}" aria-pressed="${selected === id}">${label}</button>`).join('')}
+            ${views.map(([id, label]) => `<button type="button" data-park-my-day-view="${id}" aria-pressed="${selected === id}"><span>${label}</span><b>${counts[id] ?? '—'}</b></button>`).join('')}
         </div>`;
     }
 
@@ -75,24 +75,42 @@
         };
     }
 
-    function renderCard({ id, title, status, due, priority, modeLabel, detailed, checklist, blocked, report, postponementBadge, isAi, priorityControl, dueState }) {
+    const iconPaths = {
+        work: 'M4 7h16v13H4z M8 7V4h8v3 M4 12h16',
+        personal: 'M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z M4 21v-2a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v2',
+        calendar: 'M4 6h16v14H4z M4 10h16 M8 4v4 M16 4v4',
+        done: 'm5 12 4 4L19 6',
+        edit: 'm4 20 4-1L20 7l-3-3L5 16z M14 7l3 3',
+        urgency: 'M5 19v-4 M12 19V9 M19 19V5',
+        overdue: 'M12 8v5 M12 16h.01 M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z'
+    };
+
+    function icon(name) {
+        return `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="${iconPaths[name]}"/></svg>`;
+    }
+
+    function renderCard({ id, title, status, due, priority, mode, modeLabel, checklist, blocked, report, postponementBadge, isAi, priorityControl, dueState, canReschedule }) {
         const escape = global.escapeHtml;
         const attrs = `data-task-id="${id || ''}"`;
-        const control = (action, label, className, extra = '') => `<button type="button" class="${className}" data-cabinet-task-action="${action}" ${attrs} ${extra} ${id ? '' : 'disabled'}>${label}</button>`;
+        const control = (action, label, className, enabled = true, extra = '') => `<button type="button" class="${className}" data-cabinet-task-action="${action}" ${attrs} ${extra} ${id && enabled ? '' : 'disabled'}>${label}</button>`;
         return `<article class="cabinet-task-card park-task-card priority-${escape(priority)}" ${attrs} data-task-status="${escape(status)}" data-task-due-state="${escape(dueState)}">
+            <div class="park-task-heading">
+                <span class="park-task-kind" data-park-task-mode="${escape(mode)}">${icon(mode === 'work' ? 'work' : 'personal')}${escape(modeLabel)}</span>
+                ${dueState === 'overdue' ? `<span class="park-task-overdue">${icon('overdue')}Прострочено</span>` : ''}
+            </div>
             ${control('open', `${isAi ? '<span class="task-ai-created-marker" aria-label="Створено з допомогою AI">AI</span> ' : ''}${escape(title)}`, 'park-task-title')}
             <div class="park-task-facts">
-                <span><time ${due ? `datetime="${escape(due)}"` : ''}>${due ? escape(due.split('-').reverse().join('.')) : 'Без дати'}</time></span>
-                ${priorityControl}
+                <span class="park-task-date">${icon('calendar')}${due ? `<time datetime="${escape(due)}">${escape(due.split('-').reverse().join('.'))}</time>` : 'Без дати'}</span>
+                <span class="park-task-priority">${icon('urgency')}${priorityControl}</span>
                 ${checklist.total ? `<span>${checklist.done}/${checklist.total} · Чекліст</span>` : ''}
-                ${detailed ? `<span>${escape(modeLabel)}</span>` : ''}
                 ${postponementBadge || ''}
                 ${report || ''}
             </div>
             ${blocked ? `<p id="park-task-blocked-${id}" class="park-task-blocked">${escape(blocked)}</p>` : ''}
             <div class="park-task-actions">
-                ${control('done', 'Виконати', 'cabinet-task-action-done park-task-done', blocked ? `disabled aria-describedby="park-task-blocked-${id}"` : '')}
-                ${control('more', 'Ще', 'cabinet-task-more park-task-secondary', 'aria-haspopup="dialog"')}
+                ${control('done', `${icon('done')}<span>Виконати</span>`, 'cabinet-task-action-done park-task-done', !blocked, blocked ? `aria-describedby="park-task-blocked-${id}"` : '')}
+                ${control('reschedule-date', `${icon('calendar')}<span>Перенести</span>`, 'park-task-secondary', canReschedule, 'aria-haspopup="dialog"')}
+                ${control('edit', `${icon('edit')}<span>Редагувати</span>`, 'park-task-secondary')}
             </div>
         </article>`;
     }

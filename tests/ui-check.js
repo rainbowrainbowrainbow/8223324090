@@ -2795,7 +2795,7 @@ check('Profile dark mode uses text tokens for primary work content', profilePage
 check('Profile dark mode covers primary tabs and cabinet cards', profilePageHtml.includes('body.dark-mode .profile-primary-tab.active') && profilePageHtml.includes('body.dark-mode .profile-secondary-tab.active') && profilePageHtml.includes('body.dark-mode .cabinet-task-section') && profilePageHtml.includes('body.dark-mode .cabinet-capture input'));
 check('Profile work header uses friendly composed desktop polish', profilePageHtml.includes('grid-template-columns: minmax(360px, 0.95fr) minmax(480px, 1.05fr);') && profileCode.includes('profile-friendly-shell') && profilePageHtml.includes('.profile-identity-title-row') && profilePageHtml.includes('.profile-identity-meta-row') && profilePageHtml.includes('.profile-work-stat.wide') && profilePageHtml.includes('grid-column: auto;') && profilePageHtml.includes('.profile-work-stat:hover') && profilePageHtml.includes('@media (max-width: 1320px)'));
 check('Profile My Day uses a compact profile capsule without removing the full profile header path', profileCode.includes('function renderProfileMyDayCapsule') && profileCode.includes('data-profile-my-day-capsule') && profileCode.includes("const isMyDayTab = activeTab === 'myday';") && profileCode.includes('profile-work-header--myday') && profileCode.includes('renderProfileMyDayCapsule(p, professionEntries)') && profileCode.includes('renderProfileProfessionHeaderPanel(professionEntries)') && profilePagesCss.includes('.profile-work-header--myday') && profilePagesCss.includes('.profile-my-day-capsule') && profilePagesCss.includes('.profile-my-day-capsule-avatar'));
-check('Profile My Day header removes duplicate profession switcher and subtitle copy', !profileCode.includes('робочі + особисті задачі') && profileCode.includes('profile-work-hub--myday') && profileCode.includes("${isMyDayTab ? '' : renderProfileProfessionSwitcher(professionEntries)}") && profileCode.includes('function renderProfileProfessionSwitcher') && profileCode.includes('profile-work-hub-context') && profilePageHtml.includes('.profile-work-hub--myday'));
+check('The profile only shows its profession switcher outside the own workspace', !profileCode.includes('робочі + особисті задачі') && profileCode.includes('profile-work-hub--myday') && profileCode.includes("${isOwnProfile ? '' : renderProfileProfessionSwitcher(professionEntries)}") && profileCode.includes('function renderProfileWorkBase') && profilePageHtml.includes('.profile-work-hub--myday'));
 check('Profile secondary tabs put My Day before professions and remove redundant route helper copy', profileWorkHubTabOrderBody.includes("id: 'professions'") && profileSecondaryTabOrderBody.includes("{ id: 'myday', label: 'Мій день', ownOnly: true }") && profileSecondaryTabOrderBody.indexOf("id: 'myday'") < profileSecondaryTabOrderBody.indexOf('...profileWorkHubTabOrder().map') && !profileCode.includes('Усі вкладки лишаються в одному компактному маршруті'));
 check('Profile work shell behaves as a full-width CRM module', profilePageHtml.includes('width: min(100%, 1760px);') && profilePageHtml.includes('min-height: calc(100vh - 64px);') && profilePageHtml.includes('margin: 0 auto;') && !profilePageHtml.includes('max-width: min(1360px, calc(100vw - 320px));'));
 check('Profile snapped desktop layout is guarded by content-width container queries', profilePageHtml.includes('container-name: profile-work;') && profilePageHtml.includes('@container profile-work (max-width: 1040px)') && profilePageHtml.includes('@container profile-work (max-width: 860px)') && profilePageHtml.includes('@media (min-width: 769px) and (max-width: 1180px)') && profilePageHtml.includes('#main-content.page-container') && profilePageHtml.includes('profile-secondary-work-menu .profile-secondary-tabs'));
@@ -2814,9 +2814,9 @@ const archivedProfileGames = fs.readFileSync(path.join(ROOT, 'js', 'profile-game
 check('Park task actions use delegated buttons and canonical details',
     profileCode.includes('function handleCabinetTaskActionClick')
     && parkMyDayCode.includes("control('open'")
-    && parkMyDayCode.includes("control('done', 'Виконати'")
-    && parkMyDayCode.includes("control('more', 'Ще'")
-    && profileCode.includes("'data-cabinet-task-action': 'move-target'")
+    && parkMyDayCode.includes("control('done',")
+    && parkMyDayCode.includes("control('reschedule-date',")
+    && parkMyDayCode.includes("control('edit',")
     && profileCode.includes('TaskDetailDrawer.open')
     && profileCode.includes('/tasks?view=my&open=')
     && profileCode.includes('TaskReportGate.openReportModal')
@@ -2841,7 +2841,7 @@ check('Tasks and Profile blocked completion reveal and highlight unfinished subt
 check('My Day minute habits use a bounded responsive stepper with local save states', myDayHabitsCodeForProfileChecks.includes('function parseHabitNumericValue') && myDayHabitsCodeForProfileChecks.includes("numeric > 1440") && myDayHabitsCodeForProfileChecks.includes('data-my-day-habit-step="-1"') && myDayHabitsCodeForProfileChecks.includes('data-my-day-habit-step="1"') && myDayHabitsCodeForProfileChecks.includes('data-my-day-habit-save=') && myDayHabitsCodeForProfileChecks.includes('setHabitEntryBusy(entry, true)') && myDayHabitsCodeForProfileChecks.includes("setHabitEntryFeedback(entry, 'pending'") && myDayHabitsCodeForProfileChecks.includes("setHabitEntryFeedback(entry, 'error'") && myDayHabitsCodeForProfileChecks.includes("setHabitEntryFeedback(entry, 'success'") && myDayHabitsCodeForProfileChecks.includes("event.key !== 'Enter'") && profilePagesCss.includes('.my-day-habit-stepper') && profilePagesCss.includes('.my-day-habit-entry-status.is-error') && profilePagesCss.includes('.my-day-habit-entry-status.is-success') && profilePagesCss.includes('@media (max-width: 640px)'));
 check('Park My Day uses one period selector and one workspace',
     profileCode.includes('function renderParkMyDayWorkspace')
-    && profileCode.includes('ProfileMyDay?.renderViews(selected)')
+    && profileCode.includes('ProfileMyDay?.renderViews(selected, counts)')
     && profileCode.includes("group('future', 'Майбутні'")
     && profileCode.includes("group('noDate', 'Без дати'")
     && parkMyDayCode.includes('aria-pressed=')
@@ -2888,10 +2888,11 @@ check('Profile tasker completion gives instant local feedback', profileCode.incl
 check('Profile and Tasks expose quick priority, deferred bucket, and task-scoped sound controls', profileCode.includes('data-cabinet-task-priority-select') && profileCode.includes('renderCabinetTaskSoundControls') && profileCode.includes("renderCabinetSection('Відкладено'") && tasksPageCodeForProfileChecks.includes('data-task-priority-select') && tasksPageCodeForProfileChecks.includes("case 'deferred'") && tasksHtmlForProfileChecks.includes('data-view="deferred"') && tasksHtmlForProfileChecks.includes('id="taskSoundControls"') && tasksHtmlForProfileChecks.includes('js/sound-engine.js') && soundEngineCodeForProfileChecks.includes('task_sound_settings') && soundEngineCodeForProfileChecks.includes('playTask: function') && soundEngineCodeForProfileChecks.includes('_taskSoftChime') && !soundEngineCodeForProfileChecks.includes("localStorage.getItem('chat_sound_settings');\n                this.taskSettings"));
 check('Profile tasker copy avoids canonical/cockpit leaks and removes noisy productivity panel', profileCode.includes('Назва задачі') && profileCode.includes('Задачу створено в основних задачах') && !profileCode.includes('Додати в мій cockpit') && !profileCode.includes('canonical Tasks') && !profileCode.includes('Productivity cockpit') && !profileCode.includes('renderCabinetProductivitySurface') && !profileCode.includes('/tasks/productivity') && !profilePagesCss.includes('cabinet-productivity-surface'));
 check('Profile nav keeps work context and all profile tabs in one compact row', profileCode.includes('profile-work-hub-context') && profileCode.includes('profile-secondary-work-menu') && profileCode.includes('profile-secondary-tabs') && profileCode.includes('profile-primary-tab') && profileCode.includes('profileWorkHubTabOrder().map') && !profileCode.includes('class="profile-tab'));
-check('Park profile keeps profession context and a native disclosure',
+check('Park profile exposes Work Base and Settings directly in the navigation',
     profileCode.includes('profile-profession-header-stack-title')
     && profileCode.includes('<nav class="profile-secondary-work-menu profile-park-nav"')
-    && profileCode.includes('<details class="profile-park-more"')
+    && profileCode.includes("['workbase', 'Робоча база'], ['settings', 'Налаштування']")
+    && !profileCode.includes('<details class="profile-park-more"')
     && profileCode.includes('aria-current="page"')
     && profilePageHtml.includes('body.dark-mode .profile-identity-block'));
 check('Profile role area opens a truthful working-role flow control', profileCode.includes('function renderProfileWorkingRoleControl') && profileCode.includes('id="profileWorkingRoleTrigger"') && profileCode.includes('Base role') && profileCode.includes('Additional granted roles') && profileCode.includes('Current working role') && profileCode.includes('What changes in this mode') && profileCode.includes('data-profile-working-role') && profilePageHtml.includes('.profile-working-role-panel') && profilePageHtml.includes('.profile-working-role-trigger'));
@@ -2942,12 +2943,12 @@ check('Task status and priority mutations fail visibly and rollback quick priori
     && profileCode.includes('applyCabinetTaskPriorityVisualState(taskId, previous, select)')
     && profileCode.includes("const mutation = normalizeCabinetTaskMutationResult(result, 'Task status update failed')")
     && profileCode.includes("throw new Error(mutation.error || 'Task status update failed')"));
-check('Park game tabs resolve to a single Soon disclosure for every role',
+check('Retired profile links route to My Day',
     profileCode.includes('PROFILE_ALWAYS_SOON_TABS')
     && profileCode.includes("'shop', 'inventory', 'achievements', 'leaderboard'")
     && profileCode.includes('function profileTabLock')
     && profileCode.includes('function renderProfileComingSoon')
-    && profileCode.includes('<p>Скоро</p>')
+    && profileCode.includes("if (PROFILE_ALWAYS_SOON_TABS.has(tab)) return 'myday';")
     && !profileCode.includes('PROFILE_CREATOR_ONLY_TABS'));
 check('Profile soon tabs collapse into one compact menu', profileCode.includes('function renderProfileSoonMenu') && profileCode.includes('data-profile-soon-menu') && profileCode.includes('data-profile-soon-trigger') && profileCode.includes('function toggleProfileSoonMenu') && profileCode.includes('function switchProfileSoonTab') && profilePagesCss.includes('.profile-soon-menu-panel') && profilePagesCss.includes('.profile-soon-menu-trigger'));
 check('Profile soon tabs have diagonal CRM badge styles', profilePageHtml.includes('.profile-primary-tab.is-soon::after') && profilePageHtml.includes('content: attr(data-profile-soon)') && profilePageHtml.includes('.profile-soon-panel') && profilePageHtml.includes('body.dark-mode .profile-primary-tab.is-soon') && profilePageHtml.includes('.profile-soon-ribbon'));

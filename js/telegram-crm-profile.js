@@ -27,7 +27,7 @@
             return data;
         } catch (error) {
             if (error.code) throw error;
-            throw new Error('Немає відповіді CRM. Натисніть «Оновити стан», щоб перевірити результат.');
+            throw new Error('Немає відповіді CRM. Перевірте з’єднання та спробуйте знову.');
         } finally { clearTimeout(timeout); }
     }
 
@@ -40,8 +40,8 @@
         let busy = false;
         let checking = false;
         let lastChecked = 0;
-        const heading = element('h2', 'Telegram і задачі CRM', { id: 'telegramCrmHeading', tabindex: '-1' });
-        const info = element('div');
+        const heading = element('h2', 'Telegram', { id: 'telegramCrmHeading', tabindex: '-1' });
+        const info = element('div', '', { class: 'telegram-crm-info' });
         const actions = element('div', '', { class: 'telegram-crm-actions' });
         const flow = element('div');
         const status = element('p', '', { id: 'telegramCrmStatus', role: 'status', 'aria-atomic': 'true' });
@@ -183,7 +183,7 @@
             } else {
                 const url = new URL(state.url);
                 if (url.origin !== 'https://t.me') throw new Error('Недійсне посилання Telegram.');
-                flow.append(element('p', '1. Натисніть «Відкрити Telegram», потім Start. 2. Поверніться в цю вкладку — ми самі знайдемо ваш акаунт. Посилання діє 10 хвилин.'));
+                flow.append(element('p', 'Натисніть Start у Telegram і поверніться сюди для підтвердження. Посилання діє 10 хвилин.'));
                 flow.append(element('a', 'Відкрити Telegram', { href: url.href, target: '_blank', rel: 'noopener noreferrer', referrerpolicy: 'no-referrer' }));
                 const retry = element('button', 'Я вже натиснув Start', { type: 'button' });
                 retry.addEventListener('click', () => void checkPending(true));
@@ -196,10 +196,11 @@
             const data = await request();
             if (currentUserId() !== userId || !root.isConnected) return;
             binding = data;
+            status.textContent = '';
             actions.hidden = false;
             info.replaceChildren(); actions.replaceChildren(); flow.replaceChildren();
             const labels = { connected: 'Підтверджено', preassigned: 'Попередньо внесено — потрібне підтвердження', disconnected: 'Не підключено' };
-            info.append(element('p', labels[data.status] || 'Не підключено'));
+            info.append(element('p', labels[data.status] || 'Не підключено', { class: 'telegram-crm-connection-status' }));
             const id = data.telegramId || data.proposedTelegramId;
             if (id) {
                 const label = element('label', data.telegramId ? 'Telegram ID' : 'Попередньо внесений Telegram ID', { for: 'telegramCrmId' });
@@ -216,17 +217,14 @@
             else if (data.mode === 'off') info.append(element('p', 'Пілот тимчасово вимкнений. CRM працює як звичайно.'));
             else {
                 if (data.status === 'connected' && /^[A-Za-z0-9_]{5,32}$/.test(data.botUsername || '')) {
-                    info.append(element('p', `Бот: @${data.botUsername}. Ваш акаунт уже підключено — повторна прив’язка не потрібна.`));
                     actions.append(element('a', 'Мої задачі в Telegram', {
                         href: `https://t.me/${data.botUsername}?start=crm_tasks`, target: '_blank',
                         rel: 'noopener noreferrer', referrerpolicy: 'no-referrer'
                     }));
-                    info.append(element('p', 'У Telegram натисніть Start, якщо з’явиться ця кнопка. Бот відкриє ваші задачі на сьогодні.'));
                 }
                 button(data.telegramId ? 'Змінити Telegram' : 'Підключити Telegram', startConnection);
             }
             if (data.telegramId || data.proposedTelegramId) button('Від’єднати Telegram', () => passwordForm(true));
-            button('Оновити стан', refresh);
             if (pending.has(userId)) showPending();
         }
         await run(refresh);

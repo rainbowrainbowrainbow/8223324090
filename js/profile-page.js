@@ -199,6 +199,7 @@ const CABINET_MY_DAY_ALL_GROUP_IDS = ['overdue', 'today', 'tomorrow', 'later', '
 const CABINET_MY_DAY_ALL_DEFAULT_COLLAPSED = ['later', 'no_date'];
 const collapsedCabinetAllGroupIds = new Set(CABINET_MY_DAY_ALL_DEFAULT_COLLAPSED);
 const expandedCabinetMyDayTaskIds = new Set();
+let myDayLinkedDate = null;
 
 const CABINET_TASK_SOUND_THEMES = [
     { value: 'subtle', label: 'Мʼякий' },
@@ -723,7 +724,11 @@ function syncProfileTabToUrl(tab = activeTab, options = {}) {
     const params = new URLSearchParams(window.location.search || '');
     if (normalized === 'professions') params.delete('tab');
     else params.set('tab', normalized);
-    if (normalized !== 'myday') params.delete('period');
+    if (normalized !== 'myday') {
+        params.delete('period');
+        params.delete('open');
+        params.delete('date');
+    }
     const query = params.toString();
     const hash = options.hash ?? window.location.hash;
     const nextUrl = `${window.location.pathname}${query ? `?${query}` : ''}${hash}`;
@@ -1299,7 +1304,7 @@ async function loadMyCabinetProjection(options = {}) {
     const selectedFocusDate = normalizeCabinetDuePreset(cabinetCreateDuePreset) === 'custom'
         ? cabinetSelectedDueDate()
         : '';
-    const focusDate = requestedFocusDate || selectedFocusDate;
+    const focusDate = requestedFocusDate || myDayLinkedDate || selectedFocusDate;
     const path = focusDate
         ? `/tasks/my-cabinet?focusDate=${encodeURIComponent(focusDate)}`
         : '/tasks/my-cabinet';
@@ -1430,6 +1435,10 @@ async function initProfilePage() {
                 && handleTransientAuthSessionBootstrap({ retry: () => window.location.reload(), containerId: 'main-content' })) {
                 return;
             }
+            const route = typeof normalizeSafeAuthReturnRoute === 'function' ? normalizeSafeAuthReturnRoute() : '';
+            if (route.startsWith('/profile?tab=myday&open=') && typeof rememberAuthReturnRoute === 'function') {
+                rememberAuthReturnRoute('my-day-task');
+            }
             window.location.href = '/';
             return;
         }
@@ -1489,9 +1498,11 @@ async function initProfilePage() {
             if (nextTab !== activeTab || ['myday', 'workbase'].includes(nextTab) || Object.hasOwn(PROFILE_EMPLOYEE_TABS, nextTab)) {
                 await switchTab(nextTab, { skipUrl: true });
             }
+            syncMyDayTaskDialog();
         });
         for (const event of ['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'permissions:lifecycle']) {
             window.addEventListener(event, () => {
+                document.querySelector('.park-task-dialog[open]')?.close();
                 for (const tab of Object.keys(PROFILE_EMPLOYEE_TABS)) delete profileEmployeeMonthState[tab];
                 if (isOwnProfile && Object.hasOwn(PROFILE_EMPLOYEE_TABS, activeTab)) {
                     void loadProfileEmployeeMonth(activeTab);
@@ -1512,6 +1523,7 @@ async function initProfilePage() {
     if (isOwnProfile && Object.hasOwn(PROFILE_EMPLOYEE_TABS, activeTab)) void loadProfileEmployeeMonth(activeTab);
     if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
     else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
+    syncMyDayTaskDialog(null, { initialize: true });
 }
 
 async function loadProfileData(userId) {
@@ -2003,6 +2015,10 @@ async function switchTab(tab, options = {}) {
     if (Object.hasOwn(PROFILE_EMPLOYEE_TABS, tab) && !isOwnProfile) tab = 'professions';
     const requestSeq = ++profileTabRequestSeq;
     activeTab = tab;
+    if (tab !== 'myday') {
+        myDayLinkedDate = null;
+        document.querySelector('.park-task-dialog[open]')?.close();
+    }
     if (!options.skipUrl) syncProfileTabToUrl(tab, { hash: '' });
     else applyProfilePeriodFromUrl();
     const locked = profileTabLock(tab);
@@ -3647,7 +3663,7 @@ async function loadCabinetBucketPage(button) {
     if (cabinetBucketLoadStates.get(key) === 'loading') return;
     const sourceProjection = myCabinetData;
     const scope = cabinetMyDayViewPreferenceKey();
-    const focusDate = bucket === 'focusDate' ? cabinetSelectedDueDate() : '';
+    const focusDate = bucket === 'focusDate' ? myDayLinkedDate || cabinetSelectedDueDate() : '';
     const offset = Math.max(0, Number(button?.dataset?.cabinetBucketOffset || 0));
     const limit = Math.max(1, Math.min(Number(button?.dataset?.cabinetBucketLimit || CABINET_BUCKET_PAGE_LIMIT), CABINET_BUCKET_PAGE_LIMIT));
     cabinetBucketLoadStates.set(key, 'loading');
@@ -3665,7 +3681,7 @@ async function loadCabinetBucketPage(button) {
             timeoutMs: CABINET_PROJECTION_TIMEOUT_MS
         });
         if (myCabinetData !== sourceProjection || scope !== cabinetMyDayViewPreferenceKey()
-            || (focusDate && focusDate !== cabinetSelectedDueDate())) return;
+            || (focusDate && focusDate !== (myDayLinkedDate || cabinetSelectedDueDate()))) return;
         mergeCabinetBucketPage(bucket, payload);
         if (bucket === 'completedToday') rerenderCabinetCompletionPulse();
         else rerenderCabinetMyDaySegmentPanel();
@@ -6821,6 +6837,8 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
             checklist, blocked, report: cabinetTaskReportBadge(task),
             postponementBadge: renderCabinetPostponementBadge(task),
             isAi: window.TaskAiDraft?.isAiTask?.(task) === true,
+            role: window.ProfileMyDay.taskRole(task),
+            executor: task.ownerLabel || task.owner_name || task.owner_username,
             dueState: due.key,
             canReschedule: cabinetTaskAllowsReschedule(task),
             priorityControl: renderCabinetTaskPriorityControl(task, String(id || ''))
@@ -7611,34 +7629,51 @@ function renderParkMyDayWorkspace() {
     const selected = window.ProfileMyDay?.getView(cabinetMyDayViewPreferenceKey()) || 'today';
     const today = cabinetDateKeyOffset(0);
     const activeTasks = cabinetActiveMyDaySourceTasks();
+    const currentFocusProjection = myCabinetData?.meta?.calendar?.focusDate === myDayLinkedDate;
     const listFor = bucket => {
-        const projected = myCabinetData?.planning?.[bucket];
+        const projected = bucket !== 'focusDate' || currentFocusProjection ? myCabinetData?.planning?.[bucket] : null;
         return Array.isArray(projected) ? projected : activeTasks.filter(task => {
             if (!cabinetTaskIsOpenForMyDay(task) || isCabinetDeferredTask(task)) return false;
             const due = cabinetTaskFocusDateKey(task);
             return bucket === 'overdue' ? due && due < today
                 : bucket === 'future' ? due > today
+                : bucket === 'focusDate' ? due === myDayLinkedDate
                 : bucket === 'noDate' ? !due : due === today;
         });
     };
     const totalFor = bucket => cabinetBucketMeta(bucket)?.total ?? listFor(bucket).length;
     const group = (bucket, title, empty) => {
         const list = listFor(bucket);
-        const metadata = cabinetBucketMeta(bucket);
+        const metadata = bucket !== 'focusDate' || currentFocusProjection ? cabinetBucketMeta(bucket) : null;
         const total = metadata?.total ?? list.length;
-        return renderCabinetSection(title, list, metadata?.hasMore && !list.length ? 'Задачі цієї групи ще не завантажено.' : empty, false, {
+        const sectionOptions = {
             className: 'park-period-section',
             keepOrder: true,
             cardOptions: { surface: 'myday' },
             countLabel: `Показано ${list.length} із ${total}`,
-            footer: renderCabinetBucketMore(bucket),
+            footer: metadata ? renderCabinetBucketMore(bucket) : '',
             sectionAttrs: `data-park-task-group="${bucket}" aria-label="${escapeHtml(title)}" tabindex="-1"`
-        });
+        };
+        if (!list.length || !window.ProfileMyDay) {
+            const message = metadata?.hasMore ? 'Задачі цієї групи ще не завантажено.' : empty;
+            return renderCabinetSection(title, list, message, false, sectionOptions);
+        }
+        const roleGroups = ['executor', 'author', 'participant', 'viewer'].map(role => ({
+            role, tasks: list.filter(task => window.ProfileMyDay.taskRole(task) === role)
+        })).filter(item => item.tasks.length);
+        return `<section class="cabinet-task-section park-period-section" ${sectionOptions.sectionAttrs}>
+            <div class="cabinet-section-head"><h3>${escapeHtml(title)}</h3><span>${escapeHtml(sectionOptions.countLabel)}</span></div>
+            <div class="cabinet-section-body">${roleGroups.map(({ role, tasks }) => `
+                <div class="park-my-day-role-group"><h4>${escapeHtml(window.ProfileMyDay.roleLabel(role))}</h4>
+                    ${tasks.map(task => renderCabinetTaskCard(task, false, sectionOptions.cardOptions)).join('')}
+                </div>`).join('')}${sectionOptions.footer || ''}</div></section>`;
     };
     let content;
     if (myCabinetLoadState === 'loading' && !myCabinetData) content = renderCabinetLoadingSkeleton();
     else if (!myCabinetData && myCabinetLoadError) content = '';
     else {
+        const linkedPeriod = myDayLinkedDate && myDayLinkedDate !== today
+            ? (myDayLinkedDate < today ? 'overdue' : 'future') : null;
         const noDate = totalFor('noDate') > 0
             ? group('noDate', 'Без дати', 'Задач без дати немає.') : '';
         const periods = [
@@ -7646,7 +7681,9 @@ function renderParkMyDayWorkspace() {
             ['today', group('today', 'Сьогодні', 'На сьогодні задач немає.') + noDate],
             ['future', group('future', 'Майбутні', 'Немає майбутніх задач.')]
         ];
-        content = periods.map(([key, sections]) => `<div class="park-period-column" data-park-period="${key}">${sections}</div>`).join('');
+        content = periods.map(([key, sections]) => `<div class="park-period-column" data-park-period="${key}">${
+            key === linkedPeriod ? group('focusDate', `Задачі на ${profileEmployeeDateText(myDayLinkedDate)}`, 'На цю дату немає активних задач.') : sections
+        }</div>`).join('');
     }
     const counts = myCabinetData ? { overdue: totalFor('overdue'), today: totalFor('today'), future: totalFor('future') } : {};
     return `
@@ -7677,6 +7714,68 @@ function renderMyDayCommandCenterTab() {
 
 function renderMyDayTab() {
     return renderMyDayCommandCenterTab();
+}
+
+function focusMyDayTaskDate(due) {
+    if (myDayLinkedDate === due) return;
+    myDayLinkedDate = due;
+    const today = cabinetDateKeyOffset(0);
+    if (due !== null) {
+        const period = !due || due === today ? 'today' : due < today ? 'overdue' : 'future';
+        window.ProfileMyDay.setView(cabinetMyDayViewPreferenceKey(), period, { persist: false });
+    }
+    if (activeTab === 'myday') rerenderCabinetMyDaySegmentPanel();
+    if (due && due !== today) {
+        void refreshMyCabinetTab({ silent: true, keepExistingOnError: true, focusDate: due });
+    }
+}
+
+function syncMyDayTaskDialog(opener = null, { initialize = false } = {}) {
+    const current = document.querySelector('.park-task-dialog[open]');
+    const url = new URL(window.location.href);
+    const rawId = url.searchParams.get('open');
+    const taskId = isOwnProfile && activeTab === 'myday' && /^[1-9]\d*$/.test(rawId || '')
+        ? Number(rawId) : null;
+    if (current && Number(current.dataset.myDayTask) === taskId) return;
+    current?.close();
+    if (!Number.isSafeInteger(taskId) || !window.ProfileMyDay) {
+        focusMyDayTaskDate(null);
+        return;
+    }
+    if (initialize && window.history.state?.myDayTask !== taskId) {
+        const base = new URL(url);
+        base.searchParams.delete('open');
+        base.searchParams.delete('date');
+        window.history.replaceState(window.history.state, '', base);
+        window.history.pushState({ ...window.history.state, myDayTask: taskId }, '', url);
+    }
+    const date = url.searchParams.get('date');
+    if (date === 'undated') focusMyDayTaskDate('');
+    else if (/^\d{4}-\d{2}-\d{2}$/.test(date || '')) focusMyDayTaskDate(date);
+    window.ProfileMyDay.openTaskDialog({
+        taskId, opener,
+        load: signal => apiGetScopedJson(`/tasks/${taskId}`, { signal }),
+        selectDate: task => {
+            const due = cabinetTaskFocusDateKey(task);
+            if (!opener && due !== date) focusMyDayTaskDate(due);
+            return due;
+        },
+        statusLabel: task => ({ todo: 'До виконання', in_progress: 'У роботі', waiting: 'Очікує',
+            review: 'На перевірці', done: 'Виконано', cancelled: 'Скасовано', archived: 'Архівна' })[cabinetTaskStatus(task)] || 'Відкрита',
+        onClose: dialog => {
+            if (document.querySelector('.park-task-dialog[open]')) return;
+            const location = new URL(window.location.href);
+            if (location.searchParams.get('open') !== dialog.dataset.myDayTask) return;
+            if (window.history.state?.myDayTask === taskId && activeTab === 'myday') {
+                window.history.back();
+                return;
+            }
+            location.searchParams.delete('open');
+            location.searchParams.delete('date');
+            window.history.replaceState(window.history.state, '', location);
+            focusMyDayTaskDate(null);
+        }
+    });
 }
 
 function setMyTasksSegment(segment) {
@@ -8382,7 +8481,13 @@ async function handleCabinetTaskActionClick(event) {
 
     if (action === 'open' || action === 'edit') {
         const mode = action === 'edit' ? 'edit' : '';
-        if (window.TaskDetailDrawer?.open) {
+        if (action === 'open' && activeTab === 'myday' && window.ProfileMyDay) {
+            const url = new URL(window.location.href);
+            url.searchParams.set('open', String(taskId));
+            url.searchParams.delete('date');
+            window.history.pushState({ ...window.history.state, myDayTask: taskId }, '', url);
+            syncMyDayTaskDialog(button);
+        } else if (window.TaskDetailDrawer?.open) {
             window.TaskDetailDrawer.open(taskId, { view: 'my', mode, sourceSurface: 'profile_my_day' });
         } else {
             window.location.href = `/tasks?view=my&open=${encodeURIComponent(taskId)}${mode ? '&mode=edit' : ''}`;

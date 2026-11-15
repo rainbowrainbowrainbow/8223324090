@@ -19,10 +19,77 @@
         return views.some(([key]) => key === view) ? view : 'today';
     }
 
-    function setView(scope, view) {
+    function setView(scope, view, { persist = true } = {}) {
         const selected = validateView(view);
         selectedViews.set(scope, selected);
-        try { global.localStorage.setItem(`${scope}:list`, selected); } catch {}
+        if (persist) {
+            try { global.localStorage.setItem(`${scope}:list`, selected); } catch {}
+        }
+    }
+
+    function taskRole(task) {
+        if (!Array.isArray(task.viewerRoles)) return 'executor';
+        const roles = task.viewerRoles;
+        if (roles.includes('executor')) return 'executor';
+        if (roles.includes('author')) return 'author';
+        return roles.includes('participant') ? 'participant' : 'viewer';
+    }
+
+    function roleLabel(role) {
+        return { executor: 'Виконую', author: 'На контролі', participant: 'Спостерігаю', viewer: 'Перегляд' }[role] || '';
+    }
+
+    function openTaskDialog({ taskId, load, selectDate, statusLabel, opener, onClose }) {
+        const dialog = document.createElement('dialog');
+        dialog.className = 'park-task-dialog';
+        dialog.dataset.myDayTask = taskId;
+        dialog.setAttribute('aria-labelledby', 'park-task-dialog-title');
+        dialog.innerHTML = `<header class="park-task-dialog-head">
+            <h2 id="park-task-dialog-title">Задача #${taskId}</h2>
+            <form method="dialog"><button type="submit" autofocus>Закрити</button></form>
+        </header><div class="park-task-dialog-content"><p role="status">Завантаження задачі…</p></div>`;
+        const controller = new AbortController();
+        dialog.addEventListener('close', () => {
+            controller.abort();
+            dialog.remove();
+            onClose(dialog);
+            if (!opener?.isConnected && !document.querySelector('dialog[open]')) {
+                document.querySelector('[data-park-my-day-view][aria-pressed="true"]')?.focus({ preventScroll: true });
+            }
+        }, { once: true });
+        document.body.append(dialog);
+        dialog.showModal();
+
+        const title = dialog.querySelector('h2');
+        const content = dialog.querySelector('.park-task-dialog-content');
+        const escape = global.escapeHtml;
+        void (async () => {
+            try {
+                const task = await load(controller.signal);
+                if (!dialog.open) return;
+                if (!task?.id) throw new Error('Task unavailable');
+                const due = selectDate(task);
+                const executor = task.ownerLabel || task.owner_name || task.owner_username;
+                const subtasks = Array.isArray(task.subtasks) ? task.subtasks : [];
+                title.textContent = task.title || `Задача #${taskId}`;
+                content.innerHTML = `<dl class="park-task-dialog-facts">
+                    <div><dt>Моя роль</dt><dd>${escape(roleLabel(taskRole(task)) || 'Перегляд')}</dd></div>
+                    <div><dt>Стан</dt><dd>${escape(statusLabel(task))}</dd></div>
+                    <div><dt>Дата</dt><dd>${due ? `<time datetime="${escape(due)}">${escape(due.split('-').reverse().join('.'))}</time>` : 'Без дати'}</dd></div>
+                    ${executor ? `<div><dt>Виконавець</dt><dd>${escape(executor)}</dd></div>` : ''}
+                </dl>
+                ${task.description ? `<p class="park-task-dialog-description">${escape(task.description)}</p>` : ''}
+                ${subtasks.length ? `<h3>Чекліст</h3><ul>${subtasks.map(item => `<li>${escape(item.title || '')} · ${item.is_done || item.isDone ? 'виконано' : 'до виконання'}</li>`).join('')}</ul>` : ''}
+                <a class="park-task-dialog-actions" href="/tasks?view=my&amp;open=${taskId}">Усі дії із задачею</a>`;
+            } catch (error) {
+                if (!dialog.open) return;
+                content.innerHTML = '<p role="alert"></p>';
+                content.firstElementChild.textContent = [403, 404].includes(error.status)
+                    ? 'Задача недоступна або її видалено.'
+                    : 'Не вдалося завантажити задачу. Спробуйте відкрити її ще раз.';
+            }
+        })();
+        return dialog;
     }
 
     function renderViews(selected, counts) {
@@ -89,7 +156,7 @@
         return `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="${iconPaths[name]}"/></svg>`;
     }
 
-    function renderCard({ id, title, status, due, priority, mode, modeLabel, checklist, blocked, report, postponementBadge, isAi, priorityControl, dueState, canReschedule }) {
+    function renderCard({ id, title, status, due, priority, mode, modeLabel, checklist, blocked, report, postponementBadge, isAi, priorityControl, dueState, canReschedule, role, executor }) {
         const escape = global.escapeHtml;
         const attrs = `data-task-id="${id || ''}"`;
         const control = (action, label, className, enabled = true, extra = '') => `<button type="button" class="${className}" data-cabinet-task-action="${action}" ${attrs} ${extra} ${id && enabled ? '' : 'disabled'}>${label}</button>`;
@@ -98,22 +165,25 @@
                 <span class="park-task-kind" data-park-task-mode="${escape(mode)}">${icon(mode === 'work' ? 'work' : 'personal')}${escape(modeLabel)}</span>
                 ${dueState === 'overdue' ? `<span class="park-task-overdue">${icon('overdue')}Прострочено</span>` : ''}
             </div>
-            ${control('open', `${isAi ? '<span class="task-ai-created-marker" aria-label="Створено з допомогою AI">AI</span> ' : ''}${escape(title)}`, 'park-task-title')}
+            ${control('open', `${isAi ? '<span class="task-ai-created-marker" aria-label="Створено з допомогою AI">AI</span> ' : ''}${escape(title)}`, 'park-task-title', true, 'aria-haspopup="dialog"')}
             <div class="park-task-facts">
                 <span class="park-task-date">${icon('calendar')}${due ? `<time datetime="${escape(due)}">${escape(due.split('-').reverse().join('.'))}</time>` : 'Без дати'}</span>
-                <span class="park-task-priority">${icon('urgency')}${priorityControl}</span>
+                ${roleLabel(role) ? `<span>${escape(roleLabel(role))}</span>` : ''}
+                ${role === 'executor' ? `<span class="park-task-priority">${icon('urgency')}${priorityControl}</span>` : executor ? `<span>Виконує ${escape(executor)}</span>` : ''}
                 ${checklist.total ? `<span>${checklist.done}/${checklist.total} · Чекліст</span>` : ''}
                 ${postponementBadge || ''}
                 ${report || ''}
             </div>
             ${blocked ? `<p id="park-task-blocked-${id}" class="park-task-blocked">${escape(blocked)}</p>` : ''}
             <div class="park-task-actions">
+                ${role === 'executor' ? `
                 ${control('done', `${icon('done')}<span>Виконати</span>`, 'cabinet-task-action-done park-task-done', !blocked, blocked ? `aria-describedby="park-task-blocked-${id}"` : '')}
                 ${control('reschedule-date', `${icon('calendar')}<span>Перенести</span>`, 'park-task-secondary', canReschedule, 'aria-haspopup="dialog"')}
                 ${control('edit', `${icon('edit')}<span>Редагувати</span>`, 'park-task-secondary')}
+                ` : ''}
             </div>
         </article>`;
     }
 
-    global.ProfileMyDay = Object.freeze({ getView, setView, renderViews, bindViews, preservePosition, renderCard });
+    global.ProfileMyDay = Object.freeze({ getView, setView, renderViews, bindViews, preservePosition, renderCard, taskRole, roleLabel, openTaskDialog });
 }(window));

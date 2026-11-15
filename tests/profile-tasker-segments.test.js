@@ -1566,6 +1566,50 @@ test('profile My Day fallback payload leaves no_date unscheduled', async () => {
     assert.equal(notices.at(-1)?.type, 'success');
 });
 
+test('My Day separates author control from execution and renders each task once', () => {
+    const ctx = loadProfileTaskerContext();
+    vm.runInContext(`
+        activeTab = 'myday';
+        myCabinetLoadState = 'loaded';
+        myCabinetData = { planning: {
+            today: [
+                { id: 4208, title: 'Здати звіт за листопад', viewerRoles: ['author'], ownerLabel: 'Сергій' },
+                { id: 4209, title: 'Перевірити сценарій', viewerRoles: ['executor', 'author'] }
+            ], noDate: []
+        }};
+    `, ctx);
+    const html = ctx.renderMyDayTab();
+    assert.match(html, /<h4>Виконую<\/h4>/);
+    assert.match(html, /<h4>На контролі<\/h4>/);
+    assert.match(html, /Виконує Сергій/);
+    assert.equal((html.match(/<article[^>]*data-task-id="4209"/g) || []).length, 1);
+    assert.doesNotMatch(html, /data-cabinet-task-action="done" data-task-id="4208"/);
+    assert.match(html, /data-cabinet-task-action="done" data-task-id="4209"/);
+});
+
+test('a linked My Day task focuses the requested date without changing the creation form', () => {
+    const ctx = loadProfileTaskerContext();
+    vm.runInContext(`
+        activeTab = 'myday';
+        myCabinetLoadState = 'loaded';
+        cabinetDateKeyOffset = () => '2026-11-15';
+        cabinetCreateDuePreset = 'today';
+        myDayLinkedDate = '2026-11-20';
+        myCabinetData = {
+            meta: { calendar: { focusDate: '2026-11-20' } },
+            planning: {
+                focusDate: [{ id: 4208, title: 'Звіт на 20 листопада', date: '2026-11-20', viewerRoles: ['author'] }],
+                future: [{ id: 4209, title: 'Звіт на іншу дату', date: '2026-11-22', viewerRoles: ['executor'] }]
+            }
+        };
+    `, ctx);
+    const html = ctx.renderMyDayTab();
+    assert.match(html, /data-park-task-group="focusDate"/);
+    assert.match(html, /Звіт на 20 листопада/);
+    assert.doesNotMatch(html, /Звіт на іншу дату/);
+    assert.equal(vm.runInContext('cabinetCreateDuePreset', ctx), 'today');
+});
+
 function installCabinetCreateDom(ctx, title) {
     const elements = new Map();
     const addElement = (id, node) => elements.set(id, node);

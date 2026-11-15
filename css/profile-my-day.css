@@ -391,3 +391,25 @@
     color: #beefd1;
     border-color: #72ae91;
 }
+.park-task-dialog {
+    inline-size: min(37rem, calc(100% - 1.5rem));
+    max-block-size: calc(100% - 1.5rem);
+    overflow: auto;
+    border: 1px solid currentColor;
+    border-radius: 1rem;
+    padding: 1rem;
+    color: CanvasText;
+    background: Canvas;
+    overflow-wrap: anywhere;
+}
+
+.park-task-dialog::backdrop { background: rgb(0 0 0 / 55%); }
+.park-task-dialog-head { display: flex; align-items: start; justify-content: space-between; gap: .75rem; }
+.park-task-dialog-head h2 { margin-block: 0; }
+.park-task-dialog-head button, .park-task-dialog-actions { min-block-size: 44px; }
+.park-task-dialog-actions { display: inline-flex; align-items: center; }
+.park-task-dialog-description { white-space: pre-wrap; }
+.park-task-dialog-facts { display: flex; flex-wrap: wrap; gap: .75rem 1.5rem; }
+.park-task-dialog-facts dd { margin-inline-start: 0; }
+.park-my-day-role-group { display: grid; gap: .65rem; }
+.park-my-day-role-group h4 { margin-block: .25rem 0; font-size: .95rem; }

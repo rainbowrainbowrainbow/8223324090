@@ -1703,11 +1703,13 @@ function normalizeAuthReturnRouteSegment(segment) {
 
 function normalizeSafeAuthReturnRoute(value) {
     let pathname = '';
+    let params = null;
     try {
         const locationOrigin = window.location?.origin || 'http://localhost';
         const parsed = new URL(String(value || window.location?.href || window.location?.pathname || '/'), locationOrigin);
         if (parsed.origin !== locationOrigin) return '';
         pathname = parsed.pathname || '/';
+        params = parsed.searchParams;
     } catch {
         pathname = String(value || window.location?.pathname || '/').split(/[?#]/)[0] || '/';
     }
@@ -1721,6 +1723,13 @@ function normalizeSafeAuthReturnRoute(value) {
     if (!segments.length) return '/';
     const moduleName = segments[0];
     if (!AUTH_SAFE_RETURN_ROUTE_MODULES.has(moduleName)) return '';
+    if (moduleName === 'profile' && segments.length === 1
+        && params?.get('tab') === 'myday' && /^[1-9]\d{0,14}$/.test(params.get('open') || '')) {
+        const query = new URLSearchParams({ tab: 'myday', open: params.get('open') });
+        const date = params.get('date');
+        if (date === 'undated' || /^\d{4}-\d{2}-\d{2}$/.test(date || '')) query.set('date', date);
+        return `/profile?${query}`;
+    }
     const output = [moduleName];
     const staticChildren = AUTH_SAFE_RETURN_STATIC_CHILDREN.get(moduleName) || new Set();
     for (let index = 1; index < segments.length; index += 1) {
@@ -1782,7 +1791,7 @@ function consumeAuthReturnRoute(user = AppState.currentUser) {
                 ? getPermissionLifecycle()
                 : { status: 'ready' };
             if (lifecycle?.status !== 'ready') return '';
-            if (!canAccessPage(route)) {
+            if (!canAccessPage(route.split('?')[0])) {
                 clearIntent();
                 recordRedirectDiagnostic('auth-redirect', {
                     stage: 'post-login',
@@ -1867,7 +1876,7 @@ function applyAuthReturnRouteAfterLogin(user = AppState.currentUser) {
     const route = consumeAuthReturnRoute(user);
     if (!route) return false;
     const currentPath = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
-    if (currentPath === route) {
+    if ((route.includes('?') ? currentPath + window.location.search : currentPath) === route) {
         recordRedirectDiagnostic('auth-redirect', {
             stage: 'post-login',
             redirectReason: 'return-route-current',

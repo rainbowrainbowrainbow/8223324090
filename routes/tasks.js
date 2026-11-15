@@ -2874,7 +2874,7 @@ router.get('/:id', async (req, res) => {
             params
         );
         if (result.rows.length === 0) return res.status(404).json({ error: 'Task not found' });
-        res.json(withTaskDrawerContract(normalizeTaskPayload(result.rows[0]), req.user));
+        res.json(withTaskDrawerContract(normalizeTaskPayload(result.rows[0], { user: req.user }), req.user));
     } catch (err) {
         log.error('Get by id error', err);
         res.status(500).json({ error: 'Internal server error' });

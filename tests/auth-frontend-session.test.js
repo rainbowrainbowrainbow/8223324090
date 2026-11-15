@@ -3027,12 +3027,17 @@ test('auth return route rejects external, unknown, expired, and inaccessible rou
         { route: 'https://evil.example/customers/7', expected: '' },
         { route: '/unknown/7', expected: '' },
         { route: '/certificates/new?secret=1', expected: '/certificates/new' },
+        { route: '/profile?tab=myday&open=4208&date=2026-11-20&next=https://evil.example',
+            expected: '/profile?tab=myday&open=4208&date=2026-11-20' },
+        { route: '/profile?tab=myday&open=-2&date=2026-11-20', expected: '/profile' },
+        { route: '/profile?tab=myday&open=4208&date=undated', expected: '/profile?tab=myday&open=4208&date=undated' },
         { route: '/customers/7', expected: '/customers' }
     ];
     for (const item of cases) {
         const store = new Map();
         const context = {
             URL,
+            URLSearchParams,
             Date,
             console: { warn() {}, error() {}, log() {} },
             AppState: { currentUser: { id: 14, username: 'operator', role: 'animator' } },

@@ -595,6 +595,13 @@ const CSS_SURFACE = [
         reason: 'Profile avatar crop controls and compact soon-tab menu styles imported by pages.css.'
     },
     {
+        file: 'css/profile-my-day.css',
+        owner: 'shared-ui',
+        category: 'shared',
+        status: 'active',
+        reason: 'Park profile navigation, task cards and responsive disclosures.'
+    },
+    {
         file: 'css/global-task-timer.css',
         owner: 'tasks-my-day-time',
         category: 'feature-shared',

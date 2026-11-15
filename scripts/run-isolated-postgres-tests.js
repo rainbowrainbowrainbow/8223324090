@@ -13,7 +13,9 @@ const {
 } = require('./test-db-safety');
 
 const ROOT = path.resolve(__dirname, '..');
-const STARTUP_TIMEOUT_MS = 180_000;
+const configuredStartupTimeout = Number(process.env.ISOLATED_TEST_STARTUP_TIMEOUT_MS);
+const STARTUP_TIMEOUT_MS = Number.isFinite(configuredStartupTimeout) && configuredStartupTimeout > 0
+    ? configuredStartupTimeout : 180_000;
 const SHUTDOWN_TIMEOUT_MS = 20_000;
 const TEST_TIMEOUT_MS = Number(process.env.ISOLATED_TEST_TIMEOUT_MS) || 15 * 60_000;
 const POLL_INTERVAL_MS = 500;
@@ -106,12 +108,14 @@ const MODES = {
         'tests/integration/catalog-sale-vitalina-local-provider.integration.test.js'
     ],
     'my-day': [
-        'tests/integration/my-day-postgres.integration.test.js',
+        'tests/integration/my-day-park.integration.test.js',
         'tests/integration/telegram-crm-fullstack.integration.test.js'
     ],
-    'my-day-browser': [
-        'tests/browser/my-day-actual-app-browser-smoke.js'
-    ],
+    'my-day-full-edition': ['tests/integration/my-day-postgres.integration.test.js'],
+    'my-day-park': ['tests/integration/my-day-park.integration.test.js'],
+    'my-day-park-browser': ['tests/browser/my-day-park-actual-app-smoke.js'],
+    'my-day-browser': ['tests/browser/my-day-park-actual-app-smoke.js'],
+    'my-day-full-edition-browser': ['tests/browser/my-day-actual-app-browser-smoke.js'],
     'hr-reminders-browser': [
         'tests/browser/hr-reminders-actual-app-browser-smoke.js'
     ],
@@ -765,6 +769,8 @@ async function runSuite(testDb, testFile, suiteMode) {
         RUN_EDUCATION_SERIES_INTEGRATION: testFile.includes('education-series.integration') ? 'true' : 'false',
         RUN_CATALOG_SALE_MIGRATIONS_INTEGRATION: testFile.includes('catalog-sale-migrations') ? 'true' : 'false',
         RUN_CATALOG_SALE_LOCAL_QA_INTEGRATION: catalogSaleLocalQa ? 'true' : 'false',
+        RUN_MY_DAY_PARK_ACTUAL_BROWSER: testFile.includes('my-day-park-actual-app-smoke') ? 'true' : 'false',
+        RUN_MY_DAY_PARK_INTEGRATION: testFile.includes('my-day-park.integration') ? 'true' : 'false',
         RUN_MY_DAY_POSTGRES_INTEGRATION: testFile.includes('my-day-postgres.integration') ? 'true' : 'false',
         RUN_TELEGRAM_CRM_FULLSTACK: testFile.includes('telegram-crm-fullstack.integration') ? 'true' : 'false',
         RUN_MY_DAY_ACTUAL_APP_BROWSER_SMOKE: testFile.includes('my-day-actual-app-browser-smoke') ? 'true' : 'false',

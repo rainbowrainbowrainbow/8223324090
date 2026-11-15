@@ -1,0 +1,128 @@
+.profile-park-nav .profile-secondary-tabs,
+.profile-park-more-links,
+.park-my-day-views,
+.park-my-day-toolbar,
+.park-task-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .5rem;
+}
+
+.profile-park-nav .profile-secondary-tabs { overflow: visible; }
+.profile-park-nav .profile-park-more { flex: 1 0 auto; }
+.profile-park-nav .profile-park-more[open] { flex-basis: 100%; }
+.profile-park-nav .profile-park-more summary { width: fit-content; cursor: pointer; }
+.profile-park-nav .profile-park-more-panel {
+    margin-block-start: .5rem;
+    padding: .75rem;
+    border: 1px solid var(--gray-200);
+    border-radius: .75rem;
+}
+.profile-park-more-panel p { margin: .75rem 0 .25rem; font-weight: 650; }
+.profile-park-more-panel .profile-primary-tab.is-soon::after { content: none; }
+.profile-my-day-capsule-copy h1 { margin: 0; font-size: clamp(1.3rem, 2vw, 1.85rem); }
+.profile-my-day-capsule-copy > span { color: var(--gray-600); }
+
+.park-my-day-toolbar { justify-content: space-between; margin-block-end: .65rem; }
+.park-my-day-groups { display: grid; gap: .75rem; }
+.park-my-day .cabinet-task-composer .cabinet-task-composer-main {
+    grid-template-columns: minmax(0, 1fr) auto minmax(7rem, auto) auto;
+    align-items: end;
+}
+.park-my-day .park-task-mode { min-inline-size: 0; }
+.park-task-visibility { margin: .1rem 0; font-size: .85rem; color: var(--gray-600); }
+.park-my-day-views button,
+.park-task-secondary,
+.park-task-done {
+    padding: .4rem .75rem;
+    border: 1px solid var(--gray-300);
+    border-radius: .6rem;
+    background: var(--gray-50);
+    color: var(--gray-800);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+.park-my-day-views [aria-pressed="true"],
+.park-my-day .park-task-done { background: #047857; color: white; border-color: #047857; }
+.park-my-day .park-task-done:disabled { opacity: .55; cursor: default; }
+
+.park-my-day .park-task-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: .15rem .75rem;
+    align-items: center;
+    padding: .65rem .8rem;
+    border-radius: .75rem;
+}
+.park-my-day .park-task-title {
+    grid-column: 1;
+    text-align: start;
+    overflow-wrap: anywhere;
+    background: transparent;
+    border: 0;
+    color: inherit;
+    font: inherit;
+    font-weight: 650;
+    padding: 0;
+    cursor: pointer;
+}
+.park-task-title:hover { text-decoration: underline; }
+.park-task-facts {
+    grid-column: 1;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: .3rem .6rem;
+    color: var(--gray-600);
+    font-size: .86rem;
+}
+.park-task-actions { grid-column: 2; grid-row: 1 / span 2; }
+.park-task-blocked { grid-column: 1 / -1; margin: .2rem 0; }
+.park-completed-row { display: flex; align-items: center; gap: .5rem; }
+.park-completed-row > .cabinet-completion-row { flex: 1; min-width: 0; }
+
+.profile-park-nav .profile-primary-tab,
+.park-my-day :is(button, select, input[type="date"]) {
+    min-block-size: 44px;
+}
+.park-my-day :is(button, select) { min-inline-size: 44px; }
+.profile-park-nav :focus-visible,
+.park-my-day :focus-visible {
+    outline: 2px solid #047857;
+    outline-offset: 2px;
+}
+:is(.dark-mode, [data-theme="dark"]) :is(.profile-park-nav, .park-my-day) :focus-visible {
+    outline-color: #5eead4;
+}
+:is(.dark-mode, [data-theme="dark"]) :is(.park-task-facts, .park-task-visibility, .profile-my-day-capsule-copy > span) {
+    color: var(--gray-400);
+}
+:is(.dark-mode, [data-theme="dark"]) :is(.park-my-day-views button:not([aria-pressed="true"]), .park-task-secondary) {
+    border-color: #52647b;
+    background: #223247;
+    color: #f1f5f9;
+}
+
+@media (max-width: 920px) {
+    .park-my-day .cabinet-task-composer .cabinet-task-composer-main { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+    .park-my-day .cabinet-task-composer-main .cabinet-task-title-field { grid-column: 1 / -1; }
+    .park-my-day .cabinet-task-composer-main .cabinet-task-create-date { grid-column: 1; }
+}
+@media (max-width: 560px) {
+    .park-my-day .park-task-card { grid-template-columns: minmax(0, 1fr); }
+    .park-task-actions { grid-column: 1; grid-row: auto; }
+    .park-my-day .cabinet-task-composer .cabinet-task-composer-main { grid-template-columns: minmax(0, 1fr); }
+}
+
+.park-employee-disclosure { margin-block: .5rem; }
+.park-employee-disclosure > summary {
+    min-block-size: 44px;
+    padding-block: .65rem;
+    cursor: pointer;
+    font-weight: 650;
+}
+.park-completed-row .park-task-secondary { flex-shrink: 0; }
+.park-my-day [data-park-my-day-reminders]:empty,
+.park-my-day [data-park-my-day-notice]:empty { display: none; }

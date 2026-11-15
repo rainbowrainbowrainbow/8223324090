@@ -44,7 +44,7 @@ test('boolean habit uses native checkbox with idempotent PUT and DELETE undo', (
     assert.match(css, /\.my-day-habit-check-label:focus-within/);
 });
 
-test('My Day setup surface is internal and not a fourth tab', () => {
+test('legacy setup remains internal and is not an active park surface', () => {
     const profile = read('js/profile-page.js');
     const habitsUi = read('js/my-day-habits.js');
     const css = read('css/pages-profile.css');
@@ -54,7 +54,7 @@ test('My Day setup surface is internal and not a fourth tab', () => {
     assert.match(habitsUi, /data-my-day-setup-surface/);
     assert.match(habitsUi, /data-my-day-setup-back/);
     assert.match(habitsUi, /← Назад до Мого дня/);
-    assert.match(profile, /state\?\.surface === 'setup'/);
+    assert.doesNotMatch(profile, /state\?\.surface === 'setup'/);
     assert.match(css, /\.my-day-setup-surface/);
     assert.match(css, /\.my-day-life-setup-action/);
     assert.doesNotMatch(habitsUi, /data-my-day-life-mode="setup"/);
@@ -93,7 +93,7 @@ test('My Day setup offers a consistent custom SVG icon preset palette for impact
     assert.match(iconUi, /MAX_SELECTED_IMPACTS = 5/);
     assert.match(classificationUi, /data-my-day-manage-impacts/);
     assert.match(classificationUi, /MyDayHabits\?\.openSetup/);
-    assert.match(profile, /js\/my-day-impact-icons\.js/);
+    assert.doesNotMatch(profile, /js\/my-day-impact-icons\.js/);
     assert.match(tasks, /js\/my-day-impact-icons\.js/);
 });
 
@@ -150,8 +150,8 @@ test('setup Back restores the previous My Day mode without changing Day or Contr
     assert.match(habitsUi, /state\.returnMode = options\.returnMode \|\| currentMode/);
     assert.match(habitsUi, /state\.mode = state\.returnMode === 'habits' \|\| state\.returnMode === 'contribution'/);
     assert.match(habitsUi, /MyDayContribution\?\.cancel\?\.\('setup-open'\)/);
-    assert.match(profile, /renderCabinetTaskComposer\(\{ segment: 'personal', mode: 'personal' \}\)/);
-    assert.match(profile, /MyDayContribution\?\.renderPanel/);
+    assert.match(profile, /renderCabinetTaskComposer\(\{ segment: 'all', mode: 'work' \}\)/);
+    assert.doesNotMatch(profile, /MyDayContribution\?\.renderPanel/);
 });
 
 test('My Day habit setup uses a compact editor with conditional fields and checkbox impact chips', () => {

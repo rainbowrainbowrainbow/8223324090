@@ -103,6 +103,7 @@ async function telegramInboxOwnsGlobalBotToken() {
 }
 
 // --- Express app setup ---
+const { PARK_PROFILE_MODULES, mountParkProfileBoundaries } = require('./services/parkProfileModules');
 const app = express();
 app.disable('x-powered-by'); // v20.9.9: Don't expose Express version
 app.set('trust proxy', 1);   // v20.9.27: Trust first proxy (Railway) — req.ip returns real client IP
@@ -211,6 +212,14 @@ app.use('/uploads/sounds', (req, res, next) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') return next();
     return res.status(404).json({ error: 'sound_upload_not_found' });
 });
+app.get(['/shop', '/shop.html'], (_req, res) => {
+    if (PARK_PROFILE_MODULES.gamification !== 'active') return res.redirect(302, '/profile?tab=shop');
+    return res.sendFile(path.join(__dirname, 'shop.html'));
+});
+app.get(['/game', '/game.html'], (_req, res) => {
+    if (PARK_PROFILE_MODULES.gamification !== 'active') return res.redirect(302, '/profile?tab=achievements');
+    return res.sendFile(path.join(__dirname, 'game.html'));
+});
 app.use(express.static(path.join(__dirname)));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
@@ -273,8 +282,11 @@ app.use('/api', businessScopeWriteGuard);
 // v25.3: Rate limiters for sensitive endpoints
 app.use('/api/auth/password', sensitiveActionLimiter);
 app.use('/api/auth/impersonate', sensitiveActionLimiter);
-app.use('/api/shop/buy', shopBuyLimiter);
-app.use('/api/gamification/shop/buy', shopBuyLimiter);
+
+if (PARK_PROFILE_MODULES.gamification === 'active') {
+    app.use('/api/shop/buy', shopBuyLimiter);
+    app.use('/api/gamification/shop/buy', shopBuyLimiter);
+}
 
 // v17.9.0: API audit trail — log all mutating requests by authenticated users
 app.use('/api', apiAudit);
@@ -298,8 +310,11 @@ app.use('/api/telegram', require('./routes/telegram'));
 app.use('/api/backup', require('./routes/backup'));
 app.use('/api/products', require('./routes/products'));
 app.use('/api/tasks', require('./routes/tasks'));
+mountParkProfileBoundaries(app);
 app.use('/api/my-day', require('./routes/my-day'));
-app.use('/api/my-day/habits', require('./routes/my-day-habits'));
+if (PARK_PROFILE_MODULES.habits === 'active') {
+    app.use('/api/my-day/habits', require('./routes/my-day-habits'));
+}
 app.use('/api/task-templates', require('./routes/task-templates'));
 app.use('/api/staff', require('./routes/staff'));
 app.use('/api/staff-substitutions', require('./routes/staff-substitutions'));
@@ -357,24 +372,26 @@ app.use('/api/summary', require('./routes/summary'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/crm-assistant', require('./routes/crm-assistant'));
 app.use('/api/dashboard-assistant', require('./routes/dashboard-assistant'));
-app.use('/api/gamification', require('./routes/gamification'));
 app.use('/api/subscription', require('./routes/subscription'));
 
 // v22.4.0: Achievements system
-app.use('/api/wallet', require('./routes/wallet'));
-app.use('/api/achievements', require('./routes/achievements'));
-app.use('/api/shop', require('./routes/shop'));
-app.use('/api', require('./routes/shop')); // /api/inventory, /api/profile/:id, /api/profile/equip
+if (PARK_PROFILE_MODULES.gamification === 'active') {
+    app.use('/api/gamification', require('./routes/gamification'));
+    app.use('/api/wallet', require('./routes/wallet'));
+    app.use('/api/achievements', require('./routes/achievements'));
+    app.use('/api/shop', require('./routes/shop'));
+    app.use('/api', require('./routes/shop')); // /api/inventory, /api/profile/:id, /api/profile/equip
+    app.use('/api/quests', require('./routes/quests'));
+    app.use('/api/streaks', require('./routes/streaks'));
+}
 app.use('/api/notes', require('./routes/notes'));
 app.use('/api/minigame', require('./routes/minigame'));
 
 // v22.5.0: Gamification v2 — Room, Quests, Titles
 app.use('/api/room', require('./routes/room'));
-app.use('/api/quests', require('./routes/quests'));
 
 // v22.10.0: Gamification v3 — Quiz, Streaks
 app.use('/api/quiz', require('./routes/quiz'));
-app.use('/api/streaks', require('./routes/streaks'));
 
 // Content Matrix — social media content planning
 app.use('/api/content', require('./routes/content'));
@@ -603,12 +620,6 @@ app.get('/landing/sales-deck', (req, res) => {
     res.sendFile(path.join(__dirname, 'landing', 'sales-deck.html'));
 });
 // v22.4.0: shop, game pages
-app.get('/shop', (req, res) => {
-    res.sendFile(path.join(__dirname, 'shop.html'));
-});
-app.get('/game', (req, res) => {
-    res.sendFile(path.join(__dirname, 'game.html'));
-});
 // v22.10.0: Quiz + Room pages
 app.get('/quiz', (req, res) => {
     res.sendFile(path.join(__dirname, 'quiz.html'));
@@ -845,7 +856,9 @@ initializeDatabaseWithSchemaFence().catch(err => {
         schedulerIntervals.push(setInterval(guardScheduler('checkTaskReminders', checkTaskReminders, { dedup: '5min' }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('checkReplyAutoEscalations', checkReplyAutoEscalations, { dedup: 'hourly' }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('checkWorkDayTriggers', checkWorkDayTriggers, { dedup: 'daily' }), 60000));
-        schedulerIntervals.push(setInterval(guardScheduler('checkMonthlyPointsReset', checkMonthlyPointsReset, { dedup: 'daily' }), 60000));
+        if (PARK_PROFILE_MODULES.gamification === 'active') {
+            schedulerIntervals.push(setInterval(guardScheduler('checkMonthlyPointsReset', checkMonthlyPointsReset, { dedup: 'daily' }), 60000));
+        }
         // v13.1: OpenClaw bridge fallback — process stale pending messages (every 30s)
         if (OPENCLAW_BRIDGE) {
             const { generateChatResponse } = require('./services/kleshnya-chat');
@@ -861,8 +874,10 @@ initializeDatabaseWithSchemaFence().catch(err => {
         schedulerIntervals.push(setInterval(guardScheduler('checkHrNoShow', checkHrNoShow, { dedup: 'daily' }), 60000));
         // v11.0: Kleshnya greeting cache cleanup (every 30min)
         schedulerIntervals.push(setInterval(cleanupKleshnyaMessages, 30 * 60 * 1000));
+        if (PARK_PROFILE_MODULES.gamification === 'active') {
+            schedulerIntervals.push(setInterval(guardScheduler('checkStreakUpdates', checkStreakUpdates, { dedup: 'daily' }), 60000));
+        }
         // v11.1: Streak auto-update (daily at 23:55)
-        schedulerIntervals.push(setInterval(guardScheduler('checkStreakUpdates', checkStreakUpdates, { dedup: 'daily' }), 60000));
         // v15.1: Birthday greetings
         schedulerIntervals.push(setInterval(guardScheduler('checkBirthdayGreetings', checkBirthdayGreetings, { dedup: 'daily' }), 60000));
         // v30.4: CRM reminders — birthday 7d, dormant, upcoming bookings

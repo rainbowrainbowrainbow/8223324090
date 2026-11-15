@@ -308,7 +308,7 @@ test('updateTaskStatus gates completion points through shared KPI policy after c
     assert.equal(queries.some(q => q.text.startsWith('INSERT INTO user_points')), false);
 });
 
-test('updateTaskStatus awards completion points only when shared KPI policy proves eligibility', async () => {
+test('Park status updates preserve audit history and award no points even for eligible task completion', async () => {
     const queries = [];
     let taskSelectCount = 0;
     const task = {
@@ -340,9 +340,11 @@ test('updateTaskStatus awards completion points only when shared KPI policy prov
     };
     const { updateTaskStatus } = loadKleshnya(pool);
 
-    await updateTaskStatus(93, 'done', 'sergiy', { actorUserId: 7 });
+    const updated = await updateTaskStatus(93, 'done', 'sergiy', { actorUserId: 7 });
 
-    assert.equal(queries.some(q => q.text.startsWith('INSERT INTO user_points')), true);
+    assert.equal(updated.status, 'done');
+    assert.equal(queries.some(q => q.text.startsWith('INSERT INTO task_action_history')), true);
+    assert.equal(queries.some(q => /INSERT INTO (user_points|point_transactions)/.test(q.text)), false);
 });
 
 test('sendReminder and escalateTask skip archived or terminal tasks without side effects', async () => {

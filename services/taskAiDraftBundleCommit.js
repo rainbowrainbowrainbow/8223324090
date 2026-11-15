@@ -692,12 +692,12 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
             const subtasks = finalTask.subtasks.length
                 ? await replaceTaskSubtasks(client, task.id, finalTask.subtasks, { sourceType: 'ai' })
                 : [];
-            const classification = await replaceTaskClassification(client, {
+            const classification = input.omitClassification ? null : await replaceTaskClassification(client, {
                 userId,
                 taskId: task.id,
                 impactIds: finalTask.impactIds
             });
-            classifications.push(classification);
+            if (classification) classifications.push(classification);
             await insertTaskBundleMembership(client, {
                 bundleId,
                 taskId: task.id,

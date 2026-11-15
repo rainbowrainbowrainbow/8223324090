@@ -147,7 +147,7 @@ function profileHarness() {
         let referralData = null;
         ${profileSource.slice(resourceStart, resourceEnd)}
         ${profileSource.slice(switchStart, switchEnd)}
-        this.__hooks = { ensureProfileTabData, switchTab, getProfileResourceState };
+        this.__hooks = { ensureProfileTabData, switchTab, getProfileResourceState, loadProfileResource };
         this.__getActiveTab = () => activeTab;
         this.__getInventory = () => myInventory;
         this.__getAchievements = () => myAchievements;
@@ -156,7 +156,7 @@ function profileHarness() {
     return { dom, context, apiCalls, handlers, renders, hooks: context.__hooks };
 }
 
-test('Profile caches legitimate empty inventory and achievements responses', async () => {
+test('Park profile skips disabled game requests and caches legitimate empty resources', async () => {
     const harness = profileHarness();
     harness.handlers.set('/wallet', () => Promise.resolve({ balance: 0 }));
     harness.handlers.set('/inventory', () => Promise.resolve([]));
@@ -167,11 +167,13 @@ test('Profile caches legitimate empty inventory and achievements responses', asy
     await harness.hooks.ensureProfileTabData('achievements');
     await harness.hooks.ensureProfileTabData('achievements');
 
-    assert.equal(harness.apiCalls.filter(value => value === '/wallet').length, 1);
-    assert.equal(harness.apiCalls.filter(value => value === '/inventory').length, 1);
-    assert.equal(harness.apiCalls.filter(value => value === '/achievements').length, 1);
-    assert.equal(harness.hooks.getProfileResourceState('inventory').status, 'loaded');
-    assert.equal(harness.hooks.getProfileResourceState('achievements').status, 'loaded');
+    assert.deepEqual(harness.apiCalls, []);
+    let reads = 0;
+    const load = () => { reads += 1; return Promise.resolve([]); };
+    await harness.hooks.loadProfileResource('empty-fixture', load);
+    await harness.hooks.loadProfileResource('empty-fixture', load);
+    assert.equal(reads, 1);
+    assert.equal(harness.hooks.getProfileResourceState('empty-fixture').status, 'loaded');
     harness.dom.window.close();
 });
 

@@ -489,7 +489,7 @@ async function commitTaskAiDraft(input = {}, options = {}) {
         const subtasks = finalDraft.subtasks.length
             ? await replaceTaskSubtasks(client, task.id, finalDraft.subtasks, { sourceType: 'ai' })
             : [];
-        const classification = await replaceTaskClassification(client, {
+        const classification = input.omitClassification ? null : await replaceTaskClassification(client, {
             userId,
             taskId: task.id,
             impactIds: finalDraft.impactIds

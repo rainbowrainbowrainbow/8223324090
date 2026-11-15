@@ -13,6 +13,7 @@
  *  - HUMAN: 100% відповідальність людини
  *  - BOT: 100% системне виконання
  */
+const { PARK_PROFILE_MODULES } = require('./parkProfileModules');
 const { pool } = require('../db');
 const { sendTelegramMessage, getConfiguredChatId, getConfiguredThreadId, telegramRequest } = require('./telegram');
 const { createLogger } = require('../utils/logger');
@@ -512,7 +513,7 @@ async function evaluateAndAwardPoints(task, username) {
  * Award points to a user
  */
 async function awardPoints(username, points, type, reason, taskId = null) {
-    if (points === 0) return;
+    if (PARK_PROFILE_MODULES.gamification !== 'active' || points === 0) return;
 
     const month = getCurrentMonth();
 

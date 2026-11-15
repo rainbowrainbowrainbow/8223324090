@@ -74,12 +74,15 @@ test('achievement completion winner and coin award share one transaction', () =>
     assert.match(atomic, /client\.query\('ROLLBACK'\)/);
 });
 
-test('profile keeps the existing achievements tab instead of a separate productivity panel', () => {
+test('park profile shows the achievements placeholder without mounting legacy rewards or a productivity panel', () => {
     const profileCode = fs.readFileSync(path.join(ROOT, 'js', 'profile-page.js'), 'utf8');
     const profileCss = readCssWithImports('css/pages.css');
 
-    assert.match(profileCode, /function renderAchievements/);
-    assert.match(profileCode, /apiGet\('\/achievements'\)/);
+    const legacyGame = fs.readFileSync(path.join(ROOT, 'js', 'profile-game-legacy.js'), 'utf8');
+    const profileHtml = fs.readFileSync(path.join(ROOT, 'profile.html'), 'utf8');
+    assert.match(legacyGame, /function renderAchievements/);
+    assert.match(profileCode, /Досягнення скоро/);
+    assert.doesNotMatch(profileHtml, /profile-game-legacy\.js/);
     assert.doesNotMatch(profileCode, /renderCabinetProductivitySurface/);
     assert.doesNotMatch(profileCode, /\/tasks\/productivity/);
     assert.doesNotMatch(profileCss, /cabinet-productivity-surface/);

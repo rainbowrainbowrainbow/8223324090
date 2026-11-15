@@ -190,6 +190,8 @@
     "test:integration:admission-tickets:isolated": "node scripts/run-isolated-postgres-tests.js admission",
     "test:integration:education-series:isolated": "npm exec --yes --package=playwright -c \"playwright install --with-deps chromium && node scripts/run-isolated-postgres-tests.js education-series\"",
     "test:integration:my-day:isolated": "node scripts/run-isolated-postgres-tests.js my-day",
+    "test:integration:my-day-park:isolated": "node scripts/run-isolated-postgres-tests.js my-day-park",
+    "test:browser:my-day-park:isolated": "npx --yes --package playwright node scripts/run-isolated-postgres-tests.js my-day-park-browser",
     "test:integration:hr-onboarding:isolated": "node scripts/run-isolated-postgres-tests.js onboarding",
     "test:integration:hr-legacy-backfill:isolated": "node scripts/run-isolated-postgres-tests.js backfill",
     "test:browser:hr-onboarding:fullstack:isolated": "npm exec --yes --package=playwright -c \"node scripts/run-isolated-postgres-tests.js fullstack\"",

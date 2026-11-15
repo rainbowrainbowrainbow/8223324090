@@ -77,8 +77,9 @@ test('Task 3 route, projection, UI, and compatibility migration retain the block
     assert.match(routes, /my_day_task_metadata/);
     assert.match(projection, /normalizeTaskCabinetRows/);
     assert.match(completionHistory, /loadTaskDependencyStates/);
-    assert.match(profile, /data-cabinet-task-action': 'dependencies'/);
-    assert.match(profile, /complete-despite-blocker/);
+    assert.doesNotMatch(profile, /data-cabinet-task-action': 'dependencies'/);
+    assert.doesNotMatch(profile, /complete-despite-blocker/);
+    assert.match(profile, /Спочатку виконайте задачу, від якої залежить ця/);
     assert.match(ui, /Спочатку:/);
 });
 

@@ -51,7 +51,7 @@ describe('operations flow v2 comprehensive contracts', () => {
         assert.match(chatRoute, /created_by_user_id/);
         assert.match(chatRoute, /'personal', 'reminder', 'private', 'inbox'/);
         assert.match(tasksRoute, /task: normalizeTaskPayload\((?:task|responseTask)\)/);
-        assert.match(tasksRoute, /const ownerUserId = parseInt\(task\.owner_user_id/);
+        assert.match(tasksRoute, /const ownerUserId = input\.owner_user_id \?\? input\.ownerUserId;/);
         assert.match(tasksRoute, /const FILTERABLE_STATUSES = \[\.\.\.VALID_STATUSES, 'archived', 'cancelled', 'overdue'\]/);
     });
 

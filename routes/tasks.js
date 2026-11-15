@@ -1017,6 +1017,11 @@ function requireTaskWriteScope(req, res) {
     return ensureWritableTaskBusinessScope(req, res);
 }
 
+function isParkMyDayAiSurface(body = {}) {
+    const surface = sourceSurface(body, '') || sourceSurface(body.draft || {}, '');
+    return ['profile_my_cabinet', 'profile_my_day', 'profile_myday'].includes(surface);
+}
+
 function taskAiDraftPayloadFromBody(body = {}) {
     const source = body.currentDraft || body.draft || body;
     return {
@@ -1152,9 +1157,12 @@ async function buildTaskAiDraftPreview(req, res) {
             model: 'gpt-5.6-luna'
         };
     }
-    const { impacts } = await loadMyDayAiImpactCatalog(pool, userId);
+    const omitClassification = isParkMyDayAiSurface(req.body);
+    const { impacts } = omitClassification ? { impacts: [] } : await loadMyDayAiImpactCatalog(pool, userId);
+    const draft = taskAiDraftPayloadFromBody(req.body || {});
+    if (omitClassification) draft.impactIds = [];
     const result = await generateTaskAiDraftPreview({
-        draft: taskAiDraftPayloadFromBody(req.body || {}),
+        draft,
         impacts,
         userId,
         user: req.user,
@@ -1201,9 +1209,11 @@ async function buildTaskAiDraftCommit(req, res) {
     if (!businessScope) return null;
     assertTaskAiDraftFeatureEnabled(req.user);
     const userId = normalizeUserId(req.user);
-    const impacts = await listTaxonomy(pool, userId, 'impacts');
     const body = req.body || {};
+    const omitClassification = isParkMyDayAiSurface(body);
+    const impacts = omitClassification ? [] : await listTaxonomy(pool, userId, 'impacts');
     return commitTaskAiDraft({
+        omitClassification,
         proposalToken: body.proposalToken || body.proposal_token,
         finalDraft: taskAiFinalDraftFromBody(body),
         acceptedFieldMask: body.acceptedFieldMask || body.accepted_field_mask || body.acceptedFields || body.accepted_fields || [],
@@ -1280,9 +1290,11 @@ async function buildTaskAiDraftBundleCommit(req, res) {
     if (!businessScope) return null;
     assertTaskAiDraftFeatureEnabled(req.user);
     const userId = normalizeUserId(req.user);
-    const impacts = await listTaxonomy(pool, userId, 'impacts');
     const body = req.body || {};
+    const omitClassification = isParkMyDayAiSurface(body);
+    const impacts = omitClassification ? [] : await listTaxonomy(pool, userId, 'impacts');
     return commitTaskAiDraftBundle({
+        omitClassification,
         proposalToken: body.proposalToken || body.proposal_token,
         proposalHash: body.proposalHash || body.proposal_hash,
         proposal: body.proposal,
@@ -2563,6 +2575,8 @@ router.get('/my-cabinet', async (req, res) => {
                 user: req.user,
                 businessScope,
                 bucket,
+                includeLegacyMetadata: false,
+                focusDate: normalizeTaskCabinetFocusDate(req.query.focusDate || req.query.focus_date),
                 bucketLimit: normalizeTaskCabinetBucketLimit(req.query.limit || req.query.bucketLimit || req.query.bucket_limit),
                 bucketOffset: normalizeTaskCabinetBucketOffset(req.query.offset || req.query.bucketOffset || req.query.bucket_offset)
             });
@@ -2572,6 +2586,7 @@ router.get('/my-cabinet', async (req, res) => {
             pool,
             user: req.user,
             businessScope,
+            includeLegacyMetadata: false,
             focusDate: normalizeTaskCabinetFocusDate(req.query.focusDate || req.query.focus_date),
             planningRowLimit: req.query.planningRowLimit || req.query.planning_row_limit,
             completedTodayLimit: req.query.completedTodayLimit || req.query.completed_today_limit
@@ -4177,14 +4192,6 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
         const actor = req.user?.username || 'system';
         await kleshnya.logTaskAction(parseInt(id), 'updated', null, title, actor);
 
-        // v22.2.0: Gamification — award coins + XP on task completion
-        if (status === 'done' && actor !== 'system') {
-            try {
-                const { onTaskComplete } = require('../services/gamification');
-                onTaskComplete(actor, result.rows[0]).catch(() => {});
-            } catch (e) { /* gamification not ready */ }
-        }
-
         let updatedTask = result.rows[0];
         let scheduleResult = null;
         if (hasSchedulePayload(b)) {
@@ -4277,12 +4284,6 @@ router.patch('/:id/status', requireRole('admin', 'user'), async (req, res) => {
                 reportId: req.body?.reportId || req.body?.report_id,
                 businessScope
             });
-            if (actor !== 'system') {
-                try {
-                    const { onTaskComplete } = require('../services/gamification');
-                    onTaskComplete(actor, result.task).catch(() => {});
-                } catch (e) { /* gamification not ready */ }
-            }
             _alertPush();
             return res.json({
                 success: true,
@@ -4321,14 +4322,6 @@ router.patch('/:id/status', requireRole('admin', 'user'), async (req, res) => {
             }
         } catch (historyErr) {
             log.warn(`Task status movement history skipped: ${historyErr.message}`);
-        }
-
-        // v22.2.0: Gamification — award coins + XP on task completion
-        if (status === 'done' && actor !== 'system') {
-            try {
-                const { onTaskComplete } = require('../services/gamification');
-                onTaskComplete(actor, task).catch(() => {});
-            } catch (e) { /* gamification not ready */ }
         }
 
         _alertPush();
@@ -4385,30 +4378,6 @@ router.post('/:id/review', requireTaskRouteCapability('review'), async (req, res
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Задачу не знайдено або вона не завершена' });
         }
-
-        // Award coins based on score
-        const task = result.rows[0];
-        const coinsReward = reviewScore * 5;
-        try {
-            const ownerUserId = parseInt(task.owner_user_id || (/^\d+$/.test(String(task.assigned_to || '')) ? task.assigned_to : 0), 10) || null;
-            const assignedTo = String(task.assigned_to || task.owner || '').trim();
-            if (ownerUserId || assignedTo) {
-                const userResult = ownerUserId
-                    ? await pool.query('SELECT username FROM users WHERE id = $1', [ownerUserId])
-                    : await pool.query(
-                        `SELECT username
-                         FROM users
-                         WHERE LOWER(username) = LOWER($1) OR LOWER(COALESCE(name, '')) = LOWER($1)
-                         ORDER BY id
-                         LIMIT 1`,
-                        [assignedTo]
-                    );
-                if (userResult.rows.length > 0) {
-                    const gamification = require('../services/gamification');
-                    await gamification.awardCoins(userResult.rows[0].username, coinsReward, `Оцінка задачі: ${reviewScore}/10`, 'task_review');
-                }
-            }
-        } catch (e) { /* gamification not ready */ }
 
         log.info(`Task ${req.params.id} reviewed: ${reviewScore}/10 by ${req.user.username}`);
         res.json({ success: true, task: result.rows[0] });

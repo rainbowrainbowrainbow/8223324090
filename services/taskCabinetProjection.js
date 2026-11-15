@@ -57,7 +57,9 @@ const TASK_CABINET_PLANNING_BUCKETS = Object.freeze([
     'dayAfterTomorrow',
     'plusThreeDays',
     'monthEnd',
-    'noDate'
+    'noDate',
+    'future',
+    'focusDate'
 ]);
 const TASK_CABINET_PAGE_BUCKETS = Object.freeze([
     ...TASK_CABINET_PLANNING_BUCKETS,
@@ -151,7 +153,7 @@ function normalizeTaskCabinetBucketLimit(value, fallback = DEFAULT_TASK_CABINET_
 function normalizeTaskCabinetBucketOffset(value) {
     const numeric = Number(value);
     if (!Number.isInteger(numeric) || numeric <= 0) return 0;
-    return Math.min(numeric, 5000);
+    return Number.isSafeInteger(numeric) ? numeric : 0;
 }
 
 function normalizeTaskCabinetBucket(value) {
@@ -223,7 +225,9 @@ function buildTaskCabinetPlanningProjection(rows = [], calendar = {}, now = new 
         dayAfterTomorrow: [],
         plusThreeDays: [],
         monthEnd: [],
-        noDate: []
+        noDate: [],
+        future: [],
+        focusDate: []
     };
     const seen = new Set();
     rows.forEach((task, index) => {
@@ -239,6 +243,8 @@ function buildTaskCabinetPlanningProjection(rows = [], calendar = {}, now = new 
         }
         if (calendar.today && dueDate < calendar.today) planning.overdue.push(task);
         if (dueDate === calendar.today) planning.today.push(task);
+        if (calendar.today && dueDate > calendar.today && (!calendar.planningEnd || dueDate <= calendar.planningEnd)) planning.future.push(task);
+        if (dueDate === calendar.focusDate) planning.focusDate.push(task);
         if (dueDate === calendar.tomorrow) planning.tomorrow.push(task);
         if (dueDate === calendar.dayAfterTomorrow) planning.dayAfterTomorrow.push(task);
         if (dueDate === calendar.plusThreeDays) planning.plusThreeDays.push(task);
@@ -357,13 +363,13 @@ function attachSubtaskProjection(rows = [], subtaskProjectionByTaskId = new Map(
     });
 }
 
-async function normalizeTaskCabinetRows(queryable, user, userId, rows = [], today) {
+async function normalizeTaskCabinetRows(queryable, user, userId, rows = [], today, includeLegacyMetadata = true) {
     const sourceRows = Array.isArray(rows) ? rows : [];
     const ids = uniqueTaskIdsFromRows(sourceRows);
-    const myDayClassificationsByTaskId = await loadTaskClassifications(queryable, userId, ids);
+    const myDayClassificationsByTaskId = includeLegacyMetadata ? await loadTaskClassifications(queryable, userId, ids) : new Map();
     const dependencyStatesByTaskId = await loadTaskDependencyStates(queryable, ids);
-    const taskTimeTotalsByTaskId = await loadTaskTimeTotals(queryable, userId, ids);
-    const taskTimeTotalsTodayByTaskId = await loadTaskTimeTotalsForDate(queryable, userId, ids, today);
+    const taskTimeTotalsByTaskId = includeLegacyMetadata ? await loadTaskTimeTotals(queryable, userId, ids) : new Map();
+    const taskTimeTotalsTodayByTaskId = includeLegacyMetadata ? await loadTaskTimeTotalsForDate(queryable, userId, ids, today) : new Map();
     const explanationTaskIds = [...new Set(sourceRows
         .filter(row => normalizePostponementCount(row.postponement_count ?? row.postponementCount) > 0)
         .map(projectionRowTaskId)
@@ -416,6 +422,10 @@ function rowsFromMap(sourceRows = [], normalizedByTaskId = new Map()) {
         .filter(Boolean);
 }
 
+// A snoozed task returns to planning when its snooze expires. Use the same
+// filter for the initial page, its totals, and follow-up pages.
+const TASK_CABINET_READY_FILTER_SQL = '(t.snoozed_until IS NULL OR t.snoozed_until <= CURRENT_TIMESTAMP)';
+
 function taskCabinetPlanningBucketCondition(bucket, dateSql, todayParam, planningEndParam) {
     switch (bucket) {
         case 'overdue':
@@ -432,6 +442,8 @@ function taskCabinetPlanningBucketCondition(bucket, dateSql, todayParam, plannin
             return `${dateSql} = $${planningEndParam}::date`;
         case 'noDate':
             return `${dateSql} IS NULL`;
+        case 'future':
+            return `${dateSql} > $${todayParam}::date`;
         default:
             return '';
     }
@@ -484,6 +496,14 @@ async function buildTaskCabinetBucketPage(options = {}) {
     params.push(monthEnd);
     const monthEndParam = params.length;
     const dateSql = taskWorkloadDateSql('t');
+    const focusDate = normalizeTaskCabinetFocusDate(options.focusDate);
+    if (bucket === 'focusDate' && !focusDate) {
+        const error = new Error('A valid focus date is required');
+        error.statusCode = 400;
+        throw error;
+    }
+    if (bucket === 'focusDate') params.push(focusDate);
+    const focusDateParam = params.length;
     const limitParam = params.length + 1;
     const offsetParam = params.length + 2;
     params.push(limit + 1, offset);
@@ -493,8 +513,11 @@ async function buildTaskCabinetBucketPage(options = {}) {
     if (TASK_CABINET_PLANNING_BUCKETS.includes(bucket)) {
         const planningBucketCondition = bucket === 'monthEnd'
             ? `${dateSql} = $${monthEndParam}::date`
-            : taskCabinetPlanningBucketCondition(bucket, dateSql, todayParam, planningEndParam);
+            : bucket === 'focusDate'
+                ? `${dateSql} = $${focusDateParam}::date`
+                : taskCabinetPlanningBucketCondition(bucket, dateSql, todayParam, planningEndParam);
         whereSql = `COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')
+            AND ${TASK_CABINET_READY_FILTER_SQL}
             AND ${planningBucketCondition}`;
         orderSql = `${dateSql} ASC NULLS LAST,
              ${taskPriorityOrderSql('t')},
@@ -568,7 +591,7 @@ async function buildTaskCabinetBucketPage(options = {}) {
     const ids = uniqueTaskIdsFromRows(sourceRowsRaw);
     const subtaskProjectionByTaskId = await loadSubtaskProjectionByTaskId(queryable, ids, today);
     const sourceRows = attachSubtaskProjection(sourceRowsRaw, subtaskProjectionByTaskId);
-    const tasks = await normalizeTaskCabinetRows(queryable, user, userId, sourceRows, today);
+    const tasks = await normalizeTaskCabinetRows(queryable, user, userId, sourceRows, today, options.includeLegacyMetadata);
     const total = Number(countResult.rows?.[0]?.total || tasks.length);
     return {
         success: true,
@@ -664,7 +687,7 @@ async function buildTaskCabinetProjection(options = {}) {
            AND COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')`,
         ownParams
     );
-    const openTaskCount = Number(openCountResult.rows[0]?.open_count || activeSourceRowsRaw.length);
+    const openTaskCount = Number(openCountResult.rows[0]?.open_count ?? activeSourceRowsRaw.length);
     const calendar = {
         timezone: 'Europe/Kyiv',
         today,
@@ -694,6 +717,7 @@ async function buildTaskCabinetProjection(options = {}) {
          WHERE ${ownMatch}
            ${ownBusinessCondition}
            AND COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')
+           AND ${TASK_CABINET_READY_FILTER_SQL}
            AND (
                 ${planningDateSql} IS NULL
                 OR ${planningDateSql} < $${planningStartParam}::date
@@ -813,7 +837,7 @@ async function buildTaskCabinetProjection(options = {}) {
     const myDayTaskIds = uniqueTaskIdsFromRows(allSourceRowsRaw);
     const subtaskProjectionByTaskId = await loadSubtaskProjectionByTaskId(queryable, myDayTaskIds, today);
     const allSourceRows = attachSubtaskProjection(allSourceRowsRaw, subtaskProjectionByTaskId);
-    const normalizedAllRows = await normalizeTaskCabinetRows(queryable, user, userId, allSourceRows, today);
+    const normalizedAllRows = await normalizeTaskCabinetRows(queryable, user, userId, allSourceRows, today, options.includeLegacyMetadata);
     const normalizedByTaskId = mapNormalizedRowsById(normalizedAllRows);
     const activeSourceRows = attachSubtaskProjection(activeSourceRowsRaw, subtaskProjectionByTaskId);
     const planningSourceRows = attachSubtaskProjection(planningSourceRowsRaw, subtaskProjectionByTaskId);
@@ -829,35 +853,34 @@ async function buildTaskCabinetProjection(options = {}) {
     const planningCountStartParam = ownParams.length + 1;
     const planningCountEndParam = ownParams.length + 2;
     const planningCountMonthEndParam = ownParams.length + 3;
-    const planningCountFocusParam = focusDate ? planningCountParams.length + 1 : null;
-    if (focusDate) planningCountParams.push(focusDate);
-    const planningCountFocusDateSql = focusDate
-        ? `OR ${planningDateSql} = $${planningCountFocusParam}::date`
-        : '';
+    planningCountParams.push(focusDate || null);
+    const planningCountFocusParam = planningCountParams.length;
     const planningCountResult = await queryable.query(
-        `SELECT bucket, COUNT(*)::int AS total
-         FROM (
-             SELECT CASE
-                 WHEN ${planningDateSql} IS NULL THEN 'noDate'
-                 WHEN ${planningDateSql} < $${planningCountStartParam}::date THEN 'overdue'
-                 WHEN ${planningDateSql} = $${planningCountStartParam}::date THEN 'today'
-                 WHEN ${planningDateSql} = ($${planningCountStartParam}::date + INTERVAL '1 day')::date THEN 'tomorrow'
-                 WHEN ${planningDateSql} = ($${planningCountStartParam}::date + INTERVAL '2 days')::date THEN 'dayAfterTomorrow'
-                 WHEN ${planningDateSql} = ($${planningCountStartParam}::date + INTERVAL '3 days')::date THEN 'plusThreeDays'
-                 WHEN ${planningDateSql} = $${planningCountMonthEndParam}::date THEN 'monthEnd'
-                 ELSE 'later'
-             END AS bucket
+        `WITH counted AS (
+             SELECT ${planningDateSql} AS due
              FROM tasks t
              WHERE ${ownMatch}
                ${ownBusinessCondition}
                AND COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')
-               AND (
-                    ${planningDateSql} IS NULL
-                    OR ${planningDateSql} < $${planningCountStartParam}::date
-                    OR ${planningDateSql} BETWEEN $${planningCountStartParam}::date AND $${planningCountEndParam}::date
-                    ${planningCountFocusDateSql}
-               )
-         ) counted
+               AND ${TASK_CABINET_READY_FILTER_SQL}
+         )
+         SELECT bucket, COUNT(*)::int AS total
+         FROM counted
+         CROSS JOIN LATERAL (VALUES
+             (CASE
+                 WHEN due IS NULL THEN 'noDate'
+                 WHEN due < $${planningCountStartParam}::date THEN 'overdue'
+                 WHEN due = $${planningCountStartParam}::date THEN 'today'
+                 WHEN due = ($${planningCountStartParam}::date + INTERVAL '1 day')::date THEN 'tomorrow'
+                 WHEN due = ($${planningCountStartParam}::date + INTERVAL '2 days')::date THEN 'dayAfterTomorrow'
+                 WHEN due = ($${planningCountStartParam}::date + INTERVAL '3 days')::date THEN 'plusThreeDays'
+                 WHEN due = $${planningCountMonthEndParam}::date THEN 'monthEnd'
+                 WHEN due <= $${planningCountEndParam}::date THEN 'later'
+             END),
+             (CASE WHEN due > $${planningCountStartParam}::date THEN 'future' END),
+             (CASE WHEN due = $${planningCountFocusParam}::date THEN 'focusDate' END)
+         ) AS buckets(bucket)
+         WHERE bucket IS NOT NULL
          GROUP BY bucket`,
         planningCountParams
     );

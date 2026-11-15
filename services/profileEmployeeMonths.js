@@ -160,6 +160,8 @@ async function loadResultPeriod(db, staffId, userId, scope, range) {
                     COUNT(*) FILTER (WHERE ${within(deadline)} AND ${deadline} < NOW()
                        AND (t.status <> 'done' OR ${completed} > ${deadline}))::int AS overdue
              FROM tasks t WHERE t.owner_user_id = $1 AND t.business_context = $4
+                AND COALESCE(t.task_mode, 'work') = 'work'
+                AND COALESCE(t.visibility, 'team') = 'team'
                 AND COALESCE(t.workflow_state, '') NOT IN ('archived', 'cancelled')
                 AND COALESCE(t.status, '') NOT IN ('archived', 'cancelled')
                 AND ((${within(completed)}) OR (${within(deadline)}))`, taskParams
@@ -186,6 +188,8 @@ async function loadResultPeriod(db, staffId, userId, scope, range) {
     const late = arrivals.filter(row => Number(row.lateMinutes) > 0);
     return {
         month: range.month,
+        from: range.from,
+        through: employeeDateOffset(range.to, -1),
         attendance: {
             daysRecorded: attendance.length,
             present: attendance.filter(row => row.actual).length,
@@ -202,15 +206,31 @@ async function loadResultPeriod(db, staffId, userId, scope, range) {
     };
 }
 
-async function loadEmployeeResults(db, employee, userId, scope, range) {
+function employeeDateOffset(date, days) {
+    const value = new Date(`${date}T00:00:00Z`);
+    value.setUTCDate(value.getUTCDate() + days);
+    return value.toISOString().slice(0, 10);
+}
+
+function employeeComparisonRanges(range, today) {
+    let current = range;
+    let previousTo = range.from;
+    if (today >= range.from && today < range.to) {
+        const comparableDays = Math.min(Number(today.slice(-2)), Number(employeeDateOffset(range.from, -1).slice(-2)));
+        current = { ...range, to: employeeDateOffset(range.from, comparableDays) };
+        previousTo = employeeDateOffset(range.previousFrom, comparableDays);
+    }
+    return [current, { month: range.previousFrom.slice(0, 7), from: range.previousFrom, to: previousTo }];
+}
+
+async function loadEmployeeResults(db, employee, userId, scope, range, options = {}) {
+    const [currentRange, previousRange] = employeeComparisonRanges(range, kyivDate.format(options.now || new Date()));
     const [current, previous] = await Promise.all([
-        loadResultPeriod(db, employee.id, userId, scope, range),
-        loadResultPeriod(db, employee.id, userId, scope, {
-            month: range.previousFrom.slice(0, 7), from: range.previousFrom, to: range.from
-        })
+        loadResultPeriod(db, employee.id, userId, scope, currentRange),
+        loadResultPeriod(db, employee.id, userId, scope, previousRange)
     ]);
     return { state: 'ready', month: range.month, current, previous,
         currentAssignments: employee.profession_assignments || [] };
 }
 
-module.exports = { employeeMonthRange, loadEmployeeSalary, loadEmployeeResults };
+module.exports = { employeeMonthRange, loadEmployeeSalary, loadEmployeeResults, employeeComparisonRanges };

@@ -123,3 +123,13 @@ test('results compare Kyiv calendar months using linked staff and typed task own
     });
     assert.equal(results.previous.tasks.completed, 2);
 });
+
+test('open Kyiv month compares equal elapsed days when the previous month is shorter', () => {
+    const { employeeMonthRange, employeeComparisonRanges } = require('../services/profileEmployeeMonths');
+    const [march, february] = employeeComparisonRanges(employeeMonthRange('2025-03'), '2025-03-30');
+    assert.equal(march.to, '2025-03-29');
+    assert.equal(february.to, '2025-03-01');
+    const [closed, prior] = employeeComparisonRanges(employeeMonthRange('2025-03'), '2025-04-01');
+    assert.equal(closed.to, '2025-04-01');
+    assert.equal(prior.to, '2025-03-01');
+});

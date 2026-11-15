@@ -456,6 +456,18 @@ body.embed-mode #mainApp {
     opacity: 1;
 }
 
+#sidebarPrimaryLinks {
+    order: 5 !important;
+    flex: none;
+}
+
+@media (max-width: 768px) {
+    #sidebarPrimaryLinks .nav-link {
+        height: auto !important;
+        min-height: 44px !important;
+    }
+}
+
 .sidebar-links .nav-link {
     display: flex;
     align-items: center;

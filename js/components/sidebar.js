@@ -50,7 +50,7 @@ const Sidebar = (() => {
         { href: '/tasks?view=waiting', icon: 'alert', label: 'Очікування', description: 'завислі задачі', access: 'tasks', businessModule: 'tasks' },
         { href: '/profile?tab=achievements', icon: 'analytics', label: 'Досягнення', description: 'прогрес і нагороди' }
     ]);
-    const UTILITY_RAIL_PRIMARY_HREFS = ['/dashboard', '/', '/tasks', '/chat'];
+    const UTILITY_RAIL_PRIMARY_HREFS = ['/dashboard', '/', '/tasks', '/chat', '/finance'];
     const UTILITY_RAIL_CONTEXT_GROUPS = ['sales', 'product', 'team', 'system'];
     const UTILITY_RAIL_MAX_FAVORITES = 4;
     const UTILITY_RAIL_MAX_GROUP_LINKS = 5;
@@ -163,6 +163,7 @@ const Sidebar = (() => {
 
     // ═══ NAV_ITEMS ════════════════════════════════════════════════
     const NAV_ITEMS = [
+        { href: '/finance', icon: '📊', label: 'Фінанси та аналітика', access: 'finance', primary: true },
         { type: 'group', key: 'today', label: 'Сьогодні', icon: '🏠', priority: 1, defaultOpen: true },
         { href: '/dashboard',    icon: '🏠', label: 'Дашборд',       access: 'all',            group: 'today' },
         { href: '/',             icon: '📅', label: 'Таймлайн', access: 'timeline',       group: 'today' },
@@ -180,7 +181,6 @@ const Sidebar = (() => {
         { href: '/omni?telView=all', pageAccess: '/omni', icon: '☎', label: 'Телефонія', access: 'omni', group: 'sales', businessModule: 'omni' },
         { href: '/omni#accounts', icon: '🔌', label: 'Підключення чатів', access: 'omni', group: 'sales', businessModule: 'omni' },
         { href: '/reports',      icon: '📋', label: 'Звіти',         access: 'reports',        group: 'sales' },
-        { href: '/finance',      icon: '📊', label: 'Фінанси та аналітика', access: 'finance', group: 'sales' },
         { href: '/cashier-payments', icon: 'finance', label: '\u041e\u043f\u043b\u0430\u0442\u0430 \u0442\u0430 \u0447\u0435\u043a', access: '/cashier-payments', group: 'sales', businessModule: 'center' },
         { href: '/accounting-deposits', icon: 'finance', label: 'Перевірка завдатків', access: 'accounting_deposits', group: 'sales' },
         { href: '/copilot',      icon: '🤖', label: 'AI менеджер',   access: 'copilot',        group: 'sales' },
@@ -1383,12 +1383,14 @@ const Sidebar = (() => {
 
     // ═══ RENDER ═══════════════════════════════════════════════════
     function render(containerSelector, options = {}) {
-        const container = document.querySelector(containerSelector || '#sidebarNav .sidebar-links');
+        const container = document.querySelector(containerSelector || '#sidebarNav .sidebar-links:not(.sidebar-primary-links)');
         if (!container) return;
         const currentPath = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
         const savedUser = _getCurrentSidebarUser();
         const role = _getSidebarActiveRole(savedUser);
 
+        const sidebar = container.closest('#sidebarNav');
+        const primaryLinks = [];
         let currentGroupKey = null;
         let html = '';
 
@@ -1466,7 +1468,7 @@ const Sidebar = (() => {
             const legacyClass = item.navLegacy ? ' nav-link--legacy' : '';
             const legacyAttr = item.navLegacy ? ' data-sidebar-legacy="hr"' : '';
             const bucketAttr = item.hrTeamBucket ? ` data-hr-team-bucket="${_escAttr(item.hrTeamBucket)}"` : '';
-            html += `<a href="${_escAttr(itemHref)}" class="nav-link${legacyClass}${isActive ? ' active' : ''}" data-page-access="${item.pageAccess || item.href}"${legacyAttr}${bucketAttr}${isActive ? ' aria-current="page"' : ''}${onclickAttr}>
+            const linkHtml = `<a href="${_escAttr(itemHref)}" class="nav-link${legacyClass}${isActive ? ' active' : ''}" data-page-access="${item.pageAccess || item.href}"${legacyAttr}${bucketAttr}${isActive ? ' aria-current="page"' : ''}${onclickAttr}>
   ${_renderIcon(item.icon)}
   <span class="nav-copy">
     <span class="nav-text">${item.label}</span>
@@ -1474,6 +1476,8 @@ const Sidebar = (() => {
   </span>
   ${badgeType ? `<span class="${badgeClass.trim()}" data-badge-type="${badgeType}" style="display:none"></span>` : ''}
 </a>`;
+            if (sidebar && item.primary) primaryLinks.push(linkHtml);
+            else html += linkHtml;
         }
 
         // Close last group
@@ -1483,6 +1487,22 @@ const Sidebar = (() => {
 
         container.innerHTML = html;
         container.classList.add('rendered');
+
+        if (sidebar) {
+            let primary = sidebar.querySelector('#sidebarPrimaryLinks');
+            if (primaryLinks.length) {
+                if (!primary) {
+                    primary = document.createElement('nav');
+                    primary.id = 'sidebarPrimaryLinks';
+                    primary.className = 'sidebar-links sidebar-primary-links rendered';
+                    primary.setAttribute('aria-label', 'Основні розділи');
+                    sidebar.insertBefore(primary, sidebar.querySelector('#sidebarCommandDeck') || container);
+                }
+                primary.innerHTML = primaryLinks.join('');
+            } else {
+                primary?.remove();
+            }
+        }
 
         _ensureAuroraLayer();
         _ensureCommandDeck();
@@ -3222,7 +3242,7 @@ const Sidebar = (() => {
         sidebar.querySelector('.sidebar-pills')?.remove();
         sidebar.querySelector('.sidebar-dashboard-jump-wrap')?.remove();
 
-        const links = sidebar.querySelector('.sidebar-links');
+        const links = sidebar.querySelector('.sidebar-links:not(.sidebar-primary-links)');
         if (!links) return;
 
         let deck = document.getElementById('sidebarCommandDeck');

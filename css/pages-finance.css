@@ -317,3 +317,213 @@ body.dark-mode .salary-payroll-movement small {
     .cost-workspace-nav { flex-wrap:wrap; overflow-x:visible; padding-bottom:8px; }
     .cost-workspace-nav button { flex:1 1 auto; }
 }
+
+/* Freelance workdays and settlements share one layout at all widths. */
+.freelance-workspace {
+    container: freelance / inline-size;
+    margin-block-start: 16px;
+    min-inline-size: 0;
+    color: var(--gray-900);
+}
+
+.freelance-workspace [hidden],
+#freelanceFinanceTab[hidden] {
+    display: none !important;
+}
+
+.freelance-controls,
+.freelance-blocks li,
+.freelance-history li {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+}
+
+.freelance-header {
+    display: grid;
+    gap: 12px 24px;
+    padding-block: 12px;
+    border-block-end: 1px solid var(--gray-200);
+}
+
+.freelance-header h2,
+.freelance-payroll-list :is(h3, h4, p, dl, dd) {
+    margin: 0;
+}
+
+.freelance-header h2 { font-size: 22px; }
+
+.freelance-controls { flex: 1 1 14rem; }
+
+.freelance-controls label {
+    color: var(--gray-700);
+    font-weight: 750;
+}
+
+.freelance-controls input {
+    min-block-size: 44px;
+    max-inline-size: 100%;
+}
+
+.freelance-workspace :is(button, summary) {
+    min-block-size: 44px;
+    max-inline-size: 100%;
+    white-space: normal;
+}
+
+.freelance-workspace :is(button, summary):focus-visible,
+#salaryPayrollActionModal :is(button, input, select, textarea):focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+}
+
+.freelance-workspace button[aria-busy="true"] {
+    opacity: .72;
+    cursor: progress;
+}
+
+.freelance-status {
+    color: var(--gray-700);
+    margin-block: 12px;
+}
+
+.freelance-status:empty { margin: 0; }
+
+.freelance-payroll-list { display: grid; gap: 20px; }
+
+.freelance-payroll-list > section { min-inline-size: 0; }
+
+.freelance-payroll-list h3 {
+    padding-block: 12px 8px;
+    font-size: 16px;
+}
+
+.freelance-payroll-list > section > p {
+    padding-block: 10px;
+    color: var(--gray-700);
+}
+
+.freelance-workday,
+.freelance-settlement {
+    display: grid;
+    gap: 10px 16px;
+    align-items: start;
+    padding-block: 12px;
+    border-block-start: 1px solid var(--gray-200);
+    overflow-wrap: anywhere;
+}
+
+.freelance-record-meta h4 { font-size: 15px; }
+
+.freelance-record-meta p,
+.freelance-blocks p {
+    color: var(--gray-700);
+    font-size: 13px;
+    margin-block-start: 3px;
+}
+
+.freelance-record-meta .freelance-settlement-state {
+    color: var(--gray-900);
+    font-weight: 700;
+}
+
+.freelance-blocks,
+.freelance-history ul {
+    list-style: none;
+    display: grid;
+    gap: 8px;
+    padding: 0;
+    margin: 0;
+}
+
+.freelance-blocks li,
+.freelance-history li { justify-content: space-between; }
+
+.freelance-amounts {
+    display: grid;
+    gap: 4px 12px;
+    background: var(--gray-50);
+    border-radius: 8px;
+    padding: 8px 10px;
+}
+
+.freelance-amounts > div {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 4px 8px;
+}
+
+.freelance-amounts dt {
+    color: var(--gray-700);
+    font-size: 12px;
+}
+
+.freelance-amounts dd {
+    font-variant-numeric: tabular-nums;
+    font-weight: 800;
+}
+
+.freelance-settlement-actions:empty { display: none; }
+
+.freelance-history { min-inline-size: 0; }
+
+.freelance-history summary::before {
+    content: '';
+    inline-size: .42em;
+    block-size: .42em;
+    border: solid currentColor;
+    border-width: 0 2px 2px 0;
+    transform: rotate(-45deg);
+}
+
+.freelance-history[open] summary::before { transform: rotate(45deg); }
+.freelance-history[open] ul { margin-block-start: 8px; }
+
+@container freelance (min-width: 52rem) {
+    .freelance-header {
+        display: flex;
+        align-items: center;
+    }
+
+    #freelanceRateButton { margin-inline-start: auto; }
+
+    .freelance-workday {
+        grid-template-columns: minmax(12rem, 1fr) minmax(0, 2fr) auto;
+    }
+
+    .freelance-settlement {
+        grid-template-columns: minmax(12rem, 1fr) minmax(0, 1.35fr) 11.5rem;
+    }
+
+    .freelance-amounts {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .freelance-amounts > div {
+        display: block;
+        text-align: end;
+    }
+
+    .freelance-settlement-actions { justify-self: end; }
+    .freelance-history { grid-column: 2 / -1; }
+}
+
+#salaryPayrollActionModal {
+    background: transparent;
+    border: 0;
+    padding: 0;
+    max-inline-size: calc(100% - 20px);
+    overflow: visible;
+}
+
+#salaryPayrollActionModal::backdrop { background: rgb(15 23 42 / .65); }
+
+#salaryPayrollActionModal .modal-content {
+    margin: 0;
+    inline-size: min(560px, calc(100vw - 20px));
+    max-block-size: calc(100dvh - 24px);
+    overflow-y: auto;
+}

@@ -49,14 +49,18 @@
                             <button type="button" class="staff-schedule-range-preset" data-schedule-range-preset="second-half" title="Показати 16-31 число місяця" aria-label="Показати 16-31 число місяця">16-31</button>
                         </div>
                     </div>
-                    <div class="staff-schedule-header-actions" aria-label="Дії з графіком">
-                        <button type="button" id="copyWeekBtn" class="btn-page-toolbar staff-schedule-action-button" title="Копіювати тиждень у наступний тиждень" disabled aria-disabled="true">Копіювати тиждень</button>
-                        <button type="button" id="exportExcelBtn" class="btn-page-toolbar staff-schedule-action-button" title="Експорт графіку в Excel" hidden disabled aria-disabled="true">Експорт</button>
-                        <button type="button" id="printBtn" class="btn-page-toolbar staff-schedule-action-button" title="Друк Excel-таблиці графіку" disabled aria-disabled="true">Друк</button>
+                    <a id="staffFreelanceFinanceLink" class="btn-page-primary staff-schedule-finance-link" href="/finance?mode=operations&amp;tab=freelance" hidden>Фріланс-розрахунки</a>
+                    <div class="staff-schedule-operations">
+                        <button type="button" id="staffScheduleActionsToggle" class="btn-page-secondary staff-schedule-actions-toggle" aria-expanded="false" aria-controls="staffScheduleActions">Дії графіка</button>
+                        <div id="staffScheduleActions" class="staff-schedule-header-actions" role="group" aria-label="Дії графіка">
+                            <button type="button" id="copyWeekBtn" class="btn-page-toolbar staff-schedule-action-button" title="Копіювати тиждень у наступний тиждень" disabled aria-disabled="true">Копіювати тиждень</button>
+                            <button type="button" id="exportExcelBtn" class="btn-page-toolbar staff-schedule-action-button" title="Експорт графіку в Excel" hidden disabled aria-disabled="true">Експорт</button>
+                            <button type="button" id="printBtn" class="btn-page-toolbar staff-schedule-action-button" title="Друк Excel-таблиці графіку" disabled aria-disabled="true">Друк</button>
+                        </div>
                     </div>
                     <div class="staff-schedule-search-row" role="search" aria-label="Пошук співробітників у графіку">
                         <input type="search" id="scheduleStaffSearch" class="staff-schedule-search" aria-label="Пошук співробітників у графіку" placeholder="Пошук: ПІБ, професія, відділ, статус..." autocomplete="off">
-                        <select id="scheduleWorkModeFilter" aria-label="Формат виходу">
+                        <select id="scheduleWorkModeFilter" class="staff-schedule-search" aria-label="Формат виходу">
                             <option value="all">Усі</option>
                             <option value="regular">За графіком</option>
                             <option value="freelance">Є фріланс</option>

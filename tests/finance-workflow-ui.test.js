@@ -105,6 +105,95 @@ test('inline category creation selects the result without losing the transaction
     assert.ok(!f.el('transEditModal').classList.contains('hidden'));
 });
 
+test('freelance opens directly, retries the selected day, and separates prior outstanding balances', async t => {
+    const f = fixture(t);
+    const park = { mode: 'single', activeContext: 'event_genix' };
+    f.scope(park);
+    f.window.canUseAction = action => action === 'view_payroll';
+    f.window.history.replaceState(null, '', '?tab=freelance');
+    assert.equal(f.window.getInitialFinanceMode(), 'operations');
+    assert.equal(f.window.getInitialFinanceTab(), 'freelance');
+    const date = '2026-10-08';
+    f.transport(async () => response({ error: 'Read failed' }, 503));
+    f.window.switchTab('freelance');
+    f.el('freelancePayrollDate').value = date;
+    f.el('freelancePayrollDate').dispatchEvent(new f.window.Event('change'));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.match(f.el('freelancePayrollStatus').textContent, /Read failed/);
+    assert.equal(f.el('freelancePayrollRetry').hidden, false);
+    assert.equal(f.el('freelanceFinanceTab').getAttribute('aria-current'), 'page');
+
+    f.transport(async request => {
+        const url = new URL(request.url, f.window.location.href);
+        assert.equal(url.searchParams.get('date'), date);
+        assert.equal(url.searchParams.get('businessContext'), 'event_genix');
+        const payment = {
+            planned_start: '10:00', planned_end: '12:00', status: 'unpaid',
+            amount: '500.00', paid: '0.00', outstanding: '500.00', movements: []
+        };
+        return response({ data: url.pathname.endsWith('/settlement') ? [
+            { ...payment, staff_name: 'Today', work_date: date },
+            { ...payment, staff_name: 'Previous', work_date: '2026-10-07' }
+        ] : [] });
+    });
+    f.el('freelancePayrollRetry').click();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(f.el('freelancePayrollRetry').hidden, true);
+    assert.match(f.el('freelancePaymentsHeading').parentElement.textContent, /Today/);
+    assert.doesNotMatch(f.el('freelancePaymentsHeading').parentElement.textContent, /Previous/);
+    assert.match(f.el('freelanceOverdueHeading').parentElement.textContent, /Previous/);
+
+    f.scope({ mode: 'aggregate' });
+    f.window.syncFreelancePayrollPanel();
+    assert.equal(f.el('freelanceFinanceTab').hidden, true);
+    assert.equal(f.el('freelancePayrollContent').textContent, '');
+    assert.equal(f.requests.length, 6);
+});
+
+test('freelance ignores stale responses after date, tab, business and permission changes', async t => {
+    const f = fixture(t);
+    const park = { mode: 'single', activeContext: 'event_genix' };
+    let canView = true;
+    f.scope(park);
+    f.window.canUseAction = action => action === 'view_payroll' && canView;
+    const content = f.el('freelancePayrollContent');
+    const dateInput = f.el('freelancePayrollDate');
+    const flush = () => new Promise(resolve => setImmediate(resolve));
+
+    for (const leave of [
+        () => {
+            dateInput.value = '2026-10-15';
+            dateInput.dispatchEvent(new f.window.Event('change'));
+        },
+        () => f.window.setFinanceMode('overview'),
+        () => {
+            f.scope({ mode: 'single', activeContext: 'dar' });
+            f.window.dispatchEvent(new f.window.Event('crmBusinessScopeChanged'));
+        },
+        () => {
+            canView = false;
+            f.window.dispatchEvent(new f.window.Event('permissions:lifecycle'));
+        }
+    ]) {
+        f.scope(park);
+        canView = true;
+        const previous = deferred();
+        f.transport(() => previous.promise);
+        f.window.switchTab('freelance');
+        assert.equal(content.getAttribute('aria-busy'), 'true');
+        f.transport(() => response({ data: [] }));
+        leave();
+        await flush();
+        previous.resolve(response({ data: [{
+            staff_name: 'Stale worker', segments: [], movements: [], work_date: dateInput.value
+        }] }));
+        await flush();
+        assert.doesNotMatch(content.textContent, /Stale worker/);
+        assert.equal(content.hasAttribute('aria-busy'), false);
+        assert.equal(f.el('freelancePayrollRetry').hidden, true);
+    }
+});
+
 test('archiving a selected category never substitutes another budget category or transaction label', async t => {
     const f = fixture(t);
     f.state.transactions = [{ id: 5, type: 'expense', categoryId: 1, categoryName: 'Rent A', amount: 1200, date: '2026-10-07', paymentMethod: 'cash', description: 'Original expense' }];

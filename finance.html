@@ -1281,7 +1281,7 @@
                     <button type="button" class="fa-mode-btn" data-mode="operations" data-finance-group="cash">Рух коштів</button>
                     <button type="button" class="fa-mode-btn" data-mode="insights" data-finance-group="results">Результати й аналітика</button>
                     <button type="button" class="fa-primary-btn" data-finance-group="planning">Планування</button>
-                    <button type="button" class="fa-primary-btn" data-finance-group="team">Команда</button>
+                    <button type="button" class="fa-primary-btn" data-finance-group="team">Зарплати й розрахунки</button>
                 </nav>
                 <p id="financeScopeNote" class="fa-scope-note">Період нижче впливає на показники огляду.</p>
                 <div id="financePeriodControls" class="fin-filters fa-period-controls" role="group" aria-label="Період фінансової аналітики">
@@ -1320,6 +1320,7 @@
                 </div></div>
                 <div class="fa-operation-group" data-finance-context="team"><div class="fa-operation-buttons">
                     <button type="button" class="fin-tab fa-operation-btn" data-tab="salary">Зарплати</button>
+                    <button type="button" class="fin-tab fa-operation-btn" data-tab="freelance" id="freelanceFinanceTab" hidden>Фріланс</button>
                 </div></div>
             </section>
 
@@ -1423,16 +1424,22 @@
                 </div>
             </div>
 
-            <!-- Salary tab -->
-            <div id="tabSalary" style="display:none">
-                <details id="freelancePayrollPanel" class="salary-main-panel" hidden>
-                    <summary>Фріланс — до розрахунку</summary>
-                    <div class="salary-actions">
-                        <label>Робоча дата <input type="date" id="freelancePayrollDate" class="fin-filter-date"></label>
+            <section id="tabFreelance" class="freelance-workspace" aria-labelledby="freelanceTitle" style="display:none">
+                <header class="freelance-header">
+                    <h2 id="freelanceTitle" tabindex="-1">Фріланс</h2>
+                    <div id="freelancePayrollPanel" class="freelance-controls" hidden>
+                        <label for="freelancePayrollDate">Робоча дата</label>
+                        <input type="date" id="freelancePayrollDate" class="fin-filter-date">
                         <button type="button" id="freelanceRateButton" class="btn-page-secondary" hidden>Типова ставка</button>
                     </div>
-                    <div id="freelancePayrollContent" aria-live="polite"></div>
-                </details>
+                </header>
+                <p id="freelancePayrollStatus" class="freelance-status" role="status"></p>
+                <button type="button" id="freelancePayrollRetry" class="btn-page-secondary" hidden>Повторити</button>
+                <div id="freelancePayrollContent" class="freelance-payroll-list"></div>
+            </section>
+
+            <!-- Salary tab -->
+            <div id="tabSalary" style="display:none">
                 <div class="salary-topbar">
                     <input type="month" id="salaryMonth" class="fin-filter-date" style="width:180px">
                     <div class="salary-mode-switch" role="tablist" aria-label="Режими зарплат">

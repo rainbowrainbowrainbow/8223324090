@@ -184,7 +184,7 @@ function getInitialFinanceMode() {
     const tab = params.get('tab');
     if (tab === 'insights') return 'insights';
     if (['dashboard', 'transactions', 'operations', 'shift', 'cash', 'forecast',
-        'pnl', 'debts', 'monthly', 'salary', 'budget', 'advanced', 'costing', 'accounts', 'personal'].includes(tab)) {
+        'pnl', 'debts', 'monthly', 'salary', 'freelance', 'budget', 'advanced', 'costing', 'accounts', 'personal'].includes(tab)) {
         return 'operations';
     }
     return 'overview';
@@ -204,6 +204,7 @@ function getInitialFinanceTab() {
         debts: 'debts',
         monthly: 'monthly',
         salary: 'salary',
+        freelance: 'freelance',
         budget: 'budget',
         advanced: 'advanced',
         costing: 'costing',
@@ -362,6 +363,7 @@ function clearSalaryWorkspace(availability = salarySurfaceAvailability()) {
 function invalidateSalaryBusinessContext() {
     salaryRequestGeneration++;
     clearSalaryWorkspace();
+    resetFreelancePayroll();
     syncFreelancePayrollPanel();
     if (FinState.currentTab === 'salary') void fetchSalaryReport();
 }
@@ -1066,11 +1068,16 @@ async function fetchPayrollPaymentOptions() {
 
 const freelancePayrollLabels = { unpaid: 'До виплати', partially_paid: 'Частково оплачено', paid: 'Оплачено' };
 const freelancePayrollDate = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
+let freelancePayrollRequest = 0;
 
 function freelancePayrollPanelVisible() {
     const scope = window.getCrmBusinessScope?.();
     return scope?.mode === 'single' && scope.activeContext === 'event_genix'
         && financeCanUsePayrollAction('view_payroll');
+}
+
+function freelancePayrollApiUrl(path) {
+    return payrollApiUrl(`/api/payroll/freelance/${path}`, 'event_genix');
 }
 
 function freelanceRateFields() {
@@ -1081,133 +1088,233 @@ function freelanceRateFields() {
     ];
 }
 
-async function loadFreelancePayroll() {
+function renderFreelanceWorkday(day, canRules, canConfirm) {
+    return `<article class="freelance-workday">
+        <header class="freelance-record-meta">
+            <h4 id="freelanceWorkday-${Number(day.shift_id)}" tabindex="-1">${escapeHtml(day.staff_name)}</h4>
+            <p>${day.confirmed_at ? 'Час підтверджено' : day.clock_out
+                ? `До підтвердження · ${Number(day.actualMinutes || 0)} хв` : 'Очікує завершення виходу'}</p>
+        </header>
+        <ul class="freelance-blocks">
+            ${day.segments.map(block => `<li>
+                <div>
+                    <strong>${escapeHtml(block.shiftStart)}–${escapeHtml(block.shiftEnd)}</strong>
+                    <span> · ${block.workMode === 'freelance' ? 'Фріланс' : 'За графіком'}</span>
+                    ${block.workMode === 'freelance' ? `<p>
+                        ${block.rate ? escapeHtml(`${block.rate} грн ${block.rateUnit === 'hour' ? 'за годину' : 'за вихід'}`) : 'Оплату не погоджено'}
+                        ${Number.isInteger(block.estimatedAmount) && !day.confirmed_at
+                            ? ` · Орієнтовно ${formatMoney(block.estimatedAmount)}` : ''}
+                    </p>` : ''}
+                </div>
+                ${block.workMode === 'freelance' && canRules && !day.confirmed_at ? `<button type="button" class="btn-page-secondary"
+                    data-freelance-terms="${Number(block.id)}">Погодити умови</button>` : ''}
+            </li>`).join('')}
+        </ul>
+        ${canConfirm && day.clock_out && !day.confirmed_at ? `<button type="button" class="btn-page-primary"
+            data-freelance-confirm="${Number(day.shift_id)}">Підтвердити час</button>` : ''}
+    </article>`;
+}
+
+function renderFreelanceSettlement(row, canPay, canReverse) {
+    return `<article class="freelance-settlement" id="freelanceSettlement-${Number(row.segment_id)}">
+        <header class="freelance-record-meta">
+            <h4 tabindex="-1">${escapeHtml(row.staff_name)}</h4>
+            <p><time datetime="${escapeHtml(row.work_date)}">${escapeHtml(formatDate(row.work_date))}</time>
+                · ${escapeHtml(row.planned_start.slice(0, 5))}–${escapeHtml(row.planned_end.slice(0, 5))}</p>
+            <p class="freelance-settlement-state">${escapeHtml(freelancePayrollLabels[row.status])}</p>
+        </header>
+        <dl class="freelance-amounts">
+            <div><dt>Нараховано</dt><dd>${formatMoney(row.amount)}</dd></div>
+            <div><dt>Виплачено</dt><dd>${formatMoney(row.paid)}</dd></div>
+            <div><dt>Залишок</dt><dd>${formatMoney(row.outstanding)}</dd></div>
+        </dl>
+        <div class="freelance-settlement-actions">
+            ${canPay && Number(row.outstanding) > 0 ? `<button type="button" class="btn-page-primary"
+                data-freelance-pay="${Number(row.segment_id)}">Зафіксувати виплату</button>` : ''}
+        </div>
+        ${row.movements.length ? `<details class="freelance-history">
+            <summary class="btn-page-secondary">Історія виплат (${row.movements.length})</summary>
+            <ul>${row.movements.map(move => `<li>
+                <span>${escapeHtml(formatDate(move.date))} · ${escapeHtml(move.actor)}
+                    · ${move.reversalOf ? 'Сторно' : 'Виплата'} <strong>${formatMoney(move.amount)}</strong></span>
+                ${canReverse && !move.reversalOf && !row.movements.some(other => other.reversalOf === move.id)
+                    ? `<button type="button" class="btn-page-danger"
+                    data-freelance-reverse="${Number(move.id)}" data-freelance-block="${Number(row.segment_id)}">Сторнувати</button>` : ''}
+            </li>`).join('')}</ul>
+        </details>` : ''}
+    </article>`;
+}
+
+function isFreelancePayrollActive() {
+    return FinState.mode === 'operations' && FinState.currentTab === 'freelance' && freelancePayrollPanelVisible();
+}
+
+function resetFreelancePayroll() {
+    freelancePayrollRequest++;
+    const content = document.getElementById('freelancePayrollContent');
+    if (!content) return;
+    document.querySelector('#salaryPayrollActionModal[data-freelance-dialog]')?.close();
+    content.replaceChildren();
+    content.onclick = null;
+    content.removeAttribute('aria-busy');
+    document.getElementById('freelancePayrollRetry').hidden = true;
+    document.getElementById('freelancePayrollStatus').textContent = '';
+}
+
+async function loadFreelancePayroll(restoreFocus) {
     const panel = document.getElementById('freelancePayrollPanel');
     const content = document.getElementById('freelancePayrollContent');
     const input = document.getElementById('freelancePayrollDate');
-    if (!panel || !content || !input || !panel.open || !freelancePayrollPanelVisible()) return;
+    if (!panel || !content || !input || !isFreelancePayrollActive()) return;
+    const status = document.getElementById('freelancePayrollStatus');
+    const retry = document.getElementById('freelancePayrollRetry');
     const date = input.value;
+    const request = ++freelancePayrollRequest;
+    const isCurrent = () => request === freelancePayrollRequest && input.value === date
+        && isFreelancePayrollActive();
+    content.replaceChildren();
+    content.onclick = null;
+    retry.hidden = true;
+    status.textContent = date ? 'Завантаження фріланс-розрахунків…' : 'Виберіть робочу дату.';
     if (!date) return;
-    content.textContent = 'Завантаження…';
+    content.setAttribute('aria-busy', 'true');
     try {
         const [work, settlement] = await Promise.all(['day', 'settlement'].map(path => payrollApiRequest('GET',
-            payrollApiUrl(`/api/payroll/freelance/${path}?date=${encodeURIComponent(date)}`))));
-        if (input.value !== date || !freelancePayrollPanelVisible()) return;
-        const days = work?.data || [];
-        const payments = settlement?.data || [];
+            freelancePayrollApiUrl(`${path}?date=${encodeURIComponent(date)}`))));
+        if (!isCurrent()) return;
+        if (!Array.isArray(work?.data) || !Array.isArray(settlement?.data)) {
+            throw new Error('Не вдалося завантажити фріланс-розрахунки.');
+        }
+        const days = work.data;
+        const payments = settlement.data;
         const canRules = financeCanUsePayrollAction('manage_payroll_rules');
         const canConfirm = financeCanUsePayrollAction('manage_payroll_accrual');
         const canPay = financeCanUsePayrollAction('confirm_payroll_payment');
         const canReverse = financeCanUsePayrollAction('reverse_payroll_payment');
-        content.innerHTML = days.map(day => `
-            <div class="salary-main-panel">
-                <strong>${escapeHtml(day.staff_name)}</strong>
-                ${day.segments.map(block => `<div>
-                    ${escapeHtml(block.shiftStart)}–${escapeHtml(block.shiftEnd)} ·
-                    ${escapeHtml(block.workMode === 'freelance' ? 'Фріланс' : 'За графіком')}
-                    ${block.workMode === 'freelance' ? `
-                        · ${block.rate ? escapeHtml(`${block.rate} грн ${block.rateUnit === 'hour' ? 'за годину' : 'за вихід'}`) : 'Не погоджено оплату'}
-                        ${Number.isInteger(block.estimatedAmount) && !day.confirmed_at
-                            ? ` · Орієнтовно ${formatMoney(block.estimatedAmount)}` : ''}
-                        ${canRules && !day.confirmed_at ? `<button type="button" class="salary-payroll-action"
-                            data-freelance-terms="${Number(block.id)}">Погодити умови</button>` : ''}
-                    ` : ''}
-                </div>`).join('')}
-                <div>${day.confirmed_at ? 'Факт підтверджено' : (day.clock_out
-                    ? `Фактичний час: ${Number(day.actualMinutes || 0)} хв` : 'Очікує завершення виходу')}</div>
-                ${canConfirm && day.clock_out && !day.confirmed_at ? `<button type="button" class="salary-payroll-action"
-                    data-freelance-confirm="${Number(day.shift_id)}">Підтвердити час</button>` : ''}
-            </div>`).join('')
-            + payments.map(row => `<div class="salary-main-panel">
-                <strong>${escapeHtml(row.staff_name)} · ${escapeHtml(row.work_date)}</strong>
-                <div>${escapeHtml(row.planned_start.slice(0, 5))}–${escapeHtml(row.planned_end.slice(0, 5))}
-                    · ${escapeHtml(freelancePayrollLabels[row.status])}</div>
-                <div>Сума ${formatMoney(row.amount)} · Виплачено ${formatMoney(row.paid)} · Залишок ${formatMoney(row.outstanding)}</div>
-                ${canPay && row.outstanding > 0 ? `<button type="button" class="salary-payroll-action"
-                    data-freelance-pay="${Number(row.segment_id)}">Зафіксувати виплату</button>` : ''}
-                ${row.movements.map(move => `<div>${escapeHtml(move.date)} · ${escapeHtml(move.actor)}
-                    · ${move.reversalOf ? 'Сторно ' : ''}${formatMoney(move.amount)}
-                    ${canReverse && !move.reversalOf && !row.movements.some(other => other.reversalOf === move.id)
-                        ? `<button type="button" class="salary-payroll-action"
-                            data-freelance-reverse="${Number(move.id)}" data-freelance-block="${Number(row.segment_id)}">Сторнувати</button>` : ''}
-                </div>`).join('')}
-            </div>`).join('');
-        if (!days.length && !payments.length) content.textContent = 'На цю дату немає фріланс-виходів або прострочених виплат.';
+        const dayRows = days.map(day => renderFreelanceWorkday(day, canRules, canConfirm)).join('');
+        const renderSettlement = row => renderFreelanceSettlement(row, canPay, canReverse);
+        const datePayments = payments.filter(row => row.work_date === date);
+        const overdue = payments.filter(row => row.work_date < date && Number(row.outstanding) > 0);
+        if (!days.length && !datePayments.length && !overdue.length) {
+            status.textContent = 'За вибрану дату даних немає.';
+            content.removeAttribute('aria-busy');
+            return;
+        }
+        status.textContent = '';
+        content.innerHTML = `
+            <section aria-labelledby="freelanceWorkHeading">
+                <h3 id="freelanceWorkHeading">Виходи за вибрану дату</h3>
+                ${dayRows || '<p>Фріланс-виходів за цю дату немає.</p>'}
+            </section>
+            <section aria-labelledby="freelancePaymentsHeading">
+                <h3 id="freelancePaymentsHeading">Розрахунки за вибрану дату</h3>
+                ${datePayments.length ? datePayments.map(renderSettlement).join('') : '<p>Підтверджених розрахунків за цю дату немає.</p>'}
+            </section>
+            ${overdue.length ? `<section aria-labelledby="freelanceOverdueHeading">
+                <h3 id="freelanceOverdueHeading">Залишки за попередні дні</h3>
+                ${overdue.map(renderSettlement).join('')}
+            </section>` : ''}`;
+        content.removeAttribute('aria-busy');
+        if (restoreFocus && document.activeElement === document.body) {
+            const { selector, rowId } = restoreFocus;
+            (content.querySelector(selector) || (rowId && content.querySelector(`#${rowId} h4`))
+                || document.getElementById('freelanceTitle')).focus({ preventScroll: true });
+        }
+
         content.onclick = async event => {
             const button = event.target.closest('button');
-            if (!button || button.disabled) return;
-            button.disabled = true;
+            if (!button || !isCurrent() || content.querySelector('button[aria-busy="true"]')) return;
+            const { freelanceTerms, freelanceConfirm, freelancePay, freelanceReverse, freelanceBlock } = button.dataset;
+            button.focus({ preventScroll: true });
+            button.setAttribute('aria-busy', 'true');
+            button.setAttribute('aria-disabled', 'true');
+            let focusTarget;
             try {
-                const { freelanceTerms, freelanceConfirm, freelancePay, freelanceReverse, freelanceBlock } = button.dataset;
                 if (freelanceTerms) {
                     const day = days.find(item => item.segments.some(block => Number(block.id) === Number(freelanceTerms)));
-                    const values = await openPayrollDialog({ title: 'Погодити умови виходу', fields: [
+                    const values = await openPayrollDialog({ title: 'Погодити умови виходу', freelance: true, fields: [
                         ...freelanceRateFields(), { name: 'reason', label: 'Причина', required: true }
                     ] });
-                    if (values) await payrollApiRequest('POST', payrollApiUrl('/api/payroll/freelance/terms'), {
+                    if (!values || !isCurrent()) return;
+                    await payrollApiRequest('POST', freelancePayrollApiUrl('terms'), {
                         ...values, staffId: day.staff_id, segmentId: freelanceTerms, date
                     });
+                    focusTarget = { selector: `[data-freelance-terms="${freelanceTerms}"]` };
                 } else if (freelanceConfirm) {
                     const day = days.find(item => Number(item.shift_id) === Number(freelanceConfirm));
                     const suggested = new Map((day.suggestedAllocations || []).map(item => [Number(item.segmentId), item.minutes]));
-                    const values = await openPayrollDialog({ title: `Підтвердити ${day.actualMinutes || 0} хв за блоками`, fields:
+                    const values = await openPayrollDialog({ title: `Підтвердити ${day.actualMinutes || 0} хв за блоками`, freelance: true, fields:
                         day.segments.map(block => ({
                             name: String(block.id), label: `${block.shiftStart}–${block.shiftEnd} · ${block.workMode === 'freelance' ? 'Фріланс' : 'За графіком'} (хв)`,
                             type: 'number', value: suggested.get(Number(block.id)) ?? '', required: true
                         })) });
-                    if (values) await payrollApiRequest('POST', payrollApiUrl('/api/payroll/freelance/attendance'), {
+                    if (!values || !isCurrent()) return;
+                    await payrollApiRequest('POST', freelancePayrollApiUrl('attendance'), {
                         staffId: day.staff_id, attendanceId: day.attendance_id, date,
                         allocations: Object.entries(values).map(([segmentId, minutes]) => ({ segmentId, minutes: Number(minutes) }))
                     });
+                    focusTarget = { selector: `#freelanceWorkday-${Number(day.shift_id)}` };
                 } else if (freelancePay || freelanceReverse) {
                     const row = payments.find(item => Number(item.segment_id) === Number(freelancePay || freelanceBlock));
-                    await recordFreelanceFinanceMovement(row, freelanceReverse);
+                    if (!await recordFreelanceFinanceMovement(row, freelanceReverse, isCurrent)) return;
+                    const rowId = `freelanceSettlement-${Number(row.segment_id)}`;
+                    focusTarget = { selector: freelanceReverse ? `#${rowId} summary` : `[data-freelance-pay="${freelancePay}"]`, rowId };
                 } else return;
-                await loadFreelancePayroll();
+                if (isCurrent()) await loadFreelancePayroll(document.activeElement === button ? focusTarget : undefined);
             } catch (error) {
                 showNotification(error.message, 'error');
             } finally {
-                button.disabled = false;
+                button.removeAttribute('aria-busy');
+                button.removeAttribute('aria-disabled');
             }
         };
     } catch (error) {
-        if (input.value === date) content.textContent = error.message || 'Не вдалося завантажити фріланс.';
+        if (isCurrent()) {
+            content.removeAttribute('aria-busy');
+            status.textContent = error.message || 'Не вдалося завантажити фріланс-розрахунки.';
+            retry.hidden = false;
+        }
     }
 }
 
-async function recordFreelanceFinanceMovement(row, reversalOf) {
-    const options = await payrollApiRequest('GET', payrollApiUrl('/api/payroll/freelance/payment-options'));
-    if (!options) return;
+async function recordFreelanceFinanceMovement(row, reversalOf, isCurrent) {
+    const options = await payrollApiRequest('GET', freelancePayrollApiUrl('payment-options'));
+    if (!options || !isCurrent()) return false;
     const original = row.movements.find(move => Number(move.id) === Number(reversalOf));
     const accounts = reversalOf ? options.accounts.filter(account => Number(account.id) === Number(original?.accountId)) : options.accounts;
     const methods = reversalOf ? [original?.paymentMethod].filter(Boolean) : options.paymentMethods;
     const categories = reversalOf ? options.categories.income : options.categories.expense;
-    const values = await openPayrollDialog({ title: reversalOf ? 'Сторнувати фріланс-виплату' : 'Зафіксувати фріланс-виплату', fields: [
+    const values = await openPayrollDialog({ title: reversalOf ? 'Сторнувати фріланс-виплату' : 'Зафіксувати фріланс-виплату', freelance: true, destructive: Boolean(reversalOf), fields: [
         { name: 'paymentDate', label: 'Фактична дата', type: 'date', value: freelancePayrollDate.format(new Date()), required: true },
-        ...(!reversalOf ? [{ name: 'amount', label: 'Сума, грн', type: 'number', value: row.outstanding, required: true }] : []),
+        ...(!reversalOf ? [{ name: 'amount', label: 'Сума, грн', type: 'number', step: '1', value: row.outstanding, required: true }] : []),
         { name: 'accountId', label: 'Рахунок', type: 'select', options: payrollOptionList(accounts), required: true },
         { name: 'paymentMethod', label: 'Спосіб оплати', type: 'select', required: true,
             options: payrollOptionList(methods.map(method => ({ value: method, label: PAYMENT_LABELS[method] || method }))) },
         { name: 'categoryId', label: 'Категорія', type: 'select', options: payrollOptionList(categories), required: true },
         { name: 'reason', label: 'Призначення', required: true }
     ] });
-    if (!values) return;
+    if (!values || !isCurrent()) return false;
     const endpoint = reversalOf ? 'reversals' : 'payments';
-    await payrollApiRequest('POST', payrollApiUrl(`/api/payroll/freelance/${endpoint}`), {
+    const saved = await payrollApiRequest('POST', freelancePayrollApiUrl(endpoint), {
         ...values, reversalOf, segmentId: row.segment_id,
         idempotencyKey: payrollIdempotencyKey(`freelance-${endpoint}`, row.segment_id)
     });
-    showNotification(reversalOf ? 'Сторно зафіксовано' : 'Виплату зафіксовано');
+    if (saved) showNotification(reversalOf ? 'Сторно зафіксовано' : 'Виплату зафіксовано');
+    return Boolean(saved);
 }
 
 function syncFreelancePayrollPanel() {
     const panel = document.getElementById('freelancePayrollPanel');
     if (!panel) return;
-    panel.hidden = !freelancePayrollPanelVisible();
+    const available = freelancePayrollPanelVisible();
+    panel.hidden = !available;
+    document.getElementById('freelanceFinanceTab').hidden = !available;
     const rate = document.getElementById('freelanceRateButton');
     rate.hidden = !financeCanUsePayrollAction('manage_payroll_rules');
-    if (panel.hidden) {
-        document.getElementById('freelancePayrollContent').replaceChildren();
+    if (!available) {
+        resetFreelancePayroll();
+        document.getElementById('freelancePayrollStatus').textContent =
+            'Фріланс-розрахунки доступні в контексті Park користувачам із правом перегляду зарплат.';
         return;
     }
     if (panel.dataset.bound) {
@@ -1217,15 +1324,28 @@ function syncFreelancePayrollPanel() {
     panel.dataset.bound = 'true';
     const date = document.getElementById('freelancePayrollDate');
     date.value = freelancePayrollDate.format(new Date());
-    panel.addEventListener('toggle', () => void loadFreelancePayroll());
-    date.addEventListener('change', () => void loadFreelancePayroll());
+    document.getElementById('freelancePayrollRetry').addEventListener('click', () => {
+        date.focus({ preventScroll: true });
+        void loadFreelancePayroll();
+    });
+    date.addEventListener('change', () => {
+        resetFreelancePayroll();
+        void loadFreelancePayroll();
+    });
     rate.addEventListener('click', async () => {
-        rate.disabled = true;
+        if (!isFreelancePayrollActive() || rate.getAttribute('aria-busy') === 'true') return;
+        const requestedDate = date.value;
+        const generation = freelancePayrollRequest;
+        const isCurrent = () => isFreelancePayrollActive() && requestedDate === date.value
+            && generation === freelancePayrollRequest && financeCanUsePayrollAction('manage_payroll_rules');
+        rate.focus({ preventScroll: true });
+        rate.setAttribute('aria-busy', 'true');
+        rate.setAttribute('aria-disabled', 'true');
         try {
-            const result = await payrollApiRequest('GET', payrollApiUrl('/api/payroll/freelance/rates'));
-            if (!result) return;
+            const result = await payrollApiRequest('GET', freelancePayrollApiUrl('rates'));
+            if (!result || !isCurrent()) return;
             const { professions, staff } = result.data;
-            const values = await openPayrollDialog({ title: 'Нова версія фріланс-ставки', fields: [
+            const values = await openPayrollDialog({ title: 'Нова версія фріланс-ставки', freelance: true, fields: [
                 { name: 'professionKey', label: 'Професія', type: 'select', required: true,
                     options: payrollOptionList(professions.map(item => ({ id: item.key, name: item.title }))) },
                 { name: 'staffId', label: 'Для кого', type: 'select',
@@ -1233,18 +1353,20 @@ function syncFreelancePayrollPanel() {
                 ...freelanceRateFields(),
                 { name: 'effectiveFrom', label: 'Діє з', type: 'date', value: date.value, required: true }
             ] });
-            if (values) {
-                await payrollApiRequest('POST', payrollApiUrl('/api/payroll/freelance/rates'), {
+            if (values && isCurrent()) {
+                const saved = await payrollApiRequest('POST', freelancePayrollApiUrl('rates'), {
                     ...values, staffId: values.staffId || null
                 });
-                showNotification('Версію ставки збережено');
+                if (saved) showNotification('Версію ставки збережено');
             }
         } catch (error) {
             showNotification(error.message, 'error');
         } finally {
-            rate.disabled = false;
+            rate.removeAttribute('aria-busy');
+            rate.removeAttribute('aria-disabled');
         }
     });
+    void loadFreelancePayroll();
 }
 
 function payrollOptionList(items = []) {
@@ -1255,54 +1377,60 @@ function payrollOptionList(items = []) {
     }).join('');
 }
 
-function openPayrollDialog({ title, fields }) {
+function openPayrollDialog({ title, fields, freelance = false, destructive = false }) {
+    if (document.getElementById('salaryPayrollActionModal')) return Promise.resolve(null);
     return new Promise(resolve => {
-        document.getElementById('salaryPayrollActionModal')?.remove();
-        const modal = document.createElement('div');
+        const modal = document.createElement('dialog');
         modal.id = 'salaryPayrollActionModal';
-        modal.className = 'modal';
+        modal.setAttribute('aria-labelledby', 'salaryPayrollActionTitle');
+        if (freelance) modal.dataset.freelanceDialog = '';
         modal.innerHTML = `
-            <div class="modal-content modal-medium" role="dialog" aria-modal="true" aria-labelledby="salaryPayrollActionTitle">
+            <div class="modal-content modal-medium">
                 <button type="button" class="modal-close" data-payroll-dialog-cancel aria-label="Закрити">×</button>
                 <h3 id="salaryPayrollActionTitle">${escapeHtml(title)}</h3>
                 <form class="salary-payroll-dialog-form">
                     <div class="salary-form-grid">
-                        ${fields.map(field => {
-                            const required = field.required ? 'required' : '';
-                            const value = field.value ?? '';
+                        ${fields.map((field, index) => {
+                            const id = `payroll-dialog-field-${index}`;
+                            const attrs = `id="${id}" name="${escapeHtml(field.name)}" ${field.required ? 'required' : ''}
+                                ${index === 0 && !destructive ? 'autofocus' : ''}`;
+                            const label = `<label for="${id}">${escapeHtml(field.label)}</label>`;
+                            const value = escapeHtml(field.value ?? '');
                             if (field.type === 'select') {
-                                return `<div><label>${escapeHtml(field.label)}</label><select name="${escapeHtml(field.name)}" ${required}>${field.options || ''}</select></div>`;
+                                return `<div>${label}<select ${attrs}>${field.options || ''}</select></div>`;
                             }
                             if (field.type === 'textarea') {
-                                return `<div><label>${escapeHtml(field.label)}</label><textarea name="${escapeHtml(field.name)}" ${required}>${escapeHtml(value)}</textarea></div>`;
+                                return `<div>${label}<textarea ${attrs}>${value}</textarea></div>`;
                             }
-                            return `<div><label>${escapeHtml(field.label)}</label><input type="${escapeHtml(field.type || 'text')}" name="${escapeHtml(field.name)}" value="${escapeHtml(value)}" ${required}></div>`;
+                            return `<div>${label}<input ${attrs} type="${escapeHtml(field.type || 'text')}" value="${value}"
+                                ${field.step ? `step="${escapeHtml(field.step)}"` : ''}></div>`;
                         }).join('')}
                     </div>
                     <div class="salary-actions">
-                        <button type="button" class="btn-page-secondary" data-payroll-dialog-cancel>Скасувати</button>
-                        <button type="submit" class="btn-page-primary">Підтвердити</button>
+                        <button type="button" class="btn-page-secondary" data-payroll-dialog-cancel ${destructive ? 'autofocus' : ''}>Скасувати</button>
+                        <button type="submit" class="${destructive ? 'btn-page-danger' : 'btn-page-primary'}">${destructive ? 'Сторнувати' : 'Підтвердити'}</button>
                     </div>
                 </form>
             </div>
         `;
-        document.body.appendChild(modal);
-        const close = value => {
+        let values = null;
+        modal.addEventListener('close', () => {
             modal.remove();
-            resolve(value);
-        };
-        modal.querySelectorAll('[data-payroll-dialog-cancel]').forEach(btn => {
-            btn.addEventListener('click', () => close(null));
+            resolve(values);
+        }, { once: true });
+        modal.querySelectorAll('[data-payroll-dialog-cancel]').forEach(button => {
+            button.addEventListener('click', () => modal.close());
         });
         modal.addEventListener('click', event => {
-            if (event.target === modal) close(null);
+            if (event.target === modal) modal.close();
         });
-        modal.querySelector('form')?.addEventListener('submit', event => {
+        modal.querySelector('form').addEventListener('submit', event => {
             event.preventDefault();
-            const data = Object.fromEntries(new FormData(event.currentTarget).entries());
-            close(data);
+            values = Object.fromEntries(new FormData(event.currentTarget).entries());
+            modal.close();
         });
-        modal.querySelector('input,select,textarea')?.focus();
+        document.body.appendChild(modal);
+        modal.showModal();
     });
 }
 
@@ -2755,7 +2883,7 @@ function updateFinancePeriodControls() {
 const FINANCE_TAB_GROUPS = {
     transactions: 'cash', shift: 'cash', accounts: 'cash', debts: 'cash',
     pnl: 'results', monthly: 'results', dashboard: 'results', advanced: 'results',
-    budget: 'planning', forecast: 'planning', costing: 'planning', salary: 'team'
+    budget: 'planning', forecast: 'planning', costing: 'planning', salary: 'team', freelance: 'team'
 };
 const FINANCE_SCOPE = {
     overview: 'Період нижче впливає лише на показники огляду.',
@@ -2792,7 +2920,7 @@ function updateFinanceViewChrome() {
     });
     const heading = document.getElementById('financeTabHeading');
     if (heading) {
-        heading.hidden = isOverview || isInsights;
+        heading.hidden = isOverview || isInsights || FinState.currentTab === 'freelance';
         heading.textContent = title;
     }
     const location = document.getElementById('financeCurrentLocation');
@@ -2824,6 +2952,7 @@ function writeFinanceUrl() {
 
 function setFinanceMode(mode, options = {}) {
     if (!['overview', 'operations', 'insights'].includes(mode)) mode = 'overview';
+    if (mode !== 'operations' && FinState.currentTab === 'freelance') resetFreelancePayroll();
     FinState.mode = mode;
 
     const executive = document.getElementById('faExecutiveZone');
@@ -2853,15 +2982,19 @@ function setFinanceMode(mode, options = {}) {
 function switchTab(tabName, options = {}) {
     if (!tabName) tabName = 'transactions';
     if (tabName === 'personal') tabName = 'accounts';
+    if (tabName !== 'freelance' && FinState.currentTab === 'freelance') resetFreelancePayroll();
     FinState.currentTab = tabName;
     if (!options.preserveMode) setFinanceMode('operations', { switchTab: false, history: false });
     updateFinancePeriodControls();
 
     document.querySelectorAll('.fin-tab').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.tab === tabName);
+        const active = btn.dataset.tab === tabName;
+        btn.classList.toggle('active', active);
+        if (active) btn.setAttribute('aria-current', 'page');
+        else btn.removeAttribute('aria-current');
     });
 
-    const tabs = ['tabDashboard','tabTransactions','tabMonthly','tabSalary','tabBudget','tabCosting',
+    const tabs = ['tabDashboard','tabTransactions','tabMonthly','tabSalary','tabFreelance','tabBudget','tabCosting',
                   'tabShift','tabForecast','tabPnl','tabDebts','tabAdvanced','tabAccounts'];
     tabs.forEach(id => {
         const el = document.getElementById(id);
@@ -2869,7 +3002,7 @@ function switchTab(tabName, options = {}) {
     });
     const activePanel = document.getElementById({
         dashboard: 'tabDashboard', transactions: 'tabTransactions',
-        monthly: 'tabMonthly', salary: 'tabSalary', budget: 'tabBudget',
+        monthly: 'tabMonthly', salary: 'tabSalary', freelance: 'tabFreelance', budget: 'tabBudget',
         shift: 'tabShift', forecast: 'tabForecast', pnl: 'tabPnl',
         debts: 'tabDebts', advanced: 'tabAdvanced', accounts: 'tabAccounts',
         costing: 'tabCosting'
@@ -2879,10 +3012,8 @@ function switchTab(tabName, options = {}) {
     if (tabName === 'dashboard') fetchDashboard();
     if (tabName === 'transactions') fetchTransactions();
     if (tabName === 'monthly') fetchMonthlyReport();
-    if (tabName === 'salary') {
-        fetchSalaryReport();
-        syncFreelancePayrollPanel();
-    }
+    if (tabName === 'salary') fetchSalaryReport();
+    syncFreelancePayrollPanel();
     if (tabName === 'budget') initBudgetTab();
     if (tabName === 'costing') window.CostingWorkspace?.load();
     if (tabName === 'shift') loadShiftData();
@@ -3217,7 +3348,6 @@ async function initFinancePage() {
     clearSalaryWorkspace();
     document.getElementById('tabSalary')?.addEventListener('click', event => {
         if (!event.target.closest('button')) return;
-        if (event.target.closest('#freelancePayrollPanel')) return;
         const availability = salarySurfaceAvailability();
         if (availability.available && salaryAvailability.available) return;
         event.preventDefault();

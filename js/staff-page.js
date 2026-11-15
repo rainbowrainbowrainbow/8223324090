@@ -8918,6 +8918,13 @@ function syncStaffScheduleCapabilities() {
     StaffState.canViewStaff = canUseStaffCapability('hr.staff.view');
     StaffState.canExportSchedule = StaffState.canViewSchedule && canUseStaffCapability('export_data') && writable;
     StaffState.canManageStaff = canUseStaffCapability('hr.staff.manage') && staffWrites && writable;
+    const freelanceFinanceLink = document.getElementById('staffFreelanceFinanceLink');
+    const scope = window.getCrmBusinessScope?.();
+    if (freelanceFinanceLink) {
+        freelanceFinanceLink.hidden = staffScheduleAccessBlocked || !StaffState.canViewSchedule
+            || scope?.mode !== 'single' || scope.activeContext !== 'event_genix'
+            || !canUseStaffCapability('view_payroll') || typeof canAccessPage !== 'function' || !canAccessPage('/finance');
+    }
     const user = typeof AppState !== 'undefined' ? AppState.currentUser : null;
     const isAdmin = ['creator', 'director'].includes(user?.role);
     const controls = {
@@ -8942,6 +8949,8 @@ function syncStaffScheduleCapabilities() {
 
 function clearStaffScheduleAccessState() {
     staffScheduleAccessBlocked = true;
+    const freelanceFinanceLink = document.getElementById('staffFreelanceFinanceLink');
+    if (freelanceFinanceLink) freelanceFinanceLink.hidden = true;
     staffScheduleRangeLoadSeq++;
     staffProfessionCatalogRequestSeq++;
     staffRosterRequestSeq++;
@@ -9090,6 +9099,22 @@ function refreshStaffSchedulePage(options = {}) {
     return refreshTask;
 }
 
+function bindScheduleActionDisclosure(host) {
+    const toggle = host.querySelector('#staffScheduleActionsToggle');
+    if (!toggle || toggle.dataset.bound) return;
+    toggle.dataset.bound = 'true';
+    toggle.addEventListener('click', () => {
+        const expanded = toggle.getAttribute('aria-expanded') === 'true';
+        toggle.setAttribute('aria-expanded', String(!expanded));
+    });
+    toggle.parentElement.addEventListener('keydown', event => {
+        if (event.key !== 'Escape' || !toggle.getClientRects().length || toggle.getAttribute('aria-expanded') !== 'true') return;
+        event.stopPropagation();
+        toggle.setAttribute('aria-expanded', 'false');
+        toggle.focus();
+    });
+}
+
 async function initStaffSchedulePage(options = {}) {
     if (staffScheduleInitPromise) {
         await staffScheduleInitPromise;
@@ -9112,6 +9137,7 @@ async function initStaffSchedulePage(options = {}) {
         hydrateScheduleExpandedGroups();
         const host = ensureStaffScheduleShell(options);
         if (!host) throw new Error('Staff schedule shell is not available');
+        bindScheduleActionDisclosure(host);
         setScheduleRangeLoadState('idle');
 
         if (typeof initDarkMode === 'function') initDarkMode();

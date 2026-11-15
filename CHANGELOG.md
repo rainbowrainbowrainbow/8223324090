@@ -4,6 +4,13 @@
 
 ---
 
+## v0.83.76 - Задачі Telegram у Моєму дні
+
+### Release / Versioning / (15.11.2026) [codex]
+- **Задачі Telegram у Моєму дні** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.83.75 - Мій день і робочий профіль
 
 ### Release / Versioning / (15.11.2026) [codex]

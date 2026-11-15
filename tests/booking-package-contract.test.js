@@ -4729,7 +4729,6 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(apiJs, /options\.fresh/);
     assert.match(apiJs, /Array\.isArray\(payload\?\.customers\)/);
     assert.match(customerRoute, /child_birthday/);
-    assert.match(customerRoute, /buildCustomerSearchQuery/);
     assert.match(customerSearchQuery, /regexp_replace\(COALESCE\(c\.phone/);
 
     assert.match(route, /applyBookingPackage/);

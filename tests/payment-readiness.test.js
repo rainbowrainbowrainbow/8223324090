@@ -1450,13 +1450,14 @@ test('Checkbox regression gates are wired into CI and local scripts', () => {
     const runner = read('scripts/run-isolated-postgres-tests.js');
     assert.equal(packageJson.scripts['check:checkbox-openapi'], 'node scripts/check-checkbox-openapi-compatibility.js');
     assert.equal(packageJson.scripts['check:checkbox-safety'], 'node scripts/check-checkbox-source-safety.js');
+    assert.equal(packageJson.scripts['test:checkbox-openapi-contract'], 'node --test tests/checkbox-openapi-contract.test.js');
     assert.match(packageJson.scripts['test:checkbox-thin'], /tests\/checkbox-fullstack-testmode-harness\.test\.js/);
     assert.match(packageJson.scripts['test:checkbox-thin'], /tests\/payment-outbox-wakeup\.test\.js/);
     assert.match(packageJson.scripts['test:checkbox-thin'], /tests\/checkbox-shift-db-invariants\.test\.js/);
     assert.match(packageJson.scripts['test:checkbox-thin'], /tests\/payment-outbox-receipt-mismatch\.test\.js/);
     assert.match(ci, /^\s+run: npm test\s*$/m);
     assert.ok(packageJson.scripts.test.split(' && ').includes('npm run verify'));
-    for (const gate of ['check:migrations', 'check:checkbox-openapi', 'check:checkbox-safety']) {
+    for (const gate of ['check:migrations', 'check:checkbox-openapi', 'check:checkbox-safety', 'test:checkbox-openapi-contract']) {
         assert.ok(packageJson.scripts.verify.split(' && ').includes(`npm run ${gate}`), `${gate} must run in the CI baseline`);
     }
     assert.match(ci, /npm run test:checkbox-thin/);

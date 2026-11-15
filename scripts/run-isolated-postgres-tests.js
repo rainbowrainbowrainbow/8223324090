@@ -19,6 +19,7 @@ const TEST_TIMEOUT_MS = Number(process.env.ISOLATED_TEST_TIMEOUT_MS) || 15 * 60_
 const POLL_INTERVAL_MS = 500;
 const ISOLATED_DATABASE_LOCK_NAMESPACE = 'eventgenix-isolated-postgres-runner-v1';
 const MANUAL_MONEY_MODES = new Set(['all', 'finance', 'finance-money', 'finance-money-browser', 'payroll', 'fullstack']);
+const EDUCATION_SERIES_ACCEPTANCE = 'tests/integration/education-series.integration-acceptance.test.js';
 const MODES = {
     'telegram-crm': ['tests/integration/telegram-crm-fullstack.integration.test.js'],
     'hr-hiring': ['tests/integration/park-hr-hiring.integration.test.js'],
@@ -82,8 +83,9 @@ const MODES = {
     ],
     'education-series': [
         'tests/integration/education-series.integration.test.js',
-        'tests/integration/education-series.integration-acceptance.test.js'
+        EDUCATION_SERIES_ACCEPTANCE
     ],
+    'education-series-acceptance': [EDUCATION_SERIES_ACCEPTANCE],
     'education-context-browser': [
         'tests/browser/education-context-actual-app-browser-smoke.js'
     ],
@@ -618,9 +620,8 @@ async function runSuite(testDb, testFile, suiteMode) {
             NODE_OPTIONS: [serverEnv.NODE_OPTIONS || '', '--require=./tests/helpers/attendance-ocr-provider-shim.js'].join(' ').trim()
         });
     }
-    const educationSeriesDirect = suiteMode === 'education-series'
-        && ['tests/integration/education-series.integration.test.js',
-            'tests/integration/education-series.integration-acceptance.test.js'].includes(testFile);
+    const educationSeriesDirect = (suiteMode === 'education-series' || suiteMode === 'education-series-acceptance')
+        && MODES[suiteMode].includes(testFile);
     const educationSeriesCi = suiteMode === 'education-close-series'
         && testFile === 'tests/browser/education-close-pg-wrapper.js'
         && process.env.EDU_CLOSE_PG_FILE === 'tests/integration/education-series.integration.test.js';

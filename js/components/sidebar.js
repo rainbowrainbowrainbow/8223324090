@@ -24,7 +24,7 @@ const Sidebar = (() => {
         businessSettingsOpen: false,
         businessSettingsDocumentBound: false,
         businessNameResizeObserver: null,
-        businessNameMotionCleanup: null,
+        businessNameMeasureCleanup: null,
         businessProfileHydrationContext: '',
         businessProfileHydrationPromise: null,
         timelineSummaryCache: new Map(),
@@ -3435,8 +3435,8 @@ const Sidebar = (() => {
         if (!host || !api?.options || !api?.current) return;
         _state.businessNameResizeObserver?.disconnect();
         _state.businessNameResizeObserver = null;
-        _state.businessNameMotionCleanup?.();
-        _state.businessNameMotionCleanup = null;
+        _state.businessNameMeasureCleanup?.();
+        _state.businessNameMeasureCleanup = null;
         _bindSidebarBusinessSettingsDismiss();
         const businessState = api.state?.(user) || null;
         const options = businessState?.availableBusinesses?.length
@@ -3538,12 +3538,17 @@ const Sidebar = (() => {
         const nameViewport = host.querySelector('.sidebar-business-name-viewport');
         const nameText = host.querySelector('.sidebar-business-name-text');
         const motionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+        let measuredTravel = null;
+        let measurementFrame = null;
         const measureBusinessName = () => {
             if (!nameShell?.isConnected || !nameViewport || !nameText) return;
             const travel = Math.max(0, Math.ceil(nameText.scrollWidth - nameViewport.clientWidth));
-            nameShell.dataset.overflow = travel > 2 ? 'true' : 'false';
-            nameShell.style.setProperty('--business-name-offset', `${-travel}px`);
-            nameShell.style.setProperty('--business-name-cycle', `${Math.max(16, Math.min(60, 8 + travel / 8))}s`);
+            if (travel !== measuredTravel) {
+                measuredTravel = travel;
+                nameShell.dataset.overflow = travel > 2 ? 'true' : 'false';
+                nameShell.style.setProperty('--business-name-offset', `${-travel}px`);
+                nameShell.style.setProperty('--business-name-cycle', `${Math.max(16, Math.min(60, 8 + travel / 8))}s`);
+            }
             const animation = travel > 2 && !motionQuery?.matches
                 ? 'sidebarBusinessNameTravel var(--business-name-cycle, 18s) ease-in-out infinite'
                 : '';
@@ -3553,11 +3558,22 @@ const Sidebar = (() => {
                 nameText.style.removeProperty('animation');
             }
         };
-        requestAnimationFrame(measureBusinessName);
-        motionQuery?.addEventListener?.('change', measureBusinessName);
-        _state.businessNameMotionCleanup = () => motionQuery?.removeEventListener?.('change', measureBusinessName);
+        // Apply size-dependent styles outside the ResizeObserver delivery pass.
+        const scheduleBusinessNameMeasurement = () => {
+            if (measurementFrame !== null) return;
+            measurementFrame = requestAnimationFrame(() => {
+                measurementFrame = null;
+                measureBusinessName();
+            });
+        };
+        scheduleBusinessNameMeasurement();
+        motionQuery?.addEventListener?.('change', scheduleBusinessNameMeasurement);
+        _state.businessNameMeasureCleanup = () => {
+            motionQuery?.removeEventListener?.('change', scheduleBusinessNameMeasurement);
+            if (measurementFrame !== null) window.cancelAnimationFrame?.(measurementFrame);
+        };
         if (typeof ResizeObserver === 'function') {
-            _state.businessNameResizeObserver = new ResizeObserver(measureBusinessName);
+            _state.businessNameResizeObserver = new ResizeObserver(scheduleBusinessNameMeasurement);
             _state.businessNameResizeObserver.observe(nameShell);
             _state.businessNameResizeObserver.observe(nameText);
         }
@@ -3637,7 +3653,7 @@ const Sidebar = (() => {
             nameText.textContent = selectedName;
             select.title = selectedName;
             select.setAttribute('aria-label', `Поточний бізнес CRM: ${selectedName}`);
-            requestAnimationFrame(measureBusinessName);
+            scheduleBusinessNameMeasurement();
             await runBusinessSwitch(async () => {
                 await api.switchTo(event.target.value, { user, updateUrl: true, allowAggregate: true });
             }, previous);

@@ -73,9 +73,10 @@ Reducing their planned pay produces no retained line. The executor's additional
 mode preserves attendance-based pay plus one agreed premium. Base replacement
 consumes only verified allocations for the transferred work. The preview shows
 both schedules, transferred minutes and planned ordinary amounts when calculable.
-The cross-date candidate creates a separately dated remainder for a bounded
-reception shift. Arbitrary slices with breaks or simultaneous roles still
-need explicit break/role allocation. Daytime animator
+Version 0.83.93 creates a separately dated remainder for a bounded
+reception shift. The same-day partial transfer of a segment with one
+confirmed break is implemented in the local candidate below. Simultaneous
+roles still need explicit role allocation. Daytime animator
 transfers use the dated roster and reject any existing booking or Afisha slot
 outside the resulting coverage. Overnight animator shift transfers and
 ambiguous historical banquet links remain unsupported. Completed agreements
@@ -250,9 +251,10 @@ later retry in the original cabinet.
 
 - HR: version 0.83.82 supports a signed manual amount for daily and monthly
   guarantees against the matching ordinary base. Automatic prorating still
-  needs an explicit allocation rule. Cross-date reception remainders are
-  implemented in the local candidate. Simultaneous roles and arbitrary
-  breaks remain open. Park amount
+  needs an explicit allocation rule. Cross-date reception remainders
+  shipped in 0.83.93. Partial same-day transfers with one confirmed unpaid
+  break are available in the local candidate. Simultaneous roles remain
+  open. Park amount
   corrections after completion are available from 0.83.90. Corrections to
   the worker or attendance allocation still require separate rules.
 - Sources: Park legacy-only banquet links and ambiguous linked bookings,
@@ -325,6 +327,25 @@ Merging with an existing next-day plan, breaks, concurrent roles, animator
 coverage, daylight-saving changes and other payroll months remain outside
 this scope. Resolve active cross-date agreements before reverting the app
 implementation and preserve their guards and history.
+
+### Same-day partial transfer with one confirmed unpaid break
+
+The owner approved this allocation rule in `RED-SUBSTITUTION-BREAK-LOCAL-15`.
+For a partial transfer of a same-day Park segment with an unpaid break,
+provide `breakStartTime` as a confirmed Kyiv wall-clock time in `HH:MM`.
+The server derives the end from the source segment's `break_minutes` and
+assigns the overlap to each resulting segment. It saves the break interval
+and minutes with the existing agreement snapshot. The prior and resulting
+plans retain the original break duration in total. Ordinary and substitution
+pay still use their existing rounding and attendance completion rules.
+
+For a 09:00–17:00 shift with a 13:45–14:15 break and a 12:00–14:00
+transfer, the replacement has 105 planned payable minutes. The original
+worker retains 345 planned payable minutes, including a 15-minute break
+in the 14:00–17:00 segment. Missing or out-of-bounds break evidence, fully
+unpaid resulting segments and started attendance block the operation.
+Cancellation restores the original plan and its full 30-minute break.
+The break allocation stays fixed when the rate is revised.
 
 ### Park per-substitution pay shipped in 0.83.82
 

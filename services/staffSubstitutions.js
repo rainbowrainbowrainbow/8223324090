@@ -33,8 +33,12 @@ function createSubstitutionService(dependencies = {}) {
     async function prepare(client, business, actor, raw, current = null) {
         const input = contract.normalizeInput(raw);
         const source = await sources.loadScope(client, business, actor, input, current);
-        const context = await loadContext(client, business, actor, input, source, current);
-        return { quote: contract.preview(input, context), source };
+        const effectiveInput = source.breakAllocation ? {
+            ...input, breakMinutes: source.breakAllocation.replacementMinutes,
+            plannedMinutes: input.plannedMinutes + input.breakMinutes - source.breakAllocation.replacementMinutes
+        } : input;
+        const context = await loadContext(client, business, actor, effectiveInput, source, current);
+        return { quote: contract.preview(effectiveInput, context), source };
     }
 
     function dateRange({ from, to }) {
@@ -174,15 +178,15 @@ function createSubstitutionService(dependencies = {}) {
                         (business_context,staff_id,original_staff_id,work_date,source_type,source_id,slot_key,state,version,input_json,quote_json,source_snapshot,created_by)
                         VALUES($1,$2,$3,$4,$5,$6,$7,'active',1,$8::jsonb,$9::jsonb,$10::jsonb,$11) RETURNING *`,
                     [business,input.staffId,input.originalStaffId,input.workDate,input.sourceType,input.sourceId,input.slotKey,
-                        JSON.stringify(input),JSON.stringify(prepared.quote),JSON.stringify(prepared.source),author]);
+                        JSON.stringify(prepared.quote.input),JSON.stringify(prepared.quote),JSON.stringify(prepared.source),author]);
                     next = result.rows[0];
                     await client.query("SELECT set_config('eventgenix.substitution_command',$1,true)", [String(next.id)]);
                     const assignmentResult = await sources.applyAssignment(client, business, actor, next, prepared.source);
                     if (typeof assignmentResult === 'function') afterCommit = assignmentResult;
                 } else {
-                    await sources.reviseAssignment(client, business, actor, current, input);
+                    await sources.reviseAssignment(client, business, actor, current, prepared.quote.input);
                     next = (await client.query(`UPDATE staff_substitutions SET input_json=$1,quote_json=$2,version=version+1,updated_at=NOW() WHERE id=$3 RETURNING *`,
-                        [JSON.stringify(input), JSON.stringify(prepared.quote), current.id])).rows[0];
+                        [JSON.stringify(prepared.quote.input), JSON.stringify(prepared.quote), current.id])).rows[0];
                 }
             } else if (action === 'cancel') {
                 await client.query("SELECT set_config('eventgenix.substitution_command',$1,true)", [String(current.id)]);

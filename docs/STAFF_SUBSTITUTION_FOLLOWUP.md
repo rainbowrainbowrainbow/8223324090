@@ -178,6 +178,18 @@ The initial substitution package was released in 0.83.56 (`b817ec71`).
 The journal and source read-model follow-up was released in 0.83.79
 (`a8cb3f07`). The production branch, public version endpoint and Railway
 deployment agreed on 2026-11-15. Exact-SHA CI and Runtime artifact smoke passed.
+Park manual agreement amounts shipped in 0.83.82
+(0ef0766491570e94eddfe3db04a280324dd1904e). The production branch,
+the public version endpoint and the deployed substitution script matched.
+Exact-SHA CI and Runtime artifact smoke passed. The production commit also
+passed all three cases in `npm run test:integration:substitutions:isolated`
+on disposable PostgreSQL with Chromium enabled. In the Park case, a
+-150.05 UAH adjustment lowered a 1,200.00 UAH base to 1,049.95 UAH under
+both daily and monthly terms, and 75.25 UAH accrued separately to the
+replacement. The DAR case recorded one 325.50 UAH lesson accrual and no
+Park pay line. Its actual-app mobile report and agreement history were
+reviewed at 390 CSS pixels. Authenticated production acceptance remains open.
+
 An isolated synthetic payroll test covers the manager-to-reception flow and
 preserves the worker's permanent role. It does not prove that a particular
 historical shift was paid.
@@ -212,9 +224,11 @@ later retry in the original cabinet.
 
 ## Acceptance still outstanding
 
-- HR: retained pay under daily or monthly guarantees needs an explicit
-  allocation rule. Post-midnight segments on a separate date, simultaneous
-  roles, arbitrary breaks and chained reversals remain open.
+- HR: version 0.83.82 supports a signed manual amount for daily and monthly
+  guarantees against the matching ordinary base. Automatic prorating still
+  needs an explicit allocation rule. Post-midnight segments on a separate
+  date, simultaneous roles, arbitrary breaks and corrections after
+  completion remain open.
 - Sources: Park legacy-only banquet links and ambiguous linked bookings,
   other chat tasks, meeting actions without a scoped Park channel, free-text support/content
   assignees, training delivery occurrences and report work. The inventory above names the canonical
@@ -222,7 +236,11 @@ later retry in the original cabinet.
   outside the currently approved local scope.
 - Read models: dashboard task cards and the task detail drawer show the
   agreement identifier and status for direct task, onboarding and Omni reply
-  substitutions. Omni shows the agreement on the conversation header or its
+  substitutions. The local task-list follow-up also shows the same identifier
+  and status on task cards opened from the Dashboard overdue drill-down. The
+  migrated-app test verified the task-list response, removal after cancellation
+  and Park/DAR isolation. Chromium verified the card and detail at 390 CSS
+  pixels. Omni shows the agreement on the conversation header or its
   exact outbound message. Procurement shows the same information in the list
   and its detail view. The standalone Afisha list and event workspace show the
   agreement for the specific animator role and the effective greeting time.
@@ -249,10 +267,10 @@ later retry in the original cabinet.
   membership, or add a protected legacy adapter that only accepts an explicit
   stable booking/child pair with matching program, time, role and line IDs.
   Leave ambiguous historical records for manual review under either option.
-- The owner requested editable amounts for each substitution. In 0.83.79, the
-  replacement's individual rate or fixed amount is editable with a reason.
-  The original worker has two preset choices. The retained-pay calculation
-  for an HR shift requires an hourly rate.
+- Park HR shifts with two identified workers support independent amount
+  overrides with a reason through the pre-work revision flow. Confirming
+  the treatment of day or month guarantees without a manual amount remains
+  a separate pay decision.
 - Overnight, breaks and simultaneous roles: carry an explicit Kyiv date and
   offset for each interval. Transfer breaks and role allocations only from
   a recorded interval or an approved allocation. Require manual review when
@@ -262,7 +280,7 @@ later retry in the original cabinet.
   Reconcile it through the authorized payroll adjustment path before touching
   a frozen report or any cash movement.
 
-### Park per-substitution pay proposal
+### Park per-substitution pay shipped in 0.83.82
 
 [Deputy](https://help.deputy.com/hc/en-au/articles/17639971010959-How-to-edit-a-timesheet)
 edits pay lines on an individual timesheet independently of recorded shift
@@ -289,7 +307,7 @@ respectively, subject to existing payroll controls. The preview shows changes
 of −150 UAH and −100 UAH. The override is limited to the work and people in the
 agreement. For completed amounts, use the linked correction proposal below.
 
-The local implementation edits the two amounts when creating the agreement
+The released implementation edits the two amounts when creating the agreement
 and during the existing pre-work revision flow. It records the original
 worker's adjustment to ordinary payroll. For hourly pay this replaces the
 automatically retained pay for the transferred time. For daily or monthly
@@ -324,6 +342,20 @@ request must return the existing correction. Competing corrections against the
 same prior effective amount must accept one and reject the stale request. The
 payroll line should retain the substitution and correction IDs, and the history
 should show both adjustments. No posting creates or reverses a payment.
+
+The payroll gate must evaluate the target worker's posting snapshot as
+well as the period lock. An approved or paid installment can freeze an
+amount while the overall period is still open. Check both inside the same
+transaction and use the existing Park payroll lock order. For a correction
+to a frozen work month, record the explicitly selected open posting month.
+Keep the completed agreement and its attendance allocation immutable.
+
+Acceptance uses synthetic Park data. Verify an open-month delta, a delta
+posted to another open month after the payee's work-month snapshot freezes,
+the draft payroll line and journal link, replay, competing corrections,
+and unchanged paid or approved snapshots. Verify rejection for an unrelated
+payee, a closed target month and a DAR agreement. Any future correction
+of a real amount requires the exact work record and separate approval.
 
 ## Afisha occurrence scheduling
 

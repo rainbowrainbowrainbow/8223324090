@@ -1710,7 +1710,8 @@ router.get('/', async (req, res) => {
                     COALESCE(st.done, 0)::int AS subtask_done_count,
                     COALESCE(dep.total, 0)::int AS dependency_count,
                     COALESCE(dep.open, 0)::int AS open_dependency_count,
-                    dep.blocked_by_titles
+                    dep.blocked_by_titles,
+                    ${TASK_SUBSTITUTION_SELECT}
              FROM tasks t
              LEFT JOIN users u ON u.id = t.owner_user_id
              LEFT JOIN task_list_subtask_counts st ON st.task_id = t.id

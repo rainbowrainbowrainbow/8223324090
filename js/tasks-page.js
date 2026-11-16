@@ -3930,6 +3930,7 @@ function renderTaskCard(task) {
             ${blockedBadge}
             ${ownerRoleBadge}
             ${controlBadge}
+            ${renderTaskSubstitution(t)}
             <span>${catInfo.icon} ${escapeHtml(taxoLabel)}</span>
             ${t.date ? `<span>${formatDateShort(t.date)}</span>` : ''}
             ${renderScheduleBadge(t)}
@@ -6311,12 +6312,16 @@ function openBanquetDepositTaskForCompletion(taskId) {
     openTaskDetail(taskId);
 }
 
+function renderTaskSubstitution(task) {
+    const { id, state } = task.substitution || {};
+    if (!id || !['active', 'completed'].includes(state)) return '';
+    const label = state === 'active' ? 'погоджено' : 'завершено';
+    return `<span data-task-substitution>Підміна №${escapeHtml(id)} · ${label}</span>`;
+}
+
 function renderTaskDetailSource(task = {}) {
     const source = task.drawer?.source || task.taskContext?.source || null;
-    const { id, state } = task.substitution || {};
-    const substitution = id && ['active', 'completed'].includes(state)
-        ? `<span data-task-substitution>Підміна №${escapeHtml(id)} · ${state === 'active' ? 'погоджено' : 'завершено'}</span>`
-        : '';
+    const substitution = renderTaskSubstitution(task);
     if (!source || (!source.type && !source.id && !source.module && !source.surface)) {
         return `<section class="task-detail-source-card"><strong>Джерело задачі</strong><span>Створено вручну або джерело не вказано</span>${substitution}</section>`;
     }

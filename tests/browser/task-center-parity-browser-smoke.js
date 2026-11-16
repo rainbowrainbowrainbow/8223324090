@@ -373,7 +373,7 @@ async function installFixtureRoutes(context, baseUrl, state) {
             }
             return json(route, {
                 success: true,
-                tasks: [TASK],
+                tasks: [{ ...TASK, substitution: state.substitution }],
                 pagination: { page: 1, limit: 100, total: 1, hasMore: false, nextPage: null }
             });
         }
@@ -917,7 +917,24 @@ async function run() {
     try {
         if (substitutionOnly) {
             state.substitution = { id: '901', state: 'active' };
-            await verifyDrawer(page, fixture.baseUrl);
+            const overdueList = '?mode=overview&dashboardFilter=my-overdue';
+            await openPage(page, fixture.baseUrl, overdueList);
+            const taskCard = page.locator('#boardContent .task-card[data-task-id="42"]');
+            const cardLabel = taskCard.locator('[data-task-substitution]');
+            assert.equal(await cardLabel.innerText(), 'Підміна №901 · погоджено');
+            await cardLabel.scrollIntoViewIfNeeded();
+            assert.ok(await cardLabel.evaluate(node => {
+                const range = document.createRange();
+                range.selectNodeContents(node);
+                const bounds = range.getBoundingClientRect();
+                return bounds.left >= 0 && bounds.right <= innerWidth;
+            }), 'card agreement text fits the phone viewport');
+            const evidence = path.join(ROOT, 'output/playwright');
+            fs.mkdirSync(evidence, { recursive: true });
+            await taskCard.screenshot({
+                path: path.join(evidence, 'task-list-substitution-mobile.png'), animations: 'disabled'
+            });
+            await taskCard.locator('.task-card-title').click();
             const label = page.locator('.task-detail-source-card [data-task-substitution]');
             assert.equal(await label.innerText(), 'Підміна №901 · погоджено');
             await label.scrollIntoViewIfNeeded();
@@ -927,18 +944,20 @@ async function run() {
                 const bounds = range.getBoundingClientRect();
                 return bounds.left >= 0 && bounds.right <= innerWidth;
             }), 'substitution agreement text fits the phone viewport');
-            const evidence = path.join(ROOT, 'output/playwright');
-            fs.mkdirSync(evidence, { recursive: true });
             await page.locator('.task-detail-source-card').screenshot({
                 path: path.join(evidence, 'task-detail-substitution-mobile.png'), animations: 'disabled'
             });
             const overlay = page.locator('#taskDetailOverlay');
             await overlay.getByRole('button', { name: '✕', exact: true }).click();
             await overlay.waitFor({ state: 'hidden' });
-            state.substitution = null;
-            await verifyDrawer(page, fixture.baseUrl);
+            state.substitution = { id: '901', state: 'cancelled' };
+            await openPage(page, fixture.baseUrl, overdueList);
+            await taskCard.waitFor();
+            assert.equal(await cardLabel.count(), 0);
+            await taskCard.locator('.task-card-title').click();
+            await page.locator('.task-detail-source-card').waitFor();
             assert.equal(await label.count(), 0);
-            console.log('Task detail substitution mobile smoke passed.');
+            console.log('Task list and detail substitution mobile smoke passed.');
             return;
         }
         await verifyModesAndUrl(page, fixture.baseUrl);

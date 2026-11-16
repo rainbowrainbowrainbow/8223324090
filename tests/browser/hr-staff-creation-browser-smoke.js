@@ -157,7 +157,8 @@ async function runActor(browser, pool, actor, existingAccountId) {
         }, { compactButton: true, desktopSameRow: true, centered: true, inset: true });
         if (actor.label === 'mobile') await page.setViewportSize({ width: actor.width, height: 900 });
         if (actor.role === 'creator') {
-            await dialog.locator('[name="name"]').fill('Abandoned draft');
+            await dialog.locator('[name="family_name"]').fill('Abandoned');
+            await dialog.locator('[name="given_name"]').fill('draft');
             assert.equal(await page.evaluate(() => window.CrmBusinessContext.set('dar')), 'dar');
             await dialog.waitFor({ state: 'hidden' });
             await page.locator('#hrCreateStaffBtn').waitFor({ state: 'hidden' });
@@ -165,10 +166,12 @@ async function runActor(browser, pool, actor, existingAccountId) {
             assert.equal(await page.evaluate(() => window.CrmBusinessContext.set('event_genix')), 'event_genix');
             await page.locator('#hrCreateStaffBtn').click();
             await dialog.waitFor({ state: 'visible' });
-            assert.equal(await dialog.locator('[name="name"]').inputValue(), '');
+            assert.equal(await dialog.locator('[name="family_name"]').inputValue(), '');
+            assert.equal(await dialog.locator('[name="given_name"]').inputValue(), '');
         }
         const name = `QA Staff ${actor.label} ${runId}`;
-        await dialog.locator('[name="name"]').fill(name);
+        await dialog.locator('[name="family_name"]').fill('QA');
+        await dialog.locator('[name="given_name"]').fill(name.slice(3));
         await dialog.locator('[name="department"]').selectOption({ label: 'Аніматори' });
         await dialog.locator('[name="position"]').selectOption('animator');
 
@@ -213,7 +216,9 @@ async function runActor(browser, pool, actor, existingAccountId) {
             profile.locator('#editSave').click()
         ]);
         assert.equal(edit.status(), 200, 'position updated');
-        const { rows } = await pool.query('SELECT id, position FROM staff WHERE name = $1', [name]);
+        const { rows } = await pool.query('SELECT id, position, given_name, family_name FROM staff WHERE name = $1', [name]);
+        assert.equal(rows[0]?.family_name, 'QA');
+        assert.equal(rows[0]?.given_name, name.slice(3));
         assert.deepEqual(rows, [{ id: staff.id, position: updatedPosition }]);
         await page.waitForFunction(() => document.getElementById('editSave').dataset.actionState === 'success');
         assert.equal(await profile.locator('#editStaffHeaderName').textContent(), name);
@@ -367,7 +372,8 @@ async function runActor(browser, pool, actor, existingAccountId) {
             const newName = `QA CRM Recovery ${runId}`;
             const newUsername = `qa_crm_recovery_${runId}`;
             await createButton.click();
-            await dialog.locator('[name="name"]').fill(newName);
+            await dialog.locator('[name="family_name"]').fill('QA');
+            await dialog.locator('[name="given_name"]').fill(newName.slice(3));
             await dialog.locator('[name="department"]').selectOption({ label: 'Аніматори' });
             await dialog.locator('[name="position"]').selectOption('animator');
             const [recoveryCard] = await Promise.all([

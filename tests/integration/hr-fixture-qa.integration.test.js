@@ -129,7 +129,9 @@ test('Park HR QA writes register exact fixtures, suppress chat and retire the ru
         await page.locator('#hrCreateStaffBtn').click();
         await assert.rejects(page.evaluate(() => fetch('/api/users', { method: 'POST', body: '{}' })));
         const dialog = page.locator('#hrCreateStaffDialog');
-        await dialog.locator('[name="name"]').fill(draft.name);
+        const [familyName, ...givenNames] = draft.name.split(' ');
+        await dialog.locator('[name="family_name"]').fill(familyName);
+        await dialog.locator('[name="given_name"]').fill(givenNames.join(' '));
         await dialog.locator('[name="department"]').selectOption({ label: 'Аніматори' });
         await dialog.locator('[name="position"]').selectOption('animator');
         const created = await clickSubmit(page, '/api/staff', dialog.locator('[type="submit"]'));
@@ -170,7 +172,9 @@ test('Park HR QA writes register exact fixtures, suppress chat and retire the ru
         await page.locator('#hrCreateStaffBtn').waitFor({ state: 'visible' });
         await page.locator('#hrCreateStaffBtn').click();
         const dialog = page.locator('#hrCreateStaffDialog');
-        await dialog.locator('[name="name"]').fill(staffName(2));
+        const [familyName, ...givenNames] = staffName(2).split(' ');
+        await dialog.locator('[name="family_name"]').fill(familyName);
+        await dialog.locator('[name="given_name"]').fill(givenNames.join(' '));
         await dialog.locator('[name="department"]').selectOption({ label: 'Аніматори' });
         await dialog.locator('[name="position"]').selectOption('animator');
         const staff = await clickSubmit(page, '/api/staff', dialog.locator('[type="submit"]'));

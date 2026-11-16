@@ -29,9 +29,19 @@ function normalizeStaffHireDate(value) {
     return raw;
 }
 
+function normalizeStaffNameParts(input) {
+    const givenName = normalizeStaffCreateText(input.given_name, 'Ім’я', 100, true);
+    const familyName = normalizeStaffCreateText(input.family_name, 'Прізвище', 100, true);
+    const name = normalizeStaffCreateText(`${familyName} ${givenName}`, 'Ім’я та прізвище', 100, true);
+    return { givenName, familyName, name };
+}
+
 function normalizeStaffCreateFields(input) {
+    const identity = Object.hasOwn(input, 'given_name') || Object.hasOwn(input, 'family_name')
+        ? normalizeStaffNameParts(input)
+        : { name: normalizeStaffCreateText(input.name, 'Ім’я та прізвище', 100, true) };
     return {
-        name: normalizeStaffCreateText(input.name, 'Ім’я та прізвище', 100, true),
+        ...identity,
         department: normalizeStaffCreateText(input.department, 'Відділ', 50, true),
         position: normalizeStaffCreateText(input.position, 'Посада', 100, true),
         phone: normalizeStaffCreateText(input.phone, 'Телефон', 30),
@@ -91,21 +101,23 @@ async function requireDistinctStaffConfirmation(client, { name, phone, distinctS
 
 async function insertStaffRecord(db, {
     name, department, position, phone, hireDate, primaryProfession, secondaryProfessions,
-    color, telegramUsername, address, structureNodeId, hourlyRate = 0, rateUnit = 'hour'
+    color, telegramUsername, address, structureNodeId, hourlyRate = 0, rateUnit = 'hour',
+    givenName, familyName
 }) {
     const secondary = normalizeSecondaryProfessions(secondaryProfessions, primaryProfession);
     const { rows } = await db.query(
         `INSERT INTO staff (name, department, position, phone, hire_date, role_type, secondary_professions,
-            color, telegram_username, address, company_structure_node_id, hourly_rate, rate_unit)
-         VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13)
+            color, telegram_username, address, company_structure_node_id, hourly_rate, rate_unit, given_name, family_name)
+         VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13, $14, $15)
          RETURNING *`,
         [name, department, position, phone || null, hireDate || null, primaryProfession || null, JSON.stringify(secondary),
-            color || null, telegramUsername || null, address || null, structureNodeId || null, hourlyRate, rateUnit]
+            color || null, telegramUsername || null, address || null, structureNodeId || null, hourlyRate, rateUnit,
+            givenName || null, familyName || null]
     );
     return rows[0];
 }
 
 module.exports = {
-    insertStaffRecord, normalizeStaffCreateFields, normalizeStaffHireDate, normalizeStaffCreateText,
+    insertStaffRecord, normalizeStaffCreateFields, normalizeStaffHireDate, normalizeStaffCreateText, normalizeStaffNameParts,
     validateNewStaffProfessions, normalizeDistinctStaffIds, requireDistinctStaffConfirmation
 };

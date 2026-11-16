@@ -44,7 +44,8 @@ async function checkCreation(page, width, dark) {
     }, { markup, dark });
     await page.locator('#hrCreateStaffBtn').click();
     const dialog = page.locator('#hrCreateStaffDialog');
-    await dialog.locator('[name="name"]').fill('Тестова картка');
+    await dialog.locator('[name="family_name"]').fill('Тестова');
+    await dialog.locator('[name="given_name"]').fill('Картка');
     await dialog.locator('[name="phone"]').fill('+380671234567');
     await dialog.locator('[name="department"]').focus();
     assert.equal(await dialog.locator('[name="phone"]').inputValue(), '+380 67 123 45 67');
@@ -59,6 +60,8 @@ async function checkCreation(page, width, dark) {
     await dialog.getByRole('button', { name: 'Створити картку', exact: true }).click();
     const submitted = await page.evaluate(() => window.__uxSubmission);
     assert.equal(submitted.secondary_professions, undefined);
+    assert.equal(submitted.family_name, 'Тестова');
+    assert.equal(submitted.given_name, 'Картка');
     assert.equal(submitted.department, 'Кафе');
     assert.equal(submitted.position, 'Офіціант');
     assert.equal(submitted.role_type, 'waiter');

@@ -7492,7 +7492,7 @@ function bindHrStaffCreation() {
     if (!button || !dialog || !form || form.dataset.bound === 'true') return;
     form.dataset.bound = 'true';
     mountNewStaffFields(document.getElementById('hrCreateStaffFields'), 'hrCreateStaff',
-        ['Name', 'Phone', 'Department', 'Position', 'HireDate', 'Address']);
+        ['FamilyName', 'GivenName', 'Phone', 'Department', 'Position', 'HireDate', 'Address']);
     const status = document.getElementById('hrCreateStaffStatus');
     const submit = form.querySelector('[type="submit"]');
     const cancel = document.getElementById('hrCreateStaffCancel');
@@ -7580,8 +7580,8 @@ function bindHrStaffCreation() {
         const formData = new FormData(form);
         const body = Object.fromEntries(Array.from(formData, ([key, value]) => [key, String(value).trim()]));
         const job = jobs.find(item => item.key === body.position && item.departmentKey === body.department);
-        if (!body.name || !job) {
-            status.textContent = 'Заповніть імʼя та оберіть посаду у відповідному відділі.';
+        if (!body.family_name || !body.given_name || !job) {
+            status.textContent = 'Заповніть прізвище, імʼя та оберіть посаду у відповідному відділі.';
             return;
         }
         body.department = job.departmentValue;

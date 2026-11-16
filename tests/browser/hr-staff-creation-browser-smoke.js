@@ -209,6 +209,36 @@ async function runActor(browser, pool, actor, existingAccountId) {
             assert.equal(await profile.getByRole('button', { name: 'Створити CRM-акаунт' }).count(), 0);
         }
         await captureSupplement('hr-created');
+        if (['desktop', 'mobile'].includes(actor.label)) {
+            const picker = profile.locator('#editStaffPhotoFile');
+            const upload = profile.locator('#editStaffPhotoUpload');
+            if (actor.label === 'desktop') {
+                await picker.setInputFiles({ name: 'invalid.png', mimeType: 'image/png', buffer: Buffer.from('not an image') });
+                const [invalidPhoto] = await Promise.all([
+                    waitForResponse(page, 'PUT', `/api/hr/staff/${staff.id}`), upload.click()
+                ]);
+                assert.equal(invalidPhoto.status(), 400);
+                await page.waitForFunction(() => !document.getElementById('editStaffPhotoUpload').disabled);
+            }
+            const buffer = await require('sharp')({
+                create: { width: 16, height: 16, channels: 3, background: '#117766' }
+            }).png().toBuffer();
+            await picker.setInputFiles({ name: 'synthetic.png', mimeType: 'image/png', buffer });
+            const [uploadedPhoto] = await Promise.all([
+                waitForResponse(page, 'PUT', `/api/hr/staff/${staff.id}`), upload.click()
+            ]);
+            assert.equal(uploadedPhoto.status(), 200);
+            const uploaded = await uploadedPhoto.json();
+            const photoUrl = uploaded.data.photo_url;
+            assert.match(photoUrl, /^\/uploads\/profile-avatars\//);
+            assert.equal((await pool.query('SELECT photo_url FROM staff WHERE id = $1', [staff.id])).rows[0].photo_url, photoUrl);
+            const image = await page.request.get(new URL(photoUrl, page.url()).href);
+            assert.equal(image.status(), 200);
+            assert.equal(image.headers()['content-type'], 'image/jpeg');
+            await page.waitForFunction(expected => document.getElementById('editPhotoUrl').value === expected, photoUrl);
+            await upload.scrollIntoViewIfNeeded();
+            await page.screenshot({ path: path.join(output, `${actor.label}-photo.png`) });
+        }
         const updatedPosition = await profile.locator('#editStaffPosition option').last().getAttribute('value');
         await profile.locator('#editStaffPosition').selectOption(updatedPosition);
         const [edit] = await Promise.all([

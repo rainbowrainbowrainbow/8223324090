@@ -1179,8 +1179,12 @@
                     <div id="editPhotoPreview" class="hr-staff-photo-preview" aria-hidden="true">!</div>
                     <div class="hr-staff-photo-controls">
                         <input type="text" id="editPhotoUrl" maxlength="500" inputmode="url" autocomplete="off" placeholder="/uploads/... або https://..." oninput="updateStaffPhotoPreview()">
+                        <label for="editStaffPhotoFile">Фото з пристрою</label>
+                        <input type="file" id="editStaffPhotoFile" accept="image/jpeg,image/png,image/webp,image/gif" aria-describedby="editStaffPhotoStatus">
+                        <small id="editStaffPhotoStatus" class="form-hint" role="status"></small>
                         <div class="hr-staff-photo-actions">
-                            <small class="form-hint">Використовується як аватар у картці та пульсі. Це не Face ID; Камера / Face ID реєструється окремо через модуль Камера / check-in. Дозволено https, /uploads або /images.</small>
+                            <small class="form-hint">Аватар у картці та пульсі. JPG, PNG, WebP або GIF, до 5 МБ.</small>
+                            <button type="button" id="editStaffPhotoUpload" class="btn-secondary">Завантажити фото</button>
                             <button type="button" id="editPhotoClear" class="btn-secondary" onclick="clearStaffPhotoUrl()">Очистити фото</button>
                         </div>
                     </div>

@@ -693,7 +693,7 @@ let hrRealtimeRefreshTimer = null;
 let hrRealtimeSubscribedDate = null;
 const STAFF_PROFILE_DEFAULT_TAB = 'main';
 const STAFF_PROFILE_TABS = [
-    { id: 'main', label: 'Основне', scopes: ['main'] },
+    { id: 'main', label: 'Основне', scopes: ['main', 'photoUpload'] },
     { id: 'work', label: 'Робота', scopes: ['work', 'shift', 'roles'] },
     { id: 'training', label: 'Навчання', scopes: [] },
     { id: 'payroll', label: 'Оплата', scopes: ['rates', 'payroll'] },
@@ -705,6 +705,7 @@ const STAFF_PROFILE_TAB_IDS = new Set(STAFF_PROFILE_TABS.map(tab => tab.id));
 const STAFF_PROFILE_TAB_SCOPES = Object.fromEntries(STAFF_PROFILE_TABS.map(tab => [tab.id, tab.scopes]));
 const STAFF_PROFILE_SCOPE_LABELS = {
     main: 'Основне',
+    photoUpload: 'Фото профілю',
     work: 'Робочі дані',
     shift: 'Типові зміни',
     roles: 'Ролі та допуски',
@@ -717,6 +718,7 @@ const STAFF_PROFILE_SCOPE_LABELS = {
 };
 const STAFF_PROFILE_SCOPE_SELECTORS = {
     main: ['#editStaffName', '#editStaffFamilyName', '#editStaffGivenName', '#editStaffPosition', '#editPhone', '#editPhotoUrl'],
+    photoUpload: ['#editStaffPhotoFile'],
     work: [
         '#editBirthDate', '#editAddress', '#editEmergencyContact', '#editEmergencyPhone',
         '#editRoleType', '#editSecondaryProfessions', '#editCompanyStructureNode',
@@ -11432,6 +11434,60 @@ function updateStaffPhotoPreview(urlOverride) {
     preview.appendChild(img);
 }
 
+function syncStaffPhotoFileStatus() {
+    const status = document.getElementById('editStaffPhotoStatus');
+    if (status) status.textContent = document.getElementById('editStaffPhotoFile')?.files?.length
+        ? 'Фото вибрано. Натисніть «Завантажити фото».' : '';
+}
+
+async function uploadStaffProfilePhoto(button) {
+    const input = document.getElementById('editStaffPhotoFile');
+    const status = document.getElementById('editStaffPhotoStatus');
+    const url = document.getElementById('editPhotoUrl');
+    const file = input?.files?.[0];
+    const staffId = activeEditStaffId();
+    const isCurrent = staffProfileSaveIsCurrent(staffId);
+    if (!status || !staffId || !isCurrent()) return { success: false };
+    if (!file || file.size > 5 * 1024 * 1024) {
+        status.textContent = 'Виберіть фото до 5 МБ.';
+        return { success: false };
+    }
+    return runStaffProfileAction(button, { isCurrent, loadingLabel: 'Завантаження…', successLabel: 'Завантажено' }, async () => {
+        const previousUrl = url?.value;
+        const payload = new FormData();
+        payload.append('photo', file);
+        let result;
+        try {
+            result = await hrFetch(`/staff/${staffId}`, {
+                method: 'PUT',
+                headers: staffProfileRevision == null ? {} : { 'X-Staff-Profile-Revision': String(staffProfileRevision) },
+                body: payload
+            });
+        } catch {
+            result = { success: false };
+        }
+        if (!isCurrent()) return { success: false, stale: true };
+        if (!result?.success || !result.data?.photo_url) {
+            status.textContent = result?.error || 'Не вдалося завантажити фото. Спробуйте ще раз.';
+            return { success: false };
+        }
+        staffProfileRevision = result.data.profile_revision ?? staffProfileRevision;
+        mergeFreshStaffProfile(result.data);
+        filterAndRenderTeam();
+        if (url && url.value === previousUrl) {
+            url.value = result.data.photo_url;
+            updateStaffPhotoPreview();
+            markStaffProfileScopeFieldsClean('main', captureStaffProfileScopeFields('main', ['editPhotoUrl']));
+        }
+        if (input.files?.[0] === file) {
+            input.value = '';
+            markStaffProfileScopesClean(['photoUpload']);
+            status.textContent = 'Фото профілю збережено.';
+        } else syncStaffPhotoFileStatus();
+        return result;
+    });
+}
+
 function clearStaffPhotoUrl() {
     const input = document.getElementById('editPhotoUrl');
     if (input) {
@@ -14604,6 +14660,8 @@ function prepareStaffProfileActionButtons(modal) {
     bindStaffProfileActionButton('editRoleAssignmentsSave', button => saveStaffRoleAssignments(button));
     bindStaffProfileActionButton('editPayrollSchemeSave', button => saveStaffPayrollScheme(button));
     bindStaffProfileActionButton('editDocumentUpload', button => uploadStaffDocument(button));
+    bindStaffProfileActionButton('editStaffPhotoUpload', uploadStaffProfilePhoto);
+    document.getElementById('editStaffPhotoFile')?.addEventListener('change', syncStaffPhotoFileStatus);
     document.getElementById('editDocumentFile')?.addEventListener('change', syncStaffDocumentFileStatus);
     bindStaffProfileActionButton('editMedicalSave', button => saveStaffMedicalBook(button));
     bindStaffProfileActionButton('editResourceIssue', button => issueStaffResource(button));
@@ -15295,6 +15353,9 @@ async function openStaffEdit(staffId, options = {}) {
     document.getElementById('editPhone').value = s.phone || '';
     const editPhotoUrl = document.getElementById('editPhotoUrl');
     if (editPhotoUrl) editPhotoUrl.value = s.photo_url || '';
+    const editStaffPhotoFile = document.getElementById('editStaffPhotoFile');
+    if (editStaffPhotoFile) editStaffPhotoFile.value = '';
+    syncStaffPhotoFileStatus();
     updateStaffPhotoPreview(s.photo_url || '');
     document.getElementById('editBirthDate').value = s.birth_date ? s.birth_date.substring(0, 10) : '';
     document.getElementById('editAddress').value = s.address || '';
@@ -15464,6 +15525,10 @@ function setParkStaffProfileEditFields(modal, fields) {
     }
     const clearPhoto = modal.querySelector('#editPhotoClear');
     if (clearPhoto) clearPhoto.disabled = allowed !== null && !allowed.has('photo_url');
+    for (const id of ['editStaffPhotoFile', 'editStaffPhotoUpload']) {
+        const field = modal.querySelector('#' + id);
+        if (field) field.disabled = allowed !== null && !allowed.has('photo_url');
+    }
     const professionPicker = modal.querySelector('#editSecondaryProfessionPicker');
     if (professionPicker) professionPicker.inert = allowed !== null;
     const hint = modal.querySelector('#editStaffWorkSaveHint');

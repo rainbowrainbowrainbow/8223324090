@@ -32,6 +32,7 @@ const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurf
 const { staffWorkflowCapability } = require('../services/parkHrStaffWorkflowAccess');
 const { parkHrStaffCardEditCapability, PARK_STAFF_PROFILE_FIELD_LIMITS } = require('../services/parkHrStaffCardRead');
 const { normalizeStaffNameParts } = require('../services/staffCreation');
+const { MAX_AVATAR_BYTES, storeProfileAvatarBlob } = require('../services/profileAvatarStorage');
 const { isParkHrStaffDeletionRoute, projectStaffDeletionReadiness } = require('../services/parkHrStaffDeletionAccess');
 const { loadAdditionalStaffDeletionBlockers } = require('../services/staffDeletionReferences');
 const { prepareHrFixtureQa, claimHrFixtureQa, requireHrQaEntity } = require('../services/hrFixtureQa');
@@ -4832,7 +4833,27 @@ router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
 });
 
 // PUT /api/hr/staff/:id — update HR fields
-router.put('/staff/:id', requireHrManage, async (req, res) => {
+const staffPhotoUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: MAX_AVATAR_BYTES, files: 1, fields: 0, parts: 2 }
+}).single('photo');
+
+function readStaffPhotoUpload(req, res, next) {
+    if (!req.is('multipart/form-data')) return next();
+    if (!resolveStaffOperation(req.user, 'hr.staff.profile.edit')) {
+        return res.status(403).json({ success: false, error: 'Немає дозволу на редагування фото' });
+    }
+    return staffPhotoUpload(req, res, error => {
+        if (error || !req.file?.buffer?.length) {
+            return res.status(error?.code === 'LIMIT_FILE_SIZE' ? 413 : 400).json({
+                success: false, error: 'Виберіть один файл фото до 5 МБ'
+            });
+        }
+        return next();
+    });
+}
+
+router.put('/staff/:id', requireHrManage, readStaffPhotoUpload, async (req, res) => {
     try {
         if (!resolveStaffOperation(req.user, 'hr.staff.profile.edit')) {
             return res.status(403).json({ success: false, code: 'STAFF_PROFILE_EDIT_FORBIDDEN',
@@ -4842,7 +4863,7 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
         const namePartFields = ['given_name', 'family_name'];
         if (req.hrCapability === 'hr.staff.profile.edit') {
             const fields = Object.entries(req.body || {}).map(([key, value]) => [namePartFields.includes(key) ? 'name' : key, value]);
-            if (fields.length === 0 || fields.some(([key]) => !Object.hasOwn(PARK_STAFF_PROFILE_FIELD_LIMITS, key))) {
+            if ((!req.file && fields.length === 0) || fields.some(([key]) => !Object.hasOwn(PARK_STAFF_PROFILE_FIELD_LIMITS, key))) {
                 return res.status(400).json({ success: false, error: 'Можна зберегти лише основні та контактні дані картки' });
             }
             if (fields.some(([key, value]) => value !== null
@@ -4919,6 +4940,18 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
         const conflict = () => res.status(409).json({ success: false, code: 'STAFF_PROFILE_CONFLICT',
             error: 'Інший оператор змінив картку. Перевірте актуальні дані перед збереженням.' });
         if (expectedRevision !== undefined && expectedRevision !== beforeStaff.profile_revision) return conflict();
+        let photo;
+        if (req.file) {
+            try {
+                const image = require('sharp')(req.file.buffer, { limitInputPixels: 24_000_000 });
+                const { format } = await image.metadata();
+                if (!['jpeg', 'png', 'webp', 'gif'].includes(format)) throw new Error('unsupported photo format');
+                const buffer = await image.rotate().resize(1024, 1024, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 86 }).toBuffer();
+                photo = { originalname: 'staff-photo.jpg', mimetype: 'image/jpeg', buffer };
+            } catch {
+                return res.status(400).json({ success: false, error: 'Виберіть дійсне зображення JPG, PNG, WebP або GIF' });
+            }
+        }
         let effectiveRoleType = fieldPresence.role_type ? role_type : null;
         if (hasSecondaryProfessions && !effectiveRoleType) {
             effectiveRoleType = beforeStaff.role_type;
@@ -5038,12 +5071,16 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
             if (qa) {
                 const owned = await requireHrQaEntity(client, qa, 'hr_staff', req.params.id);
                 const allowed = Object.keys(req.body).every(key => ['name', 'position', 'phone'].includes(key));
-                if (!allowed || beforeStaff.name !== owned.name || (name !== undefined && name !== owned.name)) {
+                if (!allowed || photo || beforeStaff.name !== owned.name || (name !== undefined && name !== owned.name)) {
                     throw Object.assign(new Error('QA edits are limited to the registered basic profile'), {
                         statusCode: 403, code: 'HR_QA_PROFILE_SCOPE_DENIED'
                     });
                 }
                 await claimHrFixtureQa(client, qa, req);
+            }
+            if (photo) {
+                const stored = await storeProfileAvatarBlob(client, photo, { username: 'staff-' + beforeStaff.id });
+                queueStaffUpdate('photo_url', stored.publicUrl);
             }
             if (setClauses.length) {
                 values.push(req.params.id);
@@ -5107,7 +5144,7 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
             source: 'hr_staff_profile',
             changed_fields: Object.keys(changes),
             changes,
-            requested_fields: Object.keys(req.body || {}),
+            requested_fields: photo ? ['photo_url'] : Object.keys(req.body || {}),
             schedule_cleanup: scheduleCleanup
         }, req.ip);
         res.json({ success: true, data: result.rows[0], schedule_cleanup: scheduleCleanup });

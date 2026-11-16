@@ -1655,14 +1655,15 @@
             </section>
             </section>
             <section id="staffProfilePanelOffboarding" class="hr-staff-profile-panel hr-staff-foundation-panel hr-staff-foundation-danger" aria-label="Завершення співпраці" data-staff-profile-panel="offboarding" role="tabpanel" aria-labelledby="staffProfileTabOffboarding">
-                <div class="hr-staff-foundation-head">
+                <div class="hr-staff-foundation-head" data-offboarding-active-only>
                     <div>
                         <strong>Завершення співпраці</strong>
-                        <span>Контрольований процес: спочатку readiness і наслідки, потім незворотна дія.</span>
+                        <span>Перевірте наслідки перед підтвердженням звільнення.</span>
                     </div>
-                    <button type="button" id="editOffboardingReadinessRefresh" class="btn-secondary">Оновити readiness</button>
+                    <button type="button" id="editOffboardingReadinessRefresh" class="btn-secondary">Оновити перевірку</button>
                 </div>
-                <section class="hr-offboarding-readiness-section" aria-labelledby="editOffboardingReadinessTitle">
+                <p id="editOffboardingCompleted" hidden>Співпрацю вже завершено. Нижче є історія звільнення.</p>
+                <section class="hr-offboarding-readiness-section" data-offboarding-active-only aria-labelledby="editOffboardingReadinessTitle">
                     <div class="hr-offboarding-section-head">
                         <div>
                             <strong id="editOffboardingReadinessTitle">Перевірка та блокери</strong>
@@ -1671,7 +1672,7 @@
                     </div>
                     <div id="editOffboardingReadiness" class="hr-offboarding-readiness" aria-live="polite" aria-busy="true">Перевірка готовності завантажується...</div>
                 </section>
-                <section class="hr-offboarding-form" aria-labelledby="editOffboardingFormTitle">
+                <section class="hr-offboarding-form" data-offboarding-active-only aria-labelledby="editOffboardingFormTitle">
                     <div class="hr-offboarding-section-head">
                         <div>
                             <strong id="editOffboardingFormTitle">Параметри завершення</strong>
@@ -1680,37 +1681,37 @@
                     </div>
                     <div class="hr-staff-foundation-grid">
                         <div class="form-group">
-                            <label>Дата</label>
-                            <input type="date" id="editOffboardingDate">
+                            <label for="editOffboardingDate">Дата звільнення</label>
+                            <input type="date" id="editOffboardingDate" name="effective_date" aria-describedby="editOffboardingDateHelp" required>
+                            <small id="editOffboardingDateHelp">Дату запишемо в історію. Профіль і пов’язані CRM-акаунти стануть неактивними одразу після підтвердження.</small>
                         </div>
                         <div class="form-group">
-                            <label>Після завершення</label>
-                            <select id="editOffboardingPoolStatus">
-                                <option value="reserve">Резерв</option>
-                                <option value="blacklisted">Чорний список</option>
-                                <option value="core">Основна команда</option>
+                            <label for="editOffboardingPoolStatus">Де показувати працівника</label>
+                            <select id="editOffboardingPoolStatus" name="target_pool_status">
+                                <option value="reserve">Лише звільнені</option>
+                                <option value="blacklisted">Звільнені та чорний список</option>
                             </select>
                         </div>
                         <div class="form-group">
-                            <label>Дія з акаунтом</label>
+                            <label for="editOffboardingAccountAction">Дія з акаунтом</label>
                             <select id="editOffboardingAccountAction" disabled aria-describedby="editOffboardingAccountHelp">
                                 <option value="disable">Автоматично вимкнути CRM-акаунт</option>
                             </select>
                             <small id="editOffboardingAccountHelp">Завершення співпраці вимикає повʼязані CRM-акаунти та завершує їхні сесії.</small>
                         </div>
                         <div class="form-group is-wide">
-                            <label>Причина</label>
-                            <textarea id="editOffboardingReason" rows="2" placeholder="Причина завершення співпраці"></textarea>
+                            <label for="editOffboardingReason">Причина</label>
+                            <textarea id="editOffboardingReason" name="reason" rows="2" required placeholder="Причина завершення співпраці"></textarea>
                         </div>
                         <div class="form-group is-wide">
-                            <label>Нотатка</label>
-                            <textarea id="editOffboardingNotes" rows="2" placeholder="Що перевірити перед закриттям"></textarea>
+                            <label for="editOffboardingNotes">Нотатка</label>
+                            <textarea id="editOffboardingNotes" name="notes" rows="2" placeholder="Що перевірити перед закриттям"></textarea>
                         </div>
                     </div>
                     <div id="editOffboardingConsequenceSummary" class="hr-offboarding-consequence-summary" aria-live="polite"></div>
                     <div id="editOffboardingActionStatus" class="hr-offboarding-action-status" role="status" aria-live="polite"></div>
                     <div class="hr-offboarding-action-row">
-                        <button type="button" id="editOffboardingComplete" class="btn-danger" aria-describedby="editOffboardingConsequenceSummary editOffboardingActionStatus" disabled>Завершити співпрацю</button>
+                        <button type="button" id="editOffboardingComplete" class="btn-danger" aria-describedby="editOffboardingConsequenceSummary editOffboardingActionStatus" disabled>Звільнити</button>
                     </div>
                 </section>
                 <section class="hr-offboarding-history" aria-labelledby="editOffboardingHistoryTitle">

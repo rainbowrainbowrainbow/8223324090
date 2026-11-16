@@ -2028,7 +2028,8 @@ function formModal(title, fields, options = {}) {
             compact = false,
             className = '',
             closeOnBackdrop = true,
-            validate = null
+            validate = null,
+            okTextForValues = null
         } = options;
         const icons = { danger: '🗑️', success: '✅', warning: '⚠️', info: 'ℹ️' };
         const icon = customIcon || icons[type] || '📝';
@@ -2234,6 +2235,9 @@ function formModal(title, fields, options = {}) {
             clearValidationError();
             updateConditionalFields();
             updateDynamicNotes();
+            if (typeof okTextForValues === 'function') {
+                overlay.querySelector('.confirm-ok').textContent = okTextForValues(getValues()) || okText;
+            }
         };
         const requestCancel = async () => {
             if (isDirty() && window.UnsafeDismissGuard) {

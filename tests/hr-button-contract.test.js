@@ -1196,7 +1196,7 @@ test('HR people bucket navigation uses one rendered result surface and category-
         'function normalizeVisiblePeopleBucket',
         'function canSeeHrTeamBucket',
         'function clearTeamSearchOnBucketChange',
-        'const activeStaff = teamStaff.filter(item => bucketForStaff(item) === activePeopleBucket);',
+        'const activeStaff = teamStaff.filter(item => isStaffInPeopleBucket(item, activePeopleBucket));',
         'activeStaff.filter(item => teamSearchHaystack(item).includes(query))',
         'updatePeopleNavCounts(grouped)',
         'renderPeopleBucketState',

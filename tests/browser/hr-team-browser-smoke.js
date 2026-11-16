@@ -162,7 +162,7 @@ const HARNESS_CODE = String.raw`
     function profileResponse(id) {
         const profile = staffProfiles.get(Number(id));
         return profile
-            ? { success: true, data: { ...profile, name: 'Fresh ' + profile.name, phone: profile.phone + '-fresh' } }
+            ? { success: true, data: { profile_revision: 1, ...profile, name: 'Fresh ' + profile.name, phone: profile.phone + '-fresh' } }
             : { success: false, error: 'missing profile' };
     }
 
@@ -243,6 +243,11 @@ const HARNESS_CODE = String.raw`
                     disable_blockers: [{ username: 'qa.staff', block_reason: 'requires_manage_accounts' }]
                 }
             };
+        }
+        if (String(requestPath).includes('/offboarding')) {
+            return { success: true, data: offboardingSubmissions
+                .filter(item => item.path === requestPath)
+                .map(item => item.body) };
         }
         return { success: true, data: [] };
     }
@@ -477,7 +482,14 @@ const HARNESS_CODE = String.raw`
         if (String(path).includes('/offboarding') && String(options?.method || 'GET').toUpperCase() === 'POST') {
             offboardingSubmissions.push({ path: requestPath, body: { ...(options.body || {}) } });
             workspaceOperations.push('offboarding-complete');
-            return { success: true, open_resource_count: 0, disabled_accounts: 0 };
+            const staff = staffProfiles.get(Number(requestPath.split('/')[2]));
+            Object.assign(staff, {
+                is_active: false,
+                hr_pool_status: options.body.target_pool_status,
+                termination_date: options.body.effective_date,
+                termination_reason: options.body.reason
+            });
+            return { success: true, staff: { ...staff }, open_resource_count: 0, disabled_accounts: 0 };
         }
         if (String(path).includes('/offboarding-readiness') || String(path).includes('/offboarding')) {
             return holdLazyTabLoads ? deferredLazyTab(requestPath) : lazyTabResponse(requestPath);
@@ -573,7 +585,7 @@ const HARNESS_CODE = String.raw`
             resetWorkspace();
             document.body.classList.toggle('dark-mode', Boolean(dark));
             teamStaff = Array.from(staffProfiles.values()).map(item => ({ is_active: true, hr_pool_status: 'core', ...item }));
-            teamLoadState = { status: 'success', context: teamAccessContext(), message: '' };
+            teamLoadState = { status: 'success', context: teamAccessContext(), message: '', workflows: { documents: true, move: true } };
             activePeopleBucket = 'workers';
             pendingPeopleBucket = null;
             filterAndRenderTeam();
@@ -1704,6 +1716,94 @@ async function assertResourcesWorkspaceStatesAndActions(page) {
     assert.equal(await page.locator('#editMedicalSave').isEnabled(), true, 'permitted role receives an enabled medical save action');
 }
 
+async function assertTeamCardEntryPoints(page) {
+    await page.evaluate(() => closeHrEditableModal('staffEditModal', true));
+    await page.evaluate(() => {
+        const staff = teamStaff.find(item => item.id === 1);
+        staff.photoUrl = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2244%22 height=%2244%22%3E%3Crect width=%2244%22 height=%2244%22 fill=%22royalblue%22/%3E%3Cpath d=%22M10 40a12 12 0 0 1 24 0M22 12a6 6 0 1 0 .01 0Z%22 fill=%22white%22/%3E%3C/svg%3E';
+        staff.photo_url = '';
+        window.__hrTeamBrowserSmoke.setBucket('workers');
+    });
+    const card = page.locator('.hr-team-card[data-staff-id="1"]');
+    const name = card.locator('.hr-team-name-action');
+    const photo = card.locator('.hr-team-avatar img');
+    await photo.evaluate(img => img.decode());
+    assert.ok(await photo.evaluate(img => img.naturalWidth > 0), 'the team card displays the profile photo');
+    assert.equal(await card.locator('.hr-team-avatar span').isVisible(), false);
+    assert.equal(await name.locator('svg').getAttribute('aria-hidden'), 'true');
+    fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+    if ((page.viewportSize()?.width || 0) < 500) {
+        await card.screenshot({ path: path.join(OUTPUT_DIR, 'staff-card-name-photo-mobile.png') });
+    }
+    if ((page.viewportSize()?.width || 0) < 500) {
+        await name.click();
+    } else {
+        await name.focus();
+        await page.keyboard.press('Enter');
+    }
+    await waitForCleanHydration(page);
+    assert.equal(await page.locator('#editStaffId').inputValue(), '1');
+    await page.locator('#editCloseTop').click();
+    await page.waitForFunction(() => document.activeElement?.matches('.hr-team-name-action'));
+
+    const overflow = card.locator('.hr-team-overflow-trigger');
+    await overflow.click();
+    await card.getByRole('menuitem', { name: 'Звільнити', exact: true }).click();
+    await waitForCleanHydration(page);
+    assert.equal(await page.locator('#staffProfileTabOffboarding').getAttribute('aria-selected'), 'true');
+    await page.locator('#editCloseTop').click();
+    await page.waitForFunction(() => document.activeElement?.matches('.hr-team-overflow-trigger'));
+
+    await overflow.click();
+    await card.getByRole('menuitem', { name: 'Перемістити', exact: true }).click();
+    const move = page.locator('.hr-staff-move-modal');
+    const destination = move.locator('#fm_targetBucket');
+    assert.equal(await move.getByRole('button', { name: 'Перемістити', exact: true }).count(), 1);
+    await destination.selectOption('dismissed');
+    const dismiss = move.getByRole('button', { name: 'Звільнити', exact: true });
+    assert.equal(await dismiss.isVisible(), true);
+    if ((page.viewportSize()?.width || 0) < 500) {
+        await move.screenshot({ path: path.join(OUTPUT_DIR, 'staff-move-offboarding-mobile.png') });
+    }
+    const writesBefore = await page.evaluate(() => window.__hrTeamBrowserSmoke.staffUpdates().length);
+    await dismiss.click();
+    await waitForCleanHydration(page);
+    assert.equal(await page.locator('#editStaffId').inputValue(), '1');
+    assert.equal(await page.locator('#staffProfileTabOffboarding').getAttribute('aria-selected'), 'true');
+    assert.equal(await page.locator('#editOffboardingComplete').isDisabled(), true);
+    assert.equal(await page.evaluate(() => window.__hrTeamBrowserSmoke.staffUpdates().length), writesBefore);
+    assert.equal(await page.evaluate(() => window.__hrTeamBrowserSmoke.offboardingSubmissions().length), 0);
+    await page.locator('#editCloseTop').click();
+    await page.waitForFunction(() => document.activeElement?.matches('.hr-team-overflow-trigger'));
+
+    await photo.evaluate(img => { img.src = 'data:image/png;base64,invalid'; });
+    await photo.waitFor({ state: 'hidden' });
+    const displayedName = await name.locator('.hr-team-name').textContent();
+    const initials = displayedName.trim().split(/\s+/).slice(0, 2).map(word => word[0]).join('');
+    assert.equal(await card.locator('.hr-team-avatar span').textContent(), initials);
+    assert.equal(await card.locator('.hr-team-avatar span').isVisible(), true);
+
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.setBucket('dismissed'));
+    const archived = page.locator('.hr-team-card[data-staff-id="5"]');
+    await archived.locator('.hr-team-overflow-trigger').click();
+    assert.equal(await archived.getByRole('menuitem', { name: 'Звільнити', exact: true }).count(), 0);
+    await archived.getByRole('menuitem', { name: 'Перемістити', exact: true }).click();
+    assert.equal(await move.locator('#fm_targetBucket option[value="dismissed"]').count(), 0);
+    await move.getByRole('button', { name: 'Скасувати', exact: true }).click();
+    await move.waitFor({ state: 'detached' });
+    await page.evaluate(() => {
+        teamLoadState.workflows.move = false;
+        window.__hrTeamBrowserSmoke.setBucket('workers');
+    });
+    await overflow.click();
+    assert.equal(await card.getByRole('menuitem', { name: 'Звільнити', exact: true }).count(), 0);
+    assert.equal(await card.getByRole('menuitem', { name: 'Перемістити', exact: true }).getAttribute('aria-disabled'), 'true');
+    await page.evaluate(() => {
+        teamLoadState.workflows.move = true;
+        window.__hrTeamBrowserSmoke.render();
+    });
+}
+
 async function assertOffboardingDangerFlow(page) {
     await page.evaluate(() => closeHrEditableModal('staffEditModal', true));
     await openProfile(page, 1);
@@ -1722,7 +1822,10 @@ async function assertOffboardingDangerFlow(page) {
 
     await page.fill('#editOffboardingReason', 'QA controlled offboarding');
     assert.equal(await complete.isDisabled(), true, 'reason alone does not unlock offboarding');
-    await page.fill('#editOffboardingDate', '2026-08-15');
+    await page.fill('#editOffboardingDate', '2026-11-15');
+    const destination = page.locator('#editOffboardingPoolStatus');
+    assert.deepEqual(await destination.locator('option').allTextContents(), ['Лише звільнені', 'Звільнені та чорний список']);
+    await destination.selectOption('blacklisted');
     assert.equal(await complete.isDisabled(), true, 'linked account permission blocker prevents completing dismissal');
     assert.match(await page.locator('#editOffboardingConsequenceSummary').textContent(), /неактивним/i, 'visible consequence summary explains the profile outcome');
     assert.match(await page.locator('#editOffboardingConsequenceSummary').textContent(), /майбутніх змін: 2/i, 'visible consequence summary includes future shifts');
@@ -1739,6 +1842,8 @@ async function assertOffboardingDangerFlow(page) {
     const confirmationMessage = await page.locator('.confirm-overlay .confirm-message').textContent();
     assert.match(confirmationMessage, /Підтвердьте завершення співпраці/i, 'final submit shows an explicit confirmation summary');
     assert.match(confirmationMessage, /майбутніх змін: 2/i, 'final confirmation repeats the planned schedule cleanup');
+    assert.match(confirmationMessage, /одразу після підтвердження/i);
+    assert.match(confirmationMessage, /Звільнені та чорний список/i);
     fs.mkdirSync(OUTPUT_DIR, { recursive: true });
     await page.screenshot({ path: path.join(OUTPUT_DIR, 'offboarding-automatic-disable-mobile.png'), fullPage: true });
     await page.locator('.confirm-overlay .confirm-cancel').click();
@@ -1752,12 +1857,44 @@ async function assertOffboardingDangerFlow(page) {
     const submissions = await page.evaluate(() => window.__hrTeamBrowserSmoke.offboardingSubmissions());
     assert.equal(submissions.length, 1, 'confirmed offboarding sends exactly one request');
     assert.deepEqual(submissions[0].body, {
-        effective_date: '2026-08-15',
-        target_pool_status: 'reserve',
+        effective_date: '2026-11-15',
+        target_pool_status: 'blacklisted',
         account_action: 'disable',
         reason: 'QA controlled offboarding',
         notes: null
     }, 'confirmed offboarding preserves the reviewed consequence payload');
+
+    await page.locator('#staffEditModal').waitFor({ state: 'hidden' });
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.setBucket('blacklist'));
+    const card = page.locator('.hr-team-card[data-staff-id="1"]');
+    await card.waitFor();
+    assert.match(await card.locator('.hr-team-status-row').textContent(), /Звільнений.*Чорний список/s);
+    assert.equal(await page.locator('[data-nav-count="blacklist"]').textContent(), '2');
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.setBucket('dismissed'));
+    await card.locator('.hr-team-open').click();
+    await waitForCleanHydration(page);
+    const historyTab = page.getByRole('tab', { name: 'Історія звільнення', exact: true });
+    const readinessRequests = await page.evaluate(() => window.__hrTeamBrowserSmoke.requestCount('/offboarding-readiness'));
+    await historyTab.click();
+    await page.waitForFunction(() => document.getElementById('editStaffOffboarding')?.textContent.includes('QA controlled offboarding'));
+    assert.match(await page.locator('#editStaffOffboarding').textContent(), /15\.11\.2026.*Звільнені та чорний список/s);
+    assert.equal(await complete.isVisible(), false);
+    assert.equal(await page.evaluate(() => window.__hrTeamBrowserSmoke.requestCount('/offboarding-readiness')), readinessRequests);
+    const accountEvent = await page.evaluate(() => renderAccountHistoryItem({
+        event_type: 'account_deactivated', reason: 'hr_offboarding', actor_username: 'qa.hr', target_username: 'qa.staff'
+    }));
+    assert.match(accountEvent, /CRM-акаунт вимкнено після звільнення/);
+    assert.match(accountEvent, /Акаунт: qa\.staff/);
+    if ((page.viewportSize()?.width || 0) < 500) {
+        await page.locator('#staffProfilePanelOffboarding').screenshot({ path: path.join(OUTPUT_DIR, 'staff-offboarding-history-mobile.png') });
+    }
+    await page.locator('#editCloseTop').click();
+    await page.evaluate(() => {
+        window.HrTeamBucketAccess = { canSeeBucket: bucket => bucket !== 'dismissed' };
+        window.__hrTeamBrowserSmoke.setBucket('blacklist');
+    });
+    assert.equal(await card.count(), 0, 'blacklist does not expose dismissed profiles to roles denied the archive');
+    await page.evaluate(() => { window.HrTeamBucketAccess = null; });
 }
 
 async function assertFocusTrap(page) {
@@ -2117,6 +2254,7 @@ async function run() {
         if (process.env.HR_TEAM_OFFBOARDING_ONLY === 'true') {
             await page.setViewportSize({ width: 390, height: 844 });
             await installHarness(page, { dark: false });
+            await assertTeamCardEntryPoints(page);
             await assertOffboardingDangerFlow(page);
             console.log('HR automatic account offboarding browser smoke passed');
             return;
@@ -2161,6 +2299,7 @@ async function run() {
         await step('history', assertHistoryRaceAndLazyTabs);
         await step('lazy tab races', assertIndependentLazyTabRaces);
         await step('resources', assertResourcesWorkspaceStatesAndActions);
+        await step('staff card entry points', assertTeamCardEntryPoints);
         await step('offboarding', assertOffboardingDangerFlow);
         await step('focus trap', assertFocusTrap);
         await step('mobile and theme', assertMobileAndTheme);

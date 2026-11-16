@@ -7034,7 +7034,7 @@ check('HR Team uses Pulse-style bucket navigation and category-local search',
     && hrCode.includes('function clearTeamSearchOnBucketChange')
     && hrCode.includes('activePeopleBucket = requestedBucket')
     && hrCode.includes('activePeopleBucket = nextBucket')
-    && hrCode.includes('const activeStaff = teamStaff.filter(item => bucketForStaff(item) === activePeopleBucket);')
+    && hrCode.includes('const activeStaff = teamStaff.filter(item => isStaffInPeopleBucket(item, activePeopleBucket));')
     && hrCode.includes('activeStaff.filter(item => teamSearchHaystack(item).includes(query))')
     && !hrCode.includes('teamArchiveSearch')
     && hrCode.includes('function updateTeamFilterInfo')
@@ -7159,7 +7159,13 @@ check('HR staff history translates schedule replacement actions and field keys',
     && hrCode.includes("professionKey: 'професія'")
     && hrCode.includes("replacementReason: 'причина підміни'")
     && hrTeamBrowserSmokeCode.includes('history does not expose raw internal labels'));
-check('HR Team profile action has a single primary open button instead of avatar/name/profile duplicates', hrCode.includes('const profileClick = `openStaffEdit(${Number(s.id)})`;') && hrCode.includes('hr-team-open') && hrCode.includes("card?.querySelector?.('.hr-team-open, .hr-team-overflow-trigger')") && !hrCode.includes('hr-team-profile-trigger') && !hrCode.includes('hr-team-name-button') && !hrCode.includes('hr-team-edit hr-team-edit--top') && htmlContains('css/hr-page.css', '.hr-team-open') && htmlContains('css/hr-page.css', '.hr-team-overflow-trigger'));
+check('HR Team name and Open button share the profile action and restore focus to the invoking control',
+    hrCode.includes('const profileClick = `openStaffEdit(${Number(s.id)}, { trigger: this })`;')
+    && hrCode.includes('class="hr-team-name-action" onclick="${profileClick}"')
+    && hrCode.includes('class="hr-team-open" onclick="${profileClick}"')
+    && hrCode.includes('class="hr-team-avatar" aria-hidden="true"')
+    && hrCode.includes("fallback.matches?.('.hr-team-name-action, .hr-team-overflow-trigger')")
+    && htmlContains('css/hr-page.css', '.hr-team-name-action:focus-visible'));
 check('HR staff profile opens with team identity card and editable name/phone/photo row',
     htmlContains('hr.html', 'class="hr-staff-profile-panel hr-staff-profile-hero"')
     && htmlContains('hr.html', 'id="editStaffHeaderName"')

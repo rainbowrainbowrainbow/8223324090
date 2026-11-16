@@ -4716,6 +4716,10 @@ router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
             return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
         }
         await assertParkLifecycleAccountScope(client, req);
+        if (staff.is_active === false) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ success: false, code: 'staff_already_dismissed', error: 'Співпрацю вже завершено.' });
+        }
         const readiness = await loadStaffOffboardingReadiness(req.params.id, client, { currentUserId: req.user?.id, actor: req.user });
         const openResourceCount = readiness.open_resource_count || 0;
         const outstandingInstallments = await loadStaffOutstandingPayrollInstallments(req.params.id, client);

@@ -294,6 +294,10 @@
     border-color: rgba(239,68,68,0.24);
 }
 
+[data-offboarding-active-only][hidden] {
+    display: none;
+}
+
 .hr-offboarding-consequence-summary,
 .hr-offboarding-action-status {
     margin-top: 10px;

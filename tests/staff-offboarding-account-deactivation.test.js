@@ -118,7 +118,7 @@ test('strict dismissal preserves last organization owner protection', async () =
     assert.equal(f.calls.some(call => /UPDATE users|UPDATE refresh_tokens/.test(call.text)), false);
 });
 
-function routeHarness(f, readiness = { active_account_count: 1, disable_available: true }) {
+function routeHarness(f, readiness = { active_account_count: 1, disable_available: true }, staff = { id: 42, is_active: true }) {
     const marker = "router.post('/staff/:id/offboarding', requireHrManage, ";
     const start = hrSource.indexOf(marker) + marker.length;
     assert.ok(start >= marker.length);
@@ -131,7 +131,7 @@ function routeHarness(f, readiness = { active_account_count: 1, disable_availabl
         normalizeStaffOffboardingPoolStatus: () => 'reserve',
         lockOrganizationOwnership: ownerGuard.lockOrganizationOwnership,
         assertParkLifecycleAccountScope: async () => {},
-        loadStaffRowOrNull: async () => ({ id: 42 }),
+        loadStaffRowOrNull: async () => staff,
         loadStaffOffboardingReadiness: async () => readiness,
         loadStaffOutstandingPayrollInstallments: async () => ({ count: 0 }),
         cleanupFutureStaffOperationalSchedule: async () => ({ dates: [] }),
@@ -162,6 +162,15 @@ test('dismissal always disables accounts for omitted, legacy review, legacy none
         assert.equal(result.body.disabled_accounts, 1);
         assert.ok(f.calls.some(call => call.text === 'COMMIT'));
     }
+});
+
+test('an already dismissed staff record rejects another event before any writes', async () => {
+    const f = fixture();
+    const result = await routeHarness(f, undefined, { id: 42, is_active: false })({});
+    assert.equal(result.status, 409);
+    assert.equal(result.body.code, 'staff_already_dismissed');
+    assert.ok(f.calls.some(call => call.text === 'ROLLBACK'));
+    assert.ok(f.calls.every(call => !/^(INSERT|UPDATE|COMMIT)/i.test(call.text.trim())));
 });
 
 test('dismissal without accounts records the same automatic disable policy', async () => {

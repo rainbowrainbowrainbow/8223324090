@@ -209,7 +209,7 @@ const PAYROLL_SCHEME_LABELS = {
 const STAFF_OFFBOARDING_ACCOUNT_LABELS = {
     none: 'Акаунт не змінювався',
     review: 'Потрібна ручна перевірка акаунту',
-    disable: 'CRM-акаунт вимкнено'
+    disable: 'Автоматична деактивація активних CRM-акаунтів'
 };
 
 const STAFF_OFFBOARDING_DOC_SOURCE_LABELS = {
@@ -441,6 +441,11 @@ const HR_TEAM_MOVE_TARGETS = [
         id: 'blacklist',
         label: 'Чорний список',
         hint: 'Заплановані виходи від сьогодні без запису відвідування буде прибрано.'
+    },
+    {
+        id: 'dismissed',
+        label: 'Звільнити',
+        hint: 'Відкриється форма звільнення з перевіркою наслідків і підтвердженням.'
     }
 ];
 
@@ -1301,6 +1306,12 @@ function bucketForStaff(staff = {}) {
     return isInternStaff(staff) ? 'interns' : 'workers';
 }
 
+function isStaffInPeopleBucket(staff, bucketId) {
+    return bucketForStaff(staff) === bucketId
+        || (bucketId === 'blacklist' && staff.is_active === false
+            && staffPoolStatus(staff) === 'blacklisted' && canSeeHrTeamBucket('dismissed'));
+}
+
 function monthOptionLabel(date) {
     return `${MONTHS_SHORT[date.getMonth()]} ${date.getFullYear()}`;
 }
@@ -1722,9 +1733,10 @@ function setSelectedSecondaryProfessionKeys(keys = [], primaryRole = '') {
     picker.dataset.selected = JSON.stringify(normalizeProfessionList(keys, [primaryRole]));
 }
 
-function staffMoveTargetOptions(currentBucket = 'workers') {
+function staffMoveTargetOptions(currentBucket = 'workers', { includeDismissal = false } = {}) {
     return HR_TEAM_MOVE_TARGETS
-        .filter(target => target.id !== currentBucket && target.id !== 'dismissed' && canSeeHrTeamBucket(target.id))
+        .filter(target => target.id !== currentBucket
+            && (target.id === 'dismissed' ? includeDismissal : canSeeHrTeamBucket(target.id)))
         .map(target => ({
             value: target.id,
             label: target.label
@@ -7629,7 +7641,7 @@ function filterAndRenderTeam() {
     const buckets = visiblePeopleBuckets();
     const grouped = buckets.map(bucket => ({
         ...bucket,
-        totalCount: teamStaff.filter(item => bucketForStaff(item) === bucket.id).length
+        totalCount: teamStaff.filter(item => isStaffInPeopleBucket(item, bucket.id)).length
     }));
     updatePeopleNavCounts(grouped);
 
@@ -7644,7 +7656,7 @@ function filterAndRenderTeam() {
         pendingPeopleBucket = null;
     }
     activePeopleBucket = normalizeVisiblePeopleBucket(activePeopleBucket);
-    const activeStaff = teamStaff.filter(item => bucketForStaff(item) === activePeopleBucket);
+    const activeStaff = teamStaff.filter(item => isStaffInPeopleBucket(item, activePeopleBucket));
     const query = normalizeSearchText(document.getElementById('teamSearch')?.value);
 
     if (query) {
@@ -7714,7 +7726,7 @@ function renderTeamSearchResults(staff) {
     grid.dataset.activeBucket = activePeopleBucket || '';
     grid.setAttribute('aria-busy', 'false');
     grid.innerHTML = staff.length
-        ? `<div class="hr-people-results-grid">${renderTeamCards(staff, { showBucketBadge: true })}</div>`
+        ? `<div class="hr-people-results-grid">${renderTeamCards(staff, { showBucketBadge: true, bucketId: activePeopleBucket })}</div>`
         : '<div class="hr-people-empty">Нічого не знайдено в цій категорії. Змініть запит.</div>';
     initTeamDragAndDrop();
     syncHrNavActive('team', activePeopleBucket);
@@ -7861,9 +7873,10 @@ function renderTeamCardStatusChips(staff = {}, bucketBadge = '') {
     if (bucketBadge) chips.push(bucketBadge);
     if (staff.is_active === false) {
         chips.push('<span class="hr-team-status-chip is-muted">Звільнений</span>');
-    } else if (poolStatus === 'blacklisted') {
+    }
+    if (poolStatus === 'blacklisted') {
         chips.push('<span class="hr-team-status-chip is-danger">Чорний список</span>');
-    } else if (poolStatus === 'reserve') {
+    } else if (staff.is_active !== false && poolStatus === 'reserve') {
         chips.push('<span class="hr-team-status-chip is-info">Резерв</span>');
     }
     chips.push(`<span class="hr-team-status-chip is-info">${staffHasCrmAccount(staff) ? 'CRM прив’язано' : 'CRM не привʼязано'}</span>`);
@@ -7934,6 +7947,7 @@ function renderTeamCardOverflowMenu(staff = {}) {
     const actionSection = [accountItems, createAccountItem, manageItems].filter(Boolean).join('');
     const dangerSection = canManage
         ? `<div class="hr-team-menu-section hr-team-menu-section--danger">
+                ${move && staff.is_active !== false ? `<button type="button" role="menuitem" class="hr-team-menu-item hr-team-delete" onclick="openStaffOffboarding(${id}, this)">Звільнити</button>` : ''}
                 <small>Повне видалення — тільки для дубля.</small>
                 <button type="button" role="menuitem" class="hr-team-menu-item hr-team-delete" data-delete-staff-id="${id}" ${pendingStaffDeletions.has(JSON.stringify([teamAccessContext(), id])) ? 'disabled aria-busy="true"' : ''} onclick="deleteStaffProfile(${id})">${pendingStaffDeletions.has(JSON.stringify([teamAccessContext(), id])) ? 'Дія виконується…' : 'Видалити назавжди'}</button>
            </div>`
@@ -8043,10 +8057,11 @@ function renderTeamCards(staff, options = {}) {
         && canUseHrCapability('hr.staff.view') && canUseHrCapability('hr.staff.profile.edit'));
     return staff.map(s => {
         const bucketId = bucketForStaff(s);
-        const initials = s.name.split(' ').map(w => w[0]).join('').substring(0, 2);
-        const avatar = s.photo_url
-            ? `<img src="${escapeHtml(s.photo_url)}" alt="${escapeHtml(s.name)}">`
-            : initials;
+        const initials = s.name.trim().split(/\s+/).slice(0, 2).map(word => word[0]).join('');
+        const photoUrl = String(s.photo_url || '').trim() || String(s.photoUrl || '').trim();
+        const avatar = photoUrl
+            ? `<img src="${escapeHtml(photoUrl)}" alt="" onerror="this.hidden = true">`
+            : '';
         const secondary = staffSecondaryProfessions(s);
         const secondaryVisible = secondary.slice(0, 3);
         const secondaryChips = renderProfessionChips(secondaryVisible);
@@ -8054,8 +8069,9 @@ function renderTeamCards(staff, options = {}) {
             ? `<span class="hr-secondary-profession-chip is-more">+${secondary.length - secondaryVisible.length}</span>`
             : '';
         const poolStatus = s.hr_pool_status || 'core';
+        const badgeBucketId = options.bucketId || bucketId;
         const bucketBadge = options.showBucketBadge
-            ? `<span class="hr-team-bucket-badge" data-card-bucket="${escapeHtml(bucketId)}">${escapeHtml(peopleBucketTitle(bucketId))}</span>`
+            ? `<span class="hr-team-bucket-badge" data-card-bucket="${escapeHtml(badgeBucketId)}">${escapeHtml(peopleBucketTitle(badgeBucketId))}</span>`
             : '';
         const dismissedMeta = s.is_active === false
             ? [
@@ -8065,11 +8081,14 @@ function renderTeamCards(staff, options = {}) {
             : '';
         const primaryRole = staffTeamPrimaryProfessionLabel(s);
         const legacyPosition = staffTeamLegacyPositionMeta(s);
-        const profileClick = `openStaffEdit(${Number(s.id)})`;
-        const avatarNode = `<div class="hr-team-avatar" style="${s.color ? 'background:' + s.color + '30;color:' + s.color : ''}">${avatar}</div>`;
-        const nameNode = `<div class="hr-team-name">${escapeHtml(s.name)}</div>`;
+        const profileClick = `openStaffEdit(${Number(s.id)}, { trigger: this })`;
+        const safeName = escapeHtml(s.name);
+        const avatarNode = `<div class="hr-team-avatar" aria-hidden="true" style="${s.color ? 'background:' + s.color + '30;color:' + s.color : ''}">${avatar}<span>${escapeHtml(initials)}</span></div>`;
+        const nameNode = canOpenProfile
+            ? `<button type="button" class="hr-team-name-action" onclick="${profileClick}" aria-label="Відкрити профіль: ${safeName}">${hrTodayActionIconSvg('profile')}<span class="hr-team-name">${safeName}</span></button>`
+            : `<div class="hr-team-name">${safeName}</div>`;
         const profileTopAction = canOpenProfile
-            ? `<button type="button" class="hr-team-open" onclick="${profileClick}" aria-label="Відкрити профіль: ${escapeHtml(s.name)}">Відкрити</button>`
+            ? `<button type="button" class="hr-team-open" onclick="${profileClick}" aria-label="Відкрити профіль: ${safeName}">Відкрити</button>`
             : '';
         const overflowMenu = renderTeamCardOverflowMenu(s);
         const cardActions = [profileTopAction, overflowMenu].filter(Boolean).join('');
@@ -8291,6 +8310,14 @@ async function openStaffDocuments(staffId) {
 
 window.openStaffDocuments = openStaffDocuments;
 
+async function openStaffOffboarding(staffId, button) {
+    if (!canUseTeamWorkflow('move')) return false;
+    const trigger = button?.closest?.('.hr-team-overflow')?.querySelector('.hr-team-overflow-trigger') || button;
+    closeTeamCardMenus();
+    await openStaffEdit(staffId, { focus: 'offboarding', trigger });
+    return true;
+}
+
 const pendingStaffMoves = new Set();
 
 async function runStaffMove(staffId, chooseDestination, button = null) {
@@ -8318,6 +8345,9 @@ async function runStaffMove(staffId, chooseDestination, button = null) {
         const destination = await chooseDestination(staff, currentBucket);
         if (!destination || !current()) return false;
         const { targetBucket, targetRole, reason } = destination;
+        if (targetBucket === 'dismissed') {
+            return currentBucket !== 'dismissed' && await openStaffOffboarding(staffId, button);
+        }
         if (!staffMoveTargetOptions(currentBucket).some(option => option.value === targetBucket)) return false;
         if (targetBucket === 'blacklist' && !String(reason || staff.blacklist_reason || '').trim()) {
             showNotification('Для чорного списку потрібно вказати причину', 'error');
@@ -8371,13 +8401,16 @@ async function runStaffMove(staffId, chooseDestination, button = null) {
 
 async function openStaffMoveMenu(staffId, button, fixedTarget = '') {
     return runStaffMove(Number(staffId), async (staff, currentBucket) => {
-        const targetOptions = staffMoveTargetOptions(currentBucket)
+        const targetOptions = staffMoveTargetOptions(currentBucket, { includeDismissal: !fixedTarget })
             .filter(option => !fixedTarget || option.value === fixedTarget);
         if (!targetOptions.length) return null;
+        if (targetOptions[0].value === 'dismissed') {
+            targetOptions.unshift({ value: '', label: 'Оберіть дію' });
+        }
         const needsProfession = isInternStaff(staff) && targetOptions.some(option => option.value === 'workers');
         if (needsProfession) await ensureProfessionsLoaded({ silent: true });
         return formModal(`Перемістити: ${staff.name}`, [
-            { key: 'targetBucket', label: 'Куди перемістити', type: 'select',
+            { key: 'targetBucket', label: 'Куди перемістити', type: 'select', required: true,
                 defaultValue: targetOptions[0].value, options: targetOptions },
             ...(needsProfession ? [{
                 key: 'targetRole', label: 'Основна професія', type: 'select', required: true,
@@ -8389,7 +8422,13 @@ async function openStaffMoveMenu(staffId, button, fixedTarget = '') {
             { key: 'reason', label: 'Причина для чорного списку', type: 'textarea',
                 defaultValue: staff.blacklist_reason || '', required: true,
                 visibleWhen: values => values.targetBucket === 'blacklist' }
-        ], { icon: '↔', type: 'info', okText: 'Перемістити', className: 'hr-staff-move-modal' });
+        ], {
+            icon: '↔',
+            type: 'info',
+            okText: 'Перемістити',
+            okTextForValues: values => values.targetBucket === 'dismissed' ? 'Звільнити' : 'Перемістити',
+            className: 'hr-staff-move-modal'
+        });
     }, button);
 }
 
@@ -9193,9 +9232,13 @@ function formatAccountDateTime(value) {
 }
 
 function renderAccountHistoryItem(item = {}) {
-    const type = item.event_type || item.eventType || item.action || 'account_event';
-    const actor = item.actor_username || item.actorUsername || item.actor || 'system';
-    const reason = item.reason || item.message || '';
+    const eventType = item.event_type || item.eventType || item.action;
+    const isOffboarding = eventType === 'account_deactivated'
+        && (item.reason === 'hr_offboarding' || item.details?.source === 'hr_staff_offboarding');
+    const type = isOffboarding ? 'CRM-акаунт вимкнено після звільнення' : eventType || 'Подія акаунта';
+    const actor = item.actor_username || item.actorUsername || item.actor || 'система';
+    const target = item.target_username || item.targetUsername;
+    const reason = isOffboarding ? (target ? `Акаунт: ${target}` : '') : item.reason || item.message || '';
     return `<article class="hr-account-history-item"><strong>${escapeHtml(type)}</strong><span>${escapeHtml(actor)} · ${escapeHtml(formatAccountDateTime(item.created_at || item.createdAt))}</span>${reason ? `<span>${escapeHtml(reason)}</span>` : ''}</article>`;
 }
 
@@ -11306,9 +11349,13 @@ function renderStaffHistoryRows(rows = []) {
     if (!rows.length) return '<div class="hr-staff-history-empty">Змін профілю ще немає.</div>';
     return rows.map(row => {
         const details = row.details || {};
+        const dismissal = row.action === 'staff_offboarding_complete' && details.effective_date
+            ? `<span>Дата звільнення: ${escapeHtml(formatStaffDateValue(details.effective_date))} · ${escapeHtml(staffOffboardingDestinationLabel(details.target_pool_status))}</span>`
+            : '';
         return `<article class="hr-staff-history-item">
             <b>${escapeHtml(STAFF_HISTORY_ACTION_LABELS[row.action] || row.action || 'Подія')}</b>
             <span>${escapeHtml(formatStaffHistoryTime(row.created_at))} · Хто: ${escapeHtml(row.performed_by || 'система')}</span>
+            ${dismissal}
             ${renderStaffHistoryChanges(details)}
         </article>`;
     }).join('');
@@ -12131,6 +12178,10 @@ function showStaffResourceDetails(assignmentId, button = null) {
     return true;
 }
 
+function staffOffboardingDestinationLabel(poolStatus) {
+    return poolStatus === 'blacklisted' ? 'Звільнені та чорний список' : 'Лише звільнені';
+}
+
 function renderStaffOffboarding(rows = []) {
     if (!rows.length) return renderStaffFoundationEmpty('Подій завершення співпраці ще немає.');
     return rows.slice(0, 5).map(item => {
@@ -12139,7 +12190,7 @@ function renderStaffOffboarding(rows = []) {
         const resourceText = resources ? ` · неповернуті ресурси: ${resources}` : '';
         return `<article class="hr-staff-foundation-item ${resources ? 'hr-staff-foundation-warning' : ''}">
             <div>
-                <b>${escapeHtml(formatStaffDateValue(item.effective_date))} · ${escapeHtml(HR_POOL_LABELS[item.target_pool_status] || item.target_pool_status || '')}</b>
+                <b>${escapeHtml(formatStaffDateValue(item.effective_date))} · ${escapeHtml(staffOffboardingDestinationLabel(item.target_pool_status))}</b>
                 <span>${escapeHtml(item.reason || 'Без причини')} · ${escapeHtml(account)}${escapeHtml(resourceText)}</span>
             </div>
         </article>`;
@@ -12202,6 +12253,11 @@ function renderStaffOffboardingReadiness(payload = {}, lifecycle = null) {
     </div>`;
 }
 
+function staffOffboardingIsCompleted() {
+    const staffId = Number(activeEditStaffId());
+    return teamStaff.find(staff => Number(staff.id) === staffId)?.is_active === false;
+}
+
 function getStaffOffboardingPreview() {
     const date = document.getElementById('editOffboardingDate')?.value || '';
     const reason = document.getElementById('editOffboardingReason')?.value?.trim() || '';
@@ -12238,9 +12294,9 @@ function getStaffOffboardingPreview() {
         : 'Активних CRM-акаунтів немає — дію вимкнення буде пропущено.';
     const consequences = [
         date
-            ? `Профіль стане неактивним з ${formatStaffDateValue(date)}.`
-            : 'Дата завершення ще не вказана.',
-        `HR-статус після завершення: ${HR_POOL_LABELS[poolStatus] || poolStatus}.`,
+            ? `Дата звільнення в історії: ${formatStaffDateValue(date)}. Профіль стане неактивним одразу після підтвердження.`
+            : 'Дата звільнення ще не вказана.',
+        `Відображення після підтвердження: ${staffOffboardingDestinationLabel(poolStatus)}.`,
         accountText,
         lifecycleMetrics
             ? `Буде прибрано майбутніх змін: ${futureScheduleCount}; активних тайм-записів: ${openTimeRecordCount}.`
@@ -12274,6 +12330,17 @@ function updateStaffOffboardingActionState() {
     const button = document.getElementById('editOffboardingComplete');
     const summaryRoot = document.getElementById('editOffboardingConsequenceSummary');
     const statusRoot = document.getElementById('editOffboardingActionStatus');
+    const completed = staffOffboardingIsCompleted();
+    const tab = document.getElementById('staffProfileTabOffboarding');
+    if (tab) tab.textContent = completed ? 'Історія звільнення' : 'Завершення співпраці';
+    const completedNote = document.getElementById('editOffboardingCompleted');
+    if (completedNote) completedNote.hidden = !completed;
+    const panel = document.getElementById('staffProfilePanelOffboarding');
+    panel?.querySelectorAll('[data-offboarding-active-only]').forEach(element => { element.hidden = completed; });
+    if (completed) {
+        if (button) button.disabled = true;
+        return { ready: false, blockers: ['Співпрацю вже завершено.'] };
+    }
     const preview = getStaffOffboardingPreview();
     if (summaryRoot) {
         summaryRoot.innerHTML = `<strong>Що буде змінено</strong><ul>${preview.consequences.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
@@ -14216,12 +14283,12 @@ async function completeStaffOffboarding(button = null) {
         const confirmationSummary = preview.consequences.map(item => `• ${item}`).join('\n');
         const ok = await confirmHrAction(
             `Підтвердьте завершення співпраці.\n\n${confirmationSummary}\n\nПричину буде збережено в історії HR-картки.`,
-            { type: 'danger', okText: 'Завершити співпрацю', cancelText: 'Повернутись' }
+            { type: 'danger', okText: 'Звільнити', cancelText: 'Повернутись' }
         );
         if (!ok) return { success: false, cancelled: true };
         const body = {
             effective_date: preview.date,
-            target_pool_status: document.getElementById('editOffboardingPoolStatus')?.value || 'reserve',
+            target_pool_status: preview.poolStatus,
             account_action: accountAction,
             reason,
             notes: document.getElementById('editOffboardingNotes')?.value || null
@@ -14233,8 +14300,14 @@ async function completeStaffOffboarding(button = null) {
         }
         const resourceNote = data.open_resource_count ? ` Неповернуті ресурси: ${data.open_resource_count}.` : '';
         const accountNote = data.disabled_accounts ? ` Вимкнено CRM-акаунтів: ${data.disabled_accounts}.` : '';
-        showNotification(`Співпрацю завершено.${resourceNote}${accountNote}${skippedAccountActionNote}`, data.open_resource_count ? 'warning' : 'success');
+        const destinationNote = preview.poolStatus === 'blacklisted'
+            ? ' Працівник у «Звільнених» і «Чорному списку».'
+            : ' Працівник у «Звільнених».';
+        showNotification(`Співпрацю завершено.${destinationNote}${resourceNote}${accountNote}${skippedAccountActionNote}`, data.open_resource_count ? 'warning' : 'success');
         markStaffProfileScopesClean(['offboarding']);
+        if (data.staff?.id) mergeFreshStaffProfile(data.staff);
+        accountCenterDetailRequestSeq += 1;
+        accountCenterDetailData = null;
         await closeHrEditableModal('staffEditModal', true);
         await loadTeam();
         await refreshHrOperationalViews();
@@ -14247,6 +14320,7 @@ function staffEditRestoreFocusTarget(staffId, fallback = null) {
     const card = Number.isFinite(id)
         ? document.querySelector(`[data-staff-id="${id}"]`)
         : null;
+    if (fallback?.isConnected && fallback.matches?.('.hr-team-name-action, .hr-team-overflow-trigger')) return fallback;
     return card?.querySelector?.('.hr-team-open, .hr-team-overflow-trigger')
         || fallback
         || null;
@@ -14804,10 +14878,11 @@ async function loadStaffOffboardingSurface(staffId) {
         readinessRoot.innerHTML = 'Перевірка готовності завантажується...';
     }
     updateStaffOffboardingActionState();
+    const completed = staffOffboardingIsCompleted();
     const [offboarding, readiness, lifecycle] = await Promise.all([
         hrFetch(`/staff/${id}/offboarding`).catch(error => ({ success: false, error: error?.message })),
-        hrFetch(`/staff/${id}/offboarding-readiness`).catch(error => ({ success: false, error: error?.message })),
-        hrFetch(`/staff/${id}/lifecycle-checklist`).catch(error => ({ success: false, error: error?.message }))
+        completed ? null : hrFetch(`/staff/${id}/offboarding-readiness`).catch(error => ({ success: false, error: error?.message })),
+        completed ? null : hrFetch(`/staff/${id}/lifecycle-checklist`).catch(error => ({ success: false, error: error?.message }))
     ]);
     if (seq !== staffOffboardingLoadSeq || !isActiveStaffEditLoad(id)) return { success: false, stale: true };
     staffOffboardingReadiness = readiness?.success ? (readiness.data || null) : null;
@@ -15185,7 +15260,7 @@ async function openStaffEdit(staffId, options = {}) {
     const offboardingDate = document.getElementById('editOffboardingDate');
     if (offboardingDate) offboardingDate.value = '';
     const offboardingPool = document.getElementById('editOffboardingPoolStatus');
-    if (offboardingPool) offboardingPool.value = 'reserve';
+    if (offboardingPool) offboardingPool.value = staffPoolStatus(s) === 'blacklisted' ? 'blacklisted' : 'reserve';
     const offboardingAccount = document.getElementById('editOffboardingAccountAction');
     if (offboardingAccount) offboardingAccount.value = 'disable';
     staffOffboardingReadiness = null;

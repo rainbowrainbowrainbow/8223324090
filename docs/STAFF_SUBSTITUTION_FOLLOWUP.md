@@ -1,6 +1,6 @@
 # Staff substitution follow-up
 
-## Implementation
+## Initial implementation record
 
 The deployed baseline is 0.83.48, `3f41bef21804f61ecb452961902be68e047603be`,
 confirmed through the production branch and live version endpoint on 2026-11-13.
@@ -63,7 +63,7 @@ The inventory records source paths present in this revision. Operational ownersh
 that also grants visibility must continue to use the source's existing access
 rules, including authorization for the replacement worker.
 
-## Remaining implementation
+## Park scheduling and pay boundaries
 
 For whole and partial HR shift transfers, the two pay choices are independent.
 Retaining the original worker's pay preserves the agreed value of the transferred
@@ -73,18 +73,22 @@ Reducing their planned pay produces no retained line. The executor's additional
 mode preserves attendance-based pay plus one agreed premium. Base replacement
 consumes only verified allocations for the transferred work. The preview shows
 both schedules, transferred minutes and planned ordinary amounts when calculable.
-Overnight splits with
-a separately dated remainder and arbitrary slices with breaks or simultaneous
-roles need explicit day offsets and break/role allocation. Daytime animator
+The cross-date candidate creates a separately dated remainder for a bounded
+reception shift. Arbitrary slices with breaks or simultaneous roles still
+need explicit break/role allocation. Daytime animator
 transfers use the dated roster and reject any existing booking or Afisha slot
 outside the resulting coverage. Overnight animator shift transfers and
-ambiguous historical banquet links remain unsupported. Pre-payroll corrections
-after completion need a separately traceable adjustment path. The Park staff
+ambiguous historical banquet links remain unsupported. Completed agreements
+use the amount correction path described below. The Park staff
 schedule and workbook show both participants in agreed HR shift substitutions.
 The employee's personal results show their own Park substitutions for the
-selected month, with their role and agreement status. The remaining adapters
-in the inventory need scope and lifecycle tests, including cross-source duplicates. Authenticated live QA requires the
-test credentials file and an appropriately scoped production authorization.
+selected month, with their role and agreement status. The migrated-app
+substitution suite verifies the lead/task and meeting/task alias races,
+the booking-derived task guard, and the scope and lifecycle of direct chat
+tasks and meeting actions. The unsupported sources listed below need an
+approved scope and their own lifecycle acceptance. Authenticated live QA
+requires the test credentials file and appropriately scoped production
+authorization.
 
 ## Park animator booking integration
 
@@ -200,6 +204,16 @@ passed. Railway reported successful production deployment
 synthetic browser and PostgreSQL evidence. Authenticated production
 acceptance remains open.
 
+Completed Park amount corrections shipped in 0.83.90
+(`46a03275789566d24bd38a2bea57b7605504cb0a`). The production branch,
+public version endpoint and deployed substitution script matched.
+[Exact-SHA CI](https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/43936675143)
+and [Runtime artifact smoke](https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/43936675153)
+passed. Railway reported deployment `59607c68-c247-4933-a032-25a9233c1bcb`
+as successful, and its startup log recorded migration 411. The
+[production changelog](https://github.com/rainbowrainbowrainbow/8223324090/releases/tag/crm-changelog-v0.83.90)
+is tagged at the same commit. Authenticated production acceptance remains open.
+
 An isolated synthetic payroll test covers the manager-to-reception flow and
 preserves the worker's permanent role. It does not prove that a particular
 historical shift was paid.
@@ -236,9 +250,11 @@ later retry in the original cabinet.
 
 - HR: version 0.83.82 supports a signed manual amount for daily and monthly
   guarantees against the matching ordinary base. Automatic prorating still
-  needs an explicit allocation rule. Post-midnight segments on a separate
-  date, simultaneous roles, arbitrary breaks and corrections after
-  completion remain open.
+  needs an explicit allocation rule. Cross-date reception remainders are
+  implemented in the local candidate. Simultaneous roles and arbitrary
+  breaks remain open. Park amount
+  corrections after completion are available from 0.83.90. Corrections to
+  the worker or attendance allocation still require separate rules.
 - Sources: Park legacy-only banquet links and ambiguous linked bookings,
   other chat tasks, meeting actions without a scoped Park channel, free-text support/content
   assignees, training delivery occurrences and report work. The inventory above names the canonical
@@ -285,10 +301,30 @@ later retry in the original cabinet.
   offset for each interval. Transfer breaks and role allocations only from
   a recorded interval or an approved allocation. Require manual review when
   the plan lacks those facts.
-- Corrections after completion: link an append-only correction to the
-  original substitution and record the reason, approving actor and amount.
-  Reconcile it through the authorized payroll adjustment path before touching
-  a frozen report or any cash movement.
+
+### Cross-date Park reception remainder
+
+For a break-free reception shift on date D from 20:00 to 04:00, transfer
+23:00 to 02:00. Keep 20:00 to 23:00 on the original date and put the
+original worker's 02:00 to 04:00 remainder on D+1. Keep one agreement and
+one transferred interval for the replacement. Anchor the agreement to D
+and allow it only within one payroll month. Preserve existing attendance and
+pay review rules.
+
+The owner approved the D+1 attendance and dated pay rule in
+`RED-SUBSTITUTION-CROSS-DATE-LOCAL-13`. The preview shows both dated
+original-worker segments and the replacement interval. The agreed D+1 plan
+shows the same agreement ID in the staff schedule. Creation and cancellation
+use the existing staff, attendance and payroll locks. An existing D+1 plan,
+recorded attendance, a locked period or a conflicting claim blocks the
+operation. Cancellation restores the overnight plan and removes the generated
+remainder. Migration 412 guards the remainder's HR plan, segments, roles and
+schedule mirror from independent edits. It has no data backfill.
+
+Merging with an existing next-day plan, breaks, concurrent roles, animator
+coverage, daylight-saving changes and other payroll months remain outside
+this scope. Resolve active cross-date agreements before reverting the app
+implementation and preserve their guards and history.
 
 ### Park per-substitution pay shipped in 0.83.82
 
@@ -330,8 +366,8 @@ agreements and protected payroll periods retain their existing write guards.
 
 ### Park amount corrections after completion
 
-The local `RED-SUBSTITUTION-PAY-CORRECTION-LOCAL-10` candidate stores linked
-deltas in the append-only `staff_substitution_pay_corrections` ledger.
+Version 0.83.90 stores linked deltas in the append-only
+`staff_substitution_pay_corrections` ledger.
 Migration 411 validates the completed Park agreement, its work date and its
 payee. The completed agreement and its attendance allocation remain immutable.
 
@@ -340,7 +376,7 @@ payee IDs, effective work date, posting month, prior effective amount, corrected
 amount, signed difference in UAH minor units, reason and approving actor. Use
 the Park payroll period lock at posting. An open original period can receive
 the delta. A closed period or an approved or paid snapshot remains frozen and
-the delta can post to a separately approved open period. This proposal covers
+the delta can post to a separately approved open period. Corrections cover
 amount errors only. An attendance allocation or payee change needs review of
 the underlying evidence and separate correction rules.
 
@@ -378,6 +414,10 @@ legacy draft, a frozen work month, a closed posting month and a later
 Park final installment for a former employee. Chromium exercised the
 preview and history at 390 CSS pixels. Full plain and encrypted recovery
 restored a posted correction and regenerated its signed difference.
+The migrated PostgreSQL test also posts both workers' corrections on one
+completed agreement concurrently for daily and monthly guarantees. It
+verifies each signed delta in its worker's payroll and confirms the original
+completion snapshot remains unchanged.
 Roll back posting with the payroll projection in place after the first
 correction has been recorded.
 

@@ -13773,15 +13773,24 @@ async function retryStaffResourceOptions(button = null) {
     }, () => loadStaffResourceOptions(document.getElementById('editResourceKind')?.value || 'custom'));
 }
 
+function syncStaffDocumentFileStatus() {
+    const status = document.getElementById('editDocumentFileStatus');
+    if (!status) return;
+    const file = document.getElementById('editDocumentFile')?.files?.[0];
+    status.textContent = file ? 'Файл вибрано, але ще не завантажено. Натисніть «Додати скан».' : '';
+}
+
 async function uploadStaffDocument(button = null) {
+    const staffId = activeEditStaffId();
+    const isCurrent = staffProfileSaveIsCurrent(staffId);
     return runStaffProfileAction(button || 'editDocumentUpload', {
         workspaceSection: 'documents',
         workspaceErrorMessage: 'Не вдалося завантажити документ. Спробуйте ще раз.',
+        isCurrent,
         loadingLabel: 'Завантаження…',
         successLabel: 'Додано',
         errorLabel: 'Помилка'
     }, async () => {
-        const staffId = activeEditStaffId();
         const fileInput = document.getElementById('editDocumentFile');
         const file = fileInput?.files?.[0];
         if (!staffId || !file) {
@@ -13790,24 +13799,36 @@ async function uploadStaffDocument(button = null) {
             return { success: false, error: 'missing_document_file' };
         }
         const body = new FormData();
+        const title = document.getElementById('editDocumentTitle')?.value || '';
+        const notes = document.getElementById('editDocumentNotes')?.value || '';
+        const type = document.getElementById('editDocumentType')?.value || 'other';
         body.append('document', file);
-        body.append('document_type', document.getElementById('editDocumentType')?.value || 'other');
-        body.append('title', document.getElementById('editDocumentTitle')?.value || file.name);
-        body.append('notes', document.getElementById('editDocumentNotes')?.value || '');
+        body.append('document_type', type);
+        body.append('title', title || file.name);
+        body.append('notes', notes);
         const data = await hrFetch(`/staff/${staffId}/documents`, { method: 'POST', body });
+        if (!isCurrent()) return { success: false, stale: true };
         if (!data?.success) {
             setStaffWorkspaceFeedback('documents', 'error', data?.error || 'Не вдалося завантажити документ.');
             showNotification(data?.error || 'Не вдалося завантажити документ', 'error');
             return data || { success: false };
         }
-        ['editDocumentTitle', 'editDocumentNotes'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.value = '';
-        });
-        if (fileInput) fileInput.value = '';
+        if (fileInput.files?.[0] === file) {
+            fileInput.value = '';
+            for (const [id, previous] of [['editDocumentTitle', title], ['editDocumentNotes', notes]]) {
+                const el = document.getElementById(id);
+                if (el?.value === previous) el.value = '';
+            }
+            const cleanFields = ['editDocumentFile'];
+            for (const [id, value] of [['editDocumentTitle', ''], ['editDocumentNotes', ''], ['editDocumentType', type]]) {
+                if (document.getElementById(id)?.value === value) cleanFields.push(id);
+            }
+            markStaffProfileScopeFieldsClean('documents', captureStaffProfileScopeFields('documents', cleanFields));
+        }
+        syncStaffDocumentFileStatus();
         await loadStaffDocumentsAndResources(staffId);
+        if (!isCurrent()) return { success: false, stale: true };
         setStaffWorkspaceFeedback('documents', 'success', 'Документ додано до картки працівника.');
-        markStaffProfileScopesClean(['documents']);
         showNotification('Документ додано', 'success');
         return data;
     });
@@ -14566,6 +14587,7 @@ function prepareStaffProfileActionButtons(modal) {
     bindStaffProfileActionButton('editRoleAssignmentsSave', button => saveStaffRoleAssignments(button));
     bindStaffProfileActionButton('editPayrollSchemeSave', button => saveStaffPayrollScheme(button));
     bindStaffProfileActionButton('editDocumentUpload', button => uploadStaffDocument(button));
+    document.getElementById('editDocumentFile')?.addEventListener('change', syncStaffDocumentFileStatus);
     bindStaffProfileActionButton('editMedicalSave', button => saveStaffMedicalBook(button));
     bindStaffProfileActionButton('editResourceIssue', button => issueStaffResource(button));
     bindStaffProfileActionButton('editOffboardingComplete', button => completeStaffOffboarding(button));
@@ -15280,6 +15302,7 @@ async function openStaffEdit(staffId, options = {}) {
     });
     const documentFile = document.getElementById('editDocumentFile');
     if (documentFile) documentFile.value = '';
+    syncStaffDocumentFileStatus();
     const documentType = document.getElementById('editDocumentType');
     if (documentType) documentType.value = 'other';
     setStaffMedicalBookEditMode();

@@ -1424,15 +1424,18 @@ async function assertResourcesWorkspaceStatesAndActions(page) {
         mimeType: 'image/png',
         buffer: Buffer.from('QA document upload')
     });
+    assert.match(await page.locator('#editDocumentFileStatus').textContent(), /ще не завантажено/);
     await page.evaluate(() => window.__hrTeamBrowserSmoke.failNextWorkspaceRequest('/staff/4/documents'));
     await page.locator('#editDocumentUpload').click();
     await page.waitForFunction(() => document.getElementById('editDocumentUpload')?.dataset.actionState === 'error');
     assert.match(await page.locator('#editStaffDocumentsFeedback').textContent(), /simulated documents write failure/i, 'document upload failure stays inside the documents section');
+    assert.match(await page.locator('#editDocumentFileStatus').textContent(), /ще не завантажено/);
     await page.waitForFunction(() => !document.getElementById('editDocumentUpload')?.disabled);
     await page.locator('#editDocumentUpload').click();
     await page.waitForFunction(() => window.__hrTeamBrowserSmoke.workspaceOperations().includes('document-upload'));
     await page.waitForFunction(() => document.getElementById('editStaffDocuments')?.textContent.includes('QA uploaded scan'));
     assert.match(await page.locator('#editStaffDocumentsFeedback').textContent(), /додано/i, 'document upload reports a local section result');
+    assert.equal(await page.locator('#editDocumentFileStatus').textContent(), '');
     assert.match(await page.locator('#editStaffDocuments').textContent(), /Інше.*PNG.*Активний.*Завантажив: QA HR/s, 'document metadata exposes type, format, status, uploader, and date');
     assert.deepEqual(await page.evaluate(() => staffProfileDirtyScopes()), ['medical'], 'document upload clears only its own scope');
 

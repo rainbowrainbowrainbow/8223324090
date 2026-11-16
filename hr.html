@@ -1551,7 +1551,8 @@
                     </div>
                     <div class="form-group is-wide">
                         <label for="editDocumentFile">Файл або скан</label>
-                        <input type="file" id="editDocumentFile" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.csv,.txt">
+                        <input type="file" id="editDocumentFile" aria-describedby="editDocumentFileStatus" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.csv,.txt">
+                        <small id="editDocumentFileStatus" class="form-hint" role="status"></small>
                         <small class="form-hint">Максимум 10 МБ. Доступ тільки для HR/керівників через авторизований API.</small>
                     </div>
                     <div class="form-group is-wide">

@@ -103,6 +103,12 @@ async function checkDrawer(page, width, dark) {
     assert.equal(await page.evaluate(() => window.__hrTeamBrowserSmoke.staffUpdates().at(-1).body.notes),
         'Перевірка збереження при переході');
     await page.locator('#staffProfileTabResources').click();
+    const documentFile = page.locator('#editDocumentFile');
+    await documentFile.setInputFiles({ name: 'qa-scan.png', mimeType: 'image/png', buffer: Buffer.from('QA scan') });
+    assert.match(await page.locator('#editDocumentFileStatus').textContent(), /ще не завантажено/);
+    await documentFile.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: path.join(output, `document-pending-${width}-${dark ? 'dark' : 'light'}.png`) });
+    await documentFile.setInputFiles([]);
     for (const [id, field] of [['editDocumentUpload', 'editDocumentFile'], ['editMedicalSave', 'editMedicalNotes'], ['editResourceIssue', 'editResourceNotes']]) {
         const button = page.locator('#' + id);
         await button.scrollIntoViewIfNeeded();

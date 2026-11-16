@@ -45,23 +45,24 @@ async function checkCreation(page, width, dark) {
     await page.locator('#hrCreateStaffBtn').click();
     const dialog = page.locator('#hrCreateStaffDialog');
     await dialog.locator('[name="name"]').fill('Тестова картка');
-    await dialog.locator('[name="department"]').selectOption('Кафе');
-    await dialog.locator('[name="position"]').selectOption('Офіціант');
-    assert.equal(await dialog.locator('[name="department"] option[value="Кафе"]').count(), 1);
-    await page.locator('#hrCreateStaffProfession').selectOption('waiter');
-    await page.locator('#hrCreateStaffSecondaryProfession').selectOption('barista');
-    await page.locator('#hrCreateStaffSecondaryProfession').selectOption('animator');
-    assert.equal(await page.locator('#hrCreateStaffSecondaryProfessions button').count(), 2);
-    assert.equal(await page.locator('#hrCreateStaffSecondaryProfession option[value="waiter"]').isDisabled(), true);
+    await dialog.locator('[name="phone"]').fill('+380671234567');
+    await dialog.locator('[name="department"]').focus();
+    assert.equal(await dialog.locator('[name="phone"]').inputValue(), '+380 67 123 45 67');
+    await dialog.locator('[name="department"]').selectOption({ label: 'Кафе' });
+    await dialog.locator('[name="position"]').selectOption('waiter');
+    assert.equal(await dialog.locator('[name="position"] option[value="animator"]').count(), 0);
+    await dialog.locator('[name="department"]').selectOption({ label: 'Арт-відділ' });
+    assert.equal(await dialog.locator('[name="position"]').inputValue(), '');
+    await dialog.locator('[name="department"]').selectOption({ label: 'Кафе' });
+    await dialog.locator('[name="position"]').selectOption('waiter');
     await dialog.screenshot({ path: path.join(output, `create-${width}-${dark ? 'dark' : 'light'}.png`) });
     await dialog.getByRole('button', { name: 'Створити картку', exact: true }).click();
     const submitted = await page.evaluate(() => window.__uxSubmission);
-    assert.deepEqual(submitted.secondary_professions, ['barista', 'animator']);
+    assert.equal(submitted.secondary_professions, undefined);
     assert.equal(submitted.department, 'Кафе');
-    await page.locator('#hrCreateStaffProfession').selectOption('barista');
-    assert.equal(await page.locator('#hrCreateStaffSecondaryProfessions button').count(), 1);
-    await page.getByRole('button', { name: 'Прибрати професію Аніматор' }).click();
-    assert.equal(await page.locator('#hrCreateStaffSecondaryProfessions button').count(), 0);
+    assert.equal(submitted.position, 'Офіціант');
+    assert.equal(submitted.role_type, 'waiter');
+    assert.equal(submitted.phone, '+380 67 123 45 67');
     assert.equal(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth + 1), true);
     await page.locator('#hrCreateStaffCancel').click();
 }
@@ -74,6 +75,19 @@ async function checkDrawer(page, width, dark) {
         document.documentElement.dataset.theme = dark ? 'dark' : 'light';
     }, dark);
     await page.locator('.hr-team-card[data-staff-id="1"] .hr-team-open').click();
+    await page.locator('#staffProfileTabWork').click();
+    const notes = page.locator('#editNotes');
+    await notes.fill('Перевірка збереження при переході');
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.failNextStaffUpdate());
+    await page.locator('#staffProfileTabPayroll').click();
+    await page.waitForFunction(() => document.getElementById('staffProfileLiveStatus').textContent.includes('незбережені'));
+    assert.equal(await page.locator('#staffProfileTabWork').getAttribute('aria-selected'), 'true');
+    assert.equal(await notes.inputValue(), 'Перевірка збереження при переході');
+    await page.waitForFunction(() => !document.getElementById('editSaveWork').disabled);
+    await page.locator('#staffProfileTabPayroll').click();
+    await page.waitForFunction(() => document.getElementById('staffProfileTabPayroll').getAttribute('aria-selected') === 'true');
+    assert.equal(await page.evaluate(() => window.__hrTeamBrowserSmoke.staffUpdates().at(-1).body.notes),
+        'Перевірка збереження при переході');
     await page.locator('#staffProfileTabResources').click();
     for (const [id, field] of [['editDocumentUpload', 'editDocumentFile'], ['editMedicalSave', 'editMedicalNotes'], ['editResourceIssue', 'editResourceNotes']]) {
         const button = page.locator('#' + id);

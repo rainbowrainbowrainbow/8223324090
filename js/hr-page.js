@@ -7379,13 +7379,9 @@ function populateStaffDirectorySelect(select, values, current = '') {
     select.value = selected;
 }
 
-function populateNewStaffDirectories(prefix, staff = teamStaff, catalog = hrProfessions) {
-    populateStaffDirectorySelect(document.getElementById(prefix + 'Department'),
-        [...staff.map(row => row.department), ...catalog.map(row => row.department)], document.getElementById(prefix + 'Department')?.value);
-    populateStaffDirectorySelect(document.getElementById(prefix + 'Position'),
-        [...staff.map(row => row.position), ...catalog.map(row => row.title || row.name)], document.getElementById(prefix + 'Position')?.value);
+function staffCreationDepartmentLabel(value) {
+    return STAFF_DEPARTMENT_LABELS[normalizeDepartmentKey(value)] || value;
 }
-
 function setTeamCreateAccess(allowed) {
     const button = document.getElementById('hrCreateStaffBtn');
     if (button) button.hidden = !allowed;
@@ -7500,34 +7496,29 @@ function bindHrStaffCreation() {
     const status = document.getElementById('hrCreateStaffStatus');
     const submit = form.querySelector('[type="submit"]');
     const cancel = document.getElementById('hrCreateStaffCancel');
-    const profession = document.getElementById('hrCreateStaffProfession');
-    const secondaryProfessions = document.getElementById('hrCreateStaffSecondaryProfessions');
-    const secondarySelect = document.getElementById('hrCreateStaffSecondaryProfession');
-    const selectedSecondary = new Map();
-    const syncProfessionPicker = () => {
-        selectedSecondary.delete(profession.value);
-        secondaryProfessions.replaceChildren();
-        selectedSecondary.forEach((title, key) => {
-            const chip = document.createElement('button');
-            chip.type = 'button';
-            chip.className = 'hr-profession-selected-chip';
-            chip.textContent = title + ' ×';
-            chip.setAttribute('aria-label', 'Прибрати професію ' + title);
-            chip.addEventListener('click', () => { selectedSecondary.delete(key); syncProfessionPicker(); });
-            secondaryProfessions.append(chip);
-        });
-        Array.from(secondarySelect.options).forEach(option => {
-            option.disabled = Boolean(option.value) && (option.value === profession.value || selectedSecondary.has(option.value));
-        });
-        secondarySelect.value = '';
-        document.getElementById('hrCreateStaffProfessionSummary').textContent = selectedSecondary.size ? 'Додано: ' + selectedSecondary.size : 'Не вибрано';
+    const department = form.elements.department;
+    const position = form.elements.position;
+    let jobs = [];
+    const showPositions = () => {
+        const matching = jobs.filter(job => job.departmentKey === department.value);
+        position.replaceChildren(new Option(department.value ? 'Оберіть посаду' : 'Спочатку оберіть відділ', ''));
+        matching.sort((a, b) => a.title.localeCompare(b.title, 'uk'))
+            .forEach(job => position.add(new Option(job.title, job.key)));
+        position.disabled = !matching.length;
+        submit.disabled = !matching.length;
     };
-    secondarySelect.addEventListener('change', () => {
-        if (secondarySelect.value) selectedSecondary.set(secondarySelect.value, secondarySelect.selectedOptions[0].textContent);
-        syncProfessionPicker();
-    });
-    profession.addEventListener('change', syncProfessionPicker);
-    let openContext;
+    department.addEventListener('change', showPositions);
+    form.elements.phone.addEventListener('blur', event => {
+        const input = event.currentTarget;
+        const value = input.value.trim();
+        if (!/^\+?[\d\s().-]+$/.test(value)) return;
+        const digits = value.replace(/\D/g, '');
+        const local = digits.match(/^(380|0)(\d{2})(\d{3})(\d{2})(\d{2})$/);
+        if (local) {
+            const [, prefix, operator, exchange, firstPair, secondPair] = local;
+            input.value = [prefix === '380' ? '+380 ' + operator : '0' + operator, exchange, firstPair, secondPair].join(' ');
+        }
+    });    let openContext;
     let dialogOpening;
     let saving = false;
     const openCreatedStaff = async (result, context) => {
@@ -7554,12 +7545,10 @@ function bindHrStaffCreation() {
         form.reset();
         status.textContent = 'Завантаження професій…';
         submit.disabled = true;
-        profession.options.length = 1;
-        secondaryProfessions.replaceChildren();
-        selectedSecondary.clear();
-        secondarySelect.options.length = 1;
-        syncProfessionPicker();
-        openContext = context;
+        jobs = [];
+        department.replaceChildren(new Option('Оберіть відділ', ''));
+        department.disabled = true;
+        showPositions();        openContext = context;
         dialog.showModal();
         const recovery = await recoverStaffCreation('staff');
         if (!dialog.open || dialogOpening !== opening || context !== teamAccessContext()) return;
@@ -7570,18 +7559,17 @@ function bindHrStaffCreation() {
         }
         const catalog = await ensureProfessionsLoaded({ silent: true }).catch(() => []);
         if (!dialog.open || dialogOpening !== opening || context !== teamAccessContext()) return;
-        for (const item of catalog) {
-            if (item.key && item.is_active !== false && item.isActive !== false) {
-                const label = item.title || item.label || item.name || item.key;
-                profession.add(new Option(label, item.key));
-                secondarySelect.add(new Option(label, item.key));
-            }
-        }
-        populateNewStaffDirectories('hrCreateStaff', teamStaff, catalog);
-        syncProfessionPicker();
-        submit.disabled = false;
-        status.textContent = professionCatalogLoadState === 'error' ? 'Довідник професій недоступний. Професію можна додати пізніше.' : '';
-    });
+        jobs = catalog.flatMap(item => {
+            const title = item.title || item.label || item.name;
+            const departmentValue = String(item.department || '').trim();
+            if (!item.key || !title || !departmentValue || item.is_active === false || item.isActive === false) return [];
+            return [{ key: item.key, title, departmentValue, departmentKey: normalizeDepartmentKey(staffCreationDepartmentLabel(departmentValue)) }];
+        });
+        const departments = new Map(jobs.map(job => [job.departmentKey, staffCreationDepartmentLabel(job.departmentValue)]));
+        [...departments].sort((a, b) => a[1].localeCompare(b[1], 'uk'))
+            .forEach(([key, label]) => department.add(new Option(label, key)));
+        department.disabled = !departments.size;
+        status.textContent = departments.size ? '' : 'Немає доступних посад із відділами. Перевірте довідник професій.';    });
     cancel?.addEventListener('click', () => dialog.close());
     dialog.addEventListener('cancel', event => {
         if (saving) event.preventDefault();
@@ -7591,12 +7579,14 @@ function bindHrStaffCreation() {
         if (saving || submit.disabled || !dialog.open || button.hidden || openContext !== teamAccessContext()) return;
         const formData = new FormData(form);
         const body = Object.fromEntries(Array.from(formData, ([key, value]) => [key, String(value).trim()]));
-        body.secondary_professions = [...selectedSecondary.keys()];
-        if (!body.name || !body.department || !body.position) {
-            status.textContent = 'Заповніть імʼя, відділ і посаду.';
+        const job = jobs.find(item => item.key === body.position && item.departmentKey === body.department);
+        if (!body.name || !job) {
+            status.textContent = 'Заповніть імʼя та оберіть посаду у відповідному відділі.';
             return;
         }
-        const context = openContext;
+        body.department = job.departmentValue;
+        body.position = job.title;
+        body.role_type = job.key;        const context = openContext;
         saving = true;
         submit.disabled = true;
         if (cancel) cancel.disabled = true;
@@ -14651,8 +14641,48 @@ function prepareStaffProfileDrawerLayout() {
         if (button) button.setAttribute('aria-controls', panel?.id || panelId);
     });
 
+    let pendingTabSave = null;
+    const selectProfileTab = async button => {
+        const tab = normalizeStaffProfileTab(button.dataset.staffProfileTab);
+        const previous = normalizeStaffProfileTab(modal.dataset.activeProfileTab);
+        if (tab === previous) return;
+        if (pendingTabSave?.sequence === staffEditOpenSeq) return;
+        const dirtyScopes = staffProfileDirtyScopes();
+        const scopes = ['main', 'work'].filter(scope => dirtyScopes.includes(scope)
+            && (scope === previous || (scope === 'work' && tab === 'payroll')));
+        if (!scopes.length) {
+            await activateStaffProfileTab(tab);
+            return;
+        }
+        const operation = { sequence: staffEditOpenSeq };
+        pendingTabSave = operation;
+        const isCurrent = staffProfileSaveIsCurrent(activeEditStaffId());
+        announceStaffProfileStatus('Зберігаємо зміни…');
+        try {
+            for (const scope of scopes) {
+                const saveButton = document.getElementById(scope === 'work' ? 'editSaveWork' : 'editSave');
+                const result = saveButton && !saveButton.disabled && !saveButton.hidden
+                    ? await saveStaffEdit({ scope })
+                    : null;
+                if (!isCurrent()) return;
+                if (!result?.success || staffProfileDirtyScopes().includes(scope)) {
+                    announceStaffProfileStatus('Є незбережені зміни. Перевірте поля й повторіть перехід.');
+                    modal.querySelector('[data-staff-profile-tab][aria-selected="true"]')?.focus();
+                    return;
+                }
+            }
+            await activateStaffProfileTab(tab);
+        } catch {
+            if (isCurrent()) {
+                showNotification('Не вдалося зберегти зміни. Повторіть спробу.', 'error');
+                modal.querySelector('[data-staff-profile-tab][aria-selected="true"]')?.focus();
+            }
+        } finally {
+            if (pendingTabSave === operation) pendingTabSave = null;
+        }
+    };
     modal.querySelectorAll('[data-staff-profile-tab]').forEach(button => {
-        button.addEventListener('click', () => activateStaffProfileTab(button.dataset.staffProfileTab));
+        button.addEventListener('click', () => void selectProfileTab(button));
         button.addEventListener('keydown', event => {
             if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
             const tabs = Array.from(modal.querySelectorAll('[data-staff-profile-tab]'));
@@ -14665,7 +14695,7 @@ function prepareStaffProfileDrawerLayout() {
                     ? tabs.length - 1
                     : (current + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
             tabs[nextIndex]?.focus();
-            activateStaffProfileTab(tabs[nextIndex]?.dataset.staffProfileTab);
+            void selectProfileTab(tabs[nextIndex]);
         });
     });
 }

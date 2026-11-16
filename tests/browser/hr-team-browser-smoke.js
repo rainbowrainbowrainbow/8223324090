@@ -1204,9 +1204,9 @@ async function assertScopedSavesAndActionStates(page) {
     assert.ok(await mainSave.evaluate(el => el.getBoundingClientRect().height >= 44), 'main save has a 44px target');
 
     await page.fill('#editPhone', '+380999-main-save');
-    await page.locator('#staffProfileTabWork').click();
+    await page.evaluate(() => activateStaffProfileTab('work'));
     await page.fill('#editNotes', 'work scope note');
-    await page.locator('#staffProfileTabMain').click();
+    await page.evaluate(() => activateStaffProfileTab('main'));
     await page.evaluate(() => window.__hrTeamBrowserSmoke.enableStaffUpdateHold());
     const beforeMainSave = await page.evaluate(() => window.__hrTeamBrowserSmoke.staffUpdates().length);
     await mainSave.click();

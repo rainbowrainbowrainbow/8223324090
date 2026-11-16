@@ -130,9 +130,8 @@ test('Park HR QA writes register exact fixtures, suppress chat and retire the ru
         await assert.rejects(page.evaluate(() => fetch('/api/users', { method: 'POST', body: '{}' })));
         const dialog = page.locator('#hrCreateStaffDialog');
         await dialog.locator('[name="name"]').fill(draft.name);
-        await dialog.locator('[name="department"]').selectOption(draft.department);
-        await dialog.locator('[name="position"]').selectOption('Control');
-        await dialog.locator('[name="role_type"]').selectOption('animator');
+        await dialog.locator('[name="department"]').selectOption({ label: 'Аніматори' });
+        await dialog.locator('[name="position"]').selectOption('animator');
         const created = await clickSubmit(page, '/api/staff', dialog.locator('[type="submit"]'));
         await page.locator('#staffEditModal').waitFor({ state: 'visible' });
         return created;
@@ -172,9 +171,8 @@ test('Park HR QA writes register exact fixtures, suppress chat and retire the ru
         await page.locator('#hrCreateStaffBtn').click();
         const dialog = page.locator('#hrCreateStaffDialog');
         await dialog.locator('[name="name"]').fill(staffName(2));
-        await dialog.locator('[name="department"]').selectOption({ index: 1 });
-        await dialog.locator('[name="position"]').selectOption({ index: 1 });
-        await dialog.locator('[name="role_type"]').selectOption('animator');
+        await dialog.locator('[name="department"]').selectOption({ label: 'Аніматори' });
+        await dialog.locator('[name="position"]').selectOption('animator');
         const staff = await clickSubmit(page, '/api/staff', dialog.locator('[type="submit"]'));
         assert.equal(staff.status, 200);
         await page.locator('#staffEditModal').getByRole('button', { name: 'Створити CRM-акаунт', exact: true }).click();

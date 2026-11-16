@@ -169,13 +169,9 @@ async function runActor(browser, pool, actor, existingAccountId) {
         }
         const name = `QA Staff ${actor.label} ${runId}`;
         await dialog.locator('[name="name"]').fill(name);
-        await dialog.locator('[name="department"]').selectOption({ index: 1 });
-        await dialog.locator('[name="position"]').selectOption({ index: 1 });
-        await dialog.locator('[name="role_type"]').selectOption('animator');
+        await dialog.locator('[name="department"]').selectOption({ label: 'Аніматори' });
+        await dialog.locator('[name="position"]').selectOption('animator');
 
-        await dialog.locator('#hrCreateStaffSecondaryProfession').selectOption('waiter');
-        assert.match(await dialog.locator('#hrCreateStaffSecondaryProfessions').textContent(), /Офіціант/);
-        assert.equal(await dialog.locator('#hrCreateStaffSecondaryProfession option[value="animator"]').isDisabled(), true);
         await dialog.screenshot({ path: path.join(output, `${actor.label}-create.png`) });
         await captureSupplement('hr-create');
 
@@ -372,9 +368,8 @@ async function runActor(browser, pool, actor, existingAccountId) {
             const newUsername = `qa_crm_recovery_${runId}`;
             await createButton.click();
             await dialog.locator('[name="name"]').fill(newName);
-            await dialog.locator('[name="department"]').selectOption({ index: 1 });
-            await dialog.locator('[name="position"]').selectOption({ index: 1 });
-            await dialog.locator('[name="role_type"]').selectOption('animator');
+            await dialog.locator('[name="department"]').selectOption({ label: 'Аніматори' });
+            await dialog.locator('[name="position"]').selectOption('animator');
             const [recoveryCard] = await Promise.all([
                 waitForResponse(page, 'POST', '/api/staff'),
                 dialog.getByRole('button', { name: 'Створити картку', exact: true }).click()

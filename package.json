@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.83.84",
+  "version": "0.83.85",
   "eventGenix": {
-    "releaseLabel": "Підміни в картках задач"
+    "releaseLabel": "Мій день і робочий профіль"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

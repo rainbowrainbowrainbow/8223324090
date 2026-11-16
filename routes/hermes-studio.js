@@ -6,6 +6,7 @@ const {
     authenticateToken,
     requireRole
 } = require('../middleware/auth');
+const { allowAccountantPageRead } = require('../middleware/accountant-page-read');
 const {
     DEFAULT_TASK_BUSINESS_CONTEXT,
     activeTaskBusinessContext
@@ -316,7 +317,7 @@ function createHermesStudioRouter(options = {}) {
     const router = express.Router();
     const query = options.pool || pool;
     const authMiddleware = options.authMiddleware || authenticateToken;
-    const accessGuard = options.accessGuard || requireRole(...STUDIO_ACCESS_ROLES);
+    const accessGuard = options.accessGuard || allowAccountantPageRead('/hermes-studio', requireRole(...STUDIO_ACCESS_ROLES));
     const decisionGuard = options.decisionGuard || requireStudioDecisionRole;
     const executeCreative = options.executeCreative || require('../services/crmCreativeExecution').createCreativeExecutor({ pool: query });
 

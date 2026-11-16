@@ -25,6 +25,7 @@ const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { notifyNewLead } = require('../services/leadNotifier');
 const { authenticateToken, canUseAction, requireRole, requireMinRole } = require('../middleware/auth');
+const { allowAccountantPageRead } = require('../middleware/accountant-page-read');
 const { resolveCapability } = require('../services/accountAccessPolicy');
 const { resolveLeadConversationContext } = require('../services/leadConversationResolver');
 const {
@@ -2501,7 +2502,7 @@ router.get('/webhook/status', (req, res) => {
 
 // All remaining leads routes require authentication.
 router.use(authenticateToken);
-router.use(requireRole('manager', 'marketer'));
+router.use(allowAccountantPageRead('/sales-funnel', requireRole('manager', 'marketer')));
 
 // GET /api/leads/assignees — active users that can own leads
 router.get('/assignees', async (req, res) => {

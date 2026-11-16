@@ -232,7 +232,7 @@ test('Group A route wiring derives revenue visibility from capability decisions'
     assert.match(eventQueueRoute, /function requirePlainEventPayload/);
     assert.match(eventQueueRoute, /router\.delete\('\/rules\/:id', requireSettingsManagement, requireStoredRuleRevenueAccess/);
 
-    assert.match(copilotRoute, /router\.use\(requireRole\(\.\.\.MANAGER_ROLES\)\);/);
+    assert.match(copilotRoute, /const manageCopilot = requireRole\(\.\.\.MANAGER_ROLES\);[\s\S]*?allowAccountantPageRead\('\/copilot', manageCopilot\)/);
     assert.doesNotMatch(copilotRoute, /installRevenueResponseShaper|canUseAction\(req\.user, 'view_revenue'\)/);
 });
 

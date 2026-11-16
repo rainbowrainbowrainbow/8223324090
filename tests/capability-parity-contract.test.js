@@ -266,3 +266,37 @@ test('Task 4-8 critical capabilities keep their independent grants and explicit 
     assert.equal(assertParity(manager, 'export_data', { type: 'action' }).allowed, true);
     assert.equal(assertParity(manager, 'manage_settings', { type: 'action' }).allowed, false);
 });
+
+test('accountant can open operational pages with consistent browser and server permissions', () => {
+    const user = { role: 'accountant' };
+    const restricted = new Set(['/chat-settings', '/timeline-settings', '/status', '/guardian-ops']);
+    for (const page of registry.PAGE_PERMISSIONS.filter(entry => !entry.deprecated)) {
+        assert.equal(assertParity(user, page.key, { type: 'page' }).allowed, !restricted.has(page.key), page.key);
+    }
+    for (const action of ['hr.today.view', 'hr.staff.view', 'hr.reports.view', 'tasks.create']) {
+        assert.equal(assertParity(user, action, { type: 'action' }).allowed, true, action);
+    }
+    for (const action of ['manage_accounts', 'manage_settings', 'fiscal.configure', 'fiscal.incident.manage']) {
+        assert.equal(assertParity(user, action, { type: 'action' }).allowed, false, action);
+    }
+    assert.equal(assertParity({ ...user, page_denylist: ['/hr'] }, '/hr', { type: 'page' }).allowed, false);
+});
+
+test('accountant operational reads respect effective page access and retain existing write guards', () => {
+    const { requireRole } = require('../middleware/auth');
+    const { allowAccountantPageRead } = require('../middleware/accountant-page-read');
+    const guard = allowAccountantPageRead('/sales-funnel', requireRole('manager'));
+    function run(user, method) {
+        let result = 200;
+        const res = { status(code) { result = code; return this; }, json() {} };
+        guard({ user, method }, res, () => {});
+        return result;
+    }
+    const accountant = { role: 'accountant' };
+    assert.equal(run(accountant, 'GET'), 200);
+    assert.equal(run(accountant, 'HEAD'), 200);
+    assert.equal(run(accountant, 'POST'), 403);
+    assert.equal(run({ ...accountant, page_denylist: ['/sales-funnel'] }, 'GET'), 403);
+    assert.equal(run({ role: 'animator' }, 'GET'), 403);
+    assert.equal(run({ role: 'manager' }, 'POST'), 200);
+});

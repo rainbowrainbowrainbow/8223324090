@@ -316,7 +316,7 @@ test('an owner can independently allow schedule after loading a legacy staff den
 test('event operations pages exclude service roles even with legacy explicit grants', () => {
     const pages = ['/', '/certificates', '/certificates/new', '/certificates/batch', '/certificates/check'];
     const roles = require('../config/permissionRegistry').ROLE_HIERARCHY;
-    const allowed = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin', 'animator'];
+    const allowed = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'accountant', 'admin', 'animator'];
     for (const role of roles) {
         for (const page of pages) {
             assert.equal(resolveCapability({ role, page_allowlist: pages }, page, { type: 'page' }).allowed,

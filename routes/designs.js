@@ -29,8 +29,9 @@ const log = createLogger('Designs');
 // v39.8: Security — require authentication for all design endpoints
 // v0.44.4: Align API access with /designs, /designer, /art page access.
 const { authenticateToken, requireRole } = require('../middleware/auth');
+const { allowAccountantPageRead } = require('../middleware/accountant-page-read');
 router.use(authenticateToken);
-router.use(requireRole('manager', 'art_director', 'marketer'));
+router.use(allowAccountantPageRead('/designs', requireRole('manager', 'art_director', 'marketer')));
 
 // --- Multer setup ---
 const UPLOADS_DIR = path.join(__dirname, '..', 'uploads', 'designs');

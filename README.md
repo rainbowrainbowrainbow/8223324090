@@ -213,7 +213,7 @@ manual health checks against a configured app/database for other scopes.
 
 ## Version And Changelog Discipline
 
-`package.json` is the single source of truth for product release metadata: `version` is the canonical release number and `eventGenix.releaseLabel` is the canonical visible release label. Use `npm run version:current` before answering "what version is current"; it refreshes upstream metadata and fails if the local branch is behind. The version sync helper is `scripts/version-sync.js`; it checks `package-lock.json`, login release badge, tagline, changelog CTA, latest changelog markers, asset cache tags, service-worker cache names, known inline asset references, and the `/api/version` route contract.
+`package.json` is the single source of truth for product release metadata: `version` is the canonical release number and `eventGenix.releaseLabel` is the canonical visible release label. Use `npm run version:current` before answering "what version is current"; it refreshes upstream metadata and fails if the local branch is behind. The version sync helper is `scripts/version-sync.js`; it checks `package-lock.json`, login release badge, tagline, changelog CTA, asset cache tags, service-worker cache names, known inline asset references, and the `/api/version` route contract.
 
 The active release train follows `package.json`. At this update the current
 package version is `0.77.43`, so mini updates stay on the `0.77.x` patch train
@@ -227,17 +227,17 @@ without an explicit version-policy task.
 For user-visible or deployable product changes:
 
 1. Bump canonical metadata with `npm run version:bump -- patch --label "Release Label"` or edit `package.json` intentionally.
-2. Update the `index.html` changelog modal entry for the release.
-3. Update `CHANGELOG.md` when the change is release-relevant.
+2. Prepare Ukrainian release notes for the release controller.
+3. Let the controller publish the notes after verifying the deployed version and SHA.
 4. Run `npm run version:sync` only when you intend to update generated version references.
-5. Run `npm run check:version`; it must fail on any drift between `package.json`, visible UI, cache-bust tags, changelog, service-worker caches, or `/api/version` ownership.
+5. Run `npm run check:version`; it must fail on any drift between `package.json`, visible UI, cache-bust tags, service-worker caches, or `/api/version` ownership.
 6. For production delivery, use the bounded controller. It runs `npm test` before push and waits for green CI on the exact release SHA. A separate `release:gate` run is unnecessary in this flow.
 7. After deploy, run `npm run smoke:live -- https://<live-crm-host>` and `npm run version:smoke -- https://<live-crm-host>`; treat a mismatch or `schema.status != ok` as an incomplete deploy.
 8. For timeline releases, also run `npm run release:timeline-proof -- https://<live-crm-host>`; it proves `/`, `/maysternya-doli`, timeline assets, and Service Worker cache names are all on the current version.
 
 Documentation-only changes normally do not need a product version bump unless a release marker is explicitly requested.
 
-If `package.json`, `index.html`, `CHANGELOG.md`, archived snapshots, standalone page cache tags, or service-worker cache names disagree, trust `package.json` first and report the mismatch.
+If `package.json`, `index.html`, standalone page cache tags, or service-worker cache names disagree, trust `package.json` first and report the mismatch.
 
 ## Deploy And Branch Policy
 
@@ -306,7 +306,7 @@ The current ownership map and intentional exceptions live in [docs/ACCESS_SURFAC
 - [docs/STATIC_SURFACE.md](docs/STATIC_SURFACE.md) - root HTML, landing page, and legacy static route ownership
 - [docs/STORAGE_SURFACE.md](docs/STORAGE_SURFACE.md) - local upload path and Supabase Storage bucket ownership
 - [docs/integrations/binotel/HANDOFF.md](docs/integrations/binotel/HANDOFF.md) - local Binotel telephony contract, capability gaps, and activation checklist
-- [CHANGELOG.md](CHANGELOG.md) - release history
+- [CRM changelog](https://8223324090-production.up.railway.app/changelog) and [historical release notes](CHANGELOG.md)
 - [docs/archive/README.md](docs/archive/README.md) - archive index for historical, non-authoritative docs
 - [docs/archive/CLAUDE.md](docs/archive/CLAUDE.md) - older Claude/OpenClaw-oriented project guidance
 - [docs/archive/PROJECT_PASSPORT.md](docs/archive/PROJECT_PASSPORT.md) - historical project map and environment notes

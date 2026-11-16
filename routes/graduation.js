@@ -5,6 +5,7 @@
 const router = require('express').Router();
 const { pool } = require('../db');
 const { canUseAction, requireAction, requireRole } = require('../middleware/auth');
+const { allowAccountantPageRead } = require('../middleware/accountant-page-read');
 const { validateBookingWithinWorkingHours } = require('../services/booking');
 const { canonicalizeBookingRoomResource } = require('../services/timelineResources');
 const { createLogger } = require('../utils/logger');
@@ -1052,7 +1053,7 @@ router.post('/quotes', requireRole('creator', 'director', 'senior_manager', 'man
 });
 
 // GET /api/graduation/quotes — список збережених конфігурацій
-router.get('/quotes', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+router.get('/quotes', allowAccountantPageRead('/graduation', requireRole('creator', 'director', 'senior_manager', 'manager')), async (req, res) => {
     try {
         const businessContext = graduationBusinessContext(req);
         const { status } = req.query;
@@ -1090,7 +1091,7 @@ router.get('/quotes', requireRole('creator', 'director', 'senior_manager', 'mana
 });
 
 // GET /api/graduation/quotes/:id — деталі конфігурації
-router.get('/quotes/:id', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+router.get('/quotes/:id', allowAccountantPageRead('/graduation', requireRole('creator', 'director', 'senior_manager', 'manager')), async (req, res) => {
     try {
         const businessContext = graduationBusinessContext(req);
         const { id } = req.params;
@@ -1410,7 +1411,7 @@ function safeExportFilename(value, fallback = 'graduation_diplomas') {
 
 // GET /api/graduation/diploma/template — default diploma template
 // GET /api/graduation/child-packs - reusable graduation child lists
-router.get('/child-packs', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+router.get('/child-packs', allowAccountantPageRead('/graduation', requireRole('creator', 'director', 'senior_manager', 'manager')), async (req, res) => {
     try {
         const businessContext = graduationBusinessContext(req);
         const { quoteId, includeArchived } = req.query;
@@ -1469,7 +1470,7 @@ router.post('/child-packs', requireRole('creator', 'director', 'senior_manager',
     }
 });
 
-router.get('/child-packs/:packId', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+router.get('/child-packs/:packId', allowAccountantPageRead('/graduation', requireRole('creator', 'director', 'senior_manager', 'manager')), async (req, res) => {
     try {
         const businessContext = graduationBusinessContext(req);
         const pack = await getChildPackById(pool, req.params.packId, businessContext);
@@ -1525,7 +1526,7 @@ router.post('/child-packs/:packId/link-quote', requireRole('creator', 'director'
     }
 });
 
-router.get('/diploma/template', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+router.get('/diploma/template', allowAccountantPageRead('/graduation', requireRole('creator', 'director', 'senior_manager', 'manager')), async (req, res) => {
     try {
         const businessContext = graduationBusinessContext(req);
         const row = await ensureDefaultDiplomaTemplate(businessContext);
@@ -1577,7 +1578,7 @@ router.patch('/diploma/template', requireRole('creator', 'director'), requireAct
 });
 
 // GET /api/graduation/quotes/:id/children — diploma roster
-router.get('/quotes/:id/children', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+router.get('/quotes/:id/children', allowAccountantPageRead('/graduation', requireRole('creator', 'director', 'senior_manager', 'manager')), async (req, res) => {
     try {
         const businessContext = graduationBusinessContext(req);
         const quote = await getGraduationQuoteOr404(req.params.id, res, businessContext);
@@ -1812,7 +1813,7 @@ router.post('/quotes/:id/children/wishes', requireRole('creator', 'director', 's
 });
 
 // GET /api/graduation/quotes/:id/diplomas/preview — single diploma HTML preview
-router.get('/quotes/:id/diplomas/preview', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+router.get('/quotes/:id/diplomas/preview', allowAccountantPageRead('/graduation', requireRole('creator', 'director', 'senior_manager', 'manager')), async (req, res) => {
     try {
         const businessContext = graduationBusinessContext(req);
         const quote = await getGraduationQuoteOr404(req.params.id, res, businessContext);
@@ -1833,7 +1834,7 @@ router.get('/quotes/:id/diplomas/preview', requireRole('creator', 'director', 's
 });
 
 // GET /api/graduation/quotes/:id/diplomas/export/pdf — ready multi-page PDF with all diplomas
-router.get('/quotes/:id/diplomas/export/pdf', requireRole('creator', 'director', 'senior_manager', 'manager'), requireAction('export_data'), async (req, res) => {
+router.get('/quotes/:id/diplomas/export/pdf', allowAccountantPageRead('/graduation', requireRole('creator', 'director', 'senior_manager', 'manager')), requireAction('export_data'), async (req, res) => {
     try {
         const businessContext = graduationBusinessContext(req);
         const quote = await getGraduationQuoteOr404(req.params.id, res, businessContext);
@@ -1887,7 +1888,7 @@ router.get('/quotes/:id/diplomas/export/pdf', requireRole('creator', 'director',
 });
 
 // GET /api/graduation/quotes/:id/diplomas/export/csv — roster CSV
-router.get('/quotes/:id/diplomas/export/csv', requireRole('creator', 'director', 'senior_manager', 'manager'), requireAction('export_data'), async (req, res) => {
+router.get('/quotes/:id/diplomas/export/csv', allowAccountantPageRead('/graduation', requireRole('creator', 'director', 'senior_manager', 'manager')), requireAction('export_data'), async (req, res) => {
     try {
         const businessContext = graduationBusinessContext(req);
         const quote = await getGraduationQuoteOr404(req.params.id, res, businessContext);
@@ -1907,7 +1908,7 @@ router.get('/quotes/:id/diplomas/export/csv', requireRole('creator', 'director',
 });
 
 // GET /api/graduation/quotes/:id/diplomas/export/xlsx — roster XLSX
-router.get('/quotes/:id/diplomas/export/xlsx', requireRole('creator', 'director', 'senior_manager', 'manager'), requireAction('export_data'), async (req, res) => {
+router.get('/quotes/:id/diplomas/export/xlsx', allowAccountantPageRead('/graduation', requireRole('creator', 'director', 'senior_manager', 'manager')), requireAction('export_data'), async (req, res) => {
     try {
         const businessContext = graduationBusinessContext(req);
         const quote = await getGraduationQuoteOr404(req.params.id, res, businessContext);
@@ -1951,7 +1952,7 @@ router.get('/quotes/:id/diplomas/export/xlsx', requireRole('creator', 'director'
 });
 
 // GET /api/graduation/quotes/:id/diplomas/print-sheet — roster print sheet
-router.get('/quotes/:id/diplomas/print-sheet', requireRole('creator', 'director', 'senior_manager', 'manager'), requireAction('export_data'), async (req, res) => {
+router.get('/quotes/:id/diplomas/print-sheet', allowAccountantPageRead('/graduation', requireRole('creator', 'director', 'senior_manager', 'manager')), requireAction('export_data'), async (req, res) => {
     try {
         const businessContext = graduationBusinessContext(req);
         const quote = await getGraduationQuoteOr404(req.params.id, res, businessContext);
@@ -1972,7 +1973,7 @@ router.get('/quotes/:id/diplomas/print-sheet', requireRole('creator', 'director'
 
 // GET /api/graduation/quotes/:id/proposal — генерація КП (HTML)
 // Query-token support for window.open lives in middleware/apiAuthBoundary.js.
-router.get('/quotes/:id/proposal', requireRole('creator', 'director', 'senior_manager', 'manager'), requireAction('export_data'), requireAction('view_revenue'), async (req, res) => {
+router.get('/quotes/:id/proposal', allowAccountantPageRead('/graduation', requireRole('creator', 'director', 'senior_manager', 'manager')), requireAction('export_data'), requireAction('view_revenue'), async (req, res) => {
     try {
         const businessContext = graduationBusinessContext(req);
         const presentation = graduationBusinessPresentation(businessContext, req.user);
@@ -2079,7 +2080,7 @@ ${q.discount_percent > 0 ? `<div style="color:#4CAF50;margin-top:4px">Знижк
 });
 
 // GET /api/graduation/analytics — статистика (#46, #47, #48)
-router.get('/analytics', requireRole('creator', 'director'), async (req, res) => {
+router.get('/analytics', allowAccountantPageRead('/graduation', requireRole('creator', 'director')), async (req, res) => {
     try {
         const businessContext = graduationBusinessContext(req);
         // #46: Service popularity
@@ -2161,7 +2162,7 @@ router.get('/analytics', requireRole('creator', 'director'), async (req, res) =>
 });
 
 // GET /api/graduation/customers/search — пошук клієнтів (#26)
-router.get('/customers/search', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+router.get('/customers/search', allowAccountantPageRead('/graduation', requireRole('creator', 'director', 'senior_manager', 'manager')), async (req, res) => {
     try {
         const businessContext = graduationBusinessContext(req);
         const { q } = req.query;
@@ -2253,7 +2254,7 @@ async function onSettingsChanged(key, newValue, username, businessContext = DEFA
 
 // GET /api/graduation/catalog/export — print-ready HTML catalog
 // Query-token support for window.open lives in middleware/apiAuthBoundary.js.
-router.get('/catalog/export', requireRole('creator', 'director', 'senior_manager', 'manager'), requireAction('export_data'), async (req, res) => {
+router.get('/catalog/export', allowAccountantPageRead('/graduation', requireRole('creator', 'director', 'senior_manager', 'manager')), requireAction('export_data'), async (req, res) => {
     try {
         const businessContext = graduationBusinessContext(req);
         const presentation = graduationBusinessPresentation(businessContext, req.user);

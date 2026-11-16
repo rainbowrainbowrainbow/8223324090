@@ -6,7 +6,10 @@ const vm = require('node:vm');
 
 const ROOT = path.resolve(__dirname, '..');
 const {
-    privateTaskHandoffNeedsConfirmation
+    privateTaskHandoffNeedsConfirmation,
+    buildTaskVisibilityScope,
+    canViewTask,
+    canMutateTask
 } = require('../services/taskPolicy');
 const {
     reassignTaskOwner
@@ -171,4 +174,17 @@ test('all reassignment routes use the same private handoff contract', () => {
     assert.match(taskCenter, /confirmPrivateHandoff: confirmed === true/);
     assert.match(myDay, /executePrivateTaskHandoff/);
     assert.match(myDay, /if \(confirmed === true\) payload\.confirmPrivateHandoff = true/);
+});
+
+test('accountant can work with team tasks across departments while personal tasks stay private', () => {
+    const { getPermissions } = require('../config/roles');
+    const actor = { id: 10, role: 'accountant', username: 'fixture-accountant' };
+    const task = { owner_user_id: 20, visibility: 'team' };
+    assert.equal(getPermissions(actor.role).canAssignAnyone, true);
+    assert.equal(canViewTask(actor, task), true);
+    assert.equal(canViewTask(actor, { ...task, visibility: 'private' }), false);
+    assert.equal(canMutateTask(actor, { ...task, visibility: 'private' }), false);
+    const condition = buildTaskVisibilityScope(actor, []);
+    assert.match(condition, /COALESCE\(t.visibility, 'team'\) = 'team'/);
+    assert.doesNotMatch(condition, /employee_profiles|department/);
 });

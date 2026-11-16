@@ -475,7 +475,7 @@ for (const role of ['barista', 'waiter', 'instructor', 'cleaning', 'reception'])
         }
     }
 }
-frontend.sandbox.AppState.currentUser = { role: 'accountant' };
+frontend.sandbox.AppState.currentUser = { role: 'barista' };
 frontend.setPermissionLifecycle('idle');
 if (frontend.enforceCurrentPageAccess() !== null || redirectTarget !== null) {
     fail('frontend page guard must defer without redirect until permissions are ready');

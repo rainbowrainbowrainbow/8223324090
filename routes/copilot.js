@@ -25,6 +25,7 @@ const router = require('express').Router();
 const rateLimit = require('express-rate-limit');
 const { pool } = require('../db');
 const { requireRole } = require('../middleware/auth');
+const { allowAccountantPageRead } = require('../middleware/accountant-page-read');
 const { createLogger } = require('../utils/logger');
 const fs = require('fs');
 const path = require('path');
@@ -55,7 +56,11 @@ const rateLimitAI = rateLimit({
 });
 
 // All routes require manager+ role
-router.use(requireRole(...MANAGER_ROLES));
+const manageCopilot = requireRole(...MANAGER_ROLES);
+const readCopilot = allowAccountantPageRead('/copilot', manageCopilot);
+router.use((req, res, next) => req.path.startsWith('/data/')
+    ? manageCopilot(req, res, next)
+    : readCopilot(req, res, next));
 
 // Load static data files with cache
 const dataCache = {};
@@ -786,7 +791,7 @@ router.post('/workflow/task-preview', requireRole(...MANAGER_ROLES), async (req,
 // === AI Cases CRUD ===
 
 // GET /api/copilot/cases — list user's cases
-router.get('/cases', requireRole(...MANAGER_ROLES), async (req, res) => {
+router.get('/cases', readCopilot, async (req, res) => {
     try {
         const result = await pool.query(
             `SELECT id, title, case_type, status, last_summary, updated_at FROM ai_cases
@@ -818,7 +823,7 @@ router.post('/cases', requireRole(...MANAGER_ROLES), async (req, res) => {
 });
 
 // GET /api/copilot/cases/:id
-router.get('/cases/:id', requireRole(...MANAGER_ROLES), async (req, res) => {
+router.get('/cases/:id', readCopilot, async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM ai_cases WHERE id = $1 AND created_by = $2', [req.params.id, req.user?.username]);
         if (!result.rows.length) return res.status(404).json({ success: false, error: 'Кейс не знайдено' });

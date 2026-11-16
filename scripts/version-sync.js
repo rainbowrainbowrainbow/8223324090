@@ -13,7 +13,6 @@
  *   2. package-lock.json root package versions
  *   3. HTML/CSS/JS/image asset query strings in href/src attributes, quoted asset refs, and CSS @import refs
  *   4. first-screen release badge, tagline, and changelog button
- *   5. index.html latest changelog modal entry version + label
  *   6. CHANGELOG.md latest heading version + label
  *   7. sw.js CACHE_NAME and API_CACHE_NAME
  *   8. server.js inline versioned asset references
@@ -271,39 +270,7 @@ function publicFirstScreenLabel(releaseLabel) {
     return normalizeLabel(releaseLabel).replace(/^CRM\s+\d+(?:\.\d+)?\s*:\s*/i, '');
 }
 
-function defaultReleaseDateLabel(date = new Date()) {
-    const day = String(date.getDate()).padStart(2, '0');
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const year = date.getFullYear();
-    return `${day}.${month}.${year}`;
-}
-
-function buildDefaultChangelogModalSection(version, releaseLabel) {
-    const title = releaseLabel || `Release v${version}`;
-    const separator = String.fromCharCode(0x2014);
-    const heading = `v${version}${releaseLabel ? ` ${separator} ${releaseLabel}` : ''}`;
-    return `                <div class="changelog-section">
-                    <h4>${htmlEscape(heading)}</h4>
-                    <ul>
-                        <li><b>${htmlEscape(title)}</b> ${separator} release marker, cache tags and visible version metadata were prepared automatically.</li>
-                    </ul>
-                </div>
-`;
-}
-
-function buildDefaultMarkdownChangelogEntry(version, releaseLabel) {
-    const title = releaseLabel || `Release v${version}`;
-    return `## v${version} - ${title}
-
-### Release / Versioning / (${defaultReleaseDateLabel()}) [codex]
-- **${title}** - release marker, cache tags and visible version metadata were prepared automatically.
-
----
-
-`;
-}
-
-function syncFirstScreenLabels(file, version, releaseLabel, { checkLatestModal = false, releaseLabelInText = false } = {}) {
+function syncFirstScreenLabels(file, version, releaseLabel, { releaseLabelInText = false } = {}) {
     if (!exists(file)) return;
 
     let html = read(file);
@@ -348,70 +315,7 @@ function syncFirstScreenLabels(file, version, releaseLabel, { checkLatestModal =
         }
     }
 
-    if (checkLatestModal) {
-        const latestModalRegex = /(<div class="changelog-list">[\s\S]*?<h4>)([\s\S]*?)(<\/h4>)/;
-        const latestModalMatch = html.match(latestModalRegex);
-        if (latestModalMatch) {
-            const expectedHeading = `v${version}${releaseLabel ? ` — ${releaseLabel}` : ''}`;
-            const expectedHeadingHtml = htmlEscape(expectedHeading);
-            if (latestModalMatch[2] !== expectedHeadingHtml) {
-                report(file, 'latest changelog modal entry', latestModalMatch[2], expectedHeadingHtml);
-                if (FIX) {
-                    const actualVersion = latestModalMatch[2].match(/v([\d.]+)/)?.[1] || '';
-                    if (actualVersion === version) {
-                        html = html.replace(latestModalRegex, `$1${expectedHeadingHtml}$3`);
-                    } else {
-                        html = html.replace(
-                            /(<div class="changelog-list">\s*)/,
-                            `$1${buildDefaultChangelogModalSection(version, releaseLabel)}`
-                        );
-                    }
-                }
-            } else {
-                ok(file, 'latest changelog modal entry');
-            }
-        }
-    }
-
     if (FIX) write(file, html);
-}
-
-function checkMarkdownChangelog(version, releaseLabel) {
-    const file = 'CHANGELOG.md';
-    if (!exists(file)) return;
-
-    let markdown = read(file);
-    const latestHeading = markdown.match(/^## v([\d.]+)\s+[-—]\s+(.+)$/m);
-    if (!latestHeading) {
-        report(file, 'latest heading', 'missing', `v${version} - ${releaseLabel}`, false);
-        return;
-    }
-
-    if (latestHeading[1] !== version) {
-        report(file, 'latest heading version', latestHeading[1], version);
-        if (FIX) {
-            markdown = markdown.replace(
-                /(---\r?\n\r?\n)/,
-                `$1${buildDefaultMarkdownChangelogEntry(version, releaseLabel)}`
-            );
-            write(file, markdown);
-            ok(file, 'latest heading label');
-            return;
-        }
-    } else {
-        ok(file, 'latest heading version');
-    }
-
-    const headingLabel = normalizeLabel(latestHeading[2].replace(/\s*\([^)]*\)\s*$/, ''));
-    if (headingLabel !== releaseLabel) {
-        report(file, 'latest heading label', latestHeading[2], releaseLabel);
-        if (FIX) {
-            markdown = markdown.replace(/^## v([\d.]+)\s+[-—]\s+(.+)$/m, `## v$1 - ${releaseLabel}`);
-            write(file, markdown);
-        }
-    } else {
-        ok(file, 'latest heading label');
-    }
 }
 
 function checkApiVersionContract() {
@@ -525,7 +429,7 @@ function main() {
 
     syncPackageLock(version);
     syncAssetVersions('index.html', version);
-    syncFirstScreenLabels('index.html', version, releaseLabel, { checkLatestModal: true, releaseLabelInText: true });
+    syncFirstScreenLabels('index.html', version, releaseLabel, { releaseLabelInText: true });
     syncFirstScreenLabels('dashboard.html', version, releaseLabel);
     syncServiceWorker(version);
     syncCssImportVersions('css/assistant-rail.css', version);
@@ -536,7 +440,6 @@ function main() {
     for (const file of collectVersionedAssetFiles()) {
         if (file !== 'index.html') syncAssetVersions(file, version);
     }
-    checkMarkdownChangelog(version, releaseLabel);
     checkApiVersionContract();
     syncCheckboxImplementationStatus(version, releaseLabel);
 

@@ -2,10 +2,11 @@
 
 ## Scope and identity
 
-The pilot uses the existing Second Brain bot. Only Telegram users 674972415,
-606680445 and 622480549 enter its isolated CRM lane. They do not gain notes,
-model-session or other tool access. The corresponding existing CRM accounts were
-verified with the owner: Sergey (4), Natalia (3), Zhenya (13).
+The pilot uses the existing Second Brain bot. The three original,
+owner-confirmed CRM accounts are the initial seed. An additional existing CRM
+account can use the isolated task lane once its CRM pilot flag is enabled and
+the account holder confirms a Telegram binding. Enrollment does not grant
+access to the notes vault, model sessions, or other tools.
 
 `telegram_crm_bindings` is the only CRM access identity. Legacy `users.telegram_chat_id`
 and `staff.telegram_id` retain their notification meaning. Username matching cannot
@@ -13,7 +14,9 @@ grant this integration access. The seeding operator writes **proposed** IDs only
 
 An authenticated account starts a 10-minute one-time link. First onboarding of an
 admin-preassigned, never-connected binding (version 1) needs no second password.
-Replacement and reconnect require password re-entry, including after revocation.
+If there is no preassigned Telegram ID, the new participant enters their CRM
+password to start the link. Replacement and reconnect require password
+re-entry, including after revocation.
 Telegram claims the link with its real private-chat sender. The original browser
 must explicitly confirm the discovered ID using a separate in-memory proof. Starting
 a replacement leaves the old identity valid until confirmation. Disconnect requires

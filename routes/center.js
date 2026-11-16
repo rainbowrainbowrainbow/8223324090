@@ -18,6 +18,7 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { canUseAction, requireAction, requireMinRole, authenticateToken } = require('../middleware/auth');
+const { allowAccountantPageRead } = require('../middleware/accountant-page-read');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
 const { businessBookingSql } = require('../services/financeQaReadScope');
 const {
@@ -41,7 +42,7 @@ const requireCenterSettings = requireAction('manage_settings');
 
 // v39.8: Security — require authentication for all center endpoints
 router.use(authenticateToken);
-router.use(requireMinRole('manager'));
+router.use(allowAccountantPageRead('/center', requireMinRole('manager')));
 router.use((req, res, next) => installRevenueResponseShaper(
     req,
     res,

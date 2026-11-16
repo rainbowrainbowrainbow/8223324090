@@ -18,7 +18,7 @@ const ROLE_PERMISSIONS = {
     senior_manager:     { taskVisibility: 'all', canCreateTasks: true, canDeleteTasks: false, canAssignAnyone: true },
     manager:            { taskVisibility: 'department', canCreateTasks: true, canDeleteTasks: false, canAssignAnyone: false },
     // Specialist roles
-    accountant:         { taskVisibility: 'department', canCreateTasks: true, canDeleteTasks: false, canAssignAnyone: false },
+    accountant:         { taskVisibility: 'all', canCreateTasks: true, canDeleteTasks: false, canAssignAnyone: true },
     art_director:       { taskVisibility: 'department', canCreateTasks: true, canDeleteTasks: false, canAssignAnyone: false },
     marketer:           { taskVisibility: 'department', canCreateTasks: true, canDeleteTasks: false, canAssignAnyone: false },
     it_specialist:      { taskVisibility: 'all', canCreateTasks: true, canDeleteTasks: false, canAssignAnyone: false },

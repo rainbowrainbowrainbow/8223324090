@@ -210,6 +210,27 @@ Before preparing or executing a Yellow release:
 Preparation must not push, deploy, execute migrations, create QA records, or
 change production state.
 
+### Publishing release notes
+
+Put the Ukrainian notes in the signed release block with `--release-notes-file`.
+The controller publishes a CRM changelog GitHub Release after Railway version
+smoke and timeline asset proof. It verifies the production version and SHA,
+saves that evidence in the block, and creates one publication tagged
+`crm-changelog-v<version>` at the exact SHA.
+
+A publication outage leaves the deployment complete and the changelog status pending.
+While the original authorization is valid, retry the same publication with
+`node scripts/production-block-controller.js publish-notes --block-file <file> --confirmation <value>`.
+This action uses the existing deployment proof and preserves the release attempt
+counter. A GitHub tag or release already bound to other content requires inspection.
+The GitHub CLI identity used for publication needs repository Contents write access.
+
+The CRM reads the published catalog on demand with a server-side cache. The
+historical fragment and Markdown remain available when GitHub is unavailable.
+Before shipping the catalog for the first time, refresh the imported archive with
+any confirmed releases that shipped after its base commit and verify the resulting
+version list against the latest production rollout.
+
 ### Policy documentation on the production branch
 
 When the owner authorizes publishing policy documentation to the production
@@ -276,7 +297,7 @@ Do not report skipped checks as passed.
 ## 8. Commit And Version Hygiene
 
 - Commit functional work first.
-- For a deployable release, create a separate version/cache/changelog commit when
+- For a deployable release, create a separate version and cache commit when
   practical.
 - `package.json` is the version source of truth.
 - Use:
@@ -284,8 +305,7 @@ Do not report skipped checks as passed.
   - `npm run version:bump -- patch --label "<Release Label>"` for the canonical
     patch bump;
   - `npm run check:version` to verify consistency.
-- Update `index.html` changelog modal and `CHANGELOG.md` for release-relevant
-  work.
+- Supply the release notes to the controller for release-relevant work.
 - User-facing changelog text is Ukrainian.
 - Pure documentation changes normally do not require a version bump.
 
@@ -375,9 +395,8 @@ sequence is local validation, release artifact commit, exact-SHA push and CI,
 the repository Railway helper, exact live version/release proof, and optional
 trusted QA limited to `allowedQaScope`.
 An optional JSON release-notes file under `docs/` supplies up to six signed
-plain-text title/body items. The controller applies them to `CHANGELOG.md` and
-the login changelog modal after the version bump and before the release commit;
-it fails closed if generated templates differ.
+plain-text title/body items. The controller publishes them only after the
+production version, commit and asset proof pass.
 
 The `certificate-qa-isolation` protected workflow is reserved for the exact
 certificate QA release surface: Red paths `routes/auth.js` and

@@ -4,6 +4,7 @@ const childProcess = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { publishReleaseNotes } = require('./publish-release-notes');
 const { inputs: artifactInputs, requiresBuild: requiresArtifactBuild } = require('./runtime-artifact-inputs');
 const {
     ProductionBlockError,
@@ -244,35 +245,6 @@ function releaseNotesFromFile(file) {
     }
 }
 
-function escapeReleaseHtml(value) {
-    return String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
-}
-
-function applyReleaseNotes(manifest, root = ROOT) {
-    if (!manifest.releaseNotes?.length) return;
-    const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-    const version = pkg.version;
-    const label = pkg.eventGenix?.releaseLabel;
-    fail(label === manifest.releaseLabel, 'Release label drifted before release notes were written',
-        'PRODUCTION_BLOCK_RELEASE_NOTES_LABEL_DRIFT');
-    const markdownFile = path.join(root, 'CHANGELOG.md');
-    const htmlFile = path.join(root, 'index.html');
-    const markdown = fs.readFileSync(markdownFile, 'utf8');
-    const html = fs.readFileSync(htmlFile, 'utf8');
-    const defaultMarkdown = `- **${label}** - release marker, cache tags and visible version metadata were prepared automatically.`;
-    const defaultHtml = `<li><b>${escapeReleaseHtml(label)}</b> — release marker, cache tags and visible version metadata were prepared automatically.</li>`;
-    fail(markdown.includes(`## v${version} - ${label}`) && markdown.includes(defaultMarkdown)
-        && html.includes(`<h4>v${version} — ${escapeReleaseHtml(label)}</h4>`) && html.includes(defaultHtml),
-    'Generated release notes templates differ from the signed release',
-    'PRODUCTION_BLOCK_RELEASE_NOTES_TEMPLATE_MISMATCH');
-    const markdownNotes = manifest.releaseNotes.map(item => `- **${item.title}** — ${item.text}`).join('\n');
-    const htmlNotes = manifest.releaseNotes.map(item =>
-        `<li><b>${escapeReleaseHtml(item.title)}</b> — ${escapeReleaseHtml(item.text)}</li>`).join('\n                        ');
-    fs.writeFileSync(markdownFile, markdown.replace(defaultMarkdown, markdownNotes));
-    fs.writeFileSync(htmlFile, html.replace(defaultHtml, htmlNotes));
-}
-
 function resolveSpawnCommand(command, args, options = {}) {
     const platform = options.platform || process.platform;
     const execPath = options.execPath || process.execPath;
@@ -473,6 +445,26 @@ function defaultRuntime() {
         plan(manifest) {
             return releaseCommandPlan(manifest);
         },
+        async publishNotes(manifest, blockFile) {
+            const sha = manifest.runtimeState.releaseSha;
+            const pkg = JSON.parse(git(['show', sha + ':package.json']));
+            fail(pkg.eventGenix?.releaseLabel === manifest.releaseLabel,
+                'Release metadata differs from the approved changelog', 'PRODUCTION_BLOCK_RELEASE_NOTES_LABEL_DRIFT');
+            const entry = { version: pkg.version, sha, label: manifest.releaseLabel, notes: manifest.releaseNotes };
+            let live = manifest.runtimeState.changelogProof;
+            if (!live) {
+                live = await liveVersion(manifest.liveUrl);
+                fail(live.version === entry.version && live.commitSha === sha && live.deploymentMetadata?.complete === true,
+                    'Live release differs from the approved changelog', 'PRODUCTION_BLOCK_RELEASE_NOTES_LIVE_DRIFT');
+                manifest.runtimeState.changelogProof = {
+                    version: live.version, commitSha: live.commitSha, sourceBranch: live.sourceBranch,
+                    deploymentMetadata: { complete: true }
+                };
+                writeBlockFile(blockFile, manifest);
+            }
+            validateManifest(manifest);
+            return publishReleaseNotes({ entry, live, sourceBranch: manifest.allowedBranch });
+        },
         async retryFacts(previous, facts, ciRunId) {
             return {
                 remoteSha: remoteProductionSha(),
@@ -516,7 +508,6 @@ function defaultRuntime() {
                     'Prepared protected release drifted', 'PRODUCTION_BLOCK_RELEASE_SHA_DRIFT');
             } else {
                 commandResult('npm', ['run', 'version:bump', '--', 'patch', '--label', manifest.releaseLabel], { inherit: true });
-                applyReleaseNotes(manifest);
                 const releasePaths = git(['diff', '--name-only']).split(/\r?\n/).filter(Boolean);
                 fail(releasePaths.length > 0, 'Version bump did not produce release artifacts', 'PRODUCTION_BLOCK_RELEASE_ARTIFACTS_MISSING');
                 const invalidReleasePaths = releasePaths.filter(file => !isReleaseArtifact(file));
@@ -606,13 +597,21 @@ function defaultRuntime() {
             manifest.runtimeState.releaseCompletedAt = new Date().toISOString();
             manifest.runtimeState.lastFailureCode = null;
             writeBlockFile(blockFile, manifest);
+            let changelog;
+            try {
+                changelog = await publishConfirmedNotes(manifest, blockFile, runtime);
+            } catch (error) {
+                changelog = { status: 'pending', reason: cleanText(error.message, 300) };
+                manifest.runtimeState.changelog = changelog;
+                writeBlockFile(blockFile, manifest);
+            }
             let qa = null;
             if (manifest.allowedQaScope?.enabled) {
                 qa = await runtime.resumeQa(manifest, releaseSha);
                 manifest.runtimeState.qa = qa;
                 writeBlockFile(blockFile, manifest);
             }
-            return { releaseSha, ciUrl: exact.url, qa, blockFile };
+            return { releaseSha, ciUrl: exact.url, changelog, qa, blockFile };
         }
     };
     return runtime;
@@ -980,6 +979,7 @@ function releaseCommandPlan(manifest) {
         `npm run release:railway-up -- --branch ${manifest.allowedBranch} --project ${manifest.railwayProjectId} --environment ${manifest.railwayEnvironment} --service ${manifest.railwayServiceId}`,
         'npm run version:smoke -- <live-url>',
         'npm run release:timeline-proof -- <live-url>',
+        'publish release notes for the verified production SHA',
         ...(manifest.allowedQaScope?.kind === 'finance'
             ? ['Finance QA: fresh hash-bound plan preflight, then pending_manual; no automatic record creation']
             : manifest.allowedQaScope?.kind === 'certificate'
@@ -1175,6 +1175,26 @@ async function executeBlockAction(options, runtime) {
     }
 }
 
+async function publishConfirmedNotes(manifest, blockFile, runtime) {
+    const result = await runtime.publishNotes(manifest, blockFile);
+    manifest.runtimeState.changelog = { status: 'published', ...result };
+    writeBlockFile(blockFile, manifest);
+    return manifest.runtimeState.changelog;
+}
+
+async function publishNotesAction(options, runtime) {
+    return withBlockFileLock(options.blockFile, async () => {
+        const manifest = readBlockFile(options.blockFile);
+        fail(options.confirmation === confirmationValue(manifest),
+            'Changelog retry requires the exact block confirmation', 'PRODUCTION_BLOCK_CONFIRMATION_INVALID');
+        fail(manifest.runtimeState?.releaseCompletedAt && SHA_PATTERN.test(manifest.runtimeState?.releaseSha),
+            'Changelog retry requires a completed deployment', 'PRODUCTION_BLOCK_RELEASE_SHA_MISSING');
+        if (options.dryRun) return { success: true, action: 'publish-notes', dryRun: true };
+        return sanitize({ success: true, action: 'publish-notes',
+            result: await publishConfirmedNotes(manifest, options.blockFile, runtime) });
+    });
+}
+
 async function qaResumeAction(options, runtime) {
     const manifest = readBlockFile(options.blockFile);
     fail(options.confirmation === confirmationValue(manifest),
@@ -1194,7 +1214,7 @@ async function qaResumeAction(options, runtime) {
 function parseOptions(argv) {
     const args = [...argv];
     const action = cleanText(args[0] && !args[0].startsWith('-') ? args[0] : argValue(args, '--action', 'status'), 20).toLowerCase();
-    fail(['prepare', 'status', 'execute', 'qa-resume'].includes(action), 'Unsupported production block action', 'PRODUCTION_BLOCK_ACTION_INVALID');
+    fail(['prepare', 'status', 'execute', 'qa-resume', 'publish-notes'].includes(action), 'Unsupported production block action', 'PRODUCTION_BLOCK_ACTION_INVALID');
     const actionOffset = args[0] && !args[0].startsWith('-') ? 1 : 0;
     const actionArgs = args.slice(actionOffset);
     const knownValueFlags = new Set([
@@ -1235,7 +1255,7 @@ function parseOptions(argv) {
     return {
         action,
         blockFile: blockFileValue ? path.resolve(blockFileValue) : null,
-        confirmation: argValue(args, '--confirmation') || (action === 'execute' || action === 'qa-resume' ? positionalArgs[1] : null),
+        confirmation: argValue(args, '--confirmation') || (['execute', 'qa-resume', 'publish-notes'].includes(action) ? positionalArgs[1] : null),
         validityMinutes: Number(argValue(args, '--validity-minutes', '360')),
         maxReleaseAttempts: Number(argValue(args, '--max-release-attempts', '3')),
         releaseLabel: cleanText(argValue(args, '--release-label', 'Autonomy Hardening'), 120),
@@ -1255,6 +1275,7 @@ function parseOptions(argv) {
 async function execute(options, runtime = defaultRuntime()) {
     if (options.action === 'prepare') return prepareAction(options, runtime);
     if (options.action === 'status') return statusAction(options);
+    if (options.action === 'publish-notes') return publishNotesAction(options, runtime);
     if (options.action === 'qa-resume') return qaResumeAction(options, runtime);
     return executeAction(options, runtime);
 }
@@ -1277,7 +1298,6 @@ if (require.main === module) {
 }
 
 module.exports = {
-    applyReleaseNotes,
     assertExecuteDrift,
     assertHrPayrollProductionBase: assertPreparedProductionBase,
     assertPreparedProductionBase,

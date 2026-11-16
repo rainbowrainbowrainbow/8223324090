@@ -220,6 +220,7 @@ app.get(['/game', '/game.html'], (_req, res) => {
     if (PARK_PROFILE_MODULES.gamification !== 'active') return res.redirect(302, '/profile?tab=achievements');
     return res.sendFile(path.join(__dirname, 'game.html'));
 });
+app.use(require('./services/changelog-page').createChangelogRouter());
 app.use(express.static(path.join(__dirname)));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 

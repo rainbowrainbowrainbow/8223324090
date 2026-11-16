@@ -44,8 +44,10 @@ test('HR, Accountant, and Security presets do not cross payroll/manage boundarie
 
     const accountant = { role: 'accountant' };
     assert.equal(allowed(accountant, 'hr.payroll.view'), true);
-    assert.equal(allowed(accountant, 'hr.staff.view'), false);
-    assert.equal(allowed(accountant, 'hr.reports.view'), false);
+    assert.equal(allowed(accountant, 'hr.staff.view'), true);
+    assert.equal(allowed(accountant, 'hr.reports.view'), true);
+    assert.equal(allowed(accountant, 'hr.staff.manage'), false);
+    assert.equal(allowed(accountant, 'hr.staff.accounts.onboard'), false);
 
     const security = { role: 'security' };
     assert.equal(allowed(security, 'hr.today.view'), true);

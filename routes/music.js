@@ -12,6 +12,7 @@ const multer = require('multer');
 const { createLogger } = require('../utils/logger');
 const { deliverAnnouncement } = require('../services/music-delivery');
 const { authenticateToken, requireRole } = require('../middleware/auth');
+const { allowAccountantPageRead } = require('../middleware/accountant-page-read');
 const {
     downloadAudioFromUrlWithMetadata,
     prepareSoundUploadBlob,
@@ -262,7 +263,7 @@ router.post('/library/generate-music/callback', express.json({ limit: '256kb' })
 
 // All music routes require authentication and sound-page-level access.
 router.use(authenticateToken);
-router.use(requireRole('manager', 'art_director'));
+router.use(allowAccountantPageRead('/sound', requireRole('manager', 'art_director')));
 
 // ============================================
 // Announcements — CRUD

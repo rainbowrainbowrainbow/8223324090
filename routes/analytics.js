@@ -10,6 +10,7 @@ const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 
 const { requireRole, requireAction } = require('../middleware/auth');
+const { allowAccountantPageRead } = require('../middleware/accountant-page-read');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
 const { LEAD_PIPELINE_STAGE_ORDER } = require('../services/leadStageTransition');
 const {
@@ -32,7 +33,7 @@ function leadTypeStatsFromRows(rows = []) {
 }
 
 // RBAC: Analytics - manager-up, aligned with middleware/js/sidebar page access.
-router.use(requireRole('manager'));
+router.use(allowAccountantPageRead('/analytics', requireRole('manager')));
 router.use(requireAction('view_revenue'));
 
 // ==========================================

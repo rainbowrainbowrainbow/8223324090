@@ -4,6 +4,7 @@
 const router = require('express').Router();
 const { pool } = require('../db');
 const { authenticateToken, canUseAction, requireRole } = require('../middleware/auth');
+const { allowAccountantPageRead } = require('../middleware/accountant-page-read');
 const { createLogger } = require('../utils/logger');
 const { installRevenueResponseShaper } = require('../services/revenueAccessPolicy');
 const costumeInventory = require('../services/costumeInventory');
@@ -708,7 +709,7 @@ function sendWarehousePhotoIntakeAccessError(res, error) {
 }
 
 // GET /api/warehouse/photo-intake/status - Telegram photo intake readiness
-router.get('/photo-intake/status', requireRole(...MANAGE_ROLES), async (req, res) => {
+router.get('/photo-intake/status', allowAccountantPageRead('/warehouse', requireRole(...MANAGE_ROLES)), async (req, res) => {
     try {
         const status = await warehousePhotoIntake.getIntakeStatus({ businessContext: req.warehousePhotoIntakeBusinessContext });
         res.json({ success: true, status });
@@ -720,7 +721,7 @@ router.get('/photo-intake/status', requireRole(...MANAGE_ROLES), async (req, res
 });
 
 // GET /api/warehouse/photo-intake - recent Telegram photo intake queue
-router.get('/photo-intake', requireRole(...MANAGE_ROLES), async (req, res) => {
+router.get('/photo-intake', allowAccountantPageRead('/warehouse', requireRole(...MANAGE_ROLES)), async (req, res) => {
     try {
         const items = await warehousePhotoIntake.listIntakes({
             businessContext: req.warehousePhotoIntakeBusinessContext,
@@ -736,7 +737,7 @@ router.get('/photo-intake', requireRole(...MANAGE_ROLES), async (req, res) => {
 });
 
 // GET /api/warehouse/photo-intake/:id - single Telegram photo intake detail
-router.get('/photo-intake/:id', requireRole(...MANAGE_ROLES), async (req, res) => {
+router.get('/photo-intake/:id', allowAccountantPageRead('/warehouse', requireRole(...MANAGE_ROLES)), async (req, res) => {
     try {
         const item = await warehousePhotoIntake.getIntake(req.params.id, { businessContext: req.warehousePhotoIntakeBusinessContext });
         if (!item) return res.status(404).json({ success: false, error: 'intake_not_found' });

@@ -624,45 +624,63 @@ function initAuthListeners() {
     });
     if (typeof bindLogoutButton === 'function') bindLogoutButton();
 
-    let changelogHistoryPromise = null;
-    const loadChangelogHistory = async () => {
-        const host = document.getElementById('changelogHistory');
-        if (!host || host.dataset.loaded === 'true') return;
-        if (changelogHistoryPromise) return changelogHistoryPromise;
+    const changelogButton = document.getElementById('changelogBtn');
+    const changelogModal = document.getElementById('changelogModal');
+    if (!changelogButton || !changelogModal) return;
 
-        host.setAttribute('aria-busy', 'true');
-        changelogHistoryPromise = fetch(host.dataset.src, { credentials: 'same-origin' })
-            .then(response => {
-                if (!response.ok) throw new Error(`Changelog history request failed: ${response.status}`);
-                return response.text();
-            })
-            .then(markup => {
-                host.innerHTML = markup;
-                host.dataset.loaded = 'true';
-            })
-            .catch(() => {
-                host.dataset.loaded = 'error';
-                host.innerHTML = '<div class="center-state"><strong>Не вдалося завантажити повну історію</strong><button type="button" class="btn-secondary" data-changelog-history-retry>Спробувати ще раз</button></div>';
-            })
-            .finally(() => {
-                host.removeAttribute('aria-busy');
-                changelogHistoryPromise = null;
-            });
+    const entries = document.getElementById('changelogEntries');
+    const status = document.getElementById('changelogStatus');
+    const more = document.getElementById('changelogMore');
+    let loaded = false;
+    let next = null;
+    let loading = false;
 
-        return changelogHistoryPromise;
-    };
-
-    document.getElementById('changelogHistory')?.addEventListener('click', event => {
-        if (event.target.closest('[data-changelog-history-retry]')) void loadChangelogHistory();
-    });
-
-    const changelogBtn = document.getElementById('changelogBtn');
-    if (changelogBtn) {
-        changelogBtn.addEventListener('click', () => {
-            document.getElementById('changelogModal')?.classList.remove('hidden');
-            void loadChangelogHistory();
-        });
+    async function loadChangelogPage() {
+        if (loading || (loaded && !next)) return;
+        loading = true;
+        more.setAttribute('aria-disabled', 'true');
+        entries.setAttribute('aria-busy', 'true');
+        status.textContent = 'Завантажуємо зміни…';
+        try {
+            const query = next ? '?after=' + encodeURIComponent(next) : '';
+            const response = await fetch('/changelog/entries' + query, { credentials: 'same-origin' });
+            if (!response.ok) throw new Error('Changelog request failed');
+            const page = await response.json();
+            if (typeof page.html !== 'string' || (page.next !== null && typeof page.next !== 'string')) {
+                throw new Error('Invalid changelog page');
+            }
+            const previous = entries.lastElementChild;
+            entries.insertAdjacentHTML('beforeend', page.html);
+            if (previous && more === document.activeElement) {
+                const firstAdded = previous.nextElementSibling?.querySelector('h4');
+                firstAdded?.setAttribute('tabindex', '-1');
+                firstAdded?.focus();
+            }
+            status.textContent = !page.html ? 'Записів поки немає.' : loaded ? 'Додано попередні випуски.' : '';
+            loaded = true;
+            next = page.next;
+            if (!next && document.activeElement === more) status.focus();
+            more.hidden = !next;
+            more.textContent = 'Показати старіші';
+        } catch {
+            status.textContent = 'Не вдалося завантажити зміни.';
+            more.hidden = false;
+            more.textContent = 'Спробувати ще раз';
+        } finally {
+            loading = false;
+            more.removeAttribute('aria-disabled');
+            entries.setAttribute('aria-busy', 'false');
+        }
     }
+
+    more.addEventListener('click', () => {
+        more.focus({ preventScroll: true });
+        void loadChangelogPage();
+    });
+    changelogButton.addEventListener('click', () => {
+        openModal(changelogModal, changelogButton);
+        if (!loaded) void loadChangelogPage();
+    });
 }
 
 function initTimelineListeners() {

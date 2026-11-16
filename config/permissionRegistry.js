@@ -45,7 +45,7 @@ const LEADS_ACCESS = Object.freeze([...MANAGER_UP, 'marketer']);
 const ART_ACCESS = Object.freeze([...MANAGER_UP, 'art_director', 'marketer']);
 const HERMES_STUDIO_ACCESS = Object.freeze([...MANAGER_UP, 'art_director', 'marketer', 'admin']);
 const PROGRAMS_ACCESS = Object.freeze([...MANAGER_UP, 'admin', 'senior_instructor', 'instructor', 'art_director']);
-const HR_PAGE_ACCESS = Object.freeze([...MANAGER_UP, 'hr', 'admin', 'security']);
+const HR_PAGE_ACCESS = Object.freeze([...MANAGER_UP, 'hr', 'admin', 'security', 'accountant']);
 const TRAINING_ACCESS = Object.freeze([...MANAGER_UP, 'hr', 'senior_instructor', 'instructor']);
 const GUARDIAN_OPS_ACCESS = Object.freeze(['creator', 'director', 'admin', 'security']);
 const FINANCE_ANALYTICS_ACCESS = Object.freeze(['creator', 'director', 'accountant']);
@@ -120,6 +120,20 @@ const GENERIC_ACTION_BACKEND = Object.freeze([
     source('middleware/auth.js', 'function requireAction')
 ]);
 
+// Additional operational screens included in the accountant role preset.
+const ACCOUNTANT_OPERATIONAL_PAGES = new Set([
+    '/', '/maysternya-doli', '/center', '/art', '/content', '/designer', '/designs',
+    '/hermes-studio', '/graduation', '/warehouse', '/training', '/demo', '/programs',
+    '/hr', '/checkin', '/omni', '/copilot', '/sound', '/certificates', '/certificates/new',
+    '/certificates/batch', '/certificates/check', '/sales-funnel', '/report-agent'
+]);
+
+function accountantPageRoles(definition) {
+    const roles = new Set(definition.defaultRoles || []);
+    if (!definition.deprecated && ACCOUNTANT_OPERATIONAL_PAGES.has(definition.key)) roles.add('accountant');
+    return [...roles];
+}
+
 function page(definition) {
     return Object.freeze({
         type: 'page',
@@ -137,7 +151,7 @@ function page(definition) {
         replacementKey: null,
         notes: null,
         ...definition,
-        defaultRoles: Object.freeze([...(definition.defaultRoles || [])]),
+        defaultRoles: Object.freeze(accountantPageRoles(definition)),
         aliases: Object.freeze([...(definition.aliases || [])]),
         sidebarLinks: Object.freeze([...(definition.sidebarLinks || [])]),
         frontendConsumers: Object.freeze([

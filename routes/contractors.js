@@ -8,6 +8,7 @@ const { sendTelegramMessage } = require('../services/telegram');
 const { createLogger } = require('../utils/logger');
 
 const { authenticateToken, canUseAction, requireRole } = require('../middleware/auth');
+const { allowAccountantPageRead } = require('../middleware/accountant-page-read');
 const { installRevenueResponseShaper } = require('../services/revenueAccessPolicy');
 const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
 const log = createLogger('Contractors');
@@ -15,7 +16,7 @@ const log = createLogger('Contractors');
 // RBAC: Contractors — authentication + management only
 router.use(authenticateToken);
 router.use(requireLegacyBusinessSurface('contractors_procurement'));
-router.use(requireRole('creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'));
+router.use(allowAccountantPageRead('/warehouse', requireRole('creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin')));
 router.use((req, res, next) => installRevenueResponseShaper(
     req,
     res,

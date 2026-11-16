@@ -5,6 +5,7 @@
 const router = require('express').Router();
 const { pool } = require('../db');
 const { requireMinRole, authenticateToken, canUseAction } = require('../middleware/auth');
+const { allowAccountantPageRead } = require('../middleware/accountant-page-read');
 const { createLogger } = require('../utils/logger');
 const {
     isProfessionChecklistError,
@@ -114,7 +115,7 @@ function categorizeContent(text) {
 // GET /api/training/weekly-pending — pending responses for a week
 // v39.8: Security — require authentication
 router.use(authenticateToken);
-router.get('/weekly-pending', requireMinRole('manager'), async (req, res) => {
+router.get('/weekly-pending', allowAccountantPageRead('/training', requireMinRole('manager')), async (req, res) => {
     try {
         const week = parseInt(req.query.week) || getISOWeek(new Date());
         const year = parseInt(req.query.year) || new Date().getFullYear();

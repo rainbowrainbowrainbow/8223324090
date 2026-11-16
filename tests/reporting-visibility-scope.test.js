@@ -31,10 +31,10 @@ test('reporting and helper booking summaries reuse canonical booking visibility'
 
 test('stats center and settings fallback guards match reporting surface semantics', () => {
     const stats = read('routes/stats.js');
-    assert.match(stats, /router\.use\(requireRole\('manager'\)\)/, 'stats API should be manager-up, not auth-only');
+    assert.match(stats, /router\.use\(allowAccountantPageRead\('\/reports', requireRole\('manager'\)\)\)/, 'stats API should be manager-up, not auth-only');
 
     const center = read('routes/center.js');
-    assert.match(center, /router\.use\(requireMinRole\('manager'\)\)/, 'center API should follow manager-up page semantics');
+    assert.match(center, /router\.use\(allowAccountantPageRead\('\/center', requireMinRole\('manager'\)\)\)/, 'center API should follow manager-up page semantics');
 
     const settings = read('routes/settings.js');
     assert.match(settings, /router\.get\('\/stats\/:dateFrom\/:dateTo', requireRole\('creator', 'director'\)/, 'settings stats fallback should be settings-role guarded');
@@ -123,7 +123,7 @@ test('cross-entity search and workspace shortcuts cannot bypass booking/task vis
     assert.match(customers, /getVisibleBookingScope\(req\.user, bookingParams, 'b'\)/, 'customer booking history should reuse canonical booking visibility');
 
     const leads = read('routes/leads.js');
-    assert.match(leads, /router\.use\(requireRole\('manager', 'marketer'\)\)/, 'lead workspace routes should match sales funnel access');
+    assert.match(leads, /router\.use\(allowAccountantPageRead\('\/sales-funnel', requireRole\('manager', 'marketer'\)\)\)/, 'lead workspace routes should match sales funnel access');
     assert.match(leads, /getVisibleBookingScope\(req\.user, bookingParams, 'b'\)/, 'lead workspace linked bookings should be booking-scoped');
     assert.match(leads, /buildTaskVisibilityScope\(req\.user, taskParams, 't'\)/, 'lead workspace linked tasks should be task-scoped');
 });

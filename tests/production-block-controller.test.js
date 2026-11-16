@@ -32,7 +32,6 @@ const {
     warningText
 } = require('../scripts/production-block-policy');
 const {
-    applyReleaseNotes,
     assertHrPayrollProductionBase,
     assertPreparedProductionBase,
     assertRuntimeArtifactPushPaths,
@@ -40,6 +39,7 @@ const {
     assertPerformanceCiResult,
     assertFailedPerformanceCiRun,
     selectHrPayrollCiRun,
+    execute,
     executeAction,
     findUnexpiredQaBlocker,
     financeQaPreflight,
@@ -705,26 +705,7 @@ test('canary QA scope is fail-closed at exactly one fixture', () => {
     }), error => error.code === 'PRODUCTION_BLOCK_QA_SCOPE_INVALID');
 });
 
-test('signed Ukrainian release notes replace both generated release artifacts before commit', t => {
-    const value = manifest({ releaseNotes: [{ title: 'Перевірка', text: 'Показано доступність погашення.' }] });
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'eventgenix-release-notes-test-'));
-    const files = ['package.json', 'CHANGELOG.md', 'index.html'];
-    t.after(() => {
-        files.forEach(file => fs.unlinkSync(path.join(directory, file)));
-        fs.rmdirSync(directory);
-    });
-    fs.writeFileSync(path.join(directory, 'package.json'), JSON.stringify({
-        version: '0.82.18', eventGenix: { releaseLabel: value.releaseLabel }
-    }));
-    fs.writeFileSync(path.join(directory, 'CHANGELOG.md'),
-        `## v0.82.18 - ${value.releaseLabel}\n- **${value.releaseLabel}** - release marker, cache tags and visible version metadata were prepared automatically.`);
-    fs.writeFileSync(path.join(directory, 'index.html'),
-        `<h4>v0.82.18 — ${value.releaseLabel}</h4><li><b>${value.releaseLabel}</b> — release marker, cache tags and visible version metadata were prepared automatically.</li>`);
-    applyReleaseNotes(value, directory);
-    assert.match(fs.readFileSync(path.join(directory, 'CHANGELOG.md'), 'utf8'),
-        /\*\*Перевірка\*\* — Показано доступність погашення/);
-    assert.match(fs.readFileSync(path.join(directory, 'index.html'), 'utf8'),
-        /<b>Перевірка<\/b> — Показано доступність погашення/);
+test('manifest rejects unsafe release note markup', () => {
     assert.throws(() => manifest({ releaseNotes: [{ title: '<unsafe>', text: 'text' }] }),
         error => error.code === 'PRODUCTION_BLOCK_RELEASE_NOTES_INVALID');
 });
@@ -1804,4 +1785,27 @@ test('finance renewal rechecks exact candidate, predecessor and new expiry immed
     assert.throws(() => runAuthorizedReleaseStage(value, fixture.newFile, 'npm', ['run', 'release:railway-up'], {}, { now: validTime, commandResult }),
         error => error.code === 'PRODUCTION_BLOCK_RENEWAL_STATE_INVALID');
     assert.equal(calls.length, 1, 'expired or altered renewal cannot start another protected subprocess');
+});
+
+test('changelog publication retry uses saved deployment state and preserves release attempts', async t => {
+    const value = manifest();
+    const file = blockFile(t, value);
+    let calls = 0;
+    const runtime = {
+        async publishNotes(block) {
+            calls += 1;
+            assert.equal(block.runtimeState.releaseSha, RELEASE_SHA);
+            return { version: '0.83.85', sha: RELEASE_SHA };
+        }
+    };
+    const options = { action: 'publish-notes', blockFile: file, confirmation: confirmationValue(value) };
+    await assert.rejects(execute(options, runtime), { code: 'PRODUCTION_BLOCK_RELEASE_SHA_MISSING' });
+    Object.assign(value.runtimeState, { releaseSha: RELEASE_SHA, releaseCompletedAt: new Date().toISOString(), releaseAttempts: 1 });
+    writeBlockFile(file, value);
+    await assert.rejects(execute({ ...options, confirmation: 'wrong' }, runtime), { code: 'PRODUCTION_BLOCK_CONFIRMATION_INVALID' });
+    assert.equal((await execute({ ...options, dryRun: true }, runtime)).dryRun, true);
+    assert.equal(calls, 0);
+    assert.equal((await execute(options, runtime)).result.status, 'published');
+    assert.equal(calls, 1);
+    assert.equal(readBlockFile(file).runtimeState.releaseAttempts, 1);
 });

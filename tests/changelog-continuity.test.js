@@ -1,116 +1,112 @@
-const { describe, it } = require('node:test');
+'use strict';
+
+const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { createCatalog, parseLegacyArchive } = require('../services/changelog-page');
+const { TAG_PREFIX, releaseBody } = require('../services/release-changelog');
+const { publishReleaseNotes } = require('../scripts/publish-release-notes');
 
-const ROOT = path.join(__dirname, '..');
+const root = path.join(__dirname, '..');
+const read = file => fs.readFileSync(path.join(root, file), 'utf8');
+const entry = {
+    version: '0.90.1',
+    sha: 'a'.repeat(40),
+    label: 'Зміни <CRM>',
+    notes: [{ title: 'Архів', text: 'Доступний <script>опис</script>.' }]
+};
+const branch = 'codex/eventgenix-production';
+const release = {
+    tag_name: TAG_PREFIX + entry.version, target_commitish: entry.sha, published_at: '2026-11-16T10:00:00Z',
+    body: releaseBody(entry), html_url: 'https://example.test/releases/changelog'
+};
+const live = { version: entry.version, commitSha: entry.sha, sourceBranch: branch, deploymentMetadata: { complete: true } };
 
-function read(file) {
-    return fs.readFileSync(path.join(ROOT, file), 'utf8');
-}
+test('the login shell omits archived markup and retains historical notes in the archive source', () => {
+    const index = read('index.html');
+    const source = read('changelog-history.fragment');
+    const archive = parseLegacyArchive(source);
+    assert.match(index, /id="changelogEntries"[^>]*><\/div>/);
+    assert.doesNotMatch(index, /<h4>v\d+\.\d+\./);
+    const expected = new Set([...source.matchAll(/<h4>v(\d+\.\d+(?:\.\d+)?)(?=\s|<)/g)].map(match => match[1]));
+    for (const version of ['0.83.85', '0.83.83', '0.83.80', '0.83.78', '0.83.76']) expected.delete(version);
+    assert.deepEqual(new Set(archive.map(item => item.version)), expected);
+    assert(archive.length > 2100);
+    for (const version of ['0.83.87', '0.83.86', '0.83.84', '0.83.82', '0.83.81', '0.78.101', '0.78.98', '0.61.0', '0.60.0', '2.9']) {
+        assert(archive.some(item => item.version === version), version);
+    }
+    for (const version of ['0.83.83', '0.83.80', '0.83.78', '0.83.76']) {
+        assert(source.includes('<h4>v' + version + ' '), version);
+        assert(!archive.some(item => item.version === version), version);
+    }
+});
 
-function changelogVersions() {
-    return [...read('CHANGELOG.md').matchAll(/^## v([0-9.]+)\s+[-—]\s+(.+)$/gm)].map(match => match[1]);
-}
+test('only published exact-release entries are visible, and pagination keeps the archive complete', async () => {
+    let calls = 0;
+    const fake = [
+        release, { ...release, tag_name: TAG_PREFIX + '0.90.2', draft: true },
+        { ...release, target_commitish: 'b'.repeat(40) }
+    ];
+    const catalog = createCatalog({ fetchImpl: async () => {
+        calls += 1;
+        return Response.json(fake);
+    } });
+    const [page, same] = await Promise.all([catalog(), catalog()]);
+    assert.equal(calls, 1);
+    assert.deepEqual(same, page);
+    assert.match(page.html, /v0\.90\.1 — Зміни &lt;CRM&gt;/);
+    assert.doesNotMatch(page.html, /<script>/);
+    assert.equal((page.html.match(/<h4>/g) || []).length, 10);
+    const older = await catalog({ after: page.next });
+    assert(!older.html.includes('v' + page.next + ' —'));
+    assert(older.next);
+    assert.equal(calls, 1);
+    const direct = await catalog({ version: '2.9', archive: true });
+    assert.match(direct.html, /Нові функції/);
+    assert.equal(direct.next, null);
+    const archiveYear = await catalog({ year: '2026', archive: true });
+    assert(archiveYear.years.includes('2026'));
+    assert.match(archiveYear.html, /v0\.90\.1/);
+    assert.match(await catalog({ format: 'markdown' }), /## v0\.90\.1/);
+    assert.equal(await catalog({ after: '9.9.9' }), null);
+});
 
-function indexModalVersions() {
-    return [...read('index.html').matchAll(/<h4>v([0-9.]+)\s+[—-]\s+[\s\S]*?<\/h4>/g)].map(match => match[1]);
-}
+test('a provider outage keeps the last known catalog and a cold outage keeps the legacy archive', async () => {
+    let time = 0;
+    let offline = false;
+    const fetchImpl = async () => {
+        if (offline) throw new Error('unavailable');
+        return Response.json([release]);
+    };
+    const catalog = createCatalog({ fetchImpl, now: () => time });
+    assert.match((await catalog()).html, /v0\.90\.1/);
+    offline = true;
+    time += 300001;
+    assert.match((await catalog()).html, /v0\.90\.1/);
+    const cold = createCatalog({ fetchImpl });
+    assert.match((await cold()).html, /v0\.83\.84/);
+});
 
-function versionParts(version) {
-    return version.split('.').map(Number);
-}
-
-function fullModalVersions() {
-    return [...`${read('index.html')}\n${read('changelog-history.fragment')}`.matchAll(/<h4>v([0-9.]+)/g)].map(match => match[1]);
-}
-
-function currentReleasePrefix() {
-    const pkg = JSON.parse(read('package.json'));
-    const [major, minor] = String(pkg.version || '').split('.');
-    return `${major}.${minor}.`;
-}
-
-function currentPackageVersion() {
-    return String(JSON.parse(read('package.json')).version || '');
-}
-
-function versionSyncScript() {
-    return read('scripts/version-sync.js');
-}
-
-function isVisibleContinuityTrain(version) {
-    return version.startsWith(currentReleasePrefix())
-        || version.startsWith('0.61.')
-        || version.startsWith('0.60.');
-}
-
-function previousPatch(version) {
-    const [major, minor, patch] = versionParts(version);
-    if (patch <= 0) return null;
-    return `${major}.${minor}.${patch - 1}`;
-}
-
-describe('visible changelog version continuity', () => {
-    it('keeps current and legacy active release notes present in the login changelog modal', () => {
-        const source = changelogVersions().filter(isVisibleContinuityTrain);
-        const visible = new Set(fullModalVersions());
-
-        const missing = source.filter(version => !visible.has(version));
-        assert.deepEqual(missing, []);
-    });
-
-    it('does not skip current or legacy active patch versions in the visible top chain', () => {
-        const visibleActive = fullModalVersions().filter(isVisibleContinuityTrain);
-        const sourceActive = new Set(changelogVersions().filter(isVisibleContinuityTrain));
-        assert.ok(visibleActive.length > 10);
-
-        const visible = new Set(visibleActive);
-        for (const version of visibleActive) {
-            const prev = previousPatch(version);
-            if (!prev || version === '0.60.0') continue;
-            if (!sourceActive.has(prev)) continue;
-            assert.ok(visible.has(prev), `visible changelog skips ${prev} before ${version}`);
+test('publication checks live identity, creates one receipt and refuses a conflicting tag', async () => {
+    let current;
+    let writes = 0;
+    const tag = { object: { type: 'commit', sha: entry.sha } };
+    const request = async (endpoint, payload) => {
+        if (endpoint === '/releases') {
+            writes += 1;
+            assert.equal(payload.target_commitish, entry.sha);
+            assert.equal(payload.draft, false);
+            current = release;
+            return current;
         }
-    });
-
-    it('keeps the latest current release train patches present in source and visible changelog', () => {
-        const [major, minor, patch] = versionParts(currentPackageVersion());
-        assert.ok(Number.isInteger(patch), 'package.json version must include a numeric patch');
-
-        const source = new Set(changelogVersions());
-        const visible = new Set(fullModalVersions());
-        const oldestPatch = Math.max(0, patch - 5);
-
-        for (let currentPatch = patch; currentPatch >= oldestPatch; currentPatch -= 1) {
-            const version = `${major}.${minor}.${currentPatch}`;
-            assert.ok(source.has(version), `CHANGELOG.md missing ${version}`);
-            assert.ok(visible.has(version), `index.html modal missing ${version}`);
-        }
-    });
-
-    it('keeps version sync from dropping labels or overwriting previous changelog entries', () => {
-        const script = versionSyncScript();
-
-        assert.match(script, /function readReleaseLabelArg/);
-        assert.match(script, /function readTrailingReleaseLabel/);
-        assert.match(script, /readArgWords\('--label'\)/);
-        assert.match(script, /readArgWords\('--release-label'\)/);
-        assert.match(script, /buildDefaultChangelogModalSection\(version, releaseLabel\)/);
-        assert.match(script, /buildDefaultMarkdownChangelogEntry\(version, releaseLabel\)/);
-        assert.match(script, /actualVersion === version/);
-    });
-
-    it('keeps only recent releases inline and lazy-loads the complete static history', () => {
-        const index = read('index.html');
-        const app = read('js/app.js');
-        const history = read('changelog-history.fragment');
-
-        assert.match(index, /id="changelogHistory"[^>]+data-src="changelog-history\.fragment\?v=/);
-        assert.match(index, /<h4>v0\.78\.101/);
-        assert.doesNotMatch(index, /<h4>v0\.78\.98/);
-        assert.match(history, /<h4>v0\.78\.98/);
-        assert.match(app, /loadChangelogHistory/);
-        assert.match(app, /fetch\(host\.dataset\.src, \{ credentials: 'same-origin' \}\)/);
-    });
+        return endpoint.startsWith('/git/') ? (current ? tag : null) : current;
+    };
+    await assert.rejects(publishReleaseNotes({ entry, live: { ...live, commitSha: 'b'.repeat(40) }, sourceBranch: branch, request }), /exact verified/);
+    assert.equal(writes, 0);
+    await publishReleaseNotes({ entry, live, sourceBranch: branch, request });
+    await publishReleaseNotes({ entry, live, sourceBranch: branch, request });
+    assert.equal(writes, 1);
+    await assert.rejects(publishReleaseNotes({ entry: { ...entry, label: 'Інший опис' }, live, sourceBranch: branch, request }), /different content/);
+    assert.equal(writes, 1);
 });

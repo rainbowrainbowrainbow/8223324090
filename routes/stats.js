@@ -9,6 +9,7 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { requireRole, requireAction } = require('../middleware/auth');
+const { allowAccountantPageRead } = require('../middleware/accountant-page-read');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
 const { businessBookingSql } = require('../services/financeQaReadScope');
 const {
@@ -199,7 +200,7 @@ const CATEGORY_NAMES = {
 // ROLE CHECK — block viewers
 // ==========================================
 
-router.use(requireRole('manager'));
+router.use(allowAccountantPageRead('/reports', requireRole('manager')));
 router.use(requireAction('view_revenue'));
 
 // ==========================================

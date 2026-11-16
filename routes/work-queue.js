@@ -5,6 +5,7 @@ const express = require('express');
 const router = express.Router();
 const { pool } = require('../db');
 const { authenticateToken, requireRole } = require('../middleware/auth');
+const { allowAccountantPageRead } = require('../middleware/accountant-page-read');
 const { buildWorkQueue } = require('../services/workQueue');
 const {
     resolveBusinessScope,
@@ -43,7 +44,7 @@ const { createLogger } = require('../utils/logger');
 const log = createLogger('WorkQueue');
 
 router.use(authenticateToken);
-router.use(requireRole('manager'));
+router.use(allowAccountantPageRead('/tasks', requireRole('manager')));
 
 function parsePositiveInt(value) {
     const parsed = Number(value);

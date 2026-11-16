@@ -9,6 +9,7 @@ const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 
 const { canUseAction, requireAction, requireRole } = require('../middleware/auth');
+const { allowAccountantPageRead } = require('../middleware/accountant-page-read');
 const { installRevenueResponseShaper } = require('../services/revenueAccessPolicy');
 const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
 const { DEFAULT_BUSINESS_CONTEXT } = require('../services/businessContext');
@@ -16,7 +17,7 @@ const log = createLogger('Procurement');
 
 // RBAC: Procurement — management + admin only
 router.use(requireLegacyBusinessSurface('contractors_procurement'));
-router.use(requireRole('creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'));
+router.use(allowAccountantPageRead('/warehouse', requireRole('creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin')));
 const requireProcurementRevenue = requireAction('view_revenue');
 router.use((req, res, next) => installRevenueResponseShaper(
     req,

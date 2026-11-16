@@ -199,6 +199,24 @@ test('default services use the migrated schema for an unrelated permanent occupa
             { constraint: 'staff_substitution_cross_date_remainder_guard' });
         await assert.rejects(db.query("DELETE FROM staff_schedule WHERE staff_id=$1 AND date='2099-01-22'", [original.id]),
             { constraint: 'staff_substitution_cross_date_remainder_guard' });
+        const remainderPlan = await require('../../services/hrShiftSegments').loadHrShiftDayPlan(db, { hrShiftId: remainder.id });
+        const attemptedEdit = {
+            expectedUpdatedAt: remainderPlan.shift.plan_updated_at_token,
+            primaryProfessionKey: 'reception',
+            segments: [{ professionKey: 'reception', shiftStart: '02:00', shiftEnd: '05:00' }]
+        };
+        const responses = await Promise.all([
+            authRequest('PUT', `/api/hr/shifts/${remainder.id}`, attemptedEdit),
+            authRequest('PUT', '/api/staff/schedule', {
+                ...attemptedEdit, staffId: original.id, date: '2099-01-22', status: 'working'
+            }),
+            authRequest('DELETE', `/api/hr/shifts/${remainder.id}`)
+        ]);
+        for (const response of responses) {
+            assert.equal(response.status, 409, JSON.stringify(response.data));
+            assert.equal(response.data.code, 'SUBSTITUTION_SOURCE_FROZEN');
+        }
+        assert.deepEqual(await loadPlan(remainder), [['02:00', '04:00', 'reception']]);
         const nextDaySchedule = await authRequest('GET', '/api/staff/schedule?from=2099-01-22&to=2099-01-22');
         assert.equal(nextDaySchedule.status, 200, JSON.stringify(nextDaySchedule.data));
         assert.deepEqual(nextDaySchedule.data.shiftSubstitutions.filter(item => item.id === crossDateClaim.id),

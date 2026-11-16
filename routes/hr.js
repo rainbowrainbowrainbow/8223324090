@@ -193,6 +193,7 @@ const {
 } = require('../services/hrPayrollProfiles');
 const {
     hrShiftPlanErrorPayload,
+    hrShiftPlanErrorStatus,
     hrShiftPlanUpdatedAt,
     hydrateHrShiftDayPlans,
     isHrShiftPlanError,
@@ -3409,7 +3410,7 @@ async function attachHrShiftSegments(rows = [], db = pool) {
 }
 
 function sendHrShiftPlanError(res, error, extra = {}) {
-    const status = Number(error?.statusCode || error?.status || 400);
+    const status = Number(hrShiftPlanErrorStatus(error));
     return res.status(status >= 400 && status < 500 ? status : 400)
         .json(hrShiftPlanErrorPayload(error, extra));
 }
@@ -5773,6 +5774,7 @@ router.delete('/shifts/:id', requireHrManage, async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
+        if (isHrShiftPlanError(err)) return sendHrShiftPlanError(res, err, { shift_id: Number(req.params.id) });
         if (sendHrMutationFailure(res, err)) return;
         log.error('DELETE /hr/shifts/:id error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });

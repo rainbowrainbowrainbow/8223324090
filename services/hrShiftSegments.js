@@ -63,17 +63,32 @@ function fail(code, message, details = {}, status = 400) {
     throw new HrShiftPlanError(code, message, details, status);
 }
 
+function isFrozenSubstitutionShift(error) {
+    return error?.code === '23514' && (
+        error.constraint === 'staff_substitution_cross_date_remainder_guard'
+        || (!error.constraint && error.message === 'Shift has an agreed substitution; use its audited workflow')
+    );
+}
+
 function isHrShiftPlanError(error) {
     return error instanceof HrShiftPlanError || error?.name === 'HrShiftPlanError'
         || error?.code === 'FREELANCE_MONTHLY_REPLACEMENT_UNSUPPORTED'
-        || error?.code === 'FREELANCE_REASSIGNMENT_REQUIRES_NEW_AGREEMENT';
+        || error?.code === 'FREELANCE_REASSIGNMENT_REQUIRES_NEW_AGREEMENT'
+        || isFrozenSubstitutionShift(error);
+}
+
+function hrShiftPlanErrorStatus(error) {
+    return isFrozenSubstitutionShift(error) ? 409 : error?.statusCode || error?.status || 400;
 }
 
 function hrShiftPlanErrorPayload(error, extra = {}) {
+    const frozenSubstitution = isFrozenSubstitutionShift(error);
     return {
         success: false,
-        code: error?.code || 'HR_SHIFT_PLAN_INVALID',
-        error: error?.message || 'Некоректний денний план зміни',
+        code: frozenSubstitution ? 'SUBSTITUTION_SOURCE_FROZEN' : error?.code || 'HR_SHIFT_PLAN_INVALID',
+        error: frozenSubstitution
+            ? 'Зміна має погоджену підміну. Перегляньте її в журналі «Підміни».'
+            : error?.message || 'Некоректний денний план зміни',
         details: error?.details || undefined,
         ...extra
     };
@@ -2007,6 +2022,7 @@ module.exports = {
     hrShiftPlanUpdatedAt,
     hydrateHrShiftDayPlans,
     isHrShiftPlanError,
+    hrShiftPlanErrorStatus,
     loadHrShiftDayPlan,
     loadHrShiftDayPlansForStaffDates,
     loadPaidRoleValidationContext,

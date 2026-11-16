@@ -67,6 +67,7 @@ const {
     validateHrShiftDayPlanProfessions,
     isHrShiftPlanError,
     hrShiftPlanErrorPayload,
+    hrShiftPlanErrorStatus,
     professionCardFromStaff
 } = require('../services/hrShiftSegments');
 const {
@@ -997,7 +998,7 @@ router.put('/schedule', requireAction('hr.schedule.manage'), async (req, res) =>
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         if (isHrShiftPlanError(err)) {
-            return res.status(err.statusCode || err.status || 400).json(hrShiftPlanErrorPayload(err));
+            return res.status(hrShiftPlanErrorStatus(err)).json(hrShiftPlanErrorPayload(err));
         }
         log.error('PUT /staff/schedule error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
@@ -1250,7 +1251,7 @@ router.post('/schedule/:id/replace', requireAction('hr.schedule.manage'), async 
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         if (isHrShiftPlanError(err)) {
-            return res.status(err.statusCode || err.status || 400).json(hrShiftPlanErrorPayload(err));
+            return res.status(hrShiftPlanErrorStatus(err)).json(hrShiftPlanErrorPayload(err));
         }
         log.error('POST /staff/schedule/:id/replace error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
@@ -1434,7 +1435,7 @@ router.post('/schedule/:id/replacement-clear', requireAction('hr.schedule.manage
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         if (isHrShiftPlanError(err)) {
-            return res.status(err.statusCode || err.status || 400).json(hrShiftPlanErrorPayload(err));
+            return res.status(hrShiftPlanErrorStatus(err)).json(hrShiftPlanErrorPayload(err));
         }
         log.error('POST /staff/schedule/:id/replacement-clear error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
@@ -1541,7 +1542,7 @@ router.post('/schedule/bulk', requireAction('hr.schedule.manage'), async (req, r
         res.json({ success: true, count });
     } catch (err) {
         if (isHrShiftPlanError(err)) {
-            return res.status(err.statusCode || err.status || 400).json(hrShiftPlanErrorPayload(err));
+            return res.status(hrShiftPlanErrorStatus(err)).json(hrShiftPlanErrorPayload(err));
         }
         log.error('POST /staff/schedule/bulk error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
@@ -1807,7 +1808,7 @@ router.post('/schedule/copy-week', requireAction('hr.schedule.manage'), async (r
         });
     } catch (err) {
         if (isHrShiftPlanError(err)) {
-            return res.status(err.statusCode || err.status || 400).json(hrShiftPlanErrorPayload(err));
+            return res.status(hrShiftPlanErrorStatus(err)).json(hrShiftPlanErrorPayload(err));
         }
         log.error('POST /staff/schedule/copy-week error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });

@@ -4,6 +4,7 @@ const {
     loadHrShiftDayPlan,
     loadPaidRoleValidationContext,
     isHrShiftPlanError,
+    hrShiftPlanErrorStatus,
     hrShiftPlanErrorPayload
 } = require('./hrShiftSegments');
 const { validateStaffScheduleableForDate } = require('./staffOperationalFilters');
@@ -516,7 +517,7 @@ async function syncHrShiftFromScheduleEntry(client, entry, actor = null, options
         const payload = hrShiftPlanErrorPayload(error);
         return {
             ok: false,
-            status: error.statusCode || error.status || 400,
+            status: hrShiftPlanErrorStatus(error),
             code: payload.code,
             error: payload.error,
             details: payload.details

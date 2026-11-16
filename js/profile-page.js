@@ -4884,7 +4884,7 @@ function validateCabinetPlainTaskTitle(title = '') {
     const normalized = String(title || '').trim();
     if (!normalized) return 'Заповніть назву задачі';
     if (normalized.length > CABINET_TASK_PLAIN_TITLE_MAX_LENGTH) {
-        return `Для звичайного створення назва має бути до ${CABINET_TASK_PLAIN_TITLE_MAX_LENGTH} символів. Скоротіть текст або натисніть «Заповнити з AI».`;
+        return `Скоротіть назву до ${CABINET_TASK_PLAIN_TITLE_MAX_LENGTH} символів.`;
     }
     return '';
 }
@@ -8424,6 +8424,18 @@ function attachProfileListeners() {
     if (visibility && visibility.dataset.cabinetVisibilityBound !== 'true') {
         visibility.dataset.cabinetVisibilityBound = 'true';
         visibility.addEventListener('change', syncCabinetTaskVisibilityHint);
+    }
+    const taskTitle = document.getElementById('cabinetTaskTitle');
+    if (taskTitle && taskTitle.dataset.cabinetTitleBound !== 'true') {
+        taskTitle.dataset.cabinetTitleBound = 'true';
+        taskTitle.addEventListener('input', () => {
+            autoGrowCabinetTaskInput(taskTitle);
+            if (taskTitle.getAttribute('aria-invalid') === 'true' && !validateCabinetPlainTaskTitle(taskTitle.value)) {
+                setCabinetTaskTitleGuidance('');
+                setCabinetTaskComposerStatus('');
+            }
+        });
+        autoGrowCabinetTaskInput(taskTitle);
     }
     document.querySelectorAll('[data-cabinet-composer-toggle]').forEach(button => {
         if (button.dataset.cabinetComposerToggleBound === 'true') return;

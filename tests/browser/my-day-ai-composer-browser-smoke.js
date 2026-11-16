@@ -324,7 +324,8 @@ async function runScenario(browser, fixture, { dark, viewport }) {
         if (dark) await page.evaluate(() => document.documentElement.dataset.theme = 'dark');
         await page.click('[data-task-ai-draft-preview]');
         await page.waitForSelector('.task-ai-draft-review');
-        assert.equal(await page.locator('[data-task-ai-draft-field]').count(), 7);
+        assert.deepEqual(await page.locator('[data-task-ai-draft-field]').evaluateAll(fields => fields.map(field => field.dataset.taskAiDraftField).sort()),
+            ['description', 'impactIds', 'priority', 'scheduleDate', 'title']);
         const secondary = page.locator('[data-task-ai-draft-secondary]');
         assert.equal(await secondary.getAttribute('open'), null);
         assert.equal(await secondary.locator('summary').getAttribute('aria-expanded'), 'false');
@@ -347,8 +348,6 @@ async function runScenario(browser, fixture, { dark, viewport }) {
         await page.click('[data-task-ai-draft-edit="scheduleDate"]');
         await page.locator('[data-task-ai-draft-edit-input="scheduleDate"]').fill('');
         await page.click('[data-task-ai-draft-edit-apply="scheduleDate"]');
-        await page.click('[data-task-ai-draft-edit="subtasks"]');
-        await page.locator('[data-task-subtask-row]').first().fill('User edited AI subtask');
         await page.click('[data-task-ai-draft-accept-all]');
         const payloadBeforeCreate = await page.evaluate(() => window.TaskAiDraft.commitPayloadFor(document.querySelector('[data-task-ai-draft-panel]')));
         assert.ok(payloadBeforeCreate);
@@ -362,8 +361,8 @@ async function runScenario(browser, fixture, { dark, viewport }) {
         assert.equal(payloadBeforeCreate.editedFieldMask.includes('description'), true);
         assert.equal(payloadBeforeCreate.editedFieldMask.includes('priority'), true);
         assert.equal(payloadBeforeCreate.editedFieldMask.includes('scheduleDate'), true);
-        assert.equal(payloadBeforeCreate.acceptedFieldMask.includes('subtasks'), true);
-        assert.equal(payloadBeforeCreate.finalDraft.subtasks[0].sourceType, 'manual');
+        assert.equal(payloadBeforeCreate.acceptedFieldMask.includes('subtasks'), false);
+        assert.deepEqual(payloadBeforeCreate.finalDraft.subtasks, [], 'the legacy AI proposal cannot add checklist items');
         await page.click('#create');
         await page.waitForSelector('[data-ai-created="true"]');
         const commitCalls = await page.evaluate(() => window.__AI_COMPOSER_SMOKE__.calls.filter(call => call.type === 'commit'));

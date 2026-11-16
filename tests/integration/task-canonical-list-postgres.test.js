@@ -167,9 +167,9 @@ test('canonical task selection and full list queries preserve terminal rows, sco
         const detail = candidate.find(item => item.name === 'show-duplicates');
         const rows = (await client.query(detail.list.sql, detail.list.params)).rows;
         const withDependencies = rows.find(row => row.id === 12);
-        assert.equal(withDependencies.subtask_count, 3);
-        assert.equal(withDependencies.subtask_done_count, 1);
-        assert.equal(withDependencies.subtasks.length, 3);
+        for (const key of ['subtask_count', 'subtask_done_count', 'subtasks']) {
+            assert.equal(Object.hasOwn(withDependencies, key), false, `canonical task omits retired checklist field ${key}`);
+        }
         assert.deepEqual(withDependencies.substitution, { id: '51', state: 'active' });
         assert.equal(withDependencies.dependency_count, 1, 'cross-business dependency stays excluded');
         assert.equal(withDependencies.open_dependency_count, 0);

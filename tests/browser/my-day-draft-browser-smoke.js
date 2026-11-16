@@ -236,6 +236,14 @@ async function assertDraftSurvivesDueChanges(page, state) {
     const noDateToggle = page.locator('[data-cabinet-no-date]');
     const originalDate = await date.inputValue();
     const draft = 'Browser regression draft — do not create';
+    const titleHeight = await title.evaluate(element => element.offsetHeight);
+    await title.fill('A long example task title '.repeat(9));
+    assert.ok(await title.evaluate(element => element.offsetHeight) > titleHeight, 'long titles grow on a phone');
+    await page.locator('.cabinet-task-create-submit').click();
+    assert.equal(await title.getAttribute('aria-invalid'), 'true', 'submission marks the overlong title invalid');
+    await title.fill(draft);
+    assert.equal(await title.getAttribute('aria-invalid'), 'false', 'correcting the title clears the error while typing');
+    await title.clear();
     await title.click();
     await title.pressSequentially(draft, { delay: 1 });
 
@@ -292,42 +300,32 @@ async function assertLargeListsStayAccessible(page, state) {
         bucket
     })));
     await page.reload({ waitUntil: 'domcontentloaded' });
+    const periods = page.locator('[data-park-period]');
+    await periods.last().waitFor();
+    assert.deepEqual(await periods.evaluateAll(columns => columns.map(column => column.dataset.parkPeriod)), ['today', 'overdue', 'future']);
+    assert.equal(await page.locator('[data-park-my-day-view], [data-cabinet-my-day-view-mode]').count(), 0);
+    await page.locator('.park-composer > summary').press('Enter');
+    const title = page.locator('#cabinetTaskTitle');
+    const draft = 'Keep this draft while loading more tasks';
+    await title.fill(draft);
+    const composer = await title.evaluateHandle(element => element.closest('#cabinetTaskComposer'));
     for (const bucket of ['today', 'overdue', 'future']) {
-        await page.locator(`[data-park-my-day-view="${bucket}"]`).click();
         const group = page.locator(`[data-park-task-group="${bucket}"]`);
         const more = group.locator(`[data-cabinet-bucket-more="${bucket}"]`);
         const cards = group.locator('.park-task-card');
         await group.getByText('Показано 32 із 80', { exact: true }).waitFor();
-        assert.equal(await page.locator(`[data-park-my-day-view="${bucket}"] b`).textContent(), '80');
         assert.equal(await cards.count(), 32);
+        assert.equal(await cards.first().getByText('Особиста', { exact: true }).isVisible(), true);
         for (const count of [64, 80]) {
             await more.click();
             await group.getByText(`Показано ${count} із 80`, { exact: true }).waitFor();
             assert.equal(await cards.count(), count);
+            assert.equal(await title.inputValue(), draft, 'loading more tasks preserves the draft');
+            assert.ok(await title.evaluate((element, original) => element.closest('#cabinetTaskComposer') === original, composer),
+                'loading more tasks preserves the composer node');
         }
         assert.equal(await more.count(), 0);
     }
-}
-
-async function assertListPreferencesPreserveComposer(page, state) {
-    await page.locator('.park-composer > summary').press('Enter');
-    const title = page.locator('#cabinetTaskTitle');
-    const draft = 'Keep this draft while opening task details';
-    await title.fill(draft);
-    const composer = await title.evaluateHandle(element => element.closest('#cabinetTaskComposer'));
-    const requestsBefore = state.cabinetRequests;
-    for (const bucket of ['today', 'overdue']) {
-        const period = page.locator(`[data-park-my-day-view="${bucket}"]`);
-        await period.press('Enter');
-        assert.equal(await period.getAttribute('aria-pressed'), 'true');
-        const card = page.locator(`[data-park-task-group="${bucket}"] .park-task-card`).first();
-        assert.equal(await period.evaluate(button => document.activeElement === button), true, 'the period button keeps keyboard focus');
-        assert.equal(await card.getByText('Особиста', { exact: true }).isVisible(), true);
-        assert.equal(await title.inputValue(), draft, 'switching periods keeps the draft');
-        assert.ok(await title.evaluate((element, original) => element.closest('#cabinetTaskComposer') === original, composer),
-            'switching periods keeps the composer node');
-    }
-    assert.equal(state.cabinetRequests, requestsBefore, 'period and display toggles reuse the cabinet projection');
     await composer.dispose();
 }
 
@@ -340,9 +338,7 @@ async function assertFullComposerContract(page, state) {
         mode: document.getElementById('cabinetTaskMode')?.value || '',
         priority: document.getElementById('cabinetTaskPriority')?.value || '',
         visibility: document.getElementById('cabinetTaskVisibility')?.value || '',
-        reportRequired: document.getElementById('cabinetTaskReportRequired')?.checked === true,
-        allowReschedule: document.getElementById('cabinetTaskAllowReschedule')?.checked === true,
-        subtasks: Array.from(document.querySelectorAll('#cabinetSubtaskList [data-cabinet-subtask-title]'), input => input.value)
+        allowReschedule: document.getElementById('cabinetTaskAllowReschedule')?.checked === true
     }));
     const title = page.locator('#cabinetTaskTitle');
     const options = page.locator('.park-composer-options');
@@ -354,17 +350,15 @@ async function assertFullComposerContract(page, state) {
     await page.locator('#cabinetTaskMode').selectOption('personal');
     await page.locator('#cabinetTaskPriority').selectOption('high');
     await page.locator('#cabinetTaskVisibility').selectOption('me_only');
-    await page.locator('#cabinetTaskReportRequired').check();
     await page.locator('#cabinetTaskAllowReschedule').uncheck();
-    assert.equal(await page.locator('#cabinetTaskAiFillBtn, #cabinetTaskKind, #cabinetDecompositionMode, #cabinetSubtaskList').count(), 0);
+    assert.equal(await page.locator('#cabinetTaskAiFillBtn, #cabinetTaskKind, #cabinetDecompositionMode, #cabinetSubtaskList, #cabinetTaskReportRequired').count(), 0);
     const expected = await readComposer();
 
     const assertRetained = async label => {
         const actual = await readComposer();
-        for (const key of ['title', 'description', 'category', 'mode', 'priority', 'visibility', 'reportRequired', 'allowReschedule']) {
+        for (const key of ['title', 'description', 'category', 'mode', 'priority', 'visibility', 'allowReschedule']) {
             assert.equal(actual[key], expected[key], `${label} keeps ${key}`);
         }
-        assert.deepEqual(actual.subtasks, expected.subtasks, `${label} keeps subtasks`);
     };
 
     const noDateToggle = page.locator('[data-cabinet-no-date]');
@@ -423,9 +417,8 @@ async function assertFullComposerContract(page, state) {
         return form
             && document.getElementById('cabinetTaskCategory')?.value === 'admin'
             && document.getElementById('cabinetTaskMode')?.value === 'work'
-            && document.getElementById('cabinetTaskReportRequired')?.checked === false
             && document.getElementById('cabinetTaskAllowReschedule')?.checked === true
-            && !form.querySelector('[data-cabinet-subtask-title]');
+            && !form.querySelector('#cabinetTaskReportRequired, [data-cabinet-subtask-title]');
     });
 
     const payload = state.taskCreatePayloads.at(-1);
@@ -436,12 +429,12 @@ async function assertFullComposerContract(page, state) {
     assert.equal(payload.task_kind, 'action', 'new My Day tasks use the canonical action kind');
     assert.equal(payload.priority, 'high', 'payload priority is exact');
     assert.equal(payload.visibility, 'me_only', 'payload visibility is exact');
-    assert.equal(payload.reportRequired, true, 'payload report requirement is exact');
+    assert.equal(Object.hasOwn(payload, 'reportRequired'), false, 'payload omits the retired report requirement');
     assert.equal(payload.allowReschedule, false, 'payload reschedule control is exact');
     assert.equal(payload.date, '2099-06-01', 'payload custom date is exact');
     assert.equal(payload.schedule?.date, '2099-06-01', 'payload schedule date is exact');
     assert.equal(payload.schedule?.durationMinutes, 30, 'payload schedule duration is exact');
-    assert.deepEqual(payload.subtasks || [], [], 'no subtasks are generated by the simplified composer');
+    assert.equal(Object.hasOwn(payload, 'subtasks'), false, 'payload omits the retired checklist');
 
     const reset = await readComposer();
     assert.deepEqual({
@@ -451,9 +444,7 @@ async function assertFullComposerContract(page, state) {
         mode: reset.mode,
         priority: reset.priority,
         visibility: reset.visibility,
-        reportRequired: reset.reportRequired,
-        allowReschedule: reset.allowReschedule,
-        subtasks: reset.subtasks
+        allowReschedule: reset.allowReschedule
     }, {
         title: '',
         description: '',
@@ -461,9 +452,7 @@ async function assertFullComposerContract(page, state) {
         mode: 'work',
         priority: 'normal',
         visibility: 'team',
-        reportRequired: false,
-        allowReschedule: true,
-        subtasks: []
+        allowReschedule: true
     }, 'verified success resets every composer field to defaults');
     assert.equal(reset.date, await page.evaluate(() => window.TaskCreate.todayStr()), 'verified success resets the due date to today');
     assert.equal(await title.inputValue(), '', 'verified success clears title after the projection confirms the row');
@@ -501,7 +490,6 @@ async function run() {
         await assertDraftSurvivesDueChanges(page, state);
         await assertFullComposerContract(page, state);
         await assertLargeListsStayAccessible(page, state);
-        await assertListPreferencesPreserveComposer(page, state);
         assert.ok(state.requests.some(item => item.includes('/api/tasks/my-cabinet')), 'browser uses the My Day projection endpoint');
         assert.equal(state.taskCreatePayloads.length, 2, 'browser exercised exactly one failed and one successful create');
         assert.equal(state.suggestionRequests, 0, 'typing a task does not request decomposition suggestions');

@@ -18,10 +18,11 @@ function playwright() {
 function sourceGuard() {
     const source = fs.readFileSync(path.join(ROOT, 'js/components/sidebar.js'), 'utf8');
     const start = source.indexOf('const extraListHidden = extraEditorOpen || extraCollapsed;');
-    const end = source.indexOf('let productivity = document.getElementById', start);
+    const end = source.indexOf('_syncSidebarSectionOrder(sidebar, links);', start);
     const block = source.slice(start, end);
     assert.ok(start >= 0 && end > start, 'Favorites renderer exists');
-    assert.ok(block.indexOf('sidebar-design-extra-list') < block.indexOf('sidebar-design-timeline-slot'), 'timeline slot stays inside shared Favorites list');
+    const list = block.indexOf('sidebar-design-extra-list');
+    assert.ok(list >= 0 && list < block.indexOf('sidebar-design-timeline-slot'), 'timeline slot stays inside shared Favorites list');
     assert.ok(block.includes('data-sidebar-extra-toggle-editor'), 'Favorites editor remains in sidebar source');
 }
 const HTML = `<!doctype html><html data-theme="dark"><head><meta charset="utf-8"><style>

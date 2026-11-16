@@ -250,7 +250,8 @@ describe('profile, HR professions, and timeline compatibility foundation', () =>
         assert.match(staffPage, /uniqueScheduleStaffById\(deptStaff \|\| \[\]\)/);
         assert.match(staffPage, /function staffScheduleDepartmentKeys\(staff = \{\}\)/);
         assert.match(staffPage, /function scheduleDepartmentCountMap\(staffList = StaffState\.staff\)/);
-        assert.match(readRepoFile('js', 'hr-page.js'), /body\.secondary_professions = \[\.\.\.selectedSecondary\.keys\(\)\]/);
+        assert.match(readRepoFile('js', 'hr-page.js'),
+            /secondary_professions: normalizeProfessionList\(readStaffSecondaryProfessionSelection\(\), \[primaryRole\]\)/);
         assert.match(bookingService, /hss\.profession_key = 'animator'/);
         assert.match(bookingService, /hssr\.profession_key = 'animator'/);
         assert.match(bookingService, /availability_windows/);

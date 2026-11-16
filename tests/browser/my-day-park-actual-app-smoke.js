@@ -264,6 +264,12 @@ async function run() {
             && url.searchParams.get('tab') === 'myday' && url.searchParams.get('open') === workId);
         await taskDialog.getByText('Виконую', { exact: true }).waitFor();
         assert.ok(await taskDialog.getByRole('button', { name: 'Закрити' }).evaluate(node => node === document.activeElement));
+        assert.ok(await taskDialog.evaluate(dialog => {
+            const bounds = dialog.getBoundingClientRect();
+            return bounds.left >= 12 && bounds.right <= innerWidth - 12
+                && Math.abs(bounds.left + bounds.width / 2 - innerWidth / 2) < 2
+                && Math.abs(bounds.top + bounds.height / 2 - innerHeight / 2) < 2;
+        }), 'The mobile task dialog is centered with room at the edges');
         await page.goBack();
         await taskDialog.waitFor({ state: 'hidden' });
         await titleButton.click();
@@ -284,11 +290,18 @@ async function run() {
         await dateDialog.locator('.confirm-ok').click();
         assert.ok((await rescheduled).ok());
         await work.waitFor();
+        await page.setViewportSize({ width: 1280, height: 800 });
         await page.goto(origin + `/profile?tab=myday&period=future&open=${workId}&date=${futureDate}`);
         await taskDialog.getByText('Виконую', { exact: true }).waitFor();
         await taskDialog.locator(`time[datetime="${futureDate}"]`).waitFor();
+        assert.ok(await taskDialog.evaluate(dialog => {
+            const bounds = dialog.getBoundingClientRect();
+            return Math.abs(bounds.left + bounds.width / 2 - innerWidth / 2) < 2
+                && Math.abs(bounds.top + bounds.height / 2 - innerHeight / 2) < 2;
+        }), 'The desktop deep link opens a centered task dialog');
         await page.keyboard.press('Escape');
         await page.waitForURL(url => url.pathname === '/profile' && !url.searchParams.has('open'));
+        await page.setViewportSize({ width: 390, height: 844 });
         await work.waitFor();
         await work.getByRole('button', { name: 'Редагувати' }).click();
         await page.waitForURL(url => url.pathname === '/tasks' && url.searchParams.get('mode') === 'edit');

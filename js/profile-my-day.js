@@ -49,13 +49,14 @@
                 const due = selectDate(task);
                 const executor = task.ownerLabel || task.owner_name || task.owner_username;
                 title.textContent = task.title || `Задача #${taskId}`;
+                const description = typeof task.description === 'string' ? task.description.trim() : '';
                 content.innerHTML = `<dl class="park-task-dialog-facts">
                     <div><dt>Моя роль</dt><dd>${escape(roleLabel(taskRole(task)) || 'Перегляд')}</dd></div>
                     <div><dt>Стан</dt><dd>${escape(statusLabel(task))}</dd></div>
                     <div><dt>Дата</dt><dd>${due ? `<time datetime="${escape(due)}">${escape(due.split('-').reverse().join('.'))}</time>` : 'Без дати'}</dd></div>
                     ${executor ? `<div><dt>Виконавець</dt><dd>${escape(executor)}</dd></div>` : ''}
                 </dl>
-                ${task.description ? `<p class="park-task-dialog-description">${escape(task.description)}</p>` : ''}
+                ${description && description !== title.textContent.trim() ? `<p class="park-task-dialog-description">${escape(description)}</p>` : ''}
                 <a class="park-task-dialog-actions" href="/tasks?view=my&amp;open=${taskId}">Усі дії із задачею</a>`;
             } catch (error) {
                 if (!dialog.open) return;

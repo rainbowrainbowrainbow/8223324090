@@ -7520,6 +7520,19 @@ body[data-page-group="hr"] .page-container .btn-add.hr-salary-danger:focus-visib
 .hr-staff-profile-quick-fields label[hidden] {
     display: none;
 }
+
+#staffProfilePanelResources .hr-resource-return-mode {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 44px;
+}
+
+#staffProfilePanelResources .hr-resource-return-mode input {
+    width: auto;
+    min-height: 0;
+    margin: 0;
+}
 .hr-staff-profile-quick-fields span {
     color: var(--gray-600);
     font-size: 12px;

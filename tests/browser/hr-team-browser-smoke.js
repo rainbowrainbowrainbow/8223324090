@@ -1644,6 +1644,9 @@ async function assertResourcesWorkspaceStatesAndActions(page) {
 
     await page.evaluate(() => window.__hrTeamBrowserSmoke.failNextWorkspaceRequest('/staff/4/resources'));
     await page.fill('#editResourceTitle', 'QA retry resource');
+    await page.locator('#editResourceDueReturnAt').fill('2099-07-15');
+    await page.locator('#editResourceReturnOnEmploymentEnd').check();
+    assert.equal(await page.locator('#editResourceDueReturnAt').isDisabled(), true);
     await page.locator('#editResourceIssue').click();
     await page.waitForFunction(() => document.getElementById('editResourceIssue')?.dataset.actionState === 'error');
     assert.ok((await page.evaluate(() => staffProfileDirtyScopes())).includes('resourceIssue'), 'resource issue error keeps its dirty scope');
@@ -1653,6 +1656,7 @@ async function assertResourcesWorkspaceStatesAndActions(page) {
     assert.equal((await page.evaluate(() => staffProfileDirtyScopes())).includes('resourceIssue'), false, 'successful resource retry clears only the issue form');
     assert.ok((await page.evaluate(() => staffProfileDirtyScopes())).includes('documents'), 'resource retry keeps the independent document draft');
     const retryResourceCard = page.locator('#editStaffResources [data-resource-status="issued"]').filter({ hasText: 'QA retry resource' });
+    assert.match(await retryResourceCard.textContent(), /При завершенні співпраці/);
     await retryResourceCard.getByRole('button', { name: 'Списати' }).click();
     await page.waitForFunction(() => document.querySelector('.confirm-overlay .confirm-ok'));
     assert.match(await page.locator('.confirm-overlay .confirm-message').textContent(), /закрито як списаний/i, 'write-off confirmation explains the consequence');

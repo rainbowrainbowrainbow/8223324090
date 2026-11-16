@@ -81,6 +81,24 @@ describe('HR resource lifecycle PostgreSQL integration', { skip: !enabled }, () 
         await pool.end();
     });
 
+    it('records return at employment end without returning the issued item', async () => {
+        const options = { actor: 'integration', today: '2099-07-10' };
+        await assert.rejects(issueStaffResource(staffId, {
+            title: 'Invalid dual term', return_on_employment_end: true, due_return_at: '2099-07-15'
+        }, options), { statusCode: 400 });
+        const result = await issueStaffResource(staffId, {
+            title: 'Employment term resource', return_on_employment_end: true
+        }, options);
+        assert.equal(result.data.return_on_employment_end, true);
+        assert.equal(result.data.due_return_at, null);
+        const { rows: [assignment] } = await pool.query(
+            'SELECT status, due_return_at, return_on_employment_end FROM staff_resource_assignments WHERE id = $1',
+            [result.data.id]
+        );
+        assert.deepEqual(assignment, { status: 'issued', due_return_at: null, return_on_employment_end: true });
+        await transitionStaffResource(staffId, result.data.id, 'returned', {}, options);
+    });
+
     it('keeps lost stock deducted and makes repeated loss idempotent', async () => {
         const issued = await issueStaffResource(staffId, {
             resource_kind: 'warehouse_stock',

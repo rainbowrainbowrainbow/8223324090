@@ -139,6 +139,7 @@ const MODES = {
     ],
     'hr-staff-account': ['tests/integration/staff-account-boundary.integration.test.js'],
     'hr-fixture-qa': ['tests/integration/hr-fixture-qa.integration.test.js'],
+    'hr-resources': ['tests/integration/hr-staff-resources.integration.test.js'],
     'hr-staff-browser': [
         'tests/browser/hr-staff-creation-browser-smoke.js'
     ],
@@ -755,6 +756,7 @@ async function runSuite(testDb, testFile, suiteMode) {
         REQUIRE_ISOLATED_TEST_TARGET: 'true',
         ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER: 'true',
         RUN_HR_DISPOSABLE_INTEGRATION: testFile.includes('hr-disposable') ? 'true' : 'false',
+        RUN_HR_RESOURCE_INTEGRATION: testFile.includes('hr-staff-resources.integration') ? 'true' : 'false',
         RUN_SUBSTITUTION_ACTUAL_DB: testFile.includes('staff-substitution-actual-db') ? 'true' : 'false',
         RUN_PERMISSION_CAPABILITIES_INTEGRATION: testFile.includes('permission-capabilities') ? 'true' : 'false',
         RUN_ATTENDANCE_LOCK_INTEGRATION: testFile.includes('attendance-lock-concurrency') ? 'true' : 'false',

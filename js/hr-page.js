@@ -740,7 +740,7 @@ const STAFF_PROFILE_SCOPE_SELECTORS = {
         '#editDocumentType', '#editDocumentTitle', '#editDocumentFile', '#editDocumentNotes'
     ],
     medical: ['#editMedicalIssuedAt', '#editMedicalExpiresAt', '#editMedicalDocumentId', '#editMedicalNotes'],
-    resourceIssue: ['#editResourceKind', '#editResourceSourceId', '#editResourceTitle', '#editResourceQuantity', '#editResourceDueReturnAt', '#editResourceNotes'],
+    resourceIssue: ['#editResourceKind', '#editResourceSourceId', '#editResourceTitle', '#editResourceQuantity', '#editResourceDueReturnAt', '#editResourceReturnOnEmploymentEnd', '#editResourceNotes'],
     offboarding: ['#editOffboardingDate', '#editOffboardingPoolStatus', '#editOffboardingAccountAction', '#editOffboardingReason', '#editOffboardingNotes']
 };
 let staffProfileLoadedTabs = new Set();
@@ -12096,7 +12096,8 @@ function renderStaffResources(rows = []) {
         const kind = STAFF_RESOURCE_KIND_LABELS[item.resource_kind] || item.resource_kind || 'Ресурс';
         const status = String(item.status || 'issued');
         const statusLabel = STAFF_RESOURCE_STATUS_LABELS[status] || status;
-        const due = item.due_return_at ? `Повернути до ${formatStaffDateValue(item.due_return_at)}` : 'Без строку повернення';
+        const due = item.return_on_employment_end ? 'При завершенні співпраці'
+            : item.due_return_at ? `Повернути до ${formatStaffDateValue(item.due_return_at)}` : 'Без строку повернення';
         const terminalAudit = status === 'issued'
             ? ''
             : `${staffResourceTerminalActionLabel(status)}${item.returned_at ? ` · ${formatStaffDateValue(item.returned_at)}` : ''}${item.returned_by ? ` · ${item.returned_by}` : ''}`;
@@ -12154,7 +12155,8 @@ function showStaffResourceDetails(assignmentId, button = null) {
             <div><dt>Тип і джерело</dt><dd>${escapeHtml(staffResourceSourceText(item))}</dd></div>
             <div><dt>Кількість</dt><dd>${escapeHtml(item.quantity || 1)} шт.</dd></div>
             <div><dt>Видано</dt><dd>${escapeHtml(item.issued_at ? formatStaffDateValue(item.issued_at) : '—')}</dd></div>
-            <div><dt>Повернути до</dt><dd>${escapeHtml(item.due_return_at ? formatStaffDateValue(item.due_return_at) : '—')}</dd></div>
+            <div><dt>Строк повернення</dt><dd>${escapeHtml(item.return_on_employment_end
+                ? 'При завершенні співпраці' : item.due_return_at ? formatStaffDateValue(item.due_return_at) : '—')}</dd></div>
             <div><dt>${status === 'returned' ? 'Прийнято' : status === 'issued' ? 'Завершення' : 'Закрито'}</dt><dd>${escapeHtml(item.returned_at ? formatStaffDateValue(item.returned_at) : '—')}</dd></div>
             <div><dt>Видав</dt><dd>${escapeHtml(item.issued_by || '—')}</dd></div>
             <div><dt>${status === 'returned' ? 'Прийняв' : 'Закрив запис'}</dt><dd>${escapeHtml(item.returned_by || '—')}</dd></div>
@@ -12215,7 +12217,8 @@ function renderStaffOffboardingReadiness(payload = {}, lifecycle = null) {
         : 'Автоматичне вимкнення акаунта заблоковано для поточного або protected-акаунта.';
     const summaryTone = openResources || documentAlerts || outstandingPayroll || hasBlockers || activeChanges ? 'is-warning' : 'is-ok';
     const resourceList = (payload.open_resources || []).slice(0, 3).map(item => {
-        const due = item.due_return_at ? ` · до ${formatStaffDateValue(item.due_return_at)}` : '';
+        const due = item.return_on_employment_end ? ' · при завершенні співпраці'
+            : item.due_return_at ? ` · до ${formatStaffDateValue(item.due_return_at)}` : '';
         return `<span>${escapeHtml(item.title || 'Ресурс')} · ${escapeHtml(String(item.quantity || 1))} шт.${escapeHtml(due)}</span>`;
     }).join('');
     const accountList = (payload.active_accounts || []).slice(0, 3).map(account => {
@@ -14163,6 +14166,17 @@ async function revokeStaffMedicalBook(certificationId, button = null) {
         return data;
     });
 }
+function syncStaffResourceReturnFields() {
+    const date = document.getElementById('editResourceDueReturnAt');
+    if (date) date.disabled = document.getElementById('editResourceReturnOnEmploymentEnd')?.checked === true;
+}
+
+function resetStaffResourceReturnMode() {
+    const checkbox = document.getElementById('editResourceReturnOnEmploymentEnd');
+    if (checkbox) checkbox.checked = false;
+    syncStaffResourceReturnFields();
+}
+
 async function issueStaffResource(button = null) {
     return runStaffProfileAction(button || 'editResourceIssue', {
         workspaceSection: 'resources',
@@ -14178,11 +14192,13 @@ async function issueStaffResource(button = null) {
         }
         const resourceKind = document.getElementById('editResourceKind')?.value || 'custom';
         const selectedResource = selectedStaffResourceOption();
+        const returnOnEmploymentEnd = document.getElementById('editResourceReturnOnEmploymentEnd')?.checked === true;
         const body = {
             resource_kind: resourceKind,
             title: document.getElementById('editResourceTitle')?.value || selectedResource?.title || null,
             quantity: Number(document.getElementById('editResourceQuantity')?.value || 1),
-            due_return_at: document.getElementById('editResourceDueReturnAt')?.value || null,
+            due_return_at: returnOnEmploymentEnd ? null : document.getElementById('editResourceDueReturnAt')?.value || null,
+            return_on_employment_end: returnOnEmploymentEnd,
             notes: document.getElementById('editResourceNotes')?.value || null
         };
         if (resourceKind === 'warehouse_stock') body.warehouse_stock_id = selectedResource?.id || null;
@@ -14207,6 +14223,7 @@ async function issueStaffResource(button = null) {
             const el = document.getElementById(id);
             if (el) el.value = '';
         });
+        resetStaffResourceReturnMode();
         const source = document.getElementById('editResourceSourceId');
         if (source) source.value = '';
         const quantity = document.getElementById('editResourceQuantity');
@@ -14590,6 +14607,7 @@ function prepareStaffProfileActionButtons(modal) {
     document.getElementById('editDocumentFile')?.addEventListener('change', syncStaffDocumentFileStatus);
     bindStaffProfileActionButton('editMedicalSave', button => saveStaffMedicalBook(button));
     bindStaffProfileActionButton('editResourceIssue', button => issueStaffResource(button));
+    document.getElementById('editResourceReturnOnEmploymentEnd')?.addEventListener('change', syncStaffResourceReturnFields);
     bindStaffProfileActionButton('editOffboardingComplete', button => completeStaffOffboarding(button));
     bindStaffProfileActionButton('editOffboardingReadinessRefresh', button => runStaffProfileAction(button, {
         loadingLabel: 'Оновлення…',
@@ -15303,6 +15321,7 @@ async function openStaffEdit(staffId, options = {}) {
     const documentFile = document.getElementById('editDocumentFile');
     if (documentFile) documentFile.value = '';
     syncStaffDocumentFileStatus();
+    resetStaffResourceReturnMode();
     const documentType = document.getElementById('editDocumentType');
     if (documentType) documentType.value = 'other';
     setStaffMedicalBookEditMode();

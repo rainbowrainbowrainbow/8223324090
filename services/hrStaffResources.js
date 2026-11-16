@@ -65,6 +65,7 @@ function staffResourceAssignmentMeta(row) {
         quantity: Number(row.quantity || 0),
         issued_at: row.issued_at,
         due_return_at: row.due_return_at,
+        return_on_employment_end: row.return_on_employment_end === true,
         reminder_scope_known: Boolean(row.business_context || row.warehouse_stock_name),
         returned_at: row.returned_at,
         status: row.status,
@@ -211,6 +212,11 @@ async function issueStaffResource(staffId, body = {}, options = {}, dbPool = poo
         const quantity = requestedQuantity === null ? 1 : requestedQuantity;
         const issuedAt = cleanStaffResourceDate(body.issued_at || body.issuedAt) || options.today;
         const dueReturnAt = cleanStaffResourceDate(body.due_return_at || body.dueReturnAt);
+        const returnOnEmploymentEnd = body.return_on_employment_end ?? false;
+        if (typeof returnOnEmploymentEnd !== 'boolean'
+            || (returnOnEmploymentEnd && (body.due_return_at || body.dueReturnAt))) {
+            throw serviceError('Вкажіть один строк: дату або завершення співпраці', 400);
+        }
         const notes = cleanStaffResourceText(body.notes, 2000);
         const actor = options.actor || null;
         const businessContext = options.businessContext || DEFAULT_BUSINESS_CONTEXT;
@@ -284,10 +290,10 @@ async function issueStaffResource(staffId, body = {}, options = {}, dbPool = poo
         const result = await client.query(
             `INSERT INTO staff_resource_assignments
                 (staff_id, resource_kind, warehouse_stock_id, costume_id, title, quantity,
-                 issued_at, due_return_at, notes, issued_by, business_context)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+                 issued_at, due_return_at, notes, issued_by, business_context, return_on_employment_end)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
              RETURNING *`,
-            [staffId, resourceKind, warehouseStockId, costumeId, title, quantity, issuedAt, dueReturnAt, notes, actor, businessContext]
+            [staffId, resourceKind, warehouseStockId, costumeId, title, quantity, issuedAt, dueReturnAt, notes, actor, businessContext, returnOnEmploymentEnd]
         );
         let assignment = result.rows[0];
 
@@ -347,7 +353,8 @@ async function issueStaffResource(staffId, body = {}, options = {}, dbPool = poo
                 warehouse_issue_movement_id: assignment.warehouse_issue_movement_id || null,
                 quantity,
                 title,
-                due_return_at: dueReturnAt
+                due_return_at: dueReturnAt,
+                return_on_employment_end: returnOnEmploymentEnd
             }
         };
     } catch (err) {

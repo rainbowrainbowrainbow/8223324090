@@ -895,6 +895,7 @@ function staffOffboardingResourceMeta(row = {}) {
         quantity: row.quantity,
         issued_at: row.issued_at || null,
         due_return_at: row.due_return_at || null,
+        return_on_employment_end: row.return_on_employment_end === true,
         source_title: row.title || null
     };
 }
@@ -920,7 +921,7 @@ async function loadStaffOffboardingReadiness(staffId, db = pool, options = {}) {
                 CASE WHEN sra.warehouse_stock_id IS NOT NULL AND ws.id IS NULL
                       OR (sra.costume_id IS NOT NULL AND NOT $2)
                      THEN 'Ресурс з обмеженим доступом' ELSE sra.title END AS title,
-                sra.quantity, sra.issued_at, sra.due_return_at,
+                sra.quantity, sra.issued_at, sra.due_return_at, sra.return_on_employment_end,
                 ws.name AS warehouse_stock_name,
                 CASE WHEN $2 THEN c.name ELSE NULL END AS costume_name,
                 COUNT(*) OVER()::int AS total_count

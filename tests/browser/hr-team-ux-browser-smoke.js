@@ -121,6 +121,12 @@ async function checkDrawer(page, width, dark) {
         assert.deepEqual(geometry, { afterFields: true, fits: true, touch: true });
         await page.screenshot({ path: path.join(output, `${id}-${width}-${dark ? 'dark' : 'light'}.png`) });
     }
+    const returnOnEnd = page.locator('#editResourceReturnOnEmploymentEnd');
+    await returnOnEnd.check();
+    assert.equal(await page.locator('#editResourceDueReturnAt').isDisabled(), true);
+    await page.screenshot({ path: path.join(output, `resource-return-${width}-${dark ? 'dark' : 'light'}.png`) });
+    await returnOnEnd.uncheck();
+    assert.equal(await page.locator('#editResourceDueReturnAt').isEnabled(), true);
     await page.locator('#staffProfileTabPayroll').click();
     const preview = page.locator('.hr-staff-payroll-preview-summary');
     await preview.waitFor();

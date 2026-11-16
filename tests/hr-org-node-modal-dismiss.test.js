@@ -1344,7 +1344,7 @@ test('HR staff destructive actions use the shared dynamic confirmation and fail 
     assert.doesNotMatch(confirmHelper, /customConfirm/);
     assert.match(archiveAction, /okText: 'До архіву'/);
     assert.match(offboardingAction, /type: 'danger'/);
-    assert.match(offboardingAction, /okText: 'Завершити співпрацю'/);
+    assert.match(offboardingAction, /okText: 'Звільнити'/);
 });
 
 test('HR staff documents and resources expose persisted archive/history workspaces', () => {

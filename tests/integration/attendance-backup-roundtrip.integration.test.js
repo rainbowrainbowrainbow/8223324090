@@ -500,8 +500,8 @@ test(
             assert.equal(encryptedRejected.data?.error, 'BACKUP_RESTORE_SELECTION_NOT_CLOSED');
             assertTimeRecordRestored(await loadAttendanceFixture(pool, fixtureStaffId, checkinId, timeRecordId));
 
-            await pool.query(`TRUNCATE staff_substitution_base_claims, staff_substitution_requests,
-                staff_substitution_events, staff_substitutions`);
+            await pool.query(`TRUNCATE staff_substitution_pay_corrections, staff_substitution_base_claims,
+                staff_substitution_requests, staff_substitution_events, staff_substitutions`);
             substitutionFixture = false;
             const artifactRejected = await restoreRequest('/api/backup/restore', {
                 artifact: nonemptyArtifact, restoreSet: 'attendance-v1'
@@ -539,8 +539,8 @@ test(
                         hr_freelance_attendance_confirmations`);
                 }
                 if (substitutionFixture) {
-                    await pool.query(`TRUNCATE staff_substitution_base_claims, staff_substitution_requests,
-                        staff_substitution_events, staff_substitutions`);
+                    await pool.query(`TRUNCATE staff_substitution_pay_corrections, staff_substitution_base_claims,
+                        staff_substitution_requests, staff_substitution_events, staff_substitutions`);
                 }
                 if (probeRows.staff_checkins.length) {
                     await pool.query(

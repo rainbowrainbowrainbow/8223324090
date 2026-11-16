@@ -326,7 +326,7 @@ async function runActor(browser, pool, actor, existingAccountId) {
             );
             await card.getByRole('button', { name: /відкрити/i }).click();
             await page.waitForFunction(id => Number(document.getElementById('editStaffId').value) === id, staff.id);
-            await profile.locator('#editStaffName').fill('QA Late Response');
+            await profile.locator('#editStaffGivenName').fill('Late Response');
             await expectDelayedStaffSaveIgnored(page, staff.id, () =>
                 page.evaluate(async id => {
                     await closeHrEditableModal('staffEditModal', true);
@@ -335,6 +335,9 @@ async function runActor(browser, pool, actor, existingAccountId) {
             assert.equal(await profile.locator('#editStaffHeaderName').textContent(), otherStaff.name);
             assert.equal(await profile.locator('#editStaffName').inputValue(), otherStaff.name);
             assert.equal(await profile.locator('#editSave').isEnabled(), true);
+            assert.deepEqual((await pool.query(
+                'SELECT name, family_name, given_name FROM staff WHERE id = $1', [staff.id]
+            )).rows, [{ name: 'QA Late Response', family_name: 'QA', given_name: 'Late Response' }]);
             const currentRevision = await page.evaluate(async id => (await hrFetch(`/staff/${id}`)).data.profile_revision, otherStaff.id);
             const firstEditor = await page.evaluate(({ id, revision }) => hrFetch(`/staff/${id}`, {
                 method: 'PUT', headers: { 'X-Staff-Profile-Revision': revision }, body: { phone: '+380001112233' }

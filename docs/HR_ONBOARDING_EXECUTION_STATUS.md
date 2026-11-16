@@ -11,6 +11,6 @@ Base: `89255f1f6ed34e849ccf585169dc91cd5c5db866`, observed on both upstream and 
 
 Focused browser evidence: `output/playwright/hr-team-ux/`. The creation and tab-save smoke passed at 1366px and 390px in both themes, including failed save, retained edits and retry. The 390px creation screenshot was reviewed. Runtime verification passed with Node 22.22.0/npm 10.9.4. Full PostgreSQL-backed creation and CI remain pending.
 
-Name split verification: migration governance, focused HR card tests and the synthetic browser smoke passed. A disposable PostgreSQL 16 loopback instance now runs the full creation suite, which checks persisted and reopened names. Its result is pending. The general test run reported three WebKit bootstrap tooling failures because Git Bash was absent.
+Name split verification: migration governance, focused HR card tests and the synthetic browser smoke passed. The disposable PostgreSQL 16 suite passed creation, persistence and reopening assertions before reaching a later stale-response test that still used the hidden legacy name input. Its selector now uses the separate given name, with a database assertion for the resulting edit. The full suite retry is pending. The general test run reported three WebKit bootstrap tooling failures because Git Bash was absent.
 
 Questionnaire follow-up: `D:/Codex/EventGenix/hr-onboarding-cli-handoff-20261116/QUESTIONNAIRE_FOLLOWUP.md`. The external questionnaire is outside this task.

@@ -22,6 +22,13 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
         startsAt:'2099-01-13T08:00:00.000Z',endsAt:'2099-01-13T10:00:00.000Z'},
         quote:{rate:{rateMinor:15000},estimateMinor:30000,effects:{replacement:'Додаткова оплата.',original:'Без змін.'}},
         completion:{amountMinor:30000,actualMinutes:120,rate:{rateMinor:15000}}};
+    const revisionInput = contract.normalizeInput({ sourceType:'hr_shift', sourceId:42, workDate:'2099-01-14',
+        staffId:2, originalStaffId:3, professionKey:'reception', payUnit:'hour', payMode:'additional', originalTreatment:'retain',
+        startsAt:'2099-01-14T10:00:00+02:00', endsAt:'2099-01-14T12:00:00+02:00',
+        workload:'Синтетична зміна', reason:'Погодження', rateMode:'individual', rate:'150', rateReason:'Погоджена ставка',
+        originalPayAmount:'75', replacementPayAmount:'120', payOverrideReason:'Початкові суми' });
+    const revisionEntry = { id:'22', state:'active', version:2, input:revisionInput, completion:null,
+        quote:contract.preview(revisionInput, { payImpact:{ original:{ amountMinor:30000 } } }) };
     let loseResponse=true;
     const server=http.createServer(async(req,res)=>{
         const url=new URL(req.url,'http://localhost');
@@ -66,7 +73,13 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
                 journalFilters.push(Object.fromEntries(url.searchParams));
                 const staffId=url.searchParams.get('staffId');
                 const matches=!staffId || [entry.input.staffId,entry.input.originalStaffId].includes(Number(staffId));
+                if (url.searchParams.get('from') === '2099-01-14') {
+                    return res.end(JSON.stringify({success:true,data:[revisionEntry]}));
+                }
                 return res.end(JSON.stringify({success:true,data:matches?[entry]:[]}));
+            }
+            if (req.method === 'GET' && url.pathname === '/fixture/staff-substitutions/22/history') {
+                return res.end(JSON.stringify({ success:true, data:{ substitution:revisionEntry, events:[] } }));
             }
             if(req.method==='GET' && url.pathname==='/fixture/staff-substitutions/21/history') {
                 return res.end(JSON.stringify({success:true,data:{substitution:entry,
@@ -148,6 +161,20 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
             await active().getByRole('button',{name:'Показати стандартну ставку'}).click();
             await active().locator('[data-key="rate"]').fill('750');
             await active().locator('[data-key="rateReason"]').fill('Разова погоджена сума');
+            if (name === 'mobile') {
+                const originalAmount = active().getByLabel('Замінений працівник · зміна до оплати за табелем, грн');
+                const replacementAmount = active().getByLabel('Виконавець · оплата підміни, грн');
+                assert.equal(await originalAmount.inputValue(), '0.00');
+                await originalAmount.fill('120,05');
+                await replacementAmount.fill('410,20');
+                await active().getByRole('button', { name: 'Попередній розрахунок' }).click();
+                const reason = active().getByLabel('Причина ручної зміни оплати');
+                assert.equal(await reason.getAttribute('aria-invalid'), 'true');
+                assert.equal(await active().getByRole('alert').textContent(), 'Вкажіть причину ручної зміни оплати.');
+                await reason.fill('Окремо погоджені суми');
+                assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+                await page.screenshot({path:path.join(output, 'mobile-edit-pay.png'),fullPage:true});
+            }
             await active().getByRole('button',{name:'Попередній розрахунок'}).click();
             await page.getByRole('button',{name:'Погоджую наслідки та зберігаю'}).waitFor();
             if (name === 'mobile') {
@@ -156,6 +183,8 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
                 assert.ok(await page.getByText(/передається 120 робочих хвилин/).isVisible());
                 assert.ok(await page.getByText(/зменшується на 300,00/).isVisible());
                 assert.ok(await page.getByText(/200,00.*звичайної погодинної оплати/).isVisible());
+                assert.ok(await page.getByText(/0,00.*→.*120,05/).isVisible());
+                assert.ok(await page.getByText(/750,00.*→.*410,20/).isVisible());
             }
             if (name === 'booking-mobile') {
                 assert.ok(await page.getByText(/Банкетне бронювання №BOOK-QA-42/).isVisible());
@@ -197,6 +226,11 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
             }else {
                 assert.equal(commands.length,before+1);
                 assert.equal(commands.at(-1).input.slotKey, name === 'mobile' ? 'partial' : 'second');
+                if (name === 'mobile') {
+                    assert.equal(commands.at(-1).input.originalPayAmount, '120.05');
+                    assert.equal(commands.at(-1).input.replacementPayAmount, '410.20');
+                    assert.equal(commands.at(-1).input.payOverrideReason, 'Окремо погоджені суми');
+                }
                 if (name === 'booking-mobile') {
                     assert.equal(commands.at(-1).input.sourceId, 'BOOK-QA-42');
                     assert.equal(commands.at(-1).input.payMode, 'replace_base');
@@ -241,6 +275,31 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
         await closeButton.click();
         await dialog.waitFor({ state: 'detached' });
         await journal.waitForFunction(() => document.activeElement?.dataset.substitutionAction === 'list');
+
+        await journalButton.click();
+        const edit = journal.locator('.form-modal-overlay:not(.confirm-exit)');
+        await edit.getByLabel(/Від/).fill('2099-01-14');
+        await edit.getByLabel(/До/).fill('2099-01-14');
+        await edit.getByRole('button', { name:'Показати' }).click();
+        await edit.locator('[data-key="selected"]').selectOption('22');
+        await edit.getByRole('button', { name:'Відкрити' }).click();
+        await edit.getByRole('combobox', { name:/^Дія/ }).selectOption('revise');
+        await edit.getByRole('button', { name:'Продовжити' }).click();
+        assert.equal(await edit.locator('[data-key="originalPayAmount"]').inputValue(), '75.00');
+        assert.equal(await edit.locator('[data-key="replacementPayAmount"]').inputValue(), '120.00');
+        await edit.locator('[data-key="originalPayAmount"]').fill('80');
+        await edit.locator('[data-key="replacementPayAmount"]').fill('90');
+        await edit.locator('[data-key="reason"]').fill('Уточнили домовленість');
+        await edit.getByRole('button', { name:'Попередній розрахунок' }).click();
+        const acceptEdit = journal.getByRole('button', { name:'Погоджую зміни' });
+        await acceptEdit.waitFor();
+        assert.ok(await journal.getByText(/75,00.*→.*80,00/).isVisible());
+        assert.ok(await journal.getByText(/120,00.*→.*90,00/).isVisible());
+        await acceptEdit.click();
+        await journal.waitForFunction(() => !document.querySelector('[data-substitution-action="list"]').disabled);
+        assert.equal(commands.at(-1).expectedVersion, 2);
+        assert.equal(commands.at(-1).input.originalPayAmount, '80');
+        assert.equal(commands.at(-1).input.replacementPayAmount, '90');
         await journal.close();
 
         const page = await browser.newPage({ viewport: { width: 390, height: 844 } });

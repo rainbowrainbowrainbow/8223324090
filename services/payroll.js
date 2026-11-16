@@ -921,6 +921,32 @@ function calcPayrollPreview(lines) {
     };
 }
 
+function checkedSubstitutionLines(baseLines, substitutionLines, issues) {
+    const availableByScope = new Map();
+    return substitutionLines.filter(item => {
+        if (item.amount >= 0 || item.meta?.payee !== 'original' || item.meta.rate?.source !== 'individual') return true;
+        const { professionKey, workDate, substitutionId, rate: { rateUnit } } = item.meta;
+        const date = rateUnit === 'month' ? workDate.slice(0, 7) : workDate;
+        const scope = `${professionKey}:${rateUnit}:${date}`;
+        if (!availableByScope.has(scope)) {
+            const matching = baseLines.filter(base => base.group === 'base' && base.meta?.professionKey === professionKey
+                && (base.meta.rateUnit ? base.meta.rateUnit === rateUnit : base.lineType === `profession_${rateUnit}`)
+                && typeof base.meta.workDate === 'string'
+                && (rateUnit === 'month' ? base.meta.workDate.slice(0, 7) : base.meta.workDate) === date);
+            availableByScope.set(scope, matching.reduce((sum, base) => sum + Math.round(base.amount * 100), 0));
+        }
+        const remaining = availableByScope.get(scope) + Math.round(item.amount * 100);
+        if (remaining >= 0) {
+            availableByScope.set(scope, remaining);
+            return true;
+        }
+        issues.push({ code: 'SUBSTITUTION_ORIGINAL_ADJUSTMENT_EXCEEDS_BASE',
+            message: 'Коригування підміни перевищує підтверджену звичайну оплату за цією роллю та періодом.',
+            substitutionId, severity: 'error' });
+        return false;
+    });
+}
+
 function calculateMonthlyPayroll(staff, scheme, metrics, adjustments = {}, entries = [], professionPay = null) {
     const activeScheme = scheme || fallbackSchemeForStaff(staff);
     const usesConditionSnapshots = metrics.conditionDays?.length && professionPay?.applies;
@@ -937,15 +963,17 @@ function calculateMonthlyPayroll(staff, scheme, metrics, adjustments = {}, entri
             ...professionPay.overtimeLines
         ]
         : buildSchemeLines(staff, activeScheme, metrics);
+    const substitutionIssues = [];
     const lines = [
         ...baseLines,
-        ...(metrics.substitutionLines || []),
+        ...checkedSubstitutionLines(baseLines, metrics.substitutionLines || [], substitutionIssues),
         ...buildCanonicalAdjustmentLines(adjustments),
         ...buildEntryLines(entries)
     ].filter(item => item.amount !== 0 || ['base', 'manual'].includes(item.group));
     const summary = calcPayrollPreview(lines);
     const blockingIssues = compactAllocationIssues([
         ...(metrics.payrollBlockingIssues || []),
+        ...substitutionIssues,
         ...(professionPay?.blockingIssues || []),
         ...calculationBlockers
     ]);

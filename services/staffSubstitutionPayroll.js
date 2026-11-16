@@ -14,6 +14,20 @@ function validRetainedPay(terms, input) {
         && terms.amountMinor === c.amountFor({ payUnit: 'hour' }, terms.rateMinor, input.plannedMinutes);
 }
 
+function replacementAmount(input, quote, actualMinutes, shiftUnitsMilli) {
+    if (input.payOverrides?.replacementMinor != null) return input.payOverrides.replacementMinor;
+    return quote.rate ? c.amountFor(input, quote.rate.rateMinor, actualMinutes, shiftUnitsMilli) : null;
+}
+
+function manualOriginalPay(input, quote) {
+    const amountMinor = input.payOverrides?.originalMinor;
+    if (amountMinor == null) return null;
+    const reference = quote.payImpact?.originalReference;
+    if (!Number.isSafeInteger(amountMinor) || (!quote.payImpact?.original && !reference)
+        || (amountMinor < 0 && (!['day', 'month'].includes(reference?.rateUnit) || -amountMinor > reference.rateMinor))) return null;
+    return { amountMinor, source: 'individual', reason: input.payOverrides.reason, rateUnit: reference?.rateUnit || 'hour' };
+}
+
 async function freezeCompletion(db, row, payload, actor) {
     const input = row.input_json;
     if (payload.workConfirmed !== true) c.fail('SUBSTITUTION_WORK_CONFIRM_REQUIRED', 'Підтвердьте фактичне виконання роботи');
@@ -23,9 +37,16 @@ async function freezeCompletion(db, row, payload, actor) {
     if (shiftUnitsMilli !== null && shiftUnitsMilli > input.shiftUnitsMilli) c.fail('SUBSTITUTION_EXTRA_WORK_REQUIRES_AGREEMENT', 'Кількість виконаних змін перевищує погоджену');
     const evidence = c.text(payload.workEvidence, 'підтвердження роботи');
     const completion = { ruleVersion: c.RULE_VERSION, actualMinutes, shiftUnitsMilli, workEvidence: evidence,
-        amountMinor: c.amountFor(input, row.quote_json.rate.rateMinor, actualMinutes, shiftUnitsMilli),
+        amountMinor: replacementAmount(input, row.quote_json, actualMinutes, shiftUnitsMilli),
         currency: 'UAH', rate: row.quote_json.rate, approvedBy: c.text(actor.username, 'автор', 100), baseClaims: [] };
-    if (input.sourceType === 'hr_shift' && input.originalTreatment === 'retain') {
+    if (!Number.isSafeInteger(completion.amountMinor) || completion.amountMinor < 0) {
+        c.fail('SUBSTITUTION_PAY_SNAPSHOT_INVALID', 'Не підтверджено погоджену суму виконавця.', 409);
+    }
+    if (input.payOverrides?.originalMinor != null) {
+        const original = manualOriginalPay(input, row.quote_json);
+        if (!original) c.fail('SUBSTITUTION_ORIGINAL_PAY_INVALID', 'Не підтверджено погоджену суму заміненого працівника.', 409);
+        completion.originalPay = original;
+    } else if (input.sourceType === 'hr_shift' && input.originalTreatment === 'retain') {
         const original = row.quote_json.payImpact?.original;
         if (!validRetainedPay(original, input)) {
             c.fail('SUBSTITUTION_ORIGINAL_RATE_UNSUPPORTED', 'Не зафіксовано оплату за передані хвилини.', 409);
@@ -108,7 +129,8 @@ async function loadPayrollSubstitutions(db, staffIds, from, to) {
     // No missing-table fallback: a deployment without its governed migration must fail closed.
     const result = await db.query(`SELECT id,staff_id,original_staff_id,work_date::text,input_json,quote_json,completion_json,source_snapshot,state
         FROM staff_substitutions WHERE (staff_id=ANY($1::int[])
-            OR (original_staff_id=ANY($1::int[]) AND source_type='hr_shift' AND input_json->>'originalTreatment'='retain'))
+            OR (original_staff_id=ANY($1::int[]) AND source_type='hr_shift'
+                AND (input_json->>'originalTreatment'='retain' OR input_json->'payOverrides'->>'originalMinor' IS NOT NULL)))
         AND work_date BETWEEN $2::date AND $3::date
         AND business_context='event_genix' AND state<>'cancelled' ORDER BY work_date,id`, [staffIds,from,to]);
     const map = new Map();
@@ -121,7 +143,8 @@ async function loadPayrollSubstitutions(db, staffIds, from, to) {
     };
     for (const row of result.rows) {
         add(row.staff_id, row);
-        if (row.input_json.sourceType === 'hr_shift' && row.input_json.originalTreatment === 'retain') {
+        if (row.input_json.sourceType === 'hr_shift' && (row.input_json.originalTreatment === 'retain'
+            || row.input_json.payOverrides?.originalMinor != null)) {
             add(row.original_staff_id, { ...row, originalPayee: true });
         }
     }
@@ -143,10 +166,18 @@ function applyPayrollSubstitutions(metrics, rows = []) {
         if (row.state !== 'completed') { block('SUBSTITUTION_NOT_COMPLETED', 'Підтвердьте фактичне виконання підміни перед розрахунком зарплати', id); continue; }
         const completion = row.completion_json;
         if (!completion || completion.ruleVersion !== c.RULE_VERSION || !Number.isSafeInteger(completion.amountMinor)
-            || completion.amountMinor < 0 || completion.amountMinor !== c.amountFor(row.input_json, row.quote_json.rate.rateMinor, completion.actualMinutes, completion.shiftUnitsMilli)) {
+            || completion.amountMinor < 0 || completion.amountMinor !== replacementAmount(row.input_json, row.quote_json, completion.actualMinutes, completion.shiftUnitsMilli)) {
             block('SUBSTITUTION_PAY_SNAPSHOT_INVALID', 'Неповний або суперечливий історичний розрахунок підміни', id); continue;
         }
         if (row.originalPayee) {
+            const manual = manualOriginalPay(row.input_json, row.quote_json);
+            const expected = row.input_json.payOverrides?.originalMinor != null ? manual : row.quote_json.payImpact?.original;
+            const retained = completion.originalPay;
+            if (!expected || (!manual && !validRetainedPay(retained, row.input_json))
+                || c.fingerprint(retained ?? null) !== c.fingerprint(expected)) {
+                block('SUBSTITUTION_ORIGINAL_PAY_INVALID', 'Не підтверджено збережену оплату за переданий обсяг', id);
+                continue;
+            }
             // A corrected or out-of-plan attendance record must not silently pay the same transferred time.
             const relevantDays = result.conditionDays.filter(day => day.date === row.work_date);
             const repeatsTransferredTime = relevantDays.some(day => {
@@ -166,21 +197,17 @@ function applyPayrollSubstitutions(metrics, rows = []) {
                     return segmentStart < end && start < segmentEnd;
                 });
             });
-            if (repeatsTransferredTime) {
+            if (retained.amountMinor > 0 && repeatsTransferredTime) {
                 block('SUBSTITUTION_ORIGINAL_PAY_OVERLAP', 'Табель заміненого працівника потребує звірки з оплатою переданих годин', id);
                 continue;
             }
-            const retained = completion.originalPay;
-            const original = row.quote_json.payImpact?.original;
-            if (!validRetainedPay(retained, row.input_json) || !original || c.fingerprint(retained) !== c.fingerprint(original)) {
-                block('SUBSTITUTION_ORIGINAL_PAY_INVALID', 'Не підтверджено збережену оплату за переданий обсяг', id);
-                continue;
-            }
             result.substitutionLines.push({ group: 'base', lineType: 'staff_substitution',
-                label: `Збережена оплата за підміну #${id}: ${row.input_json.professionKey}`,
-                amount: retained.amountMinor / 100, rate: retained.rateMinor / 100, quantity: row.input_json.plannedMinutes / 60,
+                label: `${manual ? 'Погоджена зміна оплати' : 'Збережена оплата'} за підміну #${id}: ${row.input_json.professionKey}`,
+                amount: retained.amountMinor / 100,
+                ...(manual ? { quantity: 1 } : { rate: retained.rateMinor / 100, quantity: row.input_json.plannedMinutes / 60 }),
                 source: 'staff_substitution', meta: { substitutionId: id, workDate: row.work_date,
-                    professionKey: row.input_json.professionKey, originalTreatment: 'retain', payee: 'original', rate: retained } });
+                    professionKey: row.input_json.professionKey, originalTreatment: row.input_json.originalTreatment,
+                    payee: 'original', rate: retained } });
             continue;
         }
         if (row.input_json.sourceType === 'hr_shift' && row.input_json.payMode === 'additional' && row.quote_json.payImpact) {
@@ -213,12 +240,16 @@ function applyPayrollSubstitutions(metrics, rows = []) {
             day.snapshot.compensationAllocations[claim.allocationIndex] = { ...allocation, actualMinutes:0, plannedMinutes:0, overtimeMinutes:0, substitutionId:id };
         }
         result.substitutionLines.push({ group: 'additional', lineType: 'staff_substitution', label: `Підміна #${id}: ${row.input_json.professionKey}`,
-            amount: completion.amountMinor / 100, rate: row.quote_json.rate.rateMinor / 100,
-            quantity: row.input_json.payUnit === 'hour' ? completion.actualMinutes / 60 : row.input_json.payUnit === 'shift' ? completion.shiftUnitsMilli / 1000 : 1,
+            amount: completion.amountMinor / 100,
+            ...(row.input_json.payOverrides?.replacementMinor != null
+                ? { quantity: 1 }
+                : { rate: row.quote_json.rate.rateMinor / 100,
+                    quantity: row.input_json.payUnit === 'hour' ? completion.actualMinutes / 60 : row.input_json.payUnit === 'shift' ? completion.shiftUnitsMilli / 1000 : 1 }),
             source: 'staff_substitution', meta: { substitutionId: id, workDate: row.work_date, professionKey: row.input_json.professionKey,
                 payUnit: row.input_json.payUnit, payMode: row.input_json.payMode, ruleVersion: completion.ruleVersion,
                 originalStaffId: row.input_json.originalStaffId, originalTreatment: row.input_json.originalTreatment, baseClaims: completion.baseClaims,
-                rate: row.quote_json.rate, workEvidence: completion.workEvidence, approvedBy: completion.approvedBy } });
+                rate: row.quote_json.rate, ...(row.input_json.payOverrides && { payOverrides: row.input_json.payOverrides }),
+                workEvidence: completion.workEvidence, approvedBy: completion.approvedBy } });
     }
     return result;
 }

@@ -70,6 +70,28 @@ function instant(value, field) {
     return new Date(value).toISOString();
 }
 
+function normalizePayOverrides(raw, sourceType, originalStaffId) {
+    const supplied = value => value !== undefined && value !== null && value !== '';
+    const { originalPayAmount, replacementPayAmount, payOverrideReason } = raw;
+    if (!supplied(originalPayAmount) && !supplied(replacementPayAmount)) return null;
+    if (sourceType !== 'hr_shift' || !originalStaffId) {
+        fail('SUBSTITUTION_PAY_OVERRIDE_SCOPE', 'Ручні суми доступні для підміни зміни Park.');
+    }
+    const minor = (value, label, allowNegative = false) => {
+        if (!supplied(value)) return null;
+        if (!['string', 'number'].includes(typeof value)) fail('SUBSTITUTION_INVALID', `Некоректне поле: ${label}`);
+        const amount = String(value).trim().replace(',', '.');
+        const negative = allowNegative && amount.startsWith('-');
+        const absolute = decimalUnits(negative ? amount.slice(1) : amount, 2, label, true);
+        return negative && absolute ? -absolute : absolute;
+    };
+    return {
+        originalMinor: minor(originalPayAmount, 'сума для заміненого працівника', true),
+        replacementMinor: minor(replacementPayAmount, 'сума для виконавця'),
+        reason: text(payOverrideReason, 'причина ручної зміни оплати')
+    };
+}
+
 function normalizeInput(raw = {}) {
     const sourceType = choice(raw.sourceType, SOURCE_TYPES, 'процес');
     const workDate = normalizeAttendanceWriteDate(raw.workDate);
@@ -96,6 +118,7 @@ function normalizeInput(raw = {}) {
         plannedMinutes = span - breakMinutes;
     } else if (breakMinutes) fail('SUBSTITUTION_TIME_REQUIRED', 'Перерву можна вказати лише для роботи з часом');
     const rateMode = choice(raw.rateMode, ['standard', 'individual'], 'джерело ставки');
+    const payOverrides = normalizePayOverrides(raw, sourceType, originalStaffId);
     const sourceSlots = { afisha: ['primary', 'second', 'single:primary','single:second','first:primary','first:second','second:primary','second:second'], booking: ['primary', 'second'], hr_shift: ['primary', 'partial'] };
     const sourceId = sourceType === 'standalone' ? text(raw.sourceId, 'ідентифікатор роботи', 100)
         : ['booking', 'education_lesson'].includes(sourceType) ? text(raw.sourceId, 'бронювання', 50) : String(integer(raw.sourceId, 'джерело', 1));
@@ -106,6 +129,7 @@ function normalizeInput(raw = {}) {
         workload: text(raw.workload, 'обсяг роботи', 1000), reason: text(raw.reason, 'причина'),
         rateMode, rateMinor: rateMode === 'individual' ? decimalUnits(raw.rate, 2, 'ставка') : null,
         rateReason: rateMode === 'individual' ? text(raw.rateReason, 'причина індивідуальної ставки') : null,
+        ...(payOverrides && { payOverrides }),
         temporaryAdmission: raw.temporaryAdmission === true,
         admissionReason: raw.temporaryAdmission === true ? text(raw.admissionReason, 'підстава разового допуску') : null,
         allowConcurrent: raw.allowConcurrent === true,
@@ -138,22 +162,32 @@ function preview(input, context) {
     const warnings = [];
     const rate = input.rateMode === 'individual' ? { rateMinor: input.rateMinor, source: 'individual', reason: input.rateReason }
         : context.standardRate;
-    if (!rate || rate.payUnit && rate.payUnit !== input.payUnit) blockers.push({ code: 'SUBSTITUTION_RATE_REQUIRED', message: 'Немає стандартної ставки з цією одиницею; вкажіть індивідуальну' });
+    const replacementOverride = input.payOverrides?.replacementMinor;
+    if (replacementOverride == null && (!rate || rate.payUnit && rate.payUnit !== input.payUnit)) {
+        blockers.push({ code: 'SUBSTITUTION_RATE_REQUIRED', message: 'Немає стандартної ставки з цією одиницею; вкажіть індивідуальну' });
+    }
     const conflicts = (context.commitments || []).filter(item => overlap(input, item));
     for (const item of conflicts) {
         const warning = item.simultaneousAllowed === true && input.allowConcurrent;
         (warning ? warnings : blockers).push({ code: 'SUBSTITUTION_OVERLAP', message: 'Перетин із призначеною роботою', source: item.source, id: item.id });
     }
     if (!input.startsAt) warnings.push({ code: 'SUBSTITUTION_UNTIMED', message: 'Без точного часу неможливо перевірити всі перетини' });
-    const estimateMinor = rate ? amountFor(input, rate.rateMinor) : null;
+    const calculatedMinor = rate && (!rate.payUnit || rate.payUnit === input.payUnit) ? amountFor(input, rate.rateMinor) : null;
+    const estimateMinor = replacementOverride ?? calculatedMinor;
+    const originalOverride = input.payOverrides?.originalMinor;
     const effects = {
         replacement: input.payMode === 'additional' ? 'Звичайна оплата зберігається; підміна нараховується додатково.'
             : 'Звичайна оплата лише за погоджений обсяг замінюється оплатою підміни.',
-        original: input.originalTreatment === 'retain' ? (input.sourceType === 'hr_shift'
+        original: originalOverride != null ? 'Звичайна оплата заміненого працівника розраховується за табелем; погоджена сума за підміну враховується один раз.'
+            : input.originalTreatment === 'retain' ? (input.sourceType === 'hr_shift'
             ? 'Оплата переданих годин зберігається окремим рядком після підтвердження підміни.' : 'Оплата заміненого працівника не змінюється.')
             : input.originalTreatment === 'transfer_unworked_scope' ? 'Передається лише невідпрацьований обсяг. Уже зароблена оплата зберігається.' : 'Заміненого працівника немає.'
     };
     const result = { input, rate, estimateMinor, currency: 'UAH', ruleVersion: RULE_VERSION,
+        ...(input.payOverrides && { payOverrides: {
+            originalCalculatedMinor: input.originalTreatment === 'retain' ? context.payImpact?.original?.amountMinor ?? 0 : 0,
+            replacementCalculatedMinor: calculatedMinor
+        } }),
         effects, ...(context.payImpact && { payImpact: context.payImpact }), warnings, blockers,
         evidence: context.evidence, available: blockers.length === 0 };
     return { ...result, fingerprint: fingerprint(result) };

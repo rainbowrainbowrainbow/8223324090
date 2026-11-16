@@ -39,6 +39,38 @@ test('invalid second claim leaves every ordinary allocation intact',()=>{
     assert.deepEqual(result.conditionDays[0].snapshot.compensationAllocations,allocations);
 });
 
+test('manual original-worker adjustments consume only matching daily or monthly base once', async () => {
+    const { calculatePayroll } = require('../services/payroll');
+    for (const rateUnit of ['day', 'month']) {
+        const base = { group: 'base', lineType: 'profession_' + rateUnit, amount: 1200,
+            meta: { professionKey: 'reception', workDate: '2099-01-13', rateUnit } };
+        const manualRow = { ...row, originalPayee: true, state: 'completed',
+            input_json: { ...input, sourceType: 'hr_shift', originalStaffId: 3, originalTreatment: 'retain',
+                payOverrides: { originalMinor: -15005, replacementMinor: 9025, reason: 'Synthetic correction' } },
+            quote_json: { rate: null, payImpact: { originalReference: { rateUnit, rateMinor: 120000 } } } };
+        const completion = await freezeCompletion(fixture([allocation()]), manualRow, payload, { username: 'qa' });
+        assert.equal(completion.amountMinor, 9025);
+        assert.equal(completion.originalPay.amountMinor, -15005);
+        assert.equal(completion.baseClaims.length, 1);
+        const { substitutionLines: [manual] } = applyPayrollSubstitutions({}, [{ ...manualRow, completion_json: completion }]);
+        assert.equal(manual.amount, -150.05);
+        assert.equal(manual.meta.rate.rateUnit, rateUnit);
+        const remainder = calculatePayroll({}, { schemeType: 'hourly' }, { substitutionLines: [manual] }, {}, [],
+            { applies: true, baseLines: [base], overtimeLines: [] });
+        assert.equal(remainder.summary.base, 1049.95);
+        const excess = { ...manual, amount: -1100, meta: { ...manual.meta, substitutionId: '2' } };
+        const blocked = calculatePayroll({}, { schemeType: 'hourly' }, { substitutionLines: [manual, excess] }, {}, [],
+            { applies: true, baseLines: [base], overtimeLines: [] });
+        assert.equal(blocked.summary.base, 1049.95);
+        assert.ok(blocked.blockingIssues.some(issue => issue.code === 'SUBSTITUTION_ORIGINAL_ADJUSTMENT_EXCEEDS_BASE'));
+        const unrelated = { ...base, meta: { ...base.meta, professionKey: 'animator' } };
+        const outsideScope = calculatePayroll({}, { schemeType: 'hourly' }, { substitutionLines: [manual] }, {}, [],
+            { applies: true, baseLines: [unrelated], overtimeLines: [] });
+        assert.equal(outsideScope.summary.base, 1200);
+        assert.ok(outsideScope.blockingIssues.some(issue => issue.code === 'SUBSTITUTION_ORIGINAL_ADJUSTMENT_EXCEEDS_BASE'));
+    }
+});
+
 test('substitution cents survive payroll summary, reviewed snapshot and final installment',()=>{
     const payroll=require('../services/payroll');
     const lines=[{group:'base',lineType:'hourly',amount:1000},{group:'additional',lineType:'staff_substitution',amount:750.37}];

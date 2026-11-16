@@ -18,6 +18,37 @@ test('hourly quote retains planned and actual quantities separately', () => {
     assert.equal(value.plannedMinutes, 240);
 });
 
+test('an agreed substitution rate can be lower than the standard hourly rate', () => {
+    const context = { standardRate: { rateMinor: 20000, payUnit: 'hour' } };
+    const agreed = c.preview(input({ rate: '150' }), context);
+    const standard = c.preview(input({ rateMode: 'standard' }), context);
+
+    assert.equal(agreed.available, true);
+    assert.deepEqual(agreed.rate, { rateMinor: 15000, source: 'individual', reason: 'One-off agreed rate' });
+    assert.equal(agreed.estimateMinor, 60000);
+    assert.equal(standard.estimateMinor, 80000);
+    assert.equal(c.amountFor(agreed.input, agreed.rate.rateMinor, 120), 30000);
+});
+
+test('Park shift overrides keep the calculated and entered amounts independent', () => {
+    const shifts = { sourceType: 'hr_shift', sourceId: 42, originalPayAmount: '120,05',
+        replacementPayAmount: '310.15', payOverrideReason: 'Case-specific amounts' };
+    const value = input(shifts);
+    const context = { payImpact: { original: { amountMinor: 16000 } } };
+    const quote = c.preview(value, context);
+    assert.equal(quote.estimateMinor, 31015);
+    assert.deepEqual(quote.input.payOverrides, { originalMinor: 12005, replacementMinor: 31015, reason: 'Case-specific amounts' });
+    assert.deepEqual(quote.payOverrides, { originalCalculatedMinor: 16000, replacementCalculatedMinor: 80000 });
+    assert.notEqual(quote.fingerprint, c.preview(input({ ...shifts, originalPayAmount: '0' }), context).fingerprint);
+    assert.throws(() => input({ ...shifts, replacementPayAmount: '-1' }), { code: 'SUBSTITUTION_INVALID' });
+    assert.throws(() => input({ ...shifts, originalPayAmount: ['120'] }), { code: 'SUBSTITUTION_INVALID' });
+    assert.throws(() => input({ ...shifts, payOverrideReason: '' }), { code: 'SUBSTITUTION_INVALID' });
+    assert.throws(() => input({ ...shifts, sourceType: 'booking' }), { code: 'SUBSTITUTION_PAY_OVERRIDE_SCOPE' });
+    const noRate = c.preview(input({ ...shifts, rateMode: 'standard' }), context);
+    assert.equal(noRate.available, true);
+    assert.equal(noRate.rate, undefined);
+});
+
 test('base replacement requires a timed scope before agreement for every pay unit',()=>{
     for(const payUnit of ['fixed','shift']) {
         assert.throws(()=>input({payUnit,shiftUnits:'1',payMode:'replace_base',startsAt:null,endsAt:null,breakMinutes:0}),{code:'SUBSTITUTION_TIME_REQUIRED'});

@@ -65,6 +65,86 @@
         return value;
     }
 
+    const amountText = amountMinor => amountMinor == null ? '' : (amountMinor / 100).toFixed(2);
+    const decimalText = value => String(value ?? '').trim().replace(',', '.');
+
+    function payOverrideSummary(quote, previousQuote = null) {
+        const edited = quote.input?.payOverrides;
+        const previous = previousQuote?.input?.payOverrides;
+        if (!edited && !previous) return '';
+        const originalAmount = value => value.input?.payOverrides?.originalMinor
+            ?? (value.input?.originalTreatment === 'retain' ? value.payImpact?.original?.amountMinor : 0);
+        const compare = (label, before, after) => {
+            if (after == null) return `${label}: автоматичний розрахунок.`;
+            return before == null ? `${label}: погоджено ${money(after)}.`
+                : `${label}: ${money(before)} → ${money(after)} (різниця ${money(after - before)}).`;
+        };
+        return [
+            edited?.originalMinor != null || previous?.originalMinor != null
+                ? compare('Замінений працівник · зміна до оплати за табелем',
+                    previousQuote ? originalAmount(previousQuote) : quote.payOverrides?.originalCalculatedMinor, originalAmount(quote))
+                : null,
+            edited?.replacementMinor != null || previous?.replacementMinor != null
+                ? compare('Виконавець · оплата підміни',
+                    previousQuote ? previousQuote.estimateMinor : quote.payOverrides?.replacementCalculatedMinor, quote.estimateMinor)
+                : null,
+            edited ? `Причина ручної зміни: ${edited.reason}` : null
+        ].filter(Boolean).join('\n');
+    }
+
+    async function editShiftPay(input, quote, { revising = false } = {}) {
+        const stored = quote.input?.payOverrides;
+        const originalTerms = quote.payImpact?.originalReference;
+        const originalAuto = input.originalTreatment === 'retain' ? quote.payImpact?.original?.amountMinor : 0;
+        const replacementAuto = quote.payOverrides?.replacementCalculatedMinor ?? (stored?.replacementMinor == null ? quote.estimateMinor : null);
+        const defaults = {
+            originalPayAmount: amountText(stored?.originalMinor ?? originalAuto),
+            replacementPayAmount: amountText(stored?.replacementMinor ?? replacementAuto)
+        };
+        const collect = values => Object.fromEntries(Object.entries(defaults).map(([key, shown]) => {
+            const typed = decimalText(values[key]);
+            const storedAmount = key === 'originalPayAmount' ? stored?.originalMinor : stored?.replacementMinor;
+            const useAutomatic = typed === '' || (storedAmount == null && shown !== '' && Number(typed) === Number(shown));
+            return [key, useAutomatic ? '' : typed];
+        }));
+        const validAmount = /^(?:0|[1-9]\d{0,7})(?:\.\d{1,2})?$/;
+        const validate = values => {
+            const { originalPayAmount, replacementPayAmount } = collect(values);
+            const original = decimalText(values.originalPayAmount);
+            const replacement = decimalText(values.replacementPayAmount);
+            if (original && !validAmount.test(originalTerms ? original.replace(/^-/, '') : original)) {
+                return { key:'originalPayAmount', message:'Введіть суму для заміненого працівника в гривнях, до двох знаків після коми.' };
+            }
+            if (replacement && !validAmount.test(replacement)) {
+                return { key:'replacementPayAmount', message:'Введіть невід’ємну суму для виконавця в гривнях, до двох знаків після коми.' };
+            }
+            if ((originalPayAmount !== '' || replacementPayAmount !== '') && !values.payOverrideReason.trim()) {
+                return { key:'payOverrideReason', message:'Вкажіть причину ручної зміни оплати.' };
+            }
+            return null;
+        };
+        const rate = quote.rate;
+        const values = await formModal(revising ? 'Зміна умов оплати підміни' : 'Людина на заміну · ставка', [
+            { type:'note', text: [
+                rate ? `Ставка для розрахунку: ${money(rate.rateMinor)}.` : 'Стандартну ставку для обраної одиниці не знайдено.',
+                originalTerms ? `Звичайна ставка заміненого: ${money(originalTerms.rateMinor)} ${originalTerms.rateUnit === 'day' ? 'за вихід' : 'на місяць'}. У полі нижче вкажіть лише зміну до оплати за табелем. Мінус зменшує її.` : null,
+                'Суми стосуються цієї підміни. Очистіть поле, щоб повернутися до автоматичного розрахунку.'
+            ].filter(Boolean).join('\n') },
+            choice('rateMode', 'Джерело ставки', [['standard','Стандартна ставка'],['individual','Індивідуальна ставка']],
+                revising ? input.rateMode : rate ? 'standard' : 'individual'),
+            field('rate', 'Індивідуальна ставка / фіксована сума, грн', revising ? amountText(input.rateMinor) : '', 'text', false),
+            field('rateReason', 'Причина індивідуальної ставки', revising ? input.rateReason || '' : '', 'text', false),
+            field('originalPayAmount', 'Замінений працівник · зміна до оплати за табелем, грн', defaults.originalPayAmount, 'text', false),
+            field('replacementPayAmount', 'Виконавець · оплата підміни, грн', defaults.replacementPayAmount, 'text', false),
+            field('payOverrideReason', 'Причина ручної зміни оплати', stored?.reason || '', 'text', false),
+            ...(revising ? [field('reason', 'Причина зміни погодження')] : [])
+        ], { okText:'Попередній розрахунок', validate });
+        if (!values) return null;
+        const amounts = collect(values);
+        return { ...values, ...amounts, rate: decimalText(values.rate),
+            rateMode: amounts.replacementPayAmount !== '' && !values.rate.trim() ? 'standard' : values.rateMode };
+    }
+
     async function create(prefill = {}) {
         const catalog = await request('GET', '/catalog');
         const education = dar();
@@ -130,7 +210,9 @@
             startsAt: localTime(first.workDate, terms.startTime, terms.offset), endsAt: localTime(terms.endDate, terms.endTime, terms.offset),
             rateMode: 'standard', originalStaffId: first.originalStaffId || null };
         const standard = await request('POST', '/preview', { input });
-        const rate = await formModal('Людина на заміну · ставка', [
+        const rate = input.sourceType === 'hr_shift' && input.originalStaffId
+            ? await editShiftPay(input, standard)
+            : await formModal('Людина на заміну · ставка', [
             { type: 'note', text: standard.rate ? `Стандартна ставка: ${money(standard.rate.rateMinor)}. ${standard.rate.title || standard.rate.source || ''}` : 'Стандартну ставку для обраної одиниці не знайдено.' },
             choice('rateMode', 'Джерело ставки', [['standard','Стандартна ставка'],['individual','Індивідуальна ставка']], standard.rate ? 'standard' : 'individual'),
             field('rate', 'Індивідуальна ставка / фіксована сума, грн', '', 'text', false),
@@ -166,8 +248,10 @@
         ].join('\n') : '';
         const assignmentSummary = first.sourceType === 'booking' && source
             ? `${source.title} · ${first.workDate}\n${first.slotKey === 'second' ? 'Другий аніматор' : 'Основний аніматор'}\n` : '';
+        const editedPay = payOverrideSummary(quote);
         const confirmed = await confirmModal(`${assignmentSummary}Оплата підміни за планом: ${money(quote.estimateMinor)}\n${quote.effects.replacement}\n${quote.effects.original}\n`
-            + quote.warnings.map(warning => warning.message).join('\n') + beforeSchedule + scheduleEffect + originalWorkload + (payImpact ? `\n${payImpact}` : '') + '\nНарахування відбудеться після підтвердження фактичної роботи.',
+            + quote.warnings.map(warning => warning.message).join('\n') + beforeSchedule + scheduleEffect + originalWorkload + (payImpact ? `\n${payImpact}` : '')
+            + (editedPay ? `\n${editedPay}` : '') + '\nНарахування відбудеться після підтвердження фактичної роботи.',
         { okText: 'Погоджую наслідки та зберігаю', cancelText: 'Скасувати' });
         if (!confirmed) return;
         await saveCommand('', { input, previewFingerprint: quote.fingerprint, effectsAcknowledged: true });
@@ -230,26 +314,33 @@
         const title = `Підміна #${row.id} · ${labels[details.state]}`;
         const note = `${details.input.workload}\n${substitutionFacts(details, catalog, people)}\nПлан: ${money(details.quote.estimateMinor)}\nФакт: ${details.completion ? money(details.completion.amountMinor) : 'ще не підтверджено'}\n`
             + `${details.quote.effects.replacement}\n${details.quote.effects.original}\n`
-            + (details.completion?.originalPay ? `Збережена оплата заміненого: ${money(details.completion.originalPay.amountMinor)}.\n` : '')
-            + history.events.map(event => `Версія ${event.version} · ${actions[event.action] || event.action} · ${event.actor}: ${event.reason}`).join('\n');
+            + (details.completion?.originalPay ? `Нарахування заміненому за підміну: ${money(details.completion.originalPay.amountMinor)}.\n` : '')
+            + history.events.map(event => {
+                const recordedPay = event.after_json?.quote && ['create','revise'].includes(event.action)
+                    ? payOverrideSummary(event.after_json.quote, event.before_json?.quote) : '';
+                return `Версія ${event.version} · ${actions[event.action] || event.action} · ${event.actor}: ${event.reason}${recordedPay ? `\n${recordedPay}` : ''}`;
+            }).join('\n');
         if (readOnly || details.state !== 'active' || (isDar && !canManage())) return showSubstitutionHistory(title, note);
         const selected = await formModal(title, [
             { type: 'note', text: note },
             choice('action', 'Дія', [
                 ...(!dar() || canUseAction('manage_payroll_accrual') ? [['complete','Підтвердити виконання']] : []),
-                ['revise','Змінити погоджену ставку до початку роботи'],['cancel','Скасувати підміну']])
+                ['revise',details.input.sourceType === 'hr_shift' ? 'Змінити погоджені суми до початку роботи' : 'Змінити погоджену ставку до початку роботи'],['cancel','Скасувати підміну']])
         ], { okText: 'Продовжити', cancelText: 'Закрити', className:'substitution-history-modal' });
         if (!selected?.action) return;
         if (selected.action === 'revise') {
-            const terms=await formModal('Зміна ставки підміни',[
+            const terms = details.input.sourceType === 'hr_shift' && details.input.originalStaffId
+                ? await editShiftPay(details.input, details.quote, { revising: true })
+                : await formModal('Зміна ставки підміни',[
                 field('rate','Нова погоджена ставка, грн',String(details.quote.rate.rateMinor/100)),
                 field('rateReason','Підстава індивідуальної ставки'),field('reason','Причина зміни погодження')
             ],{okText:'Попередній розрахунок'});
             if (!terms) return;
-            const input={...details.input,...terms,rateMode:'individual',shiftUnits:details.input.shiftUnitsMilli/1000};
+            const input={...details.input,rateMode:'individual',...terms,shiftUnits:details.input.shiftUnitsMilli/1000};
             const quote=await request('POST','/preview',{input,id:row.id});
             if (!quote.available) throw new Error(quote.blockers.map(item=>item.message).join('\n'));
-            if (!await confirmModal(`Було: ${money(details.quote.estimateMinor)}\nСтане: ${money(quote.estimateMinor)}\n${quote.effects.replacement}\n${quote.effects.original}`,{okText:'Погоджую нову ставку'})) return;
+            const editedPay = payOverrideSummary(quote, details.quote);
+            if (!await confirmModal(`Було: ${money(details.quote.estimateMinor)}\nСтане: ${money(quote.estimateMinor)}\n${quote.effects.replacement}\n${quote.effects.original}${editedPay ? `\n${editedPay}` : ''}`,{okText:'Погоджую зміни'})) return;
             await saveCommand(`/${row.id}/revise`,{input,previewFingerprint:quote.fingerprint,effectsAcknowledged:true,expectedVersion:details.version});
             showNotification('Нову ставку зафіксовано в історії','success');
             return;

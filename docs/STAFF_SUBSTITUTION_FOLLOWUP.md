@@ -174,12 +174,21 @@ business ownership.
 
 ## Operational acceptance
 
-The released substitution package is present in production 0.83.64
-(`23da24bf`). The production branch and public version endpoint agreed when
-verified on 2026-11-15. The exact substitution release was 0.83.56
-(`b817ec71`). An isolated synthetic payroll test covers the manager-to-
-reception flow and preserves the worker's permanent role. It does not prove
-that a particular historical shift was paid.
+The initial substitution package was released in 0.83.56 (`b817ec71`).
+The journal and source read-model follow-up was released in 0.83.79
+(`a8cb3f07`). The production branch, public version endpoint and Railway
+deployment agreed on 2026-11-15. Exact-SHA CI and Runtime artifact smoke passed.
+An isolated synthetic payroll test covers the manager-to-reception flow and
+preserves the worker's permanent role. It does not prove that a particular
+historical shift was paid.
+
+The exact 0.83.79 application code passed
+`npm run test:integration:substitutions:isolated` with Chromium on disposable
+PostgreSQL. The Park case confirmed exact attendance allocation, one retained
+hourly pay line after a rate change, and a separate premium. The DAR case
+confirmed one accrual for the selected lesson, idempotent completion, and no
+corresponding Park payroll line. At 390 CSS pixels the test opened the Park
+substitution form and reached the DAR agreement history from its accrual.
 
 To reconcile an actual one-off administrator shift, obtain the exact Kyiv
 work date and worked interval from the approved shift or attendance record.
@@ -194,7 +203,7 @@ approved payroll snapshots intact.
 
 Authenticated production QA is blocked while the required local test
 credentials file is absent. Keep test-account QA separate from any real
-payroll reconciliation. The local journal lets authorized users filter by
+payroll reconciliation. The journal lets authorized users filter by
 date and either participant and inspect the stored role, planned interval,
 frozen rate, confirmed minutes, amount, and revision history. A write whose
 response was lost can be retried from its original Park or DAR cabinet using
@@ -224,6 +233,14 @@ later retry in the original cabinet.
   completed agreement history under the existing report access. Other source pages still need provenance beyond the staff schedule, workbook, personal results,
   journal, history and payroll lines. Authenticated production workflows
   remain unverified.
+- Chat tasks and meeting actions: the repository has read APIs for a user's
+  chat tasks and for meeting details. The CRM browser code does not consume
+  either endpoint. The meeting detail route accepts any CRM role and has no
+  channel membership check. The chat task list filters by assignee or creator.
+  Define the viewer and the supported screen before adding agreement provenance.
+  For a meeting, start with the creator who can access Park and is a current
+  member of the linked booking channel. Keep converted actions on their linked
+  task and take agreement details from the existing journal.
 
 ## Decisions before expanding protected booking and pay scopes
 
@@ -232,16 +249,10 @@ later retry in the original cabinet.
   membership, or add a protected legacy adapter that only accepts an explicit
   stable booking/child pair with matching program, time, role and line IDs.
   Leave ambiguous historical records for manual review under either option.
-- Per-exit pay retention: preserve the full exit once if the worker loses all
-  paid work, or introduce a proportional policy based on the frozen planned
-  minutes per day. A partial transfer must never produce a second full exit.
-- Monthly retention: preserve the guaranteed monthly amount, or use the
-  transferred minutes divided by the frozen approved monthly norm and retain
-  that proportional value. Existing historical amounts remain frozen.
-- Proposed starting rule for owner review: preserve an existing day or month
-  guarantee once in the worker's ordinary payroll. Put the substitute's
-  approved amount on its own line. A policy that reduces the guarantee or
-  allocates it by hours needs an explicit rule and examples.
+- The owner requested editable amounts for each substitution. In 0.83.79, the
+  replacement's individual rate or fixed amount is editable with a reason.
+  The original worker has two preset choices. The retained-pay calculation
+  for an HR shift requires an hourly rate.
 - Overnight, breaks and simultaneous roles: carry an explicit Kyiv date and
   offset for each interval. Transfer breaks and role allocations only from
   a recorded interval or an approved allocation. Require manual review when
@@ -250,6 +261,69 @@ later retry in the original cabinet.
   original substitution and record the reason, approving actor and amount.
   Reconcile it through the authorized payroll adjustment path before touching
   a frozen report or any cash movement.
+
+### Park per-substitution pay proposal
+
+[Deputy](https://help.deputy.com/hc/en-au/articles/17639971010959-How-to-edit-a-timesheet)
+edits pay lines on an individual timesheet independently of recorded shift
+times. [QuickBooks Desktop Payroll](https://quickbooks.intuit.com/learn-support/en-us/help-article/time-tracking/override-employee-salary-online-payroll/L6DPVk80p_US_en_US)
+supports editing fixed earnings on one paycheck.
+[Frappe HR](https://docs.frappe.io/hr/additional-salary) supports a one-off
+adjustment or replacement of a salary component for an effective payroll date.
+
+Extend the existing Park HR substitution form. Show the calculated values and
+allow a manual amount for each of the two people, with a reason for an override.
+For the replacement, preserve the choice between additional pay and replacement
+of the exact ordinary allocation. For the original worker, apply the approved
+change to the impacted pay line. For a monthly profile show the adjustment
+against the monthly calculation so multiple substitutions do not replace the
+same monthly amount. Reuse the existing payroll guards and attendance evidence.
+Preview the calculated amount, entered amount and difference before saving the
+agreement. Save the work scope, both accepted values, actor and reason in its
+history. Validate amounts in minor units on the server. On invalid submission
+show an explanatory error and focus the field that needs attention.
+
+For an illustrative partial shift, a calculated 1,200 UAH for the original
+worker and 400 UAH for the replacement may be approved as 1,050 UAH and 300 UAH
+respectively, subject to existing payroll controls. The preview shows changes
+of −150 UAH and −100 UAH. The override is limited to the work and people in the
+agreement. For completed amounts, use the linked correction proposal below.
+
+The local implementation edits the two amounts when creating the agreement
+and during the existing pre-work revision flow. It records the original
+worker's adjustment to ordinary payroll. For hourly pay this replaces the
+automatically retained pay for the transferred time. For daily or monthly
+pay a negative adjustment must be covered by the normally calculated base
+for the same profession and day or month. An excessive or unmatched amount
+blocks payroll. The replacement's fixed override follows the chosen additional
+or base-replacement mode and still needs the existing attendance evidence.
+The adjustment and its reason are stored with the journal revision. Completed
+agreements and protected payroll periods retain their existing write guards.
+
+### Park correction proposal
+
+The existing `POST /api/hr/salary/adjustment` accepts period-scoped HR
+adjustments. The payroll reader groups `salary_adjustments` by worker and type,
+so a generic row loses the substitution identity on the payslip. The journal's
+completion and attendance-claim evidence is immutable. Represent a correction
+as a linked delta with an identifiable payroll line rather than a generic
+bonus, deduction or new completion.
+
+For one completed Park substitution and one payee, record the substitution and
+payee IDs, effective work date, posting month, prior effective amount, corrected
+amount, signed difference in UAH minor units, reason and approving actor. Use
+the Park payroll period lock at posting. An open original period can receive
+the delta. A closed period or an approved or paid snapshot remains frozen and
+the delta can post to a separately approved open period. This proposal covers
+amount errors only. An attendance allocation or payee change needs review of
+the underlying evidence and separate correction rules.
+
+For example, a completed 450 UAH claim corrected to 500 UAH creates one +50 UAH
+line. A later correction to 480 UAH creates one −20 UAH line. Retrying either
+request must return the existing correction. Competing corrections against the
+same prior effective amount must accept one and reject the stale request. The
+payroll line should retain the substitution and correction IDs, and the history
+should show both adjustments. No posting creates or reverses a payment.
 
 ## Afisha occurrence scheduling
 

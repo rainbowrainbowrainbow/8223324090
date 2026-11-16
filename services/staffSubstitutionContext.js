@@ -18,18 +18,31 @@ async function shiftPayImpact(db, input, current, blockers) {
     const rateFor = staffId => {
         if (!terms.staff.has(staffId)) return null;
         const ordinary = resolvePayrollConditions(terms, staffId, input.professionKey, input.workDate);
-        if (payrollRateBlocker(ordinary) || ordinary.rateUnit !== 'hour' || !/^\d+(?:\.\d{1,2})?$/.test(String(ordinary.rate))) return null;
-        const rateMinor = c.decimalUnits(ordinary.rate, 2, 'звичайна погодинна ставка');
+        if (payrollRateBlocker(ordinary) || !['hour', 'day', 'month'].includes(ordinary.rateUnit)
+            || !/^\d+(?:\.\d{1,2})?$/.test(String(ordinary.rate))) return null;
+        const rateMinor = c.decimalUnits(ordinary.rate, 2, 'звичайна ставка');
+        if (ordinary.rateUnit !== 'hour') return { rateUnit: ordinary.rateUnit, rateMinor,
+            source: ordinary.rateSource, profileVersionId: ordinary.profileVersionId ?? null };
         return { rateMinor, amountMinor: c.amountFor({ payUnit: 'hour' }, rateMinor, input.plannedMinutes),
             source: ordinary.rateSource, profileVersionId: ordinary.profileVersionId ?? null,
             exceptionId: ordinary.exception?.id ?? null, exceptionVersion: ordinary.exception?.version ?? null };
     };
-    const original = current && input.originalTreatment === 'retain' ? current.quote_json.payImpact?.original : rateFor(input.originalStaffId);
-    if (input.originalTreatment === 'retain' && !original) {
+    const originalTerms = current && (input.originalTreatment === 'retain' || current.input_json.payOverrides?.originalMinor != null)
+        ? current.quote_json.payImpact?.original ?? current.quote_json.payImpact?.originalReference
+        : rateFor(input.originalStaffId);
+    const originalReference = originalTerms?.rateUnit ? originalTerms : null;
+    const original = originalReference ? null : originalTerms;
+    const override = input.payOverrides?.originalMinor;
+    if (override != null && !original && !originalReference) {
+        blockers.push({ code: 'SUBSTITUTION_ORIGINAL_RATE_UNSUPPORTED', message: 'Не вдалося перевірити чинні умови оплати заміненого працівника.' });
+    } else if (override < 0 && (!originalReference || -override > originalReference.rateMinor)) {
+        blockers.push({ code: 'SUBSTITUTION_ORIGINAL_ADJUSTMENT_INVALID', message: 'Від’ємне коригування доступне в межах чинної денної або місячної ставки.' });
+    } else if (input.originalTreatment === 'retain' && !original && override == null) {
         blockers.push({ code: 'SUBSTITUTION_ORIGINAL_RATE_UNSUPPORTED', message: 'Щоб зберегти оплату за передані хвилини, потрібна чинна погодинна ставка заміненого працівника.' });
     }
     const replacement = rateFor(input.staffId);
-    return { original: original ?? null, replacement };
+    return { original: original ?? null, replacement: replacement?.rateUnit ? null : replacement,
+        ...(originalReference && { originalReference }) };
 }
 
 async function loadContext(db, business, actor, input, source, current = null) {

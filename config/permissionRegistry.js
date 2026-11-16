@@ -45,7 +45,8 @@ const LEADS_ACCESS = Object.freeze([...MANAGER_UP, 'marketer']);
 const ART_ACCESS = Object.freeze([...MANAGER_UP, 'art_director', 'marketer']);
 const HERMES_STUDIO_ACCESS = Object.freeze([...MANAGER_UP, 'art_director', 'marketer', 'admin']);
 const PROGRAMS_ACCESS = Object.freeze([...MANAGER_UP, 'admin', 'senior_instructor', 'instructor', 'art_director']);
-const HR_PAGE_ACCESS = Object.freeze([...MANAGER_UP, 'hr', 'admin', 'security', 'accountant']);
+const HR_PAGE_ACCESS = Object.freeze([...MANAGER_UP, 'hr', 'admin', 'security']);
+const HR_READ_ACCESS = Object.freeze([...HR_PAGE_ACCESS, 'accountant']);
 const TRAINING_ACCESS = Object.freeze([...MANAGER_UP, 'hr', 'senior_instructor', 'instructor']);
 const GUARDIAN_OPS_ACCESS = Object.freeze(['creator', 'director', 'admin', 'security']);
 const FINANCE_ANALYTICS_ACCESS = Object.freeze(['creator', 'director', 'accountant']);
@@ -501,7 +502,7 @@ const PAGE_PERMISSIONS = Object.freeze([
 
 const ACTION_PERMISSIONS = Object.freeze([
     action({
-        key: 'hr.today.view', label: 'Перегляд HR: Сьогодні', group: 'hr', defaultRoles: HR_PAGE_ACCESS, risk: 'high',
+        key: 'hr.today.view', label: 'Перегляд HR: Сьогодні', group: 'hr', defaultRoles: HR_READ_ACCESS, risk: 'high',
         backendConsumers: [source('routes/hr.js', 'function requireHrCapabilityContract', { enforces: true }), source('routes/hermes-schedule.js', "canUseAction(req.user, 'hr.today.view')", { enforces: true })],
         frontendConsumers: [source('js/hr-page.js', "'hr.today.view'", { enforces: true })], apiConsumers: [api('routes/hr.js', '/api/hr/today', null, 'Enforced by requireHrCapabilityContract.'), api('routes/hermes-schedule.js', '/api/hermes/attendance', null, 'GET: machine auth and hr.today.view capability.')]
     }),
@@ -517,7 +518,7 @@ const ACTION_PERMISSIONS = Object.freeze([
         frontendConsumers: [source('js/hr-page.js', "'hr.schedule.manage'", { enforces: true }), source('js/staff-page.js', "canUseStaffCapability('hr.schedule.manage')", { enforces: true })], apiConsumers: [api('routes/hr.js', '/api/hr schedule mutations', null, 'Enforced by requireHrCapabilityContract.'), api('routes/staff.js', '/api/staff schedule mutations', 'hr.schedule.manage')]
     }),
     action({
-        key: 'hr.staff.view', label: 'Перегляд HR-даних персоналу', group: 'hr', defaultRoles: HR_PAGE_ACCESS, risk: 'high',
+        key: 'hr.staff.view', label: 'Перегляд HR-даних персоналу', group: 'hr', defaultRoles: HR_READ_ACCESS, risk: 'high',
         backendConsumers: [source('routes/hr.js', 'function requireHrCapabilityContract', { enforces: true })],
         frontendConsumers: [source('js/hr-page.js', "'hr.staff.view'", { enforces: true }), source('js/staff-page.js', "canUseStaffCapability('hr.staff.view')", { enforces: true })], apiConsumers: [api('routes/hr.js', '/api/hr/staff and structure reads', null, 'Enforced by requireHrCapabilityContract.')]
     }),
@@ -546,7 +547,7 @@ const ACTION_PERMISSIONS = Object.freeze([
         apiConsumers: [api('routes/users.js', 'POST /api/users/onboarding', null, 'Enforced by requireParkAccountOnboarding and the Park worker role allowlist.')]
     }),
     action({
-        key: 'hr.reports.view', label: 'Перегляд HR-звітів', group: 'hr', defaultRoles: HR_PAGE_ACCESS, risk: 'critical',
+        key: 'hr.reports.view', label: 'Перегляд HR-звітів', group: 'hr', defaultRoles: HR_READ_ACCESS, risk: 'critical',
         backendConsumers: [source('routes/hr.js', 'function requireHrCapabilityContract', { enforces: true })],
         frontendConsumers: [source('js/hr-page.js', "'hr.reports.view'", { enforces: true }), source('js/hr-pulse-switcher.js', "'hr.reports.view'", { enforces: true })], apiConsumers: [api('routes/hr.js', '/api/hr/report', null, 'Enforced by requireHrCapabilityContract.')]
     }),

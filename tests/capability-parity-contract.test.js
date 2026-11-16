@@ -276,7 +276,7 @@ test('accountant can open operational pages with consistent browser and server p
     for (const action of ['hr.today.view', 'hr.staff.view', 'hr.reports.view', 'tasks.create']) {
         assert.equal(assertParity(user, action, { type: 'action' }).allowed, true, action);
     }
-    for (const action of ['manage_accounts', 'manage_settings', 'fiscal.configure', 'fiscal.incident.manage']) {
+    for (const action of ['manage_accounts', 'manage_settings', 'fiscal.configure', 'fiscal.incident.manage', 'hr.reports.export']) {
         assert.equal(assertParity(user, action, { type: 'action' }).allowed, false, action);
     }
     assert.equal(assertParity({ ...user, page_denylist: ['/hr'] }, '/hr', { type: 'page' }).allowed, false);

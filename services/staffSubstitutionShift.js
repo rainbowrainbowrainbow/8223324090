@@ -40,20 +40,27 @@ async function loadPlans(db, input) {
 
 async function assertCurrent(db, input, saved) {
     const { original, replacement } = await loadPlans(db, input);
+    const remainder = saved.remainder && await loadHrShiftDayPlan(db, {
+        staffId: input.originalStaffId, shiftDate: saved.remainder.date
+    });
     const current = [planTerms(original.plan), planTerms(replacement?.plan)];
     if (contract.fingerprint(current) !== contract.fingerprint([saved.originalAfter, saved.replacementAfter])
-        || saved.replacementBefore && saved.replacementBefore.shift.id !== replacement?.shift.id) {
+        || saved.replacementBefore && saved.replacementBefore.shift.id !== replacement?.shift.id
+        || saved.remainder && contract.fingerprint(planTerms(remainder?.plan)) !== contract.fingerprint(saved.remainder.plan)) {
         contract.fail('SUBSTITUTION_SOURCE_STALE', 'Денні плани підміни змінилися. Перевірте графік та історію.', 409);
     }
-    return { original, replacement };
+    return { original, replacement, remainder };
 }
 
-async function hasHrSubstitutionClaim(db, input, { partialOnly = false } = {}) {
+async function hasHrSubstitutionClaim(db, input, { partialOnly = false, nextDate = input.workDate } = {}) {
     const result = await db.query(`SELECT id FROM staff_substitutions
-        WHERE source_type='hr_shift' AND work_date=$1 AND state<>'cancelled'
+        WHERE business_context='event_genix' AND source_type='hr_shift' AND state<>'cancelled'
           AND (NOT $3::boolean OR slot_key='partial')
-          AND (staff_id=ANY($2::int[]) OR original_staff_id=ANY($2::int[])) LIMIT 1`,
-    [input.workDate, [input.staffId, input.originalStaffId], partialOnly]);
+          AND (((work_date=$1 OR work_date=$4)
+                AND (staff_id=ANY($2::int[]) OR original_staff_id=ANY($2::int[])))
+            OR (original_staff_id=ANY($2::int[]) AND source_snapshot->'remainder'->>'date' IN ($1::date::text,$4::date::text)))
+        LIMIT 1`,
+    [input.workDate, [input.staffId, input.originalStaffId], partialOnly, nextDate]);
     return result.rows.length > 0;
 }
 
@@ -72,8 +79,12 @@ async function conflictsWithAnimatorAssignments(db, date, staffId, plan) {
 }
 
 async function lockPartialShift(db, input) {
-    await db.query('SELECT id FROM hr_shifts WHERE id=$1 OR (staff_id=$2 AND shift_date=$3) ORDER BY id FOR UPDATE',
-        [input.sourceId, input.staffId, input.workDate]);
+    const endDate = input.endsAt ? contract.kyivParts(input.endsAt).date : input.workDate;
+    await db.query(`SELECT id FROM hr_shifts
+        WHERE id=$1 OR (staff_id=$2 AND shift_date=$3)
+            OR (shift_date=$4 AND $4::date<>$3::date AND staff_id=ANY($5::int[]))
+        ORDER BY id FOR UPDATE`,
+    [input.sourceId, input.staffId, input.workDate, endDate, [input.staffId, input.originalStaffId]]);
     if (input.professionKey === 'animator') {
         await lockBookingConflictResources(db, [input.originalStaffId, input.staffId].filter(Boolean)
             .map(staffId => ({ date: input.workDate, lineId: String(staffId) })));
@@ -106,8 +117,9 @@ async function loadPartialShiftScope(db, input, current) {
         block('SUBSTITUTION_SHIFT_SCOPE_REQUIRED', 'Оберіть час у межах одного сегмента тієї самої професії без суміщених ролей.');
         return scope;
     }
-    const targetEnd = localInstant(input.workDate, target.shiftEnd, target.shiftEnd <= target.shiftStart);
-    if (input.professionKey === 'animator' && target.shiftEnd <= target.shiftStart) {
+    const overnight = target.shiftEnd <= target.shiftStart;
+    const targetEnd = localInstant(input.workDate, target.shiftEnd, overnight);
+    if (input.professionKey === 'animator' && overnight) {
         block('SUBSTITUTION_ANIMATOR_OVERNIGHT', 'Нічне вікно аніматора потребує перевірки призначень на обох датах.');
         return scope;
     }
@@ -119,11 +131,25 @@ async function loadPartialShiftScope(db, input, current) {
         block('SUBSTITUTION_SHIFT_CLOCK_CHANGE', 'Часова зміна через переведення годинника потребує окремого обліку.');
         return scope;
     }
-    if (target.shiftEnd <= target.shiftStart && input.endsAt < targetEnd && end.date !== start.date) {
-        block('SUBSTITUTION_SHIFT_POST_MIDNIGHT_REMAINDER', 'Залишок після опівночі потребує окремого плану на наступну дату. Оберіть край нічної зміни.');
-        return scope;
+    const movesRemainder = overnight && input.endsAt < targetEnd && end.date !== start.date;
+    if (movesRemainder) {
+        const fullWallMinutes = 1440 + timeToMinutes(target.shiftEnd) - timeToMinutes(target.shiftStart);
+        if (input.professionKey !== 'reception' || original.plan.segments.length !== 1
+            || input.startsAt === targetStart || target.breakMinutes || input.breakMinutes || input.allowConcurrent
+            || (Date.parse(targetEnd) - Date.parse(targetStart)) / 60000 !== fullWallMinutes) {
+            block('SUBSTITUTION_SHIFT_POST_MIDNIGHT_REMAINDER',
+                'Окремий план після опівночі доступний для однієї зміни рецепції без перерви, суміщення або переведення годинника.');
+            return scope;
+        }
+        const workers = [input.originalStaffId, input.staffId];
+        const nextDayPlans = await db.query(`SELECT 1 FROM hr_shifts WHERE shift_date=$1::date AND staff_id=ANY($2::int[])
+            UNION ALL SELECT 1 FROM staff_schedule WHERE date=$1::date::text AND staff_id=ANY($2::int[]) LIMIT 1`, [end.date, workers]);
+        if (nextDayPlans.rows.length) {
+            block('SUBSTITUTION_SHIFT_NEXT_DATE_OCCUPIED', 'На наступну дату вже є план одного з працівників. Спочатку узгодьте графік.');
+            return scope;
+        }
     }
-    if (target.shiftEnd <= target.shiftStart && input.startsAt !== targetStart && input.endsAt !== targetEnd) {
+    if (overnight && !movesRemainder && input.startsAt !== targetStart && input.endsAt !== targetEnd) {
         block('SUBSTITUTION_SHIFT_OVERNIGHT_SPLIT', 'Оберіть край нічної зміни, щоб у графіку залишився один суцільний проміжок.');
         return scope;
     }
@@ -132,7 +158,7 @@ async function loadPartialShiftScope(db, input, current) {
         block('SUBSTITUTION_SHIFT_SCOPE_REQUIRED', 'Повний сегмент переноситься зі своєю перервою. Довільний проміжок можна передати з сегмента без перерви, якщо в початковій зміні лишається робота.');
         return scope;
     }
-    if (await hasHrSubstitutionClaim(db, input)) {
+    if (await hasHrSubstitutionClaim(db, input, { nextDate: movesRemainder ? end.date : input.workDate })) {
         block('SUBSTITUTION_SHIFT_ALREADY_CLAIMED', 'На цей день один із денних планів уже має погоджену підміну.');
     }
     if (replacement && replacement.plan.status !== original.plan.status) {
@@ -147,17 +173,23 @@ async function loadPartialShiftScope(db, input, current) {
         if (segment !== target) return [segment];
         const parts = [];
         if (segment.shiftStart < start.time) parts.push({ ...segment, shiftEnd: start.time });
-        if (input.endsAt < targetEnd) parts.push({ ...segment, id: parts.length ? null : segment.id, shiftStart: end.time });
+        if (input.endsAt < targetEnd && !movesRemainder) {
+            parts.push({ ...segment, id: parts.length ? null : segment.id, shiftStart: end.time });
+        }
         return parts;
     });
     try {
         const originalAfter = withSegments(original.plan, remaining);
         const replacementAfter = withSegments(replacement?.plan || { status: original.plan.status },
             [...(replacement?.plan.segments || []), transferred]);
+        const remainder = movesRemainder && {
+            date: end.date,
+            plan: planTerms(withSegments(original.plan, [{ ...segmentTerms(target), shiftStart: end.time }]))
+        };
         if (input.professionKey === 'animator' && await conflictsWithAnimatorAssignments(db, input.workDate, input.originalStaffId, originalAfter)) {
             block('SUBSTITUTION_ANIMATOR_ASSIGNMENT_OUTSIDE_SHIFT', 'У заміненого аніматора є бронювання або подія Афіші поза новим графіком.');
         }
-        return { ...scope, transferred, originalBefore: original, replacementBefore: replacement,
+        return { ...scope, transferred, originalBefore: original, replacementBefore: replacement, ...(remainder && { remainder }),
             originalAfter: planTerms(originalAfter), replacementAfter: planTerms(replacementAfter),
             originalSegments: originalAfter.segments, replacementSegments: replacementAfter.segments };
     } catch (error) {
@@ -167,38 +199,46 @@ async function loadPartialShiftScope(db, input, current) {
     }
 }
 
-async function writePlan(db, input, actor, shift, staffId, plan) {
+async function writePlan(db, input, actor, shift, staffId, plan, date = input.workDate) {
     const staff = (await db.query('SELECT * FROM staff WHERE id=$1', [staffId])).rows[0];
     const allowedProfessionKeys = staffProfessionKeys(staff);
     if (staffId === input.staffId) allowedProfessionKeys.push(input.professionKey);
     const updated = await replaceHrShiftSegments(db, shift.id, plan, {
         actor: actor.username, auditSource: 'staff_substitution', professionCard: { staff, allowedProfessionKeys }
     });
-    await upsertScheduleMirrorFromPlan(db, { staffId, date: input.workDate, note: shift.notes }, updated.plan);
+    await upsertScheduleMirrorFromPlan(db, { staffId, date, note: shift.notes }, updated.plan);
+}
+
+async function insertShift(db, actor, staffId, date, segment, status, notes = null) {
+    const { shiftStart, shiftEnd, breakMinutes, professionKey } = segment;
+    return (await db.query(`INSERT INTO hr_shifts
+        (staff_id,shift_date,planned_start,planned_end,break_minutes,profession_key,shift_type,created_by,notes)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+    [staffId, date, shiftStart, shiftEnd, breakMinutes, professionKey,
+        status === 'remote' ? 'remote' : 'regular', actor.username, notes])).rows[0];
 }
 
 async function applyPartialShift(db, actor, row, scope) {
     const input = row.input_json;
-    let replacementShift = scope.replacementBefore?.shift;
-    if (!replacementShift) {
-        const { shiftStart, shiftEnd, breakMinutes, professionKey } = scope.transferred;
-        replacementShift = (await db.query(`INSERT INTO hr_shifts
-            (staff_id,shift_date,planned_start,planned_end,break_minutes,profession_key,shift_type,created_by)
-            VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-        [input.staffId, input.workDate, shiftStart, shiftEnd, breakMinutes, professionKey,
-            scope.replacementAfter.status === 'remote' ? 'remote' : 'regular', actor.username])).rows[0];
-    }
+    const replacementShift = scope.replacementBefore?.shift || await insertShift(db, actor, input.staffId,
+        input.workDate, scope.transferred, scope.replacementAfter.status);
     await writePlan(db, input, actor, scope.originalBefore.shift, input.originalStaffId,
         { ...scope.originalAfter, segments: scope.originalSegments });
     await writePlan(db, input, actor, replacementShift, input.staffId,
         { ...scope.replacementAfter, segments: scope.replacementSegments });
+    if (scope.remainder) {
+        const { date, plan } = scope.remainder;
+        const shift = await insertShift(db, actor, input.originalStaffId, date, plan.segments[0], plan.status,
+            scope.originalBefore.shift.notes);
+        await writePlan(db, input, actor, shift, input.originalStaffId, plan, date);
+    }
     await reconcileAnimatorRosterDates(db, [input.workDate]);
 }
 
 async function restorePartialShift(db, actor, row) {
     const input = row.input_json;
     const saved = row.source_snapshot;
-    const { original, replacement } = await assertCurrent(db, input, saved);
+    const { original, replacement, remainder } = await assertCurrent(db, input, saved);
     if (input.professionKey === 'animator' && await conflictsWithAnimatorAssignments(db, input.workDate, input.staffId, saved.replacementBefore?.plan)) {
         contract.fail('SUBSTITUTION_ANIMATOR_ASSIGNMENT_OUTSIDE_SHIFT',
             'Після відновлення графіка у виконавця залишиться бронювання або подія Афіші поза зміною.', 409);
@@ -217,6 +257,11 @@ async function restorePartialShift(db, actor, row) {
     } else {
         await db.query('DELETE FROM hr_shifts WHERE id=$1', [replacement.shift.id]);
         await db.query('DELETE FROM staff_schedule WHERE staff_id=$1 AND date=$2', [input.staffId, input.workDate]);
+    }
+    if (remainder) {
+        await db.query('DELETE FROM hr_shifts WHERE id=$1', [remainder.shift.id]);
+        await db.query('DELETE FROM staff_schedule WHERE staff_id=$1 AND date=$2',
+            [input.originalStaffId, saved.remainder.date]);
     }
     await reconcileAnimatorRosterDates(db, [input.workDate]);
 }

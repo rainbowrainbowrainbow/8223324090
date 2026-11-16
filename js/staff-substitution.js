@@ -71,6 +71,11 @@
     const decimalText = value => String(value ?? '').trim().replace(',', '.');
     const signedMoney = amountMinor => `${amountMinor > 0 ? '+' : ''}${money(amountMinor)}`;
 
+    function formatSegments(plan) {
+        return plan?.segments?.length ? plan.segments.map(segment =>
+            `${segment.shiftStart}–${segment.shiftEnd}${segment.shiftEnd <= segment.shiftStart ? ' (+1 день)' : ''}`).join(', ') : 'без зміни';
+    }
+
     function payOverrideSummary(quote, previousQuote = null) {
         const edited = quote.input?.payOverrides;
         const previous = previousQuote?.input?.payOverrides;
@@ -226,10 +231,11 @@
         const quote = await request('POST', '/preview', { input });
         if (!quote.available) throw new Error(quote.blockers.map(blocker => blocker.message).join('\n'));
         const sourcePlan = quote.evidence?.source;
-        const formatSegments = plan => plan?.segments?.length ? plan.segments.map(segment =>
-            `${segment.shiftStart}–${segment.shiftEnd}${segment.shiftEnd <= segment.shiftStart ? ' (+1 день)' : ''}`).join(', ') : 'без зміни';
+        const remainder = sourcePlan?.remainder;
+        const dayLabel = remainder ? `${input.workDate} · ` : '';
+        const nextDate = remainder ? `\nОкрема зміна заміненого працівника на ${remainder.date}: ${formatSegments(remainder.plan)}.` : '';
         const scheduleEffect = sourcePlan?.partial
-            ? `\nУ графіку заміненого працівника залишиться: ${formatSegments(sourcePlan.originalAfter)}.\nГрафік виконавця: ${formatSegments(sourcePlan.replacementAfter)}.`
+            ? `\nУ графіку заміненого працівника залишиться: ${dayLabel}${formatSegments(sourcePlan.originalAfter)}.${nextDate}\nГрафік виконавця: ${dayLabel}${formatSegments(sourcePlan.replacementAfter)}.`
             : '';
         const beforeSchedule = sourcePlan?.partial && sourcePlan.originalBefore
             ? `\nБуло у заміненого: ${formatSegments(sourcePlan.originalBefore.plan)}. Було у виконавця: ${formatSegments(sourcePlan.replacementBefore?.plan)}.`
@@ -362,8 +368,10 @@
         if (dar() !== isDar || (isDar && !isDarSchedule())) return;
         const details = history.substitution;
         const title = `Підміна #${row.id} · ${labels[details.state]}`;
+        const remainder = details.quote.evidence?.source?.remainder;
         const note = `${details.input.workload}\n${substitutionFacts(details, catalog, people)}\nПлан: ${money(details.quote.estimateMinor)}\nФакт: ${details.completion ? money(details.completion.amountMinor) : 'ще не підтверджено'}\n`
             + `${details.quote.effects.replacement}\n${details.quote.effects.original}\n`
+            + (remainder ? `Залишок зміни заміненого працівника · ${remainder.date}: ${formatSegments(remainder.plan)}.\n` : '')
             + (details.completion?.originalPay ? `Нарахування заміненому за підміну: ${money(details.completion.originalPay.amountMinor)}.\n` : '')
             + history.events.map(event => {
                 const recordedPay = event.after_json?.quote && ['create','revise'].includes(event.action)

@@ -175,8 +175,40 @@ test('default services use the migrated schema for an unrelated permanent occupa
             VALUES($1,'2099-01-21','20:00','04:00','reception') RETURNING id`, [original.id])).rows[0];
         const nightInput = { ...hourly, sourceId: String(night.id), workDate: '2099-01-21',
             startsAt: '2099-01-21T23:00:00+02:00', endsAt: '2099-01-22T04:00:00+02:00' };
-        const wrongNight = await service.preview('event_genix', actor, { ...nightInput, endsAt: '2099-01-22T02:00:00+02:00' });
-        assert.ok(wrongNight.blockers.some(item => item.code === 'SUBSTITUTION_SHIFT_POST_MIDNIGHT_REMAINDER'));
+        const crossDate = { ...nightInput, endsAt: '2099-01-22T02:00:00+02:00' };
+        const previewCrossDate = await service.preview('event_genix', actor, crossDate);
+        assert.deepEqual(previewCrossDate.blockers, []);
+        assert.equal(previewCrossDate.evidence.source.remainder.date, '2099-01-22');
+        const createCrossDate = quote => service.mutate('event_genix', actor, 'create', { input: crossDate,
+            previewFingerprint: quote.fingerprint, effectsAcknowledged: true, requestKey: randomUUID() });
+        const occupied = (await db.query(`INSERT INTO hr_shifts(staff_id,shift_date,planned_start,planned_end,profession_key)
+            VALUES($1,'2099-01-22','10:00','16:00','reception') RETURNING id`, [original.id])).rows[0];
+        const blocked = await service.preview('event_genix', actor, crossDate);
+        assert.ok(blocked.blockers.some(item => item.code === 'SUBSTITUTION_SHIFT_NEXT_DATE_OCCUPIED'));
+        await assert.rejects(createCrossDate(previewCrossDate), { code:'SUBSTITUTION_PREVIEW_STALE' });
+        assert.deepEqual(await loadPlan(night), [['20:00', '04:00', 'reception']]);
+        assert.deepEqual(await loadPlan(occupied), [['10:00', '16:00', 'reception']]);
+        await db.query('DELETE FROM hr_shifts WHERE id=$1', [occupied.id]);
+        const crossDateClaim = await createCrossDate(await service.preview('event_genix', actor, crossDate));
+        const loadRemainder = async () => (await db.query(
+            "SELECT id FROM hr_shifts WHERE staff_id=$1 AND shift_date='2099-01-22'", [original.id])).rows[0];
+        const remainder = await loadRemainder();
+        assert.deepEqual(await loadPlan(night), [['20:00', '23:00', 'reception']]);
+        assert.deepEqual(await loadPlan(remainder), [['02:00', '04:00', 'reception']]);
+        await assert.rejects(db.query("UPDATE hr_shift_segments SET planned_end='05:00' WHERE hr_shift_id=$1", [remainder.id]),
+            { constraint: 'staff_substitution_cross_date_remainder_guard' });
+        await assert.rejects(db.query("DELETE FROM staff_schedule WHERE staff_id=$1 AND date='2099-01-22'", [original.id]),
+            { constraint: 'staff_substitution_cross_date_remainder_guard' });
+        const nextDaySchedule = await authRequest('GET', '/api/staff/schedule?from=2099-01-22&to=2099-01-22');
+        assert.equal(nextDaySchedule.status, 200, JSON.stringify(nextDaySchedule.data));
+        assert.deepEqual(nextDaySchedule.data.shiftSubstitutions.filter(item => item.id === crossDateClaim.id),
+            [{ id: crossDateClaim.id, date:'2099-01-22', staff_id:original.id, role:'original', partial:true }]);
+        const cancelCrossDate = id => service.mutate('event_genix', actor, 'cancel', {
+            expectedVersion: 1, reason: 'Synthetic cross-date restoration', requestKey: randomUUID()
+        }, id);
+        await cancelCrossDate(crossDateClaim.id);
+        assert.equal(await loadRemainder(), undefined);
+        assert.deepEqual(await loadPlan(night), [['20:00', '04:00', 'reception']]);
         const nightQuote = await service.preview('event_genix', actor, nightInput);
         assert.deepEqual(nightQuote.blockers, []);
         const nightClaim = await service.mutate('event_genix', actor, 'create', { input: nightInput,
@@ -190,26 +222,35 @@ test('default services use the migrated schema for an unrelated permanent occupa
         const midnight = await service.preview('event_genix', actor, { ...nightInput,
             startsAt: '2099-01-21T20:00:00+02:00', endsAt: '2099-01-22T00:00:00+02:00' });
         assert.ok(!midnight.available, 'a midnight remainder needs an explicit date offset');
-        const approvedNight = await service.preview('event_genix', actor, nightInput);
-        const newNightClaim = await service.mutate('event_genix', actor, 'create', { input: nightInput,
-            previewFingerprint: approvedNight.fingerprint, effectsAcknowledged: true, requestKey: randomUUID() });
+        const newNightClaim = await createCrossDate(await service.preview('event_genix', actor, crossDate));
         const nightClient = await db.connect();
         try {
             await nightClient.query('BEGIN');
             const attendance = { staffId: staff.id, recordDate: nightInput.workDate, performedBy: actor.username };
             await recordAttendanceClockIn(nightClient, { ...attendance, now: '2099-01-21T21:00:00Z' });
-            await recordAttendanceClockOut(nightClient, { ...attendance, now: '2099-01-22T02:00:00Z', settlementMode: 'actual_time' });
+            await recordAttendanceClockOut(nightClient, { ...attendance, now: '2099-01-22T00:00:00Z', settlementMode: 'actual_time' });
+            const morning = { staffId: original.id, recordDate: '2099-01-22', performedBy: actor.username };
+            await recordAttendanceClockIn(nightClient, { ...morning, now: '2099-01-22T00:00:00Z' });
+            await recordAttendanceClockOut(nightClient, { ...morning, now: '2099-01-22T02:00:00Z', settlementMode: 'actual_time' });
             await nightClient.query('COMMIT');
         } catch (error) {
             await nightClient.query('ROLLBACK');
             throw error;
         } finally { nightClient.release(); }
+        await assert.rejects(cancelCrossDate(newNightClaim.id), { code:'SUBSTITUTION_WORK_STARTED' });
         const nightOptions = await service.completionOptions('event_genix', newNightClaim.id);
-        assert.deepEqual(nightOptions.allocations.map(item => item.actualMinutes), [300]);
+        assert.deepEqual(nightOptions.allocations.map(item => item.actualMinutes), [180]);
         const completedNight = await service.mutate('event_genix', actor, 'complete', { ...completion,
-            actualMinutes: 300, attendanceId: nightOptions.attendanceId, workEvidence: 'Synthetic overnight attendance',
+            actualMinutes: 180, attendanceId: nightOptions.attendanceId, workEvidence: 'Synthetic overnight attendance',
             baseAllocationIndices: [nightOptions.allocations[0].index], requestKey: randomUUID() }, newNightClaim.id);
-        assert.equal(completedNight.completion.amountMinor, 112500);
+        assert.equal(completedNight.completion.amountMinor, 67500);
+        const morningRecord = (await db.query(`SELECT total_worked_minutes FROM hr_time_records
+            WHERE staff_id=$1 AND record_date='2099-01-22'`, [original.id])).rows[0];
+        assert.equal(Number(morningRecord.total_worked_minutes), 120);
+        const morningPayroll = await require('../../services/payroll').getPayrollRangePreview({
+            month: '2099-01', from: '2099-01-22', to: '2099-01-22', staffId: original.id
+        }, db);
+        assert.equal(morningPayroll.staff[0].netAmount, 300);
         const procurement=(await db.query("INSERT INTO procurement_lists(title,assigned_to) VALUES('Synthetic shopping work',$1) RETURNING id",[original.id])).rows[0];
         const options=await authRequest('GET',`/api/staff-substitutions/sources?sourceType=procurement&originalStaffId=${original.id}&workDate=2099-01-15`);
         assert.equal(options.status,200,JSON.stringify(options.data));
@@ -1241,15 +1282,31 @@ test('Park posts a manual original-worker adjustment against real daily and mont
             const lines = report.lines.filter(line => line.lineType === 'staff_substitution');
             assert.deepEqual(lines.map(line => [line.meta.substitutionId, line.amount]), [[claim.id, -150.05]]);
             assert.equal(report.baseAmount, 1049.95);
-            const correction = await service.correct('event_genix', actor, claim.id, {
-                payee:'original', correctedAmount:'-120.01', postingMonth:'2099-02', expectedCorrectionId:null,
-                reason:'Synthetic original amount correction', requestKey:randomUUID()
-            });
-            assert.equal(correction.deltaMinor, 3004);
+            const correctionInput = { postingMonth:'2099-02', expectedCorrectionId:null };
+            const [originalCorrection, replacementCorrection] = await Promise.all([
+                service.correct('event_genix', actor, claim.id, {
+                    ...correctionInput, payee:'original', correctedAmount:'-120.01',
+                    reason:'Synthetic original amount correction', requestKey:randomUUID()
+                }),
+                service.correct('event_genix', actor, claim.id, {
+                    ...correctionInput, payee:'replacement', correctedAmount:'60.10',
+                    reason:'Synthetic replacement amount correction', requestKey:randomUUID()
+                })
+            ]);
+            assert.equal(originalCorrection.deltaMinor, 3004);
+            assert.equal(replacementCorrection.deltaMinor, -1515);
             const correctedReport = await getPayrollPreview(original.id, '2099-02', db);
             assert.equal(correctedReport.baseAmount, report.baseAmount);
             assert.equal(correctedReport.netAmount, 1079.99);
-            assert.equal(correctedReport.lines.find(line => line.meta?.correctionId === correction.id).amount, 30.04);
+            const replacementReport = await getPayrollPreview(replacement.id, '2099-02', db);
+            const corrections = report => report.lines.filter(line => line.lineType === 'staff_substitution_correction')
+                .map(line => [line.meta.correctionId, line.amount]);
+            assert.deepEqual(corrections(correctedReport), [[originalCorrection.id, 30.04]]);
+            assert.deepEqual(corrections(replacementReport), [[replacementCorrection.id, -15.15]]);
+            const history = await service.history('event_genix', claim.id);
+            assert.deepEqual(history.substitution.completion, completion.completion);
+            assert.deepEqual(history.corrections.map(item => item.id).sort(),
+                [originalCorrection.id, replacementCorrection.id].sort());
         }
     } finally { await db.end(); }
 });

@@ -17,6 +17,7 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
     const commands=[];
     const commandBusinesses=[];
     const journalFilters=[];
+    const corrections=[];
     const entry={id:'21',state:'completed',input:{staffId:2,originalStaffId:3,professionKey:'reception',
         sourceType:'hr_shift',workDate:'2099-01-13',workload:'Підмінити адміністратора на рецепції',payUnit:'hour',
         startsAt:'2099-01-13T08:00:00.000Z',endsAt:'2099-01-13T10:00:00.000Z'},
@@ -83,6 +84,7 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
             }
             if(req.method==='GET' && url.pathname==='/fixture/staff-substitutions/21/history') {
                 return res.end(JSON.stringify({success:true,data:{substitution:entry,
+                    correctionPayees:[{ role:'replacement', staffId:2, amountMinor:30000, maximumDebitMinor:0 }], corrections,
                     events:[{version:1,action:'create',actor:'synthetic',reason:'Погоджено для перевірки'}]}}));
             }
             if(url.pathname.endsWith('/sources')) {
@@ -94,6 +96,14 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
             }
             let body='';for await(const chunk of req)body+=chunk;
             const payload=JSON.parse(body||'{}');
+            if (url.pathname.endsWith('/21/corrections')) {
+                assert.equal(payload.correctedAmount, '250.05');
+                assert.equal(payload.expectedCorrectionId, null);
+                assert.ok(payload.requestKey);
+                corrections.push({ id:'78', staffId:2, payee:payload.payee, postingMonth:payload.postingMonth,
+                    beforeMinor:30000, afterMinor:25005, deltaMinor:-4995, reason:payload.reason, actor:'synthetic' });
+                return res.end(JSON.stringify({ success:true, data:corrections.at(-1) }));
+            }
             if(url.pathname.endsWith('/preview')) {
                 const input = contract.normalizeInput(payload.input);
                 const source = input.slotKey === 'partial' ? { partial:true,
@@ -242,6 +252,7 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
         }
         const journal = await browser.newPage({ viewport:{width:390,height:844} });
         await journal.goto(`http://127.0.0.1:${server.address().port}`);
+        await journal.evaluate(() => { window.canUseAction = action => action !== 'manage_payroll_accrual'; });
         const journalButton=journal.getByRole('button',{name:'Підміни',exact:true});
         const dialog = journal.getByRole('dialog', { name: 'Підміна #21 · Виконано' });
         const closeButton = dialog.getByRole('button', { name: 'Закрити', exact: true });
@@ -275,6 +286,36 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
         await closeButton.click();
         await dialog.waitFor({ state: 'detached' });
         await journal.waitForFunction(() => document.activeElement?.dataset.substitutionAction === 'list');
+
+        await journal.evaluate(() => { window.canUseAction = () => true; });
+        await openHistory();
+        await dialog.getByRole('button', { name:'Коригувати суму' }).click();
+        const correctionForm = journal.locator('.form-modal-overlay:not(.confirm-exit)');
+        const amount = correctionForm.getByLabel('Виправлена сума, грн');
+        const postingMonth = correctionForm.getByLabel(/Місяць нарахування/);
+        assert.equal(await amount.inputValue(), '300.00');
+        await amount.fill('250,05');
+        await postingMonth.fill('2099-13');
+        await correctionForm.getByLabel('Причина коригування').fill('Синтетичне уточнення суми');
+        await correctionForm.getByRole('button', { name:'Перевірити різницю' }).click();
+        assert.equal(await postingMonth.getAttribute('aria-invalid'), 'true');
+        assert.ok(await postingMonth.evaluate(input => input === document.activeElement));
+        await postingMonth.fill('2099-02');
+        await correctionForm.getByRole('button', { name:'Перевірити різницю' }).click();
+        const saveCorrection = journal.getByRole('button', { name:'Зберегти коригування' });
+        await saveCorrection.waitFor();
+        assert.ok(await journal.getByText(/Різниця: -49,95/).isVisible());
+        assert.equal(corrections.length, 0);
+        await journal.screenshot({ path:path.join(output, 'park-mobile-correction-confirmation.png') });
+        await saveCorrection.click();
+        await journal.waitForFunction(() => !document.querySelector('[data-substitution-action="list"]').disabled);
+        await openHistory();
+        assert.match(await dialog.innerText(), /Коригування #78.*2099-02/);
+        assert.match(await dialog.innerText(), /250,05.*synthetic: Синтетичне уточнення суми/);
+        assert.equal(corrections.length, 1);
+        await journal.screenshot({ path:path.join(output, 'park-mobile-correction-history.png') });
+        await closeButton.click();
+        await journal.waitForFunction(() => !document.querySelector('[data-substitution-action="list"]').disabled);
 
         await journalButton.click();
         const edit = journal.locator('.form-modal-overlay:not(.confirm-exit)');

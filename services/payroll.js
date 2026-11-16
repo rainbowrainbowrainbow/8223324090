@@ -871,7 +871,7 @@ function buildCanonicalAdjustmentLines(adjustments = {}) {
 }
 
 function calcPayrollPreview(lines) {
-    const roundSummary = lines.some(line => line.lineType === 'staff_substitution' || line.line_type === 'staff_substitution')
+    const roundSummary = lines.some(line => ['staff_substitution', 'staff_substitution_correction'].includes(line.lineType || line.line_type))
         ? roundLedgerMoney : roundMoney;
     const gross = lines
         .filter(item => ['base', 'additional', 'overtime', 'bonus', 'percent', 'manual'].includes(item.group))
@@ -967,6 +967,7 @@ function calculateMonthlyPayroll(staff, scheme, metrics, adjustments = {}, entri
     const lines = [
         ...baseLines,
         ...checkedSubstitutionLines(baseLines, metrics.substitutionLines || [], substitutionIssues),
+        ...(metrics.substitutionCorrectionLines || []),
         ...buildCanonicalAdjustmentLines(adjustments),
         ...buildEntryLines(entries)
     ].filter(item => item.amount !== 0 || ['base', 'manual'].includes(item.group));
@@ -3923,6 +3924,16 @@ async function buildPayrollContext(month, options = {}, db = pool) {
     for (const [staffId, substitutions] of substitutionMap) {
         timeMap.set(staffId, applyPayrollSubstitutions(timeMap.get(staffId) || {}, substitutions));
     }
+    const corrections = includeMonthlyAdjustments
+        ? await require('./staffSubstitutionCorrections').loadPayrollCorrections(db, normalizedMonth, periodOptions.staffId)
+        : new Map();
+    const ordinaryStaffIds = new Set(staffIds);
+    const correctionOnlyIds = [...corrections.keys()].filter(id => !ordinaryStaffIds.has(id));
+    if (correctionOnlyIds.length) {
+        const result = await db.query(`SELECT id, name, department, position, role_type, hire_date,
+            termination_date, is_active, is_freelance, hr_pool_status FROM staff WHERE id=ANY($1::int[])`, [correctionOnlyIds]);
+        staff.push(...result.rows.map(mapStaff));
+    }
     const adjustmentMap = includeMonthlyAdjustments ? await fetchAdjustments(normalizedMonth, db, periodOptions.staffId) : new Map();
     const entryMap = includeMonthlyAdjustments ? await fetchPayrollEntries(normalizedMonth, db, periodOptions.staffId) : new Map();
     const schemeMap = await loadActivePayrollSchemeMap(staffIds, normalizedMonth, db);
@@ -3948,6 +3959,8 @@ async function buildPayrollContext(month, options = {}, db = pool) {
             fullMonth: isFullMonth
         },
         staff,
+        corrections,
+        correctionOnlyStaff: new Set(correctionOnlyIds),
         timeMap,
         adjustmentMap,
         entryMap,
@@ -4134,8 +4147,13 @@ function buildPayrollRowsFromContext(context) {
         const periodIncome = incomeBusinessContext
             ? toNumber(context.periodIncome?.byBusinessContext?.get(incomeBusinessContext), 0)
             : null;
+        const correctionLines = context.corrections.get(staff.id) || [];
+        const correctionBusiness = correctionLines[0]?.meta.businessContext;
         const metrics = {
             ...attendanceMetrics,
+            businessContexts: correctionBusiness && !businessContexts.includes(correctionBusiness)
+                ? [...businessContexts, correctionBusiness] : businessContexts,
+            substitutionCorrectionLines: correctionLines,
             periodFrom: context.period.from,
             periodTo: context.period.to,
             periodIncome,
@@ -4145,17 +4163,21 @@ function buildPayrollRowsFromContext(context) {
                 ? 'mixed_business_contexts'
                 : (businessContexts.length === 0 ? 'business_context_required' : null)
         };
-        const scheme = context.schemeMap.get(staff.id) || fallbackSchemeForStaff(staff);
-        const professionPay = calculateProfessionPay(staff, scheme, metrics, context.professionRateMap, context.payrollProfileContext);
-        const calculation = calculatePayroll(
-            staff,
-            scheme,
-            metrics,
-            context.adjustmentMap.get(staff.id),
-            context.entryMap.get(staff.id) || [],
-            professionPay
-        );
-        const row = rowFromCalculation(staff, calculation, metrics, context.reportMap.get(staff.id));
+        const report = context.reportMap.get(staff.id);
+        let row;
+        if (context.correctionOnlyStaff.has(staff.id)) {
+            // Former workers can receive a linked delta without generating any ordinary pay.
+            const noOrdinaryPay = { ...staff, hourlyRate: 0, rateUnit: 'hour' };
+            const calculation = { scheme: fallbackSchemeForStaff(noOrdinaryPay),
+                lines: correctionLines, summary: calcPayrollPreview(correctionLines) };
+            row = rowFromCalculation(noOrdinaryPay, calculation, { businessContexts: [correctionBusiness] }, report);
+        } else {
+            const scheme = context.schemeMap.get(staff.id) || fallbackSchemeForStaff(staff);
+            const professionPay = calculateProfessionPay(staff, scheme, metrics, context.professionRateMap, context.payrollProfileContext);
+            const calculation = calculatePayroll(staff, scheme, metrics, context.adjustmentMap.get(staff.id),
+                context.entryMap.get(staff.id) || [], professionPay);
+            row = rowFromCalculation(staff, calculation, metrics, report);
+        }
         row.kpiAuditSnapshot = buildPayrollKpiAuditSnapshot(
             context.month,
             row,
@@ -6304,6 +6326,18 @@ async function updatePayrollReportStatus(id, status, user) {
                 'PAYROLL_REPORT_INSTALLMENT_STATUS_MANUAL_BLOCKED',
                 { reportId, requestedStatus: status }
             );
+        }
+        if (status === 'reviewed' || status === 'approved') {
+            const corrections = await require('./staffSubstitutionCorrections').loadPayrollCorrections(
+                client, currentReport.period_month, currentReport.staff_id);
+            const breakdown = parseConfig(currentReport.breakdown_json);
+            const snapshotIds = new Set((Array.isArray(breakdown.lines) ? breakdown.lines : [])
+                .filter(line => line.lineType === 'staff_substitution_correction')
+                .map(line => line.meta?.correctionId));
+            if ((corrections.get(currentReport.staff_id) || []).some(line => !snapshotIds.has(line.meta.correctionId))) {
+                throw payrollWorkflowError('Перерахуйте зарплату, щоб включити коригування підміни.',
+                    409, 'PAYROLL_SUBSTITUTION_CORRECTION_RECALCULATION_REQUIRED');
+            }
         }
         if (status === 'approved') {
             assertPayrollRowsCommitReady(current.rows);

@@ -502,6 +502,14 @@ async function createSourceFixtures(pool, suffix) {
         ]
     );
     const staffId = Number(staffResult.rows[0].id);
+    const agreement = (await pool.query(`INSERT INTO staff_substitutions
+        (business_context,staff_id,work_date,source_type,source_id,slot_key,state,version,input_json,quote_json,completion_json,source_snapshot,created_by)
+        VALUES('event_genix',$1,'2099-07-15','standalone',$2,'primary','completed',2,'{}','{}','{"amountMinor":45035}','{}','recovery_fixture')
+        RETURNING id`, [staffId, `recovery-${suffix}`])).rows[0];
+    const correction = (await pool.query(`INSERT INTO staff_substitution_pay_corrections
+        (substitution_id,staff_id,payee,work_date,posting_month,before_minor,after_minor,actor,reason,request_key,request_hash)
+        VALUES($1,$2,'replacement','2099-07-15','2099-08',45035,50040,'recovery_fixture','Synthetic recovery amount',$3,repeat('a',64))
+        RETURNING id`, [agreement.id, staffId, `recovery-${suffix}`])).rows[0];
 
     const firstTask = await pool.query(
         `INSERT INTO tasks (title, dependency_ids, control_policy, created_at)
@@ -605,6 +613,7 @@ async function createSourceFixtures(pool, suffix) {
     return {
         staffId,
         staffName: `Full Recovery Staff ${suffix}`,
+        correctionId: correction.id,
         firstTaskId,
         secondTaskId: Number(secondTask.rows[0].id),
         recurringId: Number(recurring.rows[0].id),
@@ -631,6 +640,10 @@ async function assertFixturesRestored(pool, fixture) {
     assert.equal(staff.rows[0]?.secondary_professions, '[{"level": "senior", "profession": "animator"}]');
     assert.equal(staff.rows[0]?.hourly_rate, '123.46');
     assert.equal(staff.rows[0]?.created_at, '2099-07-15 07:00:00.123456');
+    const correction = (await pool.query(`SELECT c.delta_minor::int, c.posting_month, s.state
+        FROM staff_substitution_pay_corrections c JOIN staff_substitutions s ON s.id=c.substitution_id
+        WHERE c.id=$1`, [fixture.correctionId])).rows[0];
+    assert.deepEqual(correction, { delta_minor: 5005, posting_month: '2099-08', state: 'completed' });
 
     const task = await pool.query(
         'SELECT dependency_ids::text AS dependency_ids FROM tasks WHERE id = $1',

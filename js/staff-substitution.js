@@ -14,6 +14,8 @@
         return business === 'event_genix' ? business : null;
     }
     const canManage = () => ['hr.schedule.manage','hr.payroll.manage','manage_payroll_rules','edit_booking'].every(action => canUseAction(action));
+    const canCorrect = () => ['hr.schedule.manage','hr.payroll.manage','manage_payroll_rules','manage_payroll_accrual']
+        .every(action => canUseAction(action));
     const labels = { active: 'Заплановано', completed: 'Виконано', cancelled: 'Скасовано' };
     const actions = {create:'Створено',revise:'Умови змінено',complete:'Виконання підтверджено',cancel:'Скасовано'};
     const money = minor => new Intl.NumberFormat('uk-UA', { style: 'currency', currency: 'UAH' }).format((minor || 0) / 100);
@@ -67,6 +69,7 @@
 
     const amountText = amountMinor => amountMinor == null ? '' : (amountMinor / 100).toFixed(2);
     const decimalText = value => String(value ?? '').trim().replace(',', '.');
+    const signedMoney = amountMinor => `${amountMinor > 0 ? '+' : ''}${money(amountMinor)}`;
 
     function payOverrideSummary(quote, previousQuote = null) {
         const edited = quote.input?.payOverrides;
@@ -281,7 +284,7 @@
         ].filter(Boolean).join('\n');
     }
 
-    function showSubstitutionHistory(title, text) {
+    function showSubstitutionHistory(title, text, allowCorrection = false) {
         return new Promise(resolve => {
             const dialog = document.createElement('dialog');
             dialog.className = 'confirm-dialog success form-modal-dialog substitution-history-modal';
@@ -293,17 +296,64 @@
                     <p class="form-modal-note"></p>
                 </div>
                 <form class="confirm-actions" method="dialog">
-                    <button class="confirm-btn confirm-ok success" autofocus type="submit">Закрити</button>
+                    <button class="confirm-btn ${allowCorrection ? 'confirm-cancel' : 'confirm-ok success'}" autofocus type="submit" value="close">Закрити</button>
+                    ${allowCorrection ? '<button class="confirm-btn confirm-ok success" type="submit" value="correct">Коригувати суму</button>' : ''}
                 </form>`;
             dialog.querySelector('h2').textContent = title;
             dialog.querySelector('.form-modal-note').textContent = text;
             dialog.addEventListener('close', () => {
+                const correct = dialog.returnValue === 'correct';
                 dialog.remove();
-                resolve();
+                resolve(correct);
             }, { once: true });
             document.body.append(dialog);
             dialog.showModal();
         });
+    }
+
+    async function correctCompleted(row, history, people) {
+        const payees = history.correctionPayees.map(payee => {
+            const latest = (history.corrections || []).findLast(item => item.payee === payee.role);
+            return { ...payee, latest, name: personLabel(people, payee.staffId),
+                beforeMinor: latest?.afterMinor ?? payee.amountMinor };
+        });
+        const person = payees.length === 1 ? { payee: payees[0].role } : await formModal('Оберіть працівника', [
+            choice('payee', 'Чию суму коригувати', payees.map(item => [item.role, `${item.name} · ${money(item.beforeMinor)}`]))
+        ], { okText: 'Продовжити' });
+        if (!person) return;
+        const payee = payees.find(item => item.role === person.payee);
+        const currentMonth = payee.latest?.postingMonth || history.substitution.input.workDate.slice(0, 7);
+        const parseAmount = value => {
+            const text = decimalText(value);
+            if (!/^-?(?:0|[1-9]\d{0,7})(?:\.\d{1,2})?$/.test(text)) return null;
+            const [whole, fraction = ''] = text.replace(/^-/, '').split('.');
+            return (Number(whole) * 100 + Number(fraction.padEnd(2, '0'))) * (text.startsWith('-') ? -1 : 1);
+        };
+        const values = await formModal('Коригування суми підміни', [
+            { type:'note', text:`${payee.name} · Поточна сума ${money(payee.beforeMinor)}. Якщо місяць закрито або розрахунок затверджено, оберіть пізніший відкритий місяць.` },
+            field('correctedAmount', 'Виправлена сума, грн', amountText(payee.beforeMinor)),
+            field('postingMonth', 'Місяць нарахування (РРРР-ММ)', currentMonth),
+            field('reason', 'Причина коригування')
+        ], { okText: 'Перевірити різницю', validate: input => {
+            const after = parseAmount(input.correctedAmount);
+            if (after === null || after < -payee.maximumDebitMinor) {
+                return { key: 'correctedAmount', message: 'Введіть допустиму суму в гривнях із точністю до копійок.' };
+            }
+            if (after === payee.beforeMinor) return { key: 'correctedAmount', message: 'Вкажіть суму, відмінну від поточного нарахування.' };
+            if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(input.postingMonth.trim()) || input.postingMonth.trim() < currentMonth) {
+                return { key:'postingMonth', message:'Введіть поточний або пізніший місяць у форматі РРРР-ММ.' };
+            }
+            return null;
+        } });
+        if (!values) return;
+        const after = parseAmount(values.correctedAmount);
+        const postingMonth = values.postingMonth.trim();
+        const note = `${payee.name}\nБуло: ${money(payee.beforeMinor)}\nСтане: ${money(after)}\n`
+            + `Різниця: ${signedMoney(after - payee.beforeMinor)}\nМісяць нарахування: ${postingMonth}\nПричина: ${values.reason}`;
+        if (!await confirmModal(note, { okText: 'Зберегти коригування', cancelText: 'Скасувати' })) return;
+        await saveCommand(`/${row.id}/corrections`, { payee: payee.role, postingMonth,
+            correctedAmount: amountText(after), reason: values.reason, expectedCorrectionId: payee.latest?.id ?? null });
+        showNotification('Коригування збережено в історії підміни.', 'success');
     }
 
     async function inspect(row, catalog, people, { readOnly = false } = {}) {
@@ -319,7 +369,14 @@
                 const recordedPay = event.after_json?.quote && ['create','revise'].includes(event.action)
                     ? payOverrideSummary(event.after_json.quote, event.before_json?.quote) : '';
                 return `Версія ${event.version} · ${actions[event.action] || event.action} · ${event.actor}: ${event.reason}${recordedPay ? `\n${recordedPay}` : ''}`;
-            }).join('\n');
+            }).join('\n') + (history.corrections || []).map(item => `\nКоригування #${item.id} · ${personLabel(people, item.staffId)} · ${item.postingMonth}\n`
+                + `${money(item.beforeMinor)} → ${money(item.afterMinor)} (${signedMoney(item.deltaMinor)}) · ${item.actor}: ${item.reason}`).join('\n');
+        if (!readOnly && !isDar && details.state === 'completed' && history.correctionPayees?.length && canCorrect()) {
+            if (await showSubstitutionHistory(title, note, true)) {
+                await correctCompleted(row, history, people);
+            }
+            return;
+        }
         if (readOnly || details.state !== 'active' || (isDar && !canManage())) return showSubstitutionHistory(title, note);
         const selected = await formModal(title, [
             { type: 'note', text: note },

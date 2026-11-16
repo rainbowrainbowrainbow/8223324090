@@ -190,6 +190,16 @@ replacement. The DAR case recorded one 325.50 UAH lesson accrual and no
 Park pay line. Its actual-app mobile report and agreement history were
 reviewed at 390 CSS pixels. Authenticated production acceptance remains open.
 
+Task-list substitution badges shipped in 0.83.84
+(8a032776e990d120451c02c8b38ae23018be7437). The production branch and public
+version endpoint matched, and the public task script matched the release.
+[Exact-SHA CI](https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/43886436350)
+and [Runtime artifact smoke](https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/43886436375)
+passed. Railway reported successful production deployment
+020fa29e-d9db-43c5-acb4-91e28fb82018 on 2026-11-16. The task-list flow has
+synthetic browser and PostgreSQL evidence. Authenticated production
+acceptance remains open.
+
 An isolated synthetic payroll test covers the manager-to-reception flow and
 preserves the worker's permanent role. It does not prove that a particular
 historical shift was paid.
@@ -236,8 +246,8 @@ later retry in the original cabinet.
   outside the currently approved local scope.
 - Read models: dashboard task cards and the task detail drawer show the
   agreement identifier and status for direct task, onboarding and Omni reply
-  substitutions. The local task-list follow-up also shows the same identifier
-  and status on task cards opened from the Dashboard overdue drill-down. The
+  substitutions. Version 0.83.84 also shows the same identifier and status
+  on task cards opened from the Dashboard overdue drill-down. The
   migrated-app test verified the task-list response, removal after cancellation
   and Park/DAR isolation. Chromium verified the card and detail at 390 CSS
   pixels. Omni shows the agreement on the conversation header or its
@@ -318,14 +328,12 @@ or base-replacement mode and still needs the existing attendance evidence.
 The adjustment and its reason are stored with the journal revision. Completed
 agreements and protected payroll periods retain their existing write guards.
 
-### Park correction proposal
+### Park amount corrections after completion
 
-The existing `POST /api/hr/salary/adjustment` accepts period-scoped HR
-adjustments. The payroll reader groups `salary_adjustments` by worker and type,
-so a generic row loses the substitution identity on the payslip. The journal's
-completion and attendance-claim evidence is immutable. Represent a correction
-as a linked delta with an identifiable payroll line rather than a generic
-bonus, deduction or new completion.
+The local `RED-SUBSTITUTION-PAY-CORRECTION-LOCAL-10` candidate stores linked
+deltas in the append-only `staff_substitution_pay_corrections` ledger.
+Migration 411 validates the completed Park agreement, its work date and its
+payee. The completed agreement and its attendance allocation remain immutable.
 
 For one completed Park substitution and one payee, record the substitution and
 payee IDs, effective work date, posting month, prior effective amount, corrected
@@ -343,12 +351,19 @@ same prior effective amount must accept one and reject the stale request. The
 payroll line should retain the substitution and correction IDs, and the history
 should show both adjustments. No posting creates or reverses a payment.
 
-The payroll gate must evaluate the target worker's posting snapshot as
-well as the period lock. An approved or paid installment can freeze an
-amount while the overall period is still open. Check both inside the same
-transaction and use the existing Park payroll lock order. For a correction
-to a frozen work month, record the explicitly selected open posting month.
-Keep the completed agreement and its attendance allocation immutable.
+Posting checks the worker's report and installments alongside the period
+lock in the same transaction. It uses the work month or the most recent
+correction's posting month while that period remains editable. A frozen
+calculation requires an explicitly selected later open month. The selected
+payee must have a frozen amount on the completed agreement. The replacement
+amount is nonnegative. A signed original-worker adjustment stays within
+the frozen daily or monthly rate reference.
+
+A correction appears as its own line in full-month payroll and the final
+installment calculation. A former employee gets a correction-only row
+for the posting month. Existing settlement controls govern payment.
+A legacy draft missing a posted correction must be recalculated before
+review or approval. Installment approval checks its current source fingerprint.
 
 Acceptance uses synthetic Park data. Verify an open-month delta, a delta
 posted to another open month after the payee's work-month snapshot freezes,
@@ -356,6 +371,15 @@ the draft payroll line and journal link, replay, competing corrections,
 and unchanged paid or approved snapshots. Verify rejection for an unrelated
 payee, a closed target month and a DAR agreement. Any future correction
 of a real amount requires the exact work record and separate approval.
+
+The local PostgreSQL suite verified all four substitution scenarios. The
+correction scenario covered replay, a losing concurrent request, a stale
+legacy draft, a frozen work month, a closed posting month and a later
+Park final installment for a former employee. Chromium exercised the
+preview and history at 390 CSS pixels. Full plain and encrypted recovery
+restored a posted correction and regenerated its signed difference.
+Roll back posting with the payroll projection in place after the first
+correction has been recorded.
 
 ## Afisha occurrence scheduling
 

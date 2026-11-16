@@ -83,6 +83,7 @@ router.post('/teacher-rates', handle(req => {
 router.post('/', handle(req => service.mutate(req.substitutionBusiness, req.user, 'create', req.body)));
 router.post('/:id/revise', handle(req => service.mutate(req.substitutionBusiness, req.user, 'revise', req.body, req.params.id)));
 router.post('/:id/complete', requireAction('manage_payroll_accrual'), handle(req => service.mutate(req.substitutionBusiness, req.user, 'complete', req.body, req.params.id)));
+router.post('/:id/corrections', requireAction('manage_payroll_accrual'), handle(req => service.correct(req.substitutionBusiness, req.user, req.params.id, req.body)));
 router.post('/:id/cancel', handle(req => service.mutate(req.substitutionBusiness, req.user, 'cancel', req.body, req.params.id)));
 
 module.exports = router;

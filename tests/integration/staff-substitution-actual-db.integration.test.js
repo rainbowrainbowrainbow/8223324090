@@ -1094,6 +1094,88 @@ test('default services use the migrated schema for an unrelated permanent occupa
     } finally { await db.end(); }
 });
 
+test('Park posts completed-substitution corrections once and preserves frozen payroll', { skip: !enabled }, async () => {
+    assert.equal(assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL).isLocal, true);
+    assert.equal(process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER, 'true');
+    const db = new Pool({ connectionString: process.env.TEST_DATABASE_URL, ssl: false });
+    const service = createSubstitutionService({ pool: db });
+    const { buildCanonicalPayrollInstallmentPreview, getPayrollPreview, getPayrollRangePreview, updatePayrollReportStatus } = require('../../services/payroll');
+    const actor = { id: 1, username: 'substitution_qa_operator', role: 'creator' };
+    try {
+        const worker = (await db.query(`INSERT INTO staff(name,role_type,department,position,is_active,hourly_rate,rate_unit,hr_pool_status,is_freelance)
+            VALUES($1,'manager','admin','Synthetic worker',true,100,'hour','core',false) RETURNING id`, [`Correction QA ${randomUUID()}`])).rows[0];
+        const input = { sourceType:'standalone', sourceId:randomUUID(), staffId:worker.id, workDate:'2099-07-12', professionKey:'reception',
+            payUnit:'fixed', payMode:'additional', rateMode:'individual', rate:'450.35', rateReason:'Synthetic agreed pay',
+            workload:'Synthetic completed duty', reason:'Synthetic setup', temporaryAdmission:true, admissionReason:'Synthetic assessment' };
+        const quote = await service.preview('event_genix', actor, input);
+        assert.deepEqual(quote.blockers, []);
+        const agreement = await service.mutate('event_genix', actor, 'create', { input, previewFingerprint:quote.fingerprint,
+            effectsAcknowledged:true, requestKey:randomUUID() });
+        const endpoint = `/api/staff-substitutions/${agreement.id}/corrections`;
+        const base = { payee:'replacement', postingMonth:'2099-07', correctedAmount:'500,40', reason:'Synthetic amount correction',
+            requestKey:randomUUID(), expectedCorrectionId:null };
+        const attempt = payload => service.correct('event_genix', actor, agreement.id, payload);
+        await assert.rejects(attempt(base), { code:'SUBSTITUTION_CORRECTION_NOT_COMPLETED' });
+        const completed = await service.mutate('event_genix', actor, 'complete', { expectedVersion:1, workConfirmed:true,
+            workEvidence:'Synthetic completion', reason:'Synthetic confirmation', requestKey:randomUUID() }, agreement.id);
+        await assert.rejects(attempt({ ...base, payee:'original' }), { code:'SUBSTITUTION_CORRECTION_PAYEE_INVALID' });
+        await assert.rejects(attempt({ ...base, postingMonth:'2099-08' }), { code:'SUBSTITUTION_CORRECTION_MONTH_OPEN' });
+        await assert.rejects(service.correct('dar', actor, agreement.id, base), { code:'SUBSTITUTION_BUSINESS_UNSUPPORTED' });
+        const firstResponse = await authRequest('POST', endpoint, base);
+        assert.equal(firstResponse.status, 200, JSON.stringify(firstResponse.data));
+        const first = firstResponse.data.data;
+        assert.deepEqual([first.beforeMinor, first.afterMinor, first.deltaMinor], [45035, 50040, 5005]);
+        assert.equal((await authRequest('POST', endpoint, base)).data.data.id, first.id);
+        const reused = await authRequest('POST', endpoint, { ...base, correctedAmount:'501' });
+        assert.equal(reused.data.code, 'SUBSTITUTION_REQUEST_REUSED');
+        const competitors = await Promise.allSettled(['480.20','490.27'].map(correctedAmount => attempt({ ...base,
+            correctedAmount, expectedCorrectionId:first.id, requestKey:randomUUID() })));
+        const accepted = competitors.find(result => result.status === 'fulfilled').value;
+        assert.deepEqual(competitors.filter(result => result.status === 'rejected').map(result => result.reason.code),
+            ['SUBSTITUTION_CORRECTION_STALE']);
+        const report = await getPayrollPreview(worker.id, '2099-07', db);
+        assert.equal(report.netAmount, accepted.afterMinor / 100);
+        assert.deepEqual(report.lines.filter(line => line.lineType === 'staff_substitution_correction')
+            .map(line => [line.meta.correctionId, line.amount]), [[first.id,50.05],[accepted.id,accepted.deltaMinor / 100]]);
+        const advance = await getPayrollRangePreview({ month:'2099-07', from:'2099-07-01', to:'2099-07-15', staffId:worker.id }, db);
+        assert.ok(advance.staff[0].lines.every(line => line.lineType !== 'staff_substitution_correction'));
+        const frozenQuery = `SELECT to_jsonb(pr) AS snapshot FROM payroll_reports pr WHERE staff_id=$1 AND period_month='2099-07'`;
+        const draft = (await db.query(`INSERT INTO payroll_reports(staff_id,period_month,status,net_amount,breakdown_json)
+            VALUES($1,'2099-07','draft',450.35,'{}') RETURNING id`, [worker.id])).rows[0];
+        await assert.rejects(updatePayrollReportStatus(draft.id, 'approved', actor), {
+            code:'PAYROLL_SUBSTITUTION_CORRECTION_RECALCULATION_REQUIRED'
+        });
+        await db.query('UPDATE payroll_reports SET net_amount=$1, breakdown_json=$2 WHERE id=$3',
+            [report.netAmount, JSON.stringify({ lines:report.lines }), draft.id]);
+        await updatePayrollReportStatus(draft.id, 'approved', actor);
+        const frozen = (await db.query(frozenQuery, [worker.id])).rows[0].snapshot;
+        const followup = { ...base, correctedAmount:'525.01', expectedCorrectionId:accepted.id, requestKey:randomUUID() };
+        await assert.rejects(attempt(followup), { code:'SUBSTITUTION_CORRECTION_PERIOD_FROZEN' });
+        await db.query(`INSERT INTO payroll_period_locks(period_month,is_locked) VALUES('2099-09',true)`);
+        await assert.rejects(attempt({ ...followup, postingMonth:'2099-09' }), { code:'SUBSTITUTION_CORRECTION_PERIOD_FROZEN' });
+        const later = await attempt({ ...followup, postingMonth:'2099-08' });
+        await db.query(`UPDATE staff SET termination_date='2099-07-31' WHERE id=$1`, [worker.id]);
+        const nextMonth = await getPayrollPreview(worker.id, '2099-08', db);
+        assert.equal(nextMonth.baseAmount, 0);
+        assert.equal(nextMonth.netAmount, later.deltaMinor / 100);
+        assert.deepEqual(nextMonth.businessContexts, ['event_genix']);
+        assert.deepEqual(nextMonth.lines.map(line => line.meta.correctionId), [later.id]);
+        const installment = await buildCanonicalPayrollInstallmentPreview({ month:'2099-08', staffId:worker.id }, db);
+        assert.equal(installment.finalAmount, later.deltaMinor / 100);
+        assert.deepEqual((await db.query(frozenQuery, [worker.id])).rows[0].snapshot, frozen);
+        const history = await service.history('event_genix', agreement.id);
+        assert.deepEqual(history.substitution.completion, completed.completion);
+        assert.deepEqual(history.corrections.map(item => item.id), [first.id, accepted.id, later.id]);
+        assert.equal(history.corrections[2].reason, base.reason);
+        assert.equal(history.corrections[2].actor, actor.username);
+        await assert.rejects(db.query('UPDATE staff_substitution_pay_corrections SET after_minor=0 WHERE id=$1', [later.id]), { code:'23514' });
+        await assert.rejects(db.query(`INSERT INTO staff_substitution_pay_corrections
+            (substitution_id,staff_id,payee,work_date,posting_month,before_minor,after_minor,actor,reason,request_key,request_hash)
+            SELECT substitution_id,staff_id,'original',work_date,posting_month,before_minor,after_minor,actor,reason,$2,request_hash
+            FROM staff_substitution_pay_corrections WHERE id=$1`, [later.id, randomUUID()]), { code:'23514' });
+    } finally { await db.end(); }
+});
+
 test('Park posts a manual original-worker adjustment against real daily and monthly payroll', { skip: !enabled }, async () => {
     assert.equal(assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL).isLocal, true);
     assert.equal(process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER, 'true');
@@ -1159,6 +1241,15 @@ test('Park posts a manual original-worker adjustment against real daily and mont
             const lines = report.lines.filter(line => line.lineType === 'staff_substitution');
             assert.deepEqual(lines.map(line => [line.meta.substitutionId, line.amount]), [[claim.id, -150.05]]);
             assert.equal(report.baseAmount, 1049.95);
+            const correction = await service.correct('event_genix', actor, claim.id, {
+                payee:'original', correctedAmount:'-120.01', postingMonth:'2099-02', expectedCorrectionId:null,
+                reason:'Synthetic original amount correction', requestKey:randomUUID()
+            });
+            assert.equal(correction.deltaMinor, 3004);
+            const correctedReport = await getPayrollPreview(original.id, '2099-02', db);
+            assert.equal(correctedReport.baseAmount, report.baseAmount);
+            assert.equal(correctedReport.netAmount, 1079.99);
+            assert.equal(correctedReport.lines.find(line => line.meta?.correctionId === correction.id).amount, 30.04);
         }
     } finally { await db.end(); }
 });

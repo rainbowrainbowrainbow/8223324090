@@ -72,7 +72,13 @@ function createSubstitutionService(dependencies = {}) {
     async function history(business, id) {
         const row = await read(db, business, id);
         const result = await db.query('SELECT version,action,actor,reason,before_json,after_json,created_at FROM staff_substitution_events WHERE substitution_id=$1 ORDER BY version', [row.id]);
-        return { substitution: mapRow(row), events: result.rows };
+        const history = { substitution: mapRow(row), events: result.rows };
+        if (business === 'event_genix' && row.state === 'completed') {
+            const { allowedPayees, loadCorrectionHistory } = require('./staffSubstitutionCorrections');
+            history.correctionPayees = allowedPayees(row);
+            history.corrections = await loadCorrectionHistory(db, row.id);
+        }
+        return history;
     }
 
     async function preview(business, actor, raw, id = null) {
@@ -230,7 +236,10 @@ function createSubstitutionService(dependencies = {}) {
             throw error;
         } finally { client.release(); }
     }
-    return { list, history, preview, mutate, completionOptions, darAccruals };
+    function correct(business, actor, id, payload) {
+        return require('./staffSubstitutionCorrections').postCorrection(db, read, business, actor, id, payload);
+    }
+    return { list, history, preview, mutate, completionOptions, darAccruals, correct };
 }
 
 module.exports = { createSubstitutionService, mapRow };

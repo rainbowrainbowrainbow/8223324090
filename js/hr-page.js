@@ -716,7 +716,7 @@ const STAFF_PROFILE_SCOPE_LABELS = {
     offboarding: 'Завершення співпраці'
 };
 const STAFF_PROFILE_SCOPE_SELECTORS = {
-    main: ['#editStaffName', '#editStaffPosition', '#editPhone', '#editPhotoUrl'],
+    main: ['#editStaffName', '#editStaffFamilyName', '#editStaffGivenName', '#editStaffPosition', '#editPhone', '#editPhotoUrl'],
     work: [
         '#editBirthDate', '#editAddress', '#editEmergencyContact', '#editEmergencyPhone',
         '#editRoleType', '#editSecondaryProfessions', '#editCompanyStructureNode',
@@ -2913,6 +2913,14 @@ function initNewTabs() {
     document.getElementById('editStaffName')?.addEventListener('input', event => {
         syncStaffProfileHeaderName(event.target?.value || '');
     });
+    for (const id of ['editStaffGivenName', 'editStaffFamilyName']) {
+        document.getElementById(id)?.addEventListener('input', () => {
+            const name = ['editStaffFamilyName', 'editStaffGivenName']
+                .map(fieldId => document.getElementById(fieldId)?.value.trim()).filter(Boolean).join(' ');
+            document.getElementById('editStaffName').value = name;
+            syncStaffProfileHeaderName(name);
+        });
+    }
     document.getElementById('editResourceKind')?.addEventListener('change', event => {
         loadStaffResourceOptions(event.target?.value || 'custom');
     });
@@ -12469,7 +12477,7 @@ function lifecycleActionNode(action, staffId, item = {}) {
     const id = Number(staffId);
     if (!action || !Number.isFinite(id) || id <= 0 || item.complete || item.status === 'not_applicable') return '';
     const button = (label, handler) => `<button type="button" class="hr-lifecycle-action" onclick="${handler}">${escapeHtml(label)}</button>`;
-    if (action === 'profile') return button('Профіль', "activateStaffProfileTab('main').then(() => document.getElementById('editStaffName')?.focus())");
+    if (action === 'profile') return button('Профіль', "activateStaffProfileTab('main').then(() => document.getElementById(staffProfileHasNameParts() ? 'editStaffFamilyName' : 'editStaffName')?.focus())");
     if (action === 'documents') return button('Документи', 'focusStaffDocumentsPanel()');
     if (action === 'training') return button('Готовність навчання', `openStaffTrainingReadiness(${id})`);
     if (action === 'onboarding' && canAccess('hr.staff.view')) return button('Онбординг', `openStaffOnboardingAssignment(${id})`);
@@ -15230,6 +15238,15 @@ async function openStaffEdit(staffId, options = {}) {
     document.getElementById('editStaffId').value = numericStaffId;
     const editStaffName = document.getElementById('editStaffName');
     if (editStaffName) editStaffName.value = s.name || '';
+    const splitName = Boolean(s.family_name && s.given_name && s.name === `${s.family_name} ${s.given_name}`);
+    const legacyNameLabel = document.getElementById('editStaffLegacyNameField');
+    if (legacyNameLabel) legacyNameLabel.hidden = splitName;
+    for (const [id, value] of [['editStaffFamilyName', s.family_name], ['editStaffGivenName', s.given_name]]) {
+        const field = document.getElementById(id);
+        if (!field) continue;
+        field.closest('label').hidden = !splitName;
+        field.value = splitName ? value : '';
+    }
     const editStaffPosition = document.getElementById('editStaffPosition');
     populateStaffDirectorySelect(editStaffPosition, [...teamStaff.map(row => row.position), ...hrProfessions.map(row => row.title)], s.position || '');
     syncStaffProfileHeaderName(s.name || '', s);
@@ -15319,9 +15336,20 @@ async function openStaffEdit(staffId, options = {}) {
     return profileData;
 }
 
+function staffProfileHasNameParts() {
+    return document.getElementById('editStaffLegacyNameField')?.hidden === true;
+}
+
+function staffProfilePayloadAccessKey(key) {
+    return key === 'given_name' || key === 'family_name' ? 'name' : key;
+}
+
 function buildStaffMainPayload() {
     return {
-        name: document.getElementById('editStaffName')?.value || null,
+        ...(staffProfileHasNameParts() ? {
+            given_name: document.getElementById('editStaffGivenName')?.value || null,
+            family_name: document.getElementById('editStaffFamilyName')?.value || null
+        } : { name: document.getElementById('editStaffName')?.value || null }),
         position: document.getElementById('editStaffPosition')?.value || null,
         phone: document.getElementById('editPhone')?.value || null,
         photo_url: document.getElementById('editPhotoUrl')?.value?.trim() || null
@@ -15353,6 +15381,8 @@ function buildStaffWorkPayload() {
 
 const STAFF_MAIN_PAYLOAD_FIELDS = {
     name: ['editStaffName'],
+    given_name: ['editStaffGivenName', 'editStaffFamilyName', 'editStaffName'],
+    family_name: ['editStaffGivenName', 'editStaffFamilyName', 'editStaffName'],
     position: ['editStaffPosition'],
     phone: ['editPhone'],
     photo_url: ['editPhotoUrl']
@@ -15381,7 +15411,7 @@ function setParkStaffProfileEditFields(modal, fields) {
     modal.dataset.parkProfileEditMode = allowed === null ? 'false' : 'true';
     for (const [mapping, buttonId] of [[STAFF_MAIN_PAYLOAD_FIELDS, 'editSave'], [STAFF_WORK_PAYLOAD_FIELDS, 'editSaveWork']]) {
         const allowedIds = new Set(Object.entries(mapping)
-            .filter(([key]) => allowed === null || allowed.has(key))
+            .filter(([key]) => allowed === null || allowed.has(staffProfilePayloadAccessKey(key)))
             .flatMap(([, ids]) => ids));
         for (const id of new Set(Object.values(mapping).flat())) {
             const field = modal.querySelector(`#${id}`);
@@ -15473,7 +15503,7 @@ async function saveStaffEdit(options = {}) {
     const { body, submittedFields } = buildChangedStaffPayload(
         scope,
         fullPayload,
-        editableFields ? Object.fromEntries(Object.entries(payloadFields).filter(([key]) => editableFields.has(key))) : payloadFields
+        editableFields ? Object.fromEntries(Object.entries(payloadFields).filter(([key]) => editableFields.has(staffProfilePayloadAccessKey(key)))) : payloadFields
     );
     if (editableFields && Object.keys(body).length === 0) {
         showNotification('Змін для збереження немає', 'info');

@@ -217,9 +217,7 @@ async function runActor(browser, pool, actor, existingAccountId) {
         ]);
         assert.equal(edit.status(), 200, 'position updated');
         const { rows } = await pool.query('SELECT id, position, given_name, family_name FROM staff WHERE name = $1', [name]);
-        assert.equal(rows[0]?.family_name, 'QA');
-        assert.equal(rows[0]?.given_name, name.slice(3));
-        assert.deepEqual(rows, [{ id: staff.id, position: updatedPosition }]);
+        assert.deepEqual(rows, [{ id: staff.id, position: updatedPosition, family_name: 'QA', given_name: name.slice(3) }]);
         await page.waitForFunction(() => document.getElementById('editSave').dataset.actionState === 'success');
         assert.equal(await profile.locator('#editStaffHeaderName').textContent(), name);
         await profile.screenshot({ path: path.join(output, `${actor.label}-edit.png`) });
@@ -229,6 +227,8 @@ async function runActor(browser, pool, actor, existingAccountId) {
         const card = page.locator('.hr-team-card').filter({ hasText: name });
         await card.getByRole('button', { name: /відкрити/i }).click();
         await page.waitForFunction(expected => document.getElementById('editStaffPosition').value === expected, updatedPosition);
+        assert.equal(await profile.locator('#editStaffFamilyName').inputValue(), 'QA');
+        assert.equal(await profile.locator('#editStaffGivenName').inputValue(), name.slice(3));
         await page.locator('#editCloseTop').click();
         await profile.waitFor({ state: 'hidden' });
         if (actor.role === 'creator' || actor.parkWorker) {

@@ -162,7 +162,7 @@ const HARNESS_CODE = String.raw`
     function profileResponse(id) {
         const profile = staffProfiles.get(Number(id));
         return profile
-            ? { success: true, data: { profile_revision: 1, ...profile, name: 'Fresh ' + profile.name, phone: profile.phone + '-fresh' } }
+            ? { success: true, data: { profile_revision: 1, ...profile, name: profile.family_name ? profile.name : 'Fresh ' + profile.name, phone: profile.phone + '-fresh' } }
             : { success: false, error: 'missing profile' };
     }
 
@@ -209,6 +209,7 @@ const HARNESS_CODE = String.raw`
         const profile = staffProfiles.get(Number(id));
         if (!profile) return { success: false, error: 'missing profile' };
         const updated = { ...profile, ...body, id: Number(id) };
+        if (body.family_name && body.given_name) updated.name = [body.family_name, body.given_name].join(' ');
         if (Array.isArray(body.profession_rates)) {
             const rates = new Map((profile.profession_rates || []).map(row => [row.profession_key, row.hourly_rate]));
             for (const row of body.profession_rates) {
@@ -701,6 +702,9 @@ const HARNESS_CODE = String.raw`
         },
         savedProfessionRates: () => staffProfiles.get(1).profession_rates,
         staffUpdates: () => staffUpdates.map(item => ({ path: item.path, body: { ...item.body } })),
+        seedStaffNameParts() {
+            Object.assign(staffProfiles.get(1), { name: 'Ван Гут Жан П’єр', family_name: 'Ван Гут', given_name: 'Жан П’єр' });
+        },
         enableStaffUpdateHold() { holdStaffUpdates = true; },
         failNextStaffUpdate() { failNextStaffUpdate = true; },
         resolveStaffUpdates() {

@@ -1152,9 +1152,17 @@
                 <div id="staffAccountAccessContent" aria-live="polite"></div>
             </section>
                 <div class="hr-staff-profile-quick-fields">
-                    <label>
+                    <label id="editStaffLegacyNameField">
                         <span>Ім’я та прізвище</span>
                         <input type="text" id="editStaffName" maxlength="160" aria-label="ФІО співробітника" placeholder="Прізвище Імʼя">
+                    </label>
+                    <label data-edit-staff-name-part hidden>
+                        <span>Прізвище</span>
+                        <input type="text" id="editStaffFamilyName" maxlength="100" autocomplete="family-name">
+                    </label>
+                    <label data-edit-staff-name-part hidden>
+                        <span>Ім’я</span>
+                        <input type="text" id="editStaffGivenName" maxlength="100" autocomplete="given-name">
                     </label>
                     <label>
                         <span>Телефон</span>

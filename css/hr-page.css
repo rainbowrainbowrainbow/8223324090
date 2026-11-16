@@ -7517,6 +7517,9 @@ body[data-page-group="hr"] .page-container .btn-add.hr-salary-danger:focus-visib
     gap: 6px;
     margin: 0;
 }
+.hr-staff-profile-quick-fields label[hidden] {
+    display: none;
+}
 .hr-staff-profile-quick-fields span {
     color: var(--gray-600);
     font-size: 12px;

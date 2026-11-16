@@ -31,6 +31,7 @@ const {
 const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
 const { staffWorkflowCapability } = require('../services/parkHrStaffWorkflowAccess');
 const { parkHrStaffCardEditCapability, PARK_STAFF_PROFILE_FIELD_LIMITS } = require('../services/parkHrStaffCardRead');
+const { normalizeStaffNameParts } = require('../services/staffCreation');
 const { isParkHrStaffDeletionRoute, projectStaffDeletionReadiness } = require('../services/parkHrStaffDeletionAccess');
 const { loadAdditionalStaffDeletionBlockers } = require('../services/staffDeletionReferences');
 const { prepareHrFixtureQa, claimHrFixtureQa, requireHrQaEntity } = require('../services/hrFixtureQa');
@@ -3983,6 +3984,8 @@ router.get('/staff/:id', async (req, res) => {
                     telegram_id, telegram_username, color, contract_type, skills,
                     hr_pool_status, blacklist_reason, blacklisted_at,
                     termination_date, termination_reason, termination_recorded_at, termination_recorded_by,
+                    CASE WHEN name = family_name || ' ' || given_name THEN family_name END AS family_name,
+                    CASE WHEN name = family_name || ' ' || given_name THEN given_name END AS given_name,
                     xmin::text AS profile_revision
              FROM staff WHERE id = $1`, [req.params.id]
         );
@@ -4835,8 +4838,9 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
                 error: 'Немає дозволу на редагування картки співробітника' });
         }
         const { name, position, phone, emergency_contact, emergency_phone, role_type, hourly_rate, rate_unit, birth_date, photo_url, address, notes, telegram_id, telegram_username, contract_type, skills, hr_pool_status, blacklist_reason, company_structure_node_id } = req.body || {};
+        const namePartFields = ['given_name', 'family_name'];
         if (req.hrCapability === 'hr.staff.profile.edit') {
-            const fields = Object.entries(req.body || {});
+            const fields = Object.entries(req.body || {}).map(([key, value]) => [namePartFields.includes(key) ? 'name' : key, value]);
             if (fields.length === 0 || fields.some(([key]) => !Object.hasOwn(PARK_STAFF_PROFILE_FIELD_LIMITS, key))) {
                 return res.status(400).json({ success: false, error: 'Можна зберегти лише основні та контактні дані картки' });
             }
@@ -4846,6 +4850,15 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
             }
         }
         const hasBodyField = field => Object.prototype.hasOwnProperty.call(req.body || {}, field);
+        let nameParts;
+        if (namePartFields.some(hasBodyField)) {
+            try {
+                nameParts = normalizeStaffNameParts(req.body);
+            } catch (error) {
+                if (error.code !== 'STAFF_CREATE_INVALID_FIELD') throw error;
+                return res.status(400).json({ success: false, error: error.message });
+            }
+        }
         const hasSecondaryProfessions = hasBodyField('secondary_professions') || hasBodyField('secondaryProfessions');
         const hasProfessionRates = hasBodyField('profession_rates') || hasBodyField('professionRates');
         if (['hourly_rate', 'hourlyRate', 'rate_unit', 'rateUnit', 'profession_rates', 'professionRates'].some(hasBodyField)
@@ -4958,10 +4971,18 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
             return Number.isFinite(normalized) ? normalized : null;
         };
 
-        if (fieldPresence.name) {
+        if (nameParts) {
+            queueStaffUpdate('name', nameParts.name);
+            queueStaffUpdate('given_name', nameParts.givenName);
+            queueStaffUpdate('family_name', nameParts.familyName);
+        } else if (fieldPresence.name) {
             const normalizedName = textOrNull(name);
             if (!normalizedName) return res.status(400).json({ success: false, error: 'ПІБ співробітника обовʼязкове' });
             queueStaffUpdate('name', normalizedName);
+            if (normalizedName !== beforeStaff.name) {
+                queueStaffUpdate('given_name', null);
+                queueStaffUpdate('family_name', null);
+            }
         }
         if (fieldPresence.position) {
             const normalizedPosition = textOrNull(position);

@@ -77,8 +77,19 @@ async function checkDrawer(page, width, dark) {
         document.body.classList.toggle('dark-mode', dark);
         document.documentElement.dataset.theme = dark ? 'dark' : 'light';
     }, dark);
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.seedStaffNameParts());
     await page.locator('.hr-team-card[data-staff-id="1"] .hr-team-open').click();
+    const givenName = page.locator('#editStaffGivenName');
+    await givenName.waitFor({ state: 'visible' });
+    assert.equal(await page.locator('#editStaffName').isVisible(), false);
+    assert.equal(await givenName.inputValue(), 'Жан П’єр');
+    await givenName.fill('Жан Поль');
+    await page.locator('#editStaffFamilyName').focus();
+    await page.screenshot({ path: path.join(output, `name-edit-${width}-${dark ? 'dark' : 'light'}.png`) });
     await page.locator('#staffProfileTabWork').click();
+    await page.waitForFunction(() => document.getElementById('staffProfileTabWork').getAttribute('aria-selected') === 'true');
+    assert.deepEqual(await page.evaluate(() => window.__hrTeamBrowserSmoke.staffUpdates().at(-1).body),
+        { family_name: 'Ван Гут', given_name: 'Жан Поль' });
     const notes = page.locator('#editNotes');
     await notes.fill('Перевірка збереження при переході');
     await page.evaluate(() => window.__hrTeamBrowserSmoke.failNextStaffUpdate());

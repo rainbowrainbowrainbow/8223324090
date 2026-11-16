@@ -18,7 +18,7 @@ const LIST_FIELDS = [
     'has_account', 'has_face_descriptor'
 ];
 const DETAIL_FIELDS = [
-    'id', 'name', 'department', 'position', 'phone', 'emergency_contact', 'emergency_phone',
+    'id', 'name', 'given_name', 'family_name', 'department', 'position', 'phone', 'emergency_contact', 'emergency_phone',
     'role_type', 'secondary_professions', 'hire_date', 'birth_date', 'address', 'is_active',
     'company_structure_node_id', 'photo_url', 'notes', 'telegram_id', 'telegram_username',
     'color', 'contract_type', 'skills', 'hr_pool_status', 'blacklist_reason', 'blacklisted_at',

@@ -238,7 +238,7 @@
                         <option value="archived">Архівні</option>
                         <option value="all">Усі</option>
                     </select>
-                    <select id="professionCatalogDepartment" aria-label="Напрям професії"><option value="all">Усі напрями</option></select>
+                    <select id="professionCatalogDepartment" aria-label="Відділ професії"><option value="all">Усі відділи</option></select>
                     <select id="professionCatalogStructureNode" aria-label="Вузол структури"><option value="all">Усі вузли</option></select>
                     <select id="professionCatalogStaff" aria-label="Наявність працівників">
                         <option value="all">Будь-яка команда</option>
@@ -307,10 +307,14 @@
                             <section data-profession-workspace-panel="main" class="hr-profession-workspace-panel">
                                 <button type="button" id="professionWorkspacePayConditions" class="btn-secondary" hidden>Варіанти оплати професії</button>
                                 <div id="professionWorkspaceKeyReadonly" class="hr-profession-key-readonly"></div>
-                                <label id="professionWorkspaceKeyCreateField" class="hidden">Технічний key<input id="professionWorkspaceKey" autocomplete="off" placeholder="animator"></label>
+                                <label id="professionWorkspaceKeyCreateField" class="hidden">Код професії<input id="professionWorkspaceKey" autocomplete="off" placeholder="animator"></label>
                                 <div class="hr-profession-workspace-grid">
                                     <label>Назва<input id="professionWorkspaceTitleInput" required></label>
-                                    <label>Напрям<input id="professionWorkspaceDepartment" placeholder="Аніматори / Зал / Кухня"></label>
+                                    <label>Відділ
+                                        <input id="professionWorkspaceDepartment" list="professionWorkspaceDepartments" maxlength="50" aria-describedby="professionWorkspaceDepartmentHint" placeholder="Наприклад, Кухня">
+                                        <small id="professionWorkspaceDepartmentHint">Під час найму ця посада буде доступна в обраному відділі.</small>
+                                    </label>
+                                    <datalist id="professionWorkspaceDepartments"></datalist>
                                     <label class="hr-profession-workspace-wide">Короткий опис<textarea id="professionWorkspaceShortInfo"></textarea></label>
                                     <label class="hr-profession-workspace-wide">Відповідальності<textarea id="professionWorkspaceResponsibilities" placeholder="Кожен пункт з нового рядка"></textarea></label>
                                     <label>Вузол структури<select id="professionWorkspaceStructureNode"></select></label>

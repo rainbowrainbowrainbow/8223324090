@@ -451,6 +451,33 @@ async function runActor(browser, pool, actor, existingAccountId) {
             assert.deepEqual(recoveredStaff, [{ id: recovery.receipt.staff.id }]);
             await page.locator('[data-account-onboarding-finish]').click();
 
+            const professionKey = 'qa_kitchen_' + runId;
+            const { rows: [profession] } = await pool.query(
+                "INSERT INTO hr_professions (key, title, department, is_active) VALUES ($1, 'QA Кухар', 'cafe', true) RETURNING id",
+                [professionKey]
+            );
+            await page.evaluate(key => openProfessionWorkspace({ key, historyMode: 'none' }), professionKey);
+            const departmentEditor = page.locator('#professionWorkspaceDepartment');
+            await departmentEditor.waitFor({ state: 'visible' });
+            assert.equal(await departmentEditor.inputValue(), 'Кафе');
+            await departmentEditor.fill('Кухня');
+            const [updatedProfession] = await Promise.all([
+                waitForResponse(page, 'PUT', `/api/hr/professions/${profession.id}`),
+                page.locator('#professionWorkspaceSave').click()
+            ]);
+            assert.equal(updatedProfession.status(), 403, 'membership-mode catalog write keeps the existing access boundary');
+            assert.equal((await pool.query('SELECT department FROM hr_professions WHERE id = $1', [profession.id])).rows[0].department, 'cafe');
+            await page.screenshot({ path: path.join(output, 'desktop-profession-department.png') });
+            // Simulate an already-persisted catalog change without opening the protected write lane.
+            await pool.query("UPDATE hr_professions SET department = 'Кухня' WHERE id = $1", [profession.id]);
+            await page.locator('#professionWorkspaceClose').click();
+            await page.evaluate(() => ensureProfessionsLoaded({ force: true, silent: true }));
+            await page.evaluate(() => activateHrTab('team', { updateHash: true }));
+            await createButton.click();
+            await dialog.locator('[name="department"]').selectOption({ label: 'Кухня' });
+            await dialog.locator('[name="position"]').selectOption(professionKey);
+            await dialog.locator('#hrCreateStaffCancel').click();
+
             await page.goto(new URL('/hr?tab=team', target).href);
             await otherCard.getByRole('button', { name: /відкрити/i }).click();
             await profile.locator('#editPhone').fill('+380009998899');

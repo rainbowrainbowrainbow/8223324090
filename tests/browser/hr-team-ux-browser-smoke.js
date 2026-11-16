@@ -21,6 +21,7 @@ async function checkCreation(page, width, dark) {
         if (dark) document.documentElement.dataset.theme = 'dark';
         const parsed = new DOMParser().parseFromString(markup, 'text/html');
         for (const id of ['hrNewStaffFields', 'hrCreateStaffDialog']) document.body.append(parsed.getElementById(id));
+        document.body.append(parsed.getElementById('professionCatalogDepartment'));
         const button = document.createElement('button');
         button.id = 'hrCreateStaffBtn';
         button.textContent = 'Додати співробітника';
@@ -31,9 +32,10 @@ async function checkCreation(page, width, dark) {
         ];
         hrProfessions = [
             { key: 'waiter', title: 'Офіціант', department: 'Кафе' },
-            { key: 'barista', title: 'Бариста', department: 'Кафе' },
+            { key: 'barista', title: 'Бариста', department: 'cafe' },
             { key: 'animator', title: 'Аніматор', department: 'Арт-відділ' }
         ];
+        renderProfessionCatalogFilterOptions();
         ensureProfessionsLoaded = async () => hrProfessions;
         recoverStaffCreation = async () => null;
         submitStaffCreation = async (_kind, body) => {
@@ -42,6 +44,14 @@ async function checkCreation(page, width, dark) {
         };
         bindHrStaffCreation();
     }, { markup, dark });
+    const filter = page.locator('#professionCatalogDepartment');
+    assert.equal(await filter.locator('option').filter({ hasText: /^Кафе$/ }).count(), 1);
+    await filter.selectOption({ label: 'Кафе' });
+    const matching = await page.evaluate(() => {
+        professionCatalogFilters.department = document.getElementById('professionCatalogDepartment').value;
+        return hrProfessions.filter(professionMatchesCatalogFilters).map(item => item.key);
+    });
+    assert.deepEqual(matching, ['waiter', 'barista']);
     await page.locator('#hrCreateStaffBtn').click();
     const dialog = page.locator('#hrCreateStaffDialog');
     await dialog.locator('[name="family_name"]').fill('Тестова');
@@ -50,6 +60,8 @@ async function checkCreation(page, width, dark) {
     await dialog.locator('[name="department"]').focus();
     assert.equal(await dialog.locator('[name="phone"]').inputValue(), '+380 67 123 45 67');
     await dialog.locator('[name="department"]').selectOption({ label: 'Кафе' });
+    assert.equal(await dialog.locator('[name="department"] option').filter({ hasText: /^Кафе$/ }).count(), 1);
+    assert.equal(await dialog.locator('[name="position"] option[value="barista"]').count(), 1);
     await dialog.locator('[name="position"]').selectOption('waiter');
     assert.equal(await dialog.locator('[name="position"] option[value="animator"]').count(), 0);
     await dialog.locator('[name="department"]').selectOption({ label: 'Арт-відділ' });

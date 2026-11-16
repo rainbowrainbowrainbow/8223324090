@@ -222,6 +222,7 @@ const STAFF_DEPARTMENT_LABELS = {
     trampoline: 'Батутисти',
     admin: 'Адміністрація',
     cafe: 'Кафе',
+    kitchen: 'Кухня',
     tech: 'Технічний відділ',
     cleaning: 'Прибирання',
     security: 'Охорона'
@@ -5049,9 +5050,9 @@ function renderProfessionCatalogFilterOptions() {
     const structureSelect = document.getElementById('professionCatalogStructureNode');
     if (departmentSelect) {
         const current = professionCatalogFilters.department;
-        const departments = [...new Set(hrProfessions.map(item => String(item.department || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'uk'));
-        departmentSelect.innerHTML = '<option value="all">Усі напрями</option>' + departments.map(value => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join('');
-        departmentSelect.value = departments.includes(current) ? current : 'all';
+        const departments = professionDepartmentOptions(hrProfessions.map(item => item.department));
+        departmentSelect.replaceChildren(new Option('Усі відділи', 'all'), ...departments.map(([key, label]) => new Option(label, key)));
+        departmentSelect.value = departments.some(([key]) => key === current) ? current : 'all';
         professionCatalogFilters.department = departmentSelect.value;
     }
     if (structureSelect) {
@@ -5069,7 +5070,8 @@ function professionMatchesCatalogFilters(item = {}) {
     const isActive = item.is_active !== false && item.isActive !== false;
     if (professionCatalogFilters.status === 'active' && !isActive) return false;
     if (professionCatalogFilters.status === 'archived' && isActive) return false;
-    if (professionCatalogFilters.department !== 'all' && item.department !== professionCatalogFilters.department) return false;
+    if (professionCatalogFilters.department !== 'all'
+        && professionDepartmentKey(item.department) !== professionCatalogFilters.department) return false;
     const nodeId = item.structure_node_id || item.structureNodeId || '';
     if (professionCatalogFilters.structureNode === 'none' && nodeId) return false;
     if (!['all', 'none'].includes(professionCatalogFilters.structureNode) && nodeId !== professionCatalogFilters.structureNode) return false;
@@ -5087,6 +5089,7 @@ function professionMatchesCatalogFilters(item = {}) {
         item.title,
         item.key,
         item.department,
+        professionDepartmentLabel(item.department),
         item.shortInfo || item.short_info,
         item.structureNode?.title || companyStructureNodeTitle(nodeId),
         item.source
@@ -5112,8 +5115,8 @@ function professionMasterRowHtml(item = {}, initialTab = 'main') {
         : 'Чекліст недоступний';
     return `
         <${rowTag} class="hr-profession-master-row${active ? '' : ' is-archived'}${workspaceUnsupported ? ' is-read-only' : ''}" ${rowAttributes}>
-            <span class="hr-profession-master-title"><strong>${escapeHtml(item.title || item.key)}</strong><small>${escapeHtml(item.key)} · ${source === 'system' ? 'system profession' : 'DB profession'}</small></span>
-            <span class="hr-profession-master-cell">${escapeHtml(item.department || 'Без напряму')}</span>
+            <span class="hr-profession-master-title"><strong>${escapeHtml(item.title || item.key)}</strong><small>${escapeHtml(item.key)} · ${source === 'system' ? 'Системна' : 'З довідника'}</small></span>
+            <span class="hr-profession-master-cell">${escapeHtml(professionDepartmentLabel(item.department) || 'Без відділу')}</span>
             <span class="hr-profession-master-cell">${escapeHtml(nodeTitle)}</span>
             <span class="hr-profession-master-cell">${escapeHtml(staffText)}</span>
             <span class="hr-profession-master-cell">${escapeHtml(checklistText)}</span>
@@ -6252,20 +6255,23 @@ function renderProfessionWorkspace() {
     actions.classList.toggle('hidden', readOnly);
     setProfessionWorkspaceBanner(readOnly ? (data.access?.partial ? 'Скорочений перегляд: умови, компенсації та навчальні курси недоступні.' : 'Режим лише для перегляду') : (!active && !isNew ? 'Професія архівна. Її можна відновити кнопкою нижче.' : ''), readOnly ? 'readonly' : (!active ? 'archived' : ''));
     document.getElementById('professionWorkspaceTitle').textContent = isNew ? 'Нова професія' : (profession.title || profession.key || 'Картка професії');
-    document.getElementById('professionWorkspaceSubtitle').textContent = isNew ? 'Створення DB profession' : `${profession.department || 'Без напряму'} · ${active ? 'активна' : 'архівна'}`;
+    document.getElementById('professionWorkspaceSubtitle').textContent = isNew ? 'Налаштування посади' : `${professionDepartmentLabel(profession.department) || 'Без відділу'} · ${active ? 'активна' : 'архівна'}`;
     const source = document.getElementById('professionWorkspaceSource');
     if (source) {
-        source.textContent = profession.source === 'system' ? 'System profession · readonly' : 'DB profession';
+        source.textContent = profession.source === 'system' ? 'Системна · лише перегляд' : 'Професія з довідника';
         source.classList.toggle('is-system', profession.source === 'system');
     }
     const keyReadonly = document.getElementById('professionWorkspaceKeyReadonly');
     const keyCreateField = document.getElementById('professionWorkspaceKeyCreateField');
     keyReadonly?.classList.toggle('hidden', isNew);
     keyCreateField?.classList.toggle('hidden', !isNew);
-    if (keyReadonly) keyReadonly.textContent = `Технічний key: ${profession.key || '—'} · після створення не змінюється`;
+    if (keyReadonly) keyReadonly.textContent = `Код професії: ${profession.key || '—'} · після створення не змінюється`;
     document.getElementById('professionWorkspaceKey').value = profession.key || '';
     document.getElementById('professionWorkspaceTitleInput').value = profession.title || '';
-    document.getElementById('professionWorkspaceDepartment').value = profession.department || '';
+    document.getElementById('professionWorkspaceDepartment').value = professionDepartmentLabel(profession.department);
+    document.getElementById('professionWorkspaceDepartments')?.replaceChildren(
+        ...professionDepartmentOptions(hrProfessions.map(item => item.department)).map(([, label]) => new Option(label, label))
+    );
     document.getElementById('professionWorkspaceShortInfo').value = profession.shortInfo || profession.short_info || '';
     document.getElementById('professionWorkspaceResponsibilities').value = (profession.responsibilities || []).join('\n');
     const nodeId = profession.structureNodeId || profession.structure_node_id || '';
@@ -6387,10 +6393,12 @@ async function saveProfessionWorkspace(options = {}) {
     if (!professionWorkspaceState.open || professionWorkspaceReadOnly()) return false;
     const profession = professionWorkspaceState.data?.profession || {};
     const isNew = professionWorkspaceState.isNew;
+    const department = document.getElementById('professionWorkspaceDepartment')?.value.trim() || '';
     const body = {
         key: isNew ? document.getElementById('professionWorkspaceKey')?.value : profession.key,
         title: document.getElementById('professionWorkspaceTitleInput')?.value || '',
-        department: document.getElementById('professionWorkspaceDepartment')?.value || null,
+        department: department === professionDepartmentLabel(profession.department)
+            ? profession.department || null : professionDepartmentLabel(department) || null,
         shortInfo: document.getElementById('professionWorkspaceShortInfo')?.value || '',
         responsibilities: normalizeProfessionTextList(document.getElementById('professionWorkspaceResponsibilities')?.value),
         structureNodeId: document.getElementById('professionWorkspaceStructureNode')?.value || null,
@@ -6399,7 +6407,7 @@ async function saveProfessionWorkspace(options = {}) {
         isActive: options.isActive ?? document.getElementById('professionWorkspaceActive')?.value !== 'false'
     };
     if (!String(body.key || '').trim() || !String(body.title || '').trim()) {
-        setProfessionWorkspaceBanner('Заповніть назву та технічний key.', 'error');
+        setProfessionWorkspaceBanner('Заповніть назву та код професії.', 'error');
         return false;
     }
     setProfessionWorkspaceBanner('Збереження…', 'saving');
@@ -7389,8 +7397,23 @@ function populateStaffDirectorySelect(select, values, current = '') {
     select.value = selected;
 }
 
-function staffCreationDepartmentLabel(value) {
-    return STAFF_DEPARTMENT_LABELS[normalizeDepartmentKey(value)] || value;
+function professionDepartmentLabel(value) {
+    const text = String(value || '').trim();
+    const key = normalizeDepartmentKey(text);
+    return Object.hasOwn(STAFF_DEPARTMENT_LABELS, key) ? STAFF_DEPARTMENT_LABELS[key] : text;
+}
+
+function professionDepartmentKey(value) {
+    return normalizeDepartmentKey(professionDepartmentLabel(value));
+}
+
+function professionDepartmentOptions(values) {
+    const unique = new Map();
+    for (const value of values) {
+        const label = professionDepartmentLabel(value);
+        if (label) unique.set(professionDepartmentKey(label), label);
+    }
+    return [...unique].sort((a, b) => a[1].localeCompare(b[1], 'uk'));
 }
 function setTeamCreateAccess(allowed) {
     const button = document.getElementById('hrCreateStaffBtn');
@@ -7528,7 +7551,8 @@ function bindHrStaffCreation() {
             const [, prefix, operator, exchange, firstPair, secondPair] = local;
             input.value = [prefix === '380' ? '+380 ' + operator : '0' + operator, exchange, firstPair, secondPair].join(' ');
         }
-    });    let openContext;
+    });
+    let openContext;
     let dialogOpening;
     let saving = false;
     const openCreatedStaff = async (result, context) => {
@@ -7558,7 +7582,8 @@ function bindHrStaffCreation() {
         jobs = [];
         department.replaceChildren(new Option('Оберіть відділ', ''));
         department.disabled = true;
-        showPositions();        openContext = context;
+        showPositions();
+        openContext = context;
         dialog.showModal();
         const recovery = await recoverStaffCreation('staff');
         if (!dialog.open || dialogOpening !== opening || context !== teamAccessContext()) return;
@@ -7573,13 +7598,13 @@ function bindHrStaffCreation() {
             const title = item.title || item.label || item.name;
             const departmentValue = String(item.department || '').trim();
             if (!item.key || !title || !departmentValue || item.is_active === false || item.isActive === false) return [];
-            return [{ key: item.key, title, departmentValue, departmentKey: normalizeDepartmentKey(staffCreationDepartmentLabel(departmentValue)) }];
+            return [{ key: item.key, title, departmentValue, departmentKey: professionDepartmentKey(departmentValue) }];
         });
-        const departments = new Map(jobs.map(job => [job.departmentKey, staffCreationDepartmentLabel(job.departmentValue)]));
-        [...departments].sort((a, b) => a[1].localeCompare(b[1], 'uk'))
-            .forEach(([key, label]) => department.add(new Option(label, key)));
-        department.disabled = !departments.size;
-        status.textContent = departments.size ? '' : 'Немає доступних посад із відділами. Перевірте довідник професій.';    });
+        const departments = professionDepartmentOptions(jobs.map(job => job.departmentValue));
+        departments.forEach(([key, label]) => department.add(new Option(label, key)));
+        department.disabled = !departments.length;
+        status.textContent = departments.length ? '' : 'Немає доступних посад із відділами. Перевірте довідник професій.';
+    });
     cancel?.addEventListener('click', () => dialog.close());
     dialog.addEventListener('cancel', event => {
         if (saving) event.preventDefault();

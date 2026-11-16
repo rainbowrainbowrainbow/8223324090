@@ -103,7 +103,7 @@ describe('backoffice foundation v2 contracts', () => {
         assert.match(centerHtml, /price-position-panel/);
     });
 
-    it('adds a reception and managers operations center without changing access boundaries', () => {
+    it('keeps the operations center read-only and preserves the manager write guard', () => {
         const opsRoute = extractCenterOperationsRoute(centerRoute);
 
         assert.match(opsRoute, /FROM bookings b/);
@@ -119,7 +119,7 @@ describe('backoffice foundation v2 contracts', () => {
         assert.match(opsRoute, /handoverNotes: parseOperationsNotes/);
         assert.doesNotMatch(opsRoute, /\br\.raw_data\b|raw_data\s+AS/i);
         assert.doesNotMatch(opsRoute, /\bCREATE TABLE\b|\bALTER TABLE\b|\bINSERT INTO\b|\bUPDATE\b|\bDELETE FROM\b/);
-        assert.match(centerRoute, /router\.use\(requireMinRole\('manager'\)\)/);
+        assert.match(centerRoute, /router\.use\(allowAccountantPageRead\('\/center', requireMinRole\('manager'\)\)\)/);
 
         assert.match(centerHtml, /data-tab="operations"/);
         assert.match(centerHtml, /id="tabOperations"/);

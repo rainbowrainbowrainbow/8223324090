@@ -269,7 +269,8 @@ test('Task 4-8 critical capabilities keep their independent grants and explicit 
 
 test('accountant can open operational pages with consistent browser and server permissions', () => {
     const user = { role: 'accountant' };
-    const restricted = new Set(['/chat-settings', '/timeline-settings', '/status', '/guardian-ops']);
+    const restricted = new Set(['/chat-settings', '/timeline-settings', '/status', '/guardian-ops',
+        '/certificates/new', '/certificates/batch', '/certificates/check']);
     for (const page of registry.PAGE_PERMISSIONS.filter(entry => !entry.deprecated)) {
         assert.equal(assertParity(user, page.key, { type: 'page' }).allowed, !restricted.has(page.key), page.key);
     }

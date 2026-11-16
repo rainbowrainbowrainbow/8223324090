@@ -283,6 +283,18 @@ test('mobile certificate check grants only the designated Park operational roles
     assert.equal(resolveCapability({ role: 'dishwasher', page_allowlist: ['/certificates/check'] }, '/certificates/check', { type: 'page' }).allowed, false);
 });
 
+test('accountant certificate access covers the registry without issuing or redeeming', () => {
+    const user = { role: 'accountant' };
+    assert.equal(resolveCapability(user, '/certificates', { type: 'page' }).allowed, true);
+    for (const page of ['/certificates/new', '/certificates/batch', '/certificates/check']) {
+        assert.equal(resolveCapability(user, page, { type: 'page' }).allowed, false, page);
+    }
+    const routeCode = fs.readFileSync(path.join(__dirname, '..', 'routes', 'certificates.js'), 'utf8');
+    assert.match(routeCode, /page === '\/certificates' && !\['GET', 'HEAD'\]\.includes\(req\.method\) && !canManageCertificateRegistry\(req\.user\)/);
+    const ui = fs.readFileSync(path.join(__dirname, '..', 'js', 'certificates-page.js'), 'utf8');
+    assert.match(ui, /cert.canManageRegistry !== false/);
+});
+
 test('animators can issue single and batch certificates without receiving lifecycle management access', () => {
     const routeCode = fs.readFileSync(path.join(__dirname, '..', 'routes', 'certificates.js'), 'utf8');
 

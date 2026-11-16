@@ -789,15 +789,19 @@
         renderCertificatePreview('certificatePagePreview', cert);
 
         let html = `<button type="button" class="btn-page-secondary" data-cert-copy="${esc(cert.certCode)}">Копіювати код</button>`;
-        if (cert.status === 'active') {
+        if (cert.status === 'active' && typeof canAccessPage === 'function' && canAccessPage('/certificates/check')) {
             html += `<a class="btn-page-primary" href="/certificates/check?code=${encodeURIComponent(cert.certCode)}">Перевірити сертифікат</a>`;
-            html += `<button type="button" class="btn-page-danger" data-cert-status="${esc(cert.id)}" data-next-status="revoked">Анульувати</button>`;
-            html += `<button type="button" class="btn-page-secondary" data-cert-status="${esc(cert.id)}" data-next-status="blocked">Заблокувати</button>`;
         }
-        if (cert.status === 'blocked' || cert.status === 'revoked') {
-            html += `<button type="button" class="btn-page-primary" data-cert-status="${esc(cert.id)}" data-next-status="active">Відновити</button>`;
+        if (cert.canManageRegistry !== false) {
+            if (cert.status === 'active') {
+                html += `<button type="button" class="btn-page-danger" data-cert-status="${esc(cert.id)}" data-next-status="revoked">Анульувати</button>`;
+                html += `<button type="button" class="btn-page-secondary" data-cert-status="${esc(cert.id)}" data-next-status="blocked">Заблокувати</button>`;
+            }
+            if (cert.status === 'blocked' || cert.status === 'revoked') {
+                html += `<button type="button" class="btn-page-primary" data-cert-status="${esc(cert.id)}" data-next-status="active">Відновити</button>`;
+            }
+            html += `<button type="button" class="btn-page-danger" data-cert-delete="${esc(cert.id)}">Видалити</button>`;
         }
-        html += `<button type="button" class="btn-page-danger" data-cert-delete="${esc(cert.id)}">Видалити</button>`;
         actions.innerHTML = html;
     }
 

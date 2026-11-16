@@ -5,9 +5,10 @@
 const router = require('express').Router();
 const { randomUUID } = require('crypto');
 const { pool, generateCertCode } = require('../db');
-const { requireRole, authenticateToken } = require('../middleware/auth'); 
+const { requireRole, authenticateToken, userHasAnyRole } = require('../middleware/auth');
 const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
 const { resolveCapability } = require('../services/accountAccessPolicy');
+const { PAGE_PERMISSION_BY_KEY } = require('../config/permissionRegistry');
 const {
     mapCertificateRow,
     calculateValidUntil,
@@ -36,6 +37,10 @@ const log = createLogger('Certificates');
 const BATCH_CERTIFICATE_TYPE_TEXT = ONE_TIME_TYPE_TEXT;
 const DUPLICATE_RECIPIENT_CODE = 'CERTIFICATE_RECIPIENT_NOT_UNIQUE';
 const CERTIFICATE_ISSUER_ROLES = ['admin', 'user', 'animator'];
+
+function canManageCertificateRegistry(user) {
+    return userHasAnyRole(user, PAGE_PERMISSION_BY_KEY['/certificates/new'].defaultRoles);
+}
 
 function requireCertificateCheckAccess(req, res, next) {
     const access = resolveCapability(req.user, '/certificates/check', { type: 'page' });
@@ -74,7 +79,8 @@ router.use((req, res, next) => {
     const page = req.method === 'POST' && path === '/' ? '/certificates/new'
         : req.method === 'POST' && path === '/batch' ? '/certificates/batch'
             : path.startsWith('/code/') || /^\/\d+\/redeem$/.test(path) ? '/certificates/check' : '/certificates';
-    if (!resolveCapability(req.user, page, { type: 'page' }).allowed) {
+    if (!resolveCapability(req.user, page, { type: 'page' }).allowed
+        || (page === '/certificates' && !['GET', 'HEAD'].includes(req.method) && !canManageCertificateRegistry(req.user))) {
         return res.status(403).json({ error: 'Insufficient permissions' });
     }
     next();
@@ -229,7 +235,7 @@ router.get('/:id', async (req, res) => {
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Certificate not found' });
         }
-        res.json(mapCertificateRow(result.rows[0]));
+        res.json({ ...mapCertificateRow(result.rows[0]), canManageRegistry: canManageCertificateRegistry(req.user) });
     } catch (err) {
         log.error('Get error', err);
         res.status(500).json({ error: 'Internal server error' });

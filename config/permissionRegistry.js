@@ -125,8 +125,8 @@ const GENERIC_ACTION_BACKEND = Object.freeze([
 const ACCOUNTANT_OPERATIONAL_PAGES = new Set([
     '/', '/maysternya-doli', '/center', '/art', '/content', '/designer', '/designs',
     '/hermes-studio', '/graduation', '/warehouse', '/training', '/demo', '/programs',
-    '/hr', '/checkin', '/omni', '/copilot', '/sound', '/certificates', '/certificates/new',
-    '/certificates/batch', '/certificates/check', '/sales-funnel', '/report-agent'
+    '/hr', '/checkin', '/omni', '/copilot', '/sound', '/certificates',
+    '/sales-funnel', '/report-agent'
 ]);
 
 function accountantPageRoles(definition) {

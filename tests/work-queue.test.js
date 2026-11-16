@@ -736,11 +736,8 @@ describe('work queue endpoint', () => {
         assert.equal(buckets.overdue.items[0].href, '/sales-funnel?lead=10');
         assert.equal(buckets.overdue.items[0].meta.ownerUserId, 20);
         assert.equal(buckets.overdue.items[0].meta.ownerState, 'typed');
-        assert.equal(buckets.overdue.items[0].subtaskCount, 2);
-        assert.equal(buckets.overdue.items[0].subtaskDoneCount, 1);
-        assert.equal(buckets.overdue.items[0].subtaskProgressPercent, 50);
-        assert.deepEqual(buckets.overdue.items[0].subtasks.map(item => item.title), ['Порахувати витрати', 'Надіслати звіт']);
-        assert.equal(buckets.overdue.items[0].meta.subtaskCount, 2);
+        assert.equal(buckets.overdue.items[0].subtasks, undefined);
+        assert.equal(buckets.overdue.items[0].meta.subtaskCount, undefined);
         assert.equal(buckets.overdue.items[0].execution.depth, 'limited_task_inline');
         assert.equal(buckets.overdue.items[0].execution.routeOutOnly, false);
         assert.ok(buckets.overdue.items[0].execution.actions.some(action => action.type === 'task_mark_done'));
@@ -1695,9 +1692,8 @@ describe('work queue endpoint', () => {
         await new Promise(resolve => dom.window.setTimeout(resolve, 0));
         workspace = dom.window.document.getElementById('workQueueResolutionWorkspace');
         assert.match(workspace.textContent, /Overdue task/);
-        assert.ok(workspace.querySelector('.task-subtasks-card .dashboard-task-subtasks.triage'));
-        assert.match(workspace.textContent, /Перший крок/);
-        assert.match(workspace.textContent, /1\/2/);
+        assert.equal(workspace.querySelector('.task-subtasks-card'), null);
+        assert.doesNotMatch(workspace.textContent, /Перший крок/);
         assert.match(workspace.textContent, /Історія дій по задачі/);
         assert.match(workspace.textContent, /Задачу виконано/);
         assert.match(workspace.textContent, /Дії по задачі працюють через перевірку видимості задачі/);

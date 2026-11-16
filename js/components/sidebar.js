@@ -39,12 +39,11 @@ const Sidebar = (() => {
     const EXTRA_MENU_EDIT_STORAGE_KEY = 'eg_sidebar_extra_menu_edit_v1';
     const EXTRA_MENU_COLLAPSED_STORAGE_KEY = 'eg_sidebar_extra_menu_collapsed_v1';
     const PRODUCTIVITY_MENU_STORAGE_KEY = 'eg_sidebar_productivity_menu_items_v1';
-    const PRODUCTIVITY_MENU_EDIT_STORAGE_KEY = 'eg_sidebar_productivity_menu_edit_v1';
-    const PRODUCTIVITY_MENU_COLLAPSED_STORAGE_KEY = 'eg_sidebar_productivity_menu_collapsed_v1';
+    const FAVORITES_MERGED_STORAGE_KEY = 'eg_sidebar_favorites_productivity_merged_v1';
     const SIDEBAR_CURRENCY_SIGNAL_STORAGE_KEY = 'eg_sidebar_currency_signal_enabled_v1';
-    const PRODUCTIVITY_QUICK_DEFAULT_HREFS = ['/profile?tab=myday'];
+    const MY_DAY_FAVORITE_HREF = '/profile?tab=myday';
     const PRODUCTIVITY_QUICK_ITEMS = Object.freeze([
-        { href: '/profile?tab=myday', icon: 'task', label: 'Мій день', description: 'особистий фокус' },
+        { href: MY_DAY_FAVORITE_HREF, icon: 'task', label: 'Мій день', description: 'особистий фокус' },
         { href: '/tasks?view=my', icon: 'task', label: 'Мої задачі', description: 'повний список', access: 'tasks', businessModule: 'tasks' },
         { href: '/tasks?view=today', icon: 'calendar', label: 'Сьогодні', description: 'план на день', access: 'tasks', businessModule: 'tasks' },
         { href: '/tasks?view=waiting', icon: 'alert', label: 'Очікування', description: 'завислі задачі', access: 'tasks', businessModule: 'tasks' },
@@ -106,6 +105,7 @@ const Sidebar = (() => {
     const MAYSTERNYA_QUICK_ACCESS_HREFS = ['/maysternya-doli', '/sales-funnel', '/customers', '/omni#accounts', '/tasks', '/chat'];
     const MAYSTERNYA_SIDEBAR_HREFS = new Set([
         '/maysternya-doli',
+        MY_DAY_FAVORITE_HREF,
         '/tasks',
         '/chat',
         '/customers',
@@ -635,10 +635,10 @@ const Sidebar = (() => {
     }
 
     function _getRoleQuickAccessHrefs(role, user = _getCurrentSidebarUser()) {
-        if (_isMaysternyaSidebarContext(user)) return MAYSTERNYA_QUICK_ACCESS_HREFS.slice();
+        if (_isMaysternyaSidebarContext(user)) return [MY_DAY_FAVORITE_HREF, ...MAYSTERNYA_QUICK_ACCESS_HREFS];
         const configured = window.RoleShell?.getQuickAccessHrefs?.(role);
         const source = Array.isArray(configured) && configured.length ? configured : EXTRA_MENU_HREFS;
-        return source.map(_normalizeExtraHref).filter(Boolean);
+        return [...new Set([MY_DAY_FAVORITE_HREF, ...source.map(_normalizeExtraHref).filter(Boolean)])];
     }
 
     function _useRoleQuickAccessDefaults() {
@@ -672,23 +672,23 @@ const Sidebar = (() => {
     function _getSelectableExtraMenuItems(role) {
         const user = _getCurrentSidebarUser();
         const seen = new Set();
-        return NAV_ITEMS.concat(INTERNAL_SHORTCUT_ITEMS)
+        return NAV_ITEMS.concat(INTERNAL_SHORTCUT_ITEMS, PRODUCTIVITY_QUICK_ITEMS)
             .filter(item => item.href && item.type !== 'group' && String(item.href).startsWith('/'))
             .filter(item => {
                 const href = _normalizeExtraHref(item.href);
                 if (!href || seen.has(href)) return false;
-                seen.add(href);
-                if (role && !hasAccess(item, role)) return false;
+                if (role && (item.access || !PRODUCTIVITY_QUICK_ITEMS.includes(item)) && !hasAccess(item, role)) return false;
                 if (!_businessAllowsSidebarItem(item, user)) return false;
                 if (!_isNavItemVisible(item, user, role)) return false;
                 if (!_sidebarItemHasAvailableTimelineMode(item, user)) return false;
+                seen.add(href);
                 return true;
             })
             .map(item => ({
                 ...item,
                 id: `crm_${_normalizeExtraHref(item.href).replace(/[^a-z0-9]+/gi, '_')}`,
                 href: _normalizeExtraHref(item.href),
-                description: item.statusKey ? '' : _getExtraGroupLabel(item.group),
+                description: item.statusKey ? '' : item.description || _getExtraGroupLabel(item.group),
                 custom: true
             }));
     }
@@ -711,13 +711,41 @@ const Sidebar = (() => {
     function _saveExtraMenuSelection(hrefs, role) {
         const selected = new Set((Array.isArray(hrefs) ? hrefs : []).map(_normalizeExtraHref).filter(Boolean));
         const selectable = _getSelectableExtraMenuItems(role);
-        return _saveCustomExtraItems(selectable.filter(item => selected.has(item.href)));
+        const available = new Map(selectable.map(item => [item.href, item]));
+        const outsideScope = _readCustomExtraItems().filter(item => !available.has(item.href));
+        const saved = _saveCustomExtraItems([...selected].map(href => available.get(href)).filter(Boolean).concat(outsideScope));
+        try { localStorage.setItem(FAVORITES_MERGED_STORAGE_KEY, 'true'); } catch {}
+        return saved;
+    }
+
+    function _mergeLegacyProductivityFavorites(defaults) {
+        try {
+            if (localStorage.getItem(FAVORITES_MERGED_STORAGE_KEY) === 'true') return;
+            const legacy = localStorage.getItem(PRODUCTIVITY_MENU_STORAGE_KEY);
+            if (!_hasSavedExtraMenuSelection() && legacy === null) return;
+            const saved = _hasSavedExtraMenuSelection()
+                ? _readCustomExtraItems()
+                : defaults.map(href => _normalizeCustomExtraItem({ href }));
+            const byHref = new Map(saved.map(item => [item.href, item]));
+            const imported = new Set([MY_DAY_FAVORITE_HREF, ..._getSavedProductivityHrefs()]);
+            for (const item of PRODUCTIVITY_QUICK_ITEMS) {
+                if (!imported.has(item.href)) continue;
+                const existing = byHref.get(item.href) || _normalizeCustomExtraItem(item);
+                byHref.set(item.href, { ...existing, hidden: false });
+            }
+            const myDay = byHref.get(MY_DAY_FAVORITE_HREF);
+            byHref.delete(MY_DAY_FAVORITE_HREF);
+            localStorage.setItem(EXTRA_MENU_STORAGE_KEY, JSON.stringify([{ ...myDay, hidden: false }, ...byHref.values()]));
+            localStorage.setItem(FAVORITES_MERGED_STORAGE_KEY, 'true');
+        } catch {}
     }
 
     function _getSelectedExtraMenuHrefs(role) {
+        const defaults = _getRoleQuickAccessHrefs(role);
+        if (!_useRoleQuickAccessDefaults()) _mergeLegacyProductivityFavorites(defaults);
         const saved = !_useRoleQuickAccessDefaults() && _hasSavedExtraMenuSelection()
             ? _getSavedExtraMenuHrefs()
-            : _getRoleQuickAccessHrefs(role);
+            : defaults;
         const available = new Set(_getSelectableExtraMenuItems(role).map(item => item.href));
         return saved.filter(href => available.has(href));
     }
@@ -733,31 +761,6 @@ const Sidebar = (() => {
             : selected;
     }
 
-    function _getSelectableProductivityItems(role) {
-        const user = _getCurrentSidebarUser();
-        return PRODUCTIVITY_QUICK_ITEMS
-            .filter(item => {
-                if (item.access && role && !hasAccess(item, role)) return false;
-                if (!_businessAllowsSidebarItem(item, user)) return false;
-                if (!_isNavItemVisible(item, user, role)) return false;
-                return true;
-            })
-            .map(item => ({
-                ...item,
-                href: _normalizeExtraHref(item.href),
-                custom: true
-            }))
-            .filter(item => item.href);
-    }
-
-    function _hasSavedProductivitySelection() {
-        try {
-            return localStorage.getItem(PRODUCTIVITY_MENU_STORAGE_KEY) !== null;
-        } catch {
-            return false;
-        }
-    }
-
     function _getSavedProductivityHrefs() {
         try {
             const parsed = JSON.parse(localStorage.getItem(PRODUCTIVITY_MENU_STORAGE_KEY) || '[]');
@@ -766,32 +769,6 @@ const Sidebar = (() => {
         } catch {
             return [];
         }
-    }
-
-    function _saveProductivitySelection(hrefs, role) {
-        const available = new Set(_getSelectableProductivityItems(role).map(item => item.href));
-        const selected = (Array.isArray(hrefs) ? hrefs : [])
-            .map(_normalizeExtraHref)
-            .filter(href => href && available.has(href));
-        try {
-            localStorage.setItem(PRODUCTIVITY_MENU_STORAGE_KEY, JSON.stringify(selected));
-        } catch {}
-        return selected;
-    }
-
-    function _getSelectedProductivityHrefs(role) {
-        const saved = _hasSavedProductivitySelection()
-            ? _getSavedProductivityHrefs()
-            : PRODUCTIVITY_QUICK_DEFAULT_HREFS.slice();
-        const available = new Set(_getSelectableProductivityItems(role).map(item => item.href));
-        return saved.map(_normalizeExtraHref).filter(href => href && available.has(href));
-    }
-
-    function _getProductivityItems(role) {
-        const byHref = new Map(_getSelectableProductivityItems(role).map(item => [item.href, item]));
-        return _getSelectedProductivityHrefs(role)
-            .map(href => byHref.get(href))
-            .filter(Boolean);
     }
 
     function _railKeyForItem(item) {
@@ -934,34 +911,6 @@ const Sidebar = (() => {
         } catch {}
     }
 
-    function _isProductivityEditorOpen() {
-        try {
-            return localStorage.getItem(PRODUCTIVITY_MENU_EDIT_STORAGE_KEY) === 'true';
-        } catch {
-            return false;
-        }
-    }
-
-    function _setProductivityEditorOpen(open) {
-        try {
-            localStorage.setItem(PRODUCTIVITY_MENU_EDIT_STORAGE_KEY, open ? 'true' : 'false');
-        } catch {}
-    }
-
-    function _isProductivityCollapsed() {
-        try {
-            return localStorage.getItem(PRODUCTIVITY_MENU_COLLAPSED_STORAGE_KEY) === 'true';
-        } catch {
-            return false;
-        }
-    }
-
-    function _setProductivityCollapsed(collapsed) {
-        try {
-            localStorage.setItem(PRODUCTIVITY_MENU_COLLAPSED_STORAGE_KEY, collapsed ? 'true' : 'false');
-        } catch {}
-    }
-
     function _isSidebarCurrencySignalEnabled() {
         try {
             return localStorage.getItem(SIDEBAR_CURRENCY_SIGNAL_STORAGE_KEY) !== 'false';
@@ -992,22 +941,15 @@ const Sidebar = (() => {
         if (!sidebar || !links) return;
         const deck = document.getElementById('sidebarCommandDeck');
         const extras = document.getElementById('sidebarDesignExtras');
-        const productivity = document.getElementById('sidebarProductivityQuick');
         _removeSidebarTodayDock();
 
         if (deck && deck.parentElement !== sidebar) sidebar.insertBefore(deck, links);
         if (extras && extras.parentElement !== sidebar) sidebar.insertBefore(extras, links);
-        if (productivity && productivity.parentElement !== sidebar) sidebar.insertBefore(productivity, links);
 
         if (deck) sidebar.insertBefore(deck, links);
         if (extras) {
             if (deck) _insertSidebarSectionAfter(sidebar, extras, deck);
             else sidebar.insertBefore(extras, links);
-        }
-        if (productivity) {
-            if (extras) _insertSidebarSectionAfter(sidebar, productivity, extras);
-            else if (deck) _insertSidebarSectionAfter(sidebar, productivity, deck);
-            else sidebar.insertBefore(productivity, links);
         }
     }
 
@@ -1089,144 +1031,6 @@ const Sidebar = (() => {
         return `<a class="sidebar-design-extra-link${isActive ? ' active' : ''}" href="${_escAttr(navigationHref)}"${targetAttrs}>
             ${_renderExtraMenuLinkBody(item)}
         </a>`;
-    }
-
-    function _renderProductivityEditor(selectableItems, selectedHrefs) {
-        const selected = new Set(selectedHrefs);
-        const selectedCount = selectableItems.filter(item => selected.has(item.href)).length;
-        const pickerHtml = selectableItems.length ? selectableItems.map(item => {
-            const checked = selected.has(item.href);
-            const meta = item.description || item.href;
-            const searchText = `${item.label || ''} ${meta || ''} ${item.href || ''}`.toLowerCase();
-            return `<label class="sidebar-extra-check" data-sidebar-productivity-row data-sidebar-productivity-search-text="${_escAttr(searchText)}">
-                <input type="checkbox" data-sidebar-productivity-page value="${_escAttr(item.href)}"${checked ? ' checked' : ''}>
-                <span class="sidebar-extra-checkmark" aria-hidden="true"></span>
-                <span class="sidebar-extra-check-copy">
-                    <b>${_escAttr(item.label)}</b>
-                    <small>${_escAttr(meta)}</small>
-                </span>
-            </label>`;
-        }).join('') : '<div class="sidebar-extra-empty">Для цієї ролі немає доступних особистих сторінок.</div>';
-        return `<div class="sidebar-extra-editor sidebar-productivity-editor" data-sidebar-productivity-editor>
-            <div class="sidebar-extra-editor-title">
-                <span>Особисті сторінки</span>
-                <small data-sidebar-productivity-count>${selectedCount} вибрано</small>
-            </div>
-            <div class="sidebar-extra-editor-tools">
-                <input type="search" class="sidebar-extra-search" data-sidebar-productivity-search placeholder="Знайти особисту сторінку..." aria-label="Знайти особисту сторінку">
-            </div>
-            <div class="sidebar-extra-picker" data-sidebar-productivity-picker>
-                ${pickerHtml}
-            </div>
-            <div class="sidebar-extra-form-actions">
-                <button type="button" class="sidebar-extra-save" data-sidebar-productivity-save>Зберегти</button>
-            </div>
-        </div>`;
-    }
-
-    function _renderProductivityQuickBlock(currentPath, currentHash, options = {}) {
-        const items = Array.isArray(options.items) ? options.items : [];
-        const quickLinks = items
-            .map(item => _renderExtraMenuLink(item, currentPath, currentHash))
-            .join('');
-        const listHidden = Boolean(options.listHidden);
-        const editorOpen = Boolean(options.editorOpen);
-        const selectedHrefs = Array.isArray(options.selectedHrefs) ? options.selectedHrefs : [];
-        const selectableItems = Array.isArray(options.selectableItems) ? options.selectableItems : [];
-        return `
-            <div class="sidebar-design-extras-head-row sidebar-productivity-head-row">
-                <button type="button" class="sidebar-design-extras-head sidebar-productivity-head" data-sidebar-productivity-toggle-section aria-expanded="${listHidden ? 'false' : 'true'}">
-                    <span class="sidebar-design-extras-dot" aria-hidden="true"></span>
-                    <span class="sidebar-design-extras-copy">
-                        <span class="sidebar-design-extras-title">Особисте</span>
-                    </span>
-                    <span class="sidebar-design-extras-chevron" aria-hidden="true">${listHidden ? '⌄' : '⌃'}</span>
-                </button>
-                <button type="button" class="sidebar-design-extras-manage" data-sidebar-productivity-toggle-editor aria-expanded="${editorOpen ? 'true' : 'false'}" aria-label="${editorOpen ? 'Завершити налаштування особистого блоку' : 'Налаштувати особисте'}" title="${editorOpen ? 'Готово' : 'Налаштувати особисте'}">
-                    <span class="sidebar-design-extras-gear" aria-hidden="true">⚙</span>
-                    <span class="sidebar-design-extras-manage-text">${editorOpen ? 'Готово' : 'Редагувати'}</span>
-                </button>
-            </div>
-            <div class="sidebar-design-extra-list sidebar-productivity-list"${listHidden ? ' hidden' : ''}>
-                ${quickLinks || '<div class="sidebar-design-extra-empty">Нічого не вибрано. Натисни шестерню і додай потрібні входи.</div>'}
-            </div>
-            ${editorOpen ? _renderProductivityEditor(selectableItems, selectedHrefs) : ''}`;
-    }
-
-    function _updateProductivityEditorCount(productivity) {
-        const count = productivity?.querySelectorAll('[data-sidebar-productivity-page]:checked').length || 0;
-        const counter = productivity?.querySelector('[data-sidebar-productivity-count]');
-        if (counter) counter.textContent = `${count} вибрано`;
-    }
-
-    function _applyProductivityEditorFilter(productivity) {
-        const query = String(productivity?.querySelector('[data-sidebar-productivity-search]')?.value || '').trim().toLowerCase();
-        productivity?.querySelectorAll('[data-sidebar-productivity-row]').forEach(row => {
-            const haystack = row.dataset.sidebarProductivitySearchText || '';
-            row.hidden = Boolean(query && !haystack.includes(query));
-        });
-    }
-
-    function _bindProductivityQuickBlock(productivity) {
-        if (!productivity) return;
-        const sectionToggle = productivity.querySelector('[data-sidebar-productivity-toggle-section]');
-        if (sectionToggle && sectionToggle.dataset.sidebarProductivitySectionBound !== 'true') {
-            sectionToggle.dataset.sidebarProductivitySectionBound = 'true';
-            sectionToggle.addEventListener('click', (event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                const editorWasOpen = _isProductivityEditorOpen();
-                if (editorWasOpen) {
-                    _setProductivityEditorOpen(false);
-                    _setProductivityCollapsed(false);
-                } else {
-                    const nextCollapsed = !productivity.classList.contains('is-collapsed');
-                    _setProductivityCollapsed(nextCollapsed);
-                }
-                _ensureCommandDeck();
-            });
-        }
-
-        const toggle = productivity.querySelector('[data-sidebar-productivity-toggle-editor]');
-        if (toggle && toggle.dataset.sidebarProductivityToggleBound !== 'true') {
-            toggle.dataset.sidebarProductivityToggleBound = 'true';
-            toggle.addEventListener('click', (event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                const nextOpen = !_isProductivityEditorOpen();
-                _setProductivityEditorOpen(nextOpen);
-                _setProductivityCollapsed(true);
-                _ensureCommandDeck();
-            });
-        }
-
-        const savedUser = _getCurrentSidebarUser();
-        const role = _getSidebarActiveRole(savedUser);
-        const getCheckedHrefs = () => [...productivity.querySelectorAll('[data-sidebar-productivity-page]:checked')].map(input => input.value);
-        const saveCurrentCheckboxes = () => {
-            _saveProductivitySelection(getCheckedHrefs(), role);
-            _setProductivityEditorOpen(false);
-            _setProductivityCollapsed(true);
-            _ensureCommandDeck();
-        };
-
-        const search = productivity.querySelector('[data-sidebar-productivity-search]');
-        if (search && search.dataset.sidebarProductivitySearchBound !== 'true') {
-            search.dataset.sidebarProductivitySearchBound = 'true';
-            search.addEventListener('input', () => _applyProductivityEditorFilter(productivity));
-        }
-
-        productivity.querySelectorAll('[data-sidebar-productivity-page]').forEach((input) => {
-            if (input.dataset.sidebarProductivityPageBound === 'true') return;
-            input.dataset.sidebarProductivityPageBound = 'true';
-            input.addEventListener('change', () => _updateProductivityEditorCount(productivity));
-        });
-
-        const save = productivity.querySelector('[data-sidebar-productivity-save]');
-        if (save && save.dataset.sidebarProductivitySaveBound !== 'true') {
-            save.dataset.sidebarProductivitySaveBound = 'true';
-            save.addEventListener('click', saveCurrentCheckboxes);
-        }
     }
 
     function _renderExtraMenuEditor(selectableItems, selectedHrefs) {
@@ -3361,30 +3165,8 @@ const Sidebar = (() => {
                 ${extraEditorOpen ? _renderExtraMenuEditor(editableExtraItems, selectedExtraHrefs) : ''}`;
         if (extras.parentElement !== sidebar) sidebar.insertBefore(extras, links);
 
-        let productivity = document.getElementById('sidebarProductivityQuick');
-        if (!productivity) {
-            productivity = document.createElement('div');
-            productivity.id = 'sidebarProductivityQuick';
-        }
-        const productivityItems = _getProductivityItems(role);
-        const selectableProductivityItems = _getSelectableProductivityItems(role);
-        const selectedProductivityHrefs = _getSelectedProductivityHrefs(role);
-        const productivityEditorOpen = _isProductivityEditorOpen();
-        const productivityCollapsed = _isProductivityCollapsed();
-        const productivityListHidden = productivityEditorOpen || productivityCollapsed;
-        productivity.className = `sidebar-design-extras sidebar-productivity-quick${productivityEditorOpen ? ' is-editing' : ''}${productivityCollapsed && !productivityEditorOpen ? ' is-collapsed' : ''}`;
-        productivity.innerHTML = _renderProductivityQuickBlock(currentPath, currentHash, {
-            items: productivityItems,
-            selectableItems: selectableProductivityItems,
-            selectedHrefs: selectedProductivityHrefs,
-            editorOpen: productivityEditorOpen,
-            listHidden: productivityListHidden
-        });
-        if (productivity.parentElement !== sidebar) sidebar.insertBefore(productivity, links);
-
         _syncSidebarSectionOrder(sidebar, links);
         _bindExtraMenuEditor(extras);
-        _bindProductivityQuickBlock(productivity);
         _syncSidebarTimelineLauncherState();
 
         const alertsChip = document.getElementById('focusChipAlerts');

@@ -91,58 +91,10 @@ function decodeCompletionHistoryCursor(value) {
 }
 
 function taskCabinetRowSelectSql(roles = "'{}'::text[]") {
-    return `SELECT t.*, u.name AS owner_name, u.username AS owner_username, ${roles} AS viewer_roles
+    return `SELECT t.*, u.name AS owner_name, u.username AS owner_username, ${roles} AS viewer_roles,
+                t.completed_at AT TIME ZONE 'UTC' AS completed_at
          FROM tasks t
          LEFT JOIN users u ON u.id = t.owner_user_id`;
-}
-
-async function loadCompletionHistorySubtasksByTaskId(queryable, taskIds = []) {
-    const ids = [...new Set((Array.isArray(taskIds) ? taskIds : [])
-        .map(Number)
-        .filter(id => Number.isInteger(id) && id > 0))];
-    if (!ids.length) return new Map();
-    const result = await queryable.query(
-        `SELECT task_id,
-                COUNT(*)::int AS subtask_count,
-                COUNT(*) FILTER (WHERE is_done = true)::int AS subtask_done_count,
-                json_agg(json_build_object(
-                    'id', id,
-                    'task_id', task_id,
-                    'title', title,
-                    'is_done', is_done,
-                    'sort_order', sort_order,
-                    'source_type', COALESCE(source_type, 'manual'),
-                    'created_at', created_at,
-                    'completed_at', completed_at,
-                    'updated_at', updated_at
-                ) ORDER BY sort_order ASC, id ASC) AS subtasks
-         FROM task_subtasks
-         WHERE task_id = ANY($1::int[])
-         GROUP BY task_id`,
-        [ids]
-    );
-    return new Map((result.rows || []).map(row => [Number(row.task_id), row]));
-}
-
-function attachCompletionHistorySubtasks(rows = [], subtasksByTaskId = new Map()) {
-    return (Array.isArray(rows) ? rows : []).map(row => {
-        const taskId = Number(row.id || row.task_id || row.taskId);
-        const subtasks = subtasksByTaskId.get(taskId);
-        if (!subtasks) {
-            return {
-                ...row,
-                subtasks: [],
-                subtask_count: 0,
-                subtask_done_count: 0
-            };
-        }
-        return {
-            ...row,
-            subtasks: subtasks.subtasks || [],
-            subtask_count: Number(subtasks.subtask_count || 0),
-            subtask_done_count: Number(subtasks.subtask_done_count || 0)
-        };
-    });
 }
 
 function taskCompletionHistoryScope(user, businessScope) {
@@ -191,14 +143,7 @@ async function queryTaskCompletionHistoryPage(queryable, options = {}) {
         pageParams
     );
     const fetchedRows = Array.isArray(result.rows) ? result.rows : [];
-    const sourceRowsRaw = fetchedRows.slice(0, limit);
-    const includeSubtasks = options.includeSubtasks !== false;
-    const subtasksByTaskId = includeSubtasks
-        ? await loadCompletionHistorySubtasksByTaskId(queryable, sourceRowsRaw.map(row => row.id || row.task_id || row.taskId))
-        : new Map();
-    const sourceRows = includeSubtasks
-        ? attachCompletionHistorySubtasks(sourceRowsRaw, subtasksByTaskId)
-        : sourceRowsRaw;
+    const sourceRows = fetchedRows.slice(0, limit);
     const countResult = await queryable.query(
         `SELECT COUNT(*)::int AS completed_parent_total
          FROM tasks t
@@ -253,14 +198,11 @@ async function normalizeTaskCabinetRows(queryable, options = {}) {
     return rows.map(row => {
         const taskId = Number(row.id || row.task_id || row.taskId);
         const dependencyState = dependencyStatesByTaskId.get(taskId);
-        const completedSubtasksToday = Number(row.completed_subtask_count_today || row.completedSubtasksToday || 0);
         const completedParentToday = String(row.status || row.workflowState || row.workflow_state || '').toLowerCase() === 'done'
             && row.completed_at
             && today
             && taskDateOnly(row.completed_at) === today;
-        const completedTodayKind = completedParentToday
-            ? (completedSubtasksToday > 0 ? 'task_and_subtasks' : 'task')
-            : (completedSubtasksToday > 0 ? 'subtasks' : 'none');
+        const completedTodayKind = completedParentToday ? 'task' : 'none';
         const task = normalizeTaskPayload({
             ...row,
             dependency_count: dependencyState?.dependencyCount || 0,
@@ -272,10 +214,8 @@ async function normalizeTaskCabinetRows(queryable, options = {}) {
             ...task,
             actualSeconds: timeTotalsByTaskId.get(taskId) || 0,
             actualSecondsToday: timeTotalsTodayByTaskId.get(taskId) || 0,
-            completedSubtasksToday,
             completedParentToday: Boolean(completedParentToday),
             completedTodayKind,
-            latestSubtaskCompletedAt: row.latest_subtask_completed_at || row.latestSubtaskCompletedAt || null,
             myDay: classificationsByTaskId.get(taskId) || { direction: null, impacts: [] }
         };
     });

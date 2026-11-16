@@ -5,21 +5,6 @@
 (function () {
     'use strict';
 
-    const CHECKLIST_TEMPLATE_BY_SUBCATEGORY = {
-        hall_prep: 'hall_prep_base',
-        kitchen: 'kitchen_base',
-        cakes: 'cake_base',
-        cake_decor: 'cake_decor_base',
-        purchase: 'purchase_base'
-    };
-
-    const DECOMPOSITION_TEMPLATES = [
-        { key: 'personal_home', label: 'Побут / особисте' },
-        { key: 'event_preparation', label: 'Підготовка події' },
-        { key: 'content_creation', label: 'Контент' },
-        { key: 'crm_sales_followup', label: 'CRM / продаж' }
-    ];
-
     function dateKeyForKyiv(value = new Date()) {
         const d = value instanceof Date ? value : new Date(value);
         if (Number.isNaN(d.getTime())) return '';
@@ -79,53 +64,6 @@
         return 'team';
     }
 
-    function normalizeChecklistTemplateKey(category, subcategory) {
-        if (category !== 'checklist') return null;
-        return CHECKLIST_TEMPLATE_BY_SUBCATEGORY[subcategory] || null;
-    }
-
-    function normalizeSubtasks(value) {
-        if (!Array.isArray(value)) return [];
-        return value
-            .map((item, index) => {
-                const raw = item && typeof item === 'object' ? item : { title: item };
-                const title = String(raw.title || raw.name || '').trim();
-                if (!title) return null;
-                return {
-                    id: raw.id || raw.subtaskId || raw.subtask_id || undefined,
-                    title,
-                    is_done: raw.is_done === true || raw.isDone === true || raw.done === true,
-                    sort_order: index,
-                    source_type: raw.source_type || raw.sourceType || 'manual'
-                };
-            })
-            .filter(Boolean);
-    }
-
-    function subtaskProgress(doneCount, totalCount) {
-        const total = Math.max(0, parseInt(totalCount, 10) || 0);
-        if (!total) return null;
-        const done = Math.max(0, parseInt(doneCount, 10) || 0);
-        return Math.max(0, Math.min(100, Math.round((done / total) * 100)));
-    }
-
-    function decompositionTemplateOptions(selected = '') {
-        return DECOMPOSITION_TEMPLATES
-            .map(template => `<option value="${template.key}" ${selected === template.key ? 'selected' : ''}>${template.label}</option>`)
-            .join('');
-    }
-
-    function normalizeDecompositionItems(payload = {}) {
-        const rows = Array.isArray(payload.subtasks)
-            ? payload.subtasks
-            : (Array.isArray(payload.draftItems) ? payload.draftItems : []);
-        return normalizeSubtasks(rows).map((item, index) => ({
-            ...item,
-            sort_order: index,
-            source_type: item.source_type || item.sourceType || (payload.source === 'template' || payload.source === 'template_fallback' ? 'template' : 'ai')
-        }));
-    }
-
     function scopedTaskApiUrl(url) {
         const text = String(url || '');
         if (!/\/api\/tasks\b/.test(text)) return url;
@@ -181,69 +119,6 @@
             };
         }
         return payload;
-    }
-
-    function aiPreviewToDecompositionDraft(payload = {}, fallbackMode = 'ai') {
-        const proposal = payload.proposal || {};
-        const subtasks = normalizeDecompositionItems({
-            subtasks: Array.isArray(proposal.subtasks) ? proposal.subtasks : []
-        });
-        if (!payload?.success || !['single_task', 'checklist'].includes(String(proposal.decision || ''))) {
-            return {
-                success: false,
-                error: payload?.error || proposal.reason || 'AI preview is not directly applicable as a subtask draft.',
-                code: payload?.code || `TASK_AI_DRAFT_${String(proposal.decision || 'NO_CHANGE').toUpperCase()}`,
-                proposal,
-                diff: payload.diff || null,
-                proposalToken: payload.proposalToken || null
-            };
-        }
-        if (!subtasks.length) {
-            return {
-                success: false,
-                error: proposal.reason || 'AI не запропонував чекліст для цієї задачі.',
-                code: 'TASK_AI_DRAFT_NO_SUBTASKS',
-                proposal,
-                diff: payload.diff || null,
-                proposalToken: payload.proposalToken || null
-            };
-        }
-        return {
-            success: true,
-            source: 'ai_preview',
-            mode: fallbackMode,
-            subtasks,
-            proposal,
-            diff: payload.diff || null,
-            proposalToken: payload.proposalToken || null,
-            deprecatedEndpoint: null
-        };
-    }
-
-    async function requestDecompositionDraft(context = {}) {
-        try {
-            const mode = String(context.mode || context.decompositionMode || context.decomposition_mode || 'ai').trim();
-            if (mode === 'ai' || mode === 'template_ai') {
-                const payload = await requestAiDraftPreview({
-                    currentDraft: context,
-                    structurePreference: 'checklist',
-                    sourceSurface: context.sourceSurface || 'task_decomposition_checklist_ui'
-                });
-                return aiPreviewToDecompositionDraft(payload, mode);
-            }
-            const payload = await taskApiRequest('/tasks/decomposition-draft', {
-                method: 'POST',
-                body: JSON.stringify(context)
-            });
-            if (!payload?.success) return payload || { success: false, error: 'Decomposition draft failed' };
-            return {
-                ...payload,
-                subtasks: normalizeDecompositionItems(payload)
-            };
-        } catch (error) {
-            console.error('[TaskCreate] requestDecompositionDraft failed', error);
-            return { success: false, error: error?.message || 'AI draft failed' };
-        }
     }
 
     async function requestAiDraftPreview(context = {}) {
@@ -302,107 +177,14 @@
         }
     }
 
-    async function requestSavedDecompositionTemplates(filters = {}) {
-        try {
-            const query = new URLSearchParams();
-            if (filters.category) query.set('category', filters.category);
-            if (filters.limit) query.set('limit', filters.limit);
-            const suffix = query.toString() ? `?${query.toString()}` : '';
-            const payload = await taskApiRequest(`/tasks/decomposition-saved-templates${suffix}`, { method: 'GET' });
-            return payload?.success ? (payload.templates || []) : [];
-        } catch (error) {
-            console.error('[TaskCreate] requestSavedDecompositionTemplates failed', error);
-            return [];
-        }
-    }
-
-    async function saveDecompositionTemplate(data = {}) {
-        try {
-            return await taskApiRequest('/tasks/decomposition-saved-templates', {
-                method: 'POST',
-                body: JSON.stringify(data)
-            });
-        } catch (error) {
-            console.error('[TaskCreate] saveDecompositionTemplate failed', error);
-            return { success: false, error: error?.message || 'Template save failed' };
-        }
-    }
-
-    async function updateDecompositionTemplate(templateId, data = {}) {
-        try {
-            return await taskApiRequest(`/tasks/decomposition-saved-templates/${encodeURIComponent(templateId)}`, {
-                method: 'PUT',
-                body: JSON.stringify(data)
-            });
-        } catch (error) {
-            console.error('[TaskCreate] updateDecompositionTemplate failed', error);
-            return { success: false, error: error?.message || 'Template update failed' };
-        }
-    }
-
-    async function deleteDecompositionTemplate(templateId) {
-        try {
-            return await taskApiRequest(`/tasks/decomposition-saved-templates/${encodeURIComponent(templateId)}`, {
-                method: 'DELETE'
-            });
-        } catch (error) {
-            console.error('[TaskCreate] deleteDecompositionTemplate failed', error);
-            return { success: false, error: error?.message || 'Template delete failed' };
-        }
-    }
-
-    async function applySavedDecompositionTemplate(templateId) {
-        try {
-            const payload = await taskApiRequest(`/tasks/decomposition-saved-templates/${encodeURIComponent(templateId)}/apply`, {
-                method: 'POST',
-                body: JSON.stringify({})
-            });
-            if (!payload?.success) return payload || { success: false, error: 'Template apply failed' };
-            return {
-                ...payload,
-                subtasks: normalizeDecompositionItems({ subtasks: payload.subtasks || [], source: 'template' })
-            };
-        } catch (error) {
-            console.error('[TaskCreate] applySavedDecompositionTemplate failed', error);
-            return { success: false, error: error?.message || 'Template apply failed' };
-        }
-    }
-
-    async function requestDecompositionSuggestions(context = {}) {
-        try {
-            const payload = await taskApiRequest('/tasks/decomposition-suggestions', {
-                method: 'POST',
-                body: JSON.stringify(context)
-            });
-            if (!payload?.success) return { success: false, suggestions: [], error: payload?.error || 'Suggestions failed' };
-            return {
-                ...payload,
-                suggestions: (payload.suggestions || []).map(suggestion => ({
-                    ...suggestion,
-                    subtasks: normalizeDecompositionItems({
-                        subtasks: suggestion.subtasks || suggestion.template?.subtasks || [],
-                        source: suggestion.type === 'saved_template' ? 'template' : 'system'
-                    })
-                }))
-            };
-        } catch (error) {
-            console.error('[TaskCreate] requestDecompositionSuggestions failed', error);
-            return { success: false, suggestions: [], error: error?.message || 'Suggestions failed' };
-        }
-    }
-
     function buildPayload(draft = {}, options = {}) {
         const category = draft.category || options.defaultCategory || 'admin';
         const subcategory = draft.subcategory || null;
         const dueDate = dateForDuePresetValue(draft.duePreset || 'today', draft.scheduleDate || draft.dueDate || '');
         const durationMinutes = Math.max(5, parseInt(draft.durationMinutes, 10) || 30);
-        const mode = draft.mode || draft.taskMode || 'work';
+        const mode = draft.taskMode || draft.mode || 'work';
         const kind = draft.kind || draft.taskKind || 'action';
         const visibility = defaultVisibilityForTaskMode(mode, draft.visibility || 'team');
-        const checklistTemplate = typeof options.getChecklistTemplateKey === 'function'
-            ? options.getChecklistTemplateKey(category, subcategory)
-            : normalizeChecklistTemplateKey(category, subcategory);
-
         const data = {
             title: String(draft.title || '').trim(),
             description: String(draft.description || '').trim() || null,
@@ -410,11 +192,10 @@
             category,
             task_type: draft.taskType || draft.task_type || 'human',
             task_mode: mode,
-            task_kind: kind,
+            task_kind: kind === 'checklist' ? 'action' : kind,
             visibility,
             workflow_state: draft.workflowState || draft.workflow_state || (draft.captureIntent?.waiting || kind === 'waiting' ? 'waiting' : 'inbox'),
             subcategory,
-            checklist_template_key: checklistTemplate,
             source_type: draft.sourceType || draft.source_type || options.sourceType || 'manual',
             source_module: draft.sourceModule || draft.source_module || options.sourceModule || 'tasks'
         };
@@ -431,10 +212,6 @@
             controlMeta.canReschedule = allowReschedule;
             controlMeta.allowReschedule = allowReschedule;
             data.allowReschedule = allowReschedule;
-        }
-        if (draft.reportRequired || draft.requiresReport || draft.report_required) {
-            data.reportRequired = true;
-            controlMeta.reportRequired = true;
         }
         if (Object.keys(controlMeta).length) {
             data.controlMeta = controlMeta;
@@ -458,12 +235,6 @@
                 durationMinutes
             };
             data.effort_minutes = durationMinutes;
-        }
-
-        const subtasks = normalizeSubtasks(draft.subtasks || draft.taskSubtasks || draft.task_subtasks);
-        if (subtasks.length) {
-            data.subtasks = subtasks;
-            if (!data.checklist_template_key && data.task_kind === 'action') data.task_kind = 'checklist';
         }
 
         return data;
@@ -584,13 +355,6 @@
         return TASK_NOTIFICATION_MODE_LABELS[mode] || mode || 'Робоча';
     }
 
-    function taskNotificationSubtaskLabel(task = {}, draft = {}) {
-        const taskCount = Number(task.subtask_count || task.subtaskCount || 0);
-        const draftCount = normalizeSubtasks(draft.subtasks || draft.taskSubtasks || draft.task_subtasks).length;
-        const count = taskCount || draftCount;
-        return count > 0 ? `${count}` : '';
-    }
-
     function buildCreateNotification(tasks, drafts, options = {}) {
         const created = Array.isArray(tasks) ? tasks.filter(Boolean) : [tasks].filter(Boolean);
         const draftList = Array.isArray(drafts) ? drafts : [drafts || {}];
@@ -617,9 +381,7 @@
             };
         } else {
             details.push(`${taskNotificationDateLabel(task, draft)} · ${taskNotificationOwnerLabel(task, draft)} · ${taskNotificationPriorityLabel(task, draft)}`);
-            const subtaskLabel = taskNotificationSubtaskLabel(task, draft);
             const secondary = [];
-            if (subtaskLabel) secondary.push(`Чекліст: ${subtaskLabel}`);
             if (warningCount > 0) secondary.push(`Потрібно перевірити: ${warningCount}`);
             if (secondary.length) details.push(secondary.join(' · '));
         }
@@ -640,129 +402,12 @@
         todayStr,
         dateForDuePresetValue,
         defaultVisibilityForTaskMode,
-        normalizeChecklistTemplateKey,
-        decompositionTemplates: DECOMPOSITION_TEMPLATES,
-        decompositionTemplateOptions,
-        normalizeSubtasks,
-        normalizeDecompositionItems,
-        subtaskProgress,
-        requestDecompositionDraft,
         requestAiDraftStatus,
         requestAiDraftPreview,
         commitAiDraft,
         commitAiDraftBundle,
-        requestSavedDecompositionTemplates,
-        saveDecompositionTemplate,
-        updateDecompositionTemplate,
-        deleteDecompositionTemplate,
-        applySavedDecompositionTemplate,
-        requestDecompositionSuggestions,
         buildPayload,
         createTask,
         buildCreateNotification
-    };
-
-    function parseMeta(task = {}) {
-        const value = task.controlMeta || task.control_meta || {};
-        if (!value) return {};
-        if (typeof value === 'object') return value;
-        try {
-            const parsed = JSON.parse(value);
-            return parsed && typeof parsed === 'object' ? parsed : {};
-        } catch {
-            return {};
-        }
-    }
-
-    function taskId(task = {}) {
-        const id = Number(task.id || task.taskId || task.task_id || 0);
-        return Number.isInteger(id) && id > 0 ? id : null;
-    }
-
-    function taskRequiresReport(task = {}) {
-        const meta = parseMeta(task);
-        return meta.reportRequired === true
-            || meta.requiresReport === true
-            || meta.report_required === true
-            || task.reportRequired === true
-            || task.requiresReport === true
-            || task.report_required === true;
-    }
-
-    function taskReportId(task = {}) {
-        const meta = parseMeta(task);
-        const id = Number(meta.reportId || meta.report_id || meta.taskReportId || meta.completionReportId || task.reportId || task.report_id || 0);
-        return Number.isInteger(id) && id > 0 ? id : null;
-    }
-
-    function responseNeedsReport(payload = {}) {
-        return payload?.code === 'TASK_REPORT_REQUIRED'
-            || payload?.requiresReport === true
-            || payload?.meta?.reportRequired === true;
-    }
-
-    async function openReportModal(task = {}, options = {}) {
-        const id = taskId(task || options.task || {}) || taskId({ id: options.taskId || options.task_id });
-        if (!id) throw new Error('Не вдалося визначити задачу для звіту');
-        const title = task.title || options.title || `Задача #${id}`;
-        const canViewRevenue = typeof canAccess === 'function' && canAccess('view_revenue');
-        const reportFields = [
-            {
-                key: 'reportText',
-                label: 'Що зроблено',
-                type: 'textarea',
-                required: true,
-                placeholder: 'Коротко опишіть результат, нюанси або що треба знати після виконання...'
-            },
-            ...(canViewRevenue ? [{
-                key: 'amount',
-                label: 'Сума, якщо є',
-                type: 'number',
-                defaultValue: '',
-                placeholder: '0'
-            }] : [])
-        ];
-        let values = null;
-        if (typeof formModal === 'function') {
-            values = await formModal('Звіт перед виконанням', reportFields, {
-                okText: 'Зберегти звіт і виконати',
-                cancelText: 'Скасувати',
-                type: 'info',
-                icon: '📝',
-                className: 'task-report-required-modal'
-            });
-        } else {
-            const reportText = null;
-            values = reportText ? { reportText, amount: '' } : null;
-        }
-        if (!values) return null;
-        const reportPayload = {
-            reportText: values.reportText,
-            category: 'Задача',
-            type: 'expense',
-            sourceSurface: options.sourceSurface || 'task_detail',
-            taskTitle: title
-        };
-        if (canViewRevenue) reportPayload.amount = values.amount;
-        const base = typeof API_BASE === 'string' ? API_BASE : '/api';
-        const response = await fetch(scopedTaskApiUrl(`${base}/tasks/${id}/completion-report`), {
-            method: 'POST',
-            headers: typeof getAuthHeaders === 'function' ? getAuthHeaders() : { 'Content-Type': 'application/json' },
-            body: JSON.stringify(scopedTaskPayload(reportPayload))
-        });
-        if (typeof handleAuthError === 'function' && handleAuthError(response)) return null;
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok || !payload?.success) {
-            throw new Error(payload?.error || 'Не вдалося зберегти звіт');
-        }
-        return payload.reportId || payload.report?.id || null;
-    }
-
-    window.TaskReportGate = {
-        parseMeta,
-        responseNeedsReport,
-        taskRequiresReport,
-        taskReportId,
-        openReportModal
     };
 })();

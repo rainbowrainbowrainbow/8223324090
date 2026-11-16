@@ -134,18 +134,18 @@ test('task AI draft preview uses one direct Luna Responses call with strict sche
     assert.equal(result.provider, 'openai');
     assert.equal(result.model, 'gpt-5.6-luna');
     assert.equal(result.contractVersion, 'my_day_ai_composer_proposal_v2');
-    assert.equal(result.proposal.decision, 'checklist');
+    assert.equal(result.proposal.decision, 'single_task');
     assert.equal(result.proposal.action, 'apply');
     assert.equal(result.proposal.priority, null);
     assert.equal(result.proposal.scheduleDate, '2026-08-10');
     assert.deepEqual(result.proposal.impactIds, [101]);
-    assert.equal(result.proposal.subtasks.length, 3);
+    assert.deepEqual(result.proposal.subtasks, []);
     assert.match(result.proposalToken, /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
     assert.equal(result.proposalHash, preview.proposalHash(result.proposal));
     assert.equal(result.diff.fields.title.changed, true);
     assert.equal(result.diff.fields.impactIds.changed, true);
     assert.equal(result.diff.fields.scheduleDate.changed, false);
-    assert.equal(result.diff.changedFields.includes('subtasks'), true);
+    assert.equal(result.diff.changedFields.includes('subtasks'), false);
     assert.equal(result.draftFingerprint, preview.draftFingerprint({
         title: 'crm form',
         description: 'broken submit',
@@ -175,7 +175,6 @@ test('task AI draft preview uses one direct Luna Responses call with strict sche
     ]);
     assert.deepEqual(request.schema.properties.decision.enum, [
         'single_task',
-        'checklist',
         'task_bundle',
         'needs_clarification',
         'no_change'
@@ -222,7 +221,7 @@ test('task AI draft preview uses one direct Luna Responses call with strict sche
     });
     assert.equal(token.contractVersion, preview.TASK_AI_DRAFT_CONTRACT_VERSION);
     assert.equal(token.audience, preview.TASK_AI_DRAFT_SINGLE_COMMIT_AUDIENCE);
-    assert.equal(token.decision, 'checklist');
+    assert.equal(token.decision, 'single_task');
     assert.equal(token.scheduleDate, '2026-08-10');
 });
 
@@ -381,7 +380,7 @@ test('task AI preview telemetry records only metadata and strips task text/provi
     assert.equal(events[0].data.status, 'success');
     assert.equal(events[0].data.model, 'gpt-5.6-luna');
     assert.equal(events[0].data.promptVersion, preview.TASK_AI_DRAFT_PROMPT_VERSION);
-    assert.deepEqual(events[0].data.changedFields.sort(), ['description', 'impactIds', 'mode', 'subtasks', 'title'].sort());
+    assert.deepEqual(events[0].data.changedFields.sort(), ['description', 'impactIds', 'title'].sort());
     assert.deepEqual(events[0].data.usage, { inputTokens: 41, outputTokens: 52, totalTokens: 93 });
     const serialized = JSON.stringify(events[0].data);
     assert.doesNotMatch(serialized, /Sensitive CRM customer title|Sensitive customer description|output_text|Bearer|OPENAI_API_KEY/i);
@@ -468,7 +467,7 @@ test('task AI preview telemetry records only metadata and strips task text/provi
     assert.equal(legacyEvent.canonicalTarget, '/api/tasks/ai-draft/preview');
     assert.equal(legacyEvent.model, 'gpt-5.6-luna');
     assert.equal(legacyEvent.contractVersion, preview.TASK_AI_DRAFT_CONTRACT_VERSION);
-    assert.equal(legacyEvent.promptVersion, '2026-08-13.6');
+    assert.equal(legacyEvent.promptVersion, preview.TASK_AI_DRAFT_PROMPT_VERSION);
     assert.equal(legacyEvent.schemaName, preview.TASK_AI_DRAFT_SCHEMA_NAME);
     assert.equal(legacyEvent.reasoningEffort, 'low');
     assert.equal(legacyEvent.releaseVersion, packageMetadata.version);
@@ -1301,11 +1300,8 @@ test('shared My Day task OpenAI client allows loopback OpenAI mock in test runti
     assert.equal(requests[0].body.store, false);
 });
 
-test('tasks route exposes one canonical AI preview and isolates deterministic decomposition from the legacy wrapper', () => {
+test('tasks route exposes one canonical AI preview and retires checklist generation endpoints', () => {
     const route = fs.readFileSync(path.join(root, 'routes', 'tasks.js'), 'utf8');
-    const helperBlock = route.slice(route.indexOf('function legacyDecompositionTarget'), route.indexOf('async function buildTaskAiDraftPreview'));
-    const deterministicBlock = route.slice(route.indexOf("router.post('/decomposition-draft'"), route.indexOf("router.post('/decompose-draft'"));
-    const decomposeBlock = route.slice(route.indexOf("router.post('/decompose-draft'"), route.indexOf("router.get('/decomposition-saved-templates'"));
 
     assert.match(route, /router\.post\('\/ai-draft\/preview'/);
     assert.match(route, /generateTaskAiDraftPreview/);
@@ -1314,39 +1310,14 @@ test('tasks route exposes one canonical AI preview and isolates deterministic de
     assert.match(route, /ownerCatalog: ownerCatalog\.map/);
     assert.match(route, /currentUserId: userId/);
     assert.match(route, /hmacSafetyIdentifier\(`task_ai_draft:\$\{userId\}`/);
-    assert.match(deterministicBlock, /TASK_DECOMPOSITION_AI_MODE_REQUIRES_CANONICAL_PREVIEW/);
-    assert.match(deterministicBlock, /canonicalEndpoint: '\/api\/tasks\/ai-draft\/preview'/);
-    assert.match(deterministicBlock, /generateTaskDecompositionDraft\(taskDecompositionContextFromBody\(body, mode\)\)/);
-    assert.match(decomposeBlock, /Compatibility wrapper only/);
-    assert.match(decomposeBlock, /zero legacy AI wrapper calls/);
-    assert.match(decomposeBlock, /30 days/);
-    assert.match(decomposeBlock, /legacyDecompositionResponseFromPreview/);
-    assert.match(decomposeBlock, /deprecatedEndpoint: '\/api\/tasks\/ai-draft\/preview'/);
-    assert.match(decomposeBlock, /recordLegacyDecompositionTelemetry/);
-    assert.match(helperBlock, /type: 'deprecation'/);
-    assert.match(helperBlock, /route: '\/api\/tasks\/decompose-draft'/);
-    assert.match(helperBlock, /clientVersion: legacyAiDraftClientVersion\(req, body\)/);
-    assert.match(helperBlock, /requestId: taskRequestId\(req, res\)/);
-    assert.match(helperBlock, /canonicalTarget: legacyDecompositionTarget\(mode\)/);
-    assert.match(helperBlock, /task_decomposition_template_v1/);
-    assert.match(decomposeBlock, /legacy_decompose_wrapper_used/);
-    assert.match(decomposeBlock, /legacy_decompose_wrapper_non_apply/);
-    assert.match(decomposeBlock, /TASK_AI_DRAFT_\$\{String\(preview\.proposal\?\.action/);
-    assert.doesNotMatch(decomposeBlock, /callUnifiedChatCompletion|OPENROUTER_API_KEY|scope: 'chat_ai'/);
+    assert.match(route, /router\.post\('\/decomposition-draft', requireRole\('admin', 'user'\), retiredTaskChecklist\)/);
+    assert.match(route, /router\.post\('\/decompose-draft', requireRole\('admin', 'user'\), retiredTaskChecklist\)/);
 });
 
-test('task-create uses canonical AI preview and a separate deterministic decomposition endpoint', () => {
+test('task-create uses canonical AI preview without requesting checklist generation', () => {
     const taskCreate = fs.readFileSync(path.join(root, 'js', 'task-create.js'), 'utf8');
-    const requestStart = taskCreate.indexOf('async function requestDecompositionDraft');
-    const requestBlock = taskCreate.slice(requestStart, taskCreate.indexOf('async function requestAiDraftPreview', requestStart));
-
-    assert.match(taskCreate, /function aiPreviewToDecompositionDraft/);
-    assert.match(requestBlock, /requestAiDraftPreview\(\{/);
-    assert.match(requestBlock, /structurePreference: 'checklist'/);
-    assert.match(requestBlock, /sourceSurface: context\.sourceSurface \|\| 'task_decomposition_checklist_ui'/);
-    assert.match(requestBlock, /taskApiRequest\('\/tasks\/decomposition-draft'/);
-    assert.doesNotMatch(requestBlock, /taskApiRequest\('\/tasks\/decompose-draft'/);
-    assert.ok(requestBlock.indexOf('requestAiDraftPreview({') < requestBlock.indexOf("taskApiRequest('/tasks/decomposition-draft'"));
+    assert.match(taskCreate, /\/tasks\/ai-draft\/preview/);
+    assert.doesNotMatch(taskCreate, /\/tasks\/(?:decompose-draft|decomposition-draft)/);
 });
 
 test('runtime frontend has no caller for the legacy decompose-draft endpoint', () => {

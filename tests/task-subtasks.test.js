@@ -162,36 +162,20 @@ test('rejects blank subtask titles during normalization', () => {
     assert.equal(normalizeSubtaskInput('Named part')?.title, 'Named part');
 });
 
-test('list projections carry concrete subtask rows for clickable decomposed cards', () => {
-    const route = fs.readFileSync(path.join(__dirname, '..', 'routes', 'tasks.js'), 'utf8');
-    const projectionCount = (route.match(/COALESCE\(subtask_rows\.subtasks, '\[\]'::json\) AS subtasks/g) || []).length;
-    assert.ok(projectionCount >= 2, 'tasks list and my-cabinet projection should include subtask arrays');
-    assert.match(route, /json_agg\(json_build_object\(\s*'id', id,\s*'task_id', task_id,\s*'title', title,/);
+test('current task list, detail and completed views do not load historical checklist rows', () => {
+    const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+    assert.doesNotMatch(read('routes/tasks.js'), /subtask_rows|task_list_subtask/);
+    assert.doesNotMatch(read('services/taskCabinetProjection.js'), /FROM task_subtasks/);
+    assert.doesNotMatch(read('services/taskCompletionHistory.js'), /FROM task_subtasks/);
 });
 
-test('profile subtasks expose persisted reorder contract', () => {
-    const route = fs.readFileSync(path.join(__dirname, '..', 'routes', 'tasks.js'), 'utf8');
-    const profile = fs.readFileSync(path.join(__dirname, '..', 'js', 'profile-page.js'), 'utf8');
-    assert.match(route, /router\.post\('\/:id\/subtasks\/reorder'/);
-    assert.match(route, /reorderTaskSubtasks\(pool, req\.params\.id, orderedIds\)/);
-    assert.match(profile, /data-cabinet-subtask-drag-handle/);
-    assert.match(profile, /apiPost\(`\/tasks\/\$\{id\}\/subtasks\/reorder`/);
-    assert.match(profile, /notifyTaskWidgetsChanged\(\{ action: 'subtask_reorder'/);
-});
-
-test('blocked parent completion remains explainable on Tasks and My Day without weakening the API guard', () => {
-    const tasksPage = fs.readFileSync(path.join(__dirname, '..', 'js', 'tasks-page.js'), 'utf8');
-    const profile = fs.readFileSync(path.join(__dirname, '..', 'js', 'profile-page.js'), 'utf8');
-    const tasksCss = fs.readFileSync(path.join(__dirname, '..', 'css', 'pages-tasks.css'), 'utf8');
-    const cabinetCss = fs.readFileSync(path.join(__dirname, '..', 'css', 'pages-cabinet.css'), 'utf8');
-
-    assert.match(tasksPage, /data-task-completion-blocked="subtasks"/);
-    assert.doesNotMatch(tasksPage, /completionBlockedBySubtasks \? `disabled aria-disabled=/);
-    assert.match(tasksPage, /await revealBlockedTaskSubtasks\(taskId, currentTask\)/);
-    assert.match(tasksPage, /data-task-subtask-blocked-attention="true"/);
-    assert.match(profile, /data-cabinet-completion-blocked="subtasks"/);
-    assert.match(profile, /await revealBlockedCabinetSubtasks\(taskId, task\)/);
-    assert.match(profile, /data-cabinet-subtask-blocked-attention="true"/);
-    assert.match(tasksCss, /task-card-subtask-item\.is-blocked-attention/);
-    assert.match(cabinetCss, /cabinet-subtask-inline-item\.is-blocked-attention/);
+test('legacy checklist endpoints are retired and neither task surface gates completion on checklist state', () => {
+    const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+    const route = read('routes/tasks.js');
+    assert.ok(route.includes("router.post('/:id/subtasks/reorder', requireRole('admin', 'user'), retiredTaskChecklist)"));
+    assert.match(route, /TASK_CHECKLIST_RETIRED/);
+    for (const file of ['js/tasks-page.js', 'js/profile-page.js', 'services/taskExecution.js']) {
+        assert.doesNotMatch(read(file), /SUBTASKS_INCOMPLETE|data-(?:task|cabinet)-completion-blocked="subtasks"/);
+    }
+    assert.match(read('js/profile-page.js'), /Спочатку виконайте задачу, від якої залежить ця/);
 });

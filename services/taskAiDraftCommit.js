@@ -5,7 +5,6 @@ const crypto = require('node:crypto');
 const { pool } = require('../db');
 const { TASK_ACTION_TYPES, logTaskActionEvent } = require('./taskActionHistory');
 const { replaceTaskClassification } = require('./myDayTaxonomy');
-const { replaceTaskSubtasks } = require('./taskSubtasks');
 const { normalizeDraftItems } = require('./taskDecomposition');
 const { MY_DAY_TASK_AI_MODEL, compactString } = require('./myDayTaskOpenAIClient');
 const { getAssignableTaskOwner } = require('./taskExecution');
@@ -198,7 +197,7 @@ function normalizeFinalDraft(value = {}, options = {}) {
         description,
         mode,
         taskMode: compactString(draft.taskMode || draft.task_mode || 'work', 60) || 'work',
-        taskKind: mode === 'checklist' || subtasks.length ? 'checklist' : 'action',
+        taskKind: 'action',
         category: compactString(draft.category || 'admin', 80) || 'admin',
         subcategory: compactString(draft.subcategory, 80) || null,
         impactIds,
@@ -486,9 +485,6 @@ async function commitTaskAiDraft(input = {}, options = {}) {
             afterCommit
         });
 
-        const subtasks = finalDraft.subtasks.length
-            ? await replaceTaskSubtasks(client, task.id, finalDraft.subtasks, { sourceType: 'ai' })
-            : [];
         const classification = input.omitClassification ? null : await replaceTaskClassification(client, {
             userId,
             taskId: task.id,
@@ -505,7 +501,6 @@ async function commitTaskAiDraft(input = {}, options = {}) {
                 changedFields: acceptedFieldMask,
                 impactCount: finalDraft.impactIds.length,
                 filteredImpactCount: impactSelection.filteredImpactCount,
-                subtaskCount: subtasks.length,
                 scheduleWritten: Boolean(finalDraft.scheduleDate || finalDraft.deadline)
             },
             meta: {
@@ -559,13 +554,7 @@ async function commitTaskAiDraft(input = {}, options = {}) {
         return {
             ok: true,
             replayed: false,
-            task: {
-                ...task,
-                subtask_count: subtasks.length,
-                subtask_done_count: subtasks.filter(item => item.isDone || item.is_done).length,
-                subtasks
-            },
-            subtasks,
+            task,
             classification,
             historyEvent
         };

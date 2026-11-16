@@ -14,15 +14,7 @@ const {
     dateOnly: taskKyivDateOnly
 } = require('./taskScheduling');
 const { normalizeTaskPayload: normalizeTaskContractPayload } = require('./taskContract');
-const {
-    taskCompletionReportId,
-    taskControlMeta,
-    taskRequiresCompletionReport
-} = require('./taskExecution');
-const {
-    normalizeSubtaskRow,
-    subtaskProgress
-} = require('./taskSubtasks');
+
 const { deriveTaskIntelligence } = require('./taskIntelligence');
 const {
     buildPostponementExplanation,
@@ -63,6 +55,7 @@ const TASK_CABINET_PLANNING_BUCKETS = Object.freeze([
 ]);
 const TASK_CABINET_PAGE_BUCKETS = Object.freeze([
     ...TASK_CABINET_PLANNING_BUCKETS,
+    'control',
     'completedToday',
     'completedHistory'
 ]);
@@ -304,65 +297,6 @@ async function taskPreferencesForProjection(queryable, userId, options = {}) {
         : ensureTaskPreferences(queryable, userId);
 }
 
-async function loadSubtaskProjectionByTaskId(queryable, taskIds = [], today) {
-    const ids = [...new Set((Array.isArray(taskIds) ? taskIds : [])
-        .map(Number)
-        .filter(id => Number.isInteger(id) && id > 0))];
-    if (!ids.length) return new Map();
-    const result = await queryable.query(
-        `SELECT task_id,
-                COUNT(*)::int AS total,
-                COUNT(*) FILTER (WHERE is_done = true)::int AS done,
-                COUNT(*) FILTER (
-                    WHERE is_done = true
-                      AND completed_at IS NOT NULL
-                      AND DATE(completed_at AT TIME ZONE 'Europe/Kyiv') = $2::date
-                )::int AS done_today,
-                MAX(completed_at) FILTER (
-                    WHERE is_done = true
-                      AND completed_at IS NOT NULL
-                      AND DATE(completed_at AT TIME ZONE 'Europe/Kyiv') = $2::date
-                ) AS latest_completed_at,
-                json_agg(json_build_object(
-                    'id', id,
-                    'task_id', task_id,
-                    'title', title,
-                    'is_done', is_done,
-                    'sort_order', sort_order,
-                    'source_type', COALESCE(source_type, 'manual'),
-                    'created_at', created_at,
-                    'completed_at', completed_at,
-                    'updated_at', updated_at
-                ) ORDER BY sort_order ASC, id ASC) AS subtasks
-         FROM task_subtasks
-         WHERE task_id = ANY($1::int[])
-         GROUP BY task_id`,
-        [ids, today]
-    );
-    return new Map((result.rows || []).map(row => [Number(row.task_id), {
-        subtask_count: Number(row.total || 0),
-        subtask_done_count: Number(row.done || 0),
-        completed_subtask_count_today: Number(row.done_today || 0),
-        latest_subtask_completed_at: row.latest_completed_at || null,
-        subtasks: Array.isArray(row.subtasks) ? row.subtasks : []
-    }]));
-}
-
-function attachSubtaskProjection(rows = [], subtaskProjectionByTaskId = new Map()) {
-    return (Array.isArray(rows) ? rows : []).map(row => {
-        const taskId = projectionRowTaskId(row);
-        const subtasks = subtaskProjectionByTaskId.get(taskId) || {};
-        return {
-            ...row,
-            subtasks: subtasks.subtasks || [],
-            subtask_count: subtasks.subtask_count || 0,
-            subtask_done_count: subtasks.subtask_done_count || 0,
-            completed_subtask_count_today: subtasks.completed_subtask_count_today || 0,
-            latest_subtask_completed_at: subtasks.latest_subtask_completed_at || null
-        };
-    });
-}
-
 async function normalizeTaskCabinetRows(queryable, user, userId, rows = [], today, includeLegacyMetadata = true) {
     const sourceRows = Array.isArray(rows) ? rows : [];
     const ids = uniqueTaskIdsFromRows(sourceRows);
@@ -380,13 +314,10 @@ async function normalizeTaskCabinetRows(queryable, user, userId, rows = [], toda
     return sourceRows.map(row => {
         const taskId = projectionRowTaskId(row);
         const dependencyState = dependencyStatesByTaskId.get(taskId);
-        const completedSubtasksToday = Number(row.completed_subtask_count_today || row.completedSubtasksToday || 0);
         const completedParentToday = String(row.status || row.workflowState || row.workflow_state || '').toLowerCase() === 'done'
             && row.completed_at
             && taskDateOnly(row.completed_at) === today;
-        const completedTodayKind = completedParentToday
-            ? (completedSubtasksToday > 0 ? 'task_and_subtasks' : 'task')
-            : (completedSubtasksToday > 0 ? 'subtasks' : 'none');
+        const completedTodayKind = completedParentToday ? 'task' : 'none';
         const task = normalizeTaskPayload({
             ...row,
             dependency_count: dependencyState?.dependencyCount || 0,
@@ -398,10 +329,8 @@ async function normalizeTaskCabinetRows(queryable, user, userId, rows = [], toda
             ...task,
             actualSeconds: taskTimeTotalsByTaskId.get(taskId) || 0,
             actualSecondsToday: taskTimeTotalsTodayByTaskId.get(taskId) || 0,
-            completedSubtasksToday,
             completedParentToday,
             completedTodayKind,
-            latestSubtaskCompletedAt: row.latest_subtask_completed_at || row.latestSubtaskCompletedAt || null,
             myDay: myDayClassificationsByTaskId.get(taskId) || { direction: null, impacts: [] }
         };
     });
@@ -510,7 +439,10 @@ async function buildTaskCabinetBucketPage(options = {}) {
 
     let whereSql;
     let orderSql;
-    if (TASK_CABINET_PLANNING_BUCKETS.includes(bucket)) {
+    if (bucket === 'control') {
+        whereSql = `COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived') AND ${personalQuery.control}`;
+        orderSql = `${dateSql} ASC NULLS LAST, ${taskPriorityOrderSql('t')}, t.id DESC`;
+    } else if (TASK_CABINET_PLANNING_BUCKETS.includes(bucket)) {
         const planningBucketCondition = bucket === 'monthEnd'
             ? `${dateSql} = $${monthEndParam}::date`
             : bucket === 'focusDate'
@@ -518,10 +450,10 @@ async function buildTaskCabinetBucketPage(options = {}) {
                 : taskCabinetPlanningBucketCondition(bucket, dateSql, todayParam, planningEndParam);
         whereSql = `COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')
             AND ${TASK_CABINET_READY_FILTER_SQL}
-            AND ${planningBucketCondition}`;
+            AND ${planningBucketCondition}
+            ${options.excludeControlFromPlanning ? `AND NOT ${personalQuery.control}` : ''}`;
         orderSql = `${dateSql} ASC NULLS LAST,
              ${taskPriorityOrderSql('t')},
-             CASE WHEN EXISTS (SELECT 1 FROM task_subtasks task_subtask_order WHERE task_subtask_order.task_id = t.id) THEN 0 ELSE 1 END,
              CASE WHEN COALESCE(t.focus_rank, 0) > 0 THEN 0 ELSE 1 END,
              COALESCE(t.focus_rank, 99),
              ${canonicalTaskOrderSql('t')},
@@ -531,33 +463,8 @@ async function buildTaskCabinetBucketPage(options = {}) {
         whereSql = `COALESCE(t.status, 'todo') = 'done'`;
         orderSql = `COALESCE(t.completed_at, t.updated_at, t.created_at) DESC, t.id DESC`;
     } else {
-        whereSql = `COALESCE(t.status, 'todo') NOT IN ('cancelled','archived')
-            AND (
-                (
-                    COALESCE(t.status, 'todo') = 'done'
-                    AND t.completed_at IS NOT NULL
-                    AND DATE(t.completed_at AT TIME ZONE 'Europe/Kyiv') = $${todayParam}::date
-                )
-                OR EXISTS (
-                    SELECT 1
-                    FROM task_subtasks today_subtask_exists
-                    WHERE today_subtask_exists.task_id = t.id
-                      AND today_subtask_exists.is_done = true
-                      AND today_subtask_exists.completed_at IS NOT NULL
-                      AND DATE(today_subtask_exists.completed_at AT TIME ZONE 'Europe/Kyiv') = $${todayParam}::date
-                )
-            )`;
-        orderSql = `GREATEST(
-             COALESCE(t.completed_at, t.updated_at, t.created_at),
-             COALESCE((
-                SELECT MAX(today_subtask_latest.completed_at)
-                FROM task_subtasks today_subtask_latest
-                WHERE today_subtask_latest.task_id = t.id
-                  AND today_subtask_latest.is_done = true
-                  AND today_subtask_latest.completed_at IS NOT NULL
-                  AND DATE(today_subtask_latest.completed_at AT TIME ZONE 'Europe/Kyiv') = $${todayParam}::date
-             ), t.updated_at, t.created_at)
-         ) DESC, t.id DESC`;
+        whereSql = `t.status = 'done' AND (t.completed_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Kyiv')::date = $${todayParam}::date`;
+        orderSql = `t.completed_at DESC, t.id DESC`;
     }
     const commonPageParamGuard = `$${todayParam}::date IS NOT NULL
         AND $${planningEndParam}::date IS NOT NULL
@@ -587,10 +494,7 @@ async function buildTaskCabinetBucketPage(options = {}) {
         params
     );
     const rawRows = Array.isArray(result.rows) ? result.rows : [];
-    const sourceRowsRaw = rawRows.slice(0, limit);
-    const ids = uniqueTaskIdsFromRows(sourceRowsRaw);
-    const subtaskProjectionByTaskId = await loadSubtaskProjectionByTaskId(queryable, ids, today);
-    const sourceRows = attachSubtaskProjection(sourceRowsRaw, subtaskProjectionByTaskId);
+    const sourceRows = rawRows.slice(0, limit);
     const tasks = await normalizeTaskCabinetRows(queryable, user, userId, sourceRows, today, options.includeLegacyMetadata);
     const total = Number(countResult.rows?.[0]?.total || tasks.length);
     return {
@@ -667,7 +571,6 @@ async function buildTaskCabinetProjection(options = {}) {
            AND COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')
           ORDER BY
              ${taskPriorityOrderSql('t')},
-             CASE WHEN EXISTS (SELECT 1 FROM task_subtasks task_subtask_order WHERE task_subtask_order.task_id = t.id) THEN 0 ELSE 1 END,
              CASE WHEN COALESCE(t.focus_rank, 0) > 0 THEN 0 ELSE 1 END,
              COALESCE(t.focus_rank, 99),
              ${canonicalTaskOrderSql('t')},
@@ -680,7 +583,8 @@ async function buildTaskCabinetProjection(options = {}) {
     const activeSourceRowsRaw = Array.isArray(result.rows) ? result.rows : [];
 
     const openCountResult = await queryable.query(
-        `SELECT COUNT(*)::int AS open_count
+        `SELECT COUNT(*)::int AS open_count${options.excludeControlFromPlanning
+            ? `, COUNT(*) FILTER (WHERE ${personalQuery.control})::int AS control_count` : ''}
          FROM tasks t
          WHERE ${ownMatch}
            ${ownBusinessCondition}
@@ -707,6 +611,7 @@ async function buildTaskCabinetProjection(options = {}) {
     const planningLimitParam = planningParams.length + 1;
     planningParams.push(planningFetchLimit);
     const planningDateSql = taskWorkloadDateSql('t');
+    const planningAudienceSql = options.excludeControlFromPlanning ? `AND NOT ${personalQuery.control}` : '';
     const planningFocusDateSql = focusDate
         ? `OR ${planningDateSql} = $${planningFocusParam}::date`
         : '';
@@ -718,6 +623,7 @@ async function buildTaskCabinetProjection(options = {}) {
            ${ownBusinessCondition}
            AND COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')
            AND ${TASK_CABINET_READY_FILTER_SQL}
+           ${planningAudienceSql}
            AND (
                 ${planningDateSql} IS NULL
                 OR ${planningDateSql} < $${planningStartParam}::date
@@ -733,7 +639,6 @@ async function buildTaskCabinetProjection(options = {}) {
              END,
              ${planningDateSql} ASC NULLS LAST,
              ${taskPriorityOrderSql('t')},
-             CASE WHEN EXISTS (SELECT 1 FROM task_subtasks task_subtask_order WHERE task_subtask_order.task_id = t.id) THEN 0 ELSE 1 END,
              CASE WHEN COALESCE(t.focus_rank, 0) > 0 THEN 0 ELSE 1 END,
              COALESCE(t.focus_rank, 99),
              ${canonicalTaskOrderSql('t')},
@@ -750,7 +655,6 @@ async function buildTaskCabinetProjection(options = {}) {
         user,
         businessScope,
         limit: completedHistoryLimit,
-        includeSubtasks: false
     });
     const completedHistorySourceRowsRaw = Array.isArray(completedHistoryPage.sourceRows)
         ? completedHistoryPage.sourceRows
@@ -764,38 +668,15 @@ async function buildTaskCabinetProjection(options = {}) {
     const completedTodayLimitParam = completedTodayParams.length;
     const completedTodayDatePlaceholder = completedTodayParams.length - 1;
     const completedTodayResult = await queryable.query(
-        `SELECT t.*, u.name AS owner_name, u.username AS owner_username, ${personalQuery.roles} AS viewer_roles
+        `SELECT t.*, t.completed_at AT TIME ZONE 'UTC' AS completed_at,
+                u.name AS owner_name, u.username AS owner_username, ${personalQuery.roles} AS viewer_roles
          FROM tasks t
          LEFT JOIN users u ON u.id = t.owner_user_id
          WHERE ${ownMatch}
            ${ownBusinessCondition}
-           AND COALESCE(t.status, 'todo') NOT IN ('cancelled','archived')
-           AND (
-                (
-                    COALESCE(t.status, 'todo') = 'done'
-                    AND t.completed_at IS NOT NULL
-                    AND DATE(t.completed_at AT TIME ZONE 'Europe/Kyiv') = $${completedTodayDatePlaceholder}::date
-                )
-                OR EXISTS (
-                    SELECT 1
-                    FROM task_subtasks today_subtask_exists
-                    WHERE today_subtask_exists.task_id = t.id
-                      AND today_subtask_exists.is_done = true
-                      AND today_subtask_exists.completed_at IS NOT NULL
-                      AND DATE(today_subtask_exists.completed_at AT TIME ZONE 'Europe/Kyiv') = $${completedTodayDatePlaceholder}::date
-                )
-           )
-         ORDER BY GREATEST(
-             COALESCE(t.completed_at, t.updated_at, t.created_at),
-             COALESCE((
-                SELECT MAX(today_subtask_latest.completed_at)
-                FROM task_subtasks today_subtask_latest
-                WHERE today_subtask_latest.task_id = t.id
-                  AND today_subtask_latest.is_done = true
-                  AND today_subtask_latest.completed_at IS NOT NULL
-                  AND DATE(today_subtask_latest.completed_at AT TIME ZONE 'Europe/Kyiv') = $${completedTodayDatePlaceholder}::date
-             ), t.updated_at, t.created_at)
-         ) DESC, t.id DESC
+           AND t.status = 'done'
+           AND (t.completed_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Kyiv')::date = $${completedTodayDatePlaceholder}::date
+         ORDER BY t.completed_at DESC, t.id DESC
          LIMIT $${completedTodayLimitParam}`,
         completedTodayParams
     );
@@ -809,22 +690,8 @@ async function buildTaskCabinetProjection(options = {}) {
          FROM tasks t
          WHERE ${ownMatch}
            ${ownBusinessCondition}
-           AND COALESCE(t.status, 'todo') NOT IN ('cancelled','archived')
-           AND (
-                (
-                    COALESCE(t.status, 'todo') = 'done'
-                    AND t.completed_at IS NOT NULL
-                    AND DATE(t.completed_at AT TIME ZONE 'Europe/Kyiv') = $${completedTodayDatePlaceholder}::date
-                )
-                OR EXISTS (
-                    SELECT 1
-                    FROM task_subtasks today_subtask_exists
-                    WHERE today_subtask_exists.task_id = t.id
-                      AND today_subtask_exists.is_done = true
-                      AND today_subtask_exists.completed_at IS NOT NULL
-                      AND DATE(today_subtask_exists.completed_at AT TIME ZONE 'Europe/Kyiv') = $${completedTodayDatePlaceholder}::date
-                )
-           )`,
+           AND t.status = 'done'
+           AND (t.completed_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Kyiv')::date = $${completedTodayDatePlaceholder}::date`,
         completedTodayParams.slice(0, -1)
     );
     const completedTodayTotal = Number(completedTodayCountResult.rows?.[0]?.total || completedTodaySourceRowsRaw.length);
@@ -834,17 +701,10 @@ async function buildTaskCabinetProjection(options = {}) {
         ...completedHistorySourceRowsRaw,
         ...completedTodaySourceRowsRaw
     ];
-    const myDayTaskIds = uniqueTaskIdsFromRows(allSourceRowsRaw);
-    const subtaskProjectionByTaskId = await loadSubtaskProjectionByTaskId(queryable, myDayTaskIds, today);
-    const allSourceRows = attachSubtaskProjection(allSourceRowsRaw, subtaskProjectionByTaskId);
-    const normalizedAllRows = await normalizeTaskCabinetRows(queryable, user, userId, allSourceRows, today, options.includeLegacyMetadata);
+    const normalizedAllRows = await normalizeTaskCabinetRows(queryable, user, userId, allSourceRowsRaw, today, options.includeLegacyMetadata);
     const normalizedByTaskId = mapNormalizedRowsById(normalizedAllRows);
-    const activeSourceRows = attachSubtaskProjection(activeSourceRowsRaw, subtaskProjectionByTaskId);
-    const planningSourceRows = attachSubtaskProjection(planningSourceRowsRaw, subtaskProjectionByTaskId);
-    const completedHistorySourceRows = attachSubtaskProjection(completedHistorySourceRowsRaw, subtaskProjectionByTaskId);
-    const completedTodaySourceRows = attachSubtaskProjection(completedTodaySourceRowsRaw, subtaskProjectionByTaskId);
-    const rows = rowsFromMap(activeSourceRows, normalizedByTaskId);
-    const planningRows = rowsFromMap(planningSourceRows, normalizedByTaskId);
+    const rows = rowsFromMap(activeSourceRowsRaw, normalizedByTaskId);
+    const planningRows = rowsFromMap(planningSourceRowsRaw, normalizedByTaskId);
     const planning = buildTaskCabinetPlanningProjection(planningRows, calendar, now);
     const planningVisibleCounts = Object.fromEntries(
         Object.entries(planning).map(([key, value]) => [key, Array.isArray(value) ? value.length : 0])
@@ -863,6 +723,7 @@ async function buildTaskCabinetProjection(options = {}) {
                ${ownBusinessCondition}
                AND COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')
                AND ${TASK_CABINET_READY_FILTER_SQL}
+               ${planningAudienceSql}
          )
          SELECT bucket, COUNT(*)::int AS total
          FROM counted
@@ -911,8 +772,8 @@ async function buildTaskCabinetProjection(options = {}) {
         buckets: planningBucketMeta,
         order: 'overdue_today_later_no_date'
     };
-    const completedHistory = rowsFromMap(completedHistorySourceRows, normalizedByTaskId);
-    const completedTodayTasks = rowsFromMap(completedTodaySourceRows, normalizedByTaskId);
+    const completedHistory = rowsFromMap(completedHistorySourceRowsRaw, normalizedByTaskId);
+    const completedTodayTasks = rowsFromMap(completedTodaySourceRowsRaw, normalizedByTaskId);
     const completedTodayMeta = taskCabinetBucketPageMeta('completedToday', {
         total: completedTodayTotal,
         returned: completedTodayTasks.length,
@@ -955,26 +816,8 @@ async function buildTaskCabinetProjection(options = {}) {
     const quickDateSql = taskWorkloadDateSql('t');
     const quickResult = await queryable.query(
         `SELECT
-                COUNT(*) FILTER (WHERE COALESCE(t.status, 'todo') = 'done')::int AS parent_done_total,
-                (
-                    COUNT(*) FILTER (WHERE COALESCE(t.status, 'todo') = 'done')
-                    + COALESCE(SUM(COALESCE(st.done, 0)), 0)
-                )::int AS done_total,
-                (
-                    COUNT(*) FILTER (
-                        WHERE COALESCE(t.status, 'todo') = 'done'
-                          AND t.completed_at IS NOT NULL
-                          AND DATE(t.completed_at AT TIME ZONE 'Europe/Kyiv') = $${quickParams.length}::date
-                    )
-                    + COALESCE(SUM(COALESCE(st.done_today, 0)), 0)
-                )::int AS done_today,
-                COUNT(*) FILTER (
-                    WHERE COALESCE(t.status, 'todo') = 'done'
-                      AND t.completed_at IS NOT NULL
-                      AND DATE(t.completed_at AT TIME ZONE 'Europe/Kyiv') = $${quickParams.length}::date
-                )::int AS parent_done_today,
-                COALESCE(SUM(COALESCE(st.done_today, 0)), 0)::int AS subtask_done_today,
-                COALESCE(SUM(COALESCE(st.done, 0)), 0)::int AS subtask_done_total,
+                COUNT(*) FILTER (WHERE t.status = 'done')::int AS parent_done_total,
+                COUNT(*) FILTER (WHERE t.status = 'done' AND (t.completed_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Kyiv')::date = $${quickParams.length}::date)::int AS parent_done_today,
                 COUNT(*) FILTER (
                     WHERE COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')
                       AND (${quickDateSql} = $${quickParams.length}::date OR ${quickDateSql} IS NULL)
@@ -988,17 +831,6 @@ async function buildTaskCabinetProjection(options = {}) {
                       AND (${quickDateSql} <= $${quickParams.length}::date OR ${quickDateSql} IS NULL)
                 )::int AS active_my_day
          FROM tasks t
-         LEFT JOIN (
-            SELECT task_id,
-                   COUNT(*) FILTER (WHERE is_done = true)::int AS done,
-                   COUNT(*) FILTER (
-                       WHERE is_done = true
-                         AND completed_at IS NOT NULL
-                         AND DATE(completed_at AT TIME ZONE 'Europe/Kyiv') = $${quickParams.length}::date
-                   )::int AS done_today
-            FROM task_subtasks
-            GROUP BY task_id
-         ) st ON st.task_id = t.id
          WHERE ${quickOwnerMatch}
            ${quickBusinessCondition}`,
         quickParams
@@ -1008,11 +840,9 @@ async function buildTaskCabinetProjection(options = {}) {
     const overdueCarryover = Number(quickStats.overdue_carryover || 0);
     const activeMyDay = Number(quickStats.active_my_day || 0) || remainingToday + overdueCarryover || buckets.today.length + buckets.overdue.length;
     const completedParentTotal = Number(quickStats.parent_done_total || 0);
-    const completedSubtasksTotal = Number(quickStats.subtask_done_total || 0);
-    const completedUnitsTotal = Number(quickStats.done_total || (completedParentTotal + completedSubtasksTotal) || 0);
+    const completedUnitsTotal = completedParentTotal;
     const completedParentToday = Number(quickStats.parent_done_today || 0);
-    const completedSubtasksToday = Number(quickStats.subtask_done_today || 0);
-    const completedUnitsToday = Number(quickStats.done_today || (completedParentToday + completedSubtasksToday) || 0);
+    const completedUnitsToday = completedParentToday;
     const prefs = await taskPreferencesForProjection(queryable, userId, {
         ensurePreferences: options.ensurePreferences !== false
     });
@@ -1041,6 +871,7 @@ async function buildTaskCabinetProjection(options = {}) {
             activeMyDay,
             activeMyDayCount: activeMyDay,
             openTaskCount,
+            ...(options.excludeControlFromPlanning ? { controlCount: Number(openCountResult.rows[0]?.control_count || 0) } : {}),
             activeOpenCount: openTaskCount,
             taskQuick: {
                 completed: completedUnitsToday,
@@ -1048,10 +879,8 @@ async function buildTaskCabinetProjection(options = {}) {
                 completedTotal: completedUnitsTotal,
                 completedUnitsTotal,
                 completedParentTotal,
-                completedSubtasksTotal,
                 completedUnitsToday,
                 completedParentToday,
-                completedSubtasksToday,
                 completedHistoryShown: completedHistory.length,
                 completedHistoryOverflow: Math.max(0, completedParentTotal - completedHistory.length),
                 remaining: activeMyDay,
@@ -1063,9 +892,9 @@ async function buildTaskCabinetProjection(options = {}) {
                 sidebarOpenWorkload: openTaskCount,
                 sidebarScope: 'all_open_owned_tasks_in_business_scope',
                 scope: 'completed_units_today_and_active_my_day_or_undated',
-                completedMetricContract: 'completed_units = completed_parent_tasks + completed_subtasks',
+                completedMetricContract: 'completed_units = completed_tasks',
                 completedHistoryContract: 'completed_history_contains_parent_tasks_only',
-                completedTodayTasksContract: 'task_completed_today_or_task_with_subtasks_completed_today'
+                completedTodayTasksContract: 'task_completed_today'
             },
             waitingCount: buckets.waiting.length,
             deferredCount: buckets.deferred.length,
@@ -1111,5 +940,6 @@ module.exports = {
     normalizeTaskCabinetBucketLimit,
     normalizeTaskCabinetBucketOffset,
     normalizeTaskPayload,
-    readTaskPreferences
+    readTaskPreferences,
+    taskWorkloadDateSql
 };

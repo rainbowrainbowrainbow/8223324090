@@ -37,6 +37,7 @@ let profileMaterialsState = {
 let myCabinetData = null;
 let myCabinetLoadError = '';
 let myCabinetLoadState = 'idle';
+let profileControlTasks = null;
 let myCabinetLastLoadedAt = 0;
 let myTasksSegment = 'all';
 let cabinetProjectionRequestSequence = 0;
@@ -65,7 +66,6 @@ let completedDashboardHistoryState = {
     limit: 36,
     initialized: false
 };
-let activeCabinetInlineTaskId = null;
 let cabinetCreatePriority = 'normal';
 let cabinetTaskComposerExpanded = false;
 let cabinetPulseCounts = { alerts: 0, funnel: 0 };
@@ -73,25 +73,14 @@ let cabinetTaskSoundSettings = { enabled: true, volume: 0.4, theme: 'subtle' };
 let cabinetSnoozeOutsideBound = false;
 let cabinetTaskDragDropBound = false;
 let cabinetTaskDragState = null;
-let cabinetSubtaskDragDropBound = false;
-let cabinetSubtaskDragState = null;
 let cabinetUndoToastTimer = null;
 let cabinetProjectionRefreshTimer = null;
 let profileSecurityData = null;
-let cabinetSavedDecompositionTemplates = [];
-let cabinetDecompositionSuggestions = [];
-let cabinetSuggestionTimer = null;
-let lastCabinetSuggestionKey = '';
 let lastCabinetCreatedTaskId = null;
 let cabinetTaskCreatePending = false;
 let cabinetTaskCreateAttempt = null;
 let profileWidgetConfig = [];
 let profileWidgetSettingsOpen = false;
-const expandedCabinetSubtaskIds = new Set();
-const collapsedCabinetSubtaskIds = new Set();
-const cabinetSubtaskCache = new Map();
-const loadingCabinetSubtaskIds = new Set();
-const blockedCabinetSubtaskAttentionIds = new Set();
 const CABINET_TASK_PLAIN_TITLE_MAX_LENGTH = 180;
 const CABINET_TASK_CREATE_UNKNOWN_TTL_MS = 2 * 60 * 1000;
 const CABINET_TASK_CREATE_IDEMPOTENCY_STORAGE_KEY = 'eventGenix.myDay.directCreate.pending.v1';
@@ -200,6 +189,7 @@ const CABINET_MY_DAY_ALL_DEFAULT_COLLAPSED = ['later', 'no_date'];
 const collapsedCabinetAllGroupIds = new Set(CABINET_MY_DAY_ALL_DEFAULT_COLLAPSED);
 const expandedCabinetMyDayTaskIds = new Set();
 let myDayLinkedDate = null;
+let pendingMyDayPeriod = null;
 
 const CABINET_TASK_SOUND_THEMES = [
     { value: 'subtle', label: 'Мʼякий' },
@@ -713,9 +703,7 @@ function focusProfileWorkBaseSection() {
 function applyProfilePeriodFromUrl() {
     if (activeTab !== 'myday') return;
     const period = new URLSearchParams(window.location.search).get('period');
-    if (['today', 'overdue', 'future'].includes(period)) {
-        window.ProfileMyDay?.setView(cabinetMyDayViewPreferenceKey(), period);
-    }
+    pendingMyDayPeriod = ['today', 'overdue', 'future'].includes(period) ? period : null;
 }
 
 function syncProfileTabToUrl(tab = activeTab, options = {}) {
@@ -1289,6 +1277,7 @@ function setMyCabinetProjectionData(data, options = {}) {
         syncCabinetCompletionHistoryStateFromProjection(data);
         myCabinetLoadState = 'loaded';
         myCabinetLastLoadedAt = Date.now();
+        syncProfileControlCount();
         return myCabinetData;
     }
     myCabinetLoadError = cabinetProjectionLoadErrorText(options.message);
@@ -1305,9 +1294,9 @@ async function loadMyCabinetProjection(options = {}) {
         ? cabinetSelectedDueDate()
         : '';
     const focusDate = requestedFocusDate || myDayLinkedDate || selectedFocusDate;
-    const path = focusDate
-        ? `/tasks/my-cabinet?focusDate=${encodeURIComponent(focusDate)}`
-        : '/tasks/my-cabinet';
+    const params = new URLSearchParams({ planningView: 'my-day' });
+    if (focusDate) params.set('focusDate', focusDate);
+    const path = `/tasks/my-cabinet?${params}`;
     const reminderScope = cabinetHrReminderScope();
     const cacheKey = `${reminderScope}:${path}`;
     const now = Date.now();
@@ -1484,9 +1473,9 @@ async function initProfilePage() {
     }
     const requestedTab = params.get('tab');
     const normalizedRequestedTab = normalizeProfileTab(requestedTab);
-    const allowedOwnTabs = ['workbase', 'myday', 'settings', ...Object.keys(PROFILE_EMPLOYEE_TABS)];
+    const allowedOwnTabs = ['workbase', 'myday', 'control', 'settings', ...Object.keys(PROFILE_EMPLOYEE_TABS)];
     if (isOwnProfile) {
-        activeTab = allowedOwnTabs.includes(normalizedRequestedTab) ? normalizedRequestedTab : 'workbase';
+        activeTab = allowedOwnTabs.includes(normalizedRequestedTab) ? normalizedRequestedTab : 'myday';
     }
     const legacySection = { checklists: '#work-base-checklists', materials: '#work-base-materials' }[requestedTab];
     syncProfileTabToUrl(activeTab, { replace: true, hash: activeTab === 'workbase' && legacySection ? legacySection : undefined });
@@ -1494,7 +1483,7 @@ async function initProfilePage() {
     if (typeof window !== 'undefined' && window.addEventListener && !window.__profileTabPopstateBound) {
         window.__profileTabPopstateBound = true;
         window.addEventListener('popstate', async () => {
-            const nextTab = normalizeProfileTab(new URLSearchParams(window.location.search || '').get('tab')) || (isOwnProfile ? 'workbase' : 'professions');
+            const nextTab = normalizeProfileTab(new URLSearchParams(window.location.search || '').get('tab')) || (isOwnProfile ? 'myday' : 'professions');
             if (nextTab !== activeTab || ['myday', 'workbase'].includes(nextTab) || Object.hasOwn(PROFILE_EMPLOYEE_TABS, nextTab)) {
                 await switchTab(nextTab, { skipUrl: true });
             }
@@ -1503,6 +1492,9 @@ async function initProfilePage() {
         for (const event of ['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'permissions:lifecycle']) {
             window.addEventListener(event, () => {
                 document.querySelector('.park-task-dialog[open]')?.close();
+                profileControlTasks = null;
+                syncProfileControlCount();
+                if (isOwnProfile && activeTab === 'control') void loadProfileControlTasks();
                 for (const tab of Object.keys(PROFILE_EMPLOYEE_TABS)) delete profileEmployeeMonthState[tab];
                 if (isOwnProfile && Object.hasOwn(PROFILE_EMPLOYEE_TABS, activeTab)) {
                     void loadProfileEmployeeMonth(activeTab);
@@ -1516,6 +1508,7 @@ async function initProfilePage() {
         && window.location.hash === '#hr-personal-reminders';
     await loadProfileData(viewUserId);
     renderProfile();
+    if (isOwnProfile && activeTab === 'control') void loadProfileControlTasks();
     if (isOwnProfile && activeTab === 'workbase') {
         void loadProfileWorkMaterials();
         focusProfileWorkBaseSection();
@@ -1868,14 +1861,17 @@ function renderProfileWorkHubTabs(entries = profileProfessionEntries()) {
 
 function renderProfileSecondaryTabs() {
     if (!isOwnProfile) return '';
+    const controlCount = profileControlCount();
     const tabs = [
-        ['myday', 'Мій день'], ['results', PROFILE_EMPLOYEE_TABS.results],
+        ['myday', 'Мій день'], ['control', 'На контролі'], ['results', PROFILE_EMPLOYEE_TABS.results],
         ['salary', PROFILE_EMPLOYEE_TABS.salary], ['workbase', 'Робоча база'], ['settings', 'Налаштування']
     ];
     return `
         <nav class="profile-secondary-work-menu profile-park-nav" aria-label="Розділи профілю">
             <div class="profile-secondary-tabs">
-                ${tabs.map(([id, label]) => renderProfilePrimaryTab(id, label)).join('')}
+                ${tabs.map(([id, label]) => id === 'control'
+                    ? `<a class="profile-primary-tab${activeTab === id ? ' active' : ''}" data-profile-tab="control" data-profile-control-link href="/profile?tab=control"${activeTab === id ? ' aria-current="page"' : ''}>На контролі <span data-profile-control-count${controlCount == null ? ' hidden' : ''}>${escapeHtml(controlCount ?? '')}</span></a>`
+                    : renderProfilePrimaryTab(id, label)).join('')}
             </div>
         </nav>`;
 }
@@ -1955,10 +1951,9 @@ function renderProfile() {
     <div class="profile-page profile-work-mode">
         <div class="profile-page-head">
             <a href="/">\u2190 Назад до CRM</a>
-            <span>Профіль працівника</span>
         </div>
 
-        <div class="profile-header profile-work-header profile-friendly-shell ${isMyDayTab ? 'profile-work-header--myday' : ''}">
+        <div class="profile-header profile-work-header profile-friendly-shell${isOwnProfile ? ' profile-work-header--own' : ''}${isMyDayTab ? ' profile-work-header--myday' : ''}">
             ${isMyDayTab ? renderProfileMyDayCapsule(p, professionEntries) : `
                 <div class="profile-identity-block">
                     ${isOwnProfile
@@ -1967,7 +1962,6 @@ function renderProfile() {
                     <div class="profile-identity-copy">
                         <div class="profile-identity-title-row">
                             <div>
-                                <div class="profile-kicker">Особистий робочий профіль</div>
                                 <h1>${escapeHtml(name)}</h1>
                             </div>
                             ${titleHtml ? `<div class="profile-title-row">${titleHtml}</div>` : ''}
@@ -2012,7 +2006,7 @@ function renderProfile() {
 
 async function switchTab(tab, options = {}) {
     tab = normalizeProfileTab(tab);
-    if (Object.hasOwn(PROFILE_EMPLOYEE_TABS, tab) && !isOwnProfile) tab = 'professions';
+    if ((tab === 'control' || Object.hasOwn(PROFILE_EMPLOYEE_TABS, tab)) && !isOwnProfile) tab = 'professions';
     const requestSeq = ++profileTabRequestSeq;
     activeTab = tab;
     if (tab !== 'myday') {
@@ -2054,6 +2048,7 @@ async function switchTab(tab, options = {}) {
         focusProfileWorkBaseSection();
     }
     if (Object.hasOwn(PROFILE_EMPLOYEE_TABS, tab)) void loadProfileEmployeeMonth(tab);
+    if (tab === 'control') void loadProfileControlTasks();
     return true;
 }
 
@@ -2096,6 +2091,7 @@ function renderTabContent() {
         case 'results': return isOwnProfile ? renderProfileEmployeeMonth(activeTab) : '';
         case 'myday': return renderMyDayTab();
         case 'mytasks': return renderMyDayTab();
+        case 'control': return isOwnProfile ? renderProfileControlTasks() : '';
         case 'settings': return renderProfileSettingsTab();
 
 
@@ -2176,7 +2172,7 @@ function renderProfileEmployeeMonth(tab) {
         <section class="profile-work-panel profile-employee-month" aria-labelledby="profileEmployeeMonthTitle">
             <div class="profile-panel-head">
                 <h2 id="profileEmployeeMonthTitle">${PROFILE_EMPLOYEE_TABS[tab]}</h2>
-                <label>Місяць
+                <label>${tab === 'results' ? 'Місяць відвідуваності' : 'Місяць'}
                     <input id="profileEmployeeMonthInput" type="month" min="1900-01" max="2099-12"
                         value="${month}" onchange="loadProfileEmployeeMonth('${tab}', this.value)">
                 </label>
@@ -2707,12 +2703,12 @@ function renderProfileSettingsTab() {
     const crop = normalizeProfileAvatarCrop(avatar.crop);
     return `
         <div class="profile-settings-shell">
-            <section class="profile-work-panel profile-settings-panel profile-settings-identity" aria-labelledby="profileSettingsIdentity">
-                <h2 id="profileSettingsIdentity">Профіль</h2>
+            <section class="profile-work-panel profile-settings-panel profile-settings-identity" aria-label="Акаунт">
                 <dl>
-                    <dt>Імʼя та прізвище</dt><dd>${escapeHtml(identity.name || 'Не задано')}</dd>
-                    <dt>Логін для входу</dt><dd>${escapeHtml(identity.username || 'Не задано')}</dd>
+                    <div><dt>Імʼя та прізвище</dt><dd>${escapeHtml(identity.name || 'Не задано')}</dd></div>
+                    <div><dt>Логін для входу</dt><dd>${escapeHtml(identity.username || 'Не задано')}</dd></div>
                 </dl>
+                <button type="button" class="profile-inline-switch" onclick="logout()">Вийти</button>
             </section>
             <section id="telegram-crm" class="profile-work-panel profile-settings-panel" data-telegram-crm-profile></section>
             <section class="profile-work-panel profile-settings-panel">
@@ -3439,9 +3435,7 @@ function normalizeCabinetCompletedTaskForProjection(task = {}, fallback = {}) {
         completedAt,
         completed_at: completedAt,
         completedParentToday: true,
-        completedTodayKind: Number(task.completedSubtasksToday ?? task.completed_subtask_count_today ?? fallback.completedSubtasksToday ?? fallback.completed_subtask_count_today ?? 0) > 0
-            ? 'task_and_subtasks'
-            : 'task',
+        completedTodayKind: 'task',
         actualSecondsToday,
         updatedAt: task.updatedAt || task.updated_at || completedAt,
         updated_at: task.updated_at || task.updatedAt || completedAt
@@ -3579,6 +3573,13 @@ function renderCabinetActiveTab() {
         }
         attachProfileListeners();
         restore?.();
+        if (pendingMyDayPeriod) {
+            const period = tabContent.querySelector(`[data-park-period="${pendingMyDayPeriod}"]`);
+            if (period) {
+                pendingMyDayPeriod = null;
+                window.requestAnimationFrame(() => period.scrollIntoView({ block: 'nearest' }));
+            }
+        }
         if (initialHrReminderLinkPending) {
             initialHrReminderLinkPending = false;
             if (activeTab === 'myday' && window.location.hash === '#hr-personal-reminders') {
@@ -3674,7 +3675,8 @@ async function loadCabinetBucketPage(button) {
         const params = new URLSearchParams({
             bucket,
             offset: String(offset),
-            limit: String(limit)
+            limit: String(limit),
+            planningView: 'my-day'
         });
         if (focusDate) params.set('focusDate', focusDate);
         const payload = await apiGetScopedJson(`/tasks/my-cabinet?${params.toString()}`, {
@@ -4048,7 +4050,7 @@ function renderCabinetCompletedHistoryStrip() {
 }
 
 function cabinetCompletedTodayTasksList() {
-    return cabinetList('completedTodayTasks');
+    return cabinetList('completedTodayTasks').filter(cabinetTaskParentCompletedToday);
 }
 
 function cabinetCompletedTodayKey() {
@@ -4062,16 +4064,6 @@ function cabinetTaskParentCompletedToday(task = {}) {
         && cabinetKyivDateKey(completedAt) === cabinetCompletedTodayKey();
 }
 
-function cabinetTaskCompletedSubtasksToday(task = {}) {
-    const explicit = Number(task.completedSubtasksToday ?? task.completed_subtask_count_today ?? 0);
-    if (Number.isFinite(explicit) && explicit > 0) return explicit;
-    const today = cabinetCompletedTodayKey();
-    return (Array.isArray(task.subtasks) ? task.subtasks : []).filter(item => {
-        const completedAt = item.completedAt || item.completed_at || '';
-        return (item.isDone === true || item.is_done === true) && completedAt && cabinetKyivDateKey(completedAt) === today;
-    }).length;
-}
-
 function cabinetFormatDuration(seconds = 0) {
     const total = Math.max(0, Math.round(Number(seconds || 0)));
     if (!total) return '0 хв';
@@ -4083,21 +4075,10 @@ function cabinetFormatDuration(seconds = 0) {
 }
 
 function cabinetCompletedTodayMetrics(tasks = cabinetCompletedTodayTasksList()) {
-    const parentTasks = tasks.filter(cabinetTaskParentCompletedToday).length;
-    const subtasks = tasks.reduce((sum, task) => sum + cabinetTaskCompletedSubtasksToday(task), 0);
     const quick = myCabinetData?.stats?.taskQuick || {};
     return {
-        parentTasks: Number(quick.completedParentToday ?? parentTasks),
-        subtasks: Number(quick.completedSubtasksToday ?? subtasks)
+        parentTasks: Number(quick.completedParentToday ?? tasks.length)
     };
-}
-
-function cabinetCompletionRowTypeLabel(task = {}, mode = 'today') {
-    if (mode !== 'today') return 'Задача виконана';
-    const completedSubtasksToday = cabinetTaskCompletedSubtasksToday(task);
-    if (cabinetTaskParentCompletedToday(task)) return 'Задача виконана';
-    if (completedSubtasksToday > 0) return `Виконано ${formatCabinetPulseCount(completedSubtasksToday)} підпунктів`;
-    return 'Оновлено сьогодні';
 }
 
 function cabinetCompletionVisibleCount(total = 0) {
@@ -4114,14 +4095,9 @@ function cabinetCompletionVisibleCount(total = 0) {
 function renderCabinetCompletionTaskRow(task = {}, index = 0, mode = 'today') {
     const taskId = normalizeCabinetTaskId(task.id || task.taskId || task.task_id);
     const completedAt = cabinetTaskCompletedAt(task);
-    const subSummary = cabinetSubtaskSummary(task);
-    const progress = subSummary.total
-        ? `${formatCabinetPulseCount(subSummary.done)}/${formatCabinetPulseCount(subSummary.total)} пунктів`
-        : '';
     const completedMeta = [
-        cabinetCompletionRowTypeLabel(task, mode),
-        completedAt ? profileFormatTime(completedAt) : '',
-        progress
+        'Задача виконана',
+        completedAt ? profileFormatTime(completedAt) : ''
     ].filter(Boolean).join(' · ');
     const actionAttrs = taskId
         ? `data-cabinet-task-action="open" data-task-id="${taskId}"`
@@ -4215,7 +4191,7 @@ function renderCabinetCompletionPulse() {
         </section>`;
     }
     const expanded = Boolean(completedDashboardExpanded);
-    const hasData = tasks.length > 0 || metrics.parentTasks > 0 || metrics.subtasks > 0;
+    const hasData = tasks.length > 0 || metrics.parentTasks > 0;
     const allTimeLabel = `${formatCabinetPulseCount(Math.max(historyCounts.total, historyCounts.shown))} за весь час`;
     return `<section class="cabinet-completion-pulse ${hasData ? '' : 'is-empty'} ${expanded ? 'is-expanded' : ''}" data-cabinet-completion-pulse aria-label="Виконано">
         <div class="cabinet-completion-summary">
@@ -4228,7 +4204,6 @@ function renderCabinetCompletionPulse() {
             </div>
             <div class="cabinet-completion-metrics">
                 <span><b>${formatCabinetPulseCount(metrics.parentTasks)}</b><small>задач</small></span>
-                <span><b>${formatCabinetPulseCount(metrics.subtasks)}</b><small>пункти чеклістів</small></span>
             </div>
             <div class="cabinet-completion-actions">
                 <button type="button" class="cabinet-completion-toggle" data-cabinet-completion-toggle aria-expanded="${expanded ? 'true' : 'false'}" aria-controls="cabinetCompletionDetails">
@@ -4585,8 +4560,6 @@ function toggleCabinetMyDayTaskDetails(taskId, options = {}) {
                 ? renderCabinetOverdueTriageRow(task)
                 : renderCabinetTaskCard(task, false, {
                     surface: 'myday',
-                    activeInlineTaskId: card.classList.contains('is-inline-checklist-active') ? id : 0,
-                    allowInlineChecklist: true
                 });
             card.insertAdjacentHTML('beforebegin', markup);
             const updatedCard = card.previousElementSibling;
@@ -4881,13 +4854,16 @@ function setCabinetDuePreset(preset = 'today', options = {}) {
 }
 
 function cabinetTaskVisibilityHint(visibility) {
-    return visibility === 'team' ? 'Видно команді згідно з її доступом до задач.' : 'Видно власнику задачі та доданим спостерігачам.';
+    return visibility === 'team' ? '' : 'Видно власнику задачі та доданим спостерігачам.';
 }
 
 function syncCabinetTaskVisibilityHint() {
     const select = document.getElementById('cabinetTaskVisibility');
     const hint = document.getElementById('cabinetTaskVisibilityHint');
-    if (select && hint) hint.textContent = cabinetTaskVisibilityHint(select.value);
+    if (select && hint) {
+        hint.textContent = cabinetTaskVisibilityHint(select.value);
+        hint.hidden = !hint.textContent;
+    }
 }
 
 function syncCabinetTaskCreateMode() {
@@ -4914,7 +4890,6 @@ function validateCabinetPlainTaskTitle(title = '') {
 }
 
 function cabinetTaskCreateSignature(draft = {}) {
-    const subtasks = Array.isArray(draft.subtasks) ? draft.subtasks : [];
     return JSON.stringify({
         title: String(draft.title || '').trim(),
         description: String(draft.description || '').trim(),
@@ -4930,12 +4905,7 @@ function cabinetTaskCreateSignature(draft = {}) {
         scheduleDate: String(draft.scheduleDate || '').trim(),
         sourceType: String(draft.sourceType || '').trim(),
         impactIds: Array.isArray(draft.impactIds) ? draft.impactIds.map(Number).filter(Number.isInteger).sort((a, b) => a - b) : [],
-        reportRequired: draft.reportRequired === true,
-        allowReschedule: draft.allowReschedule !== false,
-        subtasks: subtasks.map(item => ({
-            title: String(item?.title || '').trim(),
-            sourceType: String(item?.sourceType || item?.source_type || '').trim()
-        }))
+        allowReschedule: draft.allowReschedule !== false
     });
 }
 
@@ -5046,46 +5016,18 @@ function autoGrowCabinetTaskInput(input = document.getElementById('cabinetTaskTi
     input.style.height = `${Math.min(Math.max(input.scrollHeight || 0, 46), 180)}px`;
 }
 
-function cabinetSubtaskRow(value = '', sourceType = 'manual') {
-    return `<div class="cabinet-subtask-row" data-cabinet-subtask-row data-subtask-source="${escapeHtml(sourceType || 'manual')}">
-        <input type="text" data-cabinet-subtask-title value="${escapeHtml(value)}" placeholder="Назва підзадачі" aria-label="Назва підзадачі">
-        <button type="button" class="cabinet-subtask-remove" data-cabinet-subtask-remove aria-label="Видалити підзадачу">×</button>
-    </div>`;
-}
-
-function addCabinetSubtask(value = '', sourceType = 'manual') {
-    const list = document.getElementById('cabinetSubtaskList');
-    if (!list) return;
-    list.insertAdjacentHTML('beforeend', cabinetSubtaskRow(value, sourceType));
-    setCabinetDecompositionMode(sourceType === 'manual' ? 'manual' : (sourceType === 'template' ? 'template' : 'ai'), { keepStatus: true });
-    list.querySelector('[data-cabinet-subtask-row]:last-child [data-cabinet-subtask-title]')?.focus();
-}
-window.addCabinetSubtask = addCabinetSubtask;
-
-function readCabinetSubtasks() {
-    return Array.from(document.querySelectorAll('#cabinetSubtaskList [data-cabinet-subtask-row]'))
-        .map((row, index) => ({
-            title: row.querySelector('[data-cabinet-subtask-title]')?.value || '',
-            sort_order: index,
-            source_type: row.dataset.subtaskSource || 'manual'
-        }))
-        .filter(item => String(item.title || '').trim());
-}
-
 function readCabinetAiDraft() {
     const kind = document.getElementById('cabinetTaskKind')?.value || 'action';
     const selectedMode = document.getElementById('cabinetTaskMode')?.value || cabinetCreateDefaultsForSegment(myTasksSegment).mode;
     const selectedDate = document.getElementById('cabinetTaskDate')?.value || '';
-    const subtasks = readCabinetSubtasks();
-    const structuralMode = kind === 'checklist' || subtasks.length ? 'checklist' : 'simple';
     return {
         title: document.getElementById('cabinetTaskTitle')?.value.trim() || '',
         description: document.getElementById('cabinetTaskDetails')?.value.trim() || '',
         category: document.getElementById('cabinetTaskCategory')?.value || cabinetCreateDefaultsForSegment(myTasksSegment, selectedMode).category,
         priority: readCabinetCreatePriority(),
         taskType: 'human',
-        mode: structuralMode,
-        structuralMode,
+        mode: 'simple',
+        structuralMode: 'simple',
         taskMode: selectedMode,
         kind,
         taskKind: kind,
@@ -5098,15 +5040,13 @@ function readCabinetAiDraft() {
         sourceType: 'manual',
         sourceModule: 'profile_my_cabinet',
         sourceSurface: 'profile_my_cabinet',
-        subtasks,
         scheduleConfirmed: cabinetCreateDuePreset !== 'no_date',
-        reportRequired: document.getElementById('cabinetTaskReportRequired')?.checked === true,
         allowReschedule: document.getElementById('cabinetTaskAllowReschedule')?.checked !== false,
         captureIntent: { waiting: kind === 'waiting' }
     };
 }
 
-function applyCabinetAiDraftField(field, value, meta = {}) {
+function applyCabinetAiDraftField(field, value) {
     if (field === 'title') {
         const input = document.getElementById('cabinetTaskTitle');
         if (input) input.value = String(value || '');
@@ -5115,16 +5055,6 @@ function applyCabinetAiDraftField(field, value, meta = {}) {
     if (field === 'description') {
         const textarea = document.getElementById('cabinetTaskDetails');
         if (textarea) textarea.value = String(value || '');
-        return;
-    }
-    if (field === 'mode') {
-        const mode = String(value || '');
-        const kind = document.getElementById('cabinetTaskKind');
-        if (value === 'checklist') {
-            if (kind) kind.value = 'checklist';
-        } else if (mode === 'simple' || mode === 'action') {
-            if (kind && kind.value === 'checklist') kind.value = 'action';
-        }
         return;
     }
     if (field === 'scheduleDate') {
@@ -5138,10 +5068,6 @@ function applyCabinetAiDraftField(field, value, meta = {}) {
         setCabinetCreatePriority(String(value || 'normal'));
         return;
     }
-    if (field === 'subtasks') {
-        replaceCabinetSubtasks(Array.isArray(value) ? value : [], { sourceType: meta.source === 'manual' ? 'manual' : 'ai' });
-        setCabinetDecompositionMode(Array.isArray(value) && value.length ? 'ai' : 'none', { keepRows: true, keepStatus: true });
-    }
 }
 
 function focusCabinetAiDraftField(field) {
@@ -5149,369 +5075,11 @@ function focusCabinetAiDraftField(field) {
         title: 'cabinetTaskTitle',
         description: 'cabinetTaskDetails',
         mode: 'cabinetTaskMode',
-        subtasks: 'cabinetSubtaskList',
         scheduleDate: 'cabinetTaskDate',
         priority: 'cabinetTaskPriority'
     };
-    if (['description', 'mode', 'priority', 'subtasks'].includes(field)) setCabinetTaskComposerExpanded(true);
+    if (['description', 'mode', 'priority'].includes(field)) setCabinetTaskComposerExpanded(true);
     document.getElementById(map[field])?.focus();
-}
-
-function setCabinetSubtaskDraftStatus(message = '', type = '') {
-    const node = document.getElementById('cabinetSubtaskDraftStatus');
-    if (!node) return;
-    node.textContent = message;
-    node.className = `cabinet-subtask-status ${type || ''}`.trim();
-}
-
-function setCabinetDecompositionMode(mode = 'manual', options = {}) {
-    const normalized = ['none', 'manual', 'template', 'ai', 'template_ai'].includes(mode) ? mode : 'manual';
-    const select = document.getElementById('cabinetDecompositionMode');
-    if (select) select.value = normalized;
-    const template = document.getElementById('cabinetDecompositionTemplate');
-    if (template) template.disabled = !['template', 'template_ai'].includes(normalized);
-    const draftBtn = document.getElementById('cabinetSubtaskDraftBtn');
-    if (draftBtn) {
-        draftBtn.disabled = ['none', 'manual'].includes(normalized);
-        draftBtn.textContent = normalized === 'template' ? 'Шаблон' : 'AI';
-    }
-    if (normalized === 'none') document.getElementById('cabinetSubtaskAcceptDraftBtn')?.setAttribute('hidden', '');
-    if (normalized === 'none' && !options.keepRows) {
-        const list = document.getElementById('cabinetSubtaskList');
-        if (list) list.innerHTML = '';
-    }
-    if (!options.keepStatus) setCabinetSubtaskDraftStatus('');
-}
-
-function replaceCabinetSubtasks(items = [], options = {}) {
-    const list = document.getElementById('cabinetSubtaskList');
-    if (!list) return;
-    list.innerHTML = '';
-    items.forEach(item => {
-        list.insertAdjacentHTML('beforeend', cabinetSubtaskRow(
-            item.title || item.name || '',
-            item.source_type || item.sourceType || options.sourceType || 'ai'
-        ));
-    });
-}
-
-function renderCabinetSavedTemplateOptions() {
-    const select = document.getElementById('cabinetSavedDecompositionTemplate');
-    if (!select) return;
-    const current = select.value;
-    const options = ['<option value="">Мої шаблони</option>'];
-    cabinetSavedDecompositionTemplates.forEach(template => {
-        const count = Array.isArray(template.items) ? template.items.length : (Array.isArray(template.subtasks) ? template.subtasks.length : 0);
-        const label = `${template.name || template.title || 'Шаблон'}${count ? ` (${count})` : ''}`;
-        options.push(`<option value="${escapeHtml(template.id)}">${escapeHtml(label)}</option>`);
-    });
-    select.innerHTML = options.join('');
-    if (current && cabinetSavedDecompositionTemplates.some(template => String(template.id) === String(current))) {
-        select.value = current;
-    }
-}
-
-async function refreshCabinetSavedTemplates() {
-    if (!window.TaskCreate?.requestSavedDecompositionTemplates) return;
-    cabinetSavedDecompositionTemplates = await window.TaskCreate.requestSavedDecompositionTemplates({ limit: 50 });
-    renderCabinetSavedTemplateOptions();
-}
-
-async function applySelectedCabinetSavedTemplate() {
-    const templateId = document.getElementById('cabinetSavedDecompositionTemplate')?.value || '';
-    if (!templateId) {
-        setCabinetSubtaskDraftStatus('Оберіть збережений шаблон.', 'warning');
-        return;
-    }
-    const result = await window.TaskCreate?.applySavedDecompositionTemplate?.(templateId);
-    if (!result?.success) {
-        setCabinetSubtaskDraftStatus(result?.error || 'Не вдалося застосувати шаблон.', 'error');
-        return;
-    }
-    replaceCabinetSubtasks(result.subtasks || [], { sourceType: 'template' });
-    setCabinetDecompositionMode('template', { keepRows: true, keepStatus: true });
-    setCabinetSubtaskDraftStatus('Шаблон додано як чернетку. Список можна змінити перед збереженням.', 'success');
-    await refreshCabinetSavedTemplates();
-}
-
-async function saveCabinetSubtasksAsTemplate() {
-    const subtasks = readCabinetSubtasks();
-    if (subtasks.length < 2) {
-        setCabinetSubtaskDraftStatus('Для шаблону потрібно мінімум дві підзадачі.', 'warning');
-        return;
-    }
-    const title = document.getElementById('cabinetTaskTitle')?.value.trim() || '';
-    let values = null;
-    if (typeof formModal === 'function') {
-        values = await formModal('Зберегти шаблон підзадач', [
-            {
-                key: 'name',
-                label: 'Назва шаблону',
-                type: 'text',
-                required: true,
-                defaultValue: title ? `${title} · підзадачі` : 'Новий шаблон підзадач'
-            },
-            {
-                key: 'description',
-                label: 'Опис',
-                type: 'textarea',
-                defaultValue: ''
-            }
-        ], {
-            okText: 'Зберегти',
-            cancelText: 'Скасувати',
-            type: 'info'
-        });
-    } else {
-        const name = null;
-        values = name ? { name, description: '' } : null;
-    }
-    if (!values?.name) return;
-    const result = await window.TaskCreate?.saveDecompositionTemplate?.({
-        name: values.name,
-        description: values.description || '',
-        category: document.getElementById('cabinetTaskCategory')?.value || 'personal',
-        subtasks
-    });
-    if (!result?.success) {
-        setCabinetSubtaskDraftStatus(result?.error || 'Не вдалося зберегти шаблон.', 'error');
-        return;
-    }
-    await refreshCabinetSavedTemplates();
-    const select = document.getElementById('cabinetSavedDecompositionTemplate');
-    if (select && result.template?.id) select.value = String(result.template.id);
-    setCabinetSubtaskDraftStatus('Шаблон підзадач збережено.', 'success');
-}
-
-async function updateSelectedCabinetSavedTemplate() {
-    const templateId = document.getElementById('cabinetSavedDecompositionTemplate')?.value || '';
-    if (!templateId) {
-        setCabinetSubtaskDraftStatus('Оберіть шаблон для оновлення.', 'warning');
-        return;
-    }
-    const subtasks = readCabinetSubtasks();
-    if (subtasks.length < 2) {
-        setCabinetSubtaskDraftStatus('Для шаблону потрібно мінімум дві підзадачі.', 'warning');
-        return;
-    }
-    const current = cabinetSavedDecompositionTemplates.find(template => String(template.id) === String(templateId)) || {};
-    let values = null;
-    if (typeof formModal === 'function') {
-        values = await formModal('Оновити шаблон підзадач', [
-            {
-                key: 'name',
-                label: 'Назва шаблону',
-                type: 'text',
-                required: true,
-                defaultValue: current.name || current.title || 'Шаблон підзадач'
-            },
-            {
-                key: 'description',
-                label: 'Опис',
-                type: 'textarea',
-                defaultValue: current.description || ''
-            }
-        ], {
-            okText: 'Оновити',
-            cancelText: 'Скасувати',
-            type: 'info'
-        });
-    } else {
-        const name = null;
-        values = name ? { name, description: current.description || '' } : null;
-    }
-    if (!values?.name) return;
-    const result = await window.TaskCreate?.updateDecompositionTemplate?.(templateId, {
-        name: values.name,
-        description: values.description || '',
-        category: document.getElementById('cabinetTaskCategory')?.value || current.category || 'personal',
-        subtasks
-    });
-    if (!result?.success) {
-        setCabinetSubtaskDraftStatus(result?.error || 'Не вдалося оновити шаблон.', 'error');
-        return;
-    }
-    await refreshCabinetSavedTemplates();
-    const select = document.getElementById('cabinetSavedDecompositionTemplate');
-    if (select) select.value = String(templateId);
-    setCabinetSubtaskDraftStatus('Шаблон підзадач оновлено.', 'success');
-}
-
-async function deleteSelectedCabinetSavedTemplate() {
-    const templateId = document.getElementById('cabinetSavedDecompositionTemplate')?.value || '';
-    if (!templateId) {
-        setCabinetSubtaskDraftStatus('Оберіть шаблон для видалення.', 'warning');
-        return;
-    }
-    if (typeof confirmModal === 'function') {
-        const confirmed = await confirmModal('Видалити цей шаблон підзадач?', { type: 'danger', okText: 'Видалити' });
-        if (!confirmed) return;
-    } else {
-        setCabinetSubtaskDraftStatus('Видалення шаблону тимчасово недоступне без CRM confirm modal.', 'warning');
-        return;
-    }
-    const result = await window.TaskCreate?.deleteDecompositionTemplate?.(templateId);
-    if (!result?.success) {
-        setCabinetSubtaskDraftStatus(result?.error || 'Не вдалося видалити шаблон.', 'error');
-        return;
-    }
-    await refreshCabinetSavedTemplates();
-    setCabinetSubtaskDraftStatus('Шаблон видалено.', 'success');
-}
-
-function renderCabinetDecompositionSuggestions() {
-    const host = document.getElementById('cabinetDecompositionSuggestions');
-    if (!host) return;
-    if (!cabinetDecompositionSuggestions.length) {
-        host.hidden = true;
-        host.innerHTML = '';
-        return;
-    }
-    host.hidden = false;
-    host.innerHTML = cabinetDecompositionSuggestions.map((suggestion, index) => {
-        const count = Array.isArray(suggestion.subtasks) ? suggestion.subtasks.length : 0;
-        const label = suggestion.type === 'saved_template'
-            ? `Шаблон: ${suggestion.title || suggestion.template?.name || ''}`
-            : (suggestion.title || 'Схожа структура');
-        return `<button type="button" class="cabinet-suggestion-chip" data-cabinet-suggestion-index="${index}">
-            ${escapeHtml(label)} · ${count}
-        </button>`;
-    }).join('');
-}
-
-async function refreshCabinetDecompositionSuggestions() {
-    if (!document.getElementById('cabinetDecompositionSuggestions') || !window.TaskCreate?.requestDecompositionSuggestions) return;
-    const title = document.getElementById('cabinetTaskTitle')?.value.trim() || '';
-    const category = document.getElementById('cabinetTaskCategory')?.value || 'personal';
-    const key = [title, category].join('|');
-    if (key === lastCabinetSuggestionKey) return;
-    lastCabinetSuggestionKey = key;
-    if (title.length < 3) {
-        cabinetDecompositionSuggestions = [];
-        renderCabinetDecompositionSuggestions();
-        return;
-    }
-    const result = await window.TaskCreate.requestDecompositionSuggestions({
-        title,
-        category,
-        taskKind: document.getElementById('cabinetTaskKind')?.value || 'action',
-        taskMode: document.getElementById('cabinetTaskMode')?.value || 'personal'
-    });
-    cabinetDecompositionSuggestions = result?.success ? (result.suggestions || []) : [];
-    renderCabinetDecompositionSuggestions();
-}
-
-function scheduleCabinetDecompositionSuggestions() {
-    clearTimeout(cabinetSuggestionTimer);
-    cabinetSuggestionTimer = setTimeout(refreshCabinetDecompositionSuggestions, 450);
-}
-
-function applyCabinetSuggestion(index) {
-    const suggestion = cabinetDecompositionSuggestions[index];
-    if (!suggestion) return;
-    const sourceType = suggestion.type === 'saved_template' ? 'template' : 'system';
-    replaceCabinetSubtasks(suggestion.subtasks || suggestion.template?.subtasks || [], { sourceType });
-    setCabinetDecompositionMode(suggestion.type === 'saved_template' ? 'template' : 'manual', { keepRows: true, keepStatus: true });
-    setCabinetSubtaskDraftStatus('Підказку додано як чернетку. Список можна змінити перед збереженням.', 'success');
-}
-
-async function generateCabinetSubtasks() {
-    const input = document.getElementById('cabinetTaskTitle');
-    const title = input?.value.trim() || '';
-    const mode = document.getElementById('cabinetDecompositionMode')?.value || 'ai';
-    if (!title) {
-        setCabinetSubtaskDraftStatus('Додайте назву задачі перед генерацією підзадач.', 'warning');
-        input?.focus();
-        return;
-    }
-    if (mode === 'none' || mode === 'manual') {
-        setCabinetSubtaskDraftStatus('Оберіть AI або шаблонний режим декомпозиції.', 'warning');
-        return;
-    }
-    const button = document.getElementById('cabinetSubtaskDraftBtn');
-    const acceptBtn = document.getElementById('cabinetSubtaskAcceptDraftBtn');
-    const oldText = button?.textContent || '';
-    if (button) {
-        button.disabled = true;
-        button.textContent = '...';
-    }
-    if (acceptBtn) acceptBtn.hidden = true;
-    setCabinetSubtaskDraftStatus(mode === 'template' ? 'Готую шаблонну чернетку...' : 'AI готує чернетку. Нічого ще не збережено...', '');
-    const selectedMode = document.getElementById('cabinetTaskMode')?.value || cabinetCreateDefaultsForSegment(myTasksSegment).mode;
-    const result = await window.TaskCreate?.requestDecompositionDraft?.({
-        title,
-        category: document.getElementById('cabinetTaskCategory')?.value || 'personal',
-        taskKind: document.getElementById('cabinetTaskKind')?.value || 'action',
-        taskMode: selectedMode,
-        mode,
-        decompositionMode: mode,
-        templateKey: document.getElementById('cabinetDecompositionTemplate')?.value || '',
-        sourceModule: 'profile_my_cabinet',
-        sourceType: 'manual'
-    });
-    if (button) {
-        button.disabled = false;
-        button.textContent = oldText || (mode === 'template' ? 'Шаблон' : 'AI');
-    }
-    if (!result?.success) {
-        setCabinetSubtaskDraftStatus(result?.error || 'Не вдалося підготувати чернетку. Додайте підзадачі вручну.', 'error');
-        return;
-    }
-    replaceCabinetSubtasks(result.subtasks || [], {
-        sourceType: result.source === 'template' || result.source === 'template_fallback' ? 'template' : 'ai'
-    });
-    if (acceptBtn) acceptBtn.hidden = false;
-    const sourceLabel = result.source === 'template_fallback'
-        ? 'AI недоступний, використано шаблон.'
-        : (result.source === 'template' ? 'Шаблонну чернетку додано.' : 'AI чернетку додано.');
-    setCabinetSubtaskDraftStatus(`${sourceLabel} Перевірте список перед збереженням задачі.`, 'success');
-}
-
-function bindCabinetSubtasks() {
-    const composer = document.getElementById('cabinetTaskComposer');
-    if (!composer || composer.dataset.cabinetSubtasksBound === 'true') return;
-    composer.dataset.cabinetSubtasksBound = 'true';
-    const simple = composer.hasAttribute('data-cabinet-composer-simple');
-    document.getElementById('cabinetDecompositionMode')?.addEventListener('change', event => setCabinetDecompositionMode(event.target.value));
-    document.getElementById('cabinetSubtaskDraftBtn')?.addEventListener('click', generateCabinetSubtasks);
-    document.getElementById('cabinetApplySavedTemplateBtn')?.addEventListener('click', applySelectedCabinetSavedTemplate);
-    document.getElementById('cabinetSaveSubtasksTemplateBtn')?.addEventListener('click', saveCabinetSubtasksAsTemplate);
-    document.getElementById('cabinetUpdateSavedTemplateBtn')?.addEventListener('click', updateSelectedCabinetSavedTemplate);
-    document.getElementById('cabinetDeleteSavedTemplateBtn')?.addEventListener('click', deleteSelectedCabinetSavedTemplate);
-    const cabinetTaskTitle = document.getElementById('cabinetTaskTitle');
-    cabinetTaskTitle?.addEventListener('input', () => {
-        autoGrowCabinetTaskInput(cabinetTaskTitle);
-        if (String(cabinetTaskTitle.value || '').trim() && cabinetTaskTitle.getAttribute('aria-invalid') === 'true') {
-            setCabinetTaskTitleGuidance('');
-            setCabinetTaskComposerStatus('');
-        }
-        if (!simple) scheduleCabinetDecompositionSuggestions();
-    });
-    autoGrowCabinetTaskInput(cabinetTaskTitle);
-    if (simple) return;
-    document.getElementById('cabinetTaskCategory')?.addEventListener('change', () => {
-        refreshCabinetSavedTemplates();
-        scheduleCabinetDecompositionSuggestions();
-    });
-    document.getElementById('cabinetDecompositionSuggestions')?.addEventListener('click', event => {
-        const chip = event.target.closest('[data-cabinet-suggestion-index]');
-        if (!chip) return;
-        applyCabinetSuggestion(Number(chip.dataset.cabinetSuggestionIndex));
-    });
-    document.getElementById('cabinetSubtaskAcceptDraftBtn')?.addEventListener('click', () => {
-        setCabinetSubtaskDraftStatus('Чернетку прийнято. Остаточно вона збережеться разом із задачею.', 'success');
-        document.getElementById('cabinetSubtaskAcceptDraftBtn')?.setAttribute('hidden', '');
-    });
-    refreshCabinetSavedTemplates();
-    setCabinetDecompositionMode(document.getElementById('cabinetDecompositionMode')?.value || 'none', { keepRows: true, keepStatus: true });
-    const list = document.getElementById('cabinetSubtaskList');
-    if (!list || list.dataset.cabinetSubtasksBound === 'true') return;
-    list.dataset.cabinetSubtasksBound = 'true';
-    list.addEventListener('click', (event) => {
-        const remove = event.target.closest('[data-cabinet-subtask-remove]');
-        if (!remove) return;
-        remove.closest('[data-cabinet-subtask-row]')?.remove();
-    });
 }
 
 function profileLiveCounterScope(payload = {}) {
@@ -6049,50 +5617,6 @@ function stableCabinetTaskSurfaceAnchor(button, taskId, preferredAction = 'more'
     return document.querySelector(selectors.join(',')) || button || null;
 }
 
-function cabinetTaskReportBadge(task = {}) {
-    const gate = window.TaskReportGate;
-    const required = gate?.taskRequiresReport ? gate.taskRequiresReport(task) : Boolean(task.reportRequired || task.requiresReport);
-    if (!required) return '';
-    const reportId = gate?.taskReportId ? gate.taskReportId(task) : (task.reportId || task.report_id || null);
-    return reportId
-        ? `<span class="cabinet-task-report-badge cabinet-task-report-badge--done">Звіт #${escapeHtml(reportId)}</span>`
-        : '<span class="cabinet-task-report-badge">потрібен звіт</span>';
-}
-
-function cabinetSubtaskSummary(task = {}) {
-    const total = Number(task.subtask_count || task.subtaskCount || 0);
-    const done = Number(task.subtask_done_count || task.subtaskDoneCount || 0);
-    const progress = window.TaskCreate?.subtaskProgress
-        ? window.TaskCreate.subtaskProgress(done, total)
-        : (total ? Math.round((done / total) * 100) : null);
-    return { total, done, progress };
-}
-
-function cabinetTaskHasSubtasks(task = {}) {
-    return cabinetSubtaskSummary(task).total > 0;
-}
-
-function cabinetTaskIsDecomposed(task = {}) {
-    const rawCount = Number(task.subtask_count ?? task.subtaskCount ?? 0);
-    return cabinetTaskHasSubtasks(task)
-        || (Number.isFinite(rawCount) && rawCount > 0)
-        || (Array.isArray(task.subtasks) && task.subtasks.length > 0)
-        || Boolean(task.decompositionMode || task.decomposition_mode);
-}
-
-function cabinetTaskCompletionBlockedBySubtasks(task = {}) {
-    const summary = cabinetSubtaskSummary(task);
-    return summary.total > 0 && summary.done < summary.total;
-}
-
-function cabinetSubtaskCompletionTitle(task = {}) {
-    const summary = cabinetSubtaskSummary(task);
-    if (!summary.total) return '';
-    return summary.done >= summary.total
-        ? 'Усі підпункти закриті. Задачу можна виконати.'
-        : `Спочатку закрийте підпункти: ${summary.done}/${summary.total}`;
-}
-
 function cabinetTaskCreatedTime(task = {}) {
     const raw = task.created_at || task.createdAt || task.created || '';
     const parsed = raw ? Date.parse(raw) : NaN;
@@ -6145,8 +5669,6 @@ function compareCabinetTasksForDisplay(a = {}, b = {}) {
     const priorityDiff = cabinetTaskPriorityRank(a) - cabinetTaskPriorityRank(b);
     if (priorityDiff) return priorityDiff;
 
-    const decompositionDiff = Number(cabinetTaskHasSubtasks(b)) - Number(cabinetTaskHasSubtasks(a));
-    if (decompositionDiff) return decompositionDiff;
 
     const aFocus = cabinetTaskFocusRank(a);
     const bFocus = cabinetTaskFocusRank(b);
@@ -6173,220 +5695,8 @@ function sortCabinetTasksForDisplay(list = []) {
     return [...list].sort(compareCabinetTasksForDisplay);
 }
 
-function normalizeCabinetSubtask(item = {}) {
-    return {
-        id: item.id || item.subtaskId || item.subtask_id || '',
-        title: item.title || '',
-        isDone: item.is_done === true || item.isDone === true,
-        sort_order: Number.parseInt(item.sort_order ?? item.sortOrder ?? 0, 10) || 0,
-        sortOrder: Number.parseInt(item.sort_order ?? item.sortOrder ?? 0, 10) || 0,
-        source_type: item.source_type || item.sourceType || 'manual',
-        sourceType: item.source_type || item.sourceType || 'manual'
-    };
-}
-
-function cachedCabinetSubtasks(taskId, task = {}) {
-    const id = Number(taskId);
-    if (cabinetSubtaskCache.has(id)) return cabinetSubtaskCache.get(id);
-    if (Array.isArray(task.subtasks)) return task.subtasks.map(normalizeCabinetSubtask);
-    return null;
-}
-
 function cabinetTaskNumericId(task = {}) {
     return normalizeCabinetTaskId(task.id || task.taskId || task.task_id);
-}
-
-function cabinetSubtaskRemainingLabel(remaining = 0) {
-    const count = Math.max(0, Number(remaining) || 0);
-    if (count === 1) return '1 пункт залишився';
-    if (count >= 2 && count <= 4) return `${count} пункти залишилось`;
-    return `${count} пунктів залишилось`;
-}
-
-function cabinetDefaultInlineTaskId(tasks = []) {
-    const candidates = tasks
-        .map(task => ({ task, id: cabinetTaskNumericId(task), summary: cabinetSubtaskSummary(task) }))
-        .filter(item => item.id && cabinetTaskIsDecomposed(item.task) && item.summary.total > 0)
-        .filter(item => !['done', 'cancelled', 'archived'].includes(String(item.task.status || '').toLowerCase()))
-        .filter(item => !collapsedCabinetSubtaskIds.has(item.id));
-    const actionable = candidates.find(item => item.summary.done < item.summary.total);
-    return actionable?.id || null;
-}
-
-function cabinetResolveActiveInlineTaskId(tasks = [], options = {}) {
-    if (options.allowInlineChecklist === false) return null;
-    const candidates = tasks
-        .map(task => ({ task, id: cabinetTaskNumericId(task), summary: cabinetSubtaskSummary(task) }))
-        .filter(item => item.id && cabinetTaskIsDecomposed(item.task) && item.summary.total > 0);
-    const candidateIds = new Set(candidates.map(item => item.id));
-    const requested = normalizeCabinetTaskId(options.activeInlineTaskId ?? activeCabinetInlineTaskId);
-    if (requested && candidateIds.has(requested) && !collapsedCabinetSubtaskIds.has(requested)) {
-        activeCabinetInlineTaskId = requested;
-        return requested;
-    }
-    const nextId = cabinetDefaultInlineTaskId(tasks);
-    activeCabinetInlineTaskId = nextId;
-    return nextId;
-}
-
-function setCabinetActiveInlineTask(taskId, options = {}) {
-    const id = normalizeCabinetTaskId(taskId);
-    if (!id) {
-        activeCabinetInlineTaskId = null;
-        return null;
-    }
-    activeCabinetInlineTaskId = id;
-    collapsedCabinetSubtaskIds.delete(id);
-    if (options.expanded === true) {
-        expandedCabinetSubtaskIds.clear();
-        expandedCabinetSubtaskIds.add(id);
-    } else if (options.expanded === false) {
-        expandedCabinetSubtaskIds.delete(id);
-    }
-    return activeCabinetInlineTaskId;
-}
-
-function isCabinetTaskInlineActive(taskId, context = {}) {
-    const id = normalizeCabinetTaskId(taskId);
-    if (!id || context.allowInlineChecklist === false) return false;
-    return id === normalizeCabinetTaskId(context.activeInlineTaskId ?? activeCabinetInlineTaskId);
-}
-
-function cabinetNextActionableSubtask(task = {}, taskId = 0) {
-    const subtasks = cachedCabinetSubtasks(taskId, task) || [];
-    if (!subtasks.length) return null;
-    return subtasks.map(normalizeCabinetSubtask).find(item => !item.isDone) || null;
-}
-
-function renderCabinetActiveSubtaskSlice(task = {}, taskIdAttr = '') {
-    const taskId = Number(taskIdAttr || 0);
-    const summary = cabinetSubtaskSummary(task);
-    if (!taskId || !summary.total) return '';
-    const remaining = Math.max(0, summary.total - summary.done);
-    const nextSubtask = cabinetNextActionableSubtask(task, taskId);
-    const nextTitle = nextSubtask?.title || (remaining ? cabinetSubtaskRemainingLabel(remaining) : 'Усі пункти закриті');
-    const nextMarkup = nextSubtask?.id
-        ? `<label class="cabinet-subtask-slice-check">
-                <input type="checkbox" data-cabinet-subtask-done data-task-id="${taskIdAttr}" data-subtask-id="${escapeHtml(nextSubtask.id)}">
-                <span>${escapeHtml(nextTitle)}</span>
-            </label>`
-        : `<div class="cabinet-subtask-slice-empty">${escapeHtml(nextTitle)}</div>`;
-    return `<div class="cabinet-subtask-active-slice" data-cabinet-active-subtask-slice="${taskIdAttr}" aria-label="Активний пункт чекліста">${nextMarkup}</div>`;
-}
-
-function isCabinetSubtasksExpanded(taskId, task = {}) {
-    const id = Number(taskId);
-    if (!id) return false;
-    if (collapsedCabinetSubtaskIds.has(id)) return false;
-    if (expandedCabinetSubtaskIds.has(id)) return true;
-    if (activeTab === 'myday' && cabinetTaskIsDecomposed(task)) return false;
-    return Array.isArray(cachedCabinetSubtasks(id, task));
-}
-
-function updateCabinetTaskSubtaskSummary(taskId, subtasks = []) {
-    const id = Number(taskId);
-    const total = subtasks.length;
-    const done = subtasks.filter(item => normalizeCabinetSubtask(item).isDone).length;
-    if (!total || done >= total) blockedCabinetSubtaskAttentionIds.delete(id);
-    if (!myCabinetData || typeof myCabinetData !== 'object') return;
-    forEachCabinetProjectionTaskList((owner, key) => {
-        owner[key] = owner[key].map(task => {
-            const currentId = Number(task.id || task.taskId || task.task_id || 0);
-            if (currentId !== id) return task;
-            return {
-                ...task,
-                subtask_count: total,
-                subtaskCount: total,
-                subtask_done_count: done,
-                subtaskDoneCount: done,
-                subtasks: subtasks.map(normalizeCabinetSubtask)
-            };
-        });
-    });
-}
-
-function renderCabinetSubtaskProgress(task = {}) {
-    const summary = cabinetSubtaskSummary(task);
-    if (!summary.total) return '';
-    return `<div class="cabinet-subtask-progress">
-        <div class="cabinet-subtask-progress-bar"><div class="cabinet-subtask-progress-fill" style="width:${summary.progress}%"></div></div>
-        <span>${summary.done}/${summary.total} · ${summary.progress}%</span>
-    </div>`;
-}
-
-function renderCabinetSubtaskToggle(task = {}, taskIdAttr = '', expanded = null) {
-    const summary = cabinetSubtaskSummary(task);
-    if (!summary.total || !taskIdAttr) return '';
-    const isExpanded = expanded === null ? isCabinetSubtasksExpanded(Number(taskIdAttr), task) : Boolean(expanded);
-    const label = isExpanded ? 'Згорнути' : 'Пункти';
-    return `<button type="button" class="cabinet-subtask-toggle" data-cabinet-task-action="subtasks-toggle" data-task-id="${taskIdAttr}" aria-expanded="${isExpanded ? 'true' : 'false'}" aria-controls="cabinetSubtasksPanel${taskIdAttr}" title="${escapeHtml(cabinetSubtaskCompletionTitle(task))}">
-        <span>${label}</span>
-        <b>${summary.done}/${summary.total}</b>
-    </button>`;
-}
-
-function renderCabinetMyDaySubtaskSummary(task = {}, taskIdAttr = '', expanded = null, options = {}) {
-    const summary = cabinetSubtaskSummary(task);
-    const taskId = Number(taskIdAttr || 0);
-    if (!summary.total || !taskId) return '';
-    const isExpanded = expanded === null ? isCabinetSubtasksExpanded(taskId, task) : Boolean(expanded);
-    const remaining = Math.max(0, summary.total - summary.done);
-    const state = remaining > 0 ? cabinetSubtaskRemainingLabel(remaining) : 'Готово';
-    const shouldShowActiveSlice = Boolean(options.inlineActive && !isExpanded);
-    return `<div class="cabinet-subtask-summary ${isExpanded ? 'is-expanded' : 'is-collapsed'} ${shouldShowActiveSlice ? 'has-active-slice' : ''}" data-cabinet-subtask-summary="${taskIdAttr}">
-        <button type="button" class="cabinet-subtask-toggle" data-cabinet-task-action="subtasks-toggle" data-task-id="${taskIdAttr}" aria-expanded="${isExpanded ? 'true' : 'false'}" aria-controls="cabinetSubtasksPanel${taskIdAttr}" title="${escapeHtml(cabinetSubtaskCompletionTitle(task))}">
-            <span class="cabinet-subtask-toggle-main"><span>Чекліст</span><b>${summary.done}/${summary.total}</b></span>
-            <small>${escapeHtml(state)}</small>
-        </button>
-        ${renderCabinetSubtaskProgress(task)}
-        ${shouldShowActiveSlice ? renderCabinetActiveSubtaskSlice(task, taskIdAttr) : ''}
-    </div>`;
-}
-
-function renderCabinetSubtaskCollapsedSummary(task = {}) {
-    const summary = cabinetSubtaskSummary(task);
-    if (!summary.total) return '';
-    const remaining = Math.max(0, summary.total - summary.done);
-    const state = remaining > 0 ? cabinetSubtaskRemainingLabel(remaining) : 'Готово';
-    return `<div class="cabinet-subtask-compact-summary" aria-label="Короткий стан чекліста">
-        <span>Чекліст ${summary.done}/${summary.total}</span>
-        <b>${escapeHtml(state)}</b>
-    </div>`;
-}
-
-function renderCabinetSubtasksPanel(task = {}, taskIdAttr = '', expanded = null, options = {}) {
-    const summary = cabinetSubtaskSummary(task);
-    const taskId = Number(taskIdAttr || 0);
-    if (!summary.total || !taskId) return '';
-    const isExpanded = expanded === null ? isCabinetSubtasksExpanded(taskId, task) : Boolean(expanded);
-    const blockedAttention = blockedCabinetSubtaskAttentionIds.has(taskId) && summary.done < summary.total;
-    const showHead = options.showHead !== false;
-    const subtasks = cachedCabinetSubtasks(taskId, task);
-    let body = '<div class="cabinet-subtask-inline-empty">Розгорніть, щоб закривати підпункти прямо тут.</div>';
-    if (isExpanded && loadingCabinetSubtaskIds.has(taskId)) {
-        body = '<div class="cabinet-subtask-inline-empty">Завантажую підпункти...</div>';
-    } else if (isExpanded && Array.isArray(subtasks)) {
-        body = subtasks.length
-            ? subtasks.map(item => {
-                const subtask = normalizeCabinetSubtask(item);
-                const needsAttention = blockedAttention && !subtask.isDone;
-                return `<div class="cabinet-subtask-inline-item ${subtask.isDone ? 'is-done' : ''} ${needsAttention ? 'is-blocked-attention' : ''}" data-cabinet-inline-subtask data-task-id="${taskIdAttr}" data-subtask-id="${escapeHtml(subtask.id)}"${needsAttention ? ' data-cabinet-subtask-blocked-attention="true"' : ''}>
-                    <button type="button" class="cabinet-subtask-drag-handle" data-cabinet-subtask-drag-handle draggable="true" aria-label="Перетягнути підзадачу" title="Перетягніть, щоб змінити порядок">⋮⋮</button>
-                    <label class="cabinet-subtask-inline-check">
-                    <input type="checkbox" data-cabinet-subtask-done data-task-id="${taskIdAttr}" data-subtask-id="${escapeHtml(subtask.id)}" ${subtask.isDone ? 'checked' : ''}>
-                    <span>${escapeHtml(subtask.title || 'Підпункт без назви')}</span>
-                    </label>
-                </div>`;
-            }).join('')
-            : '<div class="cabinet-subtask-inline-empty">Підпункти не знайдені.</div>';
-    }
-    return `<div id="cabinetSubtasksPanel${taskIdAttr}" class="cabinet-subtask-inline-panel ${blockedAttention ? 'is-completion-blocked-attention' : ''}" data-cabinet-subtasks-panel="${taskIdAttr}" ${isExpanded ? '' : 'hidden'}>
-        ${showHead ? `<div class="cabinet-subtask-inline-head">
-            <span>Підпункти можна виконувати у будь-якому порядку</span>
-            <b>${summary.done}/${summary.total}</b>
-        </div>` : ''}
-        <div class="cabinet-subtask-inline-list">${body}</div>
-    </div>`;
 }
 
 function cabinetTaskPostponementCount(task = {}) {
@@ -6413,10 +5723,7 @@ function cabinetTaskPostponementWord(count = 0) {
 function cabinetTaskPostponementBadgeLabel(task = {}) {
     const count = cabinetTaskPostponementCount(task);
     if (!count) return '';
-    const base = 'Перенесено ' + count + ' ' + cabinetTaskPostponementWord(count);
-    if (count >= 3) return base + ' · Потребує рішення';
-    if (count === 2) return base + ' · Пріоритет підвищено';
-    return base;
+    return count + ' ' + (cabinetTaskPostponementWord(count) === 'разів' ? 'перенесень' : 'перенесення');
 }
 
 function cabinetPostponementReasonLabel(value = '') {
@@ -6472,7 +5779,6 @@ function cabinetPostponementActionPermissions(task = {}) {
         ? task.actionPermissions
         : {};
     return {
-        canSplit: source.canSplit === true,
         canReassign: source.canReassign === true,
         canReschedule: source.canReschedule === true,
         canArchive: source.canArchive === true
@@ -6485,7 +5791,6 @@ function renderCabinetPostponementActions(task = {}) {
     const taskId = normalizeCabinetTaskId(task.id || task.taskId || task.task_id);
     const permissions = cabinetPostponementActionPermissions(task);
     const definitions = [
-        permissions.canSplit && ['split', 'Розбити на кроки', 'Додати підзадачі через наявний checklist flow'],
         permissions.canReassign && ['reassign', 'Змінити виконавця', 'Передати задачу іншому доступному виконавцю'],
         permissions.canReschedule && ['reschedule', 'Перепланувати', 'Обрати нову дату через канонічний reschedule flow'],
         permissions.canArchive && ['archive', 'Скасувати задачу', 'Перемістити в архів із можливістю відновлення']
@@ -6499,7 +5804,7 @@ function renderCabinetPostponementActions(task = {}) {
             + '</div>'
         : '';
     return '<section class="cabinet-postponement-decision" aria-label="Рішення для повторно перенесеної задачі">'
-        + '<p class="cabinet-postponement-recommendation">Задачу переносять уже втретє. Можливо, її потрібно уточнити, розбити або передати іншому виконавцю.</p>'
+        + '<p class="cabinet-postponement-recommendation">Задачу переносять уже втретє. Можливо, її потрібно уточнити або передати іншому виконавцю.</p>'
         + actions
         + '<p class="cabinet-postponement-action-status" data-cabinet-postponement-action-status role="status" aria-live="polite"></p>'
         + '</section>';
@@ -6559,12 +5864,15 @@ function renderCabinetPostponementBadge(task = {}) {
     if (!count) return '';
     const level = count >= 3 ? 3 : count === 2 ? 2 : 1;
     const label = cabinetTaskPostponementBadgeLabel(task);
-    const title = label + '. Відкрити пояснення перенесень.';
+    const canDecide = level === 3 && Object.values(cabinetPostponementActionPermissions(task)).some(Boolean);
+    const action = canDecide ? 'Вирішити' : 'Переглянути перенесення';
+    const title = label + '. ' + action;
     const taskId = normalizeCabinetTaskId(task.id || task.taskId || task.task_id);
     return '<button type="button" class="cabinet-postponement-badge cabinet-postponement-badge--level-' + level
         + '" data-cabinet-task-action="postponement-explanation" data-task-id="' + escapeHtml(taskId || '')
         + '" aria-haspopup="dialog" aria-expanded="false" aria-controls="taskUiActionSurface" title="' + escapeHtml(title)
-        + '" aria-label="' + escapeHtml(title) + '" ' + (taskId ? '' : 'disabled') + '>' + escapeHtml(label) + '</button>';
+        + '" aria-label="' + escapeHtml(title) + '" ' + (taskId ? '' : 'disabled') + '>' + escapeHtml(label)
+        + (canDecide ? '<span class="cabinet-postponement-action-label">Вирішити</span>' : '') + '</button>';
 }
 
 function setCabinetPostponementActionState(root, activeButton, options = {}) {
@@ -6580,40 +5888,6 @@ function setCabinetPostponementActionState(root, activeButton, options = {}) {
         status.textContent = options.message || '';
         status.dataset.tone = options.tone || '';
     }
-}
-
-async function splitCabinetPostponementTask(taskId) {
-    if (typeof formModal !== 'function') throw new Error('Форма підзадач тимчасово недоступна.');
-    const values = await formModal('Розбити задачу на кроки', [
-        {
-            key: 'steps',
-            label: 'Кроки — кожен з нового рядка',
-            type: 'textarea',
-            required: true,
-            placeholder: 'Уточнити результат\nПідготувати матеріали\nВиконати та перевірити'
-        }
-    ], { icon: '🧩', okText: 'Додати кроки', cancelText: 'Скасувати' });
-    if (!values) return { cancelled: true };
-    const steps = String(values.steps || '')
-        .split(/\r?\n/)
-        .map(value => value.replace(/^[-*•\d.)\s]+/, '').trim())
-        .filter(Boolean)
-        .slice(0, 20);
-    if (steps.length < 2) throw new Error('Додайте щонайменше два окремі кроки.');
-    const created = [];
-    for (const title of steps) {
-        const result = await apiPost(`/tasks/${taskId}/subtasks`, {
-            title,
-            sourceType: 'manual'
-        });
-        if (!result?.success || !result.subtask) {
-            const error = new Error(result?.error || `Не вдалося додати крок «${title}».`);
-            error.partialSubtasks = created;
-            throw error;
-        }
-        created.push(normalizeCabinetSubtask(result.subtask));
-    }
-    return { success: true, created };
 }
 
 async function reassignCabinetPostponementTask(taskId, task = {}) {
@@ -6669,7 +5943,6 @@ async function archiveCabinetPostponementTask(taskId) {
 }
 
 async function runCabinetPostponementAction(action, taskId, task = {}) {
-    if (action === 'split') return splitCabinetPostponementTask(taskId);
     if (action === 'reassign') return reassignCabinetPostponementTask(taskId, task);
     if (action === 'reschedule') {
         return rescheduleCabinetTask(taskId, 'custom', {
@@ -6690,7 +5963,7 @@ async function handleCabinetPostponementActionClick(event) {
     const taskId = normalizeCabinetTaskId(button?.dataset?.taskId);
     const task = findCabinetTask(taskId) || {};
     const permissions = cabinetPostponementActionPermissions(task);
-    const permissionKey = { split: 'canSplit', reassign: 'canReassign', reschedule: 'canReschedule', archive: 'canArchive' }[action];
+    const permissionKey = { reassign: 'canReassign', reschedule: 'canReschedule', archive: 'canArchive' }[action];
     const root = button?.closest?.('#taskUiActionSurface') || document.getElementById?.('taskUiActionSurface');
     if (!taskId || !permissionKey || permissions[permissionKey] !== true) {
         setCabinetPostponementActionState(root, button, { message: 'Ця дія недоступна для вашої ролі.', tone: 'error' });
@@ -6698,7 +5971,7 @@ async function handleCabinetPostponementActionClick(event) {
     }
     if (button.dataset.pending === 'true') return;
     button.dataset.pending = 'true';
-    const pendingLabel = { split: 'Додаю кроки...', reassign: 'Змінюю виконавця...', reschedule: 'Переплановую...', archive: 'Переміщую в архів...' }[action];
+    const pendingLabel = { reassign: 'Змінюю виконавця...', reschedule: 'Переплановую...', archive: 'Переміщую в архів...' }[action];
     setCabinetPostponementActionState(root, button, { busy: true, message: pendingLabel });
     try {
         const result = await runCabinetPostponementAction(action, taskId, task);
@@ -6713,7 +5986,6 @@ async function handleCabinetPostponementActionClick(event) {
         window.TaskUI?.closeActionMenu?.();
         renderCabinetActiveTab();
         const successMessage = {
-            split: 'Кроки додано до задачі',
             reassign: 'Виконавця змінено',
             reschedule: 'Задачу переплановано',
             archive: 'Задачу переміщено в архів. Її можна відновити.'
@@ -6726,12 +5998,6 @@ async function handleCabinetPostponementActionClick(event) {
         }
     } catch (error) {
         console.error('Profile postponement decision action failed', error);
-        if (Array.isArray(error?.partialSubtasks) && error.partialSubtasks.length) {
-            const existing = cabinetSubtaskCache.get(taskId) || cachedCabinetSubtasks(taskId, task) || [];
-            const updated = [...existing.map(normalizeCabinetSubtask), ...error.partialSubtasks];
-            cabinetSubtaskCache.set(taskId, updated);
-            updateCabinetTaskSubtaskSummary(taskId, updated);
-        }
         setCabinetPostponementActionState(root, button, {
             message: error?.message || 'Не вдалося виконати дію. Спробуйте ще раз.',
             tone: 'error'
@@ -6785,8 +6051,7 @@ function cabinetTaskVisibleBadges(task = {}, context = {}) {
     const required = [
         cabinetTaskVisibleBadge('due', renderCabinetDueBadge(task, taskIdAttr, dueState)),
         cabinetTaskVisibleBadge('priority', renderCabinetTaskPriorityControl(task, taskIdAttr)),
-        cabinetTaskVisibleBadge('postponement', renderCabinetPostponementBadge(task)),
-        cabinetTaskVisibleBadge('report', cabinetTaskReportBadge(task))
+        cabinetTaskVisibleBadge('postponement', renderCabinetPostponementBadge(task))
     ].filter(Boolean);
     const optional = [
         cabinetTaskVisibleBadge('move-today', renderCabinetMoveTodayAction(task, taskIdAttr, dueState)),
@@ -6824,23 +6089,21 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
         const id = normalizeCabinetTaskId(task.id || task.taskId || task.task_id);
         const due = getCabinetTaskDueState(task, cabinetTaskDueValue(task));
         const title = task.title || 'Без назви';
-        const checklist = cabinetSubtaskSummary(task);
         const taskBlocked = task.isBlocked || (Array.isArray(task.dependencies)
             && task.dependencies.some(item => item?.isOpen !== false && !['done', 'archived', 'cancelled'].includes(item?.status)));
-        const checklistBlocked = cabinetTaskCompletionBlockedBySubtasks(task);
-        const blocked = taskBlocked ? 'Спочатку виконайте задачу, від якої залежить ця.' :
-            checklistBlocked ? cabinetSubtaskCompletionTitle(task) : '';
+        const blocked = taskBlocked ? 'Спочатку виконайте задачу, від якої залежить ця.' : '';
         return window.ProfileMyDay.renderCard({
             id, title, status: cabinetTaskStatus(task), due: cabinetTaskFocusDateKey(task),
             priority: normalizeCabinetPriority(task.priority),
             mode: cabinetTaskMode(task), modeLabel: taskModeLabel(task),
-            checklist, blocked, report: cabinetTaskReportBadge(task),
+            blocked,
             postponementBadge: renderCabinetPostponementBadge(task),
             isAi: window.TaskAiDraft?.isAiTask?.(task) === true,
             role: window.ProfileMyDay.taskRole(task),
             executor: task.ownerLabel || task.owner_name || task.owner_username,
             dueState: due.key,
             canReschedule: cabinetTaskAllowsReschedule(task),
+            canMoveToToday: cabinetTaskCanMoveToToday(task, due),
             priorityControl: renderCabinetTaskPriorityControl(task, String(id || ''))
         });
     }
@@ -6848,7 +6111,6 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
     const taskIdAttr = Number.isInteger(taskId) && taskId > 0 ? String(taskId) : '';
     const due = cabinetTaskDueValue(task);
     const scheduleStatus = task.scheduleStatus || task.schedule_status || task.schedule?.status || '';
-    const subSummary = cabinetSubtaskSummary(task);
     const taskStatus = task.status || 'todo';
     const priority = normalizeCabinetPriority(task.priority || 'normal');
     const attentionLevel = cabinetTaskAttentionLevel(task);
@@ -6861,26 +6123,12 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
         ? ` draggable="true" data-cabinet-task-drag="${dragKind}" data-cabinet-task-drag-target="today" aria-grabbed="false" title="Перетягніть у колонку Сьогодні, щоб перенести задачу на сьогодні"`
         : '';
     const doneActionLabel = 'Виконати задачу';
-    const doneBlocked = cabinetTaskCompletionBlockedBySubtasks(task);
-    if (!doneBlocked) blockedCabinetSubtaskAttentionIds.delete(taskId);
-    const blockedSubtaskAttention = doneBlocked && blockedCabinetSubtaskAttentionIds.has(taskId);
-    const doneTitle = doneBlocked ? cabinetSubtaskCompletionTitle(task) : doneActionLabel;
-    const isDecomposed = cabinetTaskIsDecomposed(task);
     const isMyDayCard = options.surface === 'myday' || activeTab === 'myday';
     const suppressMoveTodayAction = options.suppressMoveTodayAction === true;
     const suppressOverdueRescheduleMenu = options.suppressOverdueRescheduleMenu === true;
-    const inlineContext = {
-        activeInlineTaskId: options.activeInlineTaskId ?? activeCabinetInlineTaskId,
-        allowInlineChecklist: isMyDayCard && options.allowInlineChecklist !== false
-    };
-    const inlineActive = isMyDayCard && isDecomposed && isCabinetTaskInlineActive(taskId, inlineContext);
     const globalViewMode = getCabinetMyDayViewMode();
     const cardDetailsExpanded = isCabinetMyDayTaskExpanded(taskId);
     const showMyDayDetails = isMyDayCard && (globalViewMode === 'detailed' || cardDetailsExpanded);
-    const checklistLoaded = Array.isArray(cachedCabinetSubtasks(taskId, task));
-    const subtasksExpanded = Boolean(isDecomposed && taskIdAttr && (
-        isCabinetSubtasksExpanded(taskId, task) || (showMyDayDetails && checklistLoaded)
-    ));
     const myDayTimeSummaryHtml = isMyDayCard ? renderCabinetMyDayTimeSummary(task, showMyDayDetails) : '';
     const myDayFactsHtml = isMyDayCard ? [
         cabinetTaskVisibleBadge('viewer-role', `<span>${escapeHtml(window.TaskUiShared?.taskViewerRoleLabel(task) || '')}</span>`),
@@ -6906,8 +6154,6 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
                     <span>${taskKindLabel(task)}</span>
                     ${scheduleStatus === 'proposal' ? '<span>потрібне підтвердження часу</span>' : ''}
                     ${scheduleStatus === 'missed' ? '<span>слот пропущено</span>' : ''}
-                    ${subSummary.total ? `<span>${subSummary.done}/${subSummary.total}</span>` : ''}
-                    ${cabinetTaskReportBadge(task)}
                 ` : '';
     const cardClass = [
         'cabinet-task-card',
@@ -6916,15 +6162,7 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
         options.cardClassName || '',
         attentionLevel ? 'attention-level-' + attentionLevel : '',
         `priority-${priority}`,
-        isDecomposed ? 'is-decomposed' : '',
-        blockedSubtaskAttention ? 'is-subtask-completion-blocked' : '',
-        inlineActive ? 'is-inline-checklist-active' : '',
-        isDecomposed && subtasksExpanded ? 'is-subtasks-expanded' : '',
-        isDecomposed && !subtasksExpanded ? 'is-subtasks-collapsed' : ''
     ].filter(Boolean).join(' ');
-    const myDaySubtaskSummary = isMyDayCard && isDecomposed
-        ? renderCabinetMyDaySubtaskSummary(task, taskIdAttr, subtasksExpanded, { inlineActive })
-        : '';
     const isAiCreated = window.TaskAiDraft?.isAiTask?.(task) === true;
     const aiCreatedMarker = isAiCreated
         ? '<span class="task-ai-created-marker" aria-label="Створено з допомогою AI">✨ AI</span>'
@@ -6935,7 +6173,7 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
     const extraCommandsHtml = options.extraCommandsHtml || '';
     const extraAttrs = options.cardAttrs || '';
     const doneIcon = '<svg class="cabinet-task-control-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m5 12 4 4L19 6"/></svg>';
-    const doneButton = `<button type="button" class="cabinet-task-action-btn cabinet-task-action-done" title="${escapeHtml(doneTitle)}" aria-label="${escapeHtml(doneBlocked ? doneTitle : doneActionLabel)}" data-tooltip="${escapeHtml(doneActionLabel)}" data-cabinet-task-action="done" data-task-id="${taskIdAttr}" ${!taskIdAttr ? 'disabled' : (doneBlocked ? 'aria-disabled="true" data-cabinet-completion-blocked="subtasks"' : '')}>${isMyDayCard ? doneIcon : '✓'}${showMyDayDetails ? 'Виконати' : ''}</button>`;
+    const doneButton = `<button type="button" class="cabinet-task-action-btn cabinet-task-action-done" title="${escapeHtml(doneActionLabel)}" aria-label="${escapeHtml(doneActionLabel)}" data-tooltip="${escapeHtml(doneActionLabel)}" data-cabinet-task-action="done" data-task-id="${taskIdAttr}" ${!taskIdAttr ? 'disabled' : ''}>${isMyDayCard ? doneIcon : '✓'}${showMyDayDetails ? 'Виконати' : ''}</button>`;
     const taskActionsHtml = `<div class="cabinet-task-actions">
                 ${showMyDayDetails ? '' : detailToggleHtml}
                 ${doneButton}
@@ -6945,14 +6183,10 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
     const hasBlocker = isMyDayCard && (task.isBlocked || (Array.isArray(task.dependencies)
         && task.dependencies.some(item => item?.isOpen !== false && !['done', 'archived', 'cancelled'].includes(item?.status))));
     const blocker = hasBlocker ? window.MyDayDependencies?.renderTaskBlocker?.(task) || 'Є незавершена передумова' : '';
-    const report = isMyDayCard ? cabinetTaskReportBadge(task) : '';
     const visibility = cabinetTaskVisibility(task);
-    const checklist = showMyDayDetails && isDecomposed && checklistLoaded
-        ? renderCabinetSubtasksPanel(task, taskIdAttr, true, { showHead: true })
-        : `${showMyDayDetails ? myDaySubtaskSummary : ''}${renderCabinetSubtasksPanel(task, taskIdAttr, subtasksExpanded, { showHead: false })}`;
     if (isMyDayCard) {
         return `
-        <div class="${cardClass}${isAiCreated ? ' is-ai-created' : ''}" data-task-id="${taskIdAttr}" data-task-status="${escapeHtml(taskStatus)}" data-task-priority="${escapeHtml(priority)}" data-task-attention-level="${attentionLevel}" data-task-due-state="${escapeHtml(dueState.key)}" data-my-day-view-mode="${escapeHtml(globalViewMode)}" data-my-day-details-expanded="${showMyDayDetails ? 'true' : 'false'}" data-cabinet-task-decomposed="${isDecomposed ? 'true' : 'false'}"${isAiCreated ? ' data-ai-created="true" aria-label="Задача створена з допомогою AI"' : ''}${dragAttrs}${extraAttrs ? ` ${extraAttrs}` : ''}>
+        <div class="${cardClass}${isAiCreated ? ' is-ai-created' : ''}" data-task-id="${taskIdAttr}" data-task-status="${escapeHtml(taskStatus)}" data-task-priority="${escapeHtml(priority)}" data-task-attention-level="${attentionLevel}" data-task-due-state="${escapeHtml(dueState.key)}" data-my-day-view-mode="${escapeHtml(globalViewMode)}" data-my-day-details-expanded="${showMyDayDetails ? 'true' : 'false'}"${isAiCreated ? ' data-ai-created="true" aria-label="Задача створена з допомогою AI"' : ''}${dragAttrs}${extraAttrs ? ` ${extraAttrs}` : ''}>
             <div class="cabinet-task-main cabinet-task-main--my-day">
                 <div class="cabinet-task-zone cabinet-task-zone--header">
                     ${taskTitleHtml}
@@ -6960,8 +6194,7 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
                 </div>
                 ${myDayFactsHtml ? `<div class="cabinet-task-zone cabinet-task-zone--facts">${myDayFactsHtml}</div>` : ''}
                 ${showMyDayDetails && task.description?.trim() ? `<p class="cabinet-task-description">${escapeHtml(task.description)}</p>` : ''}
-                ${checklist}
-                ${showMyDayDetails || blocker || report ? `<div class="cabinet-task-zone cabinet-task-zone--completion">${blocker}${report}${showMyDayDetails ? taskActionsHtml : ''}</div>` : ''}
+                ${showMyDayDetails || blocker ? `<div class="cabinet-task-zone cabinet-task-zone--completion">${blocker}${showMyDayDetails ? taskActionsHtml : ''}</div>` : ''}
                 ${myDayDetailsHtml ? `<div class="cabinet-task-zone cabinet-task-zone--details">${myDayDetailsHtml}</div>` : ''}
                 ${showMyDayDetails && visibility !== 'team' ? `<p class="cabinet-task-visibility">${escapeHtml(cabinetTaskVisibilityHint(visibility))}</p>` : ''}
                 ${extraCommandsHtml && !showMyDayDetails ? `<div class="cabinet-task-zone cabinet-task-zone--commands">${extraCommandsHtml}</div>` : ''}
@@ -6969,18 +6202,12 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
         </div>`;
     }
     return `
-        <div class="${cardClass}${isAiCreated ? ' is-ai-created' : ''}" data-task-id="${taskIdAttr}" data-task-status="${escapeHtml(taskStatus)}" data-task-priority="${escapeHtml(priority)}" data-task-attention-level="${attentionLevel}" data-task-due-state="${escapeHtml(dueState.key)}" data-cabinet-task-decomposed="${isDecomposed ? 'true' : 'false'}"${isAiCreated ? ' data-ai-created="true" aria-label="Задача створена з допомогою AI"' : ''}${dragAttrs}>
+        <div class="${cardClass}${isAiCreated ? ' is-ai-created' : ''}" data-task-id="${taskIdAttr}" data-task-status="${escapeHtml(taskStatus)}" data-task-priority="${escapeHtml(priority)}" data-task-attention-level="${attentionLevel}" data-task-due-state="${escapeHtml(dueState.key)}"${isAiCreated ? ' data-ai-created="true" aria-label="Задача створена з допомогою AI"' : ''}${dragAttrs}>
             <div class="cabinet-task-main">
                 ${taskTitleHtml}
                 <div class="cabinet-task-meta">
                     ${metadataHtml}
-                    ${isMyDayCard ? '' : renderCabinetSubtaskToggle(task, taskIdAttr, subtasksExpanded)}
-                    ${isMyDayCard ? '' : renderCabinetSubtaskProgress(task)}
                 </div>
-                ${myDaySubtaskSummary}
-                ${!isMyDayCard && inlineActive && !subtasksExpanded ? renderCabinetActiveSubtaskSlice(task, taskIdAttr) : ''}
-                ${!isMyDayCard && isDecomposed && !subtasksExpanded && !inlineActive ? renderCabinetSubtaskCollapsedSummary(task) : ''}
-                ${renderCabinetSubtasksPanel(task, taskIdAttr, subtasksExpanded, { showHead: !isMyDayCard })}
             </div>
             ${taskActionsHtml}
         </div>`;
@@ -7093,7 +6320,7 @@ function renderCabinetTaskComposer(options = {}) {
                 </label>
                 <button type="submit" class="cabinet-task-create-submit" data-cabinet-create-action="plain" aria-busy="false">Додати задачу</button>
             </div>
-            <p id="cabinetTaskVisibilityHint" class="park-task-visibility">${cabinetTaskVisibilityHint(defaults.visibility)}</p>
+            <p id="cabinetTaskVisibilityHint" class="park-task-visibility"${defaults.visibility === 'team' ? ' hidden' : ''}>${cabinetTaskVisibilityHint(defaults.visibility)}</p>
             <div class="cabinet-task-composer-actions">
                 ${simple ? '' : `<button type="button" class="cabinet-task-composer-toggle" data-cabinet-composer-toggle aria-expanded="${expanded ? 'true' : 'false'}" aria-controls="cabinetTaskComposerAdvanced">${expanded ? 'Згорнути' : 'Більше параметрів'}</button>
                 <button type="button" class="cabinet-task-ai-fill task-ai-draft-trigger" id="cabinetTaskAiFillBtn" data-cabinet-create-action="ai" data-task-ai-draft-preview aria-busy="false">Заповнити з AI</button>`}
@@ -7135,49 +6362,11 @@ function renderCabinetTaskComposer(options = {}) {
                         </select>
 
                     </label>
-                    <label class="cabinet-task-report-toggle" for="cabinetTaskReportRequired">
-                        <input id="cabinetTaskReportRequired" type="checkbox">
-                        <span>Потрібен звіт перед виконанням</span>
-                    </label>
                     <label class="cabinet-task-report-toggle" for="cabinetTaskAllowReschedule">
                         <input id="cabinetTaskAllowReschedule" type="checkbox" checked>
                         <span>Дозволити перенесення</span>
                     </label>
                 </div>
-                ${simple ? '' : `<div class="cabinet-task-subtasks">
-                    <div class="cabinet-task-subtasks-head">
-                        <span>Підзадачі</span>
-                    </div>
-                    <div class="cabinet-decomposition-controls">
-                        <select id="cabinetDecompositionMode" aria-label="Режим декомпозиції">
-                            <option value="none">Без декомпозиції</option>
-                            <option value="manual">Вручну</option>
-                            <option value="template">Шаблон</option>
-                        </select>
-                        <select id="cabinetDecompositionTemplate" aria-label="Шаблон декомпозиції">
-                            <option value="personal_home">Побут / особисте</option>
-                            <option value="event_preparation">Підготовка події</option>
-                            <option value="content_creation">Контент</option>
-                            <option value="crm_sales_followup">CRM / продаж</option>
-                        </select>
-                        <button type="button" id="cabinetSubtaskAcceptDraftBtn" class="cabinet-subtask-add" hidden>Прийняти</button>
-                    </div>
-                    <div class="cabinet-template-controls">
-                        <select id="cabinetSavedDecompositionTemplate" aria-label="Мій шаблон підзадач">
-                            <option value="">Мої шаблони</option>
-                        </select>
-                        <button type="button" id="cabinetApplySavedTemplateBtn" class="cabinet-subtask-add">Застосувати</button>
-                        <button type="button" id="cabinetSaveSubtasksTemplateBtn" class="cabinet-subtask-add">Зберегти</button>
-                        <button type="button" id="cabinetUpdateSavedTemplateBtn" class="cabinet-subtask-add">Оновити</button>
-                        <button type="button" id="cabinetDeleteSavedTemplateBtn" class="cabinet-subtask-remove">Видалити</button>
-                    </div>
-                    <div id="cabinetDecompositionSuggestions" class="cabinet-decomposition-suggestions" hidden></div>
-                    <div id="cabinetSubtaskDraftStatus" class="cabinet-subtask-status" aria-live="polite"></div>
-                    <div class="cabinet-subtask-list-toolbar">
-                        <button type="button" class="cabinet-subtask-add" onclick="addCabinetSubtask()">+ Підзадача</button>
-                    </div>
-                    <div id="cabinetSubtaskList" class="cabinet-subtask-list"></div>
-                </div>`}
             </div>
             ${simple ? '</details>' : ''}
         </form>`;
@@ -7390,20 +6579,14 @@ function cabinetAllMyDayTaskCount(groups = cabinetAllMyDayGroups()) {
     return groups.reduce((sum, group) => sum + group.tasks.length, 0);
 }
 
-function renderCabinetAllMyDayGroups(groups = cabinetAllMyDayGroups(), options = {}) {
+function renderCabinetAllMyDayGroups(groups = cabinetAllMyDayGroups()) {
     const visibleGroups = groups.filter(group => group.tasks.length > 0);
-    const visibleTasks = visibleGroups.flatMap(group => group.tasks);
-    const activeInlineTaskId = cabinetResolveActiveInlineTaskId(visibleTasks, {
-        activeInlineTaskId: options.activeInlineTaskId,
-        allowInlineChecklist: options.allowInlineChecklist !== false
-    });
     if (!visibleGroups.length) {
         return renderCabinetSection('Всі задачі', [], 'Активних задач немає.', true, {
             className: 'cabinet-task-section--all-group',
             keepOrder: true,
             cardOptions: {
                 surface: 'myday',
-                allowInlineChecklist: false
             }
         });
     }
@@ -7416,8 +6599,6 @@ function renderCabinetAllMyDayGroups(groups = cabinetAllMyDayGroups(), options =
         tone: group.tone || '',
         cardOptions: {
             surface: 'myday',
-            activeInlineTaskId,
-            allowInlineChecklist: options.allowInlineChecklist !== false
         }
     })).join('');
 }
@@ -7459,23 +6640,16 @@ function renderCabinetMyDayTodayPrimary(context = {}) {
         focusedTasks = [],
         focusedDropOptions = {}
     } = context;
-    if (isAllMode) return renderCabinetAllMyDayGroups(allGroups, { allowInlineChecklist: true });
+    if (isAllMode) return renderCabinetAllMyDayGroups(allGroups);
     const state = getCabinetMyDayState();
     const moreKey = `${state.selectedDuePreset}:${state.selectedDueDate || ''}`;
     const visibleLimit = cabinetDayVisibleLimits.get(moreKey) || 32;
-    const visibleTasks = sortCabinetTasksForDisplay(focusedTasks).slice(0, visibleLimit);
-    const preferredInlineTaskId = cabinetResolveActiveInlineTaskId(focusedTasks);
-    const activeInlineTaskId = visibleTasks.some(task => cabinetTaskNumericId(task) === preferredInlineTaskId)
-        ? preferredInlineTaskId
-        : cabinetResolveActiveInlineTaskId(visibleTasks);
     return renderCabinetSection(focusedMeta.title, focusedTasks, focusedMeta.emptyText, false, {
         ...focusedDropOptions,
         visibleLimit,
         moreKey,
         cardOptions: {
             surface: 'myday',
-            activeInlineTaskId,
-            allowInlineChecklist: true
         }
     });
 }
@@ -7493,14 +6667,6 @@ function cabinetVisibleTaskListForSegment(segment = getCabinetMyDaySegment(), co
     return [];
 }
 
-function renderCabinetOverdueTriageProgress(task = {}) {
-    const summary = cabinetSubtaskSummary(task);
-    if (!summary.total) return '<span class="cabinet-overdue-triage-progress">Без чекліста</span>';
-    const remaining = Math.max(0, summary.total - summary.done);
-    const stateLabel = remaining ? cabinetSubtaskRemainingLabel(remaining) : 'Готово';
-    return `<span class="cabinet-overdue-triage-progress">Чекліст ${summary.done}/${summary.total} · ${escapeHtml(stateLabel)}</span>`;
-}
-
 function renderCabinetOverdueTriageRow(task = {}) {
     const taskId = cabinetTaskNumericId(task);
     const taskIdAttr = taskId ? String(taskId) : '';
@@ -7516,7 +6682,6 @@ function renderCabinetOverdueTriageRow(task = {}) {
     </div>`;
     return renderCabinetTaskCard(task, false, {
         surface: 'myday',
-        allowInlineChecklist: true,
         cardClassName: 'cabinet-overdue-triage-row',
         cardAttrs: 'data-cabinet-overdue-triage-row',
         suppressMoveTodayAction: true,
@@ -7556,26 +6721,20 @@ function renderCabinetMyDaySegmentPrimary(activeSegment = getCabinetMyDaySegment
     }
     if (segment === 'waiting') {
         const tasks = context.waiting || cabinetList('waiting');
-        const activeInlineTaskId = cabinetResolveActiveInlineTaskId(tasks);
-        return renderCabinetSection('Чекаю', context.waiting || cabinetList('waiting'), 'Немає задач в очікуванні', true, {
+        return renderCabinetSection('Чекаю', tasks, 'Немає задач в очікуванні', true, {
             className: 'cabinet-task-section--segment',
             cardOptions: {
                 surface: 'myday',
-                activeInlineTaskId,
-                allowInlineChecklist: true
             }
         });
     }
     if (segment === 'completed') return '';
     if (segment === 'private') {
         const tasks = context.privateTasks || cabinetList('private');
-        const activeInlineTaskId = cabinetResolveActiveInlineTaskId(tasks);
         return renderCabinetSection('Приватне', tasks, 'Приватних задач немає', true, {
             className: 'cabinet-task-section--segment',
             cardOptions: {
                 surface: 'myday',
-                activeInlineTaskId,
-                allowInlineChecklist: true
             }
         });
     }
@@ -7608,6 +6767,73 @@ function cabinetHrReminderScope() {
     return JSON.stringify([scope?.mode, scope?.activeContext, scope?.selectedContexts || []]);
 }
 
+function profileControlCount() {
+    const scope = cabinetHrReminderScope();
+    if (profileControlTasks?.scope === scope && profileControlTasks.meta) return profileControlTasks.meta.total;
+    return myCabinetData?.hrReminderScope === scope ? myCabinetData.stats?.controlCount : null;
+}
+
+function syncProfileControlCount() {
+    const badge = document.querySelector?.('[data-profile-control-count]');
+    if (!badge) return;
+    const count = profileControlCount();
+    badge.hidden = count == null;
+    badge.textContent = count ?? '';
+}
+
+function renderProfileControlTasks() {
+    const state = profileControlTasks?.scope === cabinetHrReminderScope() ? profileControlTasks : null;
+    const tasks = state?.tasks || [];
+    const meta = state?.meta;
+    return `<section class="profile-work-panel profile-control-tasks" aria-labelledby="profileControlHeading" data-profile-control-panel>
+        <h2 id="profileControlHeading" tabindex="-1">На контролі${meta ? ` · ${escapeHtml(meta.total)}` : ''}</h2>
+        ${tasks.length ? `<ul>${tasks.map(task => {
+            const id = cabinetProjectionTaskId(task);
+            const date = cabinetTaskFocusDateKey(task);
+            const overdue = date && date < cabinetDateKeyOffset();
+            return `<li>
+                <a href="/tasks?view=my&amp;open=${id}">${escapeHtml(task.title || 'Без назви')}</a>
+                <span>${task.ownerLabel ? `Виконує ${escapeHtml(task.ownerLabel)}` : 'Виконавця не призначено'}</span>
+                ${date ? `<span${overdue ? ' class="is-overdue"' : ''}>${overdue ? 'Прострочено · ' : ''}<time datetime="${escapeHtml(date)}">${escapeHtml(profileEmployeeDateText(date))}</time></span>` : '<span>Без дати</span>'}
+            </li>`;
+        }).join('')}</ul>` : ''}
+        ${!state || state.loading ? '<p role="status">Завантажуємо задачі…</p>' : ''}
+        ${state?.error ? `<p role="alert">${escapeHtml(state.error)}</p>` : ''}
+        ${meta && !tasks.length && !state.loading && !state.error ? '<p>Зараз немає відкритих задач на контролі.</p>' : ''}
+        ${!state?.loading && (state?.error || meta?.nextCursor) ? `<button type="button" class="cabinet-bucket-more" onclick="loadProfileControlTasks(${Number(meta?.nextCursor?.offset || 0)})">${state.error ? 'Повторити' : 'Показати ще'}</button>` : ''}
+    </section>`;
+}
+
+async function loadProfileControlTasks(offset = 0) {
+    if (!isOwnProfile || activeTab !== 'control') return;
+    const scope = cabinetHrReminderScope();
+    const previous = profileControlTasks?.scope === scope ? profileControlTasks : null;
+    if (previous?.loading) return;
+    const state = { scope, tasks: offset ? previous?.tasks || [] : [], meta: offset ? previous?.meta : null, loading: true };
+    profileControlTasks = state;
+    const repaint = () => {
+        if (state !== profileControlTasks || scope !== cabinetHrReminderScope() || activeTab !== 'control') return;
+        const panel = document.querySelector('[data-profile-control-panel]');
+        const focused = panel?.contains(document.activeElement);
+        if (panel) panel.outerHTML = renderProfileControlTasks();
+        if (focused) document.getElementById('profileControlHeading')?.focus({ preventScroll: true });
+    };
+    repaint();
+    try {
+        const payload = await apiGetScopedJson(`/tasks/my-cabinet?bucket=control&offset=${offset}&limit=${CABINET_BUCKET_PAGE_LIMIT}`);
+        if (!Array.isArray(payload?.tasks) || !payload.meta?.bucketPage) throw new Error('Missing task control projection');
+        const seen = new Set(state.tasks.map(cabinetProjectionTaskId));
+        state.tasks = [...state.tasks, ...payload.tasks.filter(task => !seen.has(cabinetProjectionTaskId(task)))];
+        state.meta = payload.meta.bucketPage;
+        if (state === profileControlTasks) syncProfileControlCount();
+    } catch (error) {
+        state.error = 'Не вдалося завантажити задачі на контролі.';
+    } finally {
+        state.loading = false;
+        repaint();
+    }
+}
+
 function renderMyDayHrReminders() {
     if (!isOwnProfile) return '';
     if (myCabinetData?.hrReminderScope !== cabinetHrReminderScope()) return '';
@@ -7626,13 +6852,12 @@ function renderMyDayHrReminders() {
 }
 
 function renderParkMyDayWorkspace() {
-    const selected = window.ProfileMyDay?.getView(cabinetMyDayViewPreferenceKey()) || 'today';
     const today = cabinetDateKeyOffset(0);
     const activeTasks = cabinetActiveMyDaySourceTasks();
     const currentFocusProjection = myCabinetData?.meta?.calendar?.focusDate === myDayLinkedDate;
     const listFor = bucket => {
         const projected = bucket !== 'focusDate' || currentFocusProjection ? myCabinetData?.planning?.[bucket] : null;
-        return Array.isArray(projected) ? projected : activeTasks.filter(task => {
+        const tasks = Array.isArray(projected) ? projected : activeTasks.filter(task => {
             if (!cabinetTaskIsOpenForMyDay(task) || isCabinetDeferredTask(task)) return false;
             const due = cabinetTaskFocusDateKey(task);
             return bucket === 'overdue' ? due && due < today
@@ -7640,6 +6865,7 @@ function renderParkMyDayWorkspace() {
                 : bucket === 'focusDate' ? due === myDayLinkedDate
                 : bucket === 'noDate' ? !due : due === today;
         });
+        return tasks.filter(task => window.ProfileMyDay?.taskRole(task) !== 'author');
     };
     const totalFor = bucket => cabinetBucketMeta(bucket)?.total ?? listFor(bucket).length;
     const group = (bucket, title, empty) => {
@@ -7658,7 +6884,7 @@ function renderParkMyDayWorkspace() {
             const message = metadata?.hasMore ? 'Задачі цієї групи ще не завантажено.' : empty;
             return renderCabinetSection(title, list, message, false, sectionOptions);
         }
-        const roleGroups = ['executor', 'author', 'participant', 'viewer'].map(role => ({
+        const roleGroups = ['executor', 'participant', 'viewer'].map(role => ({
             role, tasks: list.filter(task => window.ProfileMyDay.taskRole(task) === role)
         })).filter(item => item.tasks.length);
         return `<section class="cabinet-task-section park-period-section" ${sectionOptions.sectionAttrs}>
@@ -7677,20 +6903,16 @@ function renderParkMyDayWorkspace() {
         const noDate = totalFor('noDate') > 0
             ? group('noDate', 'Без дати', 'Задач без дати немає.') : '';
         const periods = [
-            ['overdue', group('overdue', 'Прострочені', 'Немає прострочених задач.')],
             ['today', group('today', 'Сьогодні', 'На сьогодні задач немає.') + noDate],
+            ['overdue', group('overdue', 'Прострочені', 'Немає прострочених задач.')],
             ['future', group('future', 'Майбутні', 'Немає майбутніх задач.')]
         ];
         content = periods.map(([key, sections]) => `<div class="park-period-column" data-park-period="${key}">${
             key === linkedPeriod ? group('focusDate', `Задачі на ${profileEmployeeDateText(myDayLinkedDate)}`, 'На цю дату немає активних задач.') : sections
         }</div>`).join('');
     }
-    const counts = myCabinetData ? { overdue: totalFor('overdue'), today: totalFor('today'), future: totalFor('future') } : {};
     return `
-        <section id="cabinetMyDaySegmentPanel" class="park-my-day-workspace" data-park-selected-period="${selected}" aria-label="Список задач">
-            <div class="park-my-day-toolbar">
-                ${window.ProfileMyDay?.renderViews(selected, counts) || ''}
-            </div>
+        <section id="cabinetMyDaySegmentPanel" class="park-my-day-workspace" aria-label="Список задач">
             <div class="park-my-day-groups">${content}</div>
         </section>`;
 }
@@ -7720,10 +6942,6 @@ function focusMyDayTaskDate(due) {
     if (myDayLinkedDate === due) return;
     myDayLinkedDate = due;
     const today = cabinetDateKeyOffset(0);
-    if (due !== null) {
-        const period = !due || due === today ? 'today' : due < today ? 'overdue' : 'future';
-        window.ProfileMyDay.setView(cabinetMyDayViewPreferenceKey(), period, { persist: false });
-    }
     if (activeTab === 'myday') rerenderCabinetMyDaySegmentPanel();
     if (due && due !== today) {
         void refreshMyCabinetTab({ silent: true, keepExistingOnError: true, focusDate: due });
@@ -7799,329 +7017,6 @@ function rerenderCabinetTaskTabs() {
     attachProfileListeners();
 }
 
-async function loadCabinetTaskSubtasks(taskId) {
-    const id = normalizeCabinetTaskId(taskId);
-    if (!id) return [];
-    if (cabinetSubtaskCache.has(id)) return cabinetSubtaskCache.get(id);
-    loadingCabinetSubtaskIds.add(id);
-    rerenderCabinetTaskTabs();
-    const result = await apiGet(`/tasks/${id}/subtasks`);
-    loadingCabinetSubtaskIds.delete(id);
-    if (!result?.success || !Array.isArray(result.subtasks)) {
-        if (typeof showNotification === 'function') showNotification(result?.error || 'Не вдалося завантажити підпункти задачі', 'error');
-        rerenderCabinetTaskTabs();
-        return [];
-    }
-    const subtasks = result.subtasks.map(normalizeCabinetSubtask);
-    cabinetSubtaskCache.set(id, subtasks);
-    updateCabinetTaskSubtaskSummary(id, subtasks);
-    rerenderCabinetTaskTabs();
-    return subtasks;
-}
-
-function focusFirstBlockedCabinetSubtask(taskId) {
-    const id = normalizeCabinetTaskId(taskId);
-    if (!id || typeof document === 'undefined' || typeof document.querySelector !== 'function') return;
-    const focus = () => {
-        const input = document.querySelector(`[data-cabinet-subtasks-panel="${id}"] .cabinet-subtask-inline-item.is-blocked-attention input[data-cabinet-subtask-done]`);
-        if (!input) return;
-        input.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
-        try { input.focus({ preventScroll: true }); } catch { input.focus?.(); }
-    };
-    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(focus);
-    else setTimeout(focus, 0);
-}
-
-async function revealBlockedCabinetSubtasks(taskId, task = {}) {
-    const id = normalizeCabinetTaskId(taskId);
-    if (!id) return false;
-    blockedCabinetSubtaskAttentionIds.add(id);
-    collapsedCabinetSubtaskIds.delete(id);
-    if (activeTab === 'myday') setCabinetActiveInlineTask(id, { expanded: true });
-    else expandedCabinetSubtaskIds.add(id);
-    if (!cabinetSubtaskCache.has(id) && !Array.isArray(task.subtasks)) await loadCabinetTaskSubtasks(id);
-    else rerenderCabinetTaskTabs();
-    const currentTask = findCabinetTask(id) || task;
-    if (!cabinetTaskCompletionBlockedBySubtasks(currentTask)) {
-        blockedCabinetSubtaskAttentionIds.delete(id);
-        rerenderCabinetTaskTabs();
-        return false;
-    }
-    focusFirstBlockedCabinetSubtask(id);
-    if (typeof showNotification === 'function') showNotification(cabinetSubtaskCompletionTitle(currentTask), 'warning');
-    return true;
-}
-
-async function toggleCabinetTaskSubtasks(taskId) {
-    const id = normalizeCabinetTaskId(taskId);
-    if (!id) return;
-    const task = findCabinetTask(id) || {};
-    if (activeTab === 'myday' && cabinetTaskIsDecomposed(task)) {
-        if (expandedCabinetSubtaskIds.has(id)) {
-            expandedCabinetSubtaskIds.delete(id);
-            setCabinetActiveInlineTask(id, { expanded: false });
-            rerenderCabinetTaskTabs();
-            return;
-        }
-        setCabinetActiveInlineTask(id, { expanded: true });
-        if (!cabinetSubtaskCache.has(id) && !Array.isArray(task.subtasks)) {
-            await loadCabinetTaskSubtasks(id);
-            return;
-        }
-        rerenderCabinetTaskTabs();
-        return;
-    }
-    if (isCabinetSubtasksExpanded(id, task)) {
-        expandedCabinetSubtaskIds.delete(id);
-        collapsedCabinetSubtaskIds.add(id);
-        rerenderCabinetTaskTabs();
-        return;
-    }
-    collapsedCabinetSubtaskIds.delete(id);
-    expandedCabinetSubtaskIds.add(id);
-    if (!cabinetSubtaskCache.has(id) && !Array.isArray(task.subtasks)) {
-        await loadCabinetTaskSubtasks(id);
-        return;
-    }
-    rerenderCabinetTaskTabs();
-}
-
-async function updateCabinetSubtaskDone(input) {
-    const taskId = normalizeCabinetTaskId(input?.dataset?.taskId);
-    const subtaskId = normalizeCabinetTaskId(input?.dataset?.subtaskId);
-    if (!taskId || !subtaskId) return;
-    const nextDone = input.checked === true;
-    const previousDone = !nextDone;
-    input.disabled = true;
-    const result = await apiPatch(`/tasks/${taskId}/subtasks/${subtaskId}`, { is_done: nextDone });
-    if (!result?.success || !result.subtask) {
-        input.checked = previousDone;
-        input.disabled = false;
-        if (typeof showNotification === 'function') showNotification(result?.error || 'Не вдалося оновити підпункт', 'error');
-        return;
-    }
-    const task = findCabinetTask(taskId) || {};
-    const cached = cabinetSubtaskCache.get(taskId) || cachedCabinetSubtasks(taskId, task) || [];
-    const updated = cached.map(item => Number(item.id) === subtaskId
-        ? normalizeCabinetSubtask(result.subtask)
-        : normalizeCabinetSubtask(item));
-    cabinetSubtaskCache.set(taskId, updated);
-    updateCabinetTaskSubtaskSummary(taskId, updated);
-    notifyTaskWidgetsChanged({ action: 'subtask_status', taskId, subtaskId });
-    const summary = cabinetSubtaskSummary(findCabinetTask(taskId) || task);
-    if (summary.total && summary.done >= summary.total && typeof showNotification === 'function') {
-        blockedCabinetSubtaskAttentionIds.delete(taskId);
-        showNotification('Усі підпункти закриті. Тепер можна виконати задачу.', 'success');
-    }
-    rerenderCabinetTaskTabs();
-}
-
-function cabinetSubtaskOrderFromList(list) {
-    return Array.from(list?.querySelectorAll?.('[data-cabinet-inline-subtask]') || [])
-        .map(row => normalizeCabinetTaskId(row.dataset.subtaskId))
-        .filter(Boolean);
-}
-
-function cabinetSubtasksFromList(list) {
-    return Array.from(list?.querySelectorAll?.('[data-cabinet-inline-subtask]') || [])
-        .map((row, index) => ({
-            id: normalizeCabinetTaskId(row.dataset.subtaskId),
-            title: row.querySelector('.cabinet-subtask-inline-check span')?.textContent || '',
-            isDone: row.classList.contains('is-done') || row.querySelector('[data-cabinet-subtask-done]')?.checked === true,
-            sort_order: index,
-            sortOrder: index
-        }))
-        .filter(item => item.id);
-}
-
-function clearCabinetSubtaskDropPlacement() {
-    document.querySelectorAll('.cabinet-subtask-inline-item.is-drop-before, .cabinet-subtask-inline-item.is-drop-after').forEach(row => {
-        row.classList.remove('is-drop-before', 'is-drop-after');
-    });
-}
-
-function clearCabinetSubtaskDropMarkers() {
-    clearCabinetSubtaskDropPlacement();
-    document.querySelectorAll('.cabinet-subtask-inline-item.is-dragging').forEach(row => {
-        row.classList.remove('is-dragging');
-    });
-    document.body?.classList.remove('cabinet-subtask-dragging');
-}
-
-function orderCabinetSubtasksByIds(taskId, orderedIds = [], fallback = []) {
-    const task = findCabinetTask(taskId) || {};
-    const current = cabinetSubtaskCache.get(taskId) || cachedCabinetSubtasks(taskId, task) || fallback || [];
-    const byId = new Map(current.map(item => [Number(normalizeCabinetSubtask(item).id), normalizeCabinetSubtask(item)]));
-    const ordered = orderedIds
-        .map((id, index) => {
-            const subtask = byId.get(Number(id));
-            if (!subtask) return null;
-            return {
-                ...subtask,
-                sort_order: index,
-                sortOrder: index
-            };
-        })
-        .filter(Boolean);
-    if (ordered.length !== orderedIds.length) return null;
-    return ordered;
-}
-
-async function saveCabinetSubtaskOrder(taskId, orderedIds = [], previousSubtasks = []) {
-    const id = normalizeCabinetTaskId(taskId);
-    if (!id || orderedIds.length < 2) return false;
-    const optimistic = orderCabinetSubtasksByIds(id, orderedIds, previousSubtasks);
-    if (!optimistic) return false;
-    cabinetSubtaskCache.set(id, optimistic);
-    updateCabinetTaskSubtaskSummary(id, optimistic);
-
-    const result = await apiPost(`/tasks/${id}/subtasks/reorder`, { subtaskIds: orderedIds });
-    if (!result?.success || !Array.isArray(result.subtasks)) {
-        const previous = previousSubtasks.map(normalizeCabinetSubtask);
-        cabinetSubtaskCache.set(id, previous);
-        updateCabinetTaskSubtaskSummary(id, previous);
-        rerenderCabinetTaskTabs();
-        if (typeof showNotification === 'function') {
-            showNotification(result?.error || 'Не вдалося зберегти порядок підзадач', 'error');
-        }
-        return false;
-    }
-    const canonical = result.subtasks.map(normalizeCabinetSubtask);
-    cabinetSubtaskCache.set(id, canonical);
-    updateCabinetTaskSubtaskSummary(id, canonical);
-    notifyTaskWidgetsChanged({ action: 'subtask_reorder', taskId: id });
-    return true;
-}
-
-function handleCabinetSubtaskDragStart(event) {
-    const handle = event.target?.closest?.('[data-cabinet-subtask-drag-handle]');
-    const row = handle?.closest?.('[data-cabinet-inline-subtask]');
-    if (!row || !row.closest('.cabinet-shell')) return;
-    const taskId = normalizeCabinetTaskId(row.dataset.taskId);
-    const subtaskId = normalizeCabinetTaskId(row.dataset.subtaskId);
-    if (!taskId || !subtaskId) {
-        event.preventDefault();
-        return;
-    }
-    event.stopPropagation();
-    cabinetSubtaskDragState = { taskId, subtaskId };
-    row.classList.add('is-dragging');
-    document.body?.classList.add('cabinet-subtask-dragging');
-    if (event.dataTransfer) {
-        event.dataTransfer.effectAllowed = 'move';
-        event.dataTransfer.setData('application/x-eventgenix-subtask', `${taskId}:${subtaskId}`);
-        event.dataTransfer.setData('text/plain', String(subtaskId));
-    }
-}
-
-function handleCabinetSubtaskDragOver(event) {
-    if (!cabinetSubtaskDragState) return;
-    const row = event.target?.closest?.('[data-cabinet-inline-subtask]');
-    if (!row || Number(row.dataset.taskId) !== cabinetSubtaskDragState.taskId) return;
-    event.preventDefault();
-    event.stopPropagation();
-    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
-    clearCabinetSubtaskDropPlacement();
-    const rect = row.getBoundingClientRect();
-    const before = event.clientY < rect.top + rect.height / 2;
-    row.classList.add(before ? 'is-drop-before' : 'is-drop-after');
-}
-
-async function persistCabinetSubtaskDrop(targetRow, insertAfter = false) {
-    if (!targetRow || !cabinetSubtaskDragState) return;
-    const taskId = cabinetSubtaskDragState.taskId;
-    const list = targetRow.closest('.cabinet-subtask-inline-list');
-    const dragged = list?.querySelector(`[data-cabinet-inline-subtask][data-subtask-id="${cabinetSubtaskDragState.subtaskId}"]`);
-    if (!list || !dragged || Number(targetRow.dataset.taskId) !== taskId) return;
-    const previous = (cabinetSubtaskCache.get(taskId) || cabinetSubtasksFromList(list)).map(normalizeCabinetSubtask);
-    const previousOrder = cabinetSubtaskOrderFromList(list);
-    if (dragged !== targetRow) {
-        if (insertAfter) {
-            targetRow.insertAdjacentElement('afterend', dragged);
-        } else {
-            list.insertBefore(dragged, targetRow);
-        }
-    }
-    const nextOrder = cabinetSubtaskOrderFromList(list);
-    if (nextOrder.join(',') === previousOrder.join(',')) return;
-    list.classList.add('is-reorder-saving');
-    const ok = await saveCabinetSubtaskOrder(taskId, nextOrder, previous);
-    list.classList.remove('is-reorder-saving');
-    if (ok && typeof showNotification === 'function') {
-        showNotification('Порядок підзадач збережено', 'success');
-    }
-}
-
-async function handleCabinetSubtaskDrop(event) {
-    if (!cabinetSubtaskDragState) return;
-    const row = event.target?.closest?.('[data-cabinet-inline-subtask]');
-    if (!row || Number(row.dataset.taskId) !== cabinetSubtaskDragState.taskId) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const rect = row.getBoundingClientRect();
-    const insertAfter = event.clientY >= rect.top + rect.height / 2;
-    try {
-        await persistCabinetSubtaskDrop(row, insertAfter);
-    } catch (error) {
-        console.error('Profile cabinet subtask reorder failed', error);
-        if (typeof showNotification === 'function') {
-            showNotification(error?.message || 'Не вдалося зберегти порядок підзадач', 'error');
-        }
-        rerenderCabinetTaskTabs();
-    } finally {
-        cabinetSubtaskDragState = null;
-        clearCabinetSubtaskDropMarkers();
-    }
-}
-
-function handleCabinetSubtaskDragEnd() {
-    cabinetSubtaskDragState = null;
-    clearCabinetSubtaskDropMarkers();
-}
-
-async function moveCabinetSubtaskByKeyboard(handle, direction) {
-    const row = handle?.closest?.('[data-cabinet-inline-subtask]');
-    const list = row?.closest?.('.cabinet-subtask-inline-list');
-    if (!row || !list) return;
-    const taskId = normalizeCabinetTaskId(row.dataset.taskId);
-    const rows = Array.from(list.querySelectorAll('[data-cabinet-inline-subtask]'));
-    const index = rows.indexOf(row);
-    const targetIndex = index + direction;
-    if (!taskId || index < 0 || targetIndex < 0 || targetIndex >= rows.length) return;
-    const previous = (cabinetSubtaskCache.get(taskId) || cabinetSubtasksFromList(list)).map(normalizeCabinetSubtask);
-    if (direction < 0) {
-        list.insertBefore(row, rows[targetIndex]);
-    } else {
-        rows[targetIndex].insertAdjacentElement('afterend', row);
-    }
-    const nextOrder = cabinetSubtaskOrderFromList(list);
-    list.classList.add('is-reorder-saving');
-    const ok = await saveCabinetSubtaskOrder(taskId, nextOrder, previous);
-    list.classList.remove('is-reorder-saving');
-    if (ok) {
-        const nextRow = list.querySelector(`[data-cabinet-inline-subtask][data-subtask-id="${row.dataset.subtaskId}"] [data-cabinet-subtask-drag-handle]`);
-        nextRow?.focus();
-    }
-}
-
-function handleCabinetSubtaskHandleKeydown(event) {
-    const handle = event.target?.closest?.('[data-cabinet-subtask-drag-handle]');
-    if (!handle) return;
-    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
-    event.preventDefault();
-    moveCabinetSubtaskByKeyboard(handle, event.key === 'ArrowUp' ? -1 : 1);
-}
-
-function bindCabinetSubtaskDragDrop() {
-    if (cabinetSubtaskDragDropBound) return;
-    cabinetSubtaskDragDropBound = true;
-    document.addEventListener('dragstart', handleCabinetSubtaskDragStart);
-    document.addEventListener('dragover', handleCabinetSubtaskDragOver);
-    document.addEventListener('drop', handleCabinetSubtaskDrop);
-    document.addEventListener('dragend', handleCabinetSubtaskDragEnd);
-    document.addEventListener('keydown', handleCabinetSubtaskHandleKeydown);
-}
-
 function normalizeCabinetRestoreStatus(value) {
     return ['todo', 'in_progress'].includes(value) ? value : 'todo';
 }
@@ -8192,7 +7087,6 @@ function isCabinetTaskDragInteractiveTarget(target) {
 function handleCabinetTaskDragStart(event) {
     const card = event.target?.closest?.('[data-cabinet-task-drag]');
     if (!card || !card.closest('.cabinet-shell')) return;
-    if (event.target?.closest?.('[data-cabinet-inline-subtask]')) return;
     if (card.dataset.cabinetTaskDragTarget && card.dataset.cabinetTaskDragTarget !== 'today') return;
     if (isCabinetTaskDragInteractiveTarget(event.target)) {
         event.preventDefault();
@@ -8272,7 +7166,7 @@ function bindCabinetTaskDragDrop() {
     document.addEventListener('dragend', clearCabinetTaskDragState);
 }
 
-function showCabinetTaskUndoToast(taskId, restoreStatus = 'todo') {
+function showCabinetTaskUndoToast(taskId, restoreStatus = 'todo', options = {}) {
     const existing = document.querySelector('.cabinet-task-undo-toast');
     if (existing) existing.remove();
     if (cabinetUndoToastTimer) clearTimeout(cabinetUndoToastTimer);
@@ -8281,7 +7175,7 @@ function showCabinetTaskUndoToast(taskId, restoreStatus = 'todo') {
     toast.className = 'cabinet-task-undo-toast';
     toast.setAttribute('role', 'status');
     toast.innerHTML = `
-        <span>Задачу виконано</span>
+        <span>${escapeHtml(options.message || 'Задачу виконано')}</span>
         <button type="button" data-cabinet-undo-task="${taskId}">Скасувати</button>`;
     const undoBtn = toast.querySelector('[data-cabinet-undo-task]');
     let remaining = 12000;
@@ -8313,7 +7207,8 @@ function showCabinetTaskUndoToast(taskId, restoreStatus = 'todo') {
         undoBtn.disabled = true;
         undoBtn.setAttribute('aria-busy', 'true');
         try {
-            await setCabinetTaskStatus(taskId, normalizeCabinetRestoreStatus(restoreStatus), { silent: true, allowUndo: false });
+            if (options.restore) await options.restore();
+            else await setCabinetTaskStatus(taskId, normalizeCabinetRestoreStatus(restoreStatus), { silent: true, allowUndo: false });
             if (typeof showNotification === 'function') showNotification('Задачу повернуто', 'success');
             toast.remove();
             document.querySelector(`.park-task-card[data-task-id="${taskId}"] [data-cabinet-task-action="open"]`)?.focus();
@@ -8323,7 +7218,7 @@ function showCabinetTaskUndoToast(taskId, restoreStatus = 'todo') {
             busy = false;
             remaining = 12000;
             scheduleDismiss();
-            if (typeof showNotification === 'function') showNotification(error?.message || 'Не вдалося скасувати виконання', 'error');
+            if (typeof showNotification === 'function') showNotification(error?.message || 'Не вдалося скасувати дію', 'error');
         }
     });
     document.body.appendChild(toast);
@@ -8394,7 +7289,7 @@ async function updateCabinetTaskPriority(select) {
 }
 
 function waitForCabinetCompletionAnimation(card) {
-    if (!card?.isConnected) return Promise.resolve();
+    if (!card?.isConnected || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return Promise.resolve();
     card.classList.remove('is-updating');
     card.classList.add('is-completed-feedback');
     return new Promise(resolve => setTimeout(resolve, 340));
@@ -8419,10 +7314,6 @@ async function handleCabinetTaskActionClick(event) {
     if (action === 'toggle-my-day-details') {
         const expanded = toggleCabinetMyDayTaskDetails(taskId, { rerender: true, card: button.closest('.cabinet-task-card') });
         const task = findCabinetTask(taskId);
-        if (expanded && task && cabinetTaskIsDecomposed(task) && !Array.isArray(cachedCabinetSubtasks(taskId, task))) {
-            await loadCabinetTaskSubtasks(taskId);
-            document.querySelector(`.cabinet-task-card[data-task-id="${taskId}"] [data-cabinet-task-action="toggle-my-day-details"]`)?.focus({ preventScroll: true });
-        }
         return;
     }
 
@@ -8495,18 +7386,14 @@ async function handleCabinetTaskActionClick(event) {
         return;
     }
 
-    if (action === 'subtasks-toggle') {
-        await toggleCabinetTaskSubtasks(taskId);
-        return;
-    }
-
     if (action === 'move-to-today') {
+        const quickAction = button.classList.contains('park-task-move-today');
         button.disabled = true;
         button.classList.add('is-busy');
         const card = button.closest('.cabinet-task-card, .cabinet-overdue-triage-row');
         card?.classList.add('is-updating');
         try {
-            await moveCabinetTaskToToday(taskId, 'button');
+            await moveCabinetTaskToToday(taskId, 'button', { undo: quickAction, focusUndo: event.detail === 0 });
         } catch (error) {
             console.error('Profile cabinet move to today failed', error);
             if (typeof showNotification === 'function') {
@@ -8526,13 +7413,6 @@ async function handleCabinetTaskActionClick(event) {
     const previousStatus = normalizeCabinetRestoreStatus(card?.dataset?.taskStatus || 'todo');
     const restore = action === 'done' && document.activeElement === button
         ? window.ProfileMyDay?.preservePosition(document.getElementById('tabContent')) : null;
-    if (action === 'done') {
-        const task = findCabinetTask(taskId) || {};
-        if (cabinetTaskCompletionBlockedBySubtasks(task)) {
-            await revealBlockedCabinetSubtasks(taskId, task);
-            return;
-        }
-    }
     button.disabled = true;
     button.classList.add('is-busy');
     card?.classList.add('is-updating');
@@ -8719,13 +7599,7 @@ async function setCabinetTaskStatus(taskId, status, options = {}) {
     let result;
     if (status === 'done') {
         const sourceSurface = 'profile_my_cabinet';
-        const task = options.task || findCabinetTask(id) || {};
         result = await apiPost(`/tasks/${id}/complete`, { sourceSurface });
-        if (window.TaskReportGate?.responseNeedsReport?.(result)) {
-            const reportId = await window.TaskReportGate.openReportModal(task, { sourceSurface, taskId: id });
-            if (!reportId) throw new Error('Звіт потрібен перед виконанням задачі');
-            result = await apiPost(`/tasks/${id}/complete`, { sourceSurface, reportId });
-        }
     } else {
         const sourceSurface = 'profile_my_cabinet';
         result = await apiPatch(`/tasks/${id}/status`, { status, sourceSurface });
@@ -8738,18 +7612,24 @@ async function setCabinetTaskStatus(taskId, status, options = {}) {
         ? applyCabinetTaskStatusToProjection(id, status, updatedTask, options.task || {})
         : false;
     let undo;
-    if (!options.silent && status === 'done' && options.allowUndo !== false) {
+    const feedback = !options.silent && status === 'done' && options.allowUndo !== false;
+    if (feedback) {
         playCabinetTaskCompletionFeedback();
-        await waitForCabinetCompletionAnimation(options.card);
-        undo = showCabinetTaskUndoToast(id, options.previousStatus || 'todo');
     } else if (!options.silent && typeof showNotification === 'function') {
         showNotification(status === 'done' ? 'Задачу виконано' : 'Статус задачі оновлено', 'success');
     }
     if (status === 'done') {
         if (!appliedLocal) await refreshMyCabinetTab({ silent: true, force: true });
-        renderCabinetActiveTab();
-        options.restore?.();
-        if (options.focusUndo) undo?.focus();
+        const update = () => {
+            if (feedback) undo = showCabinetTaskUndoToast(id, options.previousStatus || 'todo');
+            renderCabinetActiveTab();
+            options.restore?.();
+            if (options.focusUndo) undo?.focus();
+        };
+        if (!feedback || !window.ProfileMyDay?.transitionCompletion(options.card, update)) {
+            if (feedback) await waitForCabinetCompletionAnimation(options.card);
+            update();
+        }
         scheduleCabinetProjectionRefresh();
     } else {
         await refreshMyCabinetTab({ silent: true, force: true });
@@ -8777,7 +7657,7 @@ async function rescheduleCabinetTask(taskId, option = 'tomorrow', options = {}) 
     if (!id) throw new Error('Invalid task id');
     let dateText = '';
     if (option === 'today') {
-        dateText = profileDateOffsetStr(0);
+        dateText = cabinetDateKeyOffset();
     } else if (option === 'day_after') {
         dateText = profileDateOffsetStr(2);
     } else if (option === 'custom') {
@@ -8803,7 +7683,7 @@ async function rescheduleCabinetTask(taskId, option = 'tomorrow', options = {}) 
     return result;
 }
 
-async function moveCabinetTaskToToday(taskId, method = 'button') {
+async function moveCabinetTaskToToday(taskId, method = 'button', options = {}) {
     const id = normalizeCabinetTaskId(taskId);
     if (!id) throw new Error('Invalid task id');
     const task = findCabinetTask(id) || {};
@@ -8827,9 +7707,26 @@ async function moveCabinetTaskToToday(taskId, method = 'button') {
         : (dueState.key === 'overdue'
             ? 'profile_my_cabinet_overdue_to_today_button'
             : 'profile_my_cabinet_move_to_today_button');
-    await rescheduleCabinetTask(id, 'today', {
-        sourceSurface
+    const scope = cabinetHrReminderScope();
+    const result = await rescheduleCabinetTask(id, 'today', { sourceSurface, notify: !options.undo });
+    if (!options.undo || scope !== cabinetHrReminderScope()) return result;
+    const eventId = normalizeCabinetTaskId(result?.historyEvent?.id);
+    if (!eventId || !result?.historyEvent?.meta?.undo) {
+        window.showNotification?.('Задачу перенесено на сьогодні', 'success');
+        return result;
+    }
+    const undo = showCabinetTaskUndoToast(id, null, {
+        message: 'Задачу перенесено на сьогодні',
+        restore: async () => {
+            if (scope !== cabinetHrReminderScope()) throw new Error('Поверніться до бізнесу, в якому перенесли задачу.');
+            const restored = await apiPost(`/tasks/${id}/reschedule/undo`, { eventId });
+            if (!restored?.success) throw new Error(restored?.error || 'Не вдалося скасувати перенесення.');
+            notifyTaskWidgetsChanged({ action: 'task_reschedule', taskId: id });
+            await refreshMyCabinetTab({ force: true });
+        }
     });
+    if (options.focusUndo && activeTab === 'myday') undo?.focus();
+    return result;
 }
 
 async function executeCabinetMoveTarget(taskId, target, options = {}) {
@@ -8898,7 +7795,6 @@ async function createCabinetTask(event) {
     const selectedDate = document.getElementById('cabinetTaskDate')?.value || '';
     const current = (typeof AppState !== 'undefined' && AppState.currentUser) ? AppState.currentUser : {};
     const title = String(input?.value || '').trim();
-    const subtasks = readCabinetSubtasks();
     const composer = document.getElementById('cabinetTaskComposer');
     const aiCommitPayload = window.TaskAiDraft?.commitPayloadFor?.(composer);
     const titleError = !aiCommitPayload ? validateCabinetPlainTaskTitle(title) : '';
@@ -8917,7 +7813,7 @@ async function createCabinetTask(event) {
         taskType: 'human',
         mode: selectedMode,
         taskMode: selectedMode,
-        structuralMode: kind === 'checklist' || subtasks.length ? 'checklist' : 'simple',
+        structuralMode: 'simple',
         kind,
         visibility: document.getElementById('cabinetTaskVisibility')?.value || (selectedMode === 'private' ? 'private' : (selectedMode === 'personal' ? 'me_only' : 'team')),
         workflowState: kind === 'waiting' ? 'waiting' : 'inbox',
@@ -8928,9 +7824,7 @@ async function createCabinetTask(event) {
         sourceType: 'manual',
         sourceModule: 'profile_my_cabinet',
         sourceSurface: 'profile_my_cabinet',
-        subtasks,
         scheduleConfirmed: cabinetCreateDuePreset !== 'no_date',
-        reportRequired: document.getElementById('cabinetTaskReportRequired')?.checked === true,
         allowReschedule: document.getElementById('cabinetTaskAllowReschedule')?.checked !== false,
         captureIntent: { waiting: kind === 'waiting' }
     };
@@ -8993,17 +7887,12 @@ async function createCabinetTask(event) {
             workflow_state: draft.workflowState,
             source_type: 'manual',
             source_module: 'profile_my_cabinet',
-            subtasks: draft.subtasks,
             allowReschedule: draft.allowReschedule,
             controlMeta: {
                 canReschedule: draft.allowReschedule,
                 allowReschedule: draft.allowReschedule
             }
         };
-        if (draft.reportRequired) {
-            payload.reportRequired = true;
-            payload.controlMeta.reportRequired = true;
-        }
         if (dueDate) {
             payload.date = dueDate;
             payload.schedule = { date: dueDate, slot: 'morning', durationMinutes: 30 };
@@ -9104,20 +7993,10 @@ async function createCabinetTask(event) {
     if (details) details.value = '';
     window.TaskAiDraft?.clear?.(composer);
     setCabinetCreatePriority('normal');
-    const subtaskList = document.getElementById('cabinetSubtaskList');
-    if (subtaskList) subtaskList.innerHTML = '';
-    cabinetDecompositionSuggestions = [];
-    lastCabinetSuggestionKey = '';
-    renderCabinetDecompositionSuggestions();
-    setCabinetSubtaskDraftStatus('');
-    document.getElementById('cabinetSubtaskAcceptDraftBtn')?.setAttribute('hidden', '');
-    setCabinetDecompositionMode('none', { keepRows: true, keepStatus: true });
     setCabinetDuePreset('today');
     setCabinetTaskComposerExpanded(false);
     const modeSelect = document.getElementById('cabinetTaskMode');
     if (modeSelect) modeSelect.value = 'work';
-    const reportToggle = document.getElementById('cabinetTaskReportRequired');
-    if (reportToggle) reportToggle.checked = false;
     syncCabinetTaskCreateMode();
     if (typeof showNotification === 'function') {
         showCabinetTaskCreateSuccessToast(result, draft, verification, postCreateWarningCount);
@@ -9320,6 +8199,15 @@ function bindCabinetTaskSoundControls(root = document) {
 
 function attachProfileListeners() {
     if (isOwnProfile) void window.TelegramCrmProfile?.mount(document.querySelector('[data-telegram-crm-profile]'));
+    const controlLink = document.querySelector('[data-profile-control-link]');
+    if (controlLink && !controlLink.dataset.bound) {
+        controlLink.dataset.bound = 'true';
+        controlLink.addEventListener('click', event => {
+            if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+            event.preventDefault();
+            void switchTab('control');
+        });
+    }
     if (!cabinetSnoozeOutsideBound) {
         cabinetSnoozeOutsideBound = true;
         document.addEventListener('click', event => {
@@ -9456,28 +8344,10 @@ function attachProfileListeners() {
         });
     });
 
-    document.querySelectorAll('[data-cabinet-subtask-done]').forEach(input => {
-        if (input.dataset.cabinetSubtaskBound === 'true') return;
-        input.dataset.cabinetSubtaskBound = 'true';
-        input.addEventListener('change', event => {
-            event.stopPropagation();
-            updateCabinetSubtaskDone(input);
-        });
-    });
-
     document.querySelectorAll('[data-cabinet-list-mode]').forEach(button => {
         if (button.dataset.cabinetListModeBound === 'true') return;
         button.dataset.cabinetListModeBound = 'true';
         button.addEventListener('click', () => setCabinetMyDayListMode(button.dataset.cabinetListMode, { rerender: true }));
-    });
-    window.ProfileMyDay?.bindViews(document.getElementById('cabinetMyDaySegmentPanel'), view => {
-        window.ProfileMyDay.setView(cabinetMyDayViewPreferenceKey(), view);
-        const url = new URL(window.location.href);
-        if (url.searchParams.has('period')) {
-            url.searchParams.set('period', view);
-            window.history.replaceState(window.history.state, '', url);
-        }
-        rerenderCabinetMyDaySegmentPanel();
     });
     document.querySelectorAll('[data-cabinet-my-day-view-mode]').forEach(button => {
         if (button.dataset.cabinetMyDayViewModeBound === 'true') return;
@@ -9561,8 +8431,6 @@ function attachProfileListeners() {
         button.addEventListener('click', () => setCabinetTaskComposerExpanded(!cabinetTaskComposerExpanded));
     });
     bindCabinetTaskDragDrop();
-    bindCabinetSubtaskDragDrop();
-    bindCabinetSubtasks();
 
     const composer = document.getElementById('cabinetTaskComposer');
     if (window.TaskAiDraft && activeTab === 'myday' && composer && !composer.hasAttribute('data-cabinet-composer-simple')) {

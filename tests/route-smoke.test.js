@@ -5928,14 +5928,11 @@ describe('route-level API safety smoke', () => {
         assert.ok(queries.some(q => /UPDATE tasks/i.test(q.text) && /SET status = 'done'/i.test(q.text)));
         assert.ok(queries.some(q => /INSERT INTO task_action_history/i.test(q.text)));
 
-        const blocked = await request('POST', '/api/tasks/99/complete', { sourceSurface: 'task_page' }, withAuth());
-        assert.equal(blocked.status, 409, JSON.stringify(blocked.data));
-        assert.equal(blocked.data.code, 'TASK_REPORT_REQUIRED');
-        assert.equal(blocked.data.requiresReport, true);
-
-        const completedWithReport = await request('POST', '/api/tasks/99/complete', { sourceSurface: 'task_page', reportId: 701 }, withAuth());
-        assert.equal(completedWithReport.status, 200, JSON.stringify(completedWithReport.data));
-        assert.equal(completedWithReport.data.success, true);
+        const completedLegacy = await request('POST', '/api/tasks/99/complete', { sourceSurface: 'task_page' }, withAuth());
+        assert.equal(completedLegacy.status, 200, JSON.stringify(completedLegacy.data));
+        assert.equal(completedLegacy.data.task.status, 'done');
+        assert.equal(completedLegacy.data.task.reportId, null);
+        assert.equal(completedLegacy.data.task.control_meta.reportRequired, true);
     });
 
     it('regresses Profile My Day complete -> undo through canonical task status', async () => {

@@ -1,31 +1,9 @@
 (function (global) {
     'use strict';
 
-    const views = [['overdue', 'Прострочені'], ['today', 'Сьогодні'], ['future', 'Майбутні']];
-    const selectedViews = new Map();
-    const positionAttrs = ['data-park-my-day-view', 'data-cabinet-my-day-view-mode', 'data-cabinet-bucket-more',
+    const positionAttrs = ['data-cabinet-my-day-view-mode', 'data-cabinet-bucket-more',
         'data-cabinet-task-priority-select', 'data-cabinet-task-action', 'data-cabinet-completion-toggle',
         'data-cabinet-completion-all', 'data-cabinet-completion-tab', 'data-cabinet-refresh'];
-
-    function getView(scope) {
-        try {
-            const stored = global.localStorage.getItem(`${scope}:list`);
-            if (!selectedViews.has(scope)) selectedViews.set(scope, validateView(stored));
-        } catch {}
-        return selectedViews.get(scope) || 'today';
-    }
-
-    function validateView(view) {
-        return views.some(([key]) => key === view) ? view : 'today';
-    }
-
-    function setView(scope, view, { persist = true } = {}) {
-        const selected = validateView(view);
-        selectedViews.set(scope, selected);
-        if (persist) {
-            try { global.localStorage.setItem(`${scope}:list`, selected); } catch {}
-        }
-    }
 
     function taskRole(task) {
         if (!Array.isArray(task.viewerRoles)) return 'executor';
@@ -54,7 +32,7 @@
             dialog.remove();
             onClose(dialog);
             if (!opener?.isConnected && !document.querySelector('dialog[open]')) {
-                document.querySelector('[data-park-my-day-view][aria-pressed="true"]')?.focus({ preventScroll: true });
+                document.querySelector('[data-park-task-group="today"]')?.focus({ preventScroll: true });
             }
         }, { once: true });
         document.body.append(dialog);
@@ -70,7 +48,6 @@
                 if (!task?.id) throw new Error('Task unavailable');
                 const due = selectDate(task);
                 const executor = task.ownerLabel || task.owner_name || task.owner_username;
-                const subtasks = Array.isArray(task.subtasks) ? task.subtasks : [];
                 title.textContent = task.title || `Задача #${taskId}`;
                 content.innerHTML = `<dl class="park-task-dialog-facts">
                     <div><dt>Моя роль</dt><dd>${escape(roleLabel(taskRole(task)) || 'Перегляд')}</dd></div>
@@ -79,7 +56,6 @@
                     ${executor ? `<div><dt>Виконавець</dt><dd>${escape(executor)}</dd></div>` : ''}
                 </dl>
                 ${task.description ? `<p class="park-task-dialog-description">${escape(task.description)}</p>` : ''}
-                ${subtasks.length ? `<h3>Чекліст</h3><ul>${subtasks.map(item => `<li>${escape(item.title || '')} · ${item.is_done || item.isDone ? 'виконано' : 'до виконання'}</li>`).join('')}</ul>` : ''}
                 <a class="park-task-dialog-actions" href="/tasks?view=my&amp;open=${taskId}">Усі дії із задачею</a>`;
             } catch (error) {
                 if (!dialog.open) return;
@@ -90,21 +66,6 @@
             }
         })();
         return dialog;
-    }
-
-    function renderViews(selected, counts) {
-        return `<div class="park-my-day-views" role="group" aria-label="Період задач">
-            ${views.map(([id, label]) => `<button type="button" data-park-my-day-view="${id}" aria-pressed="${selected === id}"><span>${label}</span><b>${counts[id] ?? '—'}</b></button>`).join('')}
-        </div>`;
-    }
-
-    function bindViews(root, chooseView) {
-        if (!root || root.dataset.parkViewsBound) return;
-        root.dataset.parkViewsBound = 'true';
-        root.addEventListener('click', event => {
-            const button = event.target.closest('[data-park-my-day-view]');
-            if (button) chooseView(button.dataset.parkMyDayView);
-        });
     }
 
     function preservePosition(root) {
@@ -130,7 +91,7 @@
             const replacement = within && ((id && card && byAttr(card)) || (!id && byAttr(root))
                 || (fieldId && root.querySelector(`#${CSS.escape(fieldId)}`))
                 || byTask(nextId)?.querySelector('[data-cabinet-task-action="open"]')
-                || byGroup || root.querySelector('[data-park-my-day-view][aria-pressed="true"]'));
+                || byGroup || root.querySelector('[data-park-task-group="today"]'));
             global.scrollTo(x, y);
             if (replacement && !previous.isConnected) {
                 const nextTop = replacement.getBoundingClientRect().top;
@@ -148,7 +109,7 @@
         calendar: 'M4 6h16v14H4z M4 10h16 M8 4v4 M16 4v4',
         done: 'm5 12 4 4L19 6',
         edit: 'm4 20 4-1L20 7l-3-3L5 16z M14 7l3 3',
-        urgency: 'M5 19v-4 M12 19V9 M19 19V5',
+        urgency: 'M12 4 2 21h20L12 4Z M12 10v4 M12 17h.01',
         overdue: 'M12 8v5 M12 16h.01 M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z'
     };
 
@@ -156,23 +117,24 @@
         return `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="${iconPaths[name]}"/></svg>`;
     }
 
-    function renderCard({ id, title, status, due, priority, mode, modeLabel, checklist, blocked, report, postponementBadge, isAi, priorityControl, dueState, canReschedule, role, executor }) {
+    function renderCard({ id, title, status, due, priority, mode, modeLabel, blocked, postponementBadge, isAi, priorityControl, dueState, canReschedule, canMoveToToday, role, executor }) {
         const escape = global.escapeHtml;
         const attrs = `data-task-id="${id || ''}"`;
         const control = (action, label, className, enabled = true, extra = '') => `<button type="button" class="${className}" data-cabinet-task-action="${action}" ${attrs} ${extra} ${id && enabled ? '' : 'disabled'}>${label}</button>`;
+        const stateLabel = dueState === 'overdue' ? 'Прострочено' : status === 'in_progress' ? 'У роботі' : 'До виконання';
         return `<article class="cabinet-task-card park-task-card priority-${escape(priority)}" ${attrs} data-task-status="${escape(status)}" data-task-due-state="${escape(dueState)}">
-            <div class="park-task-heading">
-                <span class="park-task-kind" data-park-task-mode="${escape(mode)}">${icon(mode === 'work' ? 'work' : 'personal')}${escape(modeLabel)}</span>
-                ${dueState === 'overdue' ? `<span class="park-task-overdue">${icon('overdue')}Прострочено</span>` : ''}
-            </div>
             ${control('open', `${isAi ? '<span class="task-ai-created-marker" aria-label="Створено з допомогою AI">AI</span> ' : ''}${escape(title)}`, 'park-task-title', true, 'aria-haspopup="dialog"')}
+            <div class="park-task-heading">
+                <span class="park-task-state">${dueState === 'overdue' ? icon('overdue') : ''}${stateLabel}</span>
+                ${role === 'executor' ? `<span class="park-task-priority">${priority === 'urgent' ? icon('urgency') : ''}${priorityControl}</span>` : ''}
+            </div>
+            ${role === 'executor' && dueState === 'overdue' && canMoveToToday
+                ? control('move-to-today', `${icon('calendar')}<span>На сьогодні</span>`, 'park-task-move-today') : ''}
             <div class="park-task-facts">
                 <span class="park-task-date">${icon('calendar')}${due ? `<time datetime="${escape(due)}">${escape(due.split('-').reverse().join('.'))}</time>` : 'Без дати'}</span>
-                ${roleLabel(role) ? `<span>${escape(roleLabel(role))}</span>` : ''}
-                ${role === 'executor' ? `<span class="park-task-priority">${icon('urgency')}${priorityControl}</span>` : executor ? `<span>Виконує ${escape(executor)}</span>` : ''}
-                ${checklist.total ? `<span>${checklist.done}/${checklist.total} · Чекліст</span>` : ''}
+                <span class="park-task-kind" data-park-task-mode="${escape(mode)}">${escape(modeLabel)}</span>
+                ${role !== 'executor' && executor ? `<span>Виконує ${escape(executor)}</span>` : ''}
                 ${postponementBadge || ''}
-                ${report || ''}
             </div>
             ${blocked ? `<p id="park-task-blocked-${id}" class="park-task-blocked">${escape(blocked)}</p>` : ''}
             <div class="park-task-actions">
@@ -185,5 +147,32 @@
         </article>`;
     }
 
-    global.ProfileMyDay = Object.freeze({ getView, setView, renderViews, bindViews, preservePosition, renderCard, taskRole, roleLabel, openTaskDialog });
+    function transitionCompletion(card, update) {
+        const lane = card?.closest('[data-park-period]');
+        if (!lane || typeof document.startViewTransition !== 'function'
+            || global.matchMedia('(prefers-reduced-motion: reduce)').matches) return false;
+        const period = lane.dataset.parkPeriod;
+        const scope = lane.closest('.park-my-day');
+        const names = new Map();
+        const markCards = current => current?.querySelectorAll('.park-task-card[data-task-id]').forEach(item => {
+            const name = `park-${period}-${item.dataset.taskId}`;
+            if ([...names.values()].includes(name)) return;
+            item.style.viewTransitionName = name;
+            names.set(item, name);
+        });
+        markCards(lane);
+        scope.classList.add('is-completing-task');
+        const transition = document.startViewTransition(() => {
+            update();
+            names.clear();
+            markCards(scope.querySelector(`[data-park-period="${period}"]`));
+        });
+        transition.finished.catch(() => {}).finally(() => {
+            names.forEach((_, item) => item.style.removeProperty('view-transition-name'));
+            scope.classList.remove('is-completing-task');
+        });
+        return true;
+    }
+
+    global.ProfileMyDay = Object.freeze({ preservePosition, renderCard, taskRole, roleLabel, openTaskDialog, transitionCompletion });
 }(window));

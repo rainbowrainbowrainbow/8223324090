@@ -102,9 +102,7 @@ function sendTaskActionError(res, err) {
         success: false,
         error: err?.message || 'Не вдалося оновити задачу',
         code: err?.code || 'TASK_EXECUTION_ACTION_FAILED',
-        requiresReport: err?.requiresReport === true,
-        task: err?.task || null,
-        meta: err?.requiresReport ? { reportRequired: true } : undefined
+        task: err?.task || null
     });
 }
 

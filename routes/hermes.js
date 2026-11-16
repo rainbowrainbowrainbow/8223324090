@@ -39,13 +39,6 @@ const {
     findActiveDuplicateTask
 } = require('../services/taskDuplicatePolicy');
 const {
-    listTaskSubtasks,
-    normalizeSubtaskRow,
-    normalizeSubtasksInput,
-    replaceTaskSubtasks,
-    subtaskCompletionState
-} = require('../services/taskSubtasks');
-const {
     TASK_ACTION_TYPES,
     listTaskActionHistory,
     logTaskActionEvent
@@ -123,8 +116,6 @@ const SUPPORTED_ACTIONS = [
     'tasks.complete',
     'tasks.completion_report',
     'tasks.comment',
-    'tasks.subtasks.read',
-    'tasks.subtask.toggle',
     'tasks.reassign',
     'tasks.reschedule',
     'tasks.status',
@@ -229,11 +220,6 @@ const HERMES_COMMENT_ALLOWED_FIELDS = new Set([
     'business_context'
 ]);
 
-const HERMES_SUBTASK_TOGGLE_ALLOWED_FIELDS = new Set([
-    'is_done',
-    'isDone'
-]);
-
 const HERMES_REASSIGN_ALLOWED_FIELDS = new Set([
     'ownerUserId',
     'assignee',
@@ -304,7 +290,6 @@ const HERMES_MENU_PHOTO_STATUSES = new Set([
 const HERMES_MENU_PHOTO_EXTERNAL_DRAFT_AUTO_APPLY_DEFAULT = false;
 const HERMES_MENU_PHOTO_JOB_BATCH_LIMIT = 5;
 
-const MAX_HERMES_SUBTASKS = 50;
 const MAX_HERMES_LABELS = 20;
 const DEFAULT_HERMES_RATE_LIMIT_WINDOW_MS = 60000;
 const DEFAULT_HERMES_RATE_LIMIT_MAX = 60;
@@ -330,25 +315,6 @@ const TASK_SELECT_FIELDS = `
     t.owner_user_id, t.assigned_to, t.owner, t.created_by_user_id,
     u.name AS owner_name, u.username AS owner_username,
     creator.name AS creator_name, creator.username AS created_by_username
-`;
-
-const SUBTASK_JOIN_SQL = `
-    LEFT JOIN (
-        SELECT task_id,
-               json_agg(json_build_object(
-                   'id', id,
-                   'task_id', task_id,
-                   'title', title,
-                   'is_done', is_done,
-                   'sort_order', sort_order,
-                   'source_type', COALESCE(source_type, 'manual'),
-                   'created_at', created_at,
-                   'completed_at', completed_at,
-                   'updated_at', updated_at
-               ) ORDER BY sort_order ASC, id ASC) AS subtasks
-        FROM task_subtasks
-        GROUP BY task_id
-    ) subtask_rows ON subtask_rows.task_id = t.id
 `;
 
 function sendHermesError(res, status, code, error, meta = null) {
@@ -740,13 +706,6 @@ function normalizeHermesCreatePayload(body = {}) {
         throw hermesHttpError(400, 'HERMES_INVALID_TASK_PAYLOAD', 'Invalid date');
     }
 
-    if (body.subtasks !== undefined && !Array.isArray(body.subtasks)) {
-        throw hermesHttpError(400, 'HERMES_INVALID_TASK_PAYLOAD', 'subtasks must be an array');
-    }
-    if (Array.isArray(body.subtasks) && body.subtasks.length > MAX_HERMES_SUBTASKS) {
-        throw hermesHttpError(400, 'HERMES_INVALID_TASK_PAYLOAD', `subtasks limit is ${MAX_HERMES_SUBTASKS}`);
-    }
-
     return {
         title,
         description,
@@ -754,8 +713,7 @@ function normalizeHermesCreatePayload(body = {}) {
         deadline: normalizeHermesDeadline(body.due_at ?? body.dueAt ?? body.deadline),
         priority: normalizeHermesCreatePriority(body.priority),
         ownerUserId: parseHermesOwnerUserId(body),
-        labels: normalizeHermesCreateLabels(body.labels),
-        subtasks: normalizeSubtasksInput(body.subtasks || [], { sourceType: 'manual' })
+        labels: normalizeHermesCreateLabels(body.labels)
     };
 }
 
@@ -825,14 +783,6 @@ function normalizeHermesCommentPayload(body = {}) {
     };
 }
 
-function parseHermesBoolean(value) {
-    if (value === true || value === false) return value;
-    const text = String(value ?? '').trim().toLowerCase();
-    if (['true', '1', 'yes', 'on'].includes(text)) return true;
-    if (['false', '0', 'no', 'off'].includes(text)) return false;
-    throw hermesHttpError(400, 'HERMES_INVALID_SUBTASK_PAYLOAD', 'is_done must be a boolean');
-}
-
 function parseHermesOptionalBoolean(value, code, fieldName) {
     if (value === undefined || value === null || value === '') return false;
     if (value === true || value === false) return value;
@@ -840,26 +790,6 @@ function parseHermesOptionalBoolean(value, code, fieldName) {
     if (['true', '1', 'yes', 'on'].includes(text)) return true;
     if (['false', '0', 'no', 'off'].includes(text)) return false;
     throw hermesHttpError(400, code, `${fieldName} must be a boolean`);
-}
-
-function normalizeHermesSubtaskTogglePayload(body = {}) {
-    if (!isPlainObject(body)) {
-        throw hermesHttpError(400, 'HERMES_INVALID_SUBTASK_PAYLOAD', 'Request body must be a JSON object');
-    }
-    assertAllowedHermesFields(body, HERMES_SUBTASK_TOGGLE_ALLOWED_FIELDS);
-
-    const hasSnake = Object.prototype.hasOwnProperty.call(body, 'is_done');
-    const hasCamel = Object.prototype.hasOwnProperty.call(body, 'isDone');
-    if (!hasSnake && !hasCamel) {
-        throw hermesHttpError(400, 'HERMES_INVALID_SUBTASK_PAYLOAD', 'is_done is required');
-    }
-    if (hasSnake && hasCamel && parseHermesBoolean(body.is_done) !== parseHermesBoolean(body.isDone)) {
-        throw hermesHttpError(400, 'HERMES_INVALID_SUBTASK_PAYLOAD', 'is_done and isDone must match');
-    }
-
-    return {
-        isDone: parseHermesBoolean(hasSnake ? body.is_done : body.isDone)
-    };
 }
 
 function normalizeHermesReassignPayload(body = {}) {
@@ -905,7 +835,6 @@ function normalizeHermesStatusPayload(body = {}) {
 function enrichHermesCreatedTask(task = {}, context = {}) {
     const actor = context.actor || {};
     const owner = context.owner || null;
-    const subtasks = context.subtasks || [];
     const actorId = normalizeUserId(actor);
     const ownerMatchesActor = actorId && Number(task.owner_user_id || 0) === actorId;
 
@@ -914,10 +843,7 @@ function enrichHermesCreatedTask(task = {}, context = {}) {
         owner_name: owner?.name || (ownerMatchesActor ? actor.name : task.owner_name),
         owner_username: owner?.username || (ownerMatchesActor ? actor.username : task.owner_username),
         creator_name: actor.name || task.creator_name || null,
-        created_by_username: actor.username || task.created_by_username || task.created_by || null,
-        subtasks,
-        subtask_count: subtasks.length,
-        subtask_done_count: subtasks.filter(item => item.isDone || item.is_done).length
+        created_by_username: actor.username || task.created_by_username || task.created_by || null
     };
 }
 
@@ -932,48 +858,6 @@ function hermesMutationTaskBody(req, businessScope, task, meta = {}) {
             idempotencyKey: req.hermesMutation?.idempotencyKey || null,
             ...meta
         }
-    };
-}
-
-function isoOrNull(value) {
-    if (!value) return null;
-    if (value instanceof Date) return value.toISOString();
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toISOString();
-}
-
-function toHermesSubtaskApi(row = {}) {
-    const subtask = normalizeSubtaskRow(row);
-    return {
-        id: String(subtask.id || ''),
-        title: subtask.title || '',
-        status: subtask.isDone ? 'done' : 'open',
-        is_done: subtask.isDone,
-        sort_order: subtask.sortOrder,
-        source_type: subtask.sourceType,
-        completed_at: isoOrNull(subtask.completedAt),
-        updated_at: isoOrNull(subtask.updatedAt)
-    };
-}
-
-function hermesSubtaskState(subtasks = []) {
-    const total = subtasks.length;
-    const done = subtasks.filter(item => item.isDone || item.is_done).length;
-    return subtaskCompletionState(done, total);
-}
-
-function hermesSubtaskParentSummary(task = {}, subtasks = [], parentUpdate = {}) {
-    const state = hermesSubtaskState(subtasks);
-    return {
-        id: String(task.id || ''),
-        status: task.status || null,
-        subtaskCount: state.total,
-        subtaskDoneCount: state.done,
-        subtaskOpenCount: state.open,
-        subtaskProgress: state.progress,
-        canCompleteParent: state.canCompleteParent,
-        version: parentUpdate.version || task.version || null,
-        updated_at: isoOrNull(parentUpdate.updated_at || task.updated_at)
     };
 }
 
@@ -1013,7 +897,6 @@ async function createHermesCompletionReport(queryable, task, payload, actor) {
         taskCompletionReport: {
             taskId: task.id,
             taskTitle: task.title || null,
-            required: true,
             sourceSurface: 'hermes',
             submittedByUserId: normalizeUserId(actor),
             submittedByUsername: actor?.username || null,
@@ -1056,7 +939,6 @@ async function createHermesCompletionReport(queryable, task, payload, actor) {
     const update = await queryable.query(
         `UPDATE tasks
          SET control_meta = COALESCE(control_meta, '{}'::jsonb) || jsonb_build_object(
-                'reportRequired', true,
                 'reportId', $2::int,
                 'reportSubmittedAt', NOW(),
                 'reportSubmittedBy', $3::text
@@ -1104,38 +986,6 @@ async function createHermesTaskComment(queryable, task, payload, actor) {
         },
         summary: 'Task comment added'
     }, { pool: queryable });
-}
-
-async function toggleHermesTaskSubtask(queryable, task, subtaskId, payload) {
-    const result = await queryable.query(
-        `UPDATE task_subtasks
-         SET is_done = $3::boolean,
-             completed_at = CASE WHEN $3::boolean = true THEN NOW() ELSE NULL END,
-             updated_at = NOW()
-         WHERE task_id = $1
-           AND id = $2
-         RETURNING *`,
-        [task.id, subtaskId, payload.isDone]
-    );
-    const updatedSubtask = result.rows[0] || null;
-    if (!updatedSubtask) {
-        throw hermesHttpError(404, 'HERMES_SUBTASK_NOT_FOUND', 'Subtask not found');
-    }
-
-    const parentUpdate = await queryable.query(
-        `UPDATE tasks
-         SET updated_at = NOW(),
-             version = COALESCE(version, 1) + 1
-         WHERE id = $1
-         RETURNING id, updated_at, version`,
-        [task.id]
-    );
-    const subtasks = await listTaskSubtasks(queryable, task.id);
-    return {
-        subtask: updatedSubtask,
-        subtasks,
-        parentUpdate: parentUpdate.rows[0] || {}
-    };
 }
 
 function parseMenuPhotoProductId(value) {
@@ -1916,8 +1766,6 @@ function buildCapabilitiesPayload(env = process.env, options = {}) {
             tasks: {
                 completionReport: 'POST /api/hermes/tasks/:id/completion-report',
                 comment: 'POST /api/hermes/tasks/:id/comments',
-                subtasks: 'GET /api/hermes/tasks/:id/subtasks',
-                subtaskToggle: 'PATCH /api/hermes/tasks/:id/subtasks/:subtaskId',
                 status: 'POST /api/hermes/tasks/:id/status'
             },
             menuPhotos: {
@@ -3778,7 +3626,7 @@ function createHermesRouter(options = {}) {
                     created_by: req.user?.username || 'hermes',
                     created_by_user_id: normalizeUserId(req.user),
                     task_mode: 'work',
-                    task_kind: payload.subtasks.length ? 'checklist' : 'action',
+                    task_kind: 'action',
                     visibility: 'team',
                     workflow_state: 'todo',
                     source_module: 'hermes',
@@ -3791,13 +3639,9 @@ function createHermesRouter(options = {}) {
                     skipNotifications: Boolean(options.skipNotifications)
                 });
 
-                const subtasks = payload.subtasks.length
-                    ? await replaceTaskSubtasks(mutationPool, task.id, payload.subtasks, { sourceType: 'manual' })
-                    : [];
                 const responseTask = enrichHermesCreatedTask(task, {
                     actor: req.user,
-                    owner,
-                    subtasks
+                    owner
                 });
 
                 return {
@@ -4097,59 +3941,8 @@ function createHermesRouter(options = {}) {
         }
     });
 
-    router.patch('/tasks/:id/subtasks/:subtaskId', requireHermesMutationGuard, async (req, res) => {
-        let payload;
-        let businessScope;
-        const taskId = parsePositiveInt(req.params.id);
-        const subtaskId = parsePositiveInt(req.params.subtaskId);
-        if (!taskId || !subtaskId) {
-            return sendHermesError(res, 404, 'HERMES_SUBTASK_NOT_FOUND', 'Subtask not found');
-        }
-
-        try {
-            payload = normalizeHermesSubtaskTogglePayload(req.body || {});
-            businessScope = ensureWritableTaskBusinessScope(req, res);
-            if (!businessScope) return;
-        } catch (err) {
-            if (err.statusCode && err.statusCode < 500) {
-                return sendHermesError(res, err.statusCode, err.code || 'HERMES_INVALID_SUBTASK_PAYLOAD', err.message);
-            }
-            log.error('Hermes subtask toggle preflight error', err);
-            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes subtask toggle failed');
-        }
-
-        try {
-            return await withHermesIdempotency(req, res, async ({ pool: mutationPool }) => {
-                const task = await loadHermesMutableTask(mutationPool, taskId, req.user, businessScope);
-                const result = await toggleHermesTaskSubtask(mutationPool, task, subtaskId, payload);
-                return {
-                    status: 200,
-                    body: {
-                        success: true,
-                        subtask: toHermesSubtaskApi(result.subtask),
-                        parent: hermesSubtaskParentSummary(task, result.subtasks, result.parentUpdate),
-                        meta: {
-                            businessScope: taskBusinessScopeMeta(businessScope),
-                            sourceSurface: 'hermes',
-                            source: HERMES_INTEGRATION_ID,
-                            idempotencyKey: req.hermesMutation?.idempotencyKey || null,
-                            action: 'subtask_toggle'
-                        }
-                    }
-                };
-            }, {
-                pool: query,
-                requestPath: `/api/hermes/tasks/${taskId}/subtasks/${subtaskId}`,
-                transactional: true
-            });
-        } catch (err) {
-            if (err.statusCode && err.statusCode < 500) {
-                return sendHermesError(res, err.statusCode, err.code || 'HERMES_SUBTASK_TOGGLE_FAILED', err.message);
-            }
-            log.error('Hermes subtask toggle error', err);
-            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes subtask toggle failed');
-        }
-    });
+    router.patch('/tasks/:id/subtasks/:subtaskId', requireHermesMutationGuard, (req, res) =>
+        sendHermesError(res, 410, 'TASK_CHECKLIST_RETIRED', 'Task checklists have been retired'));
 
     router.post('/tasks/:id/status', requireHermesMutationGuard, async (req, res) => {
         let payload;
@@ -4283,46 +4076,8 @@ function createHermesRouter(options = {}) {
         }
     });
 
-    router.get('/tasks/:id/subtasks', async (req, res) => {
-        try {
-            const taskId = parsePositiveInt(req.params.id);
-            if (!taskId) {
-                return sendHermesError(res, 404, 'HERMES_TASK_NOT_FOUND', 'Task not found');
-            }
-            const queryParts = taskWhereForRequest(req, { res, taskId });
-            if (!queryParts) return;
-
-            const visible = await query.query(
-                `SELECT t.id, t.status, t.updated_at, t.version
-                 FROM tasks t
-                 WHERE ${queryParts.whereParts.join('\n                   AND ')}
-                 LIMIT 1`,
-                queryParts.params
-            );
-            if (!visible.rows.length) {
-                return sendHermesError(res, 404, 'HERMES_TASK_NOT_FOUND', 'Task not found');
-            }
-
-            const subtasks = await listTaskSubtasks(query, taskId);
-            res.json({
-                success: true,
-                subtasks: subtasks.map(toHermesSubtaskApi),
-                parent: hermesSubtaskParentSummary(visible.rows[0], subtasks),
-                meta: {
-                    businessScope: taskBusinessScopeMeta(queryParts.businessScope),
-                    sourceSurface: 'hermes',
-                    source: HERMES_INTEGRATION_ID,
-                    readOnly: true
-                }
-            });
-        } catch (err) {
-            if (err.statusCode && err.statusCode < 500) {
-                return sendHermesError(res, err.statusCode, err.code || 'HERMES_INVALID_REQUEST', err.message);
-            }
-            log.error('Hermes subtask list error', err);
-            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes subtask list failed');
-        }
-    });
+    router.get('/tasks/:id/subtasks', (req, res) =>
+        sendHermesError(res, 410, 'TASK_CHECKLIST_RETIRED', 'Task checklists have been retired'));
 
     router.get('/tasks/:id', async (req, res) => {
         try {
@@ -4334,12 +4089,10 @@ function createHermesRouter(options = {}) {
             if (!queryParts) return;
 
             const result = await query.query(
-                `SELECT ${TASK_SELECT_FIELDS},
-                        COALESCE(subtask_rows.subtasks, '[]'::json) AS subtasks
+                `SELECT ${TASK_SELECT_FIELDS}
                  FROM tasks t
                  LEFT JOIN users u ON u.id = t.owner_user_id
                  LEFT JOIN users creator ON creator.id = t.created_by_user_id
-                 ${SUBTASK_JOIN_SQL}
                  WHERE ${queryParts.whereParts.join('\n                   AND ')}
                  LIMIT 1`,
                 queryParts.params

@@ -226,7 +226,7 @@ test('My Day cards preserve completion and omit manual impact controls', () => {
     const profile = read('js/profile-page.js');
     assert.doesNotMatch(profile, /remove-impact|openTaskEditor|renderTaskBadges|saveTaskClassification/);
     assert.match(profile, /data-cabinet-task-action="done"/);
-    assert.match(profile, /aria-disabled="true" data-cabinet-completion-blocked="subtasks"/);
+    assert.doesNotMatch(profile, /data-cabinet-completion-blocked="subtasks"/);
 });
 
 test('Park cards use separate facts and actions, without the legacy time UI', () => {
@@ -255,7 +255,6 @@ test('Profile My Day card view mode is localStorage-scoped and has per-card expa
     assert.match(profile, /data-cabinet-task-action="toggle-my-day-details"/);
     assert.match(profile, /function renderCabinetMyDayDetailToggle\(taskIdAttr = '', expanded = false/);
     assert.match(profile, /aria-expanded="\$\{expanded \? 'true' : 'false'\}"/);
-    assert.match(profile, /showMyDayDetails \? myDaySubtaskSummary : ''/);
     assert.match(timeUi, /options\.detailed === true/);
     assert.match(timeUi, /data-cabinet-task-action="time-menu"/);
     assert.match(timeUi, /const timerAction = active \? 'timer-stop' : 'timer-start'/);

@@ -63,15 +63,16 @@ test('My Day AI composer proposal contract fixture is strict and impacts-only', 
         'confidence',
         'reason'
     ]);
-    assert.deepEqual(schema.properties.decision.enum, fixture.allowedDecisions);
-    assert.deepEqual(schema.properties.mode.enum, ['simple', 'checklist', null]);
+    assert.deepEqual(schema.properties.decision.enum, fixture.allowedDecisions.filter(decision => decision !== 'checklist'));
+    assert.deepEqual(schema.properties.mode.enum, ['simple', null]);
     assert.equal(schema.properties.impactIds.maxItems, 5);
     assert.deepEqual(schema.properties.priority.enum, ['urgent', 'high', 'normal', 'low', null]);
     assert.equal(schema.properties.scheduleDate.maxLength, 32);
     assert.equal(Object.hasOwn(schema.properties.impactIds, 'uniqueItems'), false);
-    assert.equal(schema.properties.subtasks.maxItems, 7);
+    assert.equal(schema.properties.subtasks.maxItems, 0);
     assert.equal(schema.properties.subtasks.items.additionalProperties, false);
     assert.equal(schema.properties.tasks.maxItems, 6);
+    assert.equal(schema.properties.tasks.items.properties.subtasks.maxItems, 0);
     assert.equal(schema.properties.tasks.items.additionalProperties, false);
     assert.equal(schema.properties.tasks.items.properties.impactIds.maxItems, 5);
     assert.equal(Object.hasOwn(schema.properties.tasks.items.properties.impactIds, 'uniqueItems'), false);

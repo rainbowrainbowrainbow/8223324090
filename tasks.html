@@ -1955,7 +1955,6 @@
                             <option value="deep_work">Глибока робота</option>
                             <option value="waiting">Чекаю</option>
                             <option value="idea">Ідея</option>
-                            <option value="checklist">Чеклист</option>
                             <option value="routine">Рутина</option>
                         </select>
                         <select id="taskVisibility" title="Видимість" aria-label="Видимість">
@@ -1971,38 +1970,6 @@
                         <button class="task-chip" type="button" data-capture-chip="private">Приватна</button>
                         <button class="task-chip" type="button" data-capture-chip="waiting">Чекаю</button>
                         <button class="task-chip" type="button" data-capture-chip="idea">Ідея</button>
-                    </div>
-                    <div class="task-composer-group task-subtasks-group">
-                        <span class="task-composer-label">Підзадачі / шаблони</span>
-                        <div class="task-decomposition-controls">
-                            <select id="taskDecompositionMode" aria-label="Режим декомпозиції">
-                                <option value="none">Без декомпозиції</option>
-                                <option value="manual">Вручну</option>
-                                <option value="template">Шаблон</option>
-                            </select>
-                            <select id="taskDecompositionTemplate" aria-label="Шаблон декомпозиції">
-                                <option value="personal_home">Побут / особисте</option>
-                                <option value="event_preparation">Підготовка події</option>
-                                <option value="content_creation">Контент</option>
-                                <option value="crm_sales_followup">CRM / продаж</option>
-                            </select>
-                            <button type="button" id="taskSubtaskAcceptDraftBtn" class="task-subtask-add" hidden>Прийняти</button>
-                        </div>
-                        <div class="task-saved-template-controls">
-                            <select id="taskSavedDecompositionTemplate" aria-label="Мій шаблон підзадач">
-                                <option value="">Мої шаблони</option>
-                            </select>
-                            <button type="button" id="taskApplySavedTemplateBtn" class="task-subtask-add">Застосувати</button>
-                            <button type="button" id="taskSaveSubtasksTemplateBtn" class="task-subtask-add">Зберегти</button>
-                            <button type="button" id="taskUpdateSavedTemplateBtn" class="task-subtask-add">Оновити</button>
-                            <button type="button" id="taskDeleteSavedTemplateBtn" class="task-subtask-remove">Видалити</button>
-                        </div>
-                        <div id="taskDecompositionSuggestions" class="task-decomposition-suggestions" hidden></div>
-                        <div id="taskSubtaskDraftStatus" class="task-subtask-status" aria-live="polite"></div>
-                        <div class="task-subtask-list-toolbar">
-                            <button type="button" id="taskSubtaskAddBtn" class="task-subtask-add">+ Підзадача</button>
-                        </div>
-                        <div class="task-subtasks-list" id="taskSubtasksList"></div>
                     </div>
                 </div>
                 <div class="task-batch-toolbar" aria-label="Масове створення окремих задач">

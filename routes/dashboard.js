@@ -10,7 +10,6 @@ const { getDefaultWidgets, canAccessDashboardWidget } = require('../config/roles
 const { createLogger } = require('../utils/logger');
 const { getKyivDateStr } = require('../services/booking');
 const { buildTaskVisibilityScope, normalizeUserId, taskOwnerState, userNameTokens } = require('../services/taskPolicy');
-const { normalizeSubtaskSummary } = require('../services/taskSubtasks');
 const { TASK_SUBSTITUTION_SELECT } = require('../services/taskSubstitutionReadModel');
 const { buildTaskOperationsSummary, deriveTaskIntelligence } = require('../services/taskIntelligence');
 const { getOnlineUserIds } = require('../services/websocket');
@@ -129,54 +128,15 @@ function buildOwnTaskFilter(user, params, alias = 't') {
     return `AND (${typed} OR ${legacy})`;
 }
 
-const TASK_WIDGET_SUBTASK_SELECT = `
-                           COALESCE(subtask_rows.subtasks, '[]'::json) AS subtasks,
-                           COALESCE(st.total, 0)::int AS subtask_count,
-                           COALESCE(st.done, 0)::int AS subtask_done_count`;
-const TASK_WIDGET_DETAIL_SELECT = `${TASK_WIDGET_SUBTASK_SELECT}, ${TASK_SUBSTITUTION_SELECT}`;
-
-const TASK_WIDGET_SUBTASK_JOINS = `
-                    LEFT JOIN (
-                        SELECT task_id,
-                               COUNT(*)::int AS total,
-                               COUNT(*) FILTER (WHERE is_done = true)::int AS done
-                        FROM task_subtasks
-                        GROUP BY task_id
-                    ) st ON st.task_id = t.id
-                    LEFT JOIN (
-                        SELECT task_id,
-                               json_agg(json_build_object(
-                                   'id', id,
-                                   'task_id', task_id,
-                                   'title', title,
-                                   'is_done', is_done,
-                                   'sort_order', sort_order,
-                                   'source_type', COALESCE(source_type, 'manual'),
-                                   'created_at', created_at,
-                                   'completed_at', completed_at,
-                                   'updated_at', updated_at
-                               ) ORDER BY sort_order ASC, id ASC) AS subtasks
-                        FROM task_subtasks
-                        GROUP BY task_id
-                    ) subtask_rows ON subtask_rows.task_id = t.id`;
-
 function taskWidgetPayload(rows = []) {
     return rows.map(row => {
         const ownerLabel = row.owner_name || row.owner_username || row.assigned_to || row.owner || null;
         const ownerState = taskOwnerState(row);
-        const subtaskSummary = normalizeSubtaskSummary(row);
         return {
             ...row,
             ownerLabel,
             ownerState,
             ownerUserId: row.owner_user_id || null,
-            subtasks: subtaskSummary.subtasks,
-            subtask_count: subtaskSummary.subtaskCount,
-            subtask_done_count: subtaskSummary.subtaskDoneCount,
-            subtaskCount: subtaskSummary.subtaskCount,
-            subtaskDoneCount: subtaskSummary.subtaskDoneCount,
-            subtaskProgress: subtaskSummary.subtaskProgress,
-            subtaskProgressPercent: subtaskSummary.subtaskProgressPercent,
             intelligence: deriveTaskIntelligence({ ...row, owner_label: ownerLabel, ownerState })
         };
     });
@@ -475,14 +435,13 @@ async function loadNearestEventWidgetData(user, businessScope, options = {}) {
                t.task_mode, t.task_kind, t.visibility, t.workflow_state, t.focus_rank,
                ${dashboardTaskTimingSelect('t')},
                u.name AS owner_name, u.username AS owner_username,
-               ${TASK_WIDGET_DETAIL_SELECT},
+               ${TASK_SUBSTITUTION_SELECT},
                COUNT(*) OVER ()::int AS preparation_total,
                COUNT(*) FILTER (WHERE LOWER(COALESCE(t.status, 'todo')) NOT IN ('done','completed','complete')) OVER ()::int AS preparation_open,
                COUNT(*) FILTER (WHERE LOWER(COALESCE(t.status, 'todo')) IN ('done','completed','complete')) OVER ()::int AS preparation_done,
                COUNT(*) FILTER (WHERE ${taskKpiCanonicalOverdueSql('t')}) OVER ()::int AS preparation_overdue
         FROM tasks t
         LEFT JOIN users u ON u.id = t.owner_user_id
-        ${TASK_WIDGET_SUBTASK_JOINS}
         WHERE t.source_type = 'booking'
           AND t.source_id = $1
           AND LOWER(COALESCE(t.status, 'todo')) NOT IN ('cancelled','canceled','archived') AND t.archived_at IS NULL
@@ -616,19 +575,6 @@ function isTaskerDoneToday(row = {}) {
     return dateOnlyKyiv(completedAt) === getKyivDateStr();
 }
 
-function taskerSubtaskStats(row = {}) {
-    const summary = normalizeSubtaskSummary(row);
-    const doneToday = summary.subtasks.filter(item => {
-        if (!(item.isDone || item.is_done)) return false;
-        return dateOnlyKyiv(item.completedAt || item.completed_at) === getKyivDateStr();
-    }).length;
-    return {
-        total: summary.subtaskCount || 0,
-        done: summary.subtaskDoneCount || 0,
-        doneToday
-    };
-}
-
 function matchesTaskerUserIdentity(row = {}, user, fields = []) {
     const userId = normalizeUserId(user);
     if (userId && fields.some(field => Number(row[field] || 0) === userId)) return true;
@@ -641,19 +587,12 @@ function matchesTaskerUserIdentity(row = {}, user, fields = []) {
 }
 
 function taskerStats(tasks = []) {
-    const subtaskStats = tasks.reduce((acc, task) => {
-        const stats = taskerSubtaskStats(task);
-        acc.total += stats.total;
-        acc.done += stats.done;
-        acc.doneToday += stats.doneToday;
-        return acc;
-    }, { total: 0, done: 0, doneToday: 0 });
-    const total = tasks.length + subtaskStats.total;
-    const done = tasks.filter(task => TASKER_DONE_STATUSES.has(normalizeTaskStatus(task.status))).length + subtaskStats.done;
+    const total = tasks.length;
+    const done = tasks.filter(task => TASKER_DONE_STATUSES.has(normalizeTaskStatus(task.status))).length;
     const active = tasks.filter(task => !isTaskerClosed(task)).length;
     const todo = tasks.filter(task => normalizeTaskStatus(task.status) === 'todo').length;
     const inProgress = tasks.filter(task => normalizeTaskStatus(task.status) === 'in_progress').length;
-    const doneToday = tasks.filter(isTaskerDoneToday).length + subtaskStats.doneToday;
+    const doneToday = tasks.filter(isTaskerDoneToday).length;
     const overdue = tasks.filter(isTaskerOverdue).length;
     return {
         total,
@@ -678,10 +617,8 @@ function normalizeTaskerStatsRow(row = {}) {
         done,
         doneToday: Number(row.done_today || row.doneToday || 0),
         parentDone: Number(row.parent_done || row.parentDone || 0),
-        subtaskDone: Number(row.subtask_done || row.subtaskDone || 0),
         parentDoneToday: Number(row.parent_done_today || row.parentDoneToday || 0),
-        subtaskDoneToday: Number(row.subtask_done_today || row.subtaskDoneToday || 0),
-        completedMetricContract: row.completed_metric_contract || 'completed_units = completed_parent_tasks + completed_subtasks',
+        completedMetricContract: row.completed_metric_contract || 'completed_units = completed_tasks',
         overdue: Number(row.overdue || 0),
         completionRate: total ? Math.round((done / total) * 100) : 0
     };
@@ -1335,10 +1272,9 @@ router.get('/widgets/:type', requireDashboardWidgetRevenue, allowDashboardPublic
                            t.task_mode, t.task_kind, t.visibility, t.workflow_state, t.focus_rank,
                            ${dashboardTaskTimingSelect('t')},
                            u.name AS owner_name, u.username AS owner_username,
-                           ${TASK_WIDGET_DETAIL_SELECT}
+                           ${TASK_SUBSTITUTION_SELECT}
                     FROM tasks t
                     LEFT JOIN users u ON u.id = t.owner_user_id
-                    ${TASK_WIDGET_SUBTASK_JOINS}
                     WHERE ${dashboardActionableTaskSql('t')}
                     ${visibility}
                     ${ownFilter}
@@ -1368,11 +1304,10 @@ router.get('/widgets/:type', requireDashboardWidgetRevenue, allowDashboardPublic
                            ${dashboardTaskTimingSelect('t')},
                            u.name AS owner_name, u.username AS owner_username,
                            cu.name AS creator_name, cu.username AS creator_username,
-                           ${TASK_WIDGET_DETAIL_SELECT}
+                           ${TASK_SUBSTITUTION_SELECT}
                     FROM tasks t
                     LEFT JOIN users u ON u.id = t.owner_user_id
                     LEFT JOIN users cu ON cu.id = t.created_by_user_id
-                    ${TASK_WIDGET_SUBTASK_JOINS}
                     WHERE t.archived_at IS NULL AND LOWER(COALESCE(t.status, 'todo')) NOT IN ('archived','cancelled','canceled')
                       AND NOT (t.snoozed_until IS NOT NULL AND t.snoozed_until > NOW())
                     ${visibility}
@@ -1394,48 +1329,31 @@ router.get('/widgets/:type', requireDashboardWidgetRevenue, allowDashboardPublic
                     SELECT
                         (
                             COUNT(*) FILTER (WHERE ${taskKpiEligibleSql('t')})
-                            + COALESCE(SUM(COALESCE(st.total, 0)) FILTER (WHERE ${taskKpiEligibleSql('t')}), 0)
                         )::int AS total,
                         COUNT(*) FILTER (WHERE ${taskKpiActiveWorkSql('t')} AND ${taskKpiEligibleSql('t')})::int AS active,
                         COUNT(*) FILTER (WHERE ${taskKpiActiveWorkSql('t')} AND ${taskKpiEligibleSql('t')} AND COALESCE(t.status, 'todo') = 'todo')::int AS todo,
                         COUNT(*) FILTER (WHERE ${taskKpiActiveWorkSql('t')} AND ${taskKpiEligibleSql('t')} AND COALESCE(t.status, 'todo') = 'in_progress')::int AS in_progress,
                         (
                             COUNT(*) FILTER (WHERE ${taskKpiEligibleSql('t')} AND ${taskKpiCompletedSql('t')})
-                            + COALESCE(SUM(COALESCE(st.done, 0)) FILTER (WHERE ${taskKpiEligibleSql('t')}), 0)
                         )::int AS done,
                         (
                             COUNT(*) FILTER (
                                 WHERE ${taskKpiEligibleSql('t')}
                                   AND ${taskKpiCompletedSql('t')}
                                   AND t.completed_at IS NOT NULL
-                                  AND DATE(t.completed_at AT TIME ZONE 'Europe/Kyiv') = ${statsTodayRef}::date
+                                  AND (t.completed_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Kyiv')::date = ${statsTodayRef}::date
                             )
-                            + COALESCE(SUM(COALESCE(st.done_today, 0)) FILTER (WHERE ${taskKpiEligibleSql('t')}), 0)
                         )::int AS done_today,
                         COUNT(*) FILTER (WHERE ${taskKpiEligibleSql('t')} AND ${taskKpiCompletedSql('t')})::int AS parent_done,
                         COUNT(*) FILTER (
                             WHERE ${taskKpiEligibleSql('t')}
                               AND ${taskKpiCompletedSql('t')}
                               AND t.completed_at IS NOT NULL
-                              AND DATE(t.completed_at AT TIME ZONE 'Europe/Kyiv') = ${statsTodayRef}::date
+                              AND (t.completed_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Kyiv')::date = ${statsTodayRef}::date
                         )::int AS parent_done_today,
-                        COALESCE(SUM(COALESCE(st.done, 0)) FILTER (WHERE ${taskKpiEligibleSql('t')}), 0)::int AS subtask_done,
-                        COALESCE(SUM(COALESCE(st.done_today, 0)) FILTER (WHERE ${taskKpiEligibleSql('t')}), 0)::int AS subtask_done_today,
-                        'completed_units = completed_parent_tasks + completed_subtasks' AS completed_metric_contract,
+                        'completed_units = completed_tasks' AS completed_metric_contract,
                         COUNT(*) FILTER (WHERE ${taskKpiCanonicalOverdueSql('t', `${statsTodayRef}::date`)})::int AS overdue
                     FROM tasks t
-                    LEFT JOIN (
-                        SELECT task_id,
-                               COUNT(*)::int AS total,
-                               COUNT(*) FILTER (WHERE is_done = true)::int AS done,
-                               COUNT(*) FILTER (
-                                   WHERE is_done = true
-                                     AND completed_at IS NOT NULL
-                                     AND DATE(completed_at AT TIME ZONE 'Europe/Kyiv') = ${statsTodayRef}::date
-                               )::int AS done_today
-                        FROM task_subtasks
-                        GROUP BY task_id
-                    ) st ON st.task_id = t.id
                     WHERE t.archived_at IS NULL AND LOWER(COALESCE(t.status, 'todo')) NOT IN ('archived','cancelled','canceled')
                       AND NOT (t.snoozed_until IS NOT NULL AND t.snoozed_until > NOW())
                     ${statsVisibility}
@@ -1458,7 +1376,7 @@ router.get('/widgets/:type', requireDashboardWidgetRevenue, allowDashboardPublic
                                t.task_mode, t.task_kind, t.visibility, t.workflow_state, t.focus_rank,
                                ${dashboardTaskTimingSelect('t')},
                                u.name AS owner_name, u.username AS owner_username,
-                               ${TASK_WIDGET_DETAIL_SELECT},
+                               ${TASK_SUBSTITUTION_SELECT},
                                ROW_NUMBER() OVER (
                                    PARTITION BY (COALESCE(t.focus_rank, 0) > 0)
                                    ORDER BY
@@ -1472,7 +1390,6 @@ router.get('/widgets/:type', requireDashboardWidgetRevenue, allowDashboardPublic
                                ) AS preview_rank
                         FROM tasks t
                         LEFT JOIN users u ON u.id = t.owner_user_id
-                        ${TASK_WIDGET_SUBTASK_JOINS}
                         WHERE ${dashboardFocusAvailableSql('t')}
                         ${ownFilter} ${visibility} ${taskBusinessCondition}
                     )
@@ -2212,10 +2129,9 @@ router.get('/widgets/:type', requireDashboardWidgetRevenue, allowDashboardPublic
                            u.name AS owner_name, u.username AS owner_username,
                            t.status, t.priority, t.deadline, t.updated_at, t.created_at,
                            ${dashboardTaskTimingSelect('t')},
-                           ${TASK_WIDGET_DETAIL_SELECT}
+                           ${TASK_SUBSTITUTION_SELECT}
                     FROM tasks t
                     LEFT JOIN users u ON u.id = t.owner_user_id
-                    ${TASK_WIDGET_SUBTASK_JOINS}
                     WHERE ${dashboardActionableTaskSql('t')}
                     ${visibility}
                     ${taskBusinessCondition}

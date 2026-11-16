@@ -24,6 +24,13 @@ const CLOSED_TASK_STATUSES = new Set([
     'done', 'completed', 'cancelled', 'canceled', 'archived', 'resolved', 'closed'
 ]);
 const EXCLUDED_POSTPONEMENT_STATES = new Set(['waiting', 'blocked']);
+const QUICK_TODAY_SOURCE = 'profile_my_cabinet_overdue_to_today_button';
+const QUICK_TODAY_ROUTE = 'tasks_task_reschedule';
+const UNDO_RESCHEDULE_FIELDS = Object.freeze([
+    'date', 'deadline', 'scheduled_start_at', 'scheduled_end_at', 'schedule_status',
+    'snoozed_until', 'remind_at', 'escalate_after', 'next_notification_at',
+    'status', 'workflow_state', 'priority', 'postponement_count', 'original_due_at', 'last_postponed_at'
+]);
 const JSON_FIELDS = new Set(['schedule_meta', 'schedule_proposal', 'control_meta']);
 const FIELD_CASTS = Object.freeze({
     deadline: 'timestamp',
@@ -343,6 +350,9 @@ async function applyCanonicalRescheduleMutation(query, task, patch, actor = {}, 
     const historyActionType = decision.countsAsPostponement
         ? TASK_ACTION_TYPES.RESCHEDULED
         : (options.actionType || TASK_ACTION_TYPES.RESCHEDULED);
+    const undo = sourceSurface === QUICK_TODAY_SOURCE && options.route === QUICK_TODAY_ROUTE
+        ? { version: updated.version, fields: Object.fromEntries(UNDO_RESCHEDULE_FIELDS.map(field => [field, task[field] ?? null])) }
+        : null;
     const historyEvent = await logTaskActionEvent({
         taskId: task.id,
         actionType: historyActionType,
@@ -372,7 +382,8 @@ async function applyCanonicalRescheduleMutation(query, task, patch, actor = {}, 
             priorityBefore: decision.priorityBefore,
             priorityAfter: decision.priorityAfter,
             priorityEscalated: decision.priorityEscalated,
-            minimumPriority: decision.minimumPriority
+            minimumPriority: decision.minimumPriority,
+            ...(undo ? { undo } : {})
         }
     }, { pool: query });
     return { task: updated, historyEvent, postponement: decision, idempotent: false, unchanged: false };
@@ -444,6 +455,47 @@ async function rescheduleTask(taskId, deadline, actor = {}, options = {}) {
     });
 }
 
+async function undoQuickTodayReschedule(taskId, eventId, actor = {}, options = {}) {
+    const actionId = parsePositiveInt(eventId);
+    if (!actionId) throw Object.assign(new Error('Некоректний запис перенесення.'), { statusCode: 400 });
+
+    return withTransaction(options, async query => {
+        const task = await loadVisibleTaskForReschedule(query, taskId, actor, options);
+        if (!canRescheduleTask(actor, task)) {
+            throw Object.assign(new Error('Перенесення цієї задачі недоступне.'), { statusCode: 403 });
+        }
+        const { rows: [event] } = await query.query(
+            `SELECT meta_json FROM task_action_history
+             WHERE id = $1 AND task_id = $2 AND actor_user_id = $3 AND source_surface = $4 AND action_type = $5`,
+            [actionId, task.id, normalizeUserId(actor), QUICK_TODAY_SOURCE, TASK_ACTION_TYPES.RESCHEDULED]
+        );
+        const undo = event?.meta_json?.undo;
+        const stale = () => Object.assign(new Error('Задача вже змінилася. Оновіть її, щоб перевірити строк.'), {
+            statusCode: 409, code: 'TASK_STALE_WRITE'
+        });
+        if (!undo?.fields || UNDO_RESCHEDULE_FIELDS.some(field => !Object.hasOwn(undo.fields, field))) throw stale();
+        if (Number(task.version) !== Number(undo.version) || task.archived_at || CLOSED_TASK_STATUSES.has(String(task.status).toLowerCase())) {
+            const replay = await findIdempotentEvent(query, task.id, `undo-quick-today:${actionId}`);
+            if (Number(replay?.meta_json?.undoOfEventId) === actionId) return normalizeTaskRow(task);
+            throw stale();
+        }
+        const values = [task.id, ...UNDO_RESCHEDULE_FIELDS.map(field => undo.fields[field])];
+        const setters = UNDO_RESCHEDULE_FIELDS.map((field, index) => `${field} = $${index + 2}`);
+        const { rows: [restored] } = await query.query(
+            `UPDATE tasks SET ${setters.join(', ')}, version = version + 1, updated_at = NOW() WHERE id = $1 RETURNING *`,
+            values
+        );
+        await logTaskActionEvent({
+            taskId: task.id, actor, actionType: TASK_ACTION_TYPES.RESCHEDULED, sourceSurface: QUICK_TODAY_SOURCE,
+            oldValue: { deadline: task.deadline, date: task.date },
+            newValue: { deadline: restored.deadline, date: restored.date },
+            summary: 'Quick reschedule undone',
+            meta: { undoOfEventId: actionId, idempotencyKey: `undo-quick-today:${actionId}` }
+        }, { pool: query });
+        return normalizeTaskRow(restored);
+    });
+}
+
 module.exports = {
     applyCanonicalRescheduleMutation,
     canonicalTaskDue,
@@ -453,5 +505,6 @@ module.exports = {
     loadVisibleTaskForReschedule,
     normalizeSourceSurface,
     rescheduleTask,
+    undoQuickTodayReschedule,
     withTransaction
 };

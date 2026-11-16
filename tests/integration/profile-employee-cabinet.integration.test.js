@@ -103,7 +103,8 @@ test('profile endpoints return only the linked employee’s payroll and results'
     const results = await request('GET', resultsPath + `&staffId=${foreign.staffId}`, null, own.token);
     assert.equal(results.status, 200, JSON.stringify(results.data));
     assert.equal(results.data.current.attendance.late, 1);
-    assert.equal(results.data.current.ratings[0].explanation, 'Fixture review');
+    assert.equal(results.data.current.ratings, undefined);
+    assert.equal(results.data.dailyTasks.days.length, 7);
     assert.equal(results.data.previous.month, '2024-01');
     assert.deepEqual(results.data.substitutions, [
         { id:cover, date:'2024-02-29', state:'active', role:'replacement', partial:false, professionKey:'animator' },

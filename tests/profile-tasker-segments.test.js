@@ -211,7 +211,7 @@ test('legacy profile auto rewards are scoped to account and auth session generat
     ]);
 });
 
-test('profile my day ordering keeps decomposed groups and sorts newest tasks first inside the slice', () => {
+test('profile my day orders tasks by recency regardless of historical checklist rows', () => {
     const ctx = loadProfileTaskerContext();
     const tasks = [
         { id: 1, title: 'older plain', date: '2026-05-23', createdAt: '2026-05-23T08:00:00.000Z' },
@@ -220,7 +220,7 @@ test('profile my day ordering keeps decomposed groups and sorts newest tasks fir
         { id: 4, title: 'newer decomposed', date: '2026-05-23', createdAt: '2026-05-23T09:00:00.000Z', subtask_count: 1 }
     ];
 
-    assert.deepEqual(Array.from(ctx.sortCabinetTasksForDisplay(tasks).map(task => task.id)), [4, 3, 2, 1]);
+    assert.deepEqual(Array.from(ctx.sortCabinetTasksForDisplay(tasks).map(task => task.id)), [2, 4, 1, 3]);
 });
 
 test('profile my day ordering lifts urgent priority above lower-priority work', () => {
@@ -358,14 +358,13 @@ test('park profile separates planning periods and shows waiting in its date grou
     assert.match(html, /Today segment task/);
     assert.match(html, /Waiting segment task/);
     assert.match(html, /Overdue segment task/);
-    assert.match(html, /data-park-selected-period="today"/);
+    assert.deepEqual([...html.matchAll(/data-park-period="([^"]+)"/g)].map(match => match[1]), ['today', 'overdue', 'future']);
     assert.match(html, /park-completion-board[\s\S]*Dashboard completed task/);
     assert.equal((html.match(/data-cabinet-completion-pulse/g) || []).length, 1);
-    ctx.ProfileMyDay.setView(ctx.cabinetMyDayViewPreferenceKey(), 'overdue');
     html = ctx.renderMyDayTab();
     assert.match(html, /data-park-task-group="overdue"/);
     assert.match(html, /Overdue segment task/);
-    assert.match(html, /data-park-selected-period="overdue"/);
+    assert.deepEqual([...html.matchAll(/data-park-period="([^"]+)"/g)].map(match => match[1]), ['today', 'overdue', 'future']);
     assert.match(html, /Today segment task/);
     vm.runInContext('completedDashboardExpanded = true; completedDashboardTab = "history";', ctx);
     html = ctx.renderMyDayTab();
@@ -504,7 +503,7 @@ test('profile completion details toggle is local and does not reload projection'
     assert.equal(ctx.__COMPLETED_TOGGLE_RESULT__.projectionReloads, 0);
     assert.match(ctx.__COMPLETED_TOGGLE_RESULT__.renderedHtml, /data-cabinet-completion-details/);
     assert.match(ctx.__COMPLETED_TOGGLE_RESULT__.renderedHtml, /data-cabinet-task-action="open" data-task-id="990"/);
-    assert.match(ctx.__COMPLETED_TOGGLE_RESULT__.renderedHtml, /1\/2 пунктів/);
+    assert.doesNotMatch(ctx.__COMPLETED_TOGGLE_RESULT__.renderedHtml, /1\/2 пунктів/);
 });
 
 test('profile completion pulse covers 0, 1, 15+ today and 36-row history contracts', () => {
@@ -754,7 +753,6 @@ test('park overdue period uses the same actions and card as today', () => {
         };
     `, ctx);
 
-    ctx.ProfileMyDay.setView(ctx.cabinetMyDayViewPreferenceKey(), 'overdue');
     const html = ctx.renderMyDayTab();
     assert.match(html, /data-park-task-group="overdue"/);
     assert.match(html, /Показано 1 із 1/);
@@ -1056,11 +1054,10 @@ test('profile My Day composer due presets leave the three planning periods intac
         cabinetCreateDuePreset = 'tomorrow';
     `, ctx);
 
-    ctx.ProfileMyDay.setView(ctx.cabinetMyDayViewPreferenceKey(), 'overdue');
     for (const preset of ['tomorrow', 'no_date', 'day_after_tomorrow', 'plus_3_days', 'month_end']) {
         ctx.setCabinetDuePreset(preset);
         const html = ctx.renderMyDayTab();
-        assert.match(html, /data-park-selected-period="overdue"/);
+        assert.deepEqual([...html.matchAll(/data-park-period="([^"]+)"/g)].map(match => match[1]), ['today', 'overdue', 'future']);
         assert.match(html, /data-park-task-group="today"[\s\S]*Today focus task/);
         assert.match(html, /data-park-task-group="noDate"[\s\S]*No date focus task/);
         assert.match(html, /data-park-task-group="overdue"[\s\S]*Overdue focus task/);
@@ -1380,12 +1377,12 @@ test('profile My Day custom date projection requests focusDate without sending i
 
     await ctx.loadMyCabinetProjection();
 
-    assert.equal(requested.at(-1), '/tasks/my-cabinet?focusDate=2026-09-15');
+    assert.equal(requested.at(-1), '/tasks/my-cabinet?planningView=my-day&focusDate=2026-09-15');
 
     controls.get('cabinetTaskDate').value = 'not-a-date';
     await ctx.loadMyCabinetProjection();
 
-    assert.equal(requested.at(-1), '/tasks/my-cabinet');
+    assert.equal(requested.at(-1), '/tasks/my-cabinet?planningView=my-day');
 });
 
 test('TaskCreate buildPayload keeps the full My Day due contract for every preset', () => {
@@ -1453,8 +1450,8 @@ test('profile My Day ignores an older custom-date projection response', async ()
     const newerRequest = ctx.loadMyCabinetProjection({ keepExistingOnError: true });
     await new Promise(resolve => setImmediate(resolve));
 
-    assert.equal(pending[0].url, '/tasks/my-cabinet?focusDate=2099-05-30');
-    assert.equal(pending[1].url, '/tasks/my-cabinet?focusDate=2099-05-31');
+    assert.equal(pending[0].url, '/tasks/my-cabinet?planningView=my-day&focusDate=2099-05-30');
+    assert.equal(pending[1].url, '/tasks/my-cabinet?planningView=my-day&focusDate=2099-05-31');
 
     pending[1].resolve({ marker: 'newest' });
     await newerRequest;
@@ -1476,7 +1473,7 @@ test('profile My Day dedupes identical cabinet projection requests without inval
     await new Promise(resolve => setImmediate(resolve));
 
     assert.equal(pending.length, 1);
-    assert.equal(pending[0].url, '/tasks/my-cabinet');
+    assert.equal(pending[0].url, '/tasks/my-cabinet?planningView=my-day');
     pending[0].resolve({ marker: 'loaded-once', all: [], today: [], overdue: [], waiting: [], private: [], completedHistory: [] });
     await first;
     await second;
@@ -1517,7 +1514,6 @@ test('profile My Day renders immediate skeleton and partial bucket controls', ()
         };
         myCabinetLoadState = 'loaded';
     `, ctx);
-    ctx.ProfileMyDay.setView(ctx.cabinetMyDayViewPreferenceKey(), 'overdue');
     const partialHtml = ctx.renderMyDayTab();
     assert.match(partialHtml, /data-cabinet-bucket-more="overdue"/);
     assert.match(partialHtml, /data-cabinet-bucket-offset="80"/);
@@ -1545,7 +1541,7 @@ test('profile My Day fallback payload leaves no_date unscheduled', async () => {
         return { success: true, task: { id: 930, title: payload.title } };
     };
     ctx.apiGet = async url => {
-        if (url === '/tasks/my-cabinet') {
+        if (url === '/tasks/my-cabinet?planningView=my-day') {
             return { all: [{ id: 930, title: 'Fallback no date task' }], today: [], overdue: [], waiting: [], private: [], completedHistory: [] };
         }
         return null;
@@ -1556,8 +1552,8 @@ test('profile My Day fallback payload leaves no_date unscheduled', async () => {
 
     assert.equal(createdPayload.title, 'Fallback no date task');
     assert.equal(createdPayload.priority, 'high');
-    assert.equal(createdPayload.reportRequired, true);
-    assert.equal(createdPayload.controlMeta.reportRequired, true);
+    assert.equal(createdPayload.reportRequired, undefined);
+    assert.equal(createdPayload.controlMeta.reportRequired, undefined);
     assert.equal(createdPayload.allowReschedule, false);
     assert.equal(Object.hasOwn(createdPayload, 'date'), false);
     assert.equal(Object.hasOwn(createdPayload, 'schedule'), false);
@@ -1566,7 +1562,7 @@ test('profile My Day fallback payload leaves no_date unscheduled', async () => {
     assert.equal(notices.at(-1)?.type, 'success');
 });
 
-test('My Day separates author control from execution and renders each task once', () => {
+test('My Day leaves authored-only work to the separate profile view', () => {
     const ctx = loadProfileTaskerContext();
     vm.runInContext(`
         activeTab = 'myday';
@@ -1580,8 +1576,7 @@ test('My Day separates author control from execution and renders each task once'
     `, ctx);
     const html = ctx.renderMyDayTab();
     assert.match(html, /<h4>Виконую<\/h4>/);
-    assert.match(html, /<h4>На контролі<\/h4>/);
-    assert.match(html, /Виконує Сергій/);
+    assert.doesNotMatch(html, /Здати звіт за листопад|Виконує Сергій/);
     assert.equal((html.match(/<article[^>]*data-task-id="4209"/g) || []).length, 1);
     assert.doesNotMatch(html, /data-cabinet-task-action="done" data-task-id="4208"/);
     assert.match(html, /data-cabinet-task-action="done" data-task-id="4209"/);
@@ -1598,7 +1593,7 @@ test('a linked My Day task focuses the requested date without changing the creat
         myCabinetData = {
             meta: { calendar: { focusDate: '2026-11-20' } },
             planning: {
-                focusDate: [{ id: 4208, title: 'Звіт на 20 листопада', date: '2026-11-20', viewerRoles: ['author'] }],
+                focusDate: [{ id: 4208, title: 'Звіт на 20 листопада', date: '2026-11-20', viewerRoles: ['executor'] }],
                 future: [{ id: 4209, title: 'Звіт на іншу дату', date: '2026-11-22', viewerRoles: ['executor'] }]
             }
         };
@@ -1695,7 +1690,7 @@ test('profile My Day create accepts URL-first titles and confirms the refreshed 
         }
     };
     ctx.apiGet = async (url) => {
-        if (url === '/tasks/my-cabinet') {
+        if (url === '/tasks/my-cabinet?planningView=my-day') {
             return {
                 all: [{ id: 501, title }],
                 today: [{ id: 501, title }],
@@ -1769,7 +1764,7 @@ test('profile My Day direct create reuses the same idempotency key after timeout
         }
     };
     ctx.apiGet = async (url) => {
-        if (url === '/tasks/my-cabinet') {
+        if (url === '/tasks/my-cabinet?planningView=my-day') {
             return {
                 all: [lastTask || { id: 513, title: elements.get('cabinetTaskTitle').value || title }],
                 today: [lastTask || { id: 513, title: elements.get('cabinetTaskTitle').value || title }],
@@ -1817,7 +1812,7 @@ test('profile My Day direct create blocks real simultaneous double-click with on
         }
     };
     ctx.apiGet = async (url) => {
-        if (url === '/tasks/my-cabinet') {
+        if (url === '/tasks/my-cabinet?planningView=my-day') {
             return {
                 all: [{ id: 530, title }],
                 today: [{ id: 530, title }],
@@ -1860,7 +1855,7 @@ test('profile My Day create sends urgent priority from the mini priority selecto
         }
     };
     ctx.apiGet = async (url) => {
-        if (url === '/tasks/my-cabinet') {
+        if (url === '/tasks/my-cabinet?planningView=my-day') {
             return {
                 all: [{ id: 509, title, priority: 'urgent' }],
                 today: [{ id: 509, title, priority: 'urgent' }],
@@ -1897,7 +1892,7 @@ test('profile My Day create does not fake success when the created task is missi
         }
     };
     ctx.apiGet = async (url) => {
-        if (url === '/tasks/my-cabinet') return { all: [], today: [], overdue: [], waiting: [], private: [], completedHistory: [] };
+        if (url === '/tasks/my-cabinet?planningView=my-day') return { all: [], today: [], overdue: [], waiting: [], private: [], completedHistory: [] };
         if (url === '/tasks/777') return { id: 777, title };
         return null;
     };
@@ -2114,7 +2109,7 @@ test('profile keeps My Day only and sends full task lists to canonical Tasks', (
     assert.doesNotMatch(source, /renderProfileWorkHubTabs\(professionEntries\)/);
 });
 
-test('profile task cards expose overdue reschedule action and inline subtasks by default', () => {
+test('profile task cards expose overdue reschedule actions and omit legacy checklist controls', () => {
     const ctx = loadProfileTaskerContext();
     const task = {
         id: 44,
@@ -2139,74 +2134,26 @@ test('profile task cards expose overdue reschedule action and inline subtasks by
     assert.match(html, /draggable="true"/);
     assert.match(html, /data-cabinet-task-drag="overdue"/);
     assert.match(html, /data-cabinet-task-action="move-to-today"/);
-    assert.match(html, /data-cabinet-subtasks-panel="44"/);
-    assert.doesNotMatch(html, /data-cabinet-subtasks-panel="44" hidden/);
-    assert.match(html, /data-cabinet-inline-subtask/);
-    assert.match(html, /data-cabinet-subtask-drag-handle/);
-    assert.match(html, /draggable="true"/);
-    assert.match(html, /data-cabinet-subtask-done/);
+    assert.doesNotMatch(html, /data-cabinet-subtasks-panel|data-cabinet-inline-subtask|data-cabinet-subtask-done/);
 });
 
-test('park explains blocked checklist completion and does not send a parent mutation', async () => {
+test('park lets a task with legacy checklist data use normal completion', async () => {
     const ctx = loadProfileTaskerContext();
-    const task = {
-        id: 44,
-        title: 'Blocked parent task',
-        status: 'todo',
-        subtask_count: 2,
-        subtask_done_count: 1,
-        subtasks: [
-            { id: 1, title: 'Finished item', is_done: true },
-            { id: 2, title: 'Open item', is_done: false }
-        ]
+    const task = { id: 44, title: 'Legacy task', status: 'todo', subtasks: [{ id: 2, is_done: false }], reportRequired: true };
+    const html = ctx.renderCabinetTaskCard(task, false, { surface: 'myday' });
+    const done = html.match(/<button[^>]+data-cabinet-task-action="done"[^>]*>/)?.[0];
+    assert.ok(done);
+    assert.doesNotMatch(done, /\sdisabled(?:\s|>)/);
+    assert.doesNotMatch(html, /потрібен звіт|Спочатку закрийте підпункти/i);
+    const calls = [];
+    ctx.apiPost = async (url, payload) => {
+        calls.push([url, Object.keys(payload)]);
+        return { success: true, task: { id: 44, status: 'done' } };
     };
-    const notices = [];
-    let parentMutationCalls = 0;
-    const focusedInput = { focusCalls: 0, focus() { this.focusCalls += 1; }, scrollIntoView() {} };
+    ctx.refreshMyCabinetTab = async () => {};
     ctx.document.getElementById = () => null;
-    ctx.document.querySelector = selector => selector.includes('is-blocked-attention') ? focusedInput : null;
-    ctx.apiPost = async () => {
-        parentMutationCalls += 1;
-        return { success: true };
-    };
-    ctx.showNotification = (message, type) => notices.push({ message, type });
-    vm.runInContext(`
-        activeTab = 'myday';
-        myCabinetData = {
-            all: [${JSON.stringify(task)}],
-            today: [${JSON.stringify(task)}],
-            next: [], overdue: [], waiting: [], deferred: [], private: [], completedHistory: []
-        };
-    `, ctx);
-
-    const initialHtml = ctx.renderCabinetTaskCard(task, false, { surface: 'myday' });
-    const initialDoneButton = initialHtml.match(/<button[^>]+data-cabinet-task-action="done"[^>]*>/)?.[0] || '';
-    assert.match(initialDoneButton, /\sdisabled(?:\s|>)/);
-    assert.match(initialHtml, /Спочатку закрийте підпункти: 1\/2/);
-
-    await ctx.handleCabinetTaskActionClick({
-        preventDefault() {},
-        stopPropagation() {},
-        currentTarget: {
-            dataset: { cabinetTaskAction: 'done', taskId: '44' },
-            closest() { return { dataset: { taskStatus: 'todo' }, classList: { add() {}, remove() {} } }; }
-        }
-    });
-
-    assert.equal(parentMutationCalls, 0);
-    assert.deepEqual(notices, [{ message: 'Спочатку закрийте підпункти: 1/2', type: 'warning' }]);
-    const blockedHtml = ctx.renderCabinetTaskCard(ctx.findCabinetTask(44), false, { surface: 'myday' });
-    assert.match(blockedHtml, /Спочатку закрийте підпункти: 1\/2/);
-    assert.doesNotMatch(blockedHtml, /data-cabinet-inline-subtask/);
-
-    ctx.updateCabinetTaskSubtaskSummary(44, [
-        { id: 1, title: 'Finished item', is_done: true },
-        { id: 2, title: 'Open item', is_done: true }
-    ]);
-    const resolvedHtml = ctx.renderCabinetTaskCard(ctx.findCabinetTask(44), false, { surface: 'myday' });
-    const resolvedDoneButton = resolvedHtml.match(/<button[^>]+data-cabinet-task-action="done"[^>]*>/)?.[0] || '';
-    assert.doesNotMatch(resolvedHtml, /is-subtask-completion-blocked|is-blocked-attention/);
-    assert.doesNotMatch(resolvedDoneButton, /\sdisabled(?:\s|>)/);
+    await ctx.setCabinetTaskStatus(44, 'done', { task, silent: true });
+    assert.deepEqual(calls, [['/tasks/44/complete', ['sourceSurface']]]);
 });
 
 test('profile My Day overdue triage row exposes a single move-to-today action', () => {
@@ -2246,7 +2193,7 @@ test('profile task cards expose move-to-today drag for typed planned tasks', () 
     assert.match(html, /data-cabinet-task-action="move-to-today"/);
 });
 
-test('park card shows report requirements and opens the canonical task details', () => {
+test('park card ignores legacy report requirements and opens the canonical task details', () => {
     const ctx = loadProfileTaskerContext();
     const task = {
         id: 44,
@@ -2283,7 +2230,7 @@ test('park card shows report requirements and opens the canonical task details',
         assert.match(html, /park-task-card/);
         assert.match(html, /priority-high/);
         assert.match(html, /data-cabinet-task-priority-select/);
-        assert.match(html, /потрібен звіт/);
+        assert.doesNotMatch(html, /потрібен звіт/i);
         assert.match(html, /data-task-due-state="overdue"/);
         assert.equal((html.match(/data-cabinet-task-action="open"/g) || []).length, 1);
         assert.match(html, /data-cabinet-task-action="done"/);
@@ -2294,7 +2241,7 @@ test('park card shows report requirements and opens the canonical task details',
     }
 });
 
-test('park shows checklist progress in both densities and keeps the details path singular', () => {
+test('park keeps the task details path singular even with legacy checklists', () => {
     const ctx = loadProfileTaskerContext();
     const taskCreateCtx = loadTaskCreateContext();
     const today = taskCreateCtx.TaskCreate.todayStr();
@@ -2304,9 +2251,6 @@ test('park shows checklist progress in both densities and keeps the details path
         cabinetMyDaySegment = 'today';
         cabinetMyDayListMode = 'focused';
         cabinetCreateDuePreset = 'today';
-        activeCabinetInlineTaskId = null;
-        expandedCabinetSubtaskIds.clear();
-        collapsedCabinetSubtaskIds.clear();
         myCabinetData = {
             all: [
                 {
@@ -2347,7 +2291,7 @@ test('park shows checklist progress in both densities and keeps the details path
     vm.runInContext("cabinetMyDayViewMode = 'detailed';", ctx);
     const full = ctx.renderMyDayTab();
     for (const html of [compact, full]) {
-        assert.match(html, /Чекліст/);
+        assert.doesNotMatch(html, /Чекліст|First done|Second next/i);
         assert.match(html, /data-cabinet-task-priority-select/);
         assert.match(html, /data-cabinet-task-action="open"/);
         assert.doesNotMatch(html, /data-cabinet-inline-subtask|toggle-my-day-details/);
@@ -2517,15 +2461,15 @@ test('My Day renders interactive postponement levels 1 / 2 / 3+', () => {
     const critical = ctx.renderCabinetPostponementBadge({ id: 13, postponementCount: 5, attentionLevel: 3 });
 
     assert.match(first, /^<button type="button"/);
-    assert.match(first, />Перенесено 1 раз<\/button>/);
+    assert.match(first, />1 перенесення<\/button>/);
     assert.match(first, /level-1/);
     assert.match(first, /data-cabinet-task-action="postponement-explanation"/);
     assert.match(first, /aria-haspopup="dialog"/);
     assert.match(first, /aria-expanded="false"/);
     assert.match(first, /aria-controls="taskUiActionSurface"/);
-    assert.match(second, />Перенесено 2 рази · Пріоритет підвищено<\/button>/);
+    assert.match(second, />2 перенесення<\/button>/);
     assert.match(second, /level-2/);
-    assert.match(critical, />Перенесено 5 разів · Потребує рішення<\/button>/);
+    assert.match(critical, />5 перенесень<\/button>/);
     assert.match(critical, /level-3/);
     assert.match(critical, /aria-label=/);
 
@@ -2637,25 +2581,21 @@ test('my cabinet task projection counts today, undated and overdue carry-over wo
 
     assert.match(source, /function taskWorkloadDateSql/);
     assert.match(source, /taskQuick/);
-    assert.match(source, /COUNT\(\*\) FILTER \(WHERE COALESCE\(t\.status, 'todo'\) = 'done'\)::int AS parent_done_total/);
+    assert.match(source, /COUNT\(\*\) FILTER \(WHERE t\.status = 'done'\)::int AS parent_done_total/);
     assert.match(source, /const completedParentTotal = Number\(quickStats\.parent_done_total \|\| 0\);/);
-    assert.match(source, /const completedUnitsTotal = Number\(quickStats\.done_total/);
+    assert.match(source, /const completedUnitsTotal = completedParentTotal/);
     assert.match(source, /completed:\s*completedUnitsToday/);
     assert.match(source, /completedToday:\s*completedUnitsToday/);
     assert.match(source, /completedTotal:\s*completedUnitsTotal/);
     assert.match(source, /completedUnitsTotal/);
     assert.match(source, /completedParentTotal/);
-    assert.match(source, /completedSubtasksTotal/);
     assert.match(source, /completedParentToday/);
-    assert.match(source, /completedSubtasksToday/);
-    assert.match(source, /completedMetricContract:\s*'completed_units = completed_parent_tasks \+ completed_subtasks'/);
+    assert.match(source, /completedMetricContract:\s*'completed_units = completed_tasks'/);
     assert.match(source, /completedHistoryContract:\s*'completed_history_contains_parent_tasks_only'/);
-    assert.match(source, /completedTodayTasksContract:\s*'task_completed_today_or_task_with_subtasks_completed_today'/);
+    assert.match(source, /completedTodayTasksContract:\s*'task_completed_today'/);
     assert.match(source, /completedHistoryOverflow:\s*Math\.max\(0, completedParentTotal - completedHistory\.length\)/);
     assert.match(source, /completedTodayTasks/);
     assert.match(source, /completedTodaySourceRows/);
-    assert.match(source, /completed_subtask_count_today/);
-    assert.match(source, /latest_subtask_completed_at/);
     assert.match(source, /queryTaskCompletionHistoryPage\(queryable, \{/);
     assert.match(completionHistorySource, /loadTaskTimeTotalsForDate\(queryable, userId, taskIds, today\)/);
     assert.match(completionHistorySource, /actualSecondsToday: timeTotalsTodayByTaskId\.get\(taskId\) \|\| 0/);
@@ -2664,11 +2604,11 @@ test('my cabinet task projection counts today, undated and overdue carry-over wo
     assert.match(completionHistorySource, /LIMIT \$\$\{limitParam\}/);
     assert.match(completionHistorySource, /nextCursor: hasMore \? encodeCompletionHistoryCursor/);
     assert.match(completionHistorySource, /completedTodayKind/);
-    assert.match(source, /normalizeTaskCabinetRows\(queryable, user, userId, allSourceRows, today, options\.includeLegacyMetadata\)/);
+    assert.match(source, /normalizeTaskCabinetRows\(queryable, user, userId, allSourceRowsRaw, today, options\.includeLegacyMetadata\)/);
     assert.match(source, /loadTaskTimeTotalsForDate\(queryable, userId, ids, today\)/);
     assert.match(source, /actualSecondsToday: taskTimeTotalsTodayByTaskId\.get\(taskId\) \|\| 0/);
     assert.match(source, /completedTodayKind/);
-    assert.match(source, /DATE\(t\.completed_at AT TIME ZONE 'Europe\/Kyiv'\) = \$\$\{completedTodayDatePlaceholder\}::date/);
+    assert.match(source, /\(t\.completed_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe\/Kyiv'\)::date = \$\$\{completedTodayDatePlaceholder\}::date/);
     assert.match(source, /remaining_today/);
     assert.match(source, /overdue_carryover/);
     assert.match(source, /active_my_day/);
@@ -2682,12 +2622,9 @@ test('my cabinet task projection counts today, undated and overdue carry-over wo
     assert.match(source, /taskPriorityOrderSql/);
     assert.match(source, /dueDate && dueDate < today/);
     assert.match(source, /dueDate === today \|\| !dueDate/);
-    assert.match(completionHistorySource, /async function loadCompletionHistorySubtasksByTaskId/);
-    assert.match(completionHistorySource, /WHERE task_id = ANY\(\$1::int\[\]\)/);
-    assert.match(source, /includeSubtasks:\s*false/);
+    assert.doesNotMatch(completionHistorySource, /task_subtasks/);
     assert.match(source, /completedHistory:\s*\{\s*\n\s*\.\.\.completedHistoryPage\.pagination/);
-    assert.match(source, /async function loadSubtaskProjectionByTaskId/);
-    assert.match(source, /WHERE task_id = ANY\(\$1::int\[\]\)/);
+    assert.doesNotMatch(source, /task_subtasks/);
     assert.match(source, /\.\.\.completedHistorySourceRowsRaw,\s*\.\.\.completedTodaySourceRowsRaw/);
     assert.match(authSource, /Completed work units \(parent tasks \+ completed subtasks\)/);
     assert.match(authSource, /tasks\.completedUnits = parentDoneTotal \+ subtaskDoneTotal/);
@@ -2737,7 +2674,7 @@ test('my cabinet projection exposes additive planning calendar contract', () => 
     assert.match(profileSource, /CABINET_PLANNING_TASK_BUCKETS/);
     assert.match(profileSource, /forEachCabinetProjectionTaskList/);
     assert.match(profileSource, /function loadMyCabinetProjection/);
-    assert.match(profileSource, /focusDate=\$\{encodeURIComponent\(focusDate\)\}/);
+    assert.match(profileSource, /params\.set\('focusDate', focusDate\)/);
     assert.match(profileSource, /refreshMyCabinetTab\(\{ force: true, silent: false, keepExistingOnError: true \}\)/);
     assert.doesNotMatch(profileSource, /apiGet\('\/tasks'\)/);
 });
@@ -2981,26 +2918,11 @@ test('my cabinet completed today dashboard bucket is exact and independent from 
             if (/SELECT COUNT\(\*\)::int AS open_count/.test(text)) {
                 return { rows: [{ open_count: 0 }] };
             }
-            if (/today_subtask_exists/.test(text) && /SELECT t\.\*/.test(text)) {
+            if (/completed_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe\/Kyiv'/.test(text) && /SELECT t\.\*/.test(text)) {
                 return { rows: [completedTodayRow] };
             }
-            if (/today_subtask_exists/.test(text) && /SELECT COUNT\(\*\)::int AS total/.test(text)) {
+            if (/completed_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe\/Kyiv'/.test(text) && /SELECT COUNT\(\*\)::int AS total/.test(text)) {
                 return { rows: [{ total: 1 }] };
-            }
-            if (/FROM task_subtasks/.test(text) && /WHERE task_id = ANY\(\$1::int\[\]\)/.test(text)) {
-                return {
-                    rows: [{
-                        task_id: 500,
-                        total: 2,
-                        done: 2,
-                        done_today: 2,
-                        latest_completed_at: '2026-08-14T13:45:00.000Z',
-                        subtasks: [
-                            { id: 1, title: 'Done step', is_done: true, completed_at: '2026-08-14T13:40:00.000Z' },
-                            { id: 2, title: 'Second step', is_done: true, completed_at: '2026-08-14T13:45:00.000Z' }
-                        ]
-                    }]
-                };
             }
             if (/COALESCE\(t\.status, 'todo'\) = 'done'/.test(text) && /LIMIT \$\d+/.test(text)) {
                 return { rows: historyRows };
@@ -3053,32 +2975,28 @@ test('my cabinet completed today dashboard bucket is exact and independent from 
         now: new Date('2026-08-14T12:00:00.000Z')
     });
 
-    const completedTodayCall = calls.find(call => /today_subtask_exists/.test(call.text) && /SELECT t\.\*/.test(call.text));
+    const completedTodayCall = calls.find(call => /completed_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe\/Kyiv'/.test(call.text) && /SELECT t\.\*/.test(call.text));
     assert.ok(completedTodayCall, 'completedTodayTasks query should be executed separately');
-    assert.match(completedTodayCall.text, /DATE\(t\.completed_at AT TIME ZONE 'Europe\/Kyiv'\)/);
-    assert.match(completedTodayCall.text, /today_subtask_exists\.is_done = true/);
+    assert.doesNotMatch(completedTodayCall.text, /task_subtasks/);
     assertPersonalQueryParameters(completedTodayCall, ['2026-08-14', 121]);
     assert.equal(projection.completedHistory.length, 36);
     assert.equal(projection.completedTodayTasks.length, 1);
     assert.equal(projection.completedHistory.some(task => task.id === 500), false);
     assert.equal(projection.completedTodayTasks[0].id, 500);
-    assert.equal(projection.completedTodayTasks[0].completedSubtasksToday, 2);
     assert.equal(projection.completedTodayTasks[0].actualSeconds, 0);
     assert.equal(projection.completedTodayTasks[0].actualSecondsToday, 600);
     assert.equal(projection.completedTodayTasks[0].completedParentToday, true);
-    assert.equal(projection.completedTodayTasks[0].completedTodayKind, 'task_and_subtasks');
+    assert.equal(projection.completedTodayTasks[0].completedTodayKind, 'task');
     assert.equal(projection.completedTodayTasks[0].myDay.impacts[0].name, 'CRM');
     assert.equal(projection.stats.taskQuick.completedParentTotal, 55);
-    assert.equal(projection.stats.taskQuick.completedSubtasksTotal, 44);
-    assert.equal(projection.stats.taskQuick.completedUnitsTotal, 99);
-    assert.equal(projection.stats.taskQuick.completedTotal, 99);
+    assert.equal(projection.stats.taskQuick.completedUnitsTotal, 55);
+    assert.equal(projection.stats.taskQuick.completedTotal, 55);
     assert.equal(projection.stats.taskQuick.completedParentToday, 1);
-    assert.equal(projection.stats.taskQuick.completedSubtasksToday, 2);
-    assert.equal(projection.stats.taskQuick.completedUnitsToday, 3);
+    assert.equal(projection.stats.taskQuick.completedUnitsToday, 1);
     assert.equal(projection.stats.taskQuick.completedHistoryShown, 36);
     assert.equal(projection.stats.taskQuick.completedHistoryOverflow, 19);
     assert.equal(projection.stats.taskQuick.completedHistoryContract, 'completed_history_contains_parent_tasks_only');
-    assert.equal(projection.stats.taskQuick.completedTodayTasksContract, 'task_completed_today_or_task_with_subtasks_completed_today');
+    assert.equal(projection.stats.taskQuick.completedTodayTasksContract, 'task_completed_today');
 });
 
 test('urgent priority has dashboard alert escalation and alert-panel commitment action', () => {
@@ -3107,7 +3025,7 @@ test('task create post steps degrade to warnings after the row is created', () =
 
     assert.match(source, /const postCreateWarnings = \[\]/);
     assert.match(source, /recordPostCreateWarning\('schedule'/);
-    assert.match(source, /recordPostCreateWarning\('subtasks'/);
+    assert.match(source, /recordPostCreateWarning\('dependencies'/);
     assert.match(source, /postCreateWarnings,/);
     assert.match(source, /postCreateWarningCount: postCreateWarnings\.length/);
 });
@@ -3171,7 +3089,7 @@ test('My Day level 3 recommendation renders only permission-approved actions', (
     const base = { id: 301, postponementCount: 3, actionPermissions: { canSplit: true, canReassign: true, canReschedule: true, canArchive: true } };
     const allActions = ctx.renderCabinetPostponementExplanation(base);
     assert.match(allActions, /Задачу переносять уже втретє/);
-    assert.match(allActions, /Розбити на кроки/);
+    assert.doesNotMatch(allActions, /Розбити на кроки/);
     assert.match(allActions, /Змінити виконавця/);
     assert.match(allActions, /Перепланувати/);
     assert.match(allActions, /Скасувати задачу/);
@@ -3187,34 +3105,26 @@ test('My Day level 3 recommendation renders only permission-approved actions', (
     assert.doesNotMatch(nonCritical, /cabinet-postponement-decision|data-cabinet-postponement-action/);
 });
 
-test('My Day critical actions reuse existing subtask and reassign endpoints', async () => {
+test('My Day critical actions reuse the existing reassign endpoint', async () => {
     const ctx = loadProfileTaskerContext();
     const calls = [];
-    ctx.formModal = async title => title === 'Розбити задачу на кроки'
-        ? { steps: 'Перший крок\nДругий крок' }
-        : { ownerUserId: '44' };
+    ctx.formModal = async () => ({ ownerUserId: '44' });
     ctx.apiGet = async path => {
         assert.equal(path, '/tasks/owners');
         return { success: true, users: [{ id: 44, label: 'Олена', role: 'manager' }] };
     };
     ctx.apiPost = async (path, body) => {
         calls.push({ path, body });
-        if (path.endsWith('/subtasks')) return { success: true, subtask: { id: calls.length, title: body.title } };
         return { success: true };
     };
     ctx.TaskUiShared = {
         executePrivateTaskHandoff: async request => request(false)
     };
 
-    const split = await ctx.splitCabinetPostponementTask(301);
-    assert.equal(split.created.length, 2);
-    assert.deepEqual(calls.slice(0, 2).map(call => call.path), ['/tasks/301/subtasks', '/tasks/301/subtasks']);
-    assert.equal(calls.some(call => /decompose|ai/i.test(call.path)), false);
-
     await ctx.reassignCabinetPostponementTask(301, { ownerUserId: 7 });
-    assert.equal(calls[2].path, '/tasks/301/reassign');
-    assert.equal(calls[2].body.ownerUserId, 44);
-    assert.equal(calls[2].body.sourceSurface, 'profile_my_cabinet_postponement_action');
+    assert.deepEqual(calls.map(call => call.path), ['/tasks/301/reassign']);
+    assert.equal(calls[0].body.ownerUserId, 44);
+    assert.equal(calls[0].body.sourceSurface, 'profile_my_cabinet_postponement_action');
 });
 
 test('My Day reassign retries only after shared private handoff confirmation', async () => {

@@ -47,7 +47,7 @@ test('frontend task contract preserves a legacy owner and uses the canonical due
     assert.equal(normalized.taskContext.businessContext, 'event_genix');
     assert.equal(normalized.taskContext.subtasks.count, 2);
     assert.equal(normalized.taskContext.dependencies.openCount, 1);
-    assert.equal(normalized.taskContext.report.required, true);
+    assert.equal(normalized.taskContext.report.required, undefined);
 });
 
 test('frontend task contract gives typed ownership and scheduled work precedence', () => {

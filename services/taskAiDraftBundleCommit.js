@@ -5,7 +5,6 @@ const crypto = require('node:crypto');
 const { pool } = require('../db');
 const { TASK_ACTION_TYPES, logTaskActionEvent } = require('./taskActionHistory');
 const { replaceTaskClassification } = require('./myDayTaxonomy');
-const { replaceTaskSubtasks } = require('./taskSubtasks');
 const { MY_DAY_TASK_AI_MODEL, compactString } = require('./myDayTaskOpenAIClient');
 const { getAssignableTaskOwner } = require('./taskExecution');
 const { recordTaskAiDraftTelemetry, taskAiHistoryTelemetryMetadata } = require('./taskAiDraftTelemetry');
@@ -672,7 +671,7 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
                 created_by: actorLabel,
                 created_by_user_id: userId,
                 task_mode: 'work',
-                task_kind: finalTask.subtasks.length ? 'checklist' : 'action',
+                task_kind: 'action',
                 visibility: 'team',
                 workflow_state: 'inbox',
                 source_module: 'tasks_ai_draft_bundle_commit',
@@ -689,9 +688,6 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
                 afterCommit
             });
 
-            const subtasks = finalTask.subtasks.length
-                ? await replaceTaskSubtasks(client, task.id, finalTask.subtasks, { sourceType: 'ai' })
-                : [];
             const classification = input.omitClassification ? null : await replaceTaskClassification(client, {
                 userId,
                 taskId: task.id,
@@ -704,13 +700,7 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
                 taskIndex: index,
                 userEdited: finalTask.userEdited
             });
-            createdTasks.push({
-                ...task,
-                classification,
-                subtask_count: subtasks.length,
-                subtask_done_count: subtasks.filter(item => item.isDone || item.is_done).length,
-                subtasks
-            });
+            createdTasks.push({ ...task, classification });
 
             await logTaskActionEvent({
                 taskId: task.id,
@@ -724,7 +714,6 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
                     bundleTaskIndex: index,
                     impactCount: finalTask.impactIds.length,
                     filteredImpactCount: finalTask.filteredImpactCount || 0,
-                    subtaskCount: finalTask.subtasks.length,
                     scheduleWritten: Boolean(finalTask.scheduleDate)
                 },
                 meta: {

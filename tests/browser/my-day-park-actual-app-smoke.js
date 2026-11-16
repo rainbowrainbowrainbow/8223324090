@@ -20,6 +20,21 @@ async function run() {
     const session = await response.json();
     assert.ok(session.token && session.user);
 
+    const setup = new Pool({ connectionString: process.env.DATABASE_URL, ssl: false });
+    try {
+        const existing = await setup.query('SELECT 1 FROM employee_profiles WHERE user_id = $1 AND is_active = true', [session.user.id]);
+        if (!existing.rowCount) {
+            const { rows: [staff] } = await setup.query(`
+                INSERT INTO staff (name, department, position, role_type, is_active)
+                VALUES ('Local QA Employee', 'QA', 'QA', 'animator', true) RETURNING id`);
+            await setup.query(`
+                INSERT INTO employee_profiles (user_id, staff_id, full_name, role, is_active)
+                VALUES ($1, $2, 'Local QA Employee', 'animator', true)`, [session.user.id, staff.id]);
+        }
+    } finally {
+        await setup.end();
+    }
+
     const { chromium } = requirePlaywright();
     const browser = await chromium.launch();
     const evidence = path.resolve(__dirname, '../../output/qa');
@@ -44,32 +59,37 @@ async function run() {
         const page = await context.newPage();
         page.setDefaultTimeout(20000);
         const pageErrors = [];
+        const taskBoot = [];
         const gameRequests = [];
         page.on('pageerror', error => pageErrors.push(error.message));
+        page.on('console', message => {
+            if (message.text().startsWith('[tasks:boot]')) taskBoot.push(message.text());
+        });
         page.on('request', request => {
             const url = new URL(request.url());
             if (/^\/api\/(?:wallet|achievements|quests|gamification)(?:\/|$)/.test(url.pathname)) {
                 gameRequests.push(url.pathname);
             }
         });
-        await page.goto(origin + '/profile?tab=myday');
+        await page.goto(origin + '/profile');
         const composer = page.locator('#cabinetTaskComposer');
         const titleInput = composer.locator('#cabinetTaskTitle');
         const mode = composer.locator('#cabinetTaskMode');
         const newTask = page.locator('.park-composer > summary');
-        await page.locator('[data-park-my-day-view=today]').waitFor();
+        await page.locator('[data-park-period=today]').waitFor();
+        assert.equal(new URL(page.url()).searchParams.get('tab'), 'myday');
         assert.equal(await titleInput.isVisible(), false);
         await newTask.press('Enter');
         await titleInput.waitFor();
         assert.equal(await mode.inputValue(), 'work');
         assert.equal(await page.locator('[data-global-task-timer-panel-trigger]:visible').count(), 0);
 
-        async function create(title, taskMode, { reportRequired = false, dayOffset = 0, priority = 'normal' } = {}) {
+        async function create(title, taskMode, { dayOffset = 0, priority = 'normal' } = {}) {
             await mode.selectOption(taskMode);
-            if (reportRequired || priority !== 'normal') {
-                await composer.getByText('Параметри задачі', { exact: true }).click();
+            if (priority !== 'normal') {
+                const settings = composer.getByText('Параметри задачі', { exact: true });
+                if (!(await composer.locator('#cabinetTaskPriority').isVisible())) await settings.click();
                 await composer.locator('#cabinetTaskPriority').selectOption(priority);
-                if (reportRequired) await composer.locator('#cabinetTaskReportRequired').check();
             }
             if (dayOffset) {
                 const date = await page.evaluate(offset => {
@@ -95,9 +115,7 @@ async function run() {
             const task = payload.task || payload;
             assert.equal(task.taskMode || task.task_mode, taskMode);
             assert.equal(task.visibility, taskMode === 'work' ? 'team' : 'me_only');
-            const card = page.locator('.park-task-card').filter({ hasText: title });
-            const period = dayOffset < 0 ? 'overdue' : dayOffset > 0 ? 'future' : 'today';
-            await page.locator(`[data-park-my-day-view=${period}]`).click();
+            const card = page.locator(`.park-task-card[data-task-id="${id}"]`);
             await card.waitFor();
             return card;
         }
@@ -106,9 +124,22 @@ async function run() {
         const overdue = await create('Узгодити макет афіші', 'work', { dayOffset: -2, priority: 'urgent' });
         assert.equal(await overdue.getByText('Прострочено', { exact: true }).count(), 1);
         assert.equal(await overdue.locator('.park-task-priority select').inputValue(), 'urgent');
+        const moveToday = overdue.getByRole('button', { name: 'На сьогодні', exact: true });
+        await moveToday.waitFor();
+        assert.ok(await moveToday.evaluate(node => node.previousElementSibling.classList.contains('park-task-heading')));
+        await moveToday.press('Enter');
+        const moved = page.locator('[data-park-period="today"]').getByText('Узгодити макет афіші', { exact: true });
+        await moved.waitFor();
+        assert.equal(await moveToday.count(), 0);
+        const undoMove = page.locator('.cabinet-task-undo-toast').getByRole('button', { name: 'Скасувати' });
+        await undoMove.waitFor();
+        assert.ok(await undoMove.evaluate(node => document.activeElement === node));
+        await undoMove.press('Enter');
+        await page.locator('[data-park-period="overdue"]').getByText('Узгодити макет афіші', { exact: true }).waitFor();
         await create('Перевірити план монтажу', 'work', { dayOffset: 3 });
         const work = await create('Підготувати матеріали до зустрічі ' + suffix, 'work');
         const personal = await create('Оновити особистий список справ ' + suffix, 'personal');
+        const personalTaskId = Number(await personal.getAttribute('data-task-id'));
         assert.equal(await mode.inputValue(), 'work');
         assert.equal(await work.locator('[data-park-task-mode]').textContent(), 'Робоча');
         assert.equal(await personal.locator('[data-park-task-mode]').textContent(), 'Особиста');
@@ -124,27 +155,69 @@ async function run() {
         await undo.press('Enter');
         await work.waitFor();
 
-        const reportTask = await create('Локальна задача зі звітом ' + suffix, 'work', { reportRequired: true });
-        const todayBadge = page.locator('[data-park-my-day-view=today] b');
-        const beforeCompletion = Number(await todayBadge.textContent());
-        const gateResponse = page.waitForResponse(r => r.request().method() === 'POST' && new URL(r.url()).pathname.endsWith('/complete'));
+        assert.equal(await composer.locator('#cabinetTaskReportRequired').count(), 0);
+        assert.equal(await composer.getByText('Видно команді згідно з її доступом до задач', { exact: true }).count(), 0);
+        const reportTask = await create('Локальна задача зі звітом ' + suffix, 'work', { dayOffset: -2 });
+        const centerTask = await create('Локальна задача з підпунктами ' + suffix, 'work', { dayOffset: -2 });
+        const legacyIds = await Promise.all([reportTask, centerTask].map(async card => Number(await card.getAttribute('data-task-id'))));
+        const fixtures = new Pool({ connectionString: process.env.DATABASE_URL, ssl: false });
+        try {
+            await fixtures.query(`UPDATE tasks SET control_meta = COALESCE(control_meta, '{}'::jsonb)
+                || '{"reportRequired": true}'::jsonb WHERE id = ANY($1::int[])`, [legacyIds]);
+            await fixtures.query(`INSERT INTO task_subtasks (task_id, title, is_done)
+                SELECT id, 'Історичний підпункт', false FROM unnest($1::int[]) id`, [legacyIds]);
+            await fixtures.query("UPDATE tasks SET status = 'in_progress', workflow_state = 'in_progress' WHERE id = $1", [legacyIds[1]]);
+            await fixtures.query(`UPDATE tasks SET control_meta = control_meta || '{"canReschedule": false}'::jsonb WHERE id = $1`, [legacyIds[1]]);
+        } finally {
+            await fixtures.end();
+        }
+        await page.reload();
+        await reportTask.waitFor();
+        assert.equal(await centerTask.getByRole('button', { name: 'На сьогодні', exact: true }).count(), 0);
+        assert.equal(await reportTask.getByText('Історичний підпункт').count(), 0);
+        const completionPath = `**/api/tasks/${legacyIds[0]}/complete`;
+        const completionError = 'Локальна перевірка помилки виконання';
+        await page.route(completionPath, route => route.fulfill({ status: 409, json: { error: completionError } }), { times: 1 });
         await reportTask.getByRole('button', { name: 'Виконати', exact: true }).click();
-        assert.equal((await (await gateResponse).json()).code, 'TASK_REPORT_REQUIRED');
-        await page.getByText('Звіт перед виконанням', { exact: true }).waitFor();
-        await page.locator('.task-report-required-modal textarea').fill('Тестовий звіт: перевірено стан задачі.');
-        await page.getByRole('button', { name: 'Зберегти звіт і виконати' }).click();
+        await page.getByText(completionError, { exact: true }).waitFor();
+        await reportTask.getByRole('button', { name: 'Виконати', exact: true }).waitFor();
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        await page.evaluate(() => {
+            const start = document.startViewTransition?.bind(document);
+            window.qaCompletionTransitions = 0;
+            if (start) document.startViewTransition = (...args) => {
+                window.qaCompletionTransitions += 1;
+                return start(...args);
+            };
+        });
+        const doneResponse = page.waitForResponse(r => r.request().method() === 'POST'
+            && new URL(r.url()).pathname === `/api/tasks/${legacyIds[0]}/complete`);
+        await reportTask.getByRole('button', { name: 'Виконати', exact: true }).click();
+        const legacyMutation = await doneResponse;
+        assert.ok(legacyMutation.ok());
         await reportTask.waitFor({ state: 'detached' });
-        assert.equal(Number(await todayBadge.textContent()), beforeCompletion - 1);
+        assert.equal(await page.evaluate(() => window.qaCompletionTransitions), 0);
+        await page.emulateMedia({ reducedMotion: 'no-preference' });
         const completion = page.locator('[data-cabinet-completion-pulse]');
         await completion.getByRole('heading', { name: 'Виконано сьогодні' }).waitFor();
-        await completion.getByText('Локальна задача зі звітом ' + suffix, { exact: true }).waitFor();
+        const completedRow = completion.locator(`.cabinet-completion-row[data-task-id="${legacyIds[0]}"]`);
+        await completedRow.waitFor().catch(async error => {
+            const { task } = await legacyMutation.json();
+            const projectionResponse = await page.request.get(`${origin}/api/tasks/my-cabinet`, {
+                headers: { authorization: `Bearer ${session.token}` }
+            });
+            const projection = await projectionResponse.json();
+            const summarizeTask = ({ id, status, completedAt, completedParentToday } = {}) => ({ id, status, completedAt, completedParentToday });
+            const diagnostics = { task: summarizeTask(task), calendar: projection.meta?.calendar,
+                today: projection.completedTodayTasks?.map(summarizeTask), history: projection.completedHistory?.map(summarizeTask) };
+            throw new Error(`${error.message}\nCompletion panel: ${await completion.innerText()}\n${JSON.stringify(diagnostics)}\nBrowser errors: ${pageErrors.join('; ')}`, { cause: error });
+        });
         await page.reload();
         await work.waitFor();
-        await completion.getByText('Локальна задача зі звітом ' + suffix, { exact: true }).waitFor();
-        assert.equal(Number(await todayBadge.textContent()), beforeCompletion - 1);
-        for (const [width, height, theme, visiblePeriods] of [
-            [390, 844, 'light', 1], [390, 844, 'dark', 1],
-            [1440, 1000, 'light', 3], [1440, 1000, 'dark', 3]
+        await completedRow.waitFor();
+        for (const [width, height, theme] of [
+            [390, 844, 'light'], [390, 844, 'dark'],
+            [1440, 1000, 'light'], [1440, 1000, 'dark']
         ]) {
             await page.setViewportSize({ width, height });
             if (width === 1440 && theme === 'light') {
@@ -154,14 +227,24 @@ async function run() {
             }
             await page.evaluate(theme => window.applyCrmThemeMode(theme === 'dark'), theme);
             await page.locator('#cabinetMyDaySegmentPanel').waitFor();
-            assert.equal(await page.locator('[data-park-period]:visible').count(), visiblePeriods);
-            // The application shell can still be settling after a resize or theme change.
-            await page.waitForFunction(() => document.documentElement.scrollWidth <= innerWidth, null, { timeout: 2000 });
+            assert.deepEqual(await page.locator('[data-park-period]:visible').evaluateAll(nodes =>
+                nodes.map(node => node.dataset.parkPeriod)), ['today', 'overdue', 'future']);
+            await page.waitForFunction(() => document.documentElement.scrollWidth <= innerWidth, null, { timeout: 2500 }).catch(() => {});
+            const layout = await page.evaluate(() => ({
+                width: innerWidth,
+                scrollWidth: document.documentElement.scrollWidth,
+                main: ['width', 'marginLeft', 'maxWidth', 'transform'].map(key => getComputedStyle(document.querySelector('#main-content'))[key]),
+                overflow: [...document.querySelectorAll('body *')]
+                    .filter(node => node.getBoundingClientRect().right > innerWidth + 1 && node.offsetWidth)
+                    .slice(0, 12).map(node => [node.localName, node.id, node.getAttribute('class')])
+            }));
+            assert.ok(layout.scrollWidth <= layout.width, JSON.stringify({ theme, ...layout }));
             await page.evaluate(() => window.scrollTo(0, 0));
-            await page.screenshot({ path: path.join(evidence, `my-day-${width}-${theme}.png`) });
-            await page.locator('.park-day-board').screenshot({ path: path.join(evidence, `my-day-board-${width}-${theme}.png`) });
+            await page.screenshot({ path: path.join(evidence, `my-day-${width}-${theme}.png`), animations: 'disabled' });
+            await page.locator('.park-day-board').screenshot({ path: path.join(evidence, `my-day-board-${width}-${theme}.png`), animations: 'disabled' });
             if (width === 390) {
                 await completion.screenshot({ path: path.join(evidence, `my-day-completion-${theme}.png`) });
+                if (theme === 'light') await overdue.screenshot({ path: path.join(evidence, 'my-day-quick-today-390.png') });
             }
         }
         await page.setViewportSize({ width: 390, height: 844 });
@@ -172,7 +255,6 @@ async function run() {
         const historyRow = completion.locator('.park-completed-row').filter({ hasText: 'Локальна задача зі звітом ' + suffix });
         await historyRow.getByRole('button', { name: 'Відновити', exact: true }).click();
         await reportTask.waitFor();
-        assert.equal(Number(await todayBadge.textContent()), beforeCompletion);
 
         const titleButton = work.locator('[data-cabinet-task-action=open]');
         const workId = await work.getAttribute('data-task-id');
@@ -184,18 +266,14 @@ async function run() {
         assert.ok(await taskDialog.getByRole('button', { name: 'Закрити' }).evaluate(node => node === document.activeElement));
         await page.goBack();
         await taskDialog.waitFor({ state: 'hidden' });
+        await titleButton.click();
+        await taskDialog.getByRole('link', { name: 'Усі дії із задачею' }).click();
+        await page.waitForURL(url => url.pathname === '/tasks' && url.searchParams.has('open'));
+        await page.goBack();
+        await taskDialog.waitFor({ state: 'hidden' });
         await work.waitFor();
-        await page.locator('[data-park-my-day-view=future]').click();
-        await page.reload();
-        await page.locator('[data-park-my-day-view=future][aria-pressed=true]').waitFor();
         await page.goto(origin + '/profile?tab=myday&period=today');
-        await page.locator('[data-park-my-day-view=today][aria-pressed=true]').waitFor();
-        await page.locator('[data-park-my-day-view=future]').click();
-        await page.reload();
-        await page.locator('[data-park-my-day-view=future][aria-pressed=true]').waitFor();
-        await page.locator('[data-park-my-day-view=today]').click();
         await work.waitFor();
-        assert.ok(Number((await page.locator('[data-park-my-day-view=today] b').textContent()).trim()) >= 3);
 
         await work.getByRole('button', { name: 'Перенести' }).click();
         const dateDialog = page.locator('.confirm-dialog').filter({ hasText: 'Нова дата для задачі' });
@@ -205,7 +283,6 @@ async function run() {
         const rescheduled = page.waitForResponse(r => r.request().method() === 'POST' && new URL(r.url()).pathname.endsWith('/reschedule'));
         await dateDialog.locator('.confirm-ok').click();
         assert.ok((await rescheduled).ok());
-        await page.locator('[data-park-my-day-view=future]').click();
         await work.waitFor();
         await page.goto(origin + `/profile?tab=myday&period=future&open=${workId}&date=${futureDate}`);
         await taskDialog.getByText('Виконую', { exact: true }).waitFor();
@@ -232,9 +309,136 @@ async function run() {
         await page.getByRole('button', { name: 'Зупинити таймер', exact: true }).click();
         assert.equal((await stopped).status(), 200);
         await timer.waitFor({ state: 'hidden' });
+        await page.goto(origin + `/tasks?view=my&open=${legacyIds[1]}`);
+        const centerComplete = page.locator('[data-task-drawer-action="complete"]');
+        await centerComplete.waitFor().catch(error => {
+            return page.locator('#boardContent').textContent().then(board => {
+                throw new Error(`${error.message}\nTask Center boot: ${taskBoot.join('; ')}\nErrors: ${pageErrors.join('; ')}\nBoard: ${board?.trim().slice(0, 320)}`, { cause: error });
+            });
+        });
+        const centerResponse = page.waitForResponse(r => r.request().method() === 'POST'
+            && new URL(r.url()).pathname === `/api/tasks/${legacyIds[1]}/complete`);
+        await centerComplete.click();
+        assert.ok((await centerResponse).ok());
+        const history = new Pool({ connectionString: process.env.DATABASE_URL, ssl: false });
+        try {
+            const { rows } = await history.query(`SELECT s.task_id, s.is_done, t.status, t.control_meta->>'reportRequired' AS required
+                FROM task_subtasks s JOIN tasks t ON t.id = s.task_id
+                WHERE s.task_id = ANY($1::int[]) ORDER BY s.task_id`, [legacyIds]);
+            assert.equal(rows.length, 2);
+            assert.ok(rows.every(row => row.is_done === false && row.required === 'true'));
+            assert.equal(rows.find(row => row.task_id === legacyIds[1]).status, 'done');
+        } finally {
+            await history.end();
+        }
+        await page.setViewportSize({ width: 1440, height: 1000 });
+        await page.goto(origin + '/profile?tab=settings');
+        const account = page.locator('.profile-settings-identity');
+        await account.getByRole('button', { name: 'Вийти', exact: true }).waitFor();
+        await account.getByText('Логін для входу', { exact: true }).waitFor();
+        const favorites = page.locator('#sidebarDesignExtras');
+        await favorites.locator('a[href="/profile?tab=myday"]').waitFor();
+        assert.equal(await page.getByText('Особисте', { exact: true }).count(), 0);
+        assert.equal(await page.locator('.sidebar-mini-rail a[href="/profile?tab=myday"]').count(), 1);
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.locator('#sidebarToggle').click();
+        await favorites.locator('a[href="/profile?tab=myday"]').waitFor();
+        await page.locator('#sidebarOverlay').click({ position: { x: 380, y: 400 } });
+        await page.setViewportSize({ width: 1440, height: 1000 });
+        await page.evaluate(() => {
+            localStorage.removeItem('eg_sidebar_favorites_productivity_merged_v1');
+            localStorage.setItem('eg_sidebar_extra_menu_items_v3', JSON.stringify([{ href: '/chat' }, { href: '/profile.html?tab=myday' }]));
+            localStorage.setItem('eg_sidebar_productivity_menu_items_v1', JSON.stringify(['/profile?tab=myday', '/tasks?view=my']));
+        });
+        await page.reload();
+        await favorites.locator('a[href="/tasks?view=my"]').waitFor();
+        assert.equal(await favorites.locator('a[href="/profile?tab=myday"]').count(), 1);
+        await favorites.locator('a[href="/chat"]').waitFor();
+        const uploadCard = page.locator('.profile-avatar-upload-card');
+        await uploadCard.waitFor();
+        assert.ok(await uploadCard.evaluate(node => node.scrollWidth <= node.clientWidth));
+        await page.screenshot({ path: path.join(evidence, 'profile-settings-1440.png'), animations: 'disabled' });
+        await page.setViewportSize({ width: 390, height: 844 });
+        assert.ok(await account.evaluate(node => node.scrollWidth <= node.clientWidth));
+        assert.ok(await uploadCard.evaluate(node => node.scrollWidth <= node.clientWidth));
+        await page.screenshot({ path: path.join(evidence, 'profile-settings-390.png'), animations: 'disabled' });
+
+        const resultsFixtures = new Pool({ connectionString: process.env.DATABASE_URL, ssl: false });
+        try {
+            await resultsFixtures.query(`UPDATE tasks
+                SET status = 'done', workflow_state = 'done',
+                    completed_at = (date_trunc('day', NOW() AT TIME ZONE 'Europe/Kyiv') - INTERVAL '1 day' + INTERVAL '12 hours')
+                        AT TIME ZONE 'Europe/Kyiv' AT TIME ZONE 'UTC'
+                WHERE id = $1`, [id]);
+            await resultsFixtures.query(`UPDATE tasks
+                SET status = 'done', workflow_state = 'done', completed_at = NOW() AT TIME ZONE 'UTC'
+                WHERE id = $1`, [personalTaskId]);
+        } finally {
+            await resultsFixtures.end();
+        }
+        await page.getByRole('button', { name: 'Мої результати', exact: true }).click();
+        const chart = page.locator('.profile-results-chart');
+        await chart.waitFor();
+        assert.equal(await chart.locator('time').count(), 7);
+        const highlights = page.locator('.profile-results-highlights');
+        for (const label of ['Сьогодні', 'Вчора', 'Прострочені', 'Робочі', 'Особисті']) {
+            assert.match(await highlights.textContent(), new RegExp(label));
+        }
+        assert.match(await highlights.textContent(), /Робочі 1 · Особисті 1/);
+        assert.match(await highlights.textContent(), /Робочі 1 · Особисті 0/);
+        await page.screenshot({ path: path.join(evidence, 'profile-results-390.png'), animations: 'disabled' });
+        await chart.screenshot({ path: path.join(evidence, 'profile-results-chart-390.png'), animations: 'disabled' });
+        await page.setViewportSize({ width: 1440, height: 1000 });
+        await page.screenshot({ path: path.join(evidence, 'profile-results-1440.png'), animations: 'disabled' });
+        await chart.screenshot({ path: path.join(evidence, 'profile-results-chart-1440.png'), animations: 'disabled' });
+        await page.goBack();
+        await account.waitFor();
+
+        const controlFixtures = new Pool({ connectionString: process.env.DATABASE_URL, ssl: false });
+        const assignedTitle = 'Узгодити кошторис на контролі';
+        try {
+            const { rows: [assignee] } = await controlFixtures.query(`INSERT INTO users (username, name, password_hash, role)
+                VALUES ($1, 'Олена Тестова', 'unused-in-browser-qa', 'director') RETURNING id`, [`control_fixture_${suffix}`]);
+            await controlFixtures.query(`INSERT INTO tasks (title, status, workflow_state, task_mode, visibility, owner_user_id, created_by_user_id, business_context, date)
+                VALUES ($1, 'todo', 'todo', 'work', 'team', $2, $3, 'event_genix', ((NOW() AT TIME ZONE 'Europe/Kyiv')::date - 1)::text)`,
+            [assignedTitle, assignee.id, session.user.id]);
+        } finally {
+            await controlFixtures.end();
+        }
+        const controlLink = page.getByRole('link', { name: /^На контролі/ });
+        await controlLink.click();
+        await page.waitForURL(url => url.searchParams.get('tab') === 'control');
+        const controlPanel = page.locator('[data-profile-control-panel]');
+        const authoredTask = controlPanel.getByRole('link', { name: assignedTitle });
+        await authoredTask.waitFor();
+        assert.match(await controlLink.textContent(), /На контролі 1/);
+        await controlPanel.getByText('Виконує Олена Тестова').waitFor();
+        assert.ok(await controlPanel.getByText(/Прострочено/).isVisible());
+        assert.equal(await page.locator('[data-park-period]').count(), 0);
+        await page.screenshot({ path: path.join(evidence, 'profile-control-1440.png'), animations: 'disabled' });
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.waitForFunction(() => document.documentElement.scrollWidth <= innerWidth);
+        const mobileNavRows = await page.locator('.profile-park-nav .profile-secondary-tabs').evaluate(nav =>
+            getComputedStyle(nav).gridTemplateRows.split(' ').length);
+        assert.equal(mobileNavRows, 2);
+        await page.screenshot({ path: path.join(evidence, 'profile-control-390.png'), animations: 'disabled' });
+        await authoredTask.click();
+        await page.waitForURL(url => url.pathname === '/tasks' && url.searchParams.has('open'));
+        const taskDrawerTitle = page.locator('#taskDetailOverlay #_tdTitle');
+        await taskDrawerTitle.waitFor();
+        assert.equal(await taskDrawerTitle.inputValue(), assignedTitle);
+        await page.goBack();
+        await authoredTask.waitFor();
+        await page.reload();
+        await authoredTask.waitFor();
+        await page.getByRole('button', { name: 'Мій день', exact: true }).click();
+        await page.locator('[data-park-period="today"]').waitFor();
+        assert.equal(await page.getByText(assignedTitle, { exact: true }).count(), 0);
+        await page.goBack();
+        await authoredTask.waitFor();
         assert.deepEqual(pageErrors, []);
         assert.deepEqual(gameRequests, []);
-        console.log('Park local app / PostgreSQL browser: task types and counts, report and completion board, keyboard undo, history restore, date reschedule, edit route, mobile/desktop in both themes, and timer recovery.');
+        console.log('Park local app / PostgreSQL browser: fixed board layout, legacy completion on both surfaces, keyboard undo, history restore, date reschedule, edit route, and timer recovery.');
     } finally {
         await browser.close();
     }

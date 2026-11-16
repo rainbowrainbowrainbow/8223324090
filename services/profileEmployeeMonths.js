@@ -4,6 +4,8 @@ const { DEFAULT_BUSINESS_CONTEXT } = require('./businessContext');
 const { loadPayrollPeriodLock } = require('./hrPayrollPeriod');
 const { getEmployeePayrollPreview } = require('./payroll');
 const { loadPayrollSettlementReadModels } = require('./payrollSettlement');
+const { taskWorkloadDateSql } = require('./taskCabinetProjection');
+const { TASK_ACTION_TYPES } = require('./taskActionConstants');
 
 const kyivDate = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
 
@@ -153,7 +155,7 @@ async function loadResultPeriod(db, staffId, userId, scope, range) {
     const within = column => `${column} >= ${bounds[0]} AND ${column} < ${bounds[1]}`;
     const completed = "(t.completed_at AT TIME ZONE 'UTC')";
     const deadline = "COALESCE(t.scheduled_end_at, t.deadline AT TIME ZONE 'UTC')";
-    const [attendance, tasks, checklists, ratings, training] = await Promise.all([
+    const [attendance, tasks, checklists, training] = await Promise.all([
         loadEmployeeAttendance(db, staffId, range),
         db.query(
             `SELECT COUNT(*) FILTER (WHERE t.status = 'done' AND ${within(completed)})::int AS completed,
@@ -170,11 +172,6 @@ async function loadResultPeriod(db, staffId, userId, scope, range) {
             `SELECT COUNT(*)::int AS completed
              FROM hr_staff_profession_checklist_progress
              WHERE staff_id = $1 AND ${within('completed_at')}`, params
-        ),
-        db.query(
-            `SELECT created_at AS date, details->>'score' AS score, details->>'comment' AS explanation
-             FROM hr_audit_log WHERE staff_id = $1 AND action = 'rating_add'
-               AND ${within('created_at')} ORDER BY created_at DESC, id DESC`, params
         ),
         db.query(
             `SELECT course.title, enrollment.completed_at AS date, course.profession_key AS profession
@@ -201,7 +198,6 @@ async function loadResultPeriod(db, staffId, userId, scope, range) {
         },
         tasks: tasks.rows[0],
         checklistCompleted: checklists.rows[0].completed,
-        ratings: ratings.rows,
         coursesCompleted: training.rows
     };
 }
@@ -223,11 +219,62 @@ function employeeComparisonRanges(range, today) {
     return [current, { month: range.previousFrom.slice(0, 7), from: range.previousFrom, to: previousTo }];
 }
 
+async function loadDailyTaskResults(db, userId, scope, today) {
+    const start = employeeDateOffset(today, -6);
+    const completedAt = "(t.completed_at AT TIME ZONE 'UTC')";
+    const completedDate = `(${completedAt} AT TIME ZONE 'Europe/Kyiv')::date`;
+    const from = "($3::date::timestamp AT TIME ZONE 'Europe/Kyiv')";
+    const through = "(($4::date + 1)::timestamp AT TIME ZONE 'Europe/Kyiv')";
+    const { rows } = await db.query(
+        `WITH days AS (
+             SELECT $3::date + i AS date FROM generate_series(0, 6) AS series(i)
+         ), completed AS (
+             SELECT ${completedDate} AS date,
+                    COUNT(*) FILTER (WHERE classified.personal)::int AS personal,
+                    COUNT(*) FILTER (WHERE NOT classified.personal)::int AS work
+             FROM tasks t
+             CROSS JOIN LATERAL (SELECT (
+                 COALESCE(t.task_mode, 'work') IN ('personal', 'private')
+                 OR COALESCE(t.visibility, 'team') = 'me_only'
+                 OR COALESCE(t.category, '') = 'personal'
+             ) AS personal) classified
+             LEFT JOIN LATERAL (
+                 SELECT h.actor_user_id FROM task_action_history h
+                 WHERE h.task_id = t.id AND h.action_type = $5
+                 ORDER BY h.created_at DESC, h.id DESC LIMIT 1
+             ) completion ON true
+             WHERE t.owner_user_id = $1 AND t.business_context = $2
+               AND t.status = 'done'
+               AND ${completedAt} >= ${from} AND ${completedAt} < ${through}
+               AND COALESCE(completion.actor_user_id, t.owner_user_id) = $1
+             GROUP BY 1
+         ), overdue AS (
+             SELECT COUNT(*)::int AS count
+             FROM tasks t
+             WHERE t.owner_user_id = $1 AND t.business_context = $2
+               AND COALESCE(t.status, 'todo') NOT IN ('done', 'archived', 'cancelled')
+               AND COALESCE(t.workflow_state, '') NOT IN ('done', 'archived', 'cancelled')
+               AND ${taskWorkloadDateSql()} < $4::date
+         )
+         SELECT days.date::text AS date, COALESCE(completed.work, 0)::int AS work,
+                COALESCE(completed.personal, 0)::int AS personal, overdue.count AS overdue
+         FROM days CROSS JOIN overdue LEFT JOIN completed ON completed.date = days.date
+         ORDER BY days.date`,
+        [userId, scope.activeContext, start, today, TASK_ACTION_TYPES.COMPLETED]
+    );
+    return {
+        days: rows.map(({ date, work, personal }) => ({ date, work, personal })),
+        overdue: rows[0]?.overdue || 0
+    };
+}
+
 async function loadEmployeeResults(db, employee, userId, scope, range, options = {}) {
-    const [currentRange, previousRange] = employeeComparisonRanges(range, kyivDate.format(options.now || new Date()));
-    const [current, previous, substitutions] = await Promise.all([
+    const today = kyivDate.format(options.now || new Date());
+    const [currentRange, previousRange] = employeeComparisonRanges(range, today);
+    const [current, previous, dailyTasks, substitutions] = await Promise.all([
         loadResultPeriod(db, employee.id, userId, scope, currentRange),
         loadResultPeriod(db, employee.id, userId, scope, previousRange),
+        loadDailyTaskResults(db, userId, scope, today),
         scope.activeContext === DEFAULT_BUSINESS_CONTEXT ? db.query(
             `SELECT id::text AS id, work_date::text AS date, state,
                     CASE WHEN staff_id = $1 THEN 'replacement' ELSE 'original' END AS role,
@@ -240,7 +287,7 @@ async function loadEmployeeResults(db, employee, userId, scope, range, options =
             [employee.id, range.from, range.to, DEFAULT_BUSINESS_CONTEXT]
         ) : null
     ]);
-    return { state: 'ready', month: range.month, current, previous,
+    return { state: 'ready', month: range.month, current, previous, dailyTasks,
         currentAssignments: employee.profession_assignments || [],
         ...(substitutions ? { substitutions: substitutions.rows } : {}) };
 }

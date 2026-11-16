@@ -90,6 +90,45 @@ test('park edition paginates all periods and disables legacy module writes', {
         const peerCabinet = await request('GET', '/api/tasks/my-cabinet?bucket=noDate', undefined, peer.token);
         assert.ok(!peerCabinet.data.tasks.some(task => task.id === legacyPrivate));
 
+        const { rows: [assigned, farFuture, own, otherBusiness] } = await pool.query(`
+            INSERT INTO tasks (title, date, status, visibility, task_mode, owner_user_id, created_by_user_id, business_context)
+            VALUES ('Assigned to colleague', ($3::date - 1)::text, 'todo', 'team', 'work', $2, $1, 'event_genix'),
+                   ('Assigned after this month', ($3::date + 90)::text, 'todo', 'team', 'work', $2, $1, 'event_genix'),
+                   ('Assigned to self', ($3::date - 1)::text, 'todo', 'team', 'work', $1, $1, 'event_genix'),
+                   ('Assigned in another business', ($3::date - 1)::text, 'todo', 'team', 'work', $2, $1, 'dar')
+            RETURNING id, date, version`, [owner, peer.id, today]);
+        const control = await request('GET', '/api/tasks/my-cabinet?bucket=control&limit=1', undefined, token);
+        assert.equal(control.status, 200);
+        assert.equal(control.data.meta.bucketPage.total, 2);
+        assert.deepEqual(control.data.tasks.map(task => task.id), [assigned.id]);
+        const nextControl = await request('GET', '/api/tasks/my-cabinet?bucket=control&offset=1&limit=1', undefined, token);
+        assert.deepEqual(nextControl.data.tasks.map(task => task.id), [farFuture.id]);
+        assert.ok(![own.id, otherBusiness.id].includes(nextControl.data.tasks[0].id));
+        const ownBoard = await request('GET', '/api/tasks/my-cabinet?planningView=my-day', undefined, token);
+        assert.equal(ownBoard.data.stats.controlCount, 2);
+        const boardPage = await request('GET', '/api/tasks/my-cabinet?bucket=overdue&planningView=my-day', undefined, token);
+        for (const tasks of [ownBoard.data.planning.overdue, boardPage.data.tasks]) {
+            assert.ok(tasks.some(task => task.id === own.id));
+            assert.ok(!tasks.some(task => task.id === assigned.id));
+        }
+
+        const reschedulePath = `/api/tasks/${own.id}/reschedule`;
+        const moveBody = { deadline: `${today}T18:00:00`, sourceSurface: 'profile_my_cabinet_overdue_to_today_button' };
+        const move = await request('POST', reschedulePath, moveBody, token);
+        assert.equal(move.status, 200);
+        const undoPath = `${reschedulePath}/undo`;
+        const undoBody = { eventId: move.data.historyEvent.id };
+        assert.equal((await request('POST', undoPath, undoBody, token)).status, 200);
+        assert.equal((await request('POST', undoPath, undoBody, token)).status, 200);
+        const { rows: [restored] } = await pool.query('SELECT date, deadline, postponement_count, priority FROM tasks WHERE id = $1', [own.id]);
+        assert.equal(restored.date, own.date);
+        assert.equal(restored.deadline, null);
+        assert.equal(restored.postponement_count, 0);
+        const secondMove = await request('POST', reschedulePath, moveBody, token);
+        assert.equal(secondMove.status, 200);
+        await pool.query('UPDATE tasks SET version = version + 1 WHERE id = $1', [own.id]);
+        assert.equal((await request('POST', undoPath, { eventId: secondMove.data.historyEvent.id }, token)).status, 409);
+
         await pool.query(`
             INSERT INTO tasks (title, status, task_mode, visibility, owner_user_id, business_context, completed_at)
             VALUES ('Result work fixture', 'done', 'work', 'team', $1, 'event_genix', '2023-02-08 12:00:00'),
@@ -99,6 +138,33 @@ test('park edition paginates all periods and disables legacy module writes', {
         const performance = await loadEmployeeResults(pool, { id: 0 }, owner, { activeContext: 'event_genix' },
             employeeMonthRange('2023-02'), { now: new Date('2023-03-01T08:00:00Z') });
         assert.equal(performance.current.tasks.completed, 1);
+
+        const daily = await pool.query(`
+            INSERT INTO tasks (title, date, status, task_mode, visibility, owner_user_id, business_context, completed_at)
+            VALUES ('Daily work', '2023-02-27', 'done', 'work', 'team', $1, 'event_genix', '2023-03-01 22:05:00'),
+                   ('Daily personal', NULL, 'done', 'personal', 'me_only', $1, 'event_genix', '2023-03-01 21:45:00'),
+                   ('Daily private', NULL, 'done', 'private', 'private', $1, 'event_genix', '2023-03-02 10:00:00'),
+                   ('Daily done by someone else', NULL, 'done', 'work', 'team', $1, 'event_genix', '2023-03-02 10:00:00'),
+                   ('Daily foreign business', NULL, 'done', 'work', 'team', $1, 'dar', '2023-03-02 10:00:00'),
+                   ('Daily peer private', NULL, 'done', 'private', 'private', $2, 'event_genix', '2023-03-02 10:00:00'),
+                   ('Daily overdue and open', '2023-02-27', 'todo', 'work', 'team', $1, 'event_genix', NULL)
+            RETURNING id, title
+        `, [owner, peer.id]);
+        const idFor = name => daily.rows.find(row => row.title === name).id;
+        await pool.query(`INSERT INTO task_action_history (task_id, action_type, actor_user_id, created_at)
+            VALUES ($1, 'task_completed', $2, '2023-03-01T22:05:00Z'),
+                   ($1, 'task_completed', $2, '2023-03-01T22:05:00Z'),
+                   ($3, 'task_completed', $4, '2023-03-02T10:00:00Z')`,
+        [idFor('Daily work'), owner, idFor('Daily done by someone else'), peer.id]);
+        const dailyResults = (await loadEmployeeResults(pool, { id: 0 }, owner, { activeContext: 'event_genix' },
+            employeeMonthRange('2023-03'), { now: new Date('2023-03-02T12:00:00Z') })).dailyTasks;
+        assert.equal(dailyResults.days.length, 7);
+        assert.deepEqual(dailyResults.days.slice(-3), [
+            { date: '2023-02-28', work: 0, personal: 0 },
+            { date: '2023-03-01', work: 0, personal: 1 },
+            { date: '2023-03-02', work: 1, personal: 1 }
+        ]);
+        assert.equal(dailyResults.overdue, 1);
 
         const date = expected.future[0].date;
         const focused = await request('GET', `/api/tasks/my-cabinet?bucket=focusDate&focusDate=${date}&limit=12`, undefined, token);

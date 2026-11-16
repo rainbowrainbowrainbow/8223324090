@@ -53,15 +53,15 @@ test('task overview classifies real exception signals and excludes deferred task
         no_date: 1,
         stale: 1,
         repeatedly_rescheduled: 1,
-        report_required: 1,
         review_required: 1
     });
     assert.equal(overview.meta.activeTotal, 11);
     assert.equal(overview.meta.deferredExcluded, 1);
-    assert.equal(overview.meta.exceptionTotal, 10);
+    assert.equal(overview.meta.exceptionTotal, 9);
     assert.deepEqual(overview.queue.slice(0, 4).map(item => item.task.id), [1, 2, 4, 3]);
     assert.equal(overview.queue.find(item => item.task.id === 1).reasons[0].riskDays, 3);
     assert.equal(overview.queue.find(item => item.task.id === 11), undefined);
+    assert.equal(overview.queue.find(item => item.task.id === 9), undefined);
 });
 
 test('task overview calculates Kyiv month-end and stable reason order without an AI score', () => {

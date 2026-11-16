@@ -83,6 +83,45 @@ export function createEmployeeRenderers({ escapeHtml, profileEmployeeDateText, p
         `;
     }
 
+    function renderDailyTaskResults({ days, overdue }) {
+        const height = Math.max(1, ...days.map(day => day.work + day.personal));
+        const summary = (label, day) => `<div>
+            <dt>${label}</dt><dd><strong>${day.work + day.personal}</strong>
+                <span>Робочі ${day.work} · Особисті ${day.personal}</span>
+            </dd>
+        </div>`;
+        const calendarDay = new Intl.DateTimeFormat('uk-UA', {
+            timeZone: 'Europe/Kyiv', day: 'numeric', month: 'numeric'
+        });
+        return `
+            <dl class="profile-results-highlights">
+                ${summary('Сьогодні', days.at(-1))}
+                ${summary('Вчора', days.at(-2))}
+                <div><dt>Прострочені</dt><dd><strong>${overdue}</strong><span>Відкриті задачі</span></dd></div>
+            </dl>
+            <figure class="profile-results-chart">
+                <figcaption>Виконано за останні 7 днів</figcaption>
+                <ul class="profile-results-chart-legend">
+                    <li class="profile-results-work">Робочі</li>
+                    <li class="profile-results-personal">Особисті</li>
+                </ul>
+                <ol class="profile-results-chart-days">
+                    ${days.map(day => `
+                        <li>
+                            <div class="profile-results-chart-track" aria-hidden="true">
+                                <span class="profile-results-personal" style="--share: ${day.personal / height}"></span>
+                                <span class="profile-results-work" style="--share: ${day.work / height}"></span>
+                            </div>
+                            <time datetime="${escapeHtml(day.date)}">${calendarDay.format(new Date(day.date + 'T12:00:00Z'))}</time>
+                            <span class="profile-results-chart-values">
+                                <span><span class="sr-only">Робочі </span>${day.work}</span>
+                                <span><span class="sr-only">Особисті </span>${day.personal}</span>
+                            </span>
+                        </li>`).join('')}
+                </ol>
+            </figure>`;
+    }
+
     function renderResults(data) {
         const current = data.current;
         const previous = data.previous;
@@ -98,19 +137,10 @@ export function createEmployeeRenderers({ escapeHtml, profileEmployeeDateText, p
             ['Зафіксовані відсутності', period => period.attendance.absent],
             ['Запізнення', period => period.attendance.late],
             ['Хвилини запізнення', period => period.attendance.lateMinutes],
-            ['Виконані робочі задачі', period => period.tasks.completed],
-            ['Прострочені робочі задачі', period => period.tasks.overdue],
             ['Завершені пункти професійних чеклістів', period => period.checklistCompleted],
             ['Завершені курси', period => period.coursesCompleted.length]
         ];
-        const highlights = [
-            ['Виконані робочі задачі', period => period.tasks.completed, '/profile?tab=myday&period=today', 'Мої задачі'],
-            ['Пункти професійних чеклістів', period => period.checklistCompleted, '/profile?tab=workbase#work-base-checklists', 'Чеклісти професій'],
-            ['Вчасні приходи', punctuality]
-        ];
         const courses = current.coursesCompleted.map(course => [course.title, profileEmployeeDateText(course.date)]);
-        const ratings = current.ratings.filter(item => Number(item.score) >= 1 && Number(item.score) <= 5)
-            .map(item => [[profileEmployeeDateText(item.date), item.explanation].filter(Boolean).join(' · '), `${profileEmployeeNumber(Number(item.score))} із 5`]);
         const admission = { approved: 'Допущено', pending: 'Очікує допуску', blocked: 'Допуск заблоковано', restricted: 'Обмежений допуск' };
         const assignments = (data.currentAssignments || []).filter(item => admission[item.admissionStatus]).map(item => [
             profileProfessionByKey(item.key)?.title || profileRoleLabel(item.key), admission[item.admissionStatus]
@@ -126,14 +156,9 @@ export function createEmployeeRenderers({ escapeHtml, profileEmployeeDateText, p
             return [label, substitutionStates[item.state]];
         });
         return `
-            <dl class="profile-results-highlights">
-                ${highlights.map(([label, read, href, action]) => `<div>
-                    <dt>${label}</dt>
-                    <dd><strong>${escapeHtml(read(current))}</strong><span>${escapeHtml(dateLabel(previous))} · ${escapeHtml(read(previous))}</span></dd>
-                    ${href ? `<dd><a href="${href}">${action} <span aria-hidden="true">→</span></a></dd>` : ''}
-                </div>`).join('')}
-            </dl>
-            <div class="profile-employee-comparison">
+            ${data.dailyTasks?.days?.length >= 2 ? renderDailyTaskResults(data.dailyTasks) : ''}
+            <details class="profile-employee-comparison">
+                <summary>Відвідуваність і професійний розвиток</summary>
                 <table>
                     <caption>Порівняння з попереднім місяцем</caption>
                     <thead><tr><th scope="col">Показник</th><th scope="col">${escapeHtml(dateLabel(current))}</th><th scope="col">${escapeHtml(dateLabel(previous))}</th></tr></thead>
@@ -142,17 +167,11 @@ export function createEmployeeRenderers({ escapeHtml, profileEmployeeDateText, p
                         return `<tr><th scope="row">${escapeHtml(label)}</th><td>${escapeHtml(value(current))}</td><td>${escapeHtml(value(previous))}</td></tr>`;
                     }).join('')}</tbody>
                 </table>
-            </div>
-            <p>Відвідуваність: журнал присутності. Задачі: командні робочі задачі, прив’язані до вашого акаунта,
-                за датою виконання або дедлайну. Особисті й приватні задачі не входять у показники.
-                Для поточного місяця зіставляємо однакову кількість календарних днів.</p>
-            <p><a href="/profile?tab=workbase#work-base-materials">Навчальні матеріали</a></p>
+            </details>
             ${Array.isArray(data.substitutions)
                 ? renderProfileEmployeeDetails('Мої підміни', substitutions, 'За цей місяць підмін немає.') : ''}
-            ${renderProfileEmployeeDetails('Оцінки керівника', ratings, 'За цей місяць оцінок у журналі немає.')}
             ${renderProfileEmployeeDetails('Завершені курси', courses)}
             ${renderProfileEmployeeDetails('Поточні допуски', assignments, 'Немає підтверджених записів про допуски.')}
-            <p>Допуски показано за поточним станом. Помісячна історія допусків недоступна.</p>
         `;
     }
 

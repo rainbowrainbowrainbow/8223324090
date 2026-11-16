@@ -159,12 +159,9 @@ test('mixed operational APIs shape revenue and reject explicit financial writes'
     assert.doesNotMatch(hermes, /router\.use\(\(req, res, next\) => installRevenueResponseShaper/);
 });
 
-test('task report UI omits amount without revenue access instead of sending a fake zero', () => {
-    const taskCreate = read('js/task-create.js');
-    assert.match(taskCreate, /const canViewRevenue = typeof canAccess === 'function' && canAccess\('view_revenue'\);/);
-    assert.match(taskCreate, /\.\.\.\(canViewRevenue \? \[\{/);
-    assert.match(taskCreate, /if \(canViewRevenue\) reportPayload\.amount = values\.amount;/);
-    assert.doesNotMatch(taskCreate, /reportPayload\s*=\s*\{[\s\S]{0,240}amount:\s*values\.amount/);
+test('ordinary task completion never opens a mandatory report or amount form', () => {
+    const taskUi = ['js/task-create.js', 'js/tasks-page.js', 'js/profile-page.js'].map(read).join('\n');
+    assert.doesNotMatch(taskUi, /TaskReportGate|cabinetTaskReportRequired|task-report-required-modal/);
 });
 
 test('report workflow and demo-mode settings fail closed in backend and UI', () => {

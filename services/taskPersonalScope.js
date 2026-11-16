@@ -21,6 +21,7 @@ function buildTaskPersonalQuery(user, params, alias = 't') {
     const visibility = buildTaskVisibilityScope(user, params, alias);
     return {
         match: `((${owner} OR ${author} OR ${participant}) ${visibility})`,
+        control: `((${author}) IS TRUE AND (${owner}) IS NOT TRUE)`,
         roles: `array_remove(ARRAY[CASE WHEN ${owner} THEN 'executor' END, CASE WHEN ${author} THEN 'author' END, CASE WHEN ${participant} THEN 'participant' END], NULL)`
     };
 }

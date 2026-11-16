@@ -270,7 +270,8 @@ describe('static-only scheduler job behavior coverage', () => {
         assert.equal(state.createdTasks.length, 1);
         assert.equal(state.createdTasks[0].duplicateMode, 'skip');
         assert.equal(state.createdTasks[0].control_meta.source, 'recurring_task_template');
-        assert.equal(state.checklistSubtasks.length, 1);
+        assert.equal(state.createdTasks[0].task_kind, 'action');
+        assert.equal(state.checklistSubtasks.length, 0);
         assert.equal(state.queries.filter(query => query.text.includes('FROM task_templates')).length, 1);
     });
 

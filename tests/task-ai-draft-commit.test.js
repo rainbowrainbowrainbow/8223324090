@@ -352,7 +352,7 @@ function commitInput(tokenParts, overrides = {}) {
     };
 }
 
-test('AI draft commit creates task, subtasks, impacts, and AI history in one transaction without sensitive history text', async () => {
+test('AI draft commit creates a task, impacts, and AI history while ignoring legacy checklist fields in one transaction without sensitive history text', async () => {
     const tokenParts = makeToken();
     const fakePool = createFakePool();
     const telemetryEvents = [];
@@ -371,7 +371,8 @@ test('AI draft commit creates task, subtasks, impacts, and AI history in one tra
     assert.equal(result.ok, true);
     assert.equal(result.replayed, false);
     assert.equal(result.task.id, 501);
-    assert.equal(result.subtasks.length, 3);
+    assert.equal(result.subtasks, undefined);
+    assert.equal(fakePool.state.subtasks.length, 0);
     assert.equal(result.classification.impacts.length, 2);
     assert.equal(result.historyEvent.actionType, TASK_ACTION_TYPES.AI_DRAFT_COMMITTED);
     assert.equal(fakePool.state.committed, true);
@@ -427,7 +428,7 @@ test('AI draft commit filters unavailable impacts and repairs technical descript
     assert.equal(fakePool.state.history[0].meta_json.filteredImpactCount, 1);
 });
 
-test('AI draft commit does not write unaccepted AI description, impacts, or subtasks', async () => {
+test('AI draft commit preserves unaccepted description and impacts and ignores legacy subtasks', async () => {
     const draft = {
         title: 'crm form',
         description: 'Keep the original CRM booking note for manual review.',
@@ -469,7 +470,7 @@ test('AI draft commit does not write unaccepted AI description, impacts, or subt
     assert.equal(result.ok, true);
     assert.equal(fakePool.state.tasks[0].description, 'Keep the original CRM booking note for manual review.');
     assert.deepEqual(fakePool.state.impacts.map(item => item.impact_id), [101]);
-    assert.deepEqual(fakePool.state.subtasks.map(item => item.title), ['Original manual validation step']);
+    assert.deepEqual(fakePool.state.subtasks, []);
 });
 
 test('AI draft commit accepts reviewed manual edits and filters unknown edited impacts', async () => {
@@ -496,7 +497,7 @@ test('AI draft commit accepts reviewed manual edits and filters unknown edited i
     assert.equal(result.ok, true);
     assert.equal(fakePool.state.tasks[0].description, 'Manual reviewer description with concrete CRM validation scope.');
     assert.deepEqual(fakePool.state.impacts.map(item => item.impact_id), [101]);
-    assert.deepEqual(fakePool.state.subtasks.map(item => item.title), ['Manual reviewer validation step']);
+    assert.deepEqual(fakePool.state.subtasks, []);
     assert.deepEqual(fakePool.state.history[0].meta_json.editedFieldMask, ['description', 'impactIds', 'subtasks']);
     assert.equal(fakePool.state.history[0].meta_json.impactFilterReason, 'filter_known_active');
     assert.equal(fakePool.state.history[0].meta_json.filteredImpactCount, 1);
@@ -827,7 +828,7 @@ test('task AI draft commit route is explicit, atomic, idempotent, and emits side
     assert.match(service, /findCommittedReplay/);
     assert.match(service, /skipNotifications: true/);
     assert.match(service, /skipHermesOutbox: true/);
-    assert.match(service, /replaceTaskSubtasks\(client/);
+    assert.doesNotMatch(service, /replaceTaskSubtasks|INSERT INTO task_subtasks/);
     assert.match(service, /replaceTaskClassification\(client/);
     assert.match(service, /TASK_ACTION_TYPES\.AI_DRAFT_COMMITTED/);
     assert.doesNotMatch(service, /dependency_ids:\s*finalDraft|directionId|rawProviderResponse:\s*|prompt:\s*finalDraft/);
@@ -943,7 +944,7 @@ test('AI draft bundle commit creates all tasks, impacts, and bundle audit in one
     assert.equal(fakePool.state.rolledBack, false);
     assert.equal(fakePool.state.tasks.length, 2);
     assert.equal(fakePool.state.impacts.length, 2);
-    assert.equal(fakePool.state.subtasks.length, 1);
+    assert.equal(fakePool.state.subtasks.length, 0);
     assert.equal(fakePool.state.history.length, 3);
     assert.equal(fakePool.state.bundles.length, 1);
     assert.equal(fakePool.state.bundleTasks.length, 2);
@@ -951,7 +952,7 @@ test('AI draft bundle commit creates all tasks, impacts, and bundle audit in one
     assert.deepEqual(fakePool.state.bundleTasks.map(item => item.task_id), [501, 502]);
     assert.ok(fakePool.state.calls.some(call => /pg_advisory_xact_lock/i.test(call.text)));
     assert.equal(fakePool.state.tasks[0].source_type, 'ai_draft_bundle');
-    assert.equal(fakePool.state.tasks[0].task_kind, 'checklist');
+    assert.equal(fakePool.state.tasks[0].task_kind, 'action');
     assert.deepEqual(fakePool.state.tasks[0].dependency_ids, []);
 
     const bundleHistory = fakePool.state.history.find(item => item.action_type === TASK_ACTION_TYPES.AI_DRAFT_BUNDLE_COMMITTED);

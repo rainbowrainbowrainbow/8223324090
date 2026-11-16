@@ -9,7 +9,6 @@ const {
     VALID_TASK_CATEGORIES,
     normalizeTaskCategory,
     normalizeTaskSubcategory,
-    normalizeChecklistTemplateKey,
     normalizeOwnerRole,
     normalizeSlaMinutes
 } = require('../services/taskTaxonomy');
@@ -28,7 +27,7 @@ router.use(authenticateToken);
 const VALID_PATTERNS = ['daily', 'weekly', 'weekdays', 'custom'];
 const VALID_PRIORITIES = ['low', 'normal', 'high', 'urgent'];
 const VALID_CATEGORIES = VALID_TASK_CATEGORIES;
-const VALID_TASK_KINDS = ['action', 'reminder', 'followup', 'deep_work', 'checklist', 'routine', 'waiting', 'idea', 'decision'];
+const VALID_TASK_KINDS = ['action', 'reminder', 'followup', 'deep_work', 'routine', 'waiting', 'idea', 'decision'];
 
 function mapTemplateRow(row) {
     return {
@@ -38,8 +37,7 @@ function mapTemplateRow(row) {
         priority: row.priority,
         category: row.category || 'admin',
         subcategory: row.subcategory || null,
-        defaultTaskKind: row.default_task_kind || 'action',
-        checklistTemplateKey: row.checklist_template_key || null,
+        defaultTaskKind: VALID_TASK_KINDS.includes(row.default_task_kind) ? row.default_task_kind : 'action',
         ownerRole: row.owner_role || null,
         slaMinutes: row.sla_minutes || null,
         assignedTo: row.assigned_to,
@@ -91,10 +89,7 @@ router.post('/', async (req, res) => {
         const templateSubcategory = normalizeTaskSubcategory(templateCategory, subcategory);
         const defaultTaskKind = VALID_TASK_KINDS.includes(req.body.defaultTaskKind || req.body.default_task_kind)
             ? (req.body.defaultTaskKind || req.body.default_task_kind)
-            : (templateCategory === 'checklist' ? 'checklist' : 'action');
-        const checklistTemplateKey = templateCategory === 'checklist'
-            ? normalizeChecklistTemplateKey(req.body.checklistTemplateKey || req.body.checklist_template_key, templateSubcategory)
-            : null;
+            : 'action';
         const ownerRole = normalizeOwnerRole(req.body.ownerRole || req.body.owner_role);
         const slaMinutes = normalizeSlaMinutes(req.body.slaMinutes || req.body.sla_minutes);
         const username = req.user?.username || 'system';
@@ -102,11 +97,10 @@ router.post('/', async (req, res) => {
 
         const result = await pool.query(
             `INSERT INTO task_templates (business_context, title, description, priority, category, subcategory, assigned_to,
-             recurrence_pattern, recurrence_days, created_by, default_task_kind, checklist_template_key, owner_role, sla_minutes)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
+             recurrence_pattern, recurrence_days, created_by, default_task_kind, owner_role, sla_minutes)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
             [businessContext, title.trim(), description || null, templatePriority, templateCategory, templateSubcategory, assignedTo || null,
-             recurrencePattern, recurrenceDays || null, username, defaultTaskKind,
-             checklistTemplateKey, ownerRole, slaMinutes]
+             recurrencePattern, recurrenceDays || null, username, defaultTaskKind, ownerRole, slaMinutes]
         );
         res.json({ success: true, template: mapTemplateRow(result.rows[0]) });
     } catch (err) {
@@ -132,21 +126,18 @@ router.put('/:id', async (req, res) => {
         const templateSubcategory = normalizeTaskSubcategory(templateCategory, subcategory);
         const defaultTaskKind = VALID_TASK_KINDS.includes(req.body.defaultTaskKind || req.body.default_task_kind)
             ? (req.body.defaultTaskKind || req.body.default_task_kind)
-            : (templateCategory === 'checklist' ? 'checklist' : 'action');
-        const checklistTemplateKey = templateCategory === 'checklist'
-            ? normalizeChecklistTemplateKey(req.body.checklistTemplateKey || req.body.checklist_template_key, templateSubcategory)
-            : null;
+            : 'action';
         const ownerRole = normalizeOwnerRole(req.body.ownerRole || req.body.owner_role);
         const slaMinutes = normalizeSlaMinutes(req.body.slaMinutes || req.body.sla_minutes);
         const params = [title.trim(), description || null, templatePriority, templateCategory, templateSubcategory, assignedTo || null,
              recurrencePattern, recurrenceDays || null, isActive !== false,
-             defaultTaskKind, checklistTemplateKey, ownerRole, slaMinutes, id];
+             defaultTaskKind, ownerRole, slaMinutes, id];
         const businessCondition = pushTaskBusinessScopeCondition(params, businessScope, '');
 
         await pool.query(
             `UPDATE task_templates SET title=$1, description=$2, priority=$3, category=$4, subcategory=$5, assigned_to=$6,
              recurrence_pattern=$7, recurrence_days=$8, is_active=$9, default_task_kind=$10,
-             checklist_template_key=$11, owner_role=$12, sla_minutes=$13 WHERE id=$14 AND ${businessCondition}`,
+             owner_role=$11, sla_minutes=$12 WHERE id=$13 AND ${businessCondition}`,
             params
         );
         const readParams = [id];

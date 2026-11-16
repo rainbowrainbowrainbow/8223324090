@@ -290,7 +290,7 @@
         </dl>`;
     }
 
-    const BUNDLE_REVIEW_FIELDS = Object.freeze(['title', 'description', 'impactIds', 'subtasks', 'owner', 'dueDate', 'priority']);
+    const BUNDLE_REVIEW_FIELDS = Object.freeze(['title', 'description', 'impactIds', 'owner', 'dueDate', 'priority']);
 
     function canonicalBundleField(field) {
         return {
@@ -374,10 +374,6 @@
                     <span>Опис / деталі</span>
                     <textarea data-task-ai-bundle-field="description" rows="3" ${task.rejected ? 'disabled' : ''}>${escapeHtml(task.description)}</textarea>
                 </label>
-                <label class="task-ai-bundle-field-wide">
-                    <span>Чекліст цієї задачі</span>
-                    <textarea data-task-ai-bundle-field="subtasks" rows="3" ${task.rejected ? 'disabled' : ''}>${escapeHtml((task.subtasks || []).map(item => item.title).join('\n'))}</textarea>
-                </label>
                 <label>
                     <span>Виконавець</span>
                     <select data-task-ai-bundle-field="ownerUserId" ${task.rejected ? 'disabled' : ''}>${ownerOptions}</select>
@@ -400,16 +396,6 @@
             ${renderBundleFieldStates(task, hideImpacts)}
             <p class="task-ai-bundle-review-note">Виконавець, дата і пріоритет застосуються тільки після явного підтвердження.</p>` : ''}
         </article>`;
-    }
-
-    function renderStructureSelector(preview = {}, active = '') {
-        const decision = proposalDecision(preview);
-        if (!['checklist', 'task_bundle'].includes(decision)) return '';
-        const selected = active || (decision === 'task_bundle' ? 'bundle' : 'checklist');
-        return `<div class="task-ai-draft-structure" role="group" aria-label="Структура AI-пропозиції">
-            <button type="button" data-task-ai-structure="checklist" aria-pressed="${selected === 'checklist' ? 'true' : 'false'}">Одна задача з чеклістом</button>
-            <button type="button" data-task-ai-structure="bundle" aria-pressed="${selected === 'bundle' ? 'true' : 'false'}">Кілька окремих задач</button>
-        </div>`;
     }
 
     function renderBundleReview(root, state) {
@@ -435,7 +421,6 @@
                         <span>${needsReviewCount} перевірити</span>
                     </div>
                 </div>
-                ${renderStructureSelector(preview, 'bundle')}
                 ${activeCount === 1 ? '<p class="task-ai-bundle-warning">Залишилась 1 задача. Скасуйте bundle і створіть її через звичайну single-task форму — bundle потребує щонайменше дві окремі задачі.</p>' : ''}
                 <div class="task-ai-bundle-list">
                     ${tasks.map((task, index) => renderBundleTaskCard(task, index, preview, state)).join('')}
@@ -463,7 +448,7 @@
 
     function changedFields(preview = {}) {
         const fromDiff = Array.isArray(preview.diff?.changedFields) ? preview.diff.changedFields : [];
-        const fields = fromDiff.filter(field => ['title', 'description', 'mode', 'impactIds', 'subtasks', 'scheduleDate', 'priority', 'owner', 'visibility', 'workflow'].includes(field));
+        const fields = fromDiff.filter(field => ['title', 'description', 'impactIds', 'scheduleDate', 'priority', 'owner', 'visibility', 'workflow'].includes(field));
         const decision = proposalDecision(preview);
         if (decision === 'single_task' || decision === 'checklist') {
             ['priority', 'scheduleDate', 'impactIds'].forEach(field => {
@@ -608,7 +593,6 @@
             return;
         }
         host.hidden = false;
-        const checklistCount = Array.isArray(preview.proposal?.subtasks) ? preview.proposal.subtasks.length : 0;
         const decision = proposalDecision(preview);
         const headline = decision === 'checklist'
             ? 'AI пропонує одну складну задачу'
@@ -648,7 +632,6 @@
                     <span>${reviewedCount}/${fields.length} перевірено</span>
                 </div>
                 ${renderReviewMetadata(proposal, preview, hideImpacts)}
-                ${renderStructureSelector(preview, decision === 'checklist' ? 'checklist' : '')}
                 ${fields.includes('impactIds') && !(Array.isArray(fieldAfterValue(preview, 'impactIds')) && fieldAfterValue(preview, 'impactIds').length)
                     ? '<p class="task-ai-draft-impact-warning">AI не зміг надійно визначити вплив. Оберіть його вручну перед прийняттям цього поля.</p>'
                     : ''}
@@ -781,12 +764,6 @@
                 .map(input => Number(input.value))
                 .filter(Number.isInteger)
                 .slice(0, maxImpacts());
-        } else if (field === 'subtasks') {
-            task.subtasks = String(control.value || '')
-                .split(/\r?\n/)
-                .map(title => ({ title: title.trim() }))
-                .filter(item => item.title)
-                .slice(0, 7);
         } else if (field === 'ownerUserId') {
             const ownerId = Number(control.value || 0);
             const owner = bundleOwnerCatalog(state.preview).find(item => item.id === ownerId);
@@ -869,7 +846,6 @@
             title: task.title,
             description: task.description || null,
             impactIds: hideImpacts ? [] : (task.impactIds || []),
-            subtasks: task.subtasks || [],
             priority: task.priority || 'normal',
             scheduleDate: task.scheduleDate || null,
             ownerSuggestion: {
@@ -1134,12 +1110,6 @@
         rootState(root, config);
         applyFeatureStatus(root);
         root.addEventListener('click', event => {
-            const structure = event.target.closest('[data-task-ai-structure]');
-            if (structure) {
-                event.preventDefault();
-                preview(root, { structurePreference: structure.dataset.taskAiStructure || '' });
-                return;
-            }
             const previewButton = event.target.closest('[data-task-ai-draft-preview]');
             if (previewButton) {
                 event.preventDefault();
@@ -1230,12 +1200,6 @@
             if (field) markUserEdited(root, field);
             const bundleControl = event.target.closest('[data-task-ai-bundle-field]');
             if (bundleControl) updateBundleTaskFromControl(root, bundleControl);
-            const subtaskRow = event.target.closest('[data-cabinet-subtask-row], [data-task-subtask-row]');
-            if (subtaskRow && subtaskRow.dataset.subtaskSource === 'ai') {
-                subtaskRow.dataset.subtaskSource = 'manual';
-                subtaskRow.classList.add('is-user-edited');
-                markUserEdited(root, 'subtasks');
-            }
         });
         root.addEventListener('change', event => {
             const field = event.target.closest('[data-task-ai-source-field]')?.dataset.taskAiSourceField;

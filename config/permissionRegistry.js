@@ -812,7 +812,6 @@ const ACTION_PERMISSIONS = Object.freeze([
             source('js/leads-page.js', "canAccess('view_revenue')", { enforces: true }),
             source('center.html', "canAccess('view_revenue')", { enforces: true }),
             source('js/reports-page.js', "canAccess('view_revenue')", { enforces: true }),
-            source('js/task-create.js', "canAccess('view_revenue')", { enforces: true }),
             source('js/warehouse-page.js', "canAccess('view_revenue')", { enforces: true })
         ],
         backendConsumers: [

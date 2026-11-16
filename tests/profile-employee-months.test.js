@@ -100,6 +100,13 @@ test('unverified payroll ownership prevents even a snapshot read', async () => {
 test('results compare Kyiv calendar months using linked staff and typed task ownership', async () => {
     const results = await loadEmployeeResults({ async query(sql, params) {
         const current = params[1] === '2024-01-01';
+        if (sql.includes('WITH days AS')) {
+            assert.deepEqual(params, [7, 'event_genix', '2024-01-26', '2024-02-01', 'task_completed']);
+            return { rows: [
+                { date: '2024-01-31', work: 0, personal: 1, overdue: 3 },
+                { date: '2024-02-01', work: 2, personal: 0, overdue: 3 }
+            ] };
+        }
         if (sql.includes('FROM tasks')) {
             assert.deepEqual(params, current
                 ? [7, '2024-01-01', '2024-02-01', 'event_genix']
@@ -122,12 +129,20 @@ test('results compare Kyiv calendar months using linked staff and typed task own
         ] : [] };
         if (sql.includes('FROM hr_staff_profession_checklist_progress')) return { rows: [{ completed: 0 }] };
         return { rows: [] };
-    } }, { id: 3 }, 7, { activeContext: 'event_genix' }, employeeMonthRange('2024-01'));
+    } }, { id: 3 }, 7, { activeContext: 'event_genix' }, employeeMonthRange('2024-01'),
+    { now: new Date('2024-01-31T22:30:00Z') });
     assert.deepEqual(results.current.attendance, {
         daysRecorded: 4, present: 3, absent: 1, measuredArrivals: 2, onTime: 1, late: 1, lateMinutes: 5
     });
     assert.equal(results.previous.tasks.completed, 2);
     assert.deepEqual(results.substitutions, [{ id:'91', date:'2024-01-08', role:'original', state:'completed', partial:true }]);
+    assert.deepEqual(results.dailyTasks, {
+        days: [
+            { date: '2024-01-31', work: 0, personal: 1 },
+            { date: '2024-02-01', work: 2, personal: 0 }
+        ],
+        overdue: 3
+    });
 });
 
 test('open Kyiv month compares equal elapsed days when the previous month is shorter', () => {

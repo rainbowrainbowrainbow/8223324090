@@ -16,7 +16,6 @@ const {
     TASK_ACTION_TYPES,
     logTaskActionEvent
 } = require('./taskActionHistory');
-const { subtaskCompletionState } = require('./taskSubtasks');
 const { appendTaskBusinessScopeSql } = require('./taskBusinessScope');
 const { businessUserAccessSql } = require('./businessUserAccess');
 const { rescheduleTask: canonicalRescheduleTask } = require('./taskReschedule');
@@ -51,15 +50,6 @@ function taskControlMeta(task = {}) {
     return parseJsonObject(task.control_meta || task.controlMeta || {});
 }
 
-function taskRequiresCompletionReport(task = {}) {
-    const meta = taskControlMeta(task);
-    return meta.reportRequired === true
-        || meta.requiresReport === true
-        || meta.report_required === true
-        || task.report_required === true
-        || task.requiresReport === true;
-}
-
 function taskCompletionReportId(task = {}) {
     const meta = taskControlMeta(task);
     return parsePositiveInt(
@@ -72,45 +62,6 @@ function taskCompletionReportId(task = {}) {
         || task.reportId
         || task.report_id
     );
-}
-
-function reportRequiredError(task = {}) {
-    const err = new Error('Для виконання цієї задачі спочатку потрібно додати звіт.');
-    err.statusCode = 409;
-    err.code = 'TASK_REPORT_REQUIRED';
-    err.requiresReport = true;
-    err.task = {
-        id: task.id,
-        title: task.title || null,
-        reportRequired: true
-    };
-    return err;
-}
-
-async function getParentSubtaskCompletionState(query, taskId) {
-    const result = await query.query(
-        `SELECT COUNT(*)::int AS total,
-                COUNT(*) FILTER (WHERE is_done = true)::int AS done
-         FROM task_subtasks
-         WHERE task_id = $1`,
-        [taskId]
-    );
-    return subtaskCompletionState(result.rows[0]?.done || 0, result.rows[0]?.total || 0);
-}
-
-function subtaskCompletionRequiredError(task, state) {
-    const err = new Error(`Закрийте всі підпункти перед виконанням задачі (${state.done}/${state.total}).`);
-    err.statusCode = 409;
-    err.code = 'SUBTASKS_INCOMPLETE';
-    err.task = {
-        id: task.id,
-        title: task.title || null,
-        subtaskCount: state.total,
-        subtaskDoneCount: state.done,
-        subtaskOpenCount: state.open
-    };
-    err.meta = { subtaskCompletionRequired: true };
-    return err;
 }
 
 async function ensureReportExists(query, reportId, businessContext = null) {
@@ -345,29 +296,20 @@ async function completeTask(taskId, actor, options = {}) {
         if (!canMutateTask(actor, task)) {
             throw forbidden('You cannot complete this task');
         }
-        const subtaskState = await getParentSubtaskCompletionState(query, task.id);
-        if (!subtaskState.canCompleteParent) {
-            throw subtaskCompletionRequiredError(task, subtaskState);
-        }
         const incomingReportId = parsePositiveInt(options.reportId || options.report_id);
         const existingReportId = taskCompletionReportId(task);
-        const requiresReport = taskRequiresCompletionReport(task);
-        if (requiresReport && !existingReportId && !incomingReportId) {
-            throw reportRequiredError(task);
-        }
-        const reportId = incomingReportId ? await ensureReportExists(query, incomingReportId, task.business_context) : existingReportId;
+        const reportId = incomingReportId ? await ensureReportExists(query, incomingReportId, task.business_context) : null;
         const result = await query.query(
             `UPDATE tasks
              SET status = 'done',
                   workflow_state = 'done',
                   schedule_status = CASE WHEN scheduled_start_at IS NOT NULL THEN 'completed' ELSE schedule_status END,
-                  completed_at = NOW(),
+                  completed_at = NOW() AT TIME ZONE 'UTC',
                  updated_at = NOW(),
                  escalation_level = 0,
                  control_meta = CASE
                     WHEN $3::int IS NULL THEN COALESCE(control_meta, '{}'::jsonb)
                     ELSE COALESCE(control_meta, '{}'::jsonb) || jsonb_build_object(
-                        'reportRequired', true,
                         'reportId', $3::int,
                         'reportSubmittedAt', NOW(),
                         'reportSubmittedBy', $4::text
@@ -378,7 +320,7 @@ async function completeTask(taskId, actor, options = {}) {
            AND COALESCE(version, 1) = $2
            AND COALESCE(business_context, 'event_genix') = $5
            AND COALESCE(status, 'todo') NOT IN ('done','cancelled','archived')
-         RETURNING *`,
+         RETURNING *, completed_at AT TIME ZONE 'UTC' AS completed_at`,
             [task.id, task.version || 1, reportId || null, userDisplayName(actor), task.business_context || 'event_genix']
         );
         if (!result.rows.length) {
@@ -400,8 +342,7 @@ async function completeTask(taskId, actor, options = {}) {
                 route: options.route || 'work_queue_task_done',
                 ownerStateBefore: task.ownerState,
                 actorName: userDisplayName(actor),
-                reportRequired: requiresReport,
-                reportId: reportId || null
+                reportId: reportId || existingReportId
             }
         }, { pool: query });
         return { task: updated, historyEvent };
@@ -579,7 +520,6 @@ module.exports = {
     listTaskOwnerCandidates,
     taskCompletionReportId,
     taskControlMeta,
-    taskRequiresCompletionReport,
     reassignTaskOwner,
     resolveDeadline,
     rescheduleTask: canonicalRescheduleTask,

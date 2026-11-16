@@ -605,8 +605,8 @@ test('my focus keeps the first screen to three tasks and sends overflow to detai
     assert.match(container.textContent, /0 обрано у фокус/);
     assert.match(container.textContent, /4 рекомендовано/);
     assert.equal(container.querySelectorAll('.dashboard-task-subtask:not(.is-more)').length, 0);
-    assert.equal(container.querySelectorAll('.dashboard-task-subtask-summary a[href="/tasks?open=1"]').length, 1);
-    assert.match(container.textContent, /Виконано 0 із 2 · Деталі/);
+    assert.equal(container.querySelectorAll('.dashboard-task-subtask-summary a[href="/tasks?open=1"]').length, 0);
+    assert.doesNotMatch(container.textContent, /First subtask|Second subtask/);
     harness.dom.window.close();
 });
 

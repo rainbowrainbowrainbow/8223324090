@@ -34,13 +34,12 @@ const {
     assertPrivateTaskHandoffConfirmed,
     getAssignableTaskOwner,
     listTaskOwnerCandidates,
-    taskCompletionReportId,
     taskControlMeta,
-    taskRequiresCompletionReport,
     reassignTaskOwner,
     resolveDeadline,
     rescheduleTask
 } = require('../services/taskExecution');
+const { undoQuickTodayReschedule } = require('../services/taskReschedule');
 const { listTaskActionHistory, logTaskActionEvent, TASK_ACTION_TYPES } = require('../services/taskActionHistory');
 const { isTerminalStatus } = require('../services/taskAutomationPolicy');
 const { normalizeTaskPayload: normalizeTaskContractPayload } = require('../services/taskContract');
@@ -67,28 +66,10 @@ const {
     findActiveDuplicateTask
 } = require('../services/taskDuplicatePolicy');
 const {
-    hasSubtaskPayload,
-    listTaskSubtasks,
-    normalizeSubtaskReorderIds,
-    normalizeSubtaskRow,
-    normalizeSubtaskSourceType,
-    reorderTaskSubtasks,
-    replaceTaskSubtasks,
-    subtaskPayloadFromBody,
-    subtaskProgress
-} = require('../services/taskSubtasks');
-const {
-    generateTaskDecompositionDraft,
-    getTaskDecompositionTemplates,
-    normalizeDecompositionMode
-} = require('../services/taskDecomposition');
-const {
     generateTaskAiDraftPreview,
-    legacyDecompositionResponseFromPreview,
     stableStringify,
     TASK_AI_DRAFT_CONTRACT_VERSION,
     TASK_AI_DRAFT_PROMPT_VERSION,
-    TASK_AI_DRAFT_REASONING_EFFORT,
     TASK_AI_DRAFT_SCHEMA_NAME
 } = require('../services/taskAiDraftPreview');
 const { commitTaskAiDraft } = require('../services/taskAiDraftCommit');
@@ -101,14 +82,6 @@ const {
 } = require('../services/taskAiDraftFeatureGate');
 const { checkTaskAiDraftRateLimit } = require('../services/taskAiDraftLimiter');
 const { recordTaskAiDraftTelemetry } = require('../services/taskAiDraftTelemetry');
-const {
-    applySavedDecompositionTemplate,
-    createSavedDecompositionTemplate,
-    deleteSavedDecompositionTemplate,
-    getDecompositionSuggestions,
-    listSavedDecompositionTemplates,
-    updateSavedDecompositionTemplate
-} = require('../services/taskDecompositionLibrary');
 const { getTaskProductivity } = require('../services/taskProductivity');
 const {
     VALID_TASK_CATEGORIES,
@@ -117,14 +90,12 @@ const {
     normalizeTaskCategory,
     normalizeTaskSubcategory,
     normalizePackStatus,
-    normalizeChecklistTemplateKey,
     normalizeSourceEntityType,
     normalizeSourceEntityId,
     normalizeUuid,
     normalizeOwnerRole,
     normalizeSlaMinutes,
-    getChecklistTemplate,
-    createChecklistSubtasks
+    getChecklistTemplate
 } = require('../services/taskTaxonomy');
 const {
     activeTaskBusinessContext,
@@ -324,7 +295,7 @@ const URGENT_TASK_MOVEMENT_ACTION_TYPES = [
 const VALID_CATEGORIES = VALID_TASK_CATEGORIES;
 const VALID_TASK_TYPES = ['human', 'bot'];
 const VALID_TASK_MODES = ['work', 'personal', 'private', 'system'];
-const VALID_TASK_KINDS = ['action', 'reminder', 'followup', 'deep_work', 'checklist', 'routine', 'waiting', 'idea', 'decision'];
+const VALID_TASK_KINDS = ['action', 'reminder', 'followup', 'deep_work', 'routine', 'waiting', 'idea', 'decision'];
 const VALID_TASK_VISIBILITIES = ['team', 'me_only', 'private'];
 const VALID_WORKFLOW_STATES = ['inbox', 'todo', 'in_progress', 'waiting', 'scheduled', 'done', 'archived'];
 
@@ -366,12 +337,10 @@ function normalizeTaskControlMeta(body = {}, oldTask = {}) {
     const base = taskControlMeta(oldTask);
     const incoming = parseJsonObject(body.controlMeta || body.control_meta || {});
     const meta = { ...base, ...incoming };
-    const reportRequiredRaw = hasOwn(body, 'reportRequired')
-        ? body.reportRequired
-        : (hasOwn(body, 'requiresReport') ? body.requiresReport
-            : (hasOwn(body, 'report_required') ? body.report_required
-                : (hasOwn(body, 'requires_report') ? body.requires_report : undefined)));
-    if (reportRequiredRaw !== undefined) meta.reportRequired = isTruthy(reportRequiredRaw);
+    for (const key of ['reportRequired', 'requiresReport', 'report_required', 'requires_report']) {
+        if (hasOwn(base, key)) meta[key] = base[key];
+        else delete meta[key];
+    }
 
     const rescheduleRaw = hasOwn(body, 'allowReschedule')
         ? body.allowReschedule
@@ -387,22 +356,7 @@ function normalizeTaskControlMeta(body = {}, oldTask = {}) {
     const reportIdRaw = body.reportId || body.report_id || meta.reportId || meta.report_id;
     const reportId = optionalInteger(reportIdRaw);
     if (reportId) meta.reportId = reportId;
-    if (meta.reportRequired === false && !reportId) {
-        delete meta.reportId;
-        delete meta.report_id;
-        delete meta.taskReportId;
-        delete meta.completionReportId;
-    }
     return meta;
-}
-
-function makeTaskReportRequiredError(task = {}) {
-    const err = new Error('Для виконання цієї задачі спочатку потрібно додати звіт.');
-    err.statusCode = 409;
-    err.code = 'TASK_REPORT_REQUIRED';
-    err.requiresReport = true;
-    err.task = { id: task.id, title: task.title || null, reportRequired: true };
-    return err;
 }
 
 async function ensureTaskReportReference(reportId, businessContext = null) {
@@ -458,12 +412,7 @@ function normalizeTaskOperations(body = {}, oldTask = {}) {
         : (body.category_leaf !== undefined ? body.category_leaf
             : (body.categoryLeaf !== undefined ? body.categoryLeaf : oldTask.subcategory));
     const subcategory = normalizeTaskSubcategory(category, subcategoryInput);
-    const checklistKeyInput = body.checklist_template_key !== undefined
-        ? body.checklist_template_key
-        : (body.checklistTemplateKey !== undefined ? body.checklistTemplateKey : oldTask.checklist_template_key);
-    const checklistTemplateKey = category === 'checklist'
-        ? normalizeChecklistTemplateKey(checklistKeyInput, subcategory)
-        : null;
+    const checklistTemplateKey = oldTask.checklist_template_key || null;
     const sourceEntityType = body.source_entity_type !== undefined
         ? normalizeSourceEntityType(body.source_entity_type)
         : (body.sourceEntityType !== undefined ? normalizeSourceEntityType(body.sourceEntityType) : (oldTask.source_entity_type || null));
@@ -635,30 +584,11 @@ async function createTaskDependencyRows(taskId, dependencyIds = [], options = {}
     return states;
 }
 
-async function attachSubtaskSummary(task, options = {}) {
-    if (!task?.id) return task;
-    const query = options.pool || pool;
-    const hasKnownCounts = Number.isFinite(Number(task.subtask_count)) && Number.isFinite(Number(task.subtask_done_count));
-    if (hasKnownCounts && (!options.includeSubtasks || Array.isArray(task.subtasks))) return task;
-    const result = await query.query(
-        `SELECT COUNT(*)::int AS total,
-                COUNT(*) FILTER (WHERE is_done = true)::int AS done
-         FROM task_subtasks
-         WHERE task_id = $1`,
-        [task.id]
-    );
-    task.subtask_count = result.rows[0]?.total || 0;
-    task.subtask_done_count = result.rows[0]?.done || 0;
-    if (options.includeSubtasks) {
-        task.subtasks = await listTaskSubtasks(query, task.id);
-    }
-    return task;
-}
-
 function normalizeTaskOsFields(body = {}, oldTask = {}) {
     const mode = enumValue(body.task_mode ?? body.taskMode ?? oldTask.task_mode, VALID_TASK_MODES, oldTask.task_mode || 'work');
     const visibility = defaultVisibilityForMode(mode, body.visibility ?? oldTask.visibility);
-    const kind = enumValue(body.task_kind ?? body.taskKind ?? oldTask.task_kind, VALID_TASK_KINDS, oldTask.task_kind || 'action');
+    const kind = enumValue(body.task_kind ?? body.taskKind ?? oldTask.task_kind, VALID_TASK_KINDS,
+        VALID_TASK_KINDS.includes(oldTask.task_kind) ? oldTask.task_kind : 'action');
     const workflow = enumValue(
         body.workflow_state ?? body.workflowState ?? oldTask.workflow_state,
         VALID_WORKFLOW_STATES,
@@ -939,7 +869,6 @@ function directTaskCreateRequestHashPayload(fields = {}) {
             sourceType: String(item?.sourceType || item?.source_type || 'manual').trim()
         })).filter(item => item.title) : [],
         controlMeta: fields.controlMeta || fields.control_meta || null,
-        reportRequired: fields.reportRequired === true || fields.report_required === true,
         allowReschedule: fields.allowReschedule !== false && fields.allow_reschedule !== false,
         force: isTruthy(fields.force || fields.forceDuplicate)
     };
@@ -1004,9 +933,8 @@ function sendTaskActionError(res, err) {
         success: false,
         error: err.message || 'Task action failed',
         code: err.code || 'TASK_ACTION_FAILED',
-        requiresReport: err.requiresReport === true,
         task: err.task || null,
-        meta: err.requiresReport ? { reportRequired: true } : err.meta
+        meta: err.meta
     });
 }
 
@@ -1069,63 +997,6 @@ function idempotencyKeyFromRequest(req) {
 
 function taskRequestId(req, res) {
     return String(res?.getHeader?.('X-Request-ID') || req?.headers?.['x-request-id'] || '').trim();
-}
-
-function legacyAiDraftClientVersion(req, body = {}) {
-    return String(
-        req?.headers?.['x-client-version']
-        || req?.headers?.['x-eventgenix-version']
-        || body.clientVersion
-        || body.client_version
-        || body.version
-        || ''
-    ).trim().slice(0, 80);
-}
-
-function taskDecompositionContextFromBody(body = {}, mode = 'manual') {
-    return {
-        title: body.title,
-        description: body.description,
-        category: body.category,
-        subcategory: body.subcategory,
-        taskKind: body.taskKind || body.task_kind,
-        taskMode: body.taskMode || body.task_mode,
-        taskType: body.taskType || body.task_type,
-        sourceType: body.sourceType || body.source_type,
-        sourceModule: body.sourceModule || body.source_module,
-        mode,
-        templateKey: body.templateKey || body.template_key
-    };
-}
-
-function legacyDecompositionTarget(mode) {
-    return mode === 'ai' || mode === 'template_ai'
-        ? '/api/tasks/ai-draft/preview'
-        : '/api/tasks/decomposition-draft';
-}
-
-function recordLegacyDecompositionTelemetry(req, res, body, mode, status, reasonCode, details = {}) {
-    const aiMode = mode === 'ai' || mode === 'template_ai';
-    recordTaskAiDraftTelemetry({
-        type: 'deprecation',
-        status,
-        outcome: 'legacy_wrapper',
-        route: '/api/tasks/decompose-draft',
-        mode,
-        clientVersion: legacyAiDraftClientVersion(req, body),
-        requestId: taskRequestId(req, res),
-        canonicalTarget: legacyDecompositionTarget(mode),
-        provider: aiMode ? (details.provider || 'openai') : 'deterministic',
-        model: aiMode ? (details.model || 'gpt-5.6-luna') : '',
-        contractVersion: aiMode
-            ? (details.contractVersion || TASK_AI_DRAFT_CONTRACT_VERSION)
-            : 'task_decomposition_template_v1',
-        promptVersion: aiMode ? (details.promptVersion || TASK_AI_DRAFT_PROMPT_VERSION) : '',
-        schemaName: aiMode ? (details.schemaName || TASK_AI_DRAFT_SCHEMA_NAME) : 'task_decomposition_draft',
-        reasoningEffort: aiMode ? (details.reasoningEffort || TASK_AI_DRAFT_REASONING_EFFORT) : '',
-        reasonCode,
-        businessContext: req.businessContext || body.businessContext || ''
-    });
 }
 
 async function buildTaskAiDraftPreview(req, res) {
@@ -1616,7 +1487,7 @@ router.get('/', async (req, res) => {
                 conditions.push(activeTaskSql, `(COALESCE(t.task_kind, 'action') = 'routine' OR t.type = 'recurring')`);
                 break;
             case 'done_today':
-                conditions.push(`COALESCE(t.status, 'todo') = 'done'`, `DATE(t.completed_at AT TIME ZONE 'Europe/Kyiv') = CURRENT_DATE`);
+                conditions.push(`t.status = 'done'`, `(t.completed_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Kyiv')::date = (NOW() AT TIME ZONE 'Europe/Kyiv')::date`);
                 break;
             case 'archive':
                 conditions.push(`t.status = 'archived'`);
@@ -1655,30 +1526,7 @@ router.get('/', async (req, res) => {
         const materializeTaskAggregates = activeDuplicateFilterRequired;
 
         const result = await pool.query(
-            `WITH task_list_subtask_counts AS ${materializeTaskAggregates ? 'MATERIALIZED' : 'NOT MATERIALIZED'} (
-                SELECT task_id,
-                       COUNT(*)::int AS total,
-                       COUNT(*) FILTER (WHERE is_done = true)::int AS done
-                FROM task_subtasks
-                GROUP BY task_id
-             ),
-             task_list_subtask_rows AS ${materializeTaskAggregates ? 'MATERIALIZED' : 'NOT MATERIALIZED'} (
-                SELECT task_id,
-                       json_agg(json_build_object(
-                           'id', id,
-                           'task_id', task_id,
-                           'title', title,
-                           'is_done', is_done,
-                           'sort_order', sort_order,
-                           'source_type', COALESCE(source_type, 'manual'),
-                           'created_at', created_at,
-                           'completed_at', completed_at,
-                           'updated_at', updated_at
-                       ) ORDER BY sort_order ASC, id ASC) AS subtasks
-                FROM task_subtasks
-                GROUP BY task_id
-             ),
-             task_list_dependency_counts AS ${materializeTaskAggregates ? 'MATERIALIZED' : 'NOT MATERIALIZED'} (
+            `WITH task_list_dependency_counts AS ${materializeTaskAggregates ? 'MATERIALIZED' : 'NOT MATERIALIZED'} (
                 SELECT d.task_id,
                        COUNT(*)::int AS total,
                        COUNT(*) FILTER (WHERE COALESCE(blocker.status, 'todo') NOT IN ('done','archived','cancelled'))::int AS open,
@@ -1705,22 +1553,16 @@ router.get('/', async (req, res) => {
                           AND viewer_tob.user_id = $${viewerUserIdParam}
                         LIMIT 1
                     ) AS viewer_observer_access_level,
-                    COALESCE(subtask_rows.subtasks, '[]'::json) AS subtasks,
-                    COALESCE(st.total, 0)::int AS subtask_count,
-                    COALESCE(st.done, 0)::int AS subtask_done_count,
                     COALESCE(dep.total, 0)::int AS dependency_count,
                     COALESCE(dep.open, 0)::int AS open_dependency_count,
                     dep.blocked_by_titles,
                     ${TASK_SUBSTITUTION_SELECT}
              FROM tasks t
              LEFT JOIN users u ON u.id = t.owner_user_id
-             LEFT JOIN task_list_subtask_counts st ON st.task_id = t.id
-             LEFT JOIN task_list_subtask_rows subtask_rows ON subtask_rows.task_id = t.id
              LEFT JOIN task_list_dependency_counts dep ON dep.task_id = t.id
              ${where}
              ORDER BY
                  CASE WHEN $${orderViewParam} = 'done_today' THEN COALESCE(t.completed_at, t.updated_at, t.created_at) END DESC NULLS LAST,
-                 CASE WHEN COALESCE(st.total, 0) > 0 AND COALESCE(t.status, 'todo') NOT IN ('done','archived','cancelled') THEN 0 ELSE 1 END,
                  ${taskPriorityOrderSql('t')},
                  ${canonicalTaskOrderSql('t')},
                  CASE t.status WHEN 'in_progress' THEN 0 WHEN 'todo' THEN 1 WHEN 'done' THEN 2 END,
@@ -2163,14 +2005,7 @@ router.patch('/preferences', async (req, res) => {
     }
 });
 
-// GET /api/tasks/decomposition-templates - template families for draft subtasks.
-router.get('/decomposition-templates', requireRole('admin', 'user'), async (req, res) => {
-    res.json({
-        success: true,
-        templates: getTaskDecompositionTemplates(),
-        modes: ['none', 'manual', 'template', 'ai', 'template_ai']
-    });
-});
+router.get('/decomposition-templates', requireRole('admin', 'user'), retiredTaskChecklist);
 
 // GET /api/tasks/ai-draft/status - public rollout status for the authenticated user; no secrets.
 router.get('/ai-draft/status', requireRole('admin', 'user'), async (req, res) => {
@@ -2330,203 +2165,14 @@ router.get('/ai-draft/bundles/:bundleId', requireRole('admin', 'user'), async (r
     }
 });
 
-// POST /api/tasks/decomposition-draft - deterministic/manual/template subtask draft only.
-// AI modes must use the canonical signed preview/commit flow.
-router.post('/decomposition-draft', requireRole('admin', 'user'), async (req, res) => {
-    try {
-        const body = req.body || {};
-        const mode = normalizeDecompositionMode(body.mode || body.decompositionMode || body.decomposition_mode, 'manual');
-        if (mode === 'ai' || mode === 'template_ai') {
-            return res.status(409).json({
-                success: false,
-                code: 'TASK_DECOMPOSITION_AI_MODE_REQUIRES_CANONICAL_PREVIEW',
-                error: 'AI decomposition must use the canonical AI draft preview.',
-                canonicalEndpoint: '/api/tasks/ai-draft/preview'
-            });
-        }
-        const result = await generateTaskDecompositionDraft(taskDecompositionContextFromBody(body, mode));
-        if (!result.success) return res.status(result.status || 400).json(result);
-        return res.json(result);
-    } catch (err) {
-        log.error('Deterministic task decomposition draft error', err);
-        return res.status(500).json({
-            success: false,
-            code: 'TASK_DECOMPOSITION_DRAFT_FAILED',
-            error: 'Не вдалося підготувати чернетку підзадач. Нічого не збережено.'
-        });
-    }
-});
-
-// POST /api/tasks/decompose-draft - deprecated compatibility wrapper only.
-router.post('/decompose-draft', requireRole('admin', 'user'), async (req, res) => {
-    try {
-        const b = req.body || {};
-        const mode = normalizeDecompositionMode(b.mode || b.decompositionMode || b.decomposition_mode, 'ai');
-        recordLegacyDecompositionTelemetry(
-            req,
-            res,
-            b,
-            mode,
-            'attempt',
-            'legacy_decompose_wrapper_attempt'
-        );
-        if (mode === 'ai' || mode === 'template_ai') {
-            // Compatibility wrapper only: canonical AI task draft generation lives in
-            // taskAiDraftPreview. Removal condition: zero legacy AI wrapper calls for
-            // 30 days plus confirmation that no old UI clients still depend on this shape.
-            const preview = await buildTaskAiDraftPreview(req, res);
-            if (!preview) return;
-            if (!preview.ok) {
-                return res.status(taskAiPreviewFailureStatus(preview)).json({
-                    success: false,
-                    deprecated: true,
-                    deprecatedEndpoint: '/api/tasks/ai-draft/preview',
-                    code: preview.code,
-                    error: preview.reason || 'task_ai_draft_preview_failed',
-                    provider: preview.provider,
-                    model: preview.model
-                });
-            }
-            if (preview.proposal?.action !== 'apply') {
-                recordLegacyDecompositionTelemetry(
-                    req,
-                    res,
-                    b,
-                    mode,
-                    'success',
-                    'legacy_decompose_wrapper_non_apply',
-                    preview
-                );
-                return res.status(422).json({
-                    success: false,
-                    deprecated: true,
-                    deprecatedEndpoint: '/api/tasks/ai-draft/preview',
-                    code: `TASK_AI_DRAFT_${String(preview.proposal?.action || 'NO_CHANGE').toUpperCase()}`,
-                    decision: preview.proposal?.action,
-                    error: preview.proposal?.reason || 'AI draft proposal is not directly applicable.',
-                    proposal: preview.proposal,
-                    diff: preview.diff,
-                    proposalToken: preview.proposalToken
-                });
-            }
-            recordLegacyDecompositionTelemetry(
-                req,
-                res,
-                b,
-                mode,
-                'success',
-                'legacy_decompose_wrapper_used',
-                preview
-            );
-            return res.json(legacyDecompositionResponseFromPreview(preview, mode));
-        }
-        const result = await generateTaskDecompositionDraft(taskDecompositionContextFromBody(b, mode));
-        if (!result.success) {
-            return res.status(result.status || 400).json(result);
-        }
-        recordLegacyDecompositionTelemetry(
-            req,
-            res,
-            b,
-            mode,
-            'success',
-            'legacy_decompose_wrapper_used'
-        );
-        return res.json({
-            ...result,
-            deprecated: true,
-            deprecatedEndpoint: '/api/tasks/decomposition-draft'
-        });
-    } catch (err) {
-        log.error('Task decomposition draft error', err);
-        res.status(500).json({
-            success: false,
-            code: 'TASK_DECOMPOSITION_DRAFT_FAILED',
-            error: 'Не вдалося підготувати чернетку підзадач. Нічого не збережено.'
-        });
-    }
-});
-
-// GET /api/tasks/decomposition-saved-templates - personal reusable decomposition templates.
-router.get('/decomposition-saved-templates', requireRole('admin', 'user'), async (req, res) => {
-    try {
-        const templates = await listSavedDecompositionTemplates(pool, req.user, {
-            category: req.query.category,
-            limit: req.query.limit
-        });
-        res.json({ success: true, templates });
-    } catch (err) {
-        if (err.statusCode) return res.status(err.statusCode).json({ success: false, error: err.message });
-        log.error('List saved decomposition templates error', err);
-        res.status(500).json({ success: false, error: 'Internal server error' });
-    }
-});
-
-// POST /api/tasks/decomposition-saved-templates - save the current editable subtask draft as a personal template.
-router.post('/decomposition-saved-templates', requireRole('admin', 'user'), async (req, res) => {
-    try {
-        const template = await createSavedDecompositionTemplate(pool, req.user, req.body || {});
-        res.json({ success: true, template });
-    } catch (err) {
-        if (err.statusCode) return res.status(err.statusCode).json({ success: false, error: err.message });
-        log.error('Create saved decomposition template error', err);
-        res.status(500).json({ success: false, error: 'Internal server error' });
-    }
-});
-
-// PUT /api/tasks/decomposition-saved-templates/:templateId - edit a personal saved decomposition template.
-router.put('/decomposition-saved-templates/:templateId', requireRole('admin', 'user'), async (req, res) => {
-    try {
-        const template = await updateSavedDecompositionTemplate(pool, req.user, req.params.templateId, req.body || {});
-        res.json({ success: true, template });
-    } catch (err) {
-        if (err.statusCode) return res.status(err.statusCode).json({ success: false, error: err.message });
-        log.error('Update saved decomposition template error', err);
-        res.status(500).json({ success: false, error: 'Internal server error' });
-    }
-});
-
-// DELETE /api/tasks/decomposition-saved-templates/:templateId - soft-delete a personal saved template.
-router.delete('/decomposition-saved-templates/:templateId', requireRole('admin', 'user'), async (req, res) => {
-    try {
-        await deleteSavedDecompositionTemplate(pool, req.user, req.params.templateId);
-        res.json({ success: true });
-    } catch (err) {
-        if (err.statusCode) return res.status(err.statusCode).json({ success: false, error: err.message });
-        log.error('Delete saved decomposition template error', err);
-        res.status(500).json({ success: false, error: 'Internal server error' });
-    }
-});
-
-// POST /api/tasks/decomposition-saved-templates/:templateId/apply - apply a saved template into editable draft rows.
-router.post('/decomposition-saved-templates/:templateId/apply', requireRole('admin', 'user'), async (req, res) => {
-    try {
-        const template = await applySavedDecompositionTemplate(pool, req.user, req.params.templateId);
-        res.json({
-            success: true,
-            source: 'saved_template',
-            template,
-            subtasks: template.subtasks,
-            meta: { humanReviewRequired: true, persisted: false }
-        });
-    } catch (err) {
-        if (err.statusCode) return res.status(err.statusCode).json({ success: false, error: err.message });
-        log.error('Apply saved decomposition template error', err);
-        res.status(500).json({ success: false, error: 'Internal server error' });
-    }
-});
-
-// POST /api/tasks/decomposition-suggestions - restrained template/history suggestions for the current user.
-router.post('/decomposition-suggestions', requireRole('admin', 'user'), async (req, res) => {
-    try {
-        const suggestions = await getDecompositionSuggestions(pool, req.user, req.body || {});
-        res.json({ success: true, ...suggestions });
-    } catch (err) {
-        if (err.statusCode) return res.status(err.statusCode).json({ success: false, error: err.message });
-        log.error('Task decomposition suggestions error', err);
-        res.status(500).json({ success: false, error: 'Internal server error' });
-    }
-});
+router.post('/decomposition-draft', requireRole('admin', 'user'), retiredTaskChecklist);
+router.post('/decompose-draft', requireRole('admin', 'user'), retiredTaskChecklist);
+router.get('/decomposition-saved-templates', requireRole('admin', 'user'), retiredTaskChecklist);
+router.post('/decomposition-saved-templates', requireRole('admin', 'user'), retiredTaskChecklist);
+router.put('/decomposition-saved-templates/:templateId', requireRole('admin', 'user'), retiredTaskChecklist);
+router.delete('/decomposition-saved-templates/:templateId', requireRole('admin', 'user'), retiredTaskChecklist);
+router.post('/decomposition-saved-templates/:templateId/apply', requireRole('admin', 'user'), retiredTaskChecklist);
+router.post('/decomposition-suggestions', requireRole('admin', 'user'), retiredTaskChecklist);
 
 // GET /api/tasks/my-cabinet/completions — paginated parent task completion history
 router.get('/my-cabinet/completions', async (req, res) => {
@@ -2568,6 +2214,7 @@ router.get('/my-cabinet', async (req, res) => {
         if (!businessScope) return;
         const rawBucket = req.query.bucket || req.query.pageBucket || req.query.page_bucket;
         const bucket = normalizeTaskCabinetBucket(rawBucket);
+        const excludeControlFromPlanning = req.query.planningView === 'my-day';
         if (rawBucket && !bucket) {
             return res.status(400).json({ success: false, error: 'Unsupported My Cabinet bucket' });
         }
@@ -2577,6 +2224,7 @@ router.get('/my-cabinet', async (req, res) => {
                 user: req.user,
                 businessScope,
                 bucket,
+                excludeControlFromPlanning,
                 includeLegacyMetadata: false,
                 focusDate: normalizeTaskCabinetFocusDate(req.query.focusDate || req.query.focus_date),
                 bucketLimit: normalizeTaskCabinetBucketLimit(req.query.limit || req.query.bucketLimit || req.query.bucket_limit),
@@ -2588,6 +2236,7 @@ router.get('/my-cabinet', async (req, res) => {
             pool,
             user: req.user,
             businessScope,
+            excludeControlFromPlanning,
             includeLegacyMetadata: false,
             focusDate: normalizeTaskCabinetFocusDate(req.query.focusDate || req.query.focus_date),
             planningRowLimit: req.query.planningRowLimit || req.query.planning_row_limit,
@@ -2805,9 +2454,6 @@ router.get('/:id', async (req, res) => {
                         LIMIT 1
                     ) AS viewer_observer_access_level,
                     COALESCE(observer_rows.observers, '[]'::json) AS observers,
-                    COALESCE(subtask_rows.subtasks, '[]'::json) AS subtasks,
-                    COALESCE(st.total, 0)::int AS subtask_count,
-                    COALESCE(st.done, 0)::int AS subtask_done_count,
                     COALESCE(dep.total, 0)::int AS dependency_count,
                     COALESCE(dep.open, 0)::int AS open_dependency_count,
                     dep.blocked_by_titles,
@@ -2815,13 +2461,6 @@ router.get('/:id', async (req, res) => {
                     ${TASK_SUBSTITUTION_SELECT}
              FROM tasks t
              LEFT JOIN users u ON u.id = t.owner_user_id
-             LEFT JOIN (
-                SELECT task_id,
-                       COUNT(*)::int AS total,
-                       COUNT(*) FILTER (WHERE is_done = true)::int AS done
-                FROM task_subtasks
-                GROUP BY task_id
-             ) st ON st.task_id = t.id
              LEFT JOIN (
                 SELECT d.task_id,
                        COUNT(*)::int AS total,
@@ -2856,22 +2495,6 @@ router.get('/:id', async (req, res) => {
                 JOIN users ou ON ou.id = tob.user_id
                 GROUP BY tob.task_id
              ) observer_rows ON observer_rows.task_id = t.id
-             LEFT JOIN (
-                SELECT task_id,
-                       json_agg(json_build_object(
-                           'id', id,
-                           'task_id', task_id,
-                           'title', title,
-                           'is_done', is_done,
-                           'sort_order', sort_order,
-                           'source_type', COALESCE(source_type, 'manual'),
-                           'created_at', created_at,
-                           'completed_at', completed_at,
-                           'updated_at', updated_at
-                       ) ORDER BY sort_order ASC, id ASC) AS subtasks
-                FROM task_subtasks
-                GROUP BY task_id
-             ) subtask_rows ON subtask_rows.task_id = t.id
              WHERE t.id = $1 ${visibility} ${businessCondition}
              LIMIT 1`,
             params
@@ -2988,7 +2611,6 @@ router.post('/:id/completion-report', requireTaskReportAmountAccess, shapeTaskRe
             taskCompletionReport: {
                 taskId: task.id,
                 taskTitle: task.title || null,
-                required: true,
                 sourceSurface: sourceSurface(req.body, 'task_detail'),
                 submittedByUserId: normalizeUserId(req.user),
                 submittedByUsername: req.user?.username || null,
@@ -3020,7 +2642,6 @@ router.post('/:id/completion-report', requireTaskReportAmountAccess, shapeTaskRe
         const update = await pool.query(
             `UPDATE tasks
              SET control_meta = COALESCE(control_meta, '{}'::jsonb) || jsonb_build_object(
-                    'reportRequired', true,
                     'reportId', $2::int,
                     'reportSubmittedAt', NOW(),
                     'reportSubmittedBy', $3::text
@@ -3194,165 +2815,15 @@ router.patch('/:id/commitment', requireRole('admin', 'user'), async (req, res) =
     }
 });
 
-// GET /api/tasks/:id/subtasks — checklist projection
-router.get('/:id/subtasks', async (req, res) => {
-    try {
-        const businessScope = requireTaskReadScope(req, res);
-        if (!businessScope) return;
-        const params = [req.params.id];
-        const visibility = buildTaskVisibilityScope(req.user, params, 't');
-        const businessCondition = appendTaskBusinessScopeSql(params, businessScope, 't');
-        const visible = await pool.query(`SELECT t.id FROM tasks t WHERE t.id = $1 ${visibility} ${businessCondition} LIMIT 1`, params);
-        if (!visible.rows.length) return res.status(404).json({ error: 'Task not found' });
-        const result = await pool.query(
-            `SELECT *
-             FROM task_subtasks
-             WHERE task_id = $1
-             ORDER BY sort_order ASC, id ASC`,
-            [req.params.id]
-        );
-        res.json({ success: true, subtasks: result.rows.map(normalizeSubtaskRow) });
-    } catch (err) {
-        log.error('Get subtasks error', err);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
+function retiredTaskChecklist(req, res) {
+    res.status(410).json({ success: false, code: 'TASK_CHECKLIST_RETIRED', error: 'Чеклісти задач вимкнено.' });
+}
 
-// POST /api/tasks/:id/subtasks — add checklist item
-router.post('/:id/subtasks', requireRole('admin', 'user'), async (req, res) => {
-    try {
-        const businessScope = requireTaskWriteScope(req, res);
-        if (!businessScope) return;
-        await loadMutableTask(req.params.id, req.user, businessScope);
-        const title = String(req.body.title || '').trim();
-        if (!title) return res.status(400).json({ error: 'title required' });
-        const sourceType = normalizeSubtaskSourceType(req.body.source_type || req.body.sourceType || 'manual');
-        const rawSortOrder = req.body.sort_order ?? req.body.sortOrder;
-        const parsedSortOrder = Number.parseInt(rawSortOrder, 10);
-        const sortOrder = Number.isInteger(parsedSortOrder) ? parsedSortOrder : null;
-        const result = await pool.query(
-            `INSERT INTO task_subtasks (task_id, title, sort_order, source_type)
-             VALUES (
-                $1,
-                $2,
-                COALESCE(
-                    $3::int,
-                    (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM task_subtasks WHERE task_id = $1)
-                ),
-                $4
-             )
-             RETURNING *`,
-            [req.params.id, title, sortOrder, sourceType]
-        );
-        await pool.query(
-            `UPDATE tasks
-             SET task_kind = CASE WHEN task_kind = 'action' THEN 'checklist' ELSE task_kind END,
-                 updated_at = NOW()
-             WHERE id = $1`,
-            [req.params.id]
-        );
-        res.json({ success: true, subtask: normalizeSubtaskRow(result.rows[0]) });
-    } catch (err) {
-        return sendTaskActionError(res, err);
-    }
-});
-
-// POST /api/tasks/:id/subtasks/reorder - persist checklist drag-and-drop order
-router.post('/:id/subtasks/reorder', requireRole('admin', 'user'), async (req, res) => {
-    try {
-        const businessScope = requireTaskWriteScope(req, res);
-        if (!businessScope) return;
-        await loadMutableTask(req.params.id, req.user, businessScope);
-        const orderedIds = normalizeSubtaskReorderIds(req.body);
-        const subtasks = await reorderTaskSubtasks(pool, req.params.id, orderedIds);
-        res.json({ success: true, subtasks });
-    } catch (err) {
-        return sendTaskActionError(res, err);
-    }
-});
-
-// PATCH /api/tasks/:id/subtasks/:subtaskId - toggle/update checklist item
-router.patch('/:id/subtasks/:subtaskId', requireRole('admin', 'user'), async (req, res) => {
-    try {
-        const businessScope = requireTaskWriteScope(req, res);
-        if (!businessScope) return;
-        const task = await loadMutableTask(req.params.id, req.user, businessScope);
-        const sets = [];
-        const values = [];
-        let nextDoneState = null;
-        if (req.body.title !== undefined) {
-            const title = String(req.body.title || '').trim();
-            if (!title) return res.status(400).json({ error: 'title required' });
-            values.push(title);
-            sets.push(`title = $${values.length}`);
-        }
-        if (req.body.is_done !== undefined || req.body.isDone !== undefined) {
-            const done = isTruthy(req.body.is_done !== undefined ? req.body.is_done : req.body.isDone);
-            nextDoneState = done;
-            values.push(done);
-            sets.push(`is_done = $${values.length}`);
-            sets.push(`completed_at = CASE WHEN $${values.length} = true THEN NOW() ELSE NULL END`);
-        }
-        if (req.body.sort_order !== undefined || req.body.sortOrder !== undefined) {
-            values.push(parseInt(req.body.sort_order ?? req.body.sortOrder, 10) || 0);
-            sets.push(`sort_order = $${values.length}`);
-        }
-        if (req.body.source_type !== undefined || req.body.sourceType !== undefined) {
-            values.push(normalizeSubtaskSourceType(req.body.source_type ?? req.body.sourceType));
-            sets.push(`source_type = $${values.length}`);
-        }
-        if (!sets.length) return res.status(400).json({ error: 'No changes' });
-        sets.push('updated_at = NOW()');
-        values.push(req.params.id, req.params.subtaskId);
-        const result = await pool.query(
-            `UPDATE task_subtasks
-             SET ${sets.join(', ')}
-             WHERE task_id = $${values.length - 1} AND id = $${values.length}
-             RETURNING *`,
-            values
-        );
-        if (!result.rows.length) return res.status(404).json({ error: 'Subtask not found' });
-        await pool.query('UPDATE tasks SET updated_at = NOW() WHERE id = $1', [req.params.id]);
-        if (nextDoneState === true) {
-            try {
-                await logTaskActionEvent({
-                    taskId: task.id,
-                    actionType: TASK_ACTION_TYPES.SUBTASK_COMPLETED,
-                    actor: req.user,
-                    sourceSurface: sourceSurface(req.body, 'task_page'),
-                    newValue: { subtaskId: Number(req.params.subtaskId), isDone: true },
-                    meta: { movement: 'subtask_done' }
-                });
-                await markUrgentTaskMovement(task.id, task, req.user, 'subtask_done');
-            } catch (historyErr) {
-                log.warn(`Subtask movement history skipped: ${historyErr.message}`);
-            }
-        }
-        res.json({ success: true, subtask: normalizeSubtaskRow(result.rows[0]) });
-    } catch (err) {
-        return sendTaskActionError(res, err);
-    }
-});
-
-// DELETE /api/tasks/:id/subtasks/:subtaskId - remove checklist item
-router.delete('/:id/subtasks/:subtaskId', requireRole('admin', 'user'), async (req, res) => {
-    try {
-        const businessScope = requireTaskWriteScope(req, res);
-        if (!businessScope) return;
-        await loadMutableTask(req.params.id, req.user, businessScope);
-        const result = await pool.query(
-            `DELETE FROM task_subtasks
-             WHERE task_id = $1 AND id = $2
-             RETURNING id`,
-            [req.params.id, req.params.subtaskId]
-        );
-        if (!result.rows.length) return res.status(404).json({ error: 'Subtask not found' });
-        await pool.query('UPDATE tasks SET updated_at = NOW() WHERE id = $1', [req.params.id]);
-        res.json({ success: true, deletedId: Number(result.rows[0].id) });
-    } catch (err) {
-        return sendTaskActionError(res, err);
-    }
-});
+router.get('/:id/subtasks', retiredTaskChecklist);
+router.post('/:id/subtasks', requireRole('admin', 'user'), retiredTaskChecklist);
+router.post('/:id/subtasks/reorder', requireRole('admin', 'user'), retiredTaskChecklist);
+router.patch('/:id/subtasks/:subtaskId', requireRole('admin', 'user'), retiredTaskChecklist);
+router.delete('/:id/subtasks/:subtaskId', requireRole('admin', 'user'), retiredTaskChecklist);
 
 // POST /api/tasks/:id/focus — pin/unpin in personal focus lane
 router.post('/:id/focus', requireRole('admin', 'user'), async (req, res) => {
@@ -3523,6 +2994,18 @@ router.post('/:id/reschedule', async (req, res) => {
     }
 });
 
+router.post('/:id/reschedule/undo', async (req, res) => {
+    try {
+        const businessScope = requireTaskWriteScope(req, res);
+        if (!businessScope) return;
+        const task = await undoQuickTodayReschedule(req.params.id, req.body?.eventId, req.user, { businessScope });
+        res.json({ success: true, task: normalizeTaskPayload(task) });
+        _alertPush();
+    } catch (err) {
+        sendTaskActionError(res, err);
+    }
+});
+
 // v10.0: GET /api/tasks/:id/logs — task change history
 router.post('/:id/schedule', async (req, res) => {
     try {
@@ -3613,7 +3096,6 @@ router.post('/operation-pack', requireTaskRouteCapability('create'), async (req,
                 source_id: packId,
                 category: 'checklist',
                 subcategory: template.subcategory,
-                checklist_template_key: item.templateKey,
                 source_entity_type: sourceEntityType,
                 source_entity_id: sourceEntityId,
                 pack_id: packId,
@@ -3624,16 +3106,11 @@ router.post('/operation-pack', requireTaskRouteCapability('create'), async (req,
                 created_by: username,
                 created_by_user_id: normalizeUserId(req.user),
                 task_mode: 'work',
-                task_kind: 'checklist',
+                task_kind: 'action',
                 visibility: 'team',
                 workflow_state: 'todo',
                 source_module: 'tasks_operation_pack'
             });
-            if (!task.duplicateSkipped) {
-                const subtasks = await createChecklistSubtasks(pool, task.id, item.templateKey);
-                task.subtask_count = subtasks.length;
-                task.subtask_done_count = 0;
-            }
             created.push(task);
             taskByTemplateKey[item.templateKey] = task;
         }
@@ -3653,7 +3130,6 @@ router.post('/operation-pack', requireTaskRouteCapability('create'), async (req,
                 packStatus,
                 sourceEntityType,
                 sourceEntityId,
-                checklistTemplates: created.map(task => task.checklist_template_key),
                 businessScope: taskBusinessScopeMeta(businessScope)
             }
         });
@@ -3697,14 +3173,6 @@ router.post('/', requireTaskRouteCapability('create'), async (req, res) => {
         const controlMeta = normalizeTaskControlMeta(b);
         const taskPriority = normalizeTaskPriority(priority);
         applyUrgentPriorityDefaults(taskPriority, osFields, opsFields, controlMeta);
-        const hasManualSubtasks = hasSubtaskPayload(b);
-        const manualSubtasks = hasManualSubtasks ? subtaskPayloadFromBody(b) : [];
-        if (opsFields.category === 'checklist' && osFields.task_kind === 'action') {
-            osFields.task_kind = 'checklist';
-        }
-        if (manualSubtasks.some(item => String((item && typeof item === 'object' ? item.title || item.name : item) || '').trim())) {
-            osFields.task_kind = 'checklist';
-        }
 
         if (!title || !title.trim()) return res.status(400).json({ error: 'title required' });
         if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'Invalid date' });
@@ -3760,7 +3228,6 @@ router.post('/', requireTaskRouteCapability('create'), async (req, res) => {
                 template_id,
                 afisha_id,
                 controlMeta,
-                subtasks: manualSubtasks,
                 ...osFields
             }))
             : '';
@@ -3896,36 +3363,10 @@ router.post('/', requireTaskRouteCapability('create'), async (req, res) => {
                     recordPostCreateWarning('schedule', err);
                 }
             }
-            if (hasManualSubtasks && !task.duplicateSkipped) {
-                try {
-                    const subtasks = await replaceTaskSubtasks(query, task.id, manualSubtasks, { sourceType: 'manual' });
-                    responseTask.subtask_count = subtasks.length;
-                    responseTask.subtask_done_count = subtasks.filter(item => item.isDone || item.is_done).length;
-                    responseTask.subtasks = subtasks;
-                } catch (err) {
-                    recordPostCreateWarning('subtasks', err);
-                }
-            } else if (task.task_kind === 'checklist' && task.checklist_template_key) {
-                try {
-                    const subtasks = await createChecklistSubtasks(query, task.id, task.checklist_template_key);
-                    responseTask.subtask_count = subtasks.length;
-                    responseTask.subtask_done_count = 0;
-                } catch (err) {
-                    recordPostCreateWarning('checklist_subtasks', err);
-                }
-            } else {
-                responseTask.subtask_count = 0;
-                responseTask.subtask_done_count = 0;
-            }
             try {
                 await createTaskDependencyRows(task.id, dependency_ids, { pool: query });
             } catch (err) {
                 recordPostCreateWarning('dependencies', err);
-            }
-            try {
-                responseTask = await attachSubtaskSummary(responseTask, { includeSubtasks: hasManualSubtasks, pool: query });
-            } catch (err) {
-                recordPostCreateWarning('subtask_summary', err);
             }
             if (directIdempotencyKey) {
                 directCreateHistoryEvent = await logTaskActionEvent({
@@ -3937,7 +3378,6 @@ router.post('/', requireTaskRouteCapability('create'), async (req, res) => {
                     newValue: {
                         taskId: Number(task.id),
                         scheduleWritten: Boolean(scheduleResult?.task?.date || date || deadline),
-                        subtaskCount: Number(responseTask?.subtask_count || 0),
                         postCreateWarningCount: postCreateWarnings.length
                     },
                     meta: {
@@ -4090,30 +3530,17 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
         const osFields = normalizeTaskOsFields({ ...b, status: taskStatus }, old);
         const controlMeta = normalizeTaskControlMeta(b, old);
         if (taskStatus !== 'done') applyUrgentPriorityDefaults(taskPriority, osFields, opsFields, controlMeta, old);
-        const hasManualSubtasks = hasSubtaskPayload(b);
-        const manualSubtasks = hasManualSubtasks ? subtaskPayloadFromBody(b) : [];
-        if (taskCategory === 'checklist' && osFields.task_kind === 'action') osFields.task_kind = 'checklist';
-        if (manualSubtasks.some(item => String((item && typeof item === 'object' ? item.title || item.name : item) || '').trim())) {
-            osFields.task_kind = 'checklist';
-        }
         if (taskStatus === 'done') osFields.workflow_state = 'done';
         if (taskStatus === 'done') {
-            const reportId = await ensureTaskReportReference(
-                b.reportId || b.report_id || taskCompletionReportId({ ...old, control_meta: controlMeta }),
-                old.business_context
-            );
-            if (taskRequiresCompletionReport({ ...old, control_meta: controlMeta }) && !reportId) {
-                return sendTaskActionError(res, makeTaskReportRequiredError(old));
-            }
+            const reportId = await ensureTaskReportReference(b.reportId || b.report_id, old.business_context);
             if (reportId) {
-                controlMeta.reportRequired = true;
                 controlMeta.reportId = reportId;
                 controlMeta.reportSubmittedAt = controlMeta.reportSubmittedAt || new Date().toISOString();
                 controlMeta.reportSubmittedBy = controlMeta.reportSubmittedBy || (req.user?.username || req.user?.name || 'system');
             }
         }
         const setClauses = ['title=$1', 'description=$2', 'date=$3', 'status=$4', 'priority=$5',
-            'assigned_to=$6', 'owner=$7', 'owner_user_id=$8', `updated_at=NOW()`, `completed_at=CASE WHEN $9='done' THEN NOW() ELSE NULL END`,
+            'assigned_to=$6', 'owner=$7', 'owner_user_id=$8', `updated_at=NOW()`, `completed_at=CASE WHEN $9='done' THEN NOW() AT TIME ZONE 'UTC' ELSE NULL END`,
             'version=COALESCE(version,1)+1'];
         const values = [title.trim(), description || null, old.date || null, taskStatus, taskPriority,
                         assigned_to || null, owner || null, owner_user_id || null, taskStatus];
@@ -4222,23 +3649,6 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
             updatedTask.observers = await replaceTaskObservers(updatedTask, observerIdsFromBody(b), req.user);
             updatedTask.observer_count = updatedTask.observers.length;
         }
-        if (hasManualSubtasks) {
-            const subtasks = await replaceTaskSubtasks(pool, updatedTask.id, manualSubtasks, { sourceType: 'manual' });
-            updatedTask.subtask_count = subtasks.length;
-            updatedTask.subtask_done_count = subtasks.filter(item => item.isDone || item.is_done).length;
-            updatedTask.subtasks = subtasks;
-        }
-        if (
-            updatedTask.task_kind === 'checklist' &&
-            updatedTask.checklist_template_key &&
-            !hasManualSubtasks &&
-            old.checklist_template_key !== updatedTask.checklist_template_key
-        ) {
-            const existingSubtasks = await pool.query('SELECT COUNT(*)::int AS count FROM task_subtasks WHERE task_id = $1', [updatedTask.id]);
-            if (!existingSubtasks.rows[0]?.count) {
-                await createChecklistSubtasks(pool, updatedTask.id, updatedTask.checklist_template_key);
-            }
-        }
 
         // v19.10/v0.48.12: Notify only when assignment actually changes.
         if (taskAssigneeChanged(old, updatedTask) && (updatedTask.owner_user_id || updatedTask.assigned_to)) {
@@ -4246,7 +3656,6 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
             emitTaskAssignedToOwner(updatedTask, req.user, { assignmentEvent: 'updated_assignment', source: 'routes/tasks.update' });
         }
 
-        updatedTask = await attachSubtaskSummary(updatedTask, { includeSubtasks: hasManualSubtasks });
         res.json({
             success: true,
             task: normalizeTaskPayload(updatedTask),
@@ -4478,15 +3887,9 @@ router.post('/bulk', requireRole('admin', 'user'), async (req, res) => {
             );
         } else if (action === 'done') {
             result = await pool.query(
-                `UPDATE tasks t SET status = 'done', workflow_state = 'done', completed_at = NOW(), updated_at = NOW()
+                `UPDATE tasks t SET status = 'done', workflow_state = 'done', completed_at = NOW() AT TIME ZONE 'UTC', updated_at = NOW()
                  WHERE t.id = ANY($1::int[]) ${visibility} ${businessCondition}
-                   AND COALESCE(t.status, 'todo') NOT IN ('done','archived')
-                   AND NOT EXISTS (
-                       SELECT 1
-                       FROM task_subtasks st
-                       WHERE st.task_id = t.id
-                         AND COALESCE(st.is_done, false) = false
-                   )`,
+                   AND COALESCE(t.status, 'todo') NOT IN ('done','archived')`,
                 params
             );
         } else if (action === 'assign' && assignTo) {

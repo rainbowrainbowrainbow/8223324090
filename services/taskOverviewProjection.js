@@ -2,7 +2,7 @@
 
 const { dateOnly, todayKyivDate } = require('./taskScheduling');
 const { normalizeTaskPriority, normalizePostponementCount } = require('./taskPostponementPolicy');
-const { taskCompletionReportId, taskControlMeta, taskRequiresCompletionReport } = require('./taskExecution');
+const { taskControlMeta } = require('./taskExecution');
 
 const WAITING_STALE_DAYS = 3;
 const STALE_DAYS = 7;
@@ -19,13 +19,12 @@ const REASON_DEFINITIONS = Object.freeze({
     no_date: { label: 'Без дати', recommendedAction: 'Запланувати дату' },
     stale: { label: 'Без руху', recommendedAction: 'Оновити план або статус' },
     repeatedly_rescheduled: { label: 'Неодноразово перенесено', recommendedAction: 'Погодити реалістичний строк' },
-    report_required: { label: 'Потрібен звіт', recommendedAction: 'Додати звіт перед завершенням' },
     review_required: { label: 'Потрібен review', recommendedAction: 'Провести review задачі' }
 });
 
 const REASON_PRIORITY = Object.freeze([
     'overdue', 'urgent', 'blocked', 'unassigned', 'waiting_too_long',
-    'due_today', 'repeatedly_rescheduled', 'stale', 'report_required',
+    'due_today', 'repeatedly_rescheduled', 'stale',
     'review_required', 'no_date'
 ]);
 
@@ -101,7 +100,6 @@ function classifyTaskExceptions(task = {}, options = {}) {
     if (!dueDate) reasons.push(reason('no_date'));
     if (!waiting && Number.isFinite(inactivityDays) && inactivityDays >= STALE_DAYS) reasons.push(reason('stale', inactivityDays));
     if (postponements >= REPEATED_POSTPONEMENT_COUNT) reasons.push(reason('repeatedly_rescheduled', postponements));
-    if (taskRequiresCompletionReport(task) && !taskCompletionReportId(task)) reasons.push(reason('report_required'));
     if (needsReview(task)) reasons.push(reason('review_required'));
 
     return reasons.sort((left, right) => REASON_PRIORITY.indexOf(left.code) - REASON_PRIORITY.indexOf(right.code));

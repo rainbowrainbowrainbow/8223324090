@@ -181,7 +181,7 @@ async function closeTasks(queryable, tasks = [], status, actor = {}, reason = nu
             SET status = $2::text,
                 workflow_state = $3::text,
                 schedule_status = $4::text,
-                completed_at = CASE WHEN $2::text = 'done' THEN COALESCE(completed_at, NOW()) ELSE completed_at END,
+                completed_at = CASE WHEN $2::text = 'done' THEN COALESCE(completed_at, NOW() AT TIME ZONE 'UTC') ELSE completed_at END,
                 archived_at = CASE WHEN $2::text <> 'done' THEN COALESCE(archived_at, NOW()) ELSE archived_at END,
                 archive_reason = CASE WHEN $2::text <> 'done' THEN $5::text ELSE archive_reason END,
                 updated_at = NOW(),

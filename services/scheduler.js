@@ -23,7 +23,6 @@ const { formatAfishaBlock } = require('./templates');
 const { CLIENT_PINATA_FILLER_LABEL, isClientOwnedPinataFiller } = require('./pinataMode');
 const { createLogger } = require('../utils/logger');
 const { canViewBooking, getVisibleBookingScope } = require('./bookingVisibility');
-const { createChecklistSubtasks } = require('./taskTaxonomy');
 const { processMissedSlots } = require('./taskScheduling');
 const {
     DEFAULT_TIMELINE_CONTEXT,
@@ -650,17 +649,13 @@ async function checkRecurringTasks() {
                 }),
                 category: tpl.category || 'admin',
                 subcategory: tpl.subcategory || null,
-                task_kind: tpl.default_task_kind || 'action',
-                checklist_template_key: tpl.checklist_template_key || null,
+                task_kind: (tpl.default_task_kind === 'checklist' ? 'action' : tpl.default_task_kind) || 'action',
                 owner_role: tpl.owner_role || null,
                 sla_minutes: tpl.sla_minutes || null,
                 businessContext: activeTaskBusinessContext(tpl.business_context || DEFAULT_TASK_BUSINESS_CONTEXT),
                 duplicateMode: 'skip'
             });
             if (!task || task.duplicateSkipped) continue;
-            if (task.task_kind === 'checklist' && task.checklist_template_key) {
-                await createChecklistSubtasks(pool, task.id, task.checklist_template_key);
-            }
             created++;
         }
 

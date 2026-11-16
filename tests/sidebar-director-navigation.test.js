@@ -144,8 +144,12 @@ test('education entry stays visible in default and saved menus only for an allow
             .filter(link => link.textContent.includes('Заняття'));
         assert.equal(educationLinks.length, 1);
         assert.equal(educationLinks[0].getAttribute('href'), '/?businessContext=dar&educationSchedule=today');
-        assert.equal(rendered.window.localStorage.getItem('eg_sidebar_extra_menu_items_v3'),
-            savedExtras ? JSON.stringify(savedExtras) : null, 'menu preferences remain untouched');
+        const favorites = rendered.window.localStorage.getItem('eg_sidebar_extra_menu_items_v3');
+        if (savedExtras) {
+            assert.deepEqual(JSON.parse(favorites).map(item => item.href), ['/profile?tab=myday', '/chat']);
+        } else {
+            assert.equal(favorites, null);
+        }
         assert.ok(rendered.document.querySelector('#sidebarMiniRail [aria-label="Заняття"]'));
         assert.ok(rendered.all.includes('/training'), 'HR Training stays in its own menu');
     }

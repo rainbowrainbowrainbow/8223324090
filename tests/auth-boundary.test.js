@@ -280,8 +280,6 @@ describe('API auth boundary middleware', () => {
             'tasks.complete',
             'tasks.completion_report',
             'tasks.comment',
-            'tasks.subtasks.read',
-            'tasks.subtask.toggle',
             'tasks.reassign',
             'tasks.reschedule',
             'tasks.status',

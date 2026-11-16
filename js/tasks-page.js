@@ -495,17 +495,8 @@ let taskDuePreset = 'today';
 let kanbanDragState = null;
 let lastKanbanDragEndedAt = 0;
 let kanbanSavingTaskIds = new Set();
-let taskSavedDecompositionTemplates = [];
-let taskDecompositionSuggestions = [];
-let taskSuggestionTimer = null;
-let lastTaskSuggestionKey = '';
 let taskComposerAiImpactIds = [];
 let taskSoundPreferences = { enabled: true, volume: 0.4, theme: 'subtle' };
-const expandedTaskSubtaskIds = new Set();
-const collapsedTaskSubtaskIds = new Set();
-const taskCardSubtaskCache = new Map();
-const loadingTaskSubtaskIds = new Set();
-const blockedTaskSubtaskAttentionIds = new Set();
 
 function notifyTaskWidgetsChanged(detail = {}) {
     const payload = { source: 'tasks_page', ...detail };
@@ -996,33 +987,6 @@ function normalizeChecklistTemplateKey(category, subcategory) {
     return CHECKLIST_TEMPLATE_BY_SUBCATEGORY[subcategory] || null;
 }
 
-function taskSubtaskProgress(doneCount, totalCount) {
-    if (window.TaskCreate?.subtaskProgress) return window.TaskCreate.subtaskProgress(doneCount, totalCount);
-    const total = Math.max(0, parseInt(totalCount, 10) || 0);
-    if (!total) return null;
-    const done = Math.max(0, parseInt(doneCount, 10) || 0);
-    return Math.max(0, Math.min(100, Math.round((done / total) * 100)));
-}
-
-function taskSubtaskSummary(task = {}) {
-    const total = Number(task.subtask_count || task.subtaskCount || 0);
-    const done = Number(task.subtask_done_count || task.subtaskDoneCount || 0);
-    return {
-        total,
-        done,
-        progress: taskSubtaskProgress(done, total)
-    };
-}
-
-function taskHasSubtasks(task = {}) {
-    return taskSubtaskSummary(task).total > 0;
-}
-
-function taskCompletionBlockedBySubtasks(task = {}) {
-    const summary = taskSubtaskSummary(task);
-    return summary.total > 0 && summary.done < summary.total;
-}
-
 function getPackStatusLabel(status) {
     return PACK_STATUS_LABELS[status] || status || '';
 }
@@ -1364,10 +1328,6 @@ function compareTasksForDisplay(a = {}, b = {}) {
     if (aDone && bDone) {
         const completedDiff = new Date(taskCompletedAt(b) || b.updated_at || b.created_at || 0) - new Date(taskCompletedAt(a) || a.updated_at || a.created_at || 0);
         if (completedDiff) return completedDiff;
-    }
-    if (!aDone && !bDone) {
-        const decompositionDiff = Number(taskHasSubtasks(b)) - Number(taskHasSubtasks(a));
-        if (decompositionDiff) return decompositionDiff;
     }
     const rankDiff = taskWorkspaceDisplayRank(a) - taskWorkspaceDisplayRank(b);
     if (rankDiff) return rankDiff;
@@ -1875,18 +1835,13 @@ async function initPage() {
         document.getElementById('taskCategory')?.addEventListener('change', () => {
             syncSubcategorySelect('taskCategory', 'taskSubcategory');
             syncTaskSurfaceVisibility();
-            refreshTaskSavedTemplates();
-            scheduleTaskDecompositionSuggestions();
         });
-        document.getElementById('taskSubcategory')?.addEventListener('change', scheduleTaskDecompositionSuggestions);
-        document.getElementById('taskTitle')?.addEventListener('input', scheduleTaskDecompositionSuggestions);
         document.getElementById('taskTitle')?.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') addTask();
         });
         document.querySelectorAll('[data-capture-chip]').forEach(btn => {
             btn.addEventListener('click', () => applyCaptureChip(btn.dataset.captureChip));
         });
-        bindTaskComposerSubtasks();
 
         // Templates
         document.getElementById('addTemplateBtn')?.addEventListener('click', addTemplate);
@@ -1897,7 +1852,6 @@ async function initPage() {
         document.getElementById('createOperationPackBtn')?.addEventListener('click', createOperationPack);
         syncSubcategorySelect('taskCategory', 'taskSubcategory');
         syncSubcategorySelect('tplCategory', 'tplSubcategory');
-        await refreshTaskSavedTemplates();
 
         // v20.9.16: Load permissions and apply UI restrictions
         const permsResult = await apiGetTaskPermissions();
@@ -2301,32 +2255,6 @@ async function apiConfirmBanquetDeposit(depositId, payload) {
     } catch (err) {
         console.error('API confirmBanquetDeposit error:', err);
         return { success: false, error: err.message };
-    }
-}
-
-async function apiGetTaskSubtasks(taskId) {
-    try {
-        const response = await taskApiFetch(`${API_BASE}/tasks/${taskId}/subtasks`, { headers: getAuthHeaders(false) });
-        if (handleAuthError(response)) return null;
-        return await response.json();
-    } catch (err) {
-        console.error('API getTaskSubtasks error:', err);
-        return null;
-    }
-}
-
-async function apiPatchTaskSubtask(taskId, subtaskId, data) {
-    try {
-        const response = await taskApiFetch(`${API_BASE}/tasks/${taskId}/subtasks/${subtaskId}`, {
-            method: 'PATCH',
-            headers: getAuthHeaders(),
-            body: JSON.stringify(data || {})
-        });
-        if (handleAuthError(response)) return null;
-        return await response.json();
-    } catch (err) {
-        console.error('API patchTaskSubtask error:', err);
-        return null;
     }
 }
 
@@ -3601,78 +3529,6 @@ function getHealthBadge(score) {
 // TASK CARD
 // ==========================================
 
-function renderTaskSubtaskProgress(t) {
-    const summary = taskSubtaskSummary(t);
-    if (!summary.total) return '';
-    const label = `${summary.done}/${summary.total} підзадач · ${summary.progress}%`;
-    return `<div class="task-subtask-progress" title="${escapeHtml(label)}">
-        <div class="task-subtask-progress-fill" style="width:${summary.progress}%"></div>
-    </div>
-    <span class="task-subtask-progress-label">${escapeHtml(label)}</span>`;
-}
-
-function normalizeTaskCardSubtask(item = {}) {
-    const id = item.id || item.subtaskId || item.subtask_id || '';
-    return {
-        id,
-        title: item.title || '',
-        isDone: item.is_done === true || item.isDone === true
-    };
-}
-
-function cachedTaskSubtasks(taskId, task = {}) {
-    if (taskCardSubtaskCache.has(Number(taskId))) return taskCardSubtaskCache.get(Number(taskId));
-    if (Array.isArray(task.subtasks)) return task.subtasks.map(normalizeTaskCardSubtask);
-    return null;
-}
-
-function isTaskSubtasksExpanded(taskId, task = {}) {
-    const id = Number(taskId);
-    if (!id) return false;
-    if (collapsedTaskSubtaskIds.has(id)) return false;
-    if (expandedTaskSubtaskIds.has(id)) return true;
-    return Array.isArray(cachedTaskSubtasks(id, task));
-}
-
-function taskSubtaskCompletionTitle(task = {}) {
-    const summary = taskSubtaskSummary(task);
-    if (!summary.total) return '';
-    return summary.done >= summary.total
-        ? 'Усі підпункти закриті. Задачу можна виконати.'
-        : `Спочатку закрийте підпункти: ${summary.done}/${summary.total}`;
-}
-
-function renderTaskCardSubtasksPanel(task = {}) {
-    const summary = taskSubtaskSummary(task);
-    if (!summary.total) return '';
-    const taskId = Number(task.id || 0);
-    const expanded = isTaskSubtasksExpanded(taskId, task);
-    const subtasks = cachedTaskSubtasks(taskId, task);
-    const blockedAttention = blockedTaskSubtaskAttentionIds.has(taskId) && summary.done < summary.total;
-    let body = '<div class="task-card-subtasks-empty">Розгорніть, щоб виконувати підпункти прямо тут.</div>';
-    if (expanded && loadingTaskSubtaskIds.has(taskId)) {
-        body = '<div class="task-card-subtasks-empty">Завантажую підпункти...</div>';
-    } else if (expanded && Array.isArray(subtasks)) {
-        body = subtasks.length
-            ? subtasks.map(item => {
-                const subtask = normalizeTaskCardSubtask(item);
-                const needsAttention = blockedAttention && !subtask.isDone;
-                return `<label class="task-card-subtask-item ${subtask.isDone ? 'is-done' : ''} ${needsAttention ? 'is-blocked-attention' : ''}"${needsAttention ? ' data-task-subtask-blocked-attention="true"' : ''}>
-                    <input type="checkbox" data-task-subtask-done data-task-id="${taskId}" data-subtask-id="${escapeHtml(subtask.id)}" ${subtask.isDone ? 'checked' : ''}>
-                    <span>${escapeHtml(subtask.title || 'Підпункт без назви')}</span>
-                </label>`;
-            }).join('')
-            : '<div class="task-card-subtasks-empty">Підпункти не знайдені.</div>';
-    }
-    return `<div class="task-card-subtasks-panel ${blockedAttention ? 'is-completion-blocked-attention' : ''}" data-task-subtasks-panel="${taskId}" ${expanded ? '' : 'hidden'}>
-        <div class="task-card-subtasks-head">
-            <span>Підпункти можна закривати у будь-якому порядку</span>
-            <b>${summary.done}/${summary.total}</b>
-        </div>
-        <div class="task-card-subtasks-list">${body}</div>
-    </div>`;
-}
-
 function taskControlMeta(task = {}) {
     const value = task.controlMeta || task.control_meta || {};
     if (!value) return {};
@@ -3864,16 +3720,6 @@ function renderTaskCard(task) {
     const reminderBadge = (t.remindAt || t.remind_at || t.snoozedUntil || t.snoozed_until)
         ? '<span class="task-os-badge reminder">Нагадування</span>'
         : '';
-    const subtaskCount = Number(t.subtask_count || t.subtaskCount || 0);
-    const subtaskDone = Number(t.subtask_done_count || t.subtaskDoneCount || 0);
-    const hasSubtasks = subtaskCount > 0;
-    const subtaskExpanded = isTaskSubtasksExpanded(Number(t.id || 0), t);
-    const completionBlockedBySubtasks = nextStatus === 'done' && hasSubtasks && subtaskDone < subtaskCount;
-    if (!completionBlockedBySubtasks) blockedTaskSubtaskAttentionIds.delete(Number(t.id || 0));
-    const blockedSubtaskAttention = completionBlockedBySubtasks && blockedTaskSubtaskAttentionIds.has(Number(t.id || 0));
-    const subtaskBadge = hasSubtasks
-        ? `<button type="button" class="task-os-badge checklist task-card-subtasks-toggle" data-task-action="subtasks-toggle" data-task-id="${t.id}" aria-expanded="${subtaskExpanded ? 'true' : 'false'}" title="${escapeHtml(taskSubtaskCompletionTitle(t))}">Пункти ${subtaskDone}/${subtaskCount}</button>`
-        : '';
     const packStatus = t.packStatus || t.pack_status || '';
     const packBadge = packStatus ? `<span class="task-os-badge pack-status">${escapeHtml(getPackStatusLabel(packStatus))}</span>` : '';
     const blockedCount = Number(t.openDependencyCount || t.open_dependency_count || 0);
@@ -3914,7 +3760,7 @@ function renderTaskCard(task) {
         : ` data-status="${escapeHtml(t.status || '')}"`;
 
     return `
-    <div class="task-card ${isKanbanCard ? '' : 'task-work-row'} cat-${cat} priority-${t.priority} ${t.status === 'done' ? 'status-done' : ''} ${blockedCount ? 'is-blocked' : ''} ${blockedSubtaskAttention ? 'is-subtask-completion-blocked' : ''} ${selfPersonal ? 'is-self-personal' : ''} ${isKanbanSaving ? 'is-kanban-saving' : ''} ${isAiCreated ? 'is-ai-created' : ''}" data-task-open="true" role="button" tabindex="0" data-task-id="${t.id}" data-priority="${escapeHtml(t.priority || 'normal')}" data-subcategory="${escapeHtml(t.subcategory || '')}" data-pack-id="${escapeHtml(t.packId || t.pack_id || '')}"${isAiCreated ? ' data-ai-created="true" aria-label="Задача створена з допомогою AI"' : ''}${selfPersonalAttrs}${kanbanAttrs}>
+    <div class="task-card ${isKanbanCard ? '' : 'task-work-row'} cat-${cat} priority-${t.priority} ${t.status === 'done' ? 'status-done' : ''} ${blockedCount ? 'is-blocked' : ''} ${selfPersonal ? 'is-self-personal' : ''} ${isKanbanSaving ? 'is-kanban-saving' : ''} ${isAiCreated ? 'is-ai-created' : ''}" data-task-open="true" role="button" tabindex="0" data-task-id="${t.id}" data-priority="${escapeHtml(t.priority || 'normal')}" data-subcategory="${escapeHtml(t.subcategory || '')}" data-pack-id="${escapeHtml(t.packId || t.pack_id || '')}"${isAiCreated ? ' data-ai-created="true" aria-label="Задача створена з допомогою AI"' : ''}${selfPersonalAttrs}${kanbanAttrs}>
         <label class="task-checkbox-wrap">
             <input type="checkbox" class="task-bulk-cb" data-id="${t.id}" aria-label="Вибрати задачу">
         </label>
@@ -3925,7 +3771,6 @@ function renderTaskCard(task) {
             ${taskModeBadge(t)}
             ${taskKindBadge(t)}
             ${reminderBadge}
-            ${subtaskBadge}
             ${packBadge}
             ${blockedBadge}
             ${ownerRoleBadge}
@@ -3942,10 +3787,8 @@ function renderTaskCard(task) {
             ${t.type === 'recurring' ? '<span class="badge badge-normal">Повтор</span>' : ''}
             ${t.type === 'afisha' ? '<span class="badge badge-normal">Афіша</span>' : ''}
         </div>
-        ${renderTaskSubtaskProgress(t)}
-        ${renderTaskCardSubtasksPanel(t)}
         <div class="task-card-actions task-row-actions">
-            <button class="task-row-primary ${btnClass}" data-task-action="status" data-task-id="${t.id}" data-next-status="${nextStatus}" ${completionBlockedBySubtasks ? `aria-disabled="true" data-task-completion-blocked="subtasks" aria-label="${escapeHtml(taskSubtaskCompletionTitle(t))}" title="${escapeHtml(taskSubtaskCompletionTitle(t))}"` : ''}>${STATUS_ICONS[nextStatus]} ${nextLabel}</button>
+            <button class="task-row-primary ${btnClass}" data-task-action="status" data-task-id="${t.id}" data-next-status="${nextStatus}">${STATUS_ICONS[nextStatus]} ${nextLabel}</button>
             ${renderTaskRowMoreAction(t.id)}
         </div>
     </div>`;
@@ -3955,125 +3798,6 @@ function renderTaskCard(task) {
 // TASK ACTIONS
 // ==========================================
 
-function updateTaskSubtaskSummary(taskId, subtasks = []) {
-    const id = Number(taskId);
-    const total = subtasks.length;
-    const done = subtasks.filter(item => normalizeTaskCardSubtask(item).isDone).length;
-    if (!total || done >= total) blockedTaskSubtaskAttentionIds.delete(id);
-    allTasks = allTasks.map(task => {
-        if (Number(task.id) !== id) return task;
-        return {
-            ...task,
-            subtask_count: total,
-            subtaskCount: total,
-            subtask_done_count: done,
-            subtaskDoneCount: done,
-            subtasks: subtasks.map(normalizeTaskCardSubtask)
-        };
-    });
-}
-
-function focusFirstBlockedTaskSubtask(taskId) {
-    const id = Number(taskId);
-    if (!id || typeof document === 'undefined' || typeof document.querySelector !== 'function') return;
-    const focus = () => {
-        const input = document.querySelector(`[data-task-subtasks-panel="${id}"] .task-card-subtask-item.is-blocked-attention input[data-task-subtask-done]`);
-        if (!input) return;
-        input.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
-        try { input.focus({ preventScroll: true }); } catch { input.focus?.(); }
-    };
-    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(focus);
-    else setTimeout(focus, 0);
-}
-
-async function revealBlockedTaskSubtasks(taskId, task = {}) {
-    const id = Number(taskId);
-    if (!id) return false;
-    blockedTaskSubtaskAttentionIds.add(id);
-    collapsedTaskSubtaskIds.delete(id);
-    expandedTaskSubtaskIds.add(id);
-    if (!taskCardSubtaskCache.has(id) && !Array.isArray(task.subtasks)) await loadTaskCardSubtasks(id);
-    else renderBoard();
-    const currentTask = allTasks.find(item => Number(item.id) === id) || task;
-    if (!taskCompletionBlockedBySubtasks(currentTask)) {
-        blockedTaskSubtaskAttentionIds.delete(id);
-        renderBoard();
-        return false;
-    }
-    focusFirstBlockedTaskSubtask(id);
-    showNotification(taskSubtaskCompletionTitle(currentTask), 'warning');
-    return true;
-}
-
-async function loadTaskCardSubtasks(taskId) {
-    const id = Number(taskId);
-    if (!id) return [];
-    if (taskCardSubtaskCache.has(id)) return taskCardSubtaskCache.get(id);
-    loadingTaskSubtaskIds.add(id);
-    renderBoard();
-    const result = await apiGetTaskSubtasks(id);
-    loadingTaskSubtaskIds.delete(id);
-    if (!result?.success || !Array.isArray(result.subtasks)) {
-        showNotification(result?.error || 'Не вдалося завантажити підпункти задачі', 'error');
-        renderBoard();
-        return [];
-    }
-    const subtasks = result.subtasks.map(normalizeTaskCardSubtask);
-    taskCardSubtaskCache.set(id, subtasks);
-    updateTaskSubtaskSummary(id, subtasks);
-    renderBoard();
-    return subtasks;
-}
-
-async function toggleTaskCardSubtasks(taskId) {
-    const id = Number(taskId);
-    if (!id) return;
-    const task = allTasks.find(item => Number(item.id) === id) || {};
-    if (isTaskSubtasksExpanded(id, task)) {
-        expandedTaskSubtaskIds.delete(id);
-        collapsedTaskSubtaskIds.add(id);
-        renderBoard();
-        return;
-    }
-    collapsedTaskSubtaskIds.delete(id);
-    expandedTaskSubtaskIds.add(id);
-    if (!taskCardSubtaskCache.has(id) && !Array.isArray(task.subtasks)) {
-        await loadTaskCardSubtasks(id);
-        return;
-    }
-    renderBoard();
-}
-
-async function updateTaskCardSubtaskDone(input) {
-    const taskId = Number(input?.dataset?.taskId || 0);
-    const subtaskId = Number(input?.dataset?.subtaskId || 0);
-    if (!taskId || !subtaskId) return;
-    const nextDone = input.checked === true;
-    const previousDone = !nextDone;
-    input.disabled = true;
-    const result = await apiPatchTaskSubtask(taskId, subtaskId, { is_done: nextDone });
-    if (!result?.success || !result.subtask) {
-        input.checked = previousDone;
-        input.disabled = false;
-        showNotification(result?.error || 'Не вдалося оновити підпункт', 'error');
-        return;
-    }
-    const task = allTasks.find(item => Number(item.id) === taskId) || {};
-    const cached = taskCardSubtaskCache.get(taskId) || cachedTaskSubtasks(taskId, task) || [];
-    const updated = cached.map(item => Number(item.id) === subtaskId
-        ? normalizeTaskCardSubtask(result.subtask)
-        : normalizeTaskCardSubtask(item));
-    taskCardSubtaskCache.set(taskId, updated);
-    updateTaskSubtaskSummary(taskId, updated);
-    const summary = taskSubtaskSummary(allTasks.find(task => Number(task.id) === taskId) || {});
-    if (summary.total && summary.done >= summary.total) {
-        blockedTaskSubtaskAttentionIds.delete(taskId);
-        showNotification('Усі підпункти закриті. Тепер можна виконати задачу.', 'success');
-    }
-    renderBoard();
-}
-
-let _assigneeList = [];
 function _ensureCurrentUserInAssignees() {
     const self = currentUserTaskOwnerOption();
     if (!self) return null;
@@ -4151,402 +3875,11 @@ function taskPriorityOptions(selected = 'normal') {
     return options.map(([value, label]) => `<option value="${value}" ${selected === value ? 'selected' : ''}>${label}</option>`).join('');
 }
 
-function renderTaskComposerSubtasks() {
-    const list = document.getElementById('taskSubtasksList');
-    if (!list) return;
-    Array.from(list.querySelectorAll('[data-task-subtask-row]')).forEach((row, index) => {
-        const order = row.querySelector('[data-task-subtask-order]');
-        if (order) order.textContent = String(index + 1);
-    });
-}
-
-function taskComposerSubtaskRow(value = '', sourceType = 'manual') {
-    const escaped = escapeHtml(value);
-    const source = escapeHtml(sourceType || 'manual');
-    return `<div class="task-subtask-row" data-task-subtask-row data-subtask-source="${source}">
-        <span class="task-subtask-order" data-task-subtask-order></span>
-        <input type="text" data-task-subtask-title value="${escaped}" placeholder="Назва підзадачі" aria-label="Назва підзадачі">
-        <button type="button" class="task-subtask-remove" data-task-subtask-remove aria-label="Видалити підзадачу">×</button>
-    </div>`;
-}
-
-function addTaskComposerSubtask(value = '', sourceType = 'manual') {
-    const list = document.getElementById('taskSubtasksList');
-    if (!list) return;
-    list.insertAdjacentHTML('beforeend', taskComposerSubtaskRow(value, sourceType));
-    renderTaskComposerSubtasks();
-    setTaskDecompositionMode(sourceType === 'manual' ? 'manual' : (sourceType === 'template' ? 'template' : 'ai'), { keepStatus: true });
-    toggleTaskComposerDetails(true);
-    const inputs = list.querySelectorAll('[data-task-subtask-title]');
-    inputs[inputs.length - 1]?.focus();
-}
-
-function readTaskComposerSubtasks() {
-    return Array.from(document.querySelectorAll('#taskSubtasksList [data-task-subtask-row]'))
-        .map((row, index) => ({
-            title: row.querySelector('[data-task-subtask-title]')?.value || '',
-            sort_order: index,
-            source_type: row.dataset.subtaskSource || 'manual'
-        }))
-        .filter(item => String(item.title || '').trim());
-}
-
-function resetTaskComposerSubtasks() {
-    const list = document.getElementById('taskSubtasksList');
-    if (list) list.innerHTML = '';
-    setTaskSubtaskDraftStatus('');
-    document.getElementById('taskSubtaskAcceptDraftBtn')?.setAttribute('hidden', '');
-    setTaskDecompositionMode('none', { keepRows: true, keepStatus: true });
-}
-
-function setTaskSubtaskDraftStatus(message = '', type = '') {
-    const node = document.getElementById('taskSubtaskDraftStatus');
-    if (!node) return;
-    node.textContent = message;
-    node.className = `task-subtask-status ${type || ''}`.trim();
-}
-
-function setTaskDecompositionMode(mode = 'manual', options = {}) {
-    const normalized = ['none', 'manual', 'template', 'ai', 'template_ai'].includes(mode) ? mode : 'manual';
-    const select = document.getElementById('taskDecompositionMode');
-    if (select) select.value = normalized;
-    const template = document.getElementById('taskDecompositionTemplate');
-    if (template) template.disabled = !['template', 'template_ai'].includes(normalized);
-    const draftBtn = document.getElementById('taskSubtaskDraftBtn');
-    if (draftBtn) {
-        draftBtn.disabled = ['none', 'manual'].includes(normalized);
-        draftBtn.textContent = normalized === 'template' ? 'Шаблон' : 'AI';
-    }
-    if (normalized === 'none') document.getElementById('taskSubtaskAcceptDraftBtn')?.setAttribute('hidden', '');
-    if (normalized === 'none' && !options.keepRows) {
-        const list = document.getElementById('taskSubtasksList');
-        if (list) list.innerHTML = '';
-    }
-    if (!options.keepStatus) setTaskSubtaskDraftStatus('');
-}
-
-function replaceTaskComposerSubtasks(items = [], options = {}) {
-    const list = document.getElementById('taskSubtasksList');
-    if (!list) return;
-    list.innerHTML = '';
-    items.forEach(item => {
-        list.insertAdjacentHTML('beforeend', taskComposerSubtaskRow(
-            item.title || item.name || '',
-            item.source_type || item.sourceType || options.sourceType || 'ai'
-        ));
-    });
-    renderTaskComposerSubtasks();
-    toggleTaskComposerDetails(true);
-}
-
-function renderTaskSavedTemplateOptions() {
-    const select = document.getElementById('taskSavedDecompositionTemplate');
-    if (!select) return;
-    const current = select.value;
-    const options = ['<option value="">Мої шаблони</option>'];
-    taskSavedDecompositionTemplates.forEach(template => {
-        const count = Array.isArray(template.items) ? template.items.length : (Array.isArray(template.subtasks) ? template.subtasks.length : 0);
-        const label = `${template.name || template.title || 'Шаблон'}${count ? ` (${count})` : ''}`;
-        options.push(`<option value="${escapeHtml(template.id)}">${escapeHtml(label)}</option>`);
-    });
-    select.innerHTML = options.join('');
-    if (current && taskSavedDecompositionTemplates.some(template => String(template.id) === String(current))) {
-        select.value = current;
-    }
-}
-
-async function refreshTaskSavedTemplates() {
-    if (!window.TaskCreate?.requestSavedDecompositionTemplates) return;
-    taskSavedDecompositionTemplates = await window.TaskCreate.requestSavedDecompositionTemplates({ limit: 50 });
-    renderTaskSavedTemplateOptions();
-}
-
-async function applySelectedTaskSavedTemplate() {
-    const templateId = document.getElementById('taskSavedDecompositionTemplate')?.value || '';
-    if (!templateId) {
-        setTaskSubtaskDraftStatus('Оберіть збережений шаблон.', 'warning');
-        return;
-    }
-    const result = await window.TaskCreate?.applySavedDecompositionTemplate?.(templateId);
-    if (!result?.success) {
-        setTaskSubtaskDraftStatus(result?.error || 'Не вдалося застосувати шаблон.', 'error');
-        return;
-    }
-    replaceTaskComposerSubtasks(result.subtasks || [], { sourceType: 'template' });
-    setTaskDecompositionMode('template', { keepRows: true, keepStatus: true });
-    setTaskSubtaskDraftStatus('Шаблон додано як чернетку. Список можна змінити перед збереженням.', 'success');
-    await refreshTaskSavedTemplates();
-}
-
-async function saveTaskSubtasksAsTemplate() {
-    const subtasks = readTaskComposerSubtasks();
-    if (subtasks.length < 2) {
-        setTaskSubtaskDraftStatus('Для шаблону потрібно мінімум дві підзадачі.', 'warning');
-        return;
-    }
-    const title = document.getElementById('taskTitle')?.value.trim() || '';
-    let values = null;
-    if (typeof formModal === 'function') {
-        values = await formModal('Зберегти шаблон підзадач', [
-            {
-                key: 'name',
-                label: 'Назва шаблону',
-                type: 'text',
-                required: true,
-                defaultValue: title ? `${title} · підзадачі` : 'Новий шаблон підзадач'
-            },
-            {
-                key: 'description',
-                label: 'Опис',
-                type: 'textarea',
-                defaultValue: ''
-            }
-        ], {
-            okText: 'Зберегти',
-            cancelText: 'Скасувати',
-            type: 'info'
-        });
-    } else {
-        const name = null;
-        values = name ? { name, description: '' } : null;
-    }
-    if (!values?.name) return;
-    const category = document.getElementById('taskCategory')?.value || 'admin';
-    const result = await window.TaskCreate?.saveDecompositionTemplate?.({
-        name: values.name,
-        description: values.description || '',
-        category,
-        subcategory: selectedSubcategoryFor(category, 'taskSubcategory'),
-        subtasks
-    });
-    if (!result?.success) {
-        setTaskSubtaskDraftStatus(result?.error || 'Не вдалося зберегти шаблон.', 'error');
-        return;
-    }
-    await refreshTaskSavedTemplates();
-    const select = document.getElementById('taskSavedDecompositionTemplate');
-    if (select && result.template?.id) select.value = String(result.template.id);
-    setTaskSubtaskDraftStatus('Шаблон підзадач збережено.', 'success');
-}
-
-async function updateSelectedTaskSavedTemplate() {
-    const templateId = document.getElementById('taskSavedDecompositionTemplate')?.value || '';
-    if (!templateId) {
-        setTaskSubtaskDraftStatus('Оберіть шаблон для оновлення.', 'warning');
-        return;
-    }
-    const subtasks = readTaskComposerSubtasks();
-    if (subtasks.length < 2) {
-        setTaskSubtaskDraftStatus('Для шаблону потрібно мінімум дві підзадачі.', 'warning');
-        return;
-    }
-    const current = taskSavedDecompositionTemplates.find(template => String(template.id) === String(templateId)) || {};
-    let values = null;
-    if (typeof formModal === 'function') {
-        values = await formModal('Оновити шаблон підзадач', [
-            {
-                key: 'name',
-                label: 'Назва шаблону',
-                type: 'text',
-                required: true,
-                defaultValue: current.name || current.title || 'Шаблон підзадач'
-            },
-            {
-                key: 'description',
-                label: 'Опис',
-                type: 'textarea',
-                defaultValue: current.description || ''
-            }
-        ], {
-            okText: 'Оновити',
-            cancelText: 'Скасувати',
-            type: 'info'
-        });
-    } else {
-        const name = null;
-        values = name ? { name, description: current.description || '' } : null;
-    }
-    if (!values?.name) return;
-    const category = document.getElementById('taskCategory')?.value || current.category || 'admin';
-    const result = await window.TaskCreate?.updateDecompositionTemplate?.(templateId, {
-        name: values.name,
-        description: values.description || '',
-        category,
-        subcategory: selectedSubcategoryFor(category, 'taskSubcategory'),
-        subtasks
-    });
-    if (!result?.success) {
-        setTaskSubtaskDraftStatus(result?.error || 'Не вдалося оновити шаблон.', 'error');
-        return;
-    }
-    await refreshTaskSavedTemplates();
-    const select = document.getElementById('taskSavedDecompositionTemplate');
-    if (select) select.value = String(templateId);
-    setTaskSubtaskDraftStatus('Шаблон підзадач оновлено.', 'success');
-}
-
-async function deleteSelectedTaskSavedTemplate() {
-    const templateId = document.getElementById('taskSavedDecompositionTemplate')?.value || '';
-    if (!templateId) {
-        setTaskSubtaskDraftStatus('Оберіть шаблон для видалення.', 'warning');
-        return;
-    }
-    if (typeof confirmModal === 'function') {
-        const confirmed = await confirmModal('Видалити цей шаблон підзадач?', { type: 'danger', okText: 'Видалити' });
-        if (!confirmed) return;
-    } else {
-        setTaskSubtaskDraftStatus('Видалення шаблону тимчасово недоступне без CRM confirm modal.', 'warning');
-        return;
-    }
-    const result = await window.TaskCreate?.deleteDecompositionTemplate?.(templateId);
-    if (!result?.success) {
-        setTaskSubtaskDraftStatus(result?.error || 'Не вдалося видалити шаблон.', 'error');
-        return;
-    }
-    await refreshTaskSavedTemplates();
-    setTaskSubtaskDraftStatus('Шаблон видалено.', 'success');
-}
-
-function renderTaskDecompositionSuggestions() {
-    const host = document.getElementById('taskDecompositionSuggestions');
-    if (!host) return;
-    if (!taskDecompositionSuggestions.length) {
-        host.hidden = true;
-        host.innerHTML = '';
-        return;
-    }
-    host.hidden = false;
-    host.innerHTML = taskDecompositionSuggestions.map((suggestion, index) => {
-        const count = Array.isArray(suggestion.subtasks) ? suggestion.subtasks.length : 0;
-        const label = suggestion.type === 'saved_template'
-            ? `Шаблон: ${suggestion.title || suggestion.template?.name || ''}`
-            : (suggestion.title || 'Схожа структура');
-        return `<button type="button" class="task-suggestion-chip" data-task-suggestion-index="${index}">
-            ${escapeHtml(label)} · ${count}
-        </button>`;
-    }).join('');
-}
-
-async function refreshTaskDecompositionSuggestions() {
-    if (!window.TaskCreate?.requestDecompositionSuggestions) return;
-    const draft = readTaskComposerDraft();
-    const key = [draft.title, draft.category, draft.subcategory].join('|');
-    if (key === lastTaskSuggestionKey) return;
-    lastTaskSuggestionKey = key;
-    if (!draft.title || draft.title.length < 3) {
-        taskDecompositionSuggestions = [];
-        renderTaskDecompositionSuggestions();
-        return;
-    }
-    const result = await window.TaskCreate.requestDecompositionSuggestions({
-        title: draft.title,
-        category: draft.category,
-        subcategory: draft.subcategory,
-        taskKind: draft.kind,
-        taskMode: draft.taskMode || draft.mode
-    });
-    taskDecompositionSuggestions = result?.success ? (result.suggestions || []) : [];
-    renderTaskDecompositionSuggestions();
-}
-
-function scheduleTaskDecompositionSuggestions() {
-    clearTimeout(taskSuggestionTimer);
-    taskSuggestionTimer = setTimeout(refreshTaskDecompositionSuggestions, 450);
-}
-
-function applyTaskSuggestion(index) {
-    const suggestion = taskDecompositionSuggestions[index];
-    if (!suggestion) return;
-    const sourceType = suggestion.type === 'saved_template' ? 'template' : 'system';
-    replaceTaskComposerSubtasks(suggestion.subtasks || suggestion.template?.subtasks || [], { sourceType });
-    setTaskDecompositionMode(suggestion.type === 'saved_template' ? 'template' : 'manual', { keepRows: true, keepStatus: true });
-    setTaskSubtaskDraftStatus('Підказку додано як чернетку. Список можна змінити перед збереженням.', 'success');
-}
-
-async function generateTaskComposerSubtasks() {
-    const mode = document.getElementById('taskDecompositionMode')?.value || 'ai';
-    const title = document.getElementById('taskTitle')?.value.trim() || '';
-    if (!title) {
-        setTaskSubtaskDraftStatus('Додайте назву задачі перед генерацією підзадач.', 'warning');
-        document.getElementById('taskTitle')?.focus();
-        return;
-    }
-    if (mode === 'none' || mode === 'manual') {
-        setTaskSubtaskDraftStatus('Оберіть AI або шаблонний режим декомпозиції.', 'warning');
-        return;
-    }
-    const draftBtn = document.getElementById('taskSubtaskDraftBtn');
-    const acceptBtn = document.getElementById('taskSubtaskAcceptDraftBtn');
-    const previousText = draftBtn?.textContent || '';
-    if (draftBtn) {
-        draftBtn.disabled = true;
-        draftBtn.textContent = '...';
-    }
-    if (acceptBtn) acceptBtn.hidden = true;
-    setTaskSubtaskDraftStatus(mode === 'template' ? 'Готую шаблонну чернетку...' : 'AI готує чернетку. Нічого ще не збережено...', '');
-    const draft = readTaskComposerDraft();
-    const result = await window.TaskCreate?.requestDecompositionDraft?.({
-        ...draft,
-        mode,
-        decompositionMode: mode,
-        templateKey: document.getElementById('taskDecompositionTemplate')?.value || '',
-        sourceModule: 'tasks',
-        sourceType: 'manual'
-    });
-    if (draftBtn) {
-        draftBtn.disabled = false;
-        draftBtn.textContent = previousText || (mode === 'template' ? 'Шаблон' : 'AI');
-    }
-    if (!result?.success) {
-        setTaskSubtaskDraftStatus(result?.error || 'Не вдалося підготувати чернетку. Додайте підзадачі вручну.', 'error');
-        return;
-    }
-    const rows = Array.isArray(result.subtasks) ? result.subtasks : [];
-    replaceTaskComposerSubtasks(rows, {
-        sourceType: result.source === 'template' || result.source === 'template_fallback' ? 'template' : 'ai'
-    });
-    if (acceptBtn) acceptBtn.hidden = false;
-    const sourceLabel = result.source === 'template_fallback'
-        ? 'AI недоступний, використано шаблон.'
-        : (result.source === 'template' ? 'Шаблонну чернетку додано.' : 'AI чернетку додано.');
-    setTaskSubtaskDraftStatus(`${sourceLabel} Перевірте список перед збереженням задачі.`, 'success');
-}
-
-function bindTaskComposerSubtasks() {
-    document.getElementById('taskSubtaskAddBtn')?.addEventListener('click', () => addTaskComposerSubtask());
-    document.getElementById('taskDecompositionMode')?.addEventListener('change', event => setTaskDecompositionMode(event.target.value));
-    document.getElementById('taskSubtaskDraftBtn')?.addEventListener('click', generateTaskComposerSubtasks);
-    document.getElementById('taskApplySavedTemplateBtn')?.addEventListener('click', applySelectedTaskSavedTemplate);
-    document.getElementById('taskSaveSubtasksTemplateBtn')?.addEventListener('click', saveTaskSubtasksAsTemplate);
-    document.getElementById('taskUpdateSavedTemplateBtn')?.addEventListener('click', updateSelectedTaskSavedTemplate);
-    document.getElementById('taskDeleteSavedTemplateBtn')?.addEventListener('click', deleteSelectedTaskSavedTemplate);
-    document.getElementById('taskDecompositionSuggestions')?.addEventListener('click', event => {
-        const chip = event.target.closest('[data-task-suggestion-index]');
-        if (!chip) return;
-        applyTaskSuggestion(Number(chip.dataset.taskSuggestionIndex));
-    });
-    document.getElementById('taskSubtaskAcceptDraftBtn')?.addEventListener('click', () => {
-        setTaskSubtaskDraftStatus('Чернетку прийнято. Остаточно вона збережеться разом із задачею.', 'success');
-        document.getElementById('taskSubtaskAcceptDraftBtn')?.setAttribute('hidden', '');
-    });
-    setTaskDecompositionMode(document.getElementById('taskDecompositionMode')?.value || 'none', { keepRows: true, keepStatus: true });
-    const list = document.getElementById('taskSubtasksList');
-    if (!list) return;
-    list.addEventListener('click', (event) => {
-        const remove = event.target.closest('[data-task-subtask-remove]');
-        if (!remove) return;
-        remove.closest('[data-task-subtask-row]')?.remove();
-        renderTaskComposerSubtasks();
-    });
-}
-
 function readTaskComposerDraft() {
     const category = document.getElementById('taskCategory')?.value || 'admin';
     const scheduleDate = document.getElementById('taskScheduleDate')?.value || getTodayStr();
     const mode = document.getElementById('taskMode')?.value || (captureIntent.private ? 'private' : (captureIntent.personal ? 'personal' : 'work'));
     const kind = document.getElementById('taskKind')?.value || (captureIntent.waiting ? 'waiting' : 'action');
-    const subtasks = readTaskComposerSubtasks();
-    const structuralMode = kind === 'checklist' || subtasks.length ? 'checklist' : 'simple';
     return {
         title: document.getElementById('taskTitle')?.value.trim() || '',
         description: document.getElementById('taskDescription')?.value.trim() || '',
@@ -4557,8 +3890,8 @@ function readTaskComposerDraft() {
         deadlineTime: document.getElementById('taskDeadlineTime')?.value || '',
         ownerUserId: resolveQuickAddOwnerUserId(),
         assigneeMode: taskAssigneeMode,
-        mode: structuralMode,
-        structuralMode,
+        mode: 'simple',
+        structuralMode: 'simple',
         taskMode: mode,
         kind,
         visibility: defaultVisibilityForTaskMode(mode, document.getElementById('taskVisibility')?.value || 'team'),
@@ -4568,14 +3901,13 @@ function readTaskComposerDraft() {
         durationMinutes: Math.max(5, parseInt(document.getElementById('taskScheduleDuration')?.value, 10) || 30),
         scheduleSlot: quickScheduleSlot,
         impactIds: [...taskComposerAiImpactIds],
-        subtasks,
         scheduleConfirmed: taskDuePreset !== 'no_date',
         allowReschedule: document.getElementById('taskAllowReschedule')?.checked !== false,
         captureIntent: { ...captureIntent }
     };
 }
 
-function applyTaskAiDraftField(field, value, meta = {}) {
+function applyTaskAiDraftField(field, value) {
     if (field === 'title') {
         const input = document.getElementById('taskTitle');
         if (input) input.value = String(value || '');
@@ -4584,16 +3916,6 @@ function applyTaskAiDraftField(field, value, meta = {}) {
     if (field === 'description') {
         const textarea = document.getElementById('taskDescription');
         if (textarea) textarea.value = String(value || '');
-        return;
-    }
-    if (field === 'mode') {
-        const mode = String(value || '');
-        const kind = document.getElementById('taskKind');
-        if (value === 'checklist') {
-            if (kind) kind.value = 'checklist';
-        } else if (mode === 'simple' || mode === 'action') {
-            if (kind && kind.value === 'checklist') kind.value = 'action';
-        }
         return;
     }
     if (field === 'impactIds') {
@@ -4613,10 +3935,6 @@ function applyTaskAiDraftField(field, value, meta = {}) {
         if (select && ['urgent', 'high', 'normal', 'low'].includes(String(value || ''))) select.value = String(value);
         return;
     }
-    if (field === 'subtasks') {
-        replaceTaskComposerSubtasks(Array.isArray(value) ? value : [], { sourceType: meta.source === 'manual' ? 'manual' : 'ai' });
-        setTaskDecompositionMode(Array.isArray(value) && value.length ? 'ai' : 'none', { keepRows: true, keepStatus: true });
-    }
 }
 
 function focusTaskAiDraftField(field) {
@@ -4624,7 +3942,6 @@ function focusTaskAiDraftField(field) {
         title: 'taskTitle',
         description: 'taskDescription',
         mode: 'taskMode',
-        subtasks: 'taskSubtasksList',
         scheduleDate: 'taskScheduleDate',
         priority: 'taskPriority'
     };
@@ -4772,8 +4089,7 @@ function buildTaskCreatePayload(draft = {}) {
     if (window.TaskCreate?.buildPayload) {
         return window.TaskCreate.buildPayload(draft, {
             sourceModule: 'tasks',
-            scheduleSlot: draft.scheduleSlot || quickScheduleSlot,
-            getChecklistTemplateKey: normalizeChecklistTemplateKey
+            scheduleSlot: draft.scheduleSlot || quickScheduleSlot
         });
     }
     const category = draft.category || 'admin';
@@ -4790,7 +4106,6 @@ function buildTaskCreatePayload(draft = {}) {
         visibility: defaultVisibilityForTaskMode(draft.taskMode || draft.mode || 'work', draft.visibility || 'team'),
         workflow_state: draft.captureIntent?.waiting ? 'waiting' : 'inbox',
         subcategory,
-        checklist_template_key: normalizeChecklistTemplateKey(category, subcategory),
         source_type: 'manual',
         source_module: 'tasks',
         allowReschedule: draft.allowReschedule !== false,
@@ -4818,11 +4133,6 @@ function buildTaskCreatePayload(draft = {}) {
         };
         data.effort_minutes = durationMinutes;
     }
-    const subtasks = Array.isArray(draft.subtasks) ? draft.subtasks.filter(item => String(item.title || '').trim()) : [];
-    if (subtasks.length) {
-        data.subtasks = subtasks.map((item, index) => ({ ...item, sort_order: index, source_type: item.source_type || 'manual' }));
-        if (data.task_kind === 'action') data.task_kind = 'checklist';
-    }
     return data;
 }
 
@@ -4847,10 +4157,6 @@ function resetTaskComposerAfterCreate() {
     if (document.getElementById('taskAllowReschedule')) document.getElementById('taskAllowReschedule').checked = true;
     quickTaskBatchItems = [];
     renderQuickTaskBatchItems();
-    resetTaskComposerSubtasks();
-    taskDecompositionSuggestions = [];
-    lastTaskSuggestionKey = '';
-    renderTaskDecompositionSuggestions();
     captureIntent = {};
     document.querySelectorAll('[data-capture-chip]').forEach(btn => btn.classList.remove('active'));
     setTaskDuePreset('today', { expand: false });
@@ -5284,7 +4590,6 @@ async function handleTaskActionButton(button) {
         return;
     }
     await runTaskAction(button, async () => {
-        if (action === 'subtasks-toggle') await toggleTaskCardSubtasks(taskId);
         if (action === 'status') await cycleStatus(taskId, button.dataset.nextStatus || 'done');
         if (action === 'move-target') await executeTaskMoveTarget(taskId, button.dataset.taskMoveTarget || '');
         if (action === 'waiting') await markTaskWaiting(taskId);
@@ -5566,11 +4871,6 @@ function setupTaskActionDelegation() {
             await updateTaskPriorityQuick(event.target);
             return;
         }
-        if (event.target.matches('[data-task-subtask-done]')) {
-            event.stopPropagation();
-            await updateTaskCardSubtaskDone(event.target);
-            return;
-        }
         if (!event.target.matches('.task-bulk-cb')) return;
         updateBulkSelection();
     });
@@ -5582,22 +4882,9 @@ async function cycleStatus(taskId, newStatus) {
         openBanquetDepositTaskForCompletion(taskId);
         return;
     }
-    if (newStatus === 'done' && taskCompletionBlockedBySubtasks(currentTask)) {
-        await revealBlockedTaskSubtasks(taskId, currentTask);
-        return;
-    }
-    let result = newStatus === 'done'
+    const result = newStatus === 'done'
         ? await apiCompleteTask(taskId)
         : await apiPatchTaskStatus(taskId, newStatus);
-    if (newStatus === 'done' && window.TaskReportGate?.responseNeedsReport?.(result)) {
-        const task = allTasks.find(t => Number(t.id) === Number(taskId)) || {};
-        const reportId = await window.TaskReportGate.openReportModal(task, { sourceSurface: 'task_page', taskId });
-        if (!reportId) {
-            showNotification('Звіт потрібен перед виконанням задачі', 'warning');
-            return;
-        }
-        result = await apiCompleteTask(taskId, { reportId });
-    }
     const mutation = normalizeTaskMutationResult(result, 'Помилка зміни статусу');
     if (mutation.success) {
         if (newStatus === 'done') window.SoundEngine?.playTask?.('task-complete');
@@ -5997,7 +5284,7 @@ function getTaskDetailFormState() {
         const el = document.getElementById(id);
         return el ? String(el.value || '') : '';
     }).join('|');
-    return `${fieldState}|subtasks:${taskDetailSubtaskState()}`;
+    return fieldState;
 }
 
 function resetTaskDetailDirtyState() {
@@ -6056,84 +5343,6 @@ function syncDetailSubcategoryVisibility() {
     const show = supportsSubcategory(category);
     wrap.style.display = show ? '' : 'none';
     if (!show) select.value = '';
-}
-
-function taskDetailSubtaskRow(item = {}, index = 0) {
-    const id = item.id || item.subtaskId || item.subtask_id || '';
-    const title = escapeHtml(item.title || '');
-    const done = item.isDone === true || item.is_done === true;
-    return `<div class="task-subtask-row" data-detail-subtask-row data-subtask-id="${escapeHtml(id)}">
-        <input type="checkbox" data-detail-subtask-done ${done ? 'checked' : ''} aria-label="Підзадачу виконано">
-        <input type="text" data-detail-subtask-title value="${title}" placeholder="Назва підзадачі" aria-label="Назва підзадачі">
-        <button type="button" class="task-subtask-remove" data-detail-subtask-up aria-label="Підняти підзадачу">↑</button>
-        <button type="button" class="task-subtask-remove" data-detail-subtask-down aria-label="Опустити підзадачу">↓</button>
-        <button type="button" class="task-subtask-remove" data-detail-subtask-remove aria-label="Видалити підзадачу">×</button>
-    </div>`;
-}
-
-function renderTaskDetailSubtasks(subtasks = []) {
-    return subtasks.map(taskDetailSubtaskRow).join('');
-}
-
-function readTaskDetailSubtasks() {
-    return Array.from(document.querySelectorAll('#_tdSubtasksList [data-detail-subtask-row]'))
-        .map((row, index) => ({
-            id: row.dataset.subtaskId || undefined,
-            title: row.querySelector('[data-detail-subtask-title]')?.value || '',
-            is_done: row.querySelector('[data-detail-subtask-done]')?.checked === true,
-            sort_order: index,
-            source_type: 'manual'
-        }))
-        .filter(item => String(item.title || '').trim());
-}
-
-function taskDetailSubtaskState() {
-    return readTaskDetailSubtasks()
-        .map(item => `${item.id || 'new'}:${item.is_done ? '1' : '0'}:${item.title}`)
-        .join('~');
-}
-
-function updateTaskDetailSubtaskProgress() {
-    const rows = readTaskDetailSubtasks();
-    const total = rows.length;
-    const done = rows.filter(item => item.is_done).length;
-    const progress = taskSubtaskProgress(done, total) || 0;
-    const fill = document.getElementById('_tdSubtaskProgressFill');
-    const label = document.getElementById('_tdSubtaskProgressLabel');
-    if (fill) fill.style.width = `${progress}%`;
-    if (label) label.textContent = total ? `${done}/${total} · ${progress}%` : 'Без підзадач';
-}
-
-function addTaskDetailSubtask(value = '') {
-    const list = document.getElementById('_tdSubtasksList');
-    if (!list) return;
-    list.insertAdjacentHTML('beforeend', taskDetailSubtaskRow({ title: value }, list.children.length));
-    list.dataset.subtasksLoaded = 'true';
-    updateTaskDetailSubtaskProgress();
-    list.querySelector('[data-detail-subtask-row]:last-child [data-detail-subtask-title]')?.focus();
-}
-window.addTaskDetailSubtask = addTaskDetailSubtask;
-
-function bindTaskDetailSubtasks() {
-    document.getElementById('_tdSubtaskAdd')?.addEventListener('click', () => addTaskDetailSubtask());
-    const list = document.getElementById('_tdSubtasksList');
-    if (!list) return;
-    list.addEventListener('click', (event) => {
-        const row = event.target.closest('[data-detail-subtask-row]');
-        if (!row) return;
-        if (event.target.closest('[data-detail-subtask-remove]')) {
-            row.remove();
-        } else if (event.target.closest('[data-detail-subtask-up]')) {
-            const prev = row.previousElementSibling;
-            if (prev) list.insertBefore(row, prev);
-        } else if (event.target.closest('[data-detail-subtask-down]')) {
-            const next = row.nextElementSibling;
-            if (next) list.insertBefore(next, row);
-        }
-        updateTaskDetailSubtaskProgress();
-    });
-    list.addEventListener('input', updateTaskDetailSubtaskProgress);
-    list.addEventListener('change', updateTaskDetailSubtaskProgress);
 }
 
 function taskDetailDepositPanel() {
@@ -6341,9 +5550,8 @@ function renderTaskDetailContext(task = {}) {
     const dependencySummary = dependencyTitles || (Number(task.openDependencyCount || task.open_dependency_count || 0)
         ? (task.blockedByTitles || task.blocked_by_titles || 'потрібно завершити попередні задачі')
         : 'Відкритих залежностей немає');
-    const reportRequired = task.drawer?.completion?.reportRequired === true || task.reportRequired === true || task.requiresReport === true;
     const snoozedUntil = task.snoozedUntil || task.snoozed_until || '';
-    return `<section class="task-detail-context-card"><strong>Контекст і результат</strong><span><b>Бізнес-контекст:</b> ${escapeHtml(businessContext)}</span><span><b>Очікуваний результат:</b> ${escapeHtml(expectedResult || 'не задано')}</span><span><b>Залежності:</b> ${escapeHtml(dependencySummary)}</span><span><b>Звіт про виконання:</b> ${reportRequired ? 'обов’язковий' : 'не потрібен'}</span>${snoozedUntil ? `<span><b>Відкладено до:</b> ${escapeHtml(snoozedUntil)}</span>` : ''}</section>`;
+    return `<section class="task-detail-context-card"><strong>Контекст і результат</strong><span><b>Бізнес-контекст:</b> ${escapeHtml(businessContext)}</span><span><b>Очікуваний результат:</b> ${escapeHtml(expectedResult || 'не задано')}</span><span><b>Залежності:</b> ${escapeHtml(dependencySummary)}</span>${snoozedUntil ? `<span><b>Відкладено до:</b> ${escapeHtml(snoozedUntil)}</span>` : ''}</section>`;
 }
 
 function applyTaskDetailActionPermissions(task = {}) {
@@ -6353,7 +5561,7 @@ function applyTaskDetailActionPermissions(task = {}) {
     if (!overlay) return;
     const editable = actions.edit === true;
     if (!editable) {
-        overlay.querySelectorAll('input, textarea, select, [data-detail-schedule-slot], #_tdSubtaskAdd').forEach(control => {
+        overlay.querySelectorAll('input, textarea, select, [data-detail-schedule-slot]').forEach(control => {
             control.disabled = true;
             control.setAttribute('aria-disabled', 'true');
         });
@@ -6479,9 +5687,6 @@ async function renderTaskDetailDrawer(taskId) {
         const categoryValue = t.category || 'admin';
         const subcategoryValue = t.subcategory || '';
         const subcategoryStyle = supportsSubcategory(categoryValue) ? '' : 'display:none';
-        const detailSubtasks = Array.isArray(t.subtasks) ? t.subtasks : [];
-        const detailSubtaskSummary = taskSubtaskSummary(t);
-        const detailSubtaskProgress = detailSubtaskSummary.progress || 0;
         const drawerActions = t.drawer?.actions || {};
         const canSaveTaskDetail = drawerActions.save === true;
         const canCompleteTaskDetail = drawerActions.complete === true;
@@ -6578,24 +5783,11 @@ async function renderTaskDetailDrawer(taskId) {
                 ${renderTaskDetailContext(t)}
                 ${renderTaskDetailSource(t)}
                 ${renderBanquetDepositTaskPanel(t, depositProjection, { label: _lbl, input: _inp })}
-                <div style="border:1px solid rgba(20,184,166,0.20);border-radius:10px;padding:10px;background:rgba(20,184,166,0.06)">
-                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">
-                        <strong style="font-size:13px">Підзадачі</strong>
-                        <span id="_tdSubtaskProgressLabel" style="font-size:11px;font-weight:800;color:#0f766e">${detailSubtaskSummary.total ? `${detailSubtaskSummary.done}/${detailSubtaskSummary.total} · ${detailSubtaskProgress}%` : 'Без підзадач'}</span>
-                    </div>
-                    <div class="task-subtask-progress" style="margin:0 0 8px">
-                        <div id="_tdSubtaskProgressFill" class="task-subtask-progress-fill" style="width:${detailSubtaskProgress}%"></div>
-                    </div>
-                    <div id="_tdSubtasksList" class="task-subtasks-list" data-subtasks-loaded="true">
-                        ${renderTaskDetailSubtasks(detailSubtasks)}
-                    </div>
-                    <button type="button" id="_tdSubtaskAdd" class="task-subtask-add" style="margin-top:8px">+ Підзадача</button>
-                </div>
                 <div style="border:1px solid var(--gray-100);border-radius:10px;padding:10px;background:rgba(20,184,166,0.06)">
                     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px">
                         <div>
                             <strong style="font-size:13px">Спостерігачі і матеріали</strong>
-                            <div style="font-size:12px;color:var(--gray-500);margin-top:3px">Обрані люди бачать задачу, опис, чекліст, історію дій і робочі матеріали без права змінювати виконання.</div>
+                            <div style="font-size:12px;color:var(--gray-500);margin-top:3px">Обрані люди бачать задачу, опис, історію дій і робочі матеріали без права змінювати виконання.</div>
                         </div>
                         <span id="_tdObserverCount" style="font-size:11px;font-weight:800;color:#0f766e;background:rgba(20,184,166,0.12);border:1px solid rgba(20,184,166,0.24);border-radius:999px;padding:4px 8px">${Number(t.observerCount || currentObserverIds.size || 0)} доступ</span>
                     </div>
@@ -6624,7 +5816,6 @@ async function renderTaskDetailDrawer(taskId) {
             </div>
         </div>`;
         document.getElementById('_tdCategory')?.addEventListener('change', syncDetailSubcategoryVisibility);
-        bindTaskDetailSubtasks();
         document.querySelectorAll('[data-detail-schedule-slot]').forEach(btn => {
             btn.addEventListener('click', () => {
                 document.querySelectorAll('[data-detail-schedule-slot]').forEach(slotBtn => {
@@ -6637,7 +5828,6 @@ async function renderTaskDetailDrawer(taskId) {
             });
         });
         syncDetailSubcategoryVisibility();
-        updateTaskDetailSubtaskProgress();
         rememberBanquetDepositFormState();
         resetTaskDetailDirtyState();
         applyTaskDetailActionPermissions(t);
@@ -6756,16 +5946,7 @@ async function taskDetailComplete(taskId) {
         const confirmed = await confirmBanquetDepositFromTask(taskId);
         if (!confirmed) return;
     }
-    let result = await apiCompleteTask(taskId, { sourceSurface: 'task_detail' });
-    if (window.TaskReportGate?.responseNeedsReport?.(result)) {
-        const task = allTasks.find(t => Number(t.id) === Number(taskId)) || {};
-        const reportId = await window.TaskReportGate.openReportModal(task, { sourceSurface: 'task_detail', taskId });
-        if (!reportId) {
-            showNotification('Звіт потрібен перед виконанням задачі', 'warning');
-            return;
-        }
-        result = await apiCompleteTask(taskId, { sourceSurface: 'task_detail', reportId });
-    }
+    const result = await apiCompleteTask(taskId, { sourceSurface: 'task_detail' });
     if (result?.success) {
         window.SoundEngine?.playTask?.('task-complete');
         showNotification('Задачу виконано', 'success');
@@ -6887,7 +6068,6 @@ async function saveTaskDetail(taskId) {
             priority: document.getElementById('_tdPriority')?.value || 'normal',
             category,
             subcategory,
-            checklist_template_key: normalizeChecklistTemplateKey(category, subcategory),
             deadline: document.getElementById('_tdDeadline')?.value || null,
             effort_minutes: scheduleDuration,
             schedule: scheduleExact
@@ -6901,7 +6081,6 @@ async function saveTaskDetail(taskId) {
             pack_status: document.getElementById('_tdPackStatus')?.value || null,
             owner_role: document.getElementById('_tdOwnerRole')?.value.trim() || null,
             sla_minutes: document.getElementById('_tdSlaMinutes')?.value || null,
-            subtasks: readTaskDetailSubtasks(),
             version: document.getElementById('taskDetailOverlay')?.dataset?.taskVersion || undefined
         };
         const res = await taskApiFetchWithAuth(`/api/tasks/${taskId}`, {

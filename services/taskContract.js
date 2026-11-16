@@ -15,8 +15,7 @@ const { taskViewerRoles } = require('./taskPersonalScope');
 const { attachTaskSchedule } = require('./taskScheduling');
 const {
     taskCompletionReportId,
-    taskControlMeta,
-    taskRequiresCompletionReport
+    taskControlMeta
 } = require('./taskExecution');
 const { normalizeSubtaskRow, subtaskProgress } = require('./taskSubtasks');
 const { deriveTaskIntelligence } = require('./taskIntelligence');
@@ -64,7 +63,6 @@ function normalizeTaskPayload(row = {}, options = {}) {
     } : null;
     const canReschedule = actionPermissions ? actionPermissions.canReschedule : fallbackCanReschedule;
     const reportId = taskCompletionReportId(row);
-    const reportRequired = taskRequiresCompletionReport(row);
     const subtaskCount = Number(row.subtask_count || 0);
     const subtaskDoneCount = Number(row.subtask_done_count || 0);
     const progress = subtaskProgress(subtaskDoneCount, subtaskCount);
@@ -126,8 +124,6 @@ function normalizeTaskPayload(row = {}, options = {}) {
         canReschedule,
         allowReschedule: canReschedule,
         ...(actionPermissions ? { actionPermissions } : {}),
-        reportRequired,
-        requiresReport: reportRequired,
         reportId,
         subtaskCount,
         subtaskDoneCount,

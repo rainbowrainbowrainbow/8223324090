@@ -164,7 +164,7 @@ test('AI draft composer is visible, shared, reviewable, and not hidden in advanc
     assert.match(aiCode, /data-task-ai-bundle-field="title"/);
     assert.match(aiCode, /data-task-ai-bundle-field="description"/);
     assert.match(aiCode, /data-task-ai-bundle-field="impactIds"/);
-    assert.match(aiCode, /data-task-ai-bundle-field="subtasks"/);
+    assert.doesNotMatch(aiCode, /data-task-ai-bundle-field="subtasks"/);
     assert.match(aiCode, /data-task-ai-bundle-field="ownerUserId"/);
     assert.match(aiCode, /data-task-ai-bundle-field="scheduleDate"/);
     assert.match(aiCode, /data-task-ai-bundle-field="priority"/);
@@ -177,15 +177,13 @@ test('AI draft composer is visible, shared, reviewable, and not hidden in advanc
     assert.match(aiCode, /aria-expanded=/);
     assert.match(aiCode, /data-task-ai-bundle-editor/);
     assert.match(aiCode, /bundlePayloadFor/);
-    assert.match(aiCode, /renderStructureSelector/);
+    assert.doesNotMatch(aiCode, /renderStructureSelector/);
     assert.match(aiCode, /activeTasks\.length < 2/);
     assert.match(aiCode, /taskIds\.forEach\(id => lastCommittedAiTaskIds\.add\(id\)\)/);
     assert.doesNotMatch(aiCode, /\bcommittedTaskIds\b/);
     assert.match(aiCode, /commitType: 'bundle'/);
     assert.doesNotMatch(aiCode, /state\.preview\?\.proposal\?\.decision === 'task_bundle'\) return null/);
     assert.match(aiCode, /sourceType: 'ai_draft'/);
-    assert.match(aiCode, /dataset\.subtaskSource = 'manual'/);
-    assert.match(aiCode, /markUserEdited\(root, 'subtasks'\)/);
     assert.doesNotMatch(tasksHtml, /id="taskSubtaskDraftBtn"/);
     assert.doesNotMatch(profileCode, /id="cabinetSubtaskDraftBtn"/);
 
@@ -486,7 +484,7 @@ test('task create notifications keep single and bundle feedback within two compa
     assert.equal(single.type, 'warning');
     assert.equal(single.details.length, 2);
     assert.match(single.details[0], /Olena/);
-    assert.match(single.details[1], /Чекліст: 3/);
+    assert.doesNotMatch(single.details.join(' '), /Чекліст/);
     assert.match(single.details[1], /Потрібно перевірити: 1/);
 
     const bundle = dom.window.TaskCreate.buildCreateNotification([
@@ -650,11 +648,11 @@ test('AI draft composer renders interactive task bundle review without single-ta
     assert.ok(root.querySelector('.task-ai-bundle-field-states'));
     assert.equal(root.querySelectorAll('[data-task-ai-bundle-editor]').length, 1, 'only one task editor is expanded');
     assert.equal(root.querySelector('[data-task-ai-bundle-edit]').getAttribute('aria-expanded'), 'true');
-    assert.equal(root.querySelector('[data-task-ai-bundle-field="subtasks"]').value, 'Check validation path');
+    assert.equal(root.querySelector('[data-task-ai-bundle-field="subtasks"]'), null);
     assert.equal(root.querySelector('[data-task-ai-bundle-field="ownerUserId"]').value, '');
     assert.ok(root.querySelector('[data-task-ai-draft-submit-intent]').disabled);
     assert.equal(window.TaskAiDraft.commitPayloadFor(root), null);
-    assert.equal(root.querySelectorAll('[data-task-ai-structure]').length, 2);
+    assert.equal(root.querySelectorAll('[data-task-ai-structure]').length, 0);
 
     root.querySelector('[data-task-ai-bundle-accept-all]').click();
     assert.equal(root.querySelector('[data-task-ai-draft-submit-intent]').disabled, true);
@@ -668,7 +666,7 @@ test('AI draft composer renders interactive task bundle review without single-ta
     assert.equal(window.TaskAiDraft.commitPayloadFor(root).tasks[1].scheduleDate, '2026-08-18');
     assert.deepEqual(window.TaskAiDraft.bundlePayloadFor(root).acceptedTaskMask, [0, 1]);
     assert.deepEqual(window.TaskAiDraft.bundlePayloadFor(root).rejectedTaskMask, []);
-    assert.deepEqual(Array.from(window.TaskAiDraft.bundlePayloadFor(root).acceptedFieldMasks[0].fields), ['title', 'description', 'impactIds', 'subtasks', 'owner', 'dueDate', 'priority']);
+    assert.deepEqual(Array.from(window.TaskAiDraft.bundlePayloadFor(root).acceptedFieldMasks[0].fields), ['title', 'description', 'impactIds', 'owner', 'dueDate', 'priority']);
     assert.deepEqual(Array.from(window.TaskAiDraft.bundlePayloadFor(root).editedFieldMasks[0].fields), ['dueDate']);
 
     const firstTitle = root.querySelector('[data-task-ai-bundle-card] [data-task-ai-bundle-field="title"]');
@@ -710,7 +708,7 @@ test('AI draft fingerprint rejects stale schedule confirmation changes', () => {
     assert.notEqual(window.TaskAiDraft._draftKey(todayDraft), window.TaskAiDraft._draftKey(noDateDraft));
 });
 
-test('AI draft accept-all does not overwrite existing manual subtasks without explicit subtask acceptance', async () => {
+test('AI draft accept-all ignores the legacy checklist fields in a cached preview', async () => {
     const dom = new JSDOM(`<!doctype html><body>
         <div id="composer" data-source-surface="test">
             <button type="button" data-task-ai-draft-preview>AI</button>
@@ -777,11 +775,9 @@ test('AI draft accept-all does not overwrite existing manual subtasks without ex
     await tick();
     root.querySelector('[data-task-ai-draft-accept-all]').click();
 
-    assert.deepEqual(applied.map(item => item.field), ['title', 'mode']);
+    assert.deepEqual(applied.map(item => item.field), ['title']);
     assert.equal(applied.some(item => item.field === 'subtasks'), false);
     assert.equal(window.TaskAiDraft.commitPayloadFor(root).acceptedFieldMask.includes('subtasks'), false);
 
-    root.querySelector('[data-task-ai-draft-accept="subtasks"]').click();
-    assert.equal(applied.at(-1).field, 'subtasks');
-    assert.equal(window.TaskAiDraft.commitPayloadFor(root).acceptedFieldMask.includes('subtasks'), true);
+    assert.equal(root.querySelector('[data-task-ai-draft-accept="subtasks"]'), null);
 });

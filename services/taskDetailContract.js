@@ -121,7 +121,6 @@ function withTaskDrawerContract(task = {}, user = {}) {
             actionReasons: actionContract.reasons,
             source,
             completion: {
-                reportRequired: task.reportRequired === true || task.requiresReport === true || controlMeta.reportRequired === true || controlMeta.requiresReport === true,
                 reportId: task.reportId || task.report_id || controlMeta.reportId || controlMeta.report_id || null
             }
         }

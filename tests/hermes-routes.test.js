@@ -175,10 +175,6 @@ function createFakePool(options = {}) {
         [123, taskRow(123, {
             title: 'Detail task',
             status: 'in_progress',
-            subtasks: [
-                { id: 1, title: 'Done part', is_done: true, completed_at: '2026-06-27T08:00:00.000Z' },
-                { id: 2, title: 'Open part', is_done: false }
-            ],
             customer_phone: '+380000000000',
             customer_email: 'hidden@example.com'
         })]
@@ -333,11 +329,11 @@ function createCabinetFakePool(options = {}) {
                 return { rows: [{ open_count: taskRows.length }], rowCount: 1 };
             }
 
-            if (/AS done_total/i.test(compact) && /AS active_my_day/i.test(compact)) {
+            if (/AS parent_done_total/i.test(compact) && /AS active_my_day/i.test(compact)) {
                 return { rows: [quickStats], rowCount: 1 };
             }
 
-            if (/COALESCE\(t\.status, 'todo'\) = 'done'/i.test(compact)) {
+            if (/(?:COALESCE\(t\.status, 'todo'\)|t\.status) = 'done'/i.test(compact)) {
                 return { rows: completedRows, rowCount: completedRows.length };
             }
 
@@ -1330,8 +1326,8 @@ describe('Hermes read-only task routes', () => {
         assert.ok(res.data.supportedActions.includes('tasks.complete'));
         assert.ok(res.data.supportedActions.includes('tasks.completion_report'));
         assert.ok(res.data.supportedActions.includes('tasks.comment'));
-        assert.ok(res.data.supportedActions.includes('tasks.subtasks.read'));
-        assert.ok(res.data.supportedActions.includes('tasks.subtask.toggle'));
+        assert.ok(!res.data.supportedActions.includes('tasks.subtasks.read'));
+        assert.ok(!res.data.supportedActions.includes('tasks.subtask.toggle'));
         assert.ok(res.data.supportedActions.includes('tasks.reassign'));
         assert.ok(res.data.supportedActions.includes('tasks.reschedule'));
         assert.ok(res.data.supportedActions.includes('menu_photos.read'));
@@ -1387,14 +1383,8 @@ describe('Hermes read-only task routes', () => {
             res.data.endpoints.tasks.comment,
             'POST /api/hermes/tasks/:id/comments'
         );
-        assert.equal(
-            res.data.endpoints.tasks.subtasks,
-            'GET /api/hermes/tasks/:id/subtasks'
-        );
-        assert.equal(
-            res.data.endpoints.tasks.subtaskToggle,
-            'PATCH /api/hermes/tasks/:id/subtasks/:subtaskId'
-        );
+        assert.equal(res.data.endpoints.tasks.subtasks, undefined);
+        assert.equal(res.data.endpoints.tasks.subtaskToggle, undefined);
     });
 
     it('protects Hermes my-cabinet with x-api-key auth', async () => {
@@ -1489,8 +1479,8 @@ describe('Hermes read-only task routes', () => {
             assert.equal(Array.isArray(res.data.completedHistory), true);
             assert.equal(res.data.stats.openTaskCount, 2);
             assert.equal(res.data.stats.activeOpenCount, 2);
-            assert.equal(res.data.stats.todayDone, 2);
-            assert.equal(res.data.stats.taskQuick.completedToday, 2);
+            assert.equal(res.data.stats.todayDone, 1);
+            assert.equal(res.data.stats.taskQuick.completedToday, 1);
             assert.equal(res.data.meta.sourceSurface, 'hermes');
             assert.equal(res.data.meta.source, 'hermes-event-genix-crm');
             assert.equal(res.data.meta.ownerUserId, 4);
@@ -1711,7 +1701,7 @@ describe('Hermes read-only task routes', () => {
         }
     });
 
-    it('returns task detail with subtasks and no raw DB fields', async () => {
+    it('returns task detail without retired checklists or raw DB fields', async () => {
         const res = await request(baseUrl, 'GET', '/api/hermes/tasks/123?businessContext=event_genix');
 
         assert.equal(res.status, 200, JSON.stringify(res.data));
@@ -1719,13 +1709,14 @@ describe('Hermes read-only task routes', () => {
         assert.equal(res.data.task.id, '123');
         assert.equal(res.data.task.title, 'Detail task');
         assert.equal(res.data.task.status, 'in_progress');
-        assert.deepEqual(res.data.task.subtasks.map(item => item.status), ['done', 'open']);
+        assert.deepEqual(res.data.task.subtasks, []);
         assert.deepEqual(res.data.task.creator, { id: '2', name: 'Creator Name' });
         assert.equal(JSON.stringify(res.data).includes('+380000000000'), false);
         assert.equal(JSON.stringify(res.data).includes('hidden@example.com'), false);
 
-        const detailCall = fakePool.calls.find(call => /COALESCE\(subtask_rows\.subtasks/.test(call.text));
-        assert.ok(detailCall, 'detail query should include subtask projection');
+        const detailCall = fakePool.calls.find(call => /WHERE t\.id = \$1/.test(call.text));
+        assert.ok(detailCall);
+        assert.doesNotMatch(detailCall.text, /task_subtasks/);
         assert.match(detailCall.text, /task_observer_scope/);
         assert.match(detailCall.text, /COALESCE\(t\.business_context, 'event_genix'\)/);
     });
@@ -3045,7 +3036,7 @@ describe('Hermes task create route', () => {
             assert.equal(res.data.task.priority, 'urgent');
             assert.deepEqual(res.data.task.assignee, { id: '8', name: 'Ops User' });
             assert.deepEqual(res.data.task.creator, { id: '7', name: 'Hermes Actor' });
-            assert.deepEqual(res.data.task.subtasks.map(item => item.status), ['open', 'done']);
+            assert.deepEqual(res.data.task.subtasks, []);
             assert.equal(res.data.task.crm_url.includes('/tasks?open='), true);
             assert.equal(res.data.meta.sourceSurface, 'hermes');
             assert.equal(res.data.meta.idempotencyKey, 'create-success-1');
@@ -3054,7 +3045,8 @@ describe('Hermes task create route', () => {
             assert.equal(fakePool.createdTasks[0].source_type, 'hermes');
             assert.equal(fakePool.createdTasks[0].source_module, 'hermes');
             assert.equal(fakePool.createdTasks[0].created_by_user_id, 7);
-            assert.equal(fakePool.createdTasks[0].task_kind, 'checklist');
+            assert.equal(fakePool.createdTasks[0].task_kind, 'action');
+            assert.equal(fakePool.subtasks.size, 0);
             assert.equal(JSON.stringify(res.data).includes('control_meta'), false);
         });
     });
@@ -3195,268 +3187,20 @@ describe('Hermes task create route', () => {
 });
 
 describe('Hermes task write routes', () => {
-    it('lists subtasks through a read-only Hermes endpoint', async () => {
+    it('retires Hermes checklist reads and writes without touching historical rows', async () => {
         const fakePool = createHermesCreateFakePool({
-            tasks: [[730, taskRow(730, {
-                status: 'todo',
-                workflow_state: 'todo',
-                version: 2
-            })]],
-            subtasks: {
-                730: [
-                    { id: 9301, title: 'Open part', is_done: false, sort_order: 0 },
-                    { id: 9302, title: 'Done part', is_done: true, sort_order: 1, completed_at: '2026-06-27T08:00:00.000Z' }
-                ]
-            }
+            tasks: [[730, taskRow(730, { status: 'todo' })]],
+            subtasks: { 730: [{ id: 9301, task_id: 730, title: 'Historical step', is_done: false }] }
         });
-
         await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
-            const res = await request(baseUrl, 'GET', '/api/hermes/tasks/730/subtasks?businessContext=event_genix');
-
-            assert.equal(res.status, 200, res.text);
-            assert.equal(res.data.success, true);
-            assert.deepEqual(res.data.subtasks.map(item => item.id), ['9301', '9302']);
-            assert.deepEqual(res.data.subtasks.map(item => item.status), ['open', 'done']);
-            assert.equal(res.data.parent.subtaskCount, 2);
-            assert.equal(res.data.parent.subtaskDoneCount, 1);
-            assert.equal(res.data.parent.subtaskOpenCount, 1);
-            assert.equal(res.data.parent.canCompleteParent, false);
-            assert.equal(res.data.meta.readOnly, true);
-            assert.equal(fakePool.records.size, 0);
-            assert.equal(JSON.stringify(res.data).includes('control_meta'), false);
-        });
-    });
-
-    it('toggles a Hermes subtask done and keeps task detail subtasks current', async () => {
-        const fakePool = createHermesCreateFakePool({
-            tasks: [[730, taskRow(730, {
-                status: 'todo',
-                workflow_state: 'todo',
-                version: 2
-            })]],
-            subtasks: {
-                730: [
-                    { id: 9301, title: 'Open part', is_done: false, sort_order: 0 },
-                    { id: 9302, title: 'Done part', is_done: true, sort_order: 1, completed_at: '2026-06-27T08:00:00.000Z' }
-                ]
-            }
-        });
-
-        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
-            const res = await request(
-                baseUrl,
-                'PATCH',
-                '/api/hermes/tasks/730/subtasks/9301?businessContext=event_genix',
-                { is_done: true },
-                mutationHeaders('subtask-toggle-done')
-            );
-            const detail = await request(baseUrl, 'GET', '/api/hermes/tasks/730?businessContext=event_genix');
-
-            assert.equal(res.status, 200, res.text);
-            assert.equal(res.data.subtask.id, '9301');
-            assert.equal(res.data.subtask.status, 'done');
-            assert.equal(res.data.subtask.is_done, true);
-            assert.ok(res.data.subtask.completed_at);
-            assert.equal(res.data.parent.subtaskDoneCount, 2);
-            assert.equal(res.data.parent.subtaskOpenCount, 0);
-            assert.equal(res.data.parent.canCompleteParent, true);
-            assert.equal(res.data.parent.version, 3);
-            assert.equal(res.data.meta.action, 'subtask_toggle');
-            assert.equal(fakePool.subtasks.get(730).find(item => item.id === 9301).is_done, true);
-            assert.equal(detail.status, 200, detail.text);
-            assert.deepEqual(detail.data.task.subtasks.map(item => item.status), ['done', 'done']);
-            const serialized = JSON.stringify(res.data);
-            assert.equal(serialized.includes('task_id'), false);
-            assert.equal(serialized.includes('control_meta'), false);
-        });
-    });
-
-    it('toggles a Hermes subtask back to open', async () => {
-        const fakePool = createHermesCreateFakePool({
-            tasks: [[731, taskRow(731, {
-                status: 'todo',
-                workflow_state: 'todo',
-                version: 1
-            })]],
-            subtasks: {
-                731: [
-                    { id: 9311, title: 'Done part', is_done: true, sort_order: 0, completed_at: '2026-06-27T08:00:00.000Z' },
-                    { id: 9312, title: 'Still done', is_done: true, sort_order: 1, completed_at: '2026-06-27T08:00:00.000Z' }
-                ]
-            }
-        });
-
-        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
-            const res = await request(
-                baseUrl,
-                'PATCH',
-                '/api/hermes/tasks/731/subtasks/9311?businessContext=event_genix',
-                { isDone: false },
-                mutationHeaders('subtask-toggle-open')
-            );
-
-            assert.equal(res.status, 200, res.text);
-            assert.equal(res.data.subtask.status, 'open');
-            assert.equal(res.data.subtask.is_done, false);
-            assert.equal(res.data.subtask.completed_at, null);
-            assert.equal(res.data.parent.subtaskDoneCount, 1);
-            assert.equal(res.data.parent.subtaskOpenCount, 1);
-            assert.equal(res.data.parent.canCompleteParent, false);
-            assert.equal(fakePool.subtasks.get(731).find(item => item.id === 9311).completed_at, null);
-        });
-    });
-
-    it('requires confirmation and idempotency headers on the Hermes subtask toggle endpoint', async () => {
-        const fakePool = createHermesCreateFakePool({
-            tasks: [[732, taskRow(732)]],
-            subtasks: {
-                732: [{ id: 9321, title: 'Open', is_done: false }]
-            }
-        });
-
-        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
-            const missingConfirmation = await request(
-                baseUrl,
-                'PATCH',
-                '/api/hermes/tasks/732/subtasks/9321?businessContext=event_genix',
-                { is_done: true },
-                { 'Idempotency-Key': 'subtask-missing-confirmation' }
-            );
-            const missingIdempotency = await request(
-                baseUrl,
-                'PATCH',
-                '/api/hermes/tasks/732/subtasks/9321?businessContext=event_genix',
-                { is_done: true },
-                { 'X-Hermes-User-Confirmed': 'true' }
-            );
-
-            assert.equal(missingConfirmation.status, 400, missingConfirmation.text);
-            assert.equal(missingConfirmation.data.code, 'HERMES_CONFIRMATION_REQUIRED');
-            assert.equal(missingIdempotency.status, 400, missingIdempotency.text);
-            assert.equal(missingIdempotency.data.code, 'IDEMPOTENCY_KEY_REQUIRED');
-            assert.equal(fakePool.subtasks.get(732)[0].is_done, false);
-        });
-    });
-
-    it('rejects invalid Hermes subtask toggle payloads before mutation', async () => {
-        const fakePool = createHermesCreateFakePool({
-            tasks: [[732, taskRow(732)]],
-            subtasks: {
-                732: [{ id: 9321, title: 'Open', is_done: false }]
-            }
-        });
-
-        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
-            const unsupported = await request(
-                baseUrl,
-                'PATCH',
-                '/api/hermes/tasks/732/subtasks/9321?businessContext=event_genix',
-                { is_done: true, title: 'Not allowed' },
-                mutationHeaders('subtask-unsupported')
-            );
-            const missing = await request(
-                baseUrl,
-                'PATCH',
-                '/api/hermes/tasks/732/subtasks/9321?businessContext=event_genix',
-                {},
-                mutationHeaders('subtask-missing-state')
-            );
-
-            assert.equal(unsupported.status, 400, unsupported.text);
-            assert.equal(unsupported.data.code, 'HERMES_UNSUPPORTED_FIELD');
-            assert.equal(missing.status, 400, missing.text);
-            assert.equal(missing.data.code, 'HERMES_INVALID_SUBTASK_PAYLOAD');
-            assert.equal(fakePool.subtasks.get(732)[0].is_done, false);
-        });
-    });
-
-    it('does not mutate subtasks for invisible tasks', async () => {
-        const fakePool = createHermesCreateFakePool({
-            hiddenIds: [733],
-            tasks: [[733, taskRow(733)]],
-            subtasks: {
-                733: [{ id: 9331, title: 'Hidden open', is_done: false }]
-            }
-        });
-
-        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
-            const res = await request(
-                baseUrl,
-                'PATCH',
-                '/api/hermes/tasks/733/subtasks/9331?businessContext=event_genix',
-                { is_done: true },
-                mutationHeaders('subtask-hidden')
-            );
-
-            assert.equal(res.status, 404, res.text);
-            assert.equal(res.data.code, 'TASK_NOT_VISIBLE');
-            assert.equal(fakePool.subtasks.get(733)[0].is_done, false);
-        });
-    });
-
-    it('replays the stored Hermes subtask toggle response on idempotent retry', async () => {
-        const fakePool = createHermesCreateFakePool({
-            tasks: [[736, taskRow(736, {
-                status: 'todo',
-                workflow_state: 'todo',
-                version: 1
-            })]],
-            subtasks: {
-                736: [{ id: 9361, title: 'Open', is_done: false }]
-            }
-        });
-
-        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
-            const path = '/api/hermes/tasks/736/subtasks/9361?businessContext=event_genix';
-            const body = { is_done: true };
-            const first = await request(baseUrl, 'PATCH', path, body, mutationHeaders('subtask-toggle-retry'));
-            const retry = await request(baseUrl, 'PATCH', path, body, mutationHeaders('subtask-toggle-retry'));
-
-            assert.equal(first.status, 200, first.text);
-            assert.equal(retry.status, 200, retry.text);
-            assert.deepEqual(retry.data, first.data);
-            assert.equal(fakePool.subtasks.get(736)[0].is_done, true);
-            assert.equal(fakePool.tasks.get(736).version, 2);
-        });
-    });
-
-    it('keeps parent completion blocked while Hermes subtasks remain incomplete', async () => {
-        const fakePool = createHermesCreateFakePool({
-            tasks: [[735, taskRow(735, {
-                status: 'todo',
-                workflow_state: 'todo',
-                version: 1
-            })]],
-            subtasks: {
-                735: [
-                    { id: 9351, title: 'First open', is_done: false, sort_order: 0 },
-                    { id: 9352, title: 'Second open', is_done: false, sort_order: 1 }
-                ]
-            }
-        });
-
-        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
-            const toggle = await request(
-                baseUrl,
-                'PATCH',
-                '/api/hermes/tasks/735/subtasks/9351?businessContext=event_genix',
-                { is_done: true },
-                mutationHeaders('subtask-one-done')
-            );
-            const complete = await request(
-                baseUrl,
-                'POST',
-                '/api/hermes/tasks/735/complete',
-                {},
-                mutationHeaders('complete-still-blocked')
-            );
-
-            assert.equal(toggle.status, 200, toggle.text);
-            assert.equal(toggle.data.parent.subtaskDoneCount, 1);
-            assert.equal(toggle.data.parent.subtaskOpenCount, 1);
-            assert.equal(toggle.data.parent.canCompleteParent, false);
-            assert.equal(complete.status, 409, complete.text);
-            assert.equal(complete.data.code, 'SUBTASKS_INCOMPLETE');
+            const path = '/api/hermes/tasks/730/subtasks';
+            const read = await request(baseUrl, 'GET', path);
+            assert.equal(read.status, 410, read.text);
+            assert.equal(read.data.code, 'TASK_CHECKLIST_RETIRED');
+            const write = await request(baseUrl, 'PATCH', path + '/9301', { is_done: true }, mutationHeaders('retired-checklist'));
+            assert.equal(write.status, 410, write.text);
+            assert.equal(write.data.code, 'TASK_CHECKLIST_RETIRED');
+            assert.equal(fakePool.subtasks.get(730)[0].is_done, false);
         });
     });
 
@@ -3852,31 +3596,16 @@ describe('Hermes task write routes', () => {
         });
     });
 
-    it('preserves report-required and incomplete-subtasks completion errors', async () => {
-        const reportRequiredPool = createHermesCreateFakePool({
-            tasks: [[701, taskRow(701, {
-                status: 'todo',
-                control_meta: { reportRequired: true }
-            })]]
+    it('completes a legacy task despite its report flag and unchanged open checklist', async () => {
+        const fakePool = createHermesCreateFakePool({
+            tasks: [[701, taskRow(701, { status: 'todo', control_meta: { reportRequired: true } })]],
+            subtasks: { 701: [{ id: 9301, task_id: 701, title: 'Historical step', is_done: false }] }
         });
-        await withHermesCreateServer(reportRequiredPool, async ({ baseUrl }) => {
-            const res = await request(baseUrl, 'POST', '/api/hermes/tasks/701/complete', {}, mutationHeaders('complete-report-required'));
-
-            assert.equal(res.status, 409, res.text);
-            assert.equal(res.data.code, 'TASK_REPORT_REQUIRED');
-        });
-
-        const incompleteSubtasksPool = createHermesCreateFakePool({
-            tasks: [[702, taskRow(702, { status: 'todo' })]],
-            subtaskStates: {
-                702: { total: 2, done: 1 }
-            }
-        });
-        await withHermesCreateServer(incompleteSubtasksPool, async ({ baseUrl }) => {
-            const res = await request(baseUrl, 'POST', '/api/hermes/tasks/702/complete', {}, mutationHeaders('complete-subtasks-incomplete'));
-
-            assert.equal(res.status, 409, res.text);
-            assert.equal(res.data.code, 'SUBTASKS_INCOMPLETE');
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const res = await request(baseUrl, 'POST', '/api/hermes/tasks/701/complete', {}, mutationHeaders('complete-legacy'));
+            assert.equal(res.status, 200, res.text);
+            assert.equal(res.data.task.status, 'done');
+            assert.equal(fakePool.subtasks.get(701)[0].is_done, false);
         });
     });
 

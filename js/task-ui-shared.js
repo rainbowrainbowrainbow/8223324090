@@ -292,7 +292,6 @@
                 openCount: Number(task.openDependencyCount ?? task.open_dependency_count ?? 0)
             },
             report: {
-                required: task.reportRequired === true || task.requiresReport === true || task.report_required === true,
                 id: task.reportId ?? task.report_id ?? null
             },
             observers: {

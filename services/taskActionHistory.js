@@ -146,13 +146,15 @@ async function listLatestTaskPostponementEvents(taskIds, options = {}) {
 
     const query = options.pool || pool;
     const result = await query.query(
-        `SELECT DISTINCT ON (task_id) *
-         FROM task_action_history
-         WHERE task_id = ANY($1::int[])
-           AND action_type = $2
-           AND meta_json->>'countsAsPostponement' = 'true'
-           AND LOWER(COALESCE(meta_json->>'mutationKind', '')) NOT IN ('snooze', 'technical_correction')
-         ORDER BY task_id, created_at DESC, id DESC`,
+        `SELECT DISTINCT ON (h.task_id) h.*
+         FROM task_action_history h
+         WHERE h.task_id = ANY($1::int[])
+           AND h.action_type = $2
+           AND h.meta_json->>'countsAsPostponement' = 'true'
+           AND LOWER(COALESCE(h.meta_json->>'mutationKind', '')) NOT IN ('snooze', 'technical_correction')
+           AND NOT EXISTS (SELECT 1 FROM task_action_history undo
+               WHERE undo.task_id = h.task_id AND undo.meta_json->>'undoOfEventId' = h.id::text)
+         ORDER BY h.task_id, h.created_at DESC, h.id DESC`,
         [ids, TASK_ACTION_TYPES.RESCHEDULED]
     );
 

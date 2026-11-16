@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const vm = require('node:vm');
 
 const root = path.resolve(__dirname, '..');
 const page = fs.readFileSync(path.join(root, 'js', 'staff-page.js'), 'utf8');
@@ -111,6 +112,16 @@ test('legacy HR shift modal cannot flatten a multi-segment plan and links to the
     assert.match(hrPage, /StaffSchedulePage\?\.openDayPlan/);
     assert.match(hrPage, /Multi-segment план можна редагувати лише у «Графіку команди»/);
     assert.match(page, /openDayPlan: openScheduleDayPlan/);
+});
+
+test('legacy HR shift editor displays an agreement conflict without marking the plan stale', () => {
+    const start = hrPage.indexOf('function legacyHrShiftMutationErrorMessage(');
+    const end = hrPage.indexOf('\nasync function openCanonicalShiftDayPlan', start);
+    const context = vm.createContext({ hrScheduleableStaffErrorMessage: (_, fallback) => fallback });
+    const formatError = vm.runInContext(hrPage.slice(start, end) + '\nlegacyHrShiftMutationErrorMessage', context);
+    const message = 'Зміна має погоджену підміну. Перегляньте її в журналі «Підміни».';
+    assert.equal(formatError({ status: 409, code: 'SUBSTITUTION_SOURCE_FROZEN', error: message }), message);
+    assert.match(formatError({ status: 409, code: 'HR_SHIFT_PLAN_STALE' }), /План дня вже змінив інший менеджер/);
 });
 
 test('single save keeps an optimistic plan version and handles stale conflicts without closing the modal', () => {

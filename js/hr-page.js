@@ -4427,6 +4427,9 @@ function legacyHrShiftSegmentLabel(segment = {}) {
 }
 
 function legacyHrShiftMutationErrorMessage(result = {}, fallback = 'Не вдалося зберегти зміну') {
+    if (result?.code === 'SUBSTITUTION_SOURCE_FROZEN') {
+        return result.error || 'Зміна має погоджену підміну.';
+    }
     if (result?.status === 409 || result?.code === 'HR_SHIFT_PLAN_STALE') {
         return 'План дня вже змінив інший менеджер. Відкрийте його у «Графіку команди» та оновіть дані.';
     }

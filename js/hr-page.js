@@ -7947,7 +7947,7 @@ function renderTeamCardOverflowMenu(staff = {}) {
     const actionSection = [accountItems, createAccountItem, manageItems].filter(Boolean).join('');
     const dangerSection = canManage
         ? `<div class="hr-team-menu-section hr-team-menu-section--danger">
-                ${move && staff.is_active !== false ? `<button type="button" role="menuitem" class="hr-team-menu-item hr-team-delete" onclick="openStaffOffboarding(${id}, this)">Звільнити</button>` : ''}
+                ${move && staff.is_active !== false ? `<button type="button" role="menuitem" class="hr-team-menu-item hr-team-offboarding" onclick="openStaffOffboarding(${id}, this)">Звільнити</button>` : ''}
                 <small>Повне видалення — тільки для дубля.</small>
                 <button type="button" role="menuitem" class="hr-team-menu-item hr-team-delete" data-delete-staff-id="${id}" ${pendingStaffDeletions.has(JSON.stringify([teamAccessContext(), id])) ? 'disabled aria-busy="true"' : ''} onclick="deleteStaffProfile(${id})">${pendingStaffDeletions.has(JSON.stringify([teamAccessContext(), id])) ? 'Дія виконується…' : 'Видалити назавжди'}</button>
            </div>`

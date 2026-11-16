@@ -4809,6 +4809,7 @@ button.hr-team-onboarding-compact:focus-visible {
     background: transparent;
     color: var(--gray-700);
 }
+.hr-team-menu-item.hr-team-offboarding,
 .hr-team-menu-item.hr-team-delete {
     color: #b91c1c;
     background: rgba(239,68,68,0.08);

@@ -68,8 +68,13 @@ const { installHarness, requirePlaywright, readRepo, HR_HTML, ROOT } = require('
                     await page.screenshot({ path: path.join(out, theme + '-detail.png'),
                         clip: { x: 0, y: top, width, height: 844 - top } });
                 }
+                const dismiss = menu.getByRole('menuitem', { name: 'Звільнити', exact: true });
+                const deleteAction = menu.locator('.hr-team-delete');
+                assert.equal(await dismiss.isVisible(), true);
+                assert.equal(await deleteAction.count(), 1);
+                assert.equal(await deleteAction.textContent(), 'Видалити назавжди');
                 await page.keyboard.press('End');
-                assert.equal(await page.locator('.hr-team-card[data-staff-id="1"] .hr-team-delete').evaluate(el => el === document.activeElement), true);
+                assert.equal(await deleteAction.evaluate(el => el === document.activeElement), true);
                 await page.keyboard.press('Home');
                 await page.keyboard.press('ArrowDown');
                 assert.equal(await menu.evaluate(el => el.contains(document.activeElement)), true);

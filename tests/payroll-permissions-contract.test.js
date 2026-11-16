@@ -95,9 +95,10 @@ test('payroll API routes use endpoint-level action guards instead of broad role 
     assert.match(hrRoutes, /router\.use\(requireHrCapabilityContract\)/, 'HR router uses the granular capability gate');
     assert.match(financeRoutes, /router\.use\(requireRole\('creator', 'director', 'accountant'\)\)/, 'Finance router remains finance-only');
     assert.deepEqual(PAGE_ACCESS['/hr'], [
-        'creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin', 'security'
+        'creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin', 'security', 'accountant'
     ]);
-    assert.equal(PAGE_ACCESS['/hr'].includes('accountant'), false);
+    assert.equal(canUseAction({ role: 'accountant' }, 'hr.staff.view'), true);
+    assert.equal(canUseAction({ role: 'accountant' }, 'hr.staff.accounts.onboard'), false);
     assert.match(frontendAuth, /capabilityCatalog/);
 });
 

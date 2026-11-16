@@ -462,7 +462,7 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(hrPage, /function renderTeamTrainingCompact/);
         assert.match(hrPage, /function renderTeamOnboardingCompact/);
         assert.match(hrPage, /function clearTeamSearchOnBucketChange/);
-        assert.match(hrPage, /const activeStaff = teamStaff\.filter\(item => bucketForStaff\(item\) === activePeopleBucket\);/);
+        assert.match(hrPage, /const activeStaff = teamStaff\.filter\(item => isStaffInPeopleBucket\(item, activePeopleBucket\)\);/);
         assert.match(hrPage, /activeStaff\.filter\(item => teamSearchHaystack\(item\)\.includes\(query\)\)/);
         assert.doesNotMatch(hrPage, /HR_TEAM_SETUP_FILTERS/);
         assert.doesNotMatch(hrPage, /window\.setTeamSetupFilter/);

@@ -1725,7 +1725,11 @@ async function assertTeamCardEntryPoints(page) {
         window.__hrTeamBrowserSmoke.setBucket('workers');
     });
     const card = page.locator('.hr-team-card[data-staff-id="1"]');
-    const name = card.locator('.hr-team-name-action');
+    const displayedName = (await card.locator('.hr-team-name').textContent()).trim();
+    const name = card.getByRole('button', { name: displayedName, exact: true });
+    const openButton = card.getByRole('button', { name: /відкрити/i });
+    assert.equal(await name.count(), 1, 'the name has its own accessible button label');
+    assert.equal(await openButton.count(), 1, 'the explicit Open action has a unique accessible name');
     const photo = card.locator('.hr-team-avatar img');
     await photo.evaluate(img => img.decode());
     assert.ok(await photo.evaluate(img => img.naturalWidth > 0), 'the team card displays the profile photo');
@@ -1745,6 +1749,12 @@ async function assertTeamCardEntryPoints(page) {
     assert.equal(await page.locator('#editStaffId').inputValue(), '1');
     await page.locator('#editCloseTop').click();
     await page.waitForFunction(() => document.activeElement?.matches('.hr-team-name-action'));
+
+    await openButton.click();
+    await waitForCleanHydration(page);
+    assert.equal(await page.locator('#editStaffId').inputValue(), '1');
+    await page.locator('#editCloseTop').click();
+    await page.waitForFunction(() => document.activeElement?.matches('.hr-team-open'));
 
     const overflow = card.locator('.hr-team-overflow-trigger');
     await overflow.click();
@@ -1778,8 +1788,7 @@ async function assertTeamCardEntryPoints(page) {
 
     await photo.evaluate(img => { img.src = 'data:image/png;base64,invalid'; });
     await photo.waitFor({ state: 'hidden' });
-    const displayedName = await name.locator('.hr-team-name').textContent();
-    const initials = displayedName.trim().split(/\s+/).slice(0, 2).map(word => word[0]).join('');
+    const initials = displayedName.split(/\s+/).slice(0, 2).map(word => word[0]).join('');
     assert.equal(await card.locator('.hr-team-avatar span').textContent(), initials);
     assert.equal(await card.locator('.hr-team-avatar span').isVisible(), true);
 

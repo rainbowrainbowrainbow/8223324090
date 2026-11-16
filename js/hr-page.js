@@ -8085,7 +8085,7 @@ function renderTeamCards(staff, options = {}) {
         const safeName = escapeHtml(s.name);
         const avatarNode = `<div class="hr-team-avatar" aria-hidden="true" style="${s.color ? 'background:' + s.color + '30;color:' + s.color : ''}">${avatar}<span>${escapeHtml(initials)}</span></div>`;
         const nameNode = canOpenProfile
-            ? `<button type="button" class="hr-team-name-action" onclick="${profileClick}" aria-label="Відкрити профіль: ${safeName}">${hrTodayActionIconSvg('profile')}<span class="hr-team-name">${safeName}</span></button>`
+            ? `<button type="button" class="hr-team-name-action" onclick="${profileClick}">${hrTodayActionIconSvg('profile')}<span class="hr-team-name">${safeName}</span></button>`
             : `<div class="hr-team-name">${safeName}</div>`;
         const profileTopAction = canOpenProfile
             ? `<button type="button" class="hr-team-open" onclick="${profileClick}" aria-label="Відкрити профіль: ${safeName}">Відкрити</button>`

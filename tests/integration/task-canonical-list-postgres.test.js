@@ -80,7 +80,9 @@ test('canonical task selection and full list queries preserve terminal rows, sco
                 scheduled_start_at timestamptz,snoozed_until timestamptz,priority text,category text,subcategory text,
                 checklist_template_key text,template_id integer,pack_id integer,source_entity_type text,source_entity_id text,
                 afisha_id integer,source_type text,source_id text,source_module text,related_entity_type text,task_mode text,
-                type text,workflow_state text);
+                related_entity_id text,type text,workflow_state text);
+            CREATE TABLE staff_substitutions(id bigint PRIMARY KEY,business_context text,work_date date,
+                source_type text,source_id text,state text);
             CREATE TABLE task_subtasks(id integer PRIMARY KEY,task_id integer,title text,is_done boolean,sort_order integer,
                 source_type text,created_at timestamp,completed_at timestamp,updated_at timestamp);
             CREATE TABLE task_dependencies(task_id integer,depends_on_task_id integer,PRIMARY KEY(task_id,depends_on_task_id));
@@ -124,6 +126,9 @@ test('canonical task selection and full list queries preserve terminal rows, sco
             SELECT t.id*10+n,t.id,'Part '||n,n=1,n,'manual',CURRENT_TIMESTAMP,NULL,CURRENT_TIMESTAMP
             FROM tasks t CROSS JOIN generate_series(1,3)n;
             INSERT INTO task_observers VALUES(10,8,'editor');
+            INSERT INTO staff_substitutions VALUES
+                (51,'event_genix','2099-01-01','task','12','active'),
+                (52,'dar','2099-01-02','task','12','active');
             INSERT INTO task_dependencies VALUES(12,3),(12,6);`);
         const old = await client.query(`SELECT id FROM tasks t WHERE ${previousCanonicalFilter('t')} ORDER BY id`);
         const current = await client.query(`SELECT id FROM tasks t WHERE ${policy.activeDuplicateCanonicalFilterSql('t')} ORDER BY id`);
@@ -165,6 +170,7 @@ test('canonical task selection and full list queries preserve terminal rows, sco
         assert.equal(withDependencies.subtask_count, 3);
         assert.equal(withDependencies.subtask_done_count, 1);
         assert.equal(withDependencies.subtasks.length, 3);
+        assert.deepEqual(withDependencies.substitution, { id: '51', state: 'active' });
         assert.equal(withDependencies.dependency_count, 1, 'cross-business dependency stays excluded');
         assert.equal(withDependencies.open_dependency_count, 0);
     } finally {

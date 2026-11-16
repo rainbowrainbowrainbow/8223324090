@@ -46,7 +46,7 @@ test('drawer contract exposes only server-derived allowed actions and a safe CRM
     assert.equal(task.drawer.actions.complete, true);
     assert.equal(task.drawer.actions.manageObservers, true);
     assert.equal(task.drawer.source.href, '/?open=BK%2F42');
-    assert.equal(task.drawer.completion.reportRequired, true);
+    assert.equal(Object.hasOwn(task.drawer.completion, 'reportRequired'), false);
 
     const observer = withTaskDrawerContract({
         id: 43,

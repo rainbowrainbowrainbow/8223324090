@@ -1,11 +1,13 @@
 'use strict';
 
 const childProcess = require('node:child_process');
+const { randomUUID } = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { publishReleaseNotes } = require('./publish-release-notes');
 const { inputs: artifactInputs, requiresBuild: requiresArtifactBuild } = require('./runtime-artifact-inputs');
+const { PRE_UPLOAD_FAILURE_EXIT_CODE } = require('./railway-release-up');
 const {
     ProductionBlockError,
     MAX_VALIDITY_MS,
@@ -87,7 +89,13 @@ function defaultBlockFile(blockId) {
 function writeBlockFile(file, manifest) {
     const target = path.resolve(file);
     fs.mkdirSync(path.dirname(target), { recursive: true });
-    fs.writeFileSync(target, stableJson(manifest), { encoding: 'utf8', flag: 'w' });
+    const pending = `${target}.${randomUUID()}.tmp`;
+    try {
+        fs.writeFileSync(pending, stableJson(manifest), { encoding: 'utf8', flag: 'wx', mode: 0o600 });
+        fs.renameSync(pending, target);
+    } finally {
+        fs.rmSync(pending, { force: true });
+    }
     return target;
 }
 
@@ -136,15 +144,17 @@ function assertFailedFinanceRetryCi(previous, run) {
 }
 
 async function withBlockFileLock(file, action) {
-    const lockFile = `${path.resolve(file)}.executing`;
+    fail(Boolean(file) && fs.existsSync(file), 'Production block file is unavailable', 'PRODUCTION_BLOCK_FILE_MISSING');
+    const target = fs.realpathSync(file);
+    const lockFile = `${target}.executing`;
     let descriptor;
     try { descriptor = fs.openSync(lockFile, 'wx', 0o600); } catch (error) {
         if (error.code === 'EEXIST') throw new ProductionBlockError(
-            'This finance block already has an in-flight execution or retry preparation; reconcile a stale lock explicitly',
+            'This production block already has an in-flight operation; reconcile a stale lock explicitly',
             'PRODUCTION_BLOCK_EXECUTION_IN_PROGRESS');
         throw error;
     }
-    try { return await action(); } finally { fs.closeSync(descriptor); fs.unlinkSync(lockFile); }
+    try { return await action(target); } finally { fs.closeSync(descriptor); fs.unlinkSync(lockFile); }
 }
 
 function validateFinanceRetryBinding(manifest, options = {}) {
@@ -374,7 +384,8 @@ function remoteProductionSha() {
 
 async function assertStandardProductionBase(manifest, expectedRemote) {
     const live = await liveVersion(manifest.liveUrl);
-    fail(live.commitSha === manifest.baseLiveSha && live.deploymentMetadata?.complete === true,
+    fail(live.commitSha === manifest.baseLiveSha && live.sourceBranch === manifest.allowedBranch
+        && live.deploymentMetadata?.complete === true,
         'Live production changed after release preparation', 'PRODUCTION_BLOCK_LIVE_BASE_DRIFT');
     fail(remoteProductionSha() === expectedRemote,
         'Remote production does not match the expected release stage', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
@@ -384,6 +395,93 @@ function runAuthorizedReleaseStage(manifest, blockFile, command, args, options =
     validateManifest(manifest, { now: dependencies.now });
     if (manifest.retryFrom || manifest.renewalFrom) readBlockFile(blockFile, { now: dependencies.now });
     return (dependencies.commandResult || commandResult)(command, args, options);
+}
+
+function supportsReleaseResume(manifest) {
+    return !manifest.allowedProtectedWorkflow?.enabled && !manifest.allowedQaScope.enabled
+        && manifest.allowedMigrationFiles.length === 0;
+}
+
+function uploadRelease(manifest, blockFile, releaseSha) {
+    runAuthorizedReleaseStage(manifest, blockFile, 'npm', ['run', 'release:railway-up', '--',
+        '--branch', manifest.allowedBranch,
+        '--commit', releaseSha,
+        '--project', manifest.railwayProjectId,
+        '--environment', manifest.railwayEnvironment,
+        '--service', manifest.railwayServiceId,
+        '--live-url', manifest.liveUrl
+    ], {
+        inherit: true,
+        isolateReleaseEnv: true,
+        env: {
+            RELEASE_RAILWAY_BIN: process.env.RELEASE_RAILWAY_BIN,
+            RELEASE_RAILWAY_EXPORT_ROOT: process.env.RELEASE_RAILWAY_EXPORT_ROOT,
+            RELEASE_DEPLOY_BRANCH: manifest.allowedBranch,
+            CODEX_PRODUCTION_BLOCK_ID: manifest.blockId,
+            CODEX_PRODUCTION_BLOCK_HASH: manifest.manifestHash
+        }
+    });
+}
+
+function proveRelease(manifest, releaseSha) {
+    commandResult('npm', ['run', 'version:smoke', '--', manifest.liveUrl], {
+        inherit: true,
+        isolateReleaseEnv: true,
+        env: { VERSION_SMOKE_EXPECT_COMMIT: releaseSha, VERSION_SMOKE_EXPECT_BRANCH: manifest.allowedBranch }
+    });
+    commandResult('npm', ['run', 'release:timeline-proof', '--', manifest.liveUrl], {
+        inherit: true,
+        isolateReleaseEnv: true,
+        env: { RELEASE_DEPLOY_BRANCH: manifest.allowedBranch, VERSION_SMOKE_EXPECT_COMMIT: releaseSha }
+    });
+}
+
+async function preflightReleaseResume(manifest, deployment, dependencies = {}) {
+    const readLive = dependencies.liveVersion || liveVersion;
+    const readRemote = dependencies.remoteProductionSha || remoteProductionSha;
+    const waitForCi = dependencies.waitForProductionCi || waitForProductionCi;
+    const needsArtifactBuild = dependencies.requiresArtifactBuild || ((base, sha) => requiresArtifactBuild(base, sha, git));
+    const sha = deployment.releaseSha;
+    const { run } = waitForCi(sha);
+    const { evidence: artifact } = waitForCi(sha, 'runtime-artifact.yml', 'Runtime artifact smoke');
+    if (needsArtifactBuild(deployment.artifactBase, sha)) assertRuntimeArtifactBuild(artifact);
+    fail(readRemote() === sha, 'Remote production no longer matches the recorded release SHA',
+        'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
+    const live = await readLive(manifest.liveUrl);
+    fail(live.sourceBranch === manifest.allowedBranch && live.deploymentMetadata?.complete === true,
+        'Live production identity is incomplete or on a different branch', 'PRODUCTION_BLOCK_LIVE_BASE_DRIFT');
+    if (live.commitSha === sha) return { mode: 'proof', ciUrl: run.url };
+    fail(live.commitSha === manifest.baseLiveSha, 'Live production changed after release preparation',
+        'PRODUCTION_BLOCK_LIVE_BASE_DRIFT');
+    fail(deployment.phase === 'pre-upload-failed' || deployment.phase === 'awaiting-ci',
+        'An upload may already be in flight. Check Railway and wait for the exact SHA to go live before resuming.',
+        'PRODUCTION_BLOCK_UPLOAD_UNCERTAIN');
+    return { mode: 'upload', ciUrl: run.url };
+}
+
+async function finishReleaseUpload(manifest, blockFile, runtime, mode) {
+    const state = manifest.runtimeState;
+    const deployment = state.deployment;
+    if (mode === 'upload') {
+        deployment.phase = 'upload-starting';
+        writeBlockFile(blockFile, manifest);
+        try {
+            await runtime.uploadRelease(manifest, blockFile, deployment.releaseSha);
+        } catch (error) {
+            if (error.code === 'PRODUCTION_BLOCK_COMMAND_FAILED' && error.details?.exitCode === PRE_UPLOAD_FAILURE_EXIT_CODE) {
+                deployment.phase = 'pre-upload-failed';
+            }
+            throw error;
+        }
+        deployment.phase = 'proof-pending';
+        writeBlockFile(blockFile, manifest);
+    }
+    await runtime.proveRelease(manifest, deployment.releaseSha);
+    deployment.phase = 'complete';
+    state.releaseSha = deployment.releaseSha;
+    state.releaseCompletedAt = new Date().toISOString();
+    state.lastFailureCode = null;
+    writeBlockFile(blockFile, manifest);
 }
 
 function defaultRuntime() {
@@ -493,6 +591,9 @@ function defaultRuntime() {
         async resumeQa(manifest, releaseSha) {
             return resumeAuthorizedQa(manifest, releaseSha);
         },
+        preflightReleaseResume,
+        uploadRelease,
+        proveRelease,
         async preflightQa(scope, live) {
             if (scope.kind === 'finance') return financeQaPreflight(scope);
             return scope.kind === 'certificate' ? certificateQaPreflight(scope) : trustedQaPreflight(scope, live);
@@ -541,6 +642,10 @@ function defaultRuntime() {
             const artifactBase = profileEmployee ? manifest.baseLiveSha : remoteSha;
             runAuthorizedReleaseStage(manifest, blockFile,
                 'git', ['push', 'origin', `${releaseSha}:refs/heads/${manifest.allowedBranch}`], { inherit: true });
+            if (supportsReleaseResume(manifest)) {
+                manifest.runtimeState.deployment = { releaseSha, artifactBase, phase: 'awaiting-ci' };
+                writeBlockFile(blockFile, manifest);
+            }
             const { run: exact, evidence: ci } = waitForProductionCi(releaseSha);
             if (protectedRelease && !profileEmployee) {
                 if (manifest.allowedProtectedWorkflow.kind === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE) {
@@ -565,46 +670,18 @@ function defaultRuntime() {
                 if (requiresArtifactBuild(artifactBase, releaseSha, git)) assertRuntimeArtifactBuild(artifact);
                 await assertStandardProductionBase(manifest, releaseSha);
             }
-            runAuthorizedReleaseStage(manifest, blockFile, 'npm', ['run', 'release:railway-up', '--',
-                '--branch', manifest.allowedBranch,
-                '--commit', releaseSha,
-                '--project', manifest.railwayProjectId,
-                '--environment', manifest.railwayEnvironment,
-                '--service', manifest.railwayServiceId,
-                '--live-url', manifest.liveUrl
-            ], {
-                inherit: true,
-                isolateReleaseEnv: true,
-                env: {
-                    RELEASE_RAILWAY_BIN: process.env.RELEASE_RAILWAY_BIN,
-                    RELEASE_RAILWAY_EXPORT_ROOT: process.env.RELEASE_RAILWAY_EXPORT_ROOT,
-                    RELEASE_DEPLOY_BRANCH: manifest.allowedBranch,
-                    CODEX_PRODUCTION_BLOCK_ID: manifest.blockId,
-                    CODEX_PRODUCTION_BLOCK_HASH: manifest.manifestHash
-                }
-            });
-            commandResult('npm', ['run', 'version:smoke', '--', manifest.liveUrl], {
-                inherit: true,
-                isolateReleaseEnv: true,
-                env: { VERSION_SMOKE_EXPECT_COMMIT: releaseSha, VERSION_SMOKE_EXPECT_BRANCH: manifest.allowedBranch }
-            });
-            commandResult('npm', ['run', 'release:timeline-proof', '--', manifest.liveUrl], {
-                inherit: true,
-                isolateReleaseEnv: true,
-                env: { RELEASE_DEPLOY_BRANCH: manifest.allowedBranch, VERSION_SMOKE_EXPECT_COMMIT: releaseSha }
-            });
-            manifest.runtimeState.releaseSha = releaseSha;
-            manifest.runtimeState.releaseCompletedAt = new Date().toISOString();
-            manifest.runtimeState.lastFailureCode = null;
-            writeBlockFile(blockFile, manifest);
-            let changelog;
-            try {
-                changelog = await publishConfirmedNotes(manifest, blockFile, runtime);
-            } catch (error) {
-                changelog = { status: 'pending', reason: cleanText(error.message, 300) };
-                manifest.runtimeState.changelog = changelog;
+            if (manifest.runtimeState.deployment) {
+                manifest.runtimeState.deployment.ciUrl = exact.url;
+                await finishReleaseUpload(manifest, blockFile, runtime, 'upload');
+            } else {
+                uploadRelease(manifest, blockFile, releaseSha);
+                proveRelease(manifest, releaseSha);
+                manifest.runtimeState.releaseSha = releaseSha;
+                manifest.runtimeState.releaseCompletedAt = new Date().toISOString();
+                manifest.runtimeState.lastFailureCode = null;
                 writeBlockFile(blockFile, manifest);
             }
+            const changelog = await publishNotesAfterProof(manifest, blockFile, runtime);
             let qa = null;
             if (manifest.allowedQaScope?.enabled) {
                 qa = await runtime.resumeQa(manifest, releaseSha);
@@ -1130,11 +1207,7 @@ function gitIsSafeDescendant(initialHead, currentHead, drift) {
 }
 
 async function executeAction(options, runtime) {
-    const manifest = readBlockFile(options.blockFile);
-    return [PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA, PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS]
-        .includes(manifest.allowedProtectedWorkflow?.kind)
-        ? withBlockFileLock(options.blockFile, () => executeBlockAction(options, runtime))
-        : executeBlockAction(options, runtime);
+    return withBlockFileLock(options.blockFile, blockFile => executeBlockAction({ ...options, blockFile }, runtime));
 }
 
 async function executeBlockAction(options, runtime) {
@@ -1143,6 +1216,8 @@ async function executeBlockAction(options, runtime) {
         'PRODUCTION_BLOCK_RETRY_SUPERSEDED');
     fail(options.confirmation === confirmationValue(manifest),
         'Execute requires the exact block confirmation', 'PRODUCTION_BLOCK_CONFIRMATION_INVALID');
+    fail(!manifest.runtimeState?.deployment,
+        'This exact release already reached deployment. Use release-resume.', 'PRODUCTION_BLOCK_RELEASE_RESUME_REQUIRED');
     const attempts = Number(manifest.runtimeState?.releaseAttempts || 0);
     fail(attempts < manifest.maxReleaseAttempts, 'Production block attempt budget is exhausted', 'PRODUCTION_BLOCK_ATTEMPT_BUDGET_EXHAUSTED');
     await assertExecuteDrift(manifest, runtime);
@@ -1182,16 +1257,75 @@ async function publishConfirmedNotes(manifest, blockFile, runtime) {
     return manifest.runtimeState.changelog;
 }
 
+async function publishNotesAfterProof(manifest, blockFile, runtime) {
+    try {
+        return await publishConfirmedNotes(manifest, blockFile, runtime);
+    } catch (error) {
+        const changelog = { status: 'pending', reason: cleanText(error.message, 300) };
+        manifest.runtimeState.changelog = changelog;
+        writeBlockFile(blockFile, manifest);
+        return changelog;
+    }
+}
+
 async function publishNotesAction(options, runtime) {
-    return withBlockFileLock(options.blockFile, async () => {
-        const manifest = readBlockFile(options.blockFile);
+    return withBlockFileLock(options.blockFile, async blockFile => {
+        const manifest = readBlockFile(blockFile);
         fail(options.confirmation === confirmationValue(manifest),
             'Changelog retry requires the exact block confirmation', 'PRODUCTION_BLOCK_CONFIRMATION_INVALID');
         fail(manifest.runtimeState?.releaseCompletedAt && SHA_PATTERN.test(manifest.runtimeState?.releaseSha),
             'Changelog retry requires a completed deployment', 'PRODUCTION_BLOCK_RELEASE_SHA_MISSING');
         if (options.dryRun) return { success: true, action: 'publish-notes', dryRun: true };
         return sanitize({ success: true, action: 'publish-notes',
-            result: await publishConfirmedNotes(manifest, options.blockFile, runtime) });
+            result: await publishConfirmedNotes(manifest, blockFile, runtime) });
+    });
+}
+
+async function releaseResumeAction(options, runtime) {
+    return withBlockFileLock(options.blockFile, async blockFile => {
+        const manifest = readBlockFile(blockFile);
+        fail(options.confirmation === confirmationValue(manifest),
+            'Release resume requires the exact block confirmation', 'PRODUCTION_BLOCK_CONFIRMATION_INVALID');
+        fail(supportsReleaseResume(manifest) && !manifest.runtimeState?.supersededBy,
+            'Release resume requires an ordinary, current release without migrations or writable QA',
+            'PRODUCTION_BLOCK_RELEASE_RESUME_NOT_AUTHORIZED');
+        const state = manifest.runtimeState;
+        const deployment = state?.deployment;
+        fail(SHA_PATTERN.test(deployment?.releaseSha || '') && SHA_PATTERN.test(deployment?.artifactBase || '')
+            && ['awaiting-ci', 'pre-upload-failed', 'upload-starting', 'proof-pending', 'complete'].includes(deployment.phase)
+            && Number.isInteger(state.releaseAttempts) && state.releaseAttempts >= 1
+            && state.releaseAttempts <= manifest.maxReleaseAttempts,
+        'No resumable deployment is recorded on this block', 'PRODUCTION_BLOCK_RELEASE_RESUME_INVALID');
+        const releaseSha = deployment.releaseSha;
+        const result = { success: true, action: 'release-resume', releaseSha, blockId: manifest.blockId };
+        if (deployment.phase === 'complete') return sanitize({ ...result, mode: 'already-complete', ciUrl: deployment.ciUrl,
+            changelog: state.changelog });
+
+        const drift = await assertExecuteDrift(manifest, runtime);
+        fail(drift.head === releaseSha && redChangedPaths(drift.changedPaths).length === 0,
+            'Resume requires the exact recorded release SHA and ordinary paths', 'PRODUCTION_BLOCK_RELEASE_SHA_DRIFT');
+        const { mode, ciUrl } = await runtime.preflightReleaseResume(manifest, deployment);
+        validateManifest(manifest);
+        if (mode === 'upload') {
+            fail(state.releaseAttempts < manifest.maxReleaseAttempts,
+                'Production block attempt budget is exhausted', 'PRODUCTION_BLOCK_ATTEMPT_BUDGET_EXHAUSTED');
+        }
+        if (options.dryRun) return sanitize({ ...result, dryRun: true, mode, ciUrl });
+
+        if (mode === 'upload') {
+            state.releaseAttempts += 1;
+            state.lastAttemptAt = new Date().toISOString();
+        }
+        deployment.ciUrl = ciUrl;
+        try {
+            await finishReleaseUpload(manifest, blockFile, runtime, mode);
+        } catch (error) {
+            state.lastFailureCode = error.code || 'PRODUCTION_BLOCK_RELEASE_RESUME_FAILED';
+            writeBlockFile(blockFile, manifest);
+            throw error;
+        }
+        const changelog = await publishNotesAfterProof(manifest, blockFile, runtime);
+        return sanitize({ ...result, mode, ciUrl, attempt: state.releaseAttempts, changelog });
     });
 }
 
@@ -1214,7 +1348,8 @@ async function qaResumeAction(options, runtime) {
 function parseOptions(argv) {
     const args = [...argv];
     const action = cleanText(args[0] && !args[0].startsWith('-') ? args[0] : argValue(args, '--action', 'status'), 20).toLowerCase();
-    fail(['prepare', 'status', 'execute', 'qa-resume', 'publish-notes'].includes(action), 'Unsupported production block action', 'PRODUCTION_BLOCK_ACTION_INVALID');
+    fail(['prepare', 'status', 'execute', 'release-resume', 'qa-resume', 'publish-notes'].includes(action),
+        'Unsupported production block action', 'PRODUCTION_BLOCK_ACTION_INVALID');
     const actionOffset = args[0] && !args[0].startsWith('-') ? 1 : 0;
     const actionArgs = args.slice(actionOffset);
     const knownValueFlags = new Set([
@@ -1255,7 +1390,8 @@ function parseOptions(argv) {
     return {
         action,
         blockFile: blockFileValue ? path.resolve(blockFileValue) : null,
-        confirmation: argValue(args, '--confirmation') || (['execute', 'qa-resume', 'publish-notes'].includes(action) ? positionalArgs[1] : null),
+        confirmation: argValue(args, '--confirmation')
+            || (['execute', 'release-resume', 'qa-resume', 'publish-notes'].includes(action) ? positionalArgs[1] : null),
         validityMinutes: Number(argValue(args, '--validity-minutes', '360')),
         maxReleaseAttempts: Number(argValue(args, '--max-release-attempts', '3')),
         releaseLabel: cleanText(argValue(args, '--release-label', 'Autonomy Hardening'), 120),
@@ -1276,6 +1412,7 @@ async function execute(options, runtime = defaultRuntime()) {
     if (options.action === 'prepare') return prepareAction(options, runtime);
     if (options.action === 'status') return statusAction(options);
     if (options.action === 'publish-notes') return publishNotesAction(options, runtime);
+    if (options.action === 'release-resume') return releaseResumeAction(options, runtime);
     if (options.action === 'qa-resume') return qaResumeAction(options, runtime);
     return executeAction(options, runtime);
 }
@@ -1318,6 +1455,8 @@ module.exports = {
     parseOptions,
     parseQaScope,
     prepareAction,
+    preflightReleaseResume,
+    releaseResumeAction,
     publicError,
     qaResumeAction,
     qaRunArgs,

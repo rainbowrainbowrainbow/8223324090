@@ -46,6 +46,8 @@ const {
     parseOptions,
     isReleaseArtifact,
     prepareAction,
+    preflightReleaseResume,
+    releaseResumeAction,
     qaResumeAction,
     qaRunArgs,
     readBlockFile,
@@ -58,6 +60,7 @@ const {
     writeBlockFile
 } = require('../scripts/production-block-controller');
 const { inputs: artifactInputs, requiresBuild } = require('../scripts/runtime-artifact-inputs');
+const { PRE_UPLOAD_FAILURE_EXIT_CODE } = require('../scripts/railway-release-up');
 
 const LIVE_SHA = '1'.repeat(40);
 const HEAD_SHA = '2'.repeat(40);
@@ -177,6 +180,153 @@ function dryRuntime(overrides = {}) {
         ...overrides
     };
 }
+
+function releaseResumeFixture(t, phase = 'pre-upload-failed', options = {}) {
+    const value = manifest(options);
+    Object.assign(value.runtimeState, {
+        releaseAttempts: 1,
+        lastFailureCode: 'PRODUCTION_BLOCK_COMMAND_FAILED',
+        deployment: { releaseSha: RELEASE_SHA, artifactBase: LIVE_SHA, phase }
+    });
+    const file = blockFile(t, value);
+    const request = parseOptions(['release-resume', '--', '--block-file', file, '--confirmation', confirmationValue(value)]);
+    const calls = [];
+    const evidence = {
+        remote: RELEASE_SHA,
+        live: { commitSha: LIVE_SHA, sourceBranch: value.allowedBranch, deploymentMetadata: { complete: true } }
+    };
+    const runtime = dryRuntime({
+        async drift(current) {
+            return { ...(await dryRuntime().drift(current)), head: RELEASE_SHA };
+        },
+        preflightReleaseResume(current, deployment) {
+            return preflightReleaseResume(current, deployment, {
+                liveVersion: () => evidence.live,
+                remoteProductionSha: () => evidence.remote,
+                requiresArtifactBuild: (base, sha) => {
+                    assert.equal(base, LIVE_SHA);
+                    assert.equal(sha, RELEASE_SHA);
+                    return false;
+                },
+                waitForProductionCi(sha, workflow = 'ci.yml') {
+                    assert.equal(sha, RELEASE_SHA);
+                    calls.push(workflow);
+                    return { run: { url: 'https://github.example.test/ci' } };
+                }
+            });
+        },
+        async uploadRelease(current, block, sha) {
+            assert.equal(sha, RELEASE_SHA);
+            assert.equal(readBlockFile(block).runtimeState.deployment.phase, 'upload-starting');
+            calls.push('upload');
+        },
+        async proveRelease(current, sha) {
+            assert.equal(sha, RELEASE_SHA);
+            calls.push('proof');
+        },
+        async publishNotes(current) {
+            assert.equal(current.runtimeState.releaseSha, RELEASE_SHA);
+            assert.equal(current.runtimeState.deployment.phase, 'complete');
+            calls.push('publish-notes');
+            return { sha: RELEASE_SHA };
+        }
+    });
+    return { request, value, file, runtime, calls, evidence };
+}
+
+test('release-resume dry-run binds both CI workflows and same SHA without changing state or uploading', async t => {
+    for (const phase of ['awaiting-ci', 'pre-upload-failed']) {
+        const f = releaseResumeFixture(t, phase);
+        const before = fs.readFileSync(f.file, 'utf8');
+        const result = await releaseResumeAction({ ...f.request, dryRun: true }, f.runtime);
+        assert.equal(result.dryRun, true);
+        assert.equal(result.mode, 'upload');
+        assert.equal(result.releaseSha, RELEASE_SHA);
+        assert.deepEqual(f.calls, ['ci.yml', 'runtime-artifact.yml']);
+        assert.equal(fs.readFileSync(f.file, 'utf8'), before);
+    }
+});
+
+test('release-resume persists the budget and makes competing or repeated execution harmless', async t => {
+    const f = releaseResumeFixture(t);
+    const originalUpload = f.runtime.uploadRelease;
+    const entered = Promise.withResolvers();
+    const release = Promise.withResolvers();
+    f.runtime.uploadRelease = async (...args) => {
+        await originalUpload(...args);
+        entered.resolve();
+        await release.promise;
+    };
+    const first = releaseResumeAction(f.request, f.runtime);
+    await entered.promise;
+    try {
+        await assert.rejects(releaseResumeAction(f.request, f.runtime), { code: 'PRODUCTION_BLOCK_EXECUTION_IN_PROGRESS' });
+        await assert.rejects(executeAction(f.request, f.runtime), { code: 'PRODUCTION_BLOCK_EXECUTION_IN_PROGRESS' });
+    } finally {
+        release.resolve();
+    }
+    await first;
+    const state = readBlockFile(f.file).runtimeState;
+    assert.equal(state.releaseAttempts, 2);
+    assert.equal(state.releaseSha, RELEASE_SHA);
+    assert.ok(state.releaseCompletedAt);
+    assert.equal(state.lastFailureCode, null);
+    assert.equal(state.deployment.phase, 'complete');
+    assert.equal(state.changelog.status, 'published');
+    assert.equal((await releaseResumeAction(f.request, f.runtime)).mode, 'already-complete');
+    await assert.rejects(executeAction(f.request, f.runtime), { code: 'PRODUCTION_BLOCK_RELEASE_RESUME_REQUIRED' });
+    assert.deepEqual(f.calls, ['ci.yml', 'runtime-artifact.yml', 'upload', 'proof', 'publish-notes']);
+});
+
+test('release-resume leaves a completed deployment when release notes need a separate retry', async t => {
+    const f = releaseResumeFixture(t);
+    f.runtime.publishNotes = async () => { throw new Error('publication temporarily unavailable'); };
+    const resumed = await releaseResumeAction(f.request, f.runtime);
+    assert.equal(resumed.changelog.status, 'pending');
+    const state = readBlockFile(f.file).runtimeState;
+    assert.equal(state.releaseSha, RELEASE_SHA);
+    assert.equal(state.deployment.phase, 'complete');
+    assert.equal(state.releaseAttempts, 2);
+    const repeated = await releaseResumeAction(f.request, f.runtime);
+    assert.equal(repeated.mode, 'already-complete');
+    assert.equal(repeated.changelog.status, 'pending');
+    assert.equal(f.calls.filter(call => call === 'upload').length, 1);
+});
+
+test('release-resume refuses drift, missing confirmation, and expired or exhausted authorization', async t => {
+    const f = releaseResumeFixture(t);
+    await assert.rejects(releaseResumeAction({ ...f.request, confirmation: 'wrong' }, f.runtime),
+        { code: 'PRODUCTION_BLOCK_CONFIRMATION_INVALID' });
+    f.evidence.remote = HEAD_SHA;
+    await assert.rejects(releaseResumeAction(f.request, f.runtime), { code: 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT' });
+    f.evidence.remote = RELEASE_SHA;
+    f.evidence.live.commitSha = HEAD_SHA;
+    await assert.rejects(releaseResumeAction(f.request, f.runtime), { code: 'PRODUCTION_BLOCK_LIVE_BASE_DRIFT' });
+    const exhausted = releaseResumeFixture(t, 'pre-upload-failed', { maxReleaseAttempts: 1 });
+    await assert.rejects(releaseResumeAction(exhausted.request, exhausted.runtime), { code: 'PRODUCTION_BLOCK_ATTEMPT_BUDGET_EXHAUSTED' });
+    const expired = releaseResumeFixture(t, 'pre-upload-failed', { now: new Date(Date.now() - 7_200_000) });
+    await assert.rejects(releaseResumeAction(expired.request, expired.runtime), { code: 'PRODUCTION_BLOCK_EXPIRED' });
+    assert.equal(f.calls.includes('upload'), false);
+});
+
+test('only a confirmed pre-upload helper failure can spend another attempt', async t => {
+    const f = releaseResumeFixture(t);
+    f.runtime.uploadRelease = async () => {
+        throw Object.assign(new Error('unpack failed'), {
+            code: 'PRODUCTION_BLOCK_COMMAND_FAILED', details: { exitCode: PRE_UPLOAD_FAILURE_EXIT_CODE }
+        });
+    };
+    await assert.rejects(releaseResumeAction(f.request, f.runtime), /unpack failed/);
+    assert.equal(readBlockFile(f.file).runtimeState.deployment.phase, 'pre-upload-failed');
+    f.runtime.uploadRelease = async () => { throw new Error('upload result unknown'); };
+    await assert.rejects(releaseResumeAction(f.request, f.runtime), /upload result unknown/);
+    assert.equal(readBlockFile(f.file).runtimeState.deployment.phase, 'upload-starting');
+    await assert.rejects(releaseResumeAction(f.request, f.runtime), { code: 'PRODUCTION_BLOCK_UPLOAD_UNCERTAIN' });
+    f.evidence.live.commitSha = RELEASE_SHA;
+    assert.equal((await releaseResumeAction(f.request, f.runtime)).mode, 'proof');
+    assert.equal(readBlockFile(f.file).runtimeState.releaseAttempts, 3);
+    assert.equal(readBlockFile(f.file).runtimeState.releaseSha, RELEASE_SHA);
+});
 
 test('prepare is read-only apart from its local block manifest', async t => {
     let productionExecutions = 0;

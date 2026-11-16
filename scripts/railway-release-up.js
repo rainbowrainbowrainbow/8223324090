@@ -21,6 +21,7 @@ const DEFAULT_POST_DEPLOY_SMOKE_DELAY_MS = 5000;
 const FULL_COMMIT_SHA_PATTERN = /^[0-9a-f]{40}$/i;
 const COMPLETE_DEPLOYMENT_METADATA_STATUSES = new Set(['railway', 'manifest']);
 const REQUIRED_OMNI_CI_CHECK = 'Omni browser regression';
+const PRE_UPLOAD_FAILURE_EXIT_CODE = 78;
 
 function isPlainObject(value) {
     return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -350,24 +351,30 @@ function requireValue(argv, index, flag) {
 }
 
 function fail(message) {
-    console.error(`[release:railway-up] ${message}`);
-    process.exit(1);
+    throw new Error(message);
 }
 
 function commandText(command, args) {
     return [command, ...args].join(' ');
 }
 
-function resolveCommandExecutable(command) {
+function resolveCommandExecutable(command, platform = process.platform, env = process.env, exists = fs.existsSync) {
     if (command === 'railway') {
-        const explicit = String(process.env.RELEASE_RAILWAY_BIN || '').trim();
+        const explicit = String(env.RELEASE_RAILWAY_BIN || '').trim();
         if (explicit) {
-            if (!fs.existsSync(explicit)) fail(`RELEASE_RAILWAY_BIN does not exist: ${explicit}`);
+            if (!exists(explicit)) fail(`RELEASE_RAILWAY_BIN does not exist: ${explicit}`);
             return explicit;
         }
     }
-    if (process.platform !== 'win32') return command;
-    if (command === 'git' || command === 'tar') return `${command}.exe`;
+    if (platform !== 'win32') return command;
+    if (command === 'git') return 'git.exe';
+    if (command === 'tar') {
+        const systemRoot = env.SystemRoot || env.WINDIR;
+        if (!systemRoot || !path.win32.isAbsolute(systemRoot)) fail('Windows SystemRoot is required to resolve system tar.exe');
+        const executable = path.win32.join(systemRoot, 'System32', 'tar.exe');
+        if (!exists(executable)) fail(`Windows system tar.exe is unavailable: ${executable}`);
+        return executable;
+    }
     if (command !== 'railway') return command;
 
     const native = spawnSync('where.exe', ['railway.exe'], { encoding: 'utf8', windowsHide: true });
@@ -506,7 +513,7 @@ function validateExport(sourceDir, head, branch) {
     if (exportHead !== head) fail(`Clean export source HEAD mismatch: ${exportHead} !== ${head}`);
 }
 
-function createCleanExport(head, branch, options) {
+function createCleanExport(head, branch, options, execute = run) {
     const exportBase = options.exportRoot
         ? assertSafeExportRoot(options.exportRoot)
         : fs.mkdtempSync(path.join(os.tmpdir(), `eventgenix-release-${shortSha(head)}-`));
@@ -518,17 +525,24 @@ function createCleanExport(head, branch, options) {
     }
     const sourceDir = path.join(exportBase, 'source');
     const archivePath = path.join(exportBase, 'source.tar');
-    fs.mkdirSync(sourceDir, { recursive: true });
-    run('git', ['archive', '--format=tar', '--output', archivePath, head]);
-    run('tar', ['-xf', archivePath, '-C', sourceDir]);
-    fs.rmSync(archivePath, { force: true });
-    const manifestInfo = writeDeploymentManifest(sourceDir, {
-        applicationVersion: pkg.version,
-        commitSha: head,
-        sourceBranch: branch
-    });
-    validateExport(sourceDir, head, branch);
-    return { sourceDir, exportBase, manifestPath: manifestInfo.filePath };
+    fs.mkdirSync(sourceDir);
+    try {
+        execute('git', ['archive', '--format=tar', '--output', archivePath, head]);
+        execute('tar', ['-xf', archivePath, '-C', sourceDir]);
+        fs.rmSync(archivePath, { force: true });
+        const manifestInfo = writeDeploymentManifest(sourceDir, {
+            applicationVersion: pkg.version,
+            commitSha: head,
+            sourceBranch: branch
+        });
+        validateExport(sourceDir, head, branch);
+        return { sourceDir, exportBase, manifestPath: manifestInfo.filePath };
+    } catch (error) {
+        fs.rmSync(archivePath, { force: true });
+        fs.rmSync(sourceDir, { recursive: true, force: true });
+        if (!options.exportRoot) fs.rmdirSync(exportBase);
+        throw error;
+    }
 }
 
 function cleanupExport(exportInfo, options) {
@@ -589,7 +603,7 @@ async function fetchLiveVersionSnapshot(liveUrl, options = {}) {
     }
 }
 
-async function main() {
+async function main(onUploadStart) {
     const options = parseArgs(process.argv.slice(2));
     if (options.parseOnly) {
         console.log(JSON.stringify({
@@ -666,10 +680,10 @@ async function main() {
         return;
     }
 
-    let exportInfo = null;
+    const exportInfo = createCleanExport(head, options.branch, options);
     try {
-        exportInfo = createCleanExport(head, options.branch, options);
         console.log(`[release:railway-up] clean export=${exportInfo.sourceDir}`);
+        onUploadStart();
         run('railway', [
             'up',
             exportInfo.sourceDir,
@@ -691,10 +705,17 @@ async function main() {
 }
 
 if (require.main === module) {
-    main().catch(error => fail(error?.message || String(error)));
+    let uploadStarted = false;
+    main(() => { uploadStarted = true; }).catch(error => {
+        console.error(`[release:railway-up] ${error?.message || String(error)}`);
+        const controlled = process.env.CODEX_PRODUCTION_BLOCK_ID && process.env.CODEX_PRODUCTION_BLOCK_HASH;
+        process.exitCode = controlled && !uploadStarted ? PRE_UPLOAD_FAILURE_EXIT_CODE : 1;
+    });
 }
 
 module.exports = {
+    PRE_UPLOAD_FAILURE_EXIT_CODE,
+    resolveCommandExecutable,
     parseArgs,
     assertSafeRailwayTarget,
     compareVersions,

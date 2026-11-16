@@ -95,7 +95,8 @@ function mirrorBootstrapFixture(t, source, mirrorlist) {
     const body = block[1].split('\n').map(line => line.slice(10)).join('\n').replaceAll('/etc/apt', () => quotePath(apt));
     const bash = mirrorBootstrapBash();
     const run = (expectedStatus = 0) => {
-        const command = `PATH=${quotePath(path.join(root, 'bin'))}:"$PATH"\n${body}`;
+        const gitTools = process.platform === 'win32' ? '/usr/bin:' : '';
+        const command = `PATH=${quotePath(path.join(root, 'bin'))}:${gitTools}"$PATH"\n${body}`;
         const result = spawnSync(bash, ['-c', command], { encoding: 'utf8' });
         assert.ifError(result.error);
         assert.equal(result.signal, null);

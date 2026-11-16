@@ -161,7 +161,8 @@ Never stash, reset, checkout, delete, or rewrite another user's dirty work.
 - Use the clean checkout of the exact candidate and the repository Node 22/npm 10
   baseline. Install dependencies with `npm ci` and use that machine's Git and
   authenticated GitHub/Railway CLI sessions. Check `git --version`,
-  `gh --version`, `railway --version` and `tar --version` before starting.
+  `gh --version` and `railway --version` before starting. Check the system
+  `System32\tar.exe --version` on Windows or `tar --version` elsewhere.
 - The controller runs `npm test` without inherited release overrides and passes
   the approved branch, SHA, project, environment and service to the deployment
   subprocess. Leave `RELEASE_DEPLOY_BRANCH` out of shell startup profiles and
@@ -169,7 +170,11 @@ Never stash, reset, checkout, delete, or rewrite another user's dirty work.
 - On Windows, the browser smoke fixture can use Git Bash from the Git for Windows
   installation on PATH. If the selected Git distribution ships without Bash,
   set `GIT_BASH_PATH` to the local Git for Windows `bash.exe` for the test
-  process. The release helper accepts a native `railway.exe` on PATH, the
+  process. The Ubuntu mirror fixture uses the selected Git Bash installation's
+  `/usr/bin` for `sed` and `grep`. The release helper uses the Windows system
+  `tar.exe` by absolute path even when Git's GNU tar is first on `PATH`.
+  A failed archive extraction discards the partial export and archive.
+  The release helper accepts a native `railway.exe` on PATH, the
   npm-installed CLI, or a local `RELEASE_RAILWAY_BIN` override. On macOS and
   Linux, use the native Git, Bash, tar and Railway CLI.
 - For an ordinary release handoff, keep the current block manifest, the
@@ -349,15 +354,16 @@ The canonical bounded release controller is:
 npm run codex:production-block -- prepare -- [options]
 npm run codex:production-block -- status -- --block-file <path>
 npm run codex:production-block -- execute -- --block-file <path> --confirmation <exact-value>
+npm run codex:production-block -- release-resume -- --block-file <path> --confirmation <exact-value>
 npm run codex:production-block -- qa-resume -- --block-file <path> --confirmation <exact-value>
 ```
 
 The second `--` is required before controller flags. It keeps npm 10 and the
 portable Windows PowerShell shim from consuming `--block-file`,
 `--confirmation`, and prepare options as npm configuration. The controller also
-accepts the legacy stripped positional form for `status`, `execute`, and
-`qa-resume`, but new automation and operator commands must use the explicit
-double-boundary form above.
+accepts the legacy stripped positional form for `status`, `execute`,
+`release-resume`, and `qa-resume`. Use the explicit double-boundary form above
+for new automation and operator commands.
 
 `prepare` is read-only against production and writes a sanitized, hash-bound
 manifest under the operating-system temporary directory. It records the exact
@@ -551,27 +557,47 @@ The helper must prove the uploaded SHA and branch through Railway metadata or it
 clean archive release manifest. Legacy `RELEASE_DEPLOY_COMMIT` and
 `RELEASE_DEPLOY_BRANCH` variables alone are not valid deployment identity.
 
-### Upload timeout after successful CI
+### Resume an ordinary release after successful CI
 
-Read Railway status and the recent deployment list for the exact project,
-environment and service. If a deployment may still be queued or running, wait
-for a terminal state and check `/api/version`. If the intended SHA is already
-live, finish the version and release proof.
+Use `status` to find the recorded release SHA and deployment phase for an
+ordinary block with no migrations, protected workflow, or writable QA. The
+controller records `awaiting-ci` after push; `pre-upload-failed` records a
+confirmed helper failure before Railway upload. Either phase can use
+`release-resume` with the same manifest and confirmation to spend the next
+attempt on that SHA. Add `--dry-run` to see the mode and SHA
+without changing state or spending an attempt. Both paths require the exact
+clean checkout, both successful production-push CI workflows, the recorded
+production ref, and verified live identity. A retry also requires the original
+base to still be live and the original authorization and budget to be valid.
 
-For an ordinary release without migrations, protected paths or writable QA, a
-confirmed failed upload can use the next attempt of the same valid block.
-Before that attempt, verify the original base is still live, the remote
-production ref and the clean local HEAD both equal the exact release SHA,
-both CI workflows for that push succeeded, and the failed Railway attempt is
-settled. Stop on ambiguous deployment identity or foreign drift.
+If the recorded phase is `upload-starting` or `proof-pending`, inspect Railway
+status and the deployment list for the fixed target. Wait for any active
+deployment to settle. When `/api/version` proves the exact release SHA is live,
+`release-resume` finishes the live checks and records success without another
+upload or attempt. If upload may have started and the original base is still
+live, `release-resume` stops. An already completed release returns its recorded
+result.
 
-Record the attempt number and failed deployment ID with the block evidence.
-Run the documented helper with the same `--branch`, `--commit`, `--project`,
-`--environment`, `--service` and `--live-url`. This continues at upload. A
-fresh `execute` starts at preflight and would generate another version
-commit. On success, run the exact-SHA version and release proof and record the
-new Railway deployment ID. The original expiry and attempt budget still apply.
-Count manual retries together with the attempts recorded by the controller.
+After proof, `release-resume` publishes the approved release notes for the
+verified SHA. A publication failure records `changelog.status` as `pending`
+and the deployment as complete. Use `publish-notes` to retry publication.
+
+If Railway confirms an upload was attempted and the exact deployment failed,
+the existing manual recovery remains available for an ordinary release. Verify
+that the failed deployment has settled, the original live base is still active,
+the clean checkout and production ref equal the recorded release SHA, and both
+CI workflows for that push succeeded. Record the failed Railway deployment ID
+and the manual attempt number. Invoke the helper with the same explicit branch,
+SHA, project, environment, service, and live URL inside the original deadline
+and budget, counting controller and manual attempts together. Once the exact
+SHA is live, finish proof via `release-resume` for a block with recorded state,
+or run the version and release proof directly for a legacy block.
+
+Record the Railway deployment ID with the block evidence. Resume uses the same
+block lock as `execute`, records the attempt before upload, and leaves the
+original deadline and total attempt budget in force. No new release commit or
+push occurs. Older manifests without recorded deployment state remain historical
+evidence and cannot use this action.
 
 ## 11. Live Version And Release Proof
 

@@ -1,6 +1,10 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const { spawnSync } = require('node:child_process');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const test = require('node:test');
 
 const {
@@ -10,7 +14,10 @@ const {
     fetchRequiredOmniCiCheck,
     fetchLiveVersionSnapshot,
     githubRepositoryFromRemote,
-    parseArgs
+    parseArgs,
+    PRE_UPLOAD_FAILURE_EXIT_CODE,
+    resolveCommandExecutable,
+    createCleanExport
 } = require('../scripts/railway-release-up');
 
 const HEAD = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
@@ -29,6 +36,39 @@ const LIVE = {
         warnings: []
     }
 };
+
+test('controller invocation gets a distinct exit status for failures before upload', () => {
+    const helper = path.resolve(__dirname, '../scripts/railway-release-up.js');
+    const env = { ...process.env, CODEX_PRODUCTION_BLOCK_ID: 'fixture', CODEX_PRODUCTION_BLOCK_HASH: 'fixture' };
+    const result = spawnSync(process.execPath, [helper, '--branch'], { encoding: 'utf8', env });
+    assert.ifError(result.error);
+    assert.equal(result.status, PRE_UPLOAD_FAILURE_EXIT_CODE, result.stderr);
+    assert.match(result.stderr, /--branch requires a value/);
+});
+
+test('Windows release resolves system tar independently of Git Bash PATH', () => {
+    const nativeTar = 'C:\\Windows\\System32\\tar.exe';
+    const env = { SystemRoot: 'C:\\Windows', Path: 'D:\\git\\usr\\bin;C:\\Windows\\System32' };
+    assert.equal(resolveCommandExecutable('tar', 'win32', env, file => file === nativeTar), nativeTar);
+    assert.throws(() => resolveCommandExecutable('tar', 'win32', env, () => false), /system tar\.exe is unavailable/);
+    assert.equal(resolveCommandExecutable('tar', 'linux', env, () => false), 'tar');
+});
+
+test('a failed unpack removes the archive and partial source from a temporary export', () => {
+    let exportDir;
+    assert.throws(() => createCleanExport(RELEASE_HEAD, LIVE.sourceBranch, { keepExport: true }, (command, args) => {
+        if (command === 'git') {
+            exportDir = path.dirname(args[3]);
+            assert.equal(path.dirname(exportDir), path.resolve(os.tmpdir()));
+            fs.writeFileSync(args[3], 'fixture archive');
+            return;
+        }
+        assert.equal(command, 'tar');
+        fs.writeFileSync(path.join(args[3], 'partial-export'), 'fixture');
+        throw new Error('fixture tar failure');
+    }), /fixture tar failure/);
+    assert.equal(fs.existsSync(exportDir), false);
+});
 
 function omniCheckRun(overrides = {}) {
     return {

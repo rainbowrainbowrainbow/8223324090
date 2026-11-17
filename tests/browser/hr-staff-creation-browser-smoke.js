@@ -484,6 +484,10 @@ async function runActor(browser, pool, actor, existingAccountId) {
             ]);
             assert.equal(recoveryCard.status(), 200);
             const recoveryStaff = (await recoveryCard.json()).data;
+            const { rows: [unsupportedStaff] } = await pool.query(
+                "INSERT INTO staff (name, department, position, role_type) VALUES ($1, 'QA', 'QA Custom', 'qa_unmapped_role') RETURNING id",
+                ['QA Unmapped ' + runId]
+            );
             await profile.waitFor({ state: 'visible' });
             await page.goto(new URL('/hr?tab=accounts', target).href);
             const centerAction = page.getByRole('button', { name: /Надати CRM-доступ працівнику/ });
@@ -497,6 +501,29 @@ async function runActor(browser, pool, actor, existingAccountId) {
             assert.equal(await page.locator('#accountOnboardingStaffId').getAttribute('aria-invalid'), 'true');
             await page.locator('#accountOnboardingStaffId').selectOption(String(recoveryStaff.id));
             assert.equal(await page.locator('#accountOnboardingStaffId').getAttribute('aria-invalid'), null);
+            const staffPicker = page.locator('#accountOnboardingStaffId');
+            const password = page.locator('#accountOnboardingPassword');
+            await password.fill('QA-Browser-Only-Password');
+            await page.locator('#accountOnboardingPasswordToggle').click();
+            await staffPicker.selectOption(String(unsupportedStaff.id));
+            assert.notEqual(await password.inputValue(), 'QA-Browser-Only-Password');
+            assert.equal(await password.getAttribute('type'), 'password');
+            assert.equal(await page.locator('#accountOnboardingPasswordToggle').getAttribute('aria-pressed'), 'false');
+            const unsupportedRole = page.locator('#accountOnboardingAccessSummary');
+            assert.match(await unsupportedRole.textContent(), /не визначено CRM-роль/);
+            let invalidPosts = 0;
+            const countPosts = req => {
+                if (req.method() === 'POST' && new URL(req.url()).pathname === '/api/users/onboarding') invalidPosts++;
+            };
+            page.on('request', countPosts);
+            await page.locator('#accountOnboardingSubmit').click();
+            assert.equal(await unsupportedRole.evaluate(el => el === document.activeElement), true);
+            assert.equal(invalidPosts, 0);
+            page.off('request', countPosts);
+            await staffPicker.selectOption('');
+            assert.equal(await password.inputValue(), '');
+            await staffPicker.selectOption(String(recoveryStaff.id));
+            assert.equal((await password.inputValue()).length, 16);
             await page.locator('#accountOnboardingUsername').fill(newUsername);
             assert.equal(await page.locator('#accountOnboardingStaffId').inputValue(), String(recoveryStaff.id));
             await page.route('**/api/users/onboarding', async route => {

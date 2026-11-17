@@ -230,6 +230,12 @@ const HARNESS_CODE = String.raw`
     }
 
     function lazyTabResponse(requestPath) {
+        if (String(requestPath).includes('/offboarding-readiness?')) {
+            const date = new URLSearchParams(requestPath.split('?')[1]).get('effective_date');
+            return { success: true, data: { schedule_cleanup: {
+                from_date: date, hr_shifts: 2, staff_schedule: 1, preserved_hr_shifts: 1, preserved_staff_schedule: 0
+            } } };
+        }
         if (String(requestPath).includes('/offboarding-readiness')) {
             return {
                 success: true,
@@ -246,7 +252,8 @@ const HARNESS_CODE = String.raw`
             };
         }
         if (String(requestPath).includes('/offboarding')) {
-            return { success: true, data: offboardingSubmissions
+            const staff = staffProfiles.get(Number(requestPath.split('/')[2]));
+            return { success: true, completed: staff?.offboarding_completed === true, data: offboardingSubmissions
                 .filter(item => item.path === requestPath)
                 .map(item => item.body) };
         }
@@ -486,6 +493,7 @@ const HARNESS_CODE = String.raw`
             const staff = staffProfiles.get(Number(requestPath.split('/')[2]));
             Object.assign(staff, {
                 is_active: false,
+                offboarding_completed: true,
                 hr_pool_status: options.body.target_pool_status,
                 termination_date: options.body.effective_date,
                 termination_reason: options.body.reason
@@ -1365,8 +1373,10 @@ async function assertIndependentLazyTabRaces(page) {
     assert.match(await page.locator('#staffProfileLiveStatus').textContent(), /Завантажуємо.*Документи/i, 'lazy loading is announced through the live status');
 
     await page.evaluate(() => window.__hrTeamBrowserSmoke.startTab('offboarding'));
-    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.requestCount('/staff/2/offboarding') >= 2);
+    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.requestCount('/staff/2/offboarding') >= 1);
     await page.evaluate(() => window.__hrTeamBrowserSmoke.resolveLazyTab('/offboarding'));
+    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.requestCount('/staff/2/offboarding-readiness') >= 1);
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.resolveLazyTab('/offboarding-readiness'));
     await page.waitForFunction(() => !document.getElementById('editStaffOffboarding')?.textContent.includes('завантажується'));
 
     await page.evaluate(() => {
@@ -1842,13 +1852,23 @@ async function assertOffboardingDangerFlow(page) {
 
     await page.fill('#editOffboardingReason', 'QA controlled offboarding');
     assert.equal(await complete.isDisabled(), true, 'reason alone does not unlock offboarding');
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.enableLazyTabHold());
+    await page.fill('#editOffboardingDate', '2026-11-14');
     await page.fill('#editOffboardingDate', '2026-11-15');
+    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.requestCount('effective_date=2026-11-15') === 1);
+    await page.evaluate(() => window.__hrTeamBrowserSmoke.resolveLazyTab('effective_date=2026-11-15'));
+    await page.waitForFunction(() => document.getElementById('editOffboardingConsequenceSummary').textContent.includes('15.11.2026'));
+    await page.evaluate(() => {
+        window.__hrTeamBrowserSmoke.resolveLazyTab('effective_date=2026-11-14');
+        window.__hrTeamBrowserSmoke.releaseLazyTabHold();
+    });
     const destination = page.locator('#editOffboardingPoolStatus');
     assert.deepEqual(await destination.locator('option').allTextContents(), ['Лише звільнені', 'Звільнені та чорний список']);
     await destination.selectOption('blacklisted');
     assert.equal(await complete.isDisabled(), true, 'linked account permission blocker prevents completing dismissal');
     assert.match(await page.locator('#editOffboardingConsequenceSummary').textContent(), /неактивним/i, 'visible consequence summary explains the profile outcome');
-    assert.match(await page.locator('#editOffboardingConsequenceSummary').textContent(), /майбутніх змін: 2/i, 'visible consequence summary includes future shifts');
+    await page.waitForFunction(() => document.getElementById('editOffboardingConsequenceSummary').textContent.includes('зміни HR — 2'));
+    assert.doesNotMatch(await page.locator('#editOffboardingConsequenceSummary').textContent(), /14\.11\.2026/);
     assert.match(await page.locator('#editOffboardingConsequenceSummary').textContent(), /автоматично вимкнено/i, 'account deactivation is an automatic consequence');
     assert.equal(await page.locator('#editOffboardingAccountAction').inputValue(), 'disable');
     assert.equal(await page.locator('#editOffboardingAccountAction').isDisabled(), true, 'account action cannot bypass required deactivation');
@@ -1861,7 +1881,9 @@ async function assertOffboardingDangerFlow(page) {
     await page.waitForFunction(() => document.querySelector('.confirm-overlay .confirm-dialog.danger'));
     const confirmationMessage = await page.locator('.confirm-overlay .confirm-message').textContent();
     assert.match(confirmationMessage, /Підтвердьте завершення співпраці/i, 'final submit shows an explicit confirmation summary');
-    assert.match(confirmationMessage, /майбутніх змін: 2/i, 'final confirmation repeats the planned schedule cleanup');
+    assert.match(confirmationMessage, /зміни HR — 2, графік — 1/i, 'final confirmation repeats the planned schedule cleanup');
+    assert.match(confirmationMessage, /За наявності відвідування залишаться: зміни HR — 1/i);
+    await page.waitForFunction(() => document.activeElement?.matches('.confirm-overlay .confirm-cancel'));
     assert.match(confirmationMessage, /одразу після підтвердження/i);
     assert.match(confirmationMessage, /Звільнені та чорний список/i);
     fs.mkdirSync(OUTPUT_DIR, { recursive: true });
@@ -1893,10 +1915,11 @@ async function assertOffboardingDangerFlow(page) {
     await page.evaluate(() => window.__hrTeamBrowserSmoke.setBucket('dismissed'));
     await card.locator('.hr-team-open').click();
     await waitForCleanHydration(page);
-    const historyTab = page.getByRole('tab', { name: 'Історія звільнення', exact: true });
+    const historyTab = page.locator('#staffProfileTabOffboarding');
     const readinessRequests = await page.evaluate(() => window.__hrTeamBrowserSmoke.requestCount('/offboarding-readiness'));
     await historyTab.click();
     await page.waitForFunction(() => document.getElementById('editStaffOffboarding')?.textContent.includes('QA controlled offboarding'));
+    assert.equal(await historyTab.textContent(), 'Історія звільнення');
     assert.match(await page.locator('#editStaffOffboarding').textContent(), /15\.11\.2026.*Звільнені та чорний список/s);
     assert.equal(await complete.isVisible(), false);
     assert.equal(await page.evaluate(() => window.__hrTeamBrowserSmoke.requestCount('/offboarding-readiness')), readinessRequests);

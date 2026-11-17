@@ -128,6 +128,7 @@ function routeHarness(f, readiness = { active_account_count: 1, disable_availabl
         cleanStaffText: value => value || null,
         cleanStaffDate: value => value || null,
         todayKyiv: () => '2026-10-04',
+        staffOffboardingCleanupFromDate: date => date,
         normalizeStaffOffboardingPoolStatus: () => 'reserve',
         lockOrganizationOwnership: ownerGuard.lockOrganizationOwnership,
         assertParkLifecycleAccountScope: async () => {},
@@ -166,7 +167,7 @@ test('dismissal always disables accounts for omitted, legacy review, legacy none
 
 test('an already dismissed staff record rejects another event before any writes', async () => {
     const f = fixture();
-    const result = await routeHarness(f, undefined, { id: 42, is_active: false })({});
+    const result = await routeHarness(f, undefined, { id: 42, is_active: false, offboarding_completed: true })({});
     assert.equal(result.status, 409);
     assert.equal(result.body.code, 'staff_already_dismissed');
     assert.ok(f.calls.some(call => call.text === 'ROLLBACK'));

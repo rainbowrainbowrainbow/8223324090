@@ -745,7 +745,7 @@ describe('work queue endpoint', () => {
         assert.ok(buckets.overdue.items[0].execution.actions.some(action => action.type === 'task_reschedule'));
         assert.equal(buckets.today.items[0].taskId, 2);
         const bookingPrepTask = buckets.tomorrow.items.find(item => item.taskId === 3);
-        assert.equal(bookingPrepTask.href, '/tasks?open=3');
+        assert.equal(bookingPrepTask.href, '/profile?tab=myday&open=3');
         assert.equal(bookingPrepTask.meta.bookingLinkedRoute.fallbackHref, '/?date=2026-05-14&highlight=BK-1');
         assert.equal(bookingPrepTask.meta.bookingLinkedRoute.routeKind, 'linked-task');
         assert.equal(buckets.tomorrow.items.some(item => item.bookingId === 'BK-3'), true);
@@ -761,7 +761,7 @@ describe('work queue endpoint', () => {
         assert.equal(buckets.waiting_reply.items[0].meta.replySlaState, 'on_track');
         assert.equal(buckets.waiting_reply.items[0].meta.replyExpectedMessageId, 1201);
         assert.equal(buckets.waiting_reply.items[0].meta.replyEscalationTaskId, 700);
-        assert.equal(buckets.waiting_reply.items[0].meta.replyEscalationHref, '/tasks?open=700');
+        assert.equal(buckets.waiting_reply.items[0].meta.replyEscalationHref, '/profile?tab=myday&open=700');
         assert.equal(buckets.waiting_reply.items[0].meta.replyOwnerUserId, 501);
         assert.equal(buckets.waiting_reply.items[0].meta.exactHref, '/omni?conversation=41');
         assert.equal(buckets.waiting_reply.items[0].meta.leadHref, '/sales-funnel?lead=41');
@@ -1388,7 +1388,7 @@ describe('work queue endpoint', () => {
                             globalScore: false,
                             priorityBand: 'critical',
                             riskTypes: ['reply_expected', 'reply_escalated'],
-                            recommendedAction: { type: 'open_reply_escalation', label: 'Open reply escalation context', href: '/tasks?open=700' },
+                            recommendedAction: { type: 'open_reply_escalation', label: 'Open reply escalation context', href: '/profile?tab=myday&open=700' },
                             why: ['Explicit reply expectation is active from conversations.reply_expected.', 'A linked conversation_reply escalation task exists.'],
                             confidence: 'high',
                             depth: 'full'
@@ -1403,7 +1403,7 @@ describe('work queue endpoint', () => {
                                 { type: 'reply_reassign_owner', durableMutation: true },
                                 { type: 'reply_snooze_sla', durableMutation: true },
                                 { type: 'reply_clear_expectation', durableMutation: true },
-                                { type: 'open_reply_escalation', href: '/tasks?open=700', durableMutation: false }
+                                { type: 'open_reply_escalation', href: '/profile?tab=myday&open=700', durableMutation: false }
                             ]
                         },
                         meta: {
@@ -1414,7 +1414,7 @@ describe('work queue endpoint', () => {
                             replySlaAt: '2026-05-14T09:00:00Z',
                             replySlaState: 'overdue',
                             replyEscalationTaskId: 700,
-                            replyEscalationHref: '/tasks?open=700',
+                            replyEscalationHref: '/profile?tab=myday&open=700',
                             exactHref: '/omni?conversation=41',
                             leadHref: '/sales-funnel?lead=41',
                             signal: 'conversations.reply_expected'
@@ -1473,7 +1473,7 @@ describe('work queue endpoint', () => {
                         sourceType: 'task',
                         sourceId: '1',
                         taskId: 1,
-                        href: '/tasks?open=1',
+                        href: '/profile?tab=myday&open=1',
                         title: 'Overdue task',
                         subtitle: 'Task context',
                         dueAt: '2026-05-13T08:00:00Z',
@@ -1492,7 +1492,7 @@ describe('work queue endpoint', () => {
                             globalScore: false,
                             priorityBand: 'critical',
                             riskTypes: ['task_overdue'],
-                            recommendedAction: { type: 'open_task', label: 'Open overdue task', href: '/tasks?open=1' },
+                            recommendedAction: { type: 'open_task', label: 'Open overdue task', href: '/profile?tab=myday&open=1' },
                             why: ['tasks.deadline is overdue.'],
                             confidence: 'medium',
                             depth: 'limited'
@@ -1674,7 +1674,7 @@ describe('work queue endpoint', () => {
         assert.equal(workspace.querySelectorAll('[data-triage-reply-action]').length, 3);
         assert.ok(workspace.querySelector('a[href="/omni?conversation=41"]'));
         assert.ok(workspace.querySelector('a[href="/sales-funnel?lead=41"]'));
-        assert.ok(workspace.querySelector('a[href="/tasks?open=700"]'));
+        assert.ok([...workspace.querySelectorAll("a")].some(link => link.getAttribute("href") === "/profile?tab=myday&open=700"));
 
         DashboardPage.nextTriageItem();
         await new Promise(resolve => dom.window.setTimeout(resolve, 0));

@@ -75,7 +75,7 @@ function outboxRow(overrides = {}) {
             ownerUserId: overrides.owner_user_id || 4,
             ownerLabel: 'Owner',
             dueAt: '2026-06-30T15:00:00.000Z',
-            crmUrl: `/tasks?open=${id}`,
+            crmUrl: `/profile?tab=myday&open=${id}`,
             createdAt: '2026-06-29T09:00:00.000Z',
             updatedAt: '2026-06-29T09:00:00.000Z',
             secretToken: 'must-not-leak'

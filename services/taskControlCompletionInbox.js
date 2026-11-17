@@ -1,5 +1,7 @@
 'use strict';
 
+const { taskUrl } = require('../js/task-links');
+
 const { TASK_ACTION_TYPES } = require('./taskActionConstants');
 const { buildTaskOwnerMatch, normalizeUserId } = require('./taskPolicy');
 const { buildTaskControlPredicates } = require('./taskPersonalScope');
@@ -95,7 +97,7 @@ async function listControlCompletions(db, user, scope, { cursor, summary = false
         icon: '✓',
         title: `Завершено: ${event.title || 'Задача без назви'}`,
         message: 'На контролі · Для ознайомлення',
-        link: `/tasks?view=my&open=${event.task_id}&businessContext=${encodeURIComponent(event.business_context)}`,
+        link: taskUrl(event.task_id, { businessContext: event.business_context }),
         read: Boolean(event.read_at)
     }));
     return { alerts, unread: result.unread, nextCursor: result.page.length > PAGE_SIZE ? alerts.at(-1).eventKey : null };

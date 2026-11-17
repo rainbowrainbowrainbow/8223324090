@@ -207,7 +207,7 @@ test('Tasks frontend appends without duplicates and exposes loading/error/retry 
 });
 
 test('Tasks stale view response is ignored and deep link opens a task outside page one', async () => {
-    const harness = tasksHarness('https://crm.test/tasks?open=501');
+    const harness = tasksHarness('https://crm.test/profile?tab=myday&open=501');
     const oldLoad = harness.hooks.loadAllTasks();
     harness.hooks.setView('team');
     const newLoad = harness.hooks.loadAllTasks();

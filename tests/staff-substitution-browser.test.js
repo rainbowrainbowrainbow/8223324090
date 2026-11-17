@@ -617,7 +617,7 @@ test('Park channel substitution disclosure responds to keyboard and discards a s
         });
         const linked = page.getByRole('link',{name:/Синтетичне доручення <img>/});
         await linked.waitFor();
-        assert.equal(await linked.getAttribute('href'),'tasks.html?open=9');
+        assert.equal(await linked.getAttribute('href'),'/profile?tab=myday&open=9');
         assert.equal(await page.getByText(/Старий канал/).count(),0);
         assert.equal(await page.locator('details img').count(),0);
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),false);

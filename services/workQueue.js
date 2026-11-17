@@ -1,3 +1,4 @@
+const { taskUrl } = require('../js/task-links');
 const { getKyivDateStr } = require('./booking');
 const { REPLY_SLA_STATES, deriveReplySlaState } = require('./replySla');
 const { enrichQueueBuckets } = require('./queueIntelligence');
@@ -233,7 +234,7 @@ function hrefForTask(row, actor = null, options = {}) {
         );
         return route.href || `/?date=${encodeURIComponent(dateValue(bookingDate))}&highlight=${encodeURIComponent(bookingId)}`;
     }
-    return `/tasks?open=${encodeURIComponent(row.id)}`;
+    return taskUrl(row.id, { businessContext: row.business_context || row.businessContext });
 }
 
 function bookingDerivedTaskRoute(row, actor = null) {
@@ -474,7 +475,7 @@ function conversationItem(row, bucket = 'waiting_reply', options = {}) {
             replySlaState,
             replyExpectedMessageId: row.reply_expected_message_id || null,
             replyEscalationTaskId: row.reply_escalation_task_id || null,
-            replyEscalationHref: row.reply_escalation_task_id ? `/tasks?open=${encodeURIComponent(row.reply_escalation_task_id)}` : null,
+            replyEscalationHref: row.reply_escalation_task_id ? taskUrl(row.reply_escalation_task_id) : null,
             deliveryStatus: row.delivery_status || null,
             lastInboundAt: isoValue(row.last_inbound_at),
             lastOutboundAt: isoValue(row.last_outbound_at),

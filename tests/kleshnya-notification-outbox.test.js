@@ -245,7 +245,7 @@ test('createTask emits one pending notification_outbox event for owned active ta
     assert.equal(pool.outbox[0].task_id, task.id);
     assert.equal(pool.outbox[0].owner_user_id, 4);
     assert.equal(pool.outbox[0].event_id, 'task_created:100:owner:4');
-    assert.equal(pool.outbox[0].payload_json.crmUrl, 'https://crm.example.com/tasks?open=100');
+    assert.equal(pool.outbox[0].payload_json.crmUrl, 'https://crm.example.com/profile?tab=myday&open=100');
     assert.equal(telegramCalls.length, 0);
 });
 

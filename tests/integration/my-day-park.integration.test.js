@@ -150,7 +150,7 @@ test('park edition paginates all periods and disables legacy module writes', {
         assert.equal(authorAlerts.data.controlCompletions.unread, 2);
         assert.equal(info[0].level, 'info');
         assert.equal(info[0].action, undefined);
-        assert.equal(info[0].link, `/tasks?view=my&open=${assigned.id}&businessContext=event_genix`);
+        assert.equal(info[0].link, `/profile?tab=myday&open=${assigned.id}&businessContext=event_genix`);
         for (const role of Object.keys(ROLE_PERMISSIONS).filter(role => role !== 'guest')) {
             const actor = { id: owner, username: profile.data.user.username, role };
             const inbox = await listControlCompletions(pool, actor, 'event_genix');

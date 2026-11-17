@@ -233,7 +233,7 @@ test('orientation preserves the selected focus rank when another selected task h
     harness.api.renderWidgets();
     await flushHydration();
     await flushHydration();
-    assert.equal(orientation.querySelector('a.dashboard-day-orientation-action')?.getAttribute('href'), '/tasks?open=901');
+    assert.equal(orientation.querySelector('a.dashboard-day-orientation-action')?.getAttribute('href'), '/profile?tab=myday&open=901');
     assert.equal(harness.dom.window.document.querySelector('[data-focus-task]')?.getAttribute('data-focus-task'), '901');
     harness.dom.window.close();
 });
@@ -274,7 +274,7 @@ test('due client commitment outranks selected focus but current urgent work outr
     assert.equal(h.api.buildDayOrientation().source, 'Домовленість із клієнтом');
     urgent = true;
     await h.api.refreshDayOrientation();
-    assert.equal(h.api.buildDayOrientation().href, '/tasks?open=2');
+    assert.equal(h.api.buildDayOrientation().href, '/profile?tab=myday&open=2');
     assert.equal(h.api.buildDayOrientation().source, 'Рекомендовано');
     assert.match(h.api.buildDayOrientation().reason, /робочий строк/);
 });
@@ -352,7 +352,7 @@ test('unknown preparation does not outrank an actionable focus task or funnel', 
     });
     await h.api.loadDayOrientationSources();
     assert.equal(h.api.buildDayOrientation().priority, 3);
-    assert.equal(h.api.buildDayOrientation().href, '/tasks?open=8');
+    assert.equal(h.api.buildDayOrientation().href, '/profile?tab=myday&open=8');
     h.dom.window.close();
 });
 
@@ -534,7 +534,7 @@ test('an overdue recommendation never points to an unrelated non-overdue focus t
     })));
     await h.api.loadDayOrientationSources();
     assert.equal(h.api.buildDayOrientation().title, 'Next week');
-    assert.equal(h.api.buildDayOrientation().href, '/tasks?open=8');
+    assert.equal(h.api.buildDayOrientation().href, '/profile?tab=myday&open=8');
     assert.doesNotMatch(h.api.buildDayOrientation().title + h.api.buildDayOrientation().reason, /прострочен/,
         'a separate overdue counter must not label the recommended current task overdue');
     h.dom.window.close();
@@ -605,7 +605,7 @@ test('my focus keeps the first screen to three tasks and sends overflow to detai
     assert.match(container.textContent, /0 обрано у фокус/);
     assert.match(container.textContent, /4 рекомендовано/);
     assert.equal(container.querySelectorAll('.dashboard-task-subtask:not(.is-more)').length, 0);
-    assert.equal(container.querySelectorAll('.dashboard-task-subtask-summary a[href="/tasks?open=1"]').length, 0);
+    assert.equal(container.querySelectorAll('.dashboard-task-subtask-summary a[href="/profile?tab=myday&open=1"]').length, 0);
     assert.doesNotMatch(container.textContent, /First subtask|Second subtask/);
     harness.dom.window.close();
 });
@@ -943,7 +943,7 @@ test('my focus completion action is isolated from opening task details or draggi
     assert.match(source, /event\?\.preventDefault\?\.\(\);/);
     assert.match(source, /event\?\.stopPropagation\?\.\(\);/);
     assert.match(source, /class="widget-task-title focus-task-detail-link" href=/);
-    assert.match(source, /href: '\/tasks\?open=' \+ encodeURIComponent\(task.id\)/);
+    assert.match(source, /href: '\/profile\?tab=myday&open=' \+ encodeURIComponent\(task.id\)/);
     const focusRenderer = source.slice(source.indexOf('    function renderMyFocus('), source.indexOf('    function taskerStatusLabel('));
     assert.doesNotMatch(focusRenderer, /class="widget-task-item" onclick=/, 'details use a keyboard accessible link separate from completion');
 });

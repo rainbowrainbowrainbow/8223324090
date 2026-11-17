@@ -221,6 +221,8 @@ app.get(['/game', '/game.html'], (_req, res) => {
     return res.sendFile(path.join(__dirname, 'game.html'));
 });
 app.use(require('./services/changelog-page').createChangelogRouter());
+// Old messages/bookmarks must reach My Day before static tasks.html is served.
+app.use(require('./middleware/taskLinkRedirect'));
 app.use(express.static(path.join(__dirname)));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 

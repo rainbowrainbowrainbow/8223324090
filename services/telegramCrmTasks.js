@@ -117,7 +117,8 @@ function createTelegramCrmTasks(options) {
         const pilot = (await client.query('SELECT user_id FROM telegram_crm_bindings WHERE user_id=$1 AND pilot_enabled=true', [ownerUserId])).rows[0];
         if (!pilot) throw failure(403, 'TELEGRAM_OWNER_OUTSIDE_PILOT', 'Поки можна призначати задачі тільки учасникам пілоту.');
         return assignableOwner(ownerUserId, {
-            pool: client, actor, businessScope: scope, telegramCrmPeerAssignment: true
+            pool: client, actor, businessScope: scope,
+            telegramCrmPeerAssignment: canUseTaskRouteCapability(actor, 'create')
         });
     }
 
@@ -285,7 +286,7 @@ function createTelegramCrmTasks(options) {
         }
         const opts = {
             pool: client, businessScope: scope, sourceSurface: 'hermes', route: 'telegram_crm',
-            telegramCrmPeerAssignment: true
+            telegramCrmPeerAssignment: canUseTaskRouteCapability(actor, 'create')
         };
         if (payload.action === 'complete') return (await completeTask(task.id, actor, opts)).task;
         if (payload.action === 'reassign') {

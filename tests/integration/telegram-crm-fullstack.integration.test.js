@@ -397,9 +397,17 @@ check('Telegram changes use canonical task history and reject stale, foreign or 
     assert.equal(moved.filter(result => result.data.replay).length, 1);
     assert.equal((await pool.query('SELECT date::text AS date FROM tasks WHERE id=$1', [taskId])).rows[0].date, '2027-02-11');
 
-    const handoff = await change('reassign', { ownerUserId: owner.id });
-    assert.equal(handoff.status, 201, JSON.stringify(handoff.data));
-    assert.equal((await confirm(handoff.data.operationId)).status, 200);
+    await pool.query("UPDATE business_memberships SET action_denylist=ARRAY['tasks.create'] WHERE business_id=$1 AND user_id=$2",
+        [business.id,owner.id]);
+    try {
+        const handoff = await change('reassign', { ownerUserId: owner.id });
+        assert.equal(handoff.status, 201, JSON.stringify(handoff.data));
+        const confirmed = await confirm(handoff.data.operationId);
+        assert.equal(confirmed.status, 200, JSON.stringify(confirmed.data));
+    } finally {
+        await pool.query("UPDATE business_memberships SET action_denylist='{}' WHERE business_id=$1 AND user_id=$2",
+            [business.id,owner.id]);
+    }
     assert.equal((await pool.query('SELECT owner_user_id FROM tasks WHERE id=$1', [taskId])).rows[0].owner_user_id, owner.id);
     assert.equal((await change('complete', {}, peerTelegram)).status, 404);
 

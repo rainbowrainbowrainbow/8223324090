@@ -105,6 +105,7 @@
             const executor = task.ownerLabel || task.owner_name || task.owner_username;
             const actions = task.drawer?.actions || {};
             const priorities = global.TaskUiShared?.TASK_PRIORITY_OPTIONS || [];
+            const priority = global.TaskUiShared?.normalizeTaskPriority(task.priority) || 'normal';
             title.textContent = task.title || `Задача #${taskId}`;
             const description = typeof task.description === 'string' ? task.description.trim() : '';
             content.innerHTML = `<dl class="park-task-dialog-facts">
@@ -121,7 +122,7 @@
             ${actions.edit && save ? `<form data-dialog-editor ${edit ? '' : 'hidden'}>
                 <label for="my-day-edit-title">Назва</label><input id="my-day-edit-title" name="title" required value="${escape(task.title || '')}">
                 <label for="my-day-edit-description">Опис</label><textarea id="my-day-edit-description" name="description" rows="4">${escape(task.description || '')}</textarea>
-                <label for="my-day-edit-priority">Пріоритет</label><select id="my-day-edit-priority" name="priority">${priorities.map(item => `<option value="${escape(item.value)}" ${item.value === task.priority ? 'selected' : ''}>${escape(item.label)}</option>`).join('')}</select>
+                <label for="my-day-edit-priority">Пріоритет</label><select id="my-day-edit-priority" name="priority">${priorities.map(item => `<option value="${escape(item.value)}" ${item.value === priority ? 'selected' : ''}>${escape(item.label)}</option>`).join('')}</select>
                 <button type="submit">Зберегти</button>
             </form>` : ''}
             ${actions.reschedule && reschedule ? `<form data-dialog-schedule>

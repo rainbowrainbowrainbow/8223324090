@@ -989,7 +989,8 @@ function validatePaidAdditionalRoles(plan, staffId, shiftDate, context) {
     for (const role of paidRoles) {
         if ((role.policyVersion && role.policyVersion !== policy.policyVersion)
             || role.compensationMode !== policy.compensationMode
-            || role.payMultiplier !== policy.payMultiplier) {
+            || (role.payMultiplier !== policy.payMultiplier
+                && !(policy.payMultiplier === 1 && role.payMultiplier === 0.5))) {
             fail(
                 'HR_SHIFT_PAID_ROLE_POLICY_INVALID',
                 HR_SHIFT_PAID_ROLE_MESSAGES.HR_SHIFT_PAID_ROLE_POLICY_INVALID,
@@ -1015,6 +1016,10 @@ function validatePaidAdditionalRoles(plan, staffId, shiftDate, context) {
             assertAdditionalAdmission(context.payrollConditions, normalizedStaffId, role.professionKey);
             const conditions = resolvePayrollConditions(context.payrollConditions, normalizedStaffId,
                 role.professionKey, normalizedDate, 'additional');
+            if (role.payMultiplier === 0.5 && conditions.rateUnit !== 'hour') {
+                fail('HR_SHIFT_PAID_ROLE_POLICY_INVALID', 'Частка 50% доступна лише для погодинної ставки.',
+                    { professionKey: role.professionKey, segmentIndex: role.segmentIndex });
+            }
             const blocker = payrollRateBlocker(conditions);
             if (blocker) fail('HR_SHIFT_PAID_ROLE_RATE_REQUIRED', blocker.message,
                 { professionKey: role.professionKey, blocker: blocker.code });

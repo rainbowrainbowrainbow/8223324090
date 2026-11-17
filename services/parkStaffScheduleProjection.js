@@ -32,6 +32,7 @@ const ROLE_FIELDS = [...ROLE_IDENTITY_FIELDS,
     'payMultiplier', 'pay_multiplier', 'intervalStart', 'interval_start', 'intervalEnd', 'interval_end',
 ];
 const ATTENDANCE_FIELDS = [
+    'record_version',
     'staff_id', 'date', 'time_record_id', 'clock_in', 'clock_out', 'planned_start', 'planned_end',
     'late_minutes', 'early_leave_minutes', 'overtime_minutes', 'total_worked_minutes', 'time_status',
     'status', 'auto_closed', 'checkin_id', 'checkin_at', 'checkout_at', 'checkin_method', 'attendance_source',

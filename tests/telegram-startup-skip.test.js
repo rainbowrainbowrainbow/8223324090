@@ -291,7 +291,6 @@ async function runStartup({ flagValue, omniMode = 'owner-false' } = {}) {
         'checkCleaningTasks',
         'checkGraduationOpsAutomation',
         'checkAttendanceReviewTasks',
-        'checkHrAttendancePrintAutomations',
         'checkHrAutoClose',
         'checkHrNoShow',
         'checkBirthdayTagSync',
@@ -324,6 +323,7 @@ async function runStartup({ flagValue, omniMode = 'owner-false' } = {}) {
         OPENCLAW_BRIDGE: false,
         BACKUP_RECOVERY_MODE: false,
         BACKUP_OUTBOUND_HOLD: false,
+        PARK_PROFILE_MODULES: require('../services/parkProfileModules').PARK_PROFILE_MODULES,
         SKIP_TELEGRAM_BOT_STARTUP_CONFIG: evaluateSkipFlag(env),
         HERMES_JOB_RESULT_JSON_LIMIT: '1mb',
         schedulerIntervals,
@@ -499,6 +499,7 @@ test('skip keeps report bot, memberships, websocket, alert broadcaster, and back
 
     assert.ok(result.schedulerRegistrations.some(item => item.name === 'checkAutoDigest' && item.fnName === 'checkAutoDigest'));
     assert.ok(result.schedulerRegistrations.some(item => item.name === 'checkTaskReminders' && item.fnName === 'checkTaskReminders'));
+    assert.equal(result.schedulerRegistrations.some(item => item.name === 'checkHrAttendancePrintAutomations'), false);
     assert.equal(result.schedulerRegistrations.some(item => item.name === 'checkStaleCatalogImages'), false, 'catalog images require an explicit manual request');
     assert.ok(result.schedulerRegistrations.some(item => item.name === 'runCheckboxReadinessProbeScheduler' && item.fnName === 'runCheckboxReadinessProbeScheduler'));
     assert.ok(result.schedulerRegistrations.some(item => item.name === 'processPaymentOutboxJobs' && item.fnName === 'processPaymentOutboxJobs'));

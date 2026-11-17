@@ -435,30 +435,6 @@ test('28, 29, 30 and 31-day months keep three A4 landscape pages and stable file
     }
 });
 
-test('HR print UI uses localized footer label and recognizes legacy system defaults', () => {
-    const root = path.join(__dirname, '..');
-    const html = fs.readFileSync(path.join(root, 'hr.html'), 'utf8');
-    const uiSource = fs.readFileSync(path.join(root, 'js', 'hr-page.js'), 'utf8');
-    assert.match(html, /Текст у нижньому колонтитулі/);
-    assert.doesNotMatch(html, /Текст у footer/);
-    assert.match(uiSource, /A4 вертикально/);
-    assert.match(uiSource, /A4 горизонтально/);
-    assert.match(uiSource, /HR_PRINT_LEGACY_DEFAULT_TEXTS/);
-    assert.match(uiSource, /isHrPrintDefaultText/);
-    assert.match(uiSource, /editingAutomationMonthlyInstruction/);
-    assert.match(uiSource, /texts\.monthlyInstruction = hrPrintDocumentsState\.editingAutomationMonthlyInstruction/);
-    const warningSource = uiSource.slice(
-        uiSource.indexOf('function syncHrPrintPresetWarning'),
-        uiSource.indexOf('function syncHrPrintTemplateFields')
-    );
-    const resetSource = uiSource.slice(
-        uiSource.indexOf('function resetHrPrintPreset'),
-        uiSource.indexOf('function hrPrintRequestPayload')
-    );
-    assert.match(warningSource, /editingAutomationMonthlyInstruction/);
-    assert.match(resetSource, /editingAutomationMonthlyInstruction = ''/);
-});
-
 test('CI runs a 300 dpi anonymized generated-only visual guard', () => {
     const root = path.join(__dirname, '..');
     const auditSource = fs.readFileSync(path.join(root, 'scripts', 'hr-attendance-documents-visual-audit.js'), 'utf8');
@@ -498,25 +474,8 @@ test('short-month snapshot keeps 31-column geometry metadata and long names fail
     );
 });
 
-test('HR route keeps the endpoint under granular capability middleware and private no-store headers', () => {
+test('retired attendance PDF generation is absent from the HR router', () => {
     assert.equal(isPublicApiRequest({ method: 'POST', path: '/hr/attendance-documents/pdf' }), false);
     const routeSource = fs.readFileSync(path.join(__dirname, '..', 'routes', 'hr.js'), 'utf8');
-    const middlewareIndex = routeSource.indexOf('router.use(requireHrCapabilityContract)');
-    const endpointIndex = routeSource.indexOf("router.post('/attendance-documents/pdf'");
-    assert.ok(middlewareIndex >= 0 && endpointIndex > middlewareIndex);
-    const endpointBlock = routeSource.slice(endpointIndex, endpointIndex + 2200);
-    assert.match(endpointBlock, /buildHrAttendanceDocumentSnapshot\(pool, req\.body \|\| \{\}\)/);
-    assert.match(endpointBlock, /'Cache-Control': 'no-store, private, max-age=0'/);
-    assert.match(endpointBlock, /'X-Content-Type-Options': 'nosniff'/);
-    assert.doesNotMatch(endpointBlock, /log\.(?:info|debug).*snapshot/);
-});
-
-test('HR Pulse browser smoke covers private preview, keyboard and mobile print flow', () => {
-    const smokeSource = fs.readFileSync(path.join(__dirname, 'browser', 'hr-pulse-browser-smoke.js'), 'utf8');
-    assert.match(smokeSource, /async function assertHrPrintDocuments\(page\)/);
-    assert.match(smokeSource, /\/api\/hr\/attendance-documents\/pdf/);
-    assert.match(smokeSource, /payload\.dailyMode, 'manual_blank'/);
-    assert.match(smokeSource, /Object\.hasOwn\(payload, 'employees'\), false/);
-    assert.match(smokeSource, /page\.keyboard\.press\('Escape'\)/);
-    assert.match(smokeSource, /mobile print dialog fits viewport/);
+    assert.doesNotMatch(routeSource, /router\.post\('\/attendance-documents\/pdf'/);
 });

@@ -14,7 +14,7 @@ function exceptionKey(staffId, professionKey, date, purpose) {
 }
 function mapException(row) {
     return { id: Number(row.id), staffId: Number(row.staff_id), professionKey: row.profession_key,
-        workDate: normalizeAttendanceWriteDate(row.work_date), purpose: row.purpose, version: Number(row.version),
+        workDate: normalizeAttendanceWriteDate(row.work_date_key ?? row.work_date), purpose: row.purpose, version: Number(row.version),
         state: row.state, rate: row.rate === null ? null : Number(row.rate), rateUnit: row.rate_unit,
         selectedProfile: row.selected_profile_snapshot || null, reason: row.reason, createdBy: row.created_by, createdAt: row.created_at };
 }
@@ -29,7 +29,7 @@ async function loadPayrollConditionContext(db, staffIds, range) {
     if (profiles.enabled === false) throw conditionError('PAYROLL_CONDITIONS_UNAVAILABLE', 'Не вдалося завантажити зарплатні профілі', 503);
     const rates = await payroll.loadProfessionRateMap(ids, db);
     const result = await db.query(
-        `SELECT DISTINCT ON (staff_id, profession_key, work_date, purpose) *
+        `SELECT DISTINCT ON (staff_id, profession_key, work_date, purpose) *, work_date::text AS work_date_key
          FROM payroll_day_exceptions WHERE staff_id = ANY($1::int[]) AND work_date BETWEEN $2::date AND $3::date
          ORDER BY staff_id, profession_key, work_date, purpose, version DESC`, [ids, from, to]);
     const exceptions = new Map();
@@ -201,7 +201,7 @@ async function savePayrollDayException(db, payload, actor) {
         await lockAttendanceWriteTarget(client, { staffId: input.staffId, date: input.workDate });
         // Serialize idempotency across dates, then use the same staff/date lock as clock-in.
         await client.query('SELECT id FROM staff WHERE id = $1 FOR UPDATE', [input.staffId]);
-        const replay = await client.query('SELECT * FROM payroll_day_exceptions WHERE staff_id = $1 AND idempotency_key = $2', [input.staffId, input.idempotencyKey]);
+        const replay = await client.query('SELECT *, work_date::text AS work_date_key FROM payroll_day_exceptions WHERE staff_id = $1 AND idempotency_key = $2', [input.staffId, input.idempotencyKey]);
         if (replay.rows[0]) {
             if (replay.rows[0].request_hash !== hash) throw conditionError('PAYROLL_DAY_EXCEPTION_IDEMPOTENCY_CONFLICT', 'Ключ запиту вже використано для іншої зміни', 409);
             await client.query('COMMIT');
@@ -257,7 +257,7 @@ async function savePayrollDayException(db, payload, actor) {
         }
         const result = await client.query(`INSERT INTO payroll_day_exceptions
             (staff_id, profession_key, work_date, purpose, version, state, rate, rate_unit, reason, created_by, idempotency_key, request_hash, selected_profile_snapshot)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb) RETURNING *`,
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb) RETURNING *, work_date::text AS work_date_key`,
         [input.staffId, input.professionKey, input.workDate, input.purpose, input.expectedVersion + 1,
             input.state, input.rate, input.rateUnit, input.reason, username, input.idempotencyKey, hash, selectedProfile ? JSON.stringify(selectedProfile) : null]);
         await client.query('COMMIT');

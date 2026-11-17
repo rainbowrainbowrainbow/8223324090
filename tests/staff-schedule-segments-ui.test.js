@@ -14,7 +14,7 @@ const liveWriteSmoke = require('../scripts/live-staff-schedule-write-smoke');
 test('staff schedule exposes one day status and reusable segment editors', () => {
     assert.match(shell, /<label for="schStatus">Статус дня<\/label>/);
     assert.match(shell, /id="schSegmentsList"/);
-    assert.match(shell, /id="schAddSegmentBtn"[^>]*>\+ Додати часовий блок/);
+    assert.match(shell, /id="schAddSegmentBtn"[^>]*>Додати інший період роботи/);
     assert.match(shell, /id="schPrimaryProfession"/);
     assert.match(shell, /id="schPlanSummary"[^>]*aria-live="polite"/);
     assert.match(shell, /id="schNonWorkingWarning"/);
@@ -33,7 +33,7 @@ test('segment cards separate unpaid and paid simultaneous roles and keep keyboar
     assert.match(page, /Додаткова роль без доплати/);
     assert.match(page, /data-segment-field="additional-unpaid"/);
     assert.match(page, /без окремої оплати/);
-    assert.match(page, /Додаткова оплачувана професія/);
+    assert.match(page, /Додати оплачуване суміщення/);
     assert.match(page, /data-segment-field="paid-profession"/);
     assert.match(page, /data-segment-field="paid-start"/);
     assert.match(page, /data-segment-field="paid-end"/);
@@ -62,7 +62,7 @@ test('client validation blocks invalid and overlapping paid plans before save', 
     assert.match(page, /function bindScheduleOverlapConversionControls/);
     assert.match(page, /data-schedule-overlap-convert/);
     assert.match(page, /data-schedule-overlap-break-target/);
-    assert.match(page, /Ліміт v1: максимум одна оплачувана додаткова професія/);
+    assert.match(page, /paidRoles\.length > 1/);
     assert.match(page, /Перетворити на одночасні ролі/);
     assert.match(page, /function normalizeSchedulePaidRoleSegments/);
     assert.match(page, /Оплачуваний інтервал має повністю бути в межах основного фізичного блоку/);

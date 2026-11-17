@@ -84,7 +84,7 @@ test('Today recovery sends only its business-scoped read and keeps counters, fil
         assert.equal(win.document.querySelectorAll('#todayList .hr-today-row-action--profile').length, 4);
         assert.match(win.document.querySelector('[data-staff-id="9701"] .hr-today-row-action--profile').getAttribute('onclick'), /openStaffEdit\(9701\)/);
         assert.equal(win.document.querySelectorAll('.hr-today-row-action--schedule').length, 4);
-        assert.equal(win.document.getElementById('btnHrPrintDocuments').hidden, true);
+        assert.equal(win.document.getElementById('btnHrPrintDocuments'), null);
         assert.doesNotMatch(win.document.getElementById('todayList').textContent, /Відмітити прихід|Не з'явився — відмітити/);
         const search = win.document.getElementById('todaySearch');
         search.value = 'QA Absent';
@@ -163,7 +163,7 @@ test('Today-only permissions need no profession, roster or account dependencies 
     } finally { dom.window.close(); }
 });
 
-test('recovery prevents direct clock, correction, context-status and print entry points from submitting requests', async () => {
+test('recovery prevents direct clock, correction, and context-status entry points from submitting requests', async () => {
     const { dom, win, calls } = harness();
     try {
         await win.loadToday();
@@ -173,7 +173,6 @@ test('recovery prevents direct clock, correction, context-status and print entry
         win.showContext({ preventDefault() {} }, 9701);
         win.openCorrectionModal(9701);
         await win.saveCorrection();
-        await win.openHrPrintDocuments();
         win.document.querySelector('.hr-context-item').click();
         assert.equal(win.document.getElementById('contextMenu').classList.contains('visible'), false);
         assert.equal(calls.length, 1);

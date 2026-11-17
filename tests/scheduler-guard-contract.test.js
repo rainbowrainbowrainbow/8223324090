@@ -464,9 +464,10 @@ describe('scheduler execution policy', () => {
             schedulerExecutionPolicy
         } = require('../config/schedulerSurface');
 
-        assert.equal(GUARDED_SCHEDULER_JOBS.length, 53);
+        assert.equal(GUARDED_SCHEDULER_JOBS.length, 52);
+        assert.equal(GUARDED_SCHEDULER_JOBS.some(job => job.name === 'checkHrAttendancePrintAutomations'), false);
         assert.equal(GUARDED_SCHEDULER_JOBS.some(job => job.name === 'checkStaleCatalogImages'), false);
-        assert.equal(Object.keys(OWNER_MANAGED_SCHEDULER_CLAIMS).length, 6);
+        assert.equal(Object.keys(OWNER_MANAGED_SCHEDULER_CLAIMS).length, 5);
         for (const job of GUARDED_SCHEDULER_JOBS) {
             const policy = schedulerExecutionPolicy(job.name);
             assert.ok(['lease', 'owner'].includes(policy.claimMode), job.name);

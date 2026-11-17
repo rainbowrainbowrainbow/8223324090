@@ -406,16 +406,22 @@ test('migration provides DB unique dedup, row locks, leases and artifact TTL fie
 test('HR attendance automation routes use the granular capability contract', () => {
     const routes = fs.readFileSync(path.join(ROOT, 'routes/hr.js'), 'utf8');
     assert.match(routes, /router\.use\(requireHrCapabilityContract\)/);
-    assert.match(routes, /router\.post\('\/attendance-document-automations', requireHrManage/);
-    assert.match(routes, /router\.patch\('\/attendance-document-automations\/:id', requireHrManage/);
-    assert.match(routes, /router\.post\('\/attendance-document-automations\/:id\/run', requireHrManage/);
-    assert.match(routes, /router\.get\('\/attendance-document-jobs\/:id\/pdf'/);
-    assert.match(routes, /Cache-Control': 'no-store, private, max-age=0'/);
+    assert.doesNotMatch(routes, /router\.(?:get|post|patch)\('\/attendance-document/);
 });
 
-test('scheduler is registered without guard-level dedup because queue owns it', () => {
+test('retired print automation has no scheduler registration', () => {
     const server = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
     const manifest = fs.readFileSync(path.join(ROOT, 'config/schedulerSurface.js'), 'utf8');
-    assert.match(server, /guardScheduler\('checkHrAttendancePrintAutomations', checkHrAttendancePrintAutomations, \{ dedup: null \}\)/);
-    assert.match(manifest, /name: 'checkHrAttendancePrintAutomations'.*dedup: null/);
+    assert.doesNotMatch(server, /guardScheduler\('checkHrAttendancePrintAutomations', checkHrAttendancePrintAutomations, \{ dedup: null \}\)/);
+    assert.doesNotMatch(manifest, /name: 'checkHrAttendancePrintAutomations'/);
+});
+
+test('retired attendance uploads cannot reach OCR or worker upload handlers', () => {
+    const hr = fs.readFileSync(path.join(ROOT, 'routes/hr.js'), 'utf8');
+    const server = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+    const worker = fs.readFileSync(path.join(ROOT, 'attendance-upload.html'), 'utf8');
+    assert.doesNotMatch(hr, /crmAttendanceOcrHttp|crmAttendanceUploadHttp|router\.\w+\('\/attendance\/ocr\//);
+    assert.doesNotMatch(server, /createAttendanceUploadRouter/);
+    assert.match(server, /app\.use\('\/api\/attendance-upload', \(_req, res\) => \{\s*res\.set\('Cache-Control', 'no-store'\)\.status\(410\)/);
+    assert.doesNotMatch(worker, /<script[^>]+src=|<form|type="file"/);
 });

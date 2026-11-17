@@ -245,25 +245,6 @@ const {
     returnStaffResource,
     transitionStaffResource
 } = require('../services/hrStaffResources');
-const {
-    buildHrAttendanceDocumentSnapshot
-} = require('../services/hrAttendanceDocuments');
-const {
-    buildHrAttendanceDocumentPdfBuffer,
-    hrAttendanceDocumentPdfFilename
-} = require('../services/hrAttendanceDocumentsPdf');
-const {
-    createAutomation: createHrAttendanceDocumentAutomation,
-    disableAutomation: disableHrAttendanceDocumentAutomation,
-    getJobPdf: getHrAttendanceDocumentJobPdf,
-    listAutomations: listHrAttendanceDocumentAutomations,
-    listJobs: listHrAttendanceDocumentJobs,
-    manualRun: runHrAttendanceDocumentAutomation,
-    requeueJob: requeueHrAttendanceDocumentJob,
-    cancelJob: cancelHrAttendanceDocumentJob,
-    updateAutomation: updateHrAttendanceDocumentAutomation
-} = require('../services/hrAttendanceDocumentAutomation');
-
 // Inline legacy sites reuse the same granular contract after the router-level check.
 const requireHrManage = (req, res, next) => req.hrCapability ? next() : requireHrCapabilityContract(req, res, next);
 const requirePayrollView = requireAction('hr.payroll.view');
@@ -6256,149 +6237,20 @@ router.post('/shifts/copy-week', requireHrManage, async (req, res) => {
 // CLOCK IN / CLOCK OUT
 // ==========================================
 
-// POST /api/hr/attendance-documents/pdf — private server-owned HR form generation.
-router.post('/attendance-documents/pdf', requireAction('hr.reports.export'), requireAction('export_data'), async (req, res) => {
-    const safeContext = {
-        templateId: String(req.body?.templateId || '').slice(0, 32),
-        rosterMode: String(req.body?.rosterMode || '').slice(0, 32),
-        categoryCount: Array.isArray(req.body?.categoryIds) ? req.body.categoryIds.length : 0
-    };
-    try {
-        const snapshot = await buildHrAttendanceDocumentSnapshot(pool, req.body || {});
-        const buffer = await buildHrAttendanceDocumentPdfBuffer(snapshot);
-        const filename = hrAttendanceDocumentPdfFilename(snapshot);
-        res.set({
-            'Content-Type': 'application/pdf',
-            'Content-Disposition': `attachment; filename="${filename}"`,
-            'Cache-Control': 'no-store, private, max-age=0',
-            'Pragma': 'no-cache',
-            'Expires': '0',
-            'X-Content-Type-Options': 'nosniff'
-        });
-        res.send(buffer);
-    } catch (err) {
-        const status = Number(err.statusCode) === 400 ? 400 : 500;
-        if (status === 500) {
-            log.error('POST /hr/attendance-documents/pdf error', {
-                code: err.code || 'HR_ATTENDANCE_DOCUMENT_PDF_ERROR',
-                ...safeContext
-            });
-        }
-        res.status(status).json({
-            success: false,
-            code: err.code || 'HR_ATTENDANCE_DOCUMENT_PDF_ERROR',
-            error: status === 400
-                ? err.message
-                : 'Не вдалося сформувати HR PDF'
-        });
-    }
-});
-
-function sendHrAttendanceAutomationError(res, err) {
-    const status = [400, 404, 409, 410].includes(Number(err.statusCode)) ? Number(err.statusCode) : 500;
-    if (status === 500) {
-        log.error('HR attendance document automation error', {
-            code: err.code || 'HR_ATTENDANCE_AUTOMATION_ERROR'
-        });
-    }
-    return res.status(status).json({
-        success: false,
-        code: err.code || 'HR_ATTENDANCE_AUTOMATION_ERROR',
-        error: status === 500 ? 'Не вдалося виконати операцію з HR-документом' : err.message
-    });
-}
-
-router.get('/attendance-document-automations', async (_req, res) => {
-    try {
-        res.json({ success: true, automations: await listHrAttendanceDocumentAutomations(pool) });
-    } catch (err) {
-        sendHrAttendanceAutomationError(res, err);
-    }
-});
-
-router.post('/attendance-document-automations', requireHrManage, async (req, res) => {
-    try {
-        const automation = await createHrAttendanceDocumentAutomation(req.body || {}, req.user, pool);
-        res.status(201).json({ success: true, automation });
-    } catch (err) {
-        sendHrAttendanceAutomationError(res, err);
-    }
-});
-
-router.patch('/attendance-document-automations/:id', requireHrManage, async (req, res) => {
-    try {
-        const automation = await updateHrAttendanceDocumentAutomation(req.params.id, req.body || {}, req.user, pool);
-        res.json({ success: true, automation });
-    } catch (err) {
-        sendHrAttendanceAutomationError(res, err);
-    }
-});
-
-router.post('/attendance-document-automations/:id/disable', requireHrManage, async (req, res) => {
-    try {
-        const automation = await disableHrAttendanceDocumentAutomation(req.params.id, req.user, pool);
-        res.json({ success: true, automation });
-    } catch (err) {
-        sendHrAttendanceAutomationError(res, err);
-    }
-});
-
-router.post('/attendance-document-automations/:id/run', requireHrManage, async (req, res) => {
-    try {
-        const job = await runHrAttendanceDocumentAutomation(req.params.id, req.user, {}, pool);
-        res.status(job?.status === 'queued' ? 201 : 200).json({ success: true, job });
-    } catch (err) {
-        sendHrAttendanceAutomationError(res, err);
-    }
-});
-
-router.get('/attendance-document-jobs', async (req, res) => {
-    try {
-        const jobs = await listHrAttendanceDocumentJobs({ limit: req.query.limit }, pool);
-        res.json({ success: true, jobs });
-    } catch (err) {
-        sendHrAttendanceAutomationError(res, err);
-    }
-});
-
-router.get('/attendance-document-jobs/:id/pdf', requireAction('export_data'), async (req, res) => {
-    try {
-        const artifact = await getHrAttendanceDocumentJobPdf(req.params.id, pool);
-        res.set({
-            'Content-Type': 'application/pdf',
-            'Content-Disposition': `attachment; filename="${artifact.filename || `hr-attendance-${req.params.id}.pdf`}"`,
-            'Cache-Control': 'no-store, private, max-age=0',
-            'Pragma': 'no-cache',
-            'Expires': '0',
-            'X-Content-Type-Options': 'nosniff',
-            'X-Document-SHA256': artifact.sha256 || ''
-        });
-        res.send(artifact.buffer);
-    } catch (err) {
-        sendHrAttendanceAutomationError(res, err);
-    }
-});
-
-router.post('/attendance-document-jobs/:id/cancel', requireHrManage, async (req, res) => {
-    try {
-        res.json({ success: true, job: await cancelHrAttendanceDocumentJob(req.params.id, pool) });
-    } catch (err) {
-        sendHrAttendanceAutomationError(res, err);
-    }
-});
-
-router.post('/attendance-document-jobs/:id/requeue', requireHrManage, async (req, res) => {
-    try {
-        res.json({ success: true, job: await requeueHrAttendanceDocumentJob(req.params.id, pool) });
-    } catch (err) {
-        sendHrAttendanceAutomationError(res, err);
-    }
-});
-
 // GET /api/hr/today — dashboard
 router.get('/today', async (req, res) => {
     try {
-        const today = todayKyiv();
+        const currentDate = todayKyiv();
+        const reviewDate = req.query.review_date;
+        if (reviewDate !== undefined && (typeof reviewDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(reviewDate)
+            || !Number.isFinite(Date.parse(`${reviewDate}T00:00:00Z`))
+            || new Date(`${reviewDate}T00:00:00Z`).toISOString().slice(0, 10) !== reviewDate
+            || reviewDate > currentDate)) {
+            return res.status(400).json({ success: false, error: 'Оберіть чинну дату звірки.' });
+        }
+        const today = reviewDate || currentDate;
+        const historical = today !== currentDate;
+        const context = hrBusinessContextFromRequest(req);
         const staff = await pool.query(
             `SELECT id, name, department, position, color, role_type, company_structure_node_id, photo_url, birth_date,
                     (
@@ -6407,9 +6259,12 @@ router.get('/today', async (req, res) => {
                         AND EXTRACT(DAY FROM birth_date::date) = EXTRACT(DAY FROM $1::date)
                     ) AS is_birthday_today
              FROM staff
-             WHERE ${scheduleableStaffWhere('staff', { dateExpression: '$1' })}
+             WHERE ${historical ? `EXISTS (
+                SELECT 1 FROM hr_time_records tr WHERE tr.staff_id = staff.id AND tr.record_date = $1
+                AND COALESCE(tr.business_context, 'event_genix') = $2 AND tr.status IS DISTINCT FROM $3
+             )` : scheduleableStaffWhere('staff', { dateExpression: '$1' })}
              ORDER BY department, name`,
-            [today]
+            historical ? [today, context, CANCELLED_ARRIVAL_STATUS] : [today]
         );
 
         let scheduleAvailable = true;
@@ -6425,9 +6280,10 @@ router.get('/today', async (req, res) => {
         for (const snapshot of hydratedShifts) shiftMap[snapshot.shift.staff_id] = snapshot;
 
         const records = await pool.query(
-            `SELECT tr.*, (${HR_TODAY_MANUAL_ARRIVAL_SQL}) AS can_cancel_arrival
-             FROM hr_time_records tr WHERE record_date = $1 AND status IS DISTINCT FROM $2`,
-            [today, CANCELLED_ARRIVAL_STATUS]
+            `SELECT tr.*, (${HR_TODAY_MANUAL_ARRIVAL_SQL}) AS can_cancel_arrival, tr.updated_at::text AS record_version
+             FROM hr_time_records tr WHERE record_date = $1 AND status IS DISTINCT FROM $2
+             ${historical ? "AND COALESCE(tr.business_context, 'event_genix') = $3" : ''}`,
+            historical ? [today, CANCELLED_ARRIVAL_STATUS, context] : [today, CANCELLED_ARRIVAL_STATUS]
         );
         const recordMap = {};
         for (const r of records.rows) recordMap[r.staff_id] = r;
@@ -6467,6 +6323,7 @@ router.get('/today', async (req, res) => {
                 } : null,
                 record: record ? {
                     id: record.id,
+                    record_version: record.record_version,
                     can_cancel_arrival: record.can_cancel_arrival,
                     clock_in: record.clock_in,
                     clock_out: record.clock_out,
@@ -6753,24 +6610,6 @@ router.delete('/qa/multi-segment/:runId', requireRole('creator', 'director'), as
     }
 });
 
-// Actual arrival/departure OCR inherits the existing HR/business boundary and
-// requires the same attendance-management capability before any upload parsing.
-const attendanceOcr = require('../services/crmAttendanceOcrHttp').createAttendanceOcrHandlers({
-    pool, resolveContext: hrBusinessContextFromRequest
-});
-router.get('/attendance/ocr/status', requireAction('hr.schedule.manage'), attendanceOcr.status);
-router.post('/attendance/ocr/preview', requireAction('hr.schedule.manage'), attendanceOcr.preview);
-router.post('/attendance/ocr/recover', requireAction('hr.schedule.manage'), attendanceOcr.recover);
-router.get('/attendance/ocr/previews/:previewId', requireAction('hr.schedule.manage'), attendanceOcr.get);
-router.post('/attendance/ocr/previews/:previewId/refresh', requireAction('hr.schedule.manage'), attendanceOcr.refresh);
-router.post('/attendance/ocr/apply', requireAction('hr.schedule.manage'), attendanceOcr.apply);
-const attendanceUploads = require('../services/crmAttendanceUploadHttp').createAttendanceUploadHandlers({pool,resolveContext:hrBusinessContextFromRequest});
-router.post('/attendance/ocr/upload-links', requireAction('hr.schedule.manage'), attendanceUploads.create);
-router.get('/attendance/ocr/uploads', requireAction('hr.schedule.manage'), attendanceUploads.inbox);
-router.post('/attendance/ocr/upload-links/:linkId/revoke', requireAction('hr.schedule.manage'), attendanceUploads.revoke);
-router.post('/attendance/ocr/uploads/:submissionId/recover', requireAction('hr.schedule.manage'), attendanceUploads.recoverSubmission);
-router.get('/attendance/ocr/uploads/:submissionId/photo', requireAction('hr.schedule.manage'), attendanceUploads.photo);
-
 async function resolveHrTodayClockTime(client, body, today) {
     if (body?.date !== undefined && body.date !== today) {
         return { error: 'Дата змінилася. Оновіть список і повторіть відмітку.', code: 'ATTENDANCE_DATE_CHANGED', status: 409 };
@@ -6983,6 +6822,7 @@ router.put('/records/:id/correct', requireHrManage, async (req, res) => {
             clock_out_time,
             settlement_mode,
             settlementMode,
+            record_version,
             notes
         } = req.body;
         const correctionReason = String(notes || '').trim();
@@ -6998,22 +6838,29 @@ router.put('/records/:id/correct', requireHrManage, async (req, res) => {
         // Resolve the advisory-lock target before taking the row lock so all
         // attendance writers keep the same lock ordering.
         const target = await client.query(
-            'SELECT staff_id, record_date::text AS record_date FROM hr_time_records WHERE id = $1',
-            [req.params.id]
+            `SELECT staff_id, record_date::text AS record_date FROM hr_time_records
+              WHERE id = $1 AND COALESCE(business_context, 'event_genix') = $2`,
+            [req.params.id, hrBusinessContextFromRequest(req)]
         );
         if (target.rows.length === 0) {
             await client.query('ROLLBACK');
             return res.status(404).json({ success: false, error: 'Не знайдено' });
         }
 
+        const recordDate = target.rows[0].record_date;
+        const month = recordDate.slice(0, 7);
+        await lockPayrollPeriodMutation(month, client);
+        await acquirePayrollPeriodMutationLock(client, month);
+        await assertPayrollPeriodOpen(month, client);
         await lockAttendanceWriteTarget(client, {
             staffId: target.rows[0].staff_id,
-            date: target.rows[0].record_date
+            date: recordDate
         });
 
         const rec = await client.query(
-            'SELECT * FROM hr_time_records WHERE id = $1 FOR UPDATE',
-            [req.params.id]
+            `SELECT *, updated_at::text AS record_version FROM hr_time_records
+              WHERE id = $1 AND COALESCE(business_context, 'event_genix') = $2 FOR UPDATE`,
+            [req.params.id, hrBusinessContextFromRequest(req)]
         );
         if (rec.rows.length === 0) {
             await client.query('ROLLBACK');
@@ -7021,6 +6868,16 @@ router.put('/records/:id/correct', requireHrManage, async (req, res) => {
         }
 
         const original = rec.rows[0];
+        if ((record_version !== undefined && record_version !== original.record_version)
+            || (original.auto_closed && !original.clock_out && !record_version)) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ success: false, code: 'ATTENDANCE_REVIEW_STALE',
+                error: 'Запис змінився. Оновіть список звірки й відкрийте його знову.' });
+        }
+        if (original.auto_closed && !original.clock_out && !clock_out_time && !clock_out) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, error: 'Вкажіть фактичний час завершення зміни.' });
+        }
         const compensationBefore = parseAttendanceCompensationSnapshot(original.compensation_snapshot);
         const snapshotPlan = attendancePlanFromCompensationSnapshot(compensationBefore);
         const loadedShift = snapshotPlan
@@ -7056,7 +6913,7 @@ router.put('/records/:id/correct', requireHrManage, async (req, res) => {
         const localTimestamp = async (time, dayOffset = 0) => {
             const timestamp = await client.query(
                 `SELECT (($1::date + $2::time + ($3::int * INTERVAL '1 day')) AT TIME ZONE 'Europe/Kyiv') AS value`,
-                [original.record_date, time, dayOffset]
+                [recordDate, time, dayOffset]
             );
             return timestamp.rows[0]?.value || null;
         };
@@ -7118,7 +6975,7 @@ router.put('/records/:id/correct', requireHrManage, async (req, res) => {
                 scheduledWorkedMinutes: calculationPlannedMinutes || calculationPlan?.plannedMinutes,
                 plan: calculationPlan,
                 primaryProfessionKey: calculationPlan?.primaryProfessionKey || shiftRow.profession_key,
-                recordDate: original.record_date,
+                recordDate,
                 settlementMode: correctionSettlementMode
             });
             totalWorked = payroll.totalWorkedMinutes;
@@ -7130,7 +6987,7 @@ router.put('/records/:id/correct', requireHrManage, async (req, res) => {
             const compensationBase = compensationBefore
                 || buildLegacyAttendanceCompensationSnapshot({
                     staffId: original.staff_id,
-                    recordDate: original.record_date,
+                    recordDate,
                     plan: {
                         ...(calculationPlan || {}),
                         professionKey: calculationPlan?.primaryProfessionKey || shiftRow.profession_key,
@@ -7153,14 +7010,14 @@ router.put('/records/:id/correct', requireHrManage, async (req, res) => {
                 source: plannedStart && plannedEnd ? 'attendance_snapshot' : 'unscheduled',
                 plannedStart,
                 plannedEnd
-            }, newClockIn, original.record_date);
+            }, newClockIn, recordDate);
             lateMin = arrival.lateMinutes;
             status = arrival.status;
             compensationAfter = compensationBefore
                 ? { ...compensationBefore, correctedAt: new Date().toISOString() }
                 : buildLegacyAttendanceCompensationSnapshot({
                     staffId: original.staff_id,
-                    recordDate: original.record_date,
+                    recordDate,
                     plan: {
                         ...(calculationPlan || {}),
                         professionKey: calculationPlan?.primaryProfessionKey || shiftRow.profession_key,
@@ -7175,7 +7032,7 @@ router.put('/records/:id/correct', requireHrManage, async (req, res) => {
             `UPDATE hr_time_records SET
                 clock_in = $1, clock_out = $2,
                 total_worked_minutes = $3, late_minutes = $4, early_leave_minutes = $5, overtime_minutes = $6,
-                status = $7,
+                status = $7, auto_closed = CASE WHEN $2::timestamptz IS NOT NULL THEN FALSE ELSE auto_closed END,
                 original_clock_in = COALESCE(original_clock_in, $8),
                 original_clock_out = COALESCE(original_clock_out, $9),
                 corrected_by = $10, corrected_at = NOW(), correction_reason = $11,
@@ -7205,7 +7062,7 @@ router.put('/records/:id/correct', requireHrManage, async (req, res) => {
         await auditLog('compensation_snapshot_corrected', original.staff_id, req.user?.username, {
             eventVersion: 1,
             recordId: original.id,
-            recordDate: toDateOnly(original.record_date),
+            recordDate,
             correctionReason,
             compensationSnapshotBefore: compensationBefore,
             compensationSnapshotAfter: compensationAfter
@@ -7221,6 +7078,7 @@ router.put('/records/:id/correct', requireHrManage, async (req, res) => {
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         log.error('PUT /hr/records/:id/correct error', err);
+        if (err.statusCode === 423) return res.status(423).json({ success: false, error: err.message });
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     } finally {
         client.release();

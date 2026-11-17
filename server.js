@@ -32,7 +32,7 @@ const { buildCatalogImageThumbnailHandler } = require('./services/catalogImageTh
 const { buildChatUploadBlobFallbackHandler } = require('./services/chatUploadStorage');
 const { buildSoundUploadBlobFallbackHandler } = require('./services/audioStorage');
 const { recordCompatibilityTelemetrySafe } = require('./services/businessCutover');
-const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkReplyAutoEscalations, checkWorkDayTriggers, checkMonthlyPointsReset, checkStreakUpdates, checkBirthdayGreetings, checkBirthdayReminders, checkDormantCustomers, checkUpcomingBookings, checkEventQueue, checkSLABreach, checkScheduledAnnouncements, checkTaskOverdue, checkCustomerRetention, checkAutoReport, checkHotLeads, checkScheduledChatMessages, checkExpiredChatMessages, checkAutoReviewRequests, checkTeamPulseReminder, checkAutoOrdering, checkBookingPushReminders, checkCertExpiryReminders, checkChatDailyDigest, checkRecurringAnnouncements, checkEventPipeline, checkNpsFollowUp, checkCleaningTasks, checkGraduationOpsAutomation, checkAttendanceReviewTasks, checkHrAttendancePrintAutomations, checkBirthdayTagSync } = require('./services/scheduler');
+const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkReplyAutoEscalations, checkWorkDayTriggers, checkMonthlyPointsReset, checkStreakUpdates, checkBirthdayGreetings, checkBirthdayReminders, checkDormantCustomers, checkUpcomingBookings, checkEventQueue, checkSLABreach, checkScheduledAnnouncements, checkTaskOverdue, checkCustomerRetention, checkAutoReport, checkHotLeads, checkScheduledChatMessages, checkExpiredChatMessages, checkAutoReviewRequests, checkTeamPulseReminder, checkAutoOrdering, checkBookingPushReminders, checkCertExpiryReminders, checkChatDailyDigest, checkRecurringAnnouncements, checkEventPipeline, checkNpsFollowUp, checkCleaningTasks, checkGraduationOpsAutomation, checkAttendanceReviewTasks, checkBirthdayTagSync } = require('./services/scheduler');
 const { checkHrAutoClose, checkHrNoShow } = require('./services/hr');
 const { sendWeeklyTrainingPrompts, sendWeeklySummaryToDirector } = require('./services/training');
 const { cleanupExpired: cleanupKleshnyaMessages } = require('./services/kleshnya-greeting');
@@ -267,7 +267,9 @@ app.use('/api/leads/landing', landingLeadLimiter);
 app.use('/api', apiAuthBoundary(authenticateToken));
 // Three exact exceptions are registered in config/authBoundary.js. The scoped
 // bearer guard remains mandatory and disabled unless explicitly activated.
-app.use('/api/attendance-upload', require('./services/crmAttendanceUploadHttp').createAttendanceUploadRouter());
+app.use('/api/attendance-upload', (_req, res) => {
+    res.set('Cache-Control', 'no-store').status(410).json({ success: false, error: 'Завантаження листів відвідуваності більше недоступне.' });
+});
 const backupRestorePreParserGuard = requireRole('creator', 'director');
 const backupRestorePreParserSettingsGuard = requireAction('manage_settings');
 app.use(
@@ -871,7 +873,7 @@ initializeDatabaseWithSchemaFence().catch(err => {
             ));
         }
         // v15.0: HR cron jobs
-        schedulerIntervals.push(setInterval(guardScheduler('checkHrAutoClose', checkHrAutoClose, { dedup: 'daily' }), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('checkHrAutoClose', checkHrAutoClose, { dedup: null }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('checkHrNoShow', checkHrNoShow, { dedup: 'daily' }), 60000));
         // v11.0: Kleshnya greeting cache cleanup (every 30min)
         schedulerIntervals.push(setInterval(cleanupKleshnyaMessages, 30 * 60 * 1000));
@@ -922,7 +924,6 @@ initializeDatabaseWithSchemaFence().catch(err => {
         checkAttendanceReviewTasks().catch(err => log.error('Attendance review startup catch-up error', err));
         schedulerIntervals.push(setInterval(guardScheduler('checkAttendanceReviewTasks', checkAttendanceReviewTasks, { dedup: null }), 60000));
         // HR attendance document automations own DB-level idempotency and build leases.
-        schedulerIntervals.push(setInterval(guardScheduler('checkHrAttendancePrintAutomations', checkHrAttendancePrintAutomations, { dedup: null }), 60000));
         // v20.4.0: Training prompts (Mon 09:00 Kyiv) + summary (Fri 17:00 Kyiv)
         async function checkTrainingPrompts() {
             const { getKyivTimeStr, getKyivDate } = require('./services/booking');

@@ -39,70 +39,6 @@ const MONTHS_UK = ['січня', 'лютого', 'березня', 'квітня
     'липня', 'серпня', 'вересня', 'жовтня', 'листопада', 'грудня'];
 const MONTHS_SHORT = ['Січ', 'Лют', 'Бер', 'Кві', 'Тра', 'Чер', 'Лип', 'Сер', 'Вер', 'Жов', 'Лис', 'Гру'];
 const HR_ATTENDANCE_GRACE_MINUTES = Object.freeze({ late: 5, overtime: 15 });
-const HR_PRINT_CATEGORIES = Object.freeze([
-    { id: 'art_director', label: 'Арт-директор', professionKeys: ['art_director'] },
-    { id: 'leader', label: 'Керівник', professionKeys: ['director', 'vice_director'] },
-    { id: 'bartender', label: 'Бармен', professionKeys: ['bartender', 'barista'] },
-    { id: 'wardrobe', label: 'Гардеробниця', professionKeys: ['wardrobe'] },
-    { id: 'cleaning', label: 'Прибирання', professionKeys: ['cleaner', 'cleaning'] },
-    { id: 'hall_hostess', label: 'Хозяюшка залу', professionKeys: ['cleaning'] },
-    { id: 'trampoline', label: 'Батутисти', professionKeys: ['trampoline_instructor', 'instructor', 'senior_instructor'] },
-    { id: 'animator', label: 'Аніматори', professionKeys: ['animator'] },
-    { id: 'tech_director', label: 'Тех-директор', professionKeys: ['it_specialist', 'maintenance', 'technician'] },
-    { id: 'hr', label: 'HR-менеджер', professionKeys: ['hr', 'hr_manager'] },
-    { id: 'admin', label: 'Адміністратори', professionKeys: ['admin'] },
-    { id: 'accountant', label: 'Бухгалтер', professionKeys: ['accountant'] },
-    { id: 'sales_manager', label: 'Менеджери з продажу', professionKeys: ['manager'] },
-    { id: 'top_manager', label: 'Топ-менеджер', professionKeys: ['senior_manager'] },
-    { id: 'cook', label: 'Кухарі', professionKeys: ['cook', 'head_cook', 'head_chef'] },
-    { id: 'pastry_shop', label: 'Кондитерський цех', professionKeys: ['pastry_chef', 'confectioner', 'pastry_assistant', 'head_pastry'] },
-    { id: 'pizzaiolo', label: 'Кухар піци', professionKeys: ['pizzaiolo'] },
-    { id: 'waiter', label: 'Офіціанти', professionKeys: ['waiter'] },
-    { id: 'dishwasher', label: 'Мийниця', professionKeys: ['dishwasher'] },
-    { id: 'security', label: 'Охорона', professionKeys: ['security'] }
-]);
-const HR_PRINT_FONT_FIELDS = Object.freeze({
-    arrival_inout: Object.freeze([
-        { key: 'title', label: 'Заголовок', value: 14, min: 12, max: 16 },
-        { key: 'dailyCategory', label: 'Категорія', value: 8, min: 6.5, max: 9 },
-        { key: 'dailyEmployee', label: 'ПІБ працівника', value: 15, min: 12, max: 16 },
-        { key: 'meta', label: 'Мета-дані', value: 9, min: 7, max: 10 }
-    ]),
-    month_grid: Object.freeze([
-        { key: 'title', label: 'Заголовок', value: 14, min: 12, max: 16 },
-        { key: 'monthlyCategory', label: 'Категорія', value: 6, min: 5, max: 7.5 },
-        { key: 'monthlyEmployee', label: 'ПІБ працівника', value: 9, min: 7, max: 10 },
-        { key: 'meta', label: 'Мета-дані', value: 9, min: 7, max: 10 }
-    ])
-});
-const HR_PRINT_DEFAULT_TEXTS = Object.freeze({
-    arrival_inout: Object.freeze({
-        title: 'Лист приходу / уходу працівників',
-        monthlyInstruction: 'Укажіть частку зміни числом: 0,5; 0,75 або 1',
-        footerNote: 'EG-FORMS-v27 • Лист приходу/уходу • A4 вертикально • CRM Event Genix'
-    }),
-    month_grid: Object.freeze({
-        title: 'Місячний табель-відмічалка',
-        monthlyInstruction: 'Укажіть частку зміни числом: 0,5; 0,75 або 1',
-        footerNote: 'EG-FORMS-v27 • Місячний табель • A4 горизонтально • CRM Event Genix'
-    })
-});
-const HR_PRINT_LEGACY_DEFAULT_TEXTS = Object.freeze({
-    arrival_inout: Object.freeze({
-        monthlyInstruction: 'У клітинці ставимо заштриховку з легенди',
-        footerNote: 'EG-FORMS-v27 • Лист приходу/уходу • A4 vertical • CRM Event Genix'
-    }),
-    month_grid: Object.freeze({
-        monthlyInstruction: 'У клітинці ставимо заштриховку з легенди',
-        footerNote: 'EG-FORMS-v27 • Місячний табель • A4 horizontal • CRM Event Genix'
-    })
-});
-
-function isHrPrintDefaultText(templateId, key, value) {
-    if (!value) return false;
-    return value === HR_PRINT_DEFAULT_TEXTS[templateId]?.[key]
-        || value === HR_PRINT_LEGACY_DEFAULT_TEXTS[templateId]?.[key];
-}
 const HR_POOL_LABELS = {
     core: 'Основна команда',
     reserve: 'Резерв',
@@ -550,7 +486,9 @@ let canManage = false;
 let todayData = null;
 let todayRequestSeq = 0;
 const todayClockPending = new Set();
-let todayFilters = { query: '', department: 'all' };
+let todayFilters = { query: '', department: 'all', reviewOnly: false };
+let todayReviewDate = '';
+let todayCorrection = null;
 let todayActiveMetric = null;
 let todayMetricFocusTimer = null;
 const payrollViewState = {
@@ -604,23 +542,6 @@ let reportState = {
     month: '',
     error: '',
     exportReady: false
-};
-let hrPrintDocumentsState = {
-    initialized: false,
-    open: false,
-    opener: null,
-    selectedCategoryIds: new Set(HR_PRINT_CATEGORIES.map(item => item.id)),
-    professionQuery: '',
-    previewBlob: null,
-    previewUrl: '',
-    previewFileName: '',
-    generating: false,
-    requestSeq: 0,
-    operationsLoading: false,
-    automations: [],
-    jobs: [],
-    editingAutomationId: null,
-    editingAutomationMonthlyInstruction: ''
 };
 let professionWorkspaceRequestSeq = 0;
 let professionWorkspaceState = {
@@ -1825,6 +1746,12 @@ function fmtMoney(n) {
     return new Intl.NumberFormat('uk-UA').format(n) + ' ₴';
 }
 
+function formatTodayDuration(minutes) {
+    if (!Number.isSafeInteger(minutes) || minutes < 0) return '';
+    const hours = Math.floor(minutes / 60);
+    return hours ? `${hours} год ${String(minutes % 60).padStart(2, '0')} хв` : `${minutes} хв`;
+}
+
 function formatResumeFileSize(bytes) {
     const value = Number(bytes) || 0;
     if (value < 1024) return `${value} Б`;
@@ -1902,869 +1829,6 @@ async function confirmHrAction(message, options = {}) {
 // HR ATTENDANCE DOCUMENTS V27
 // ==========================================
 
-function hrPrintTemplateId() {
-    return document.querySelector('input[name="hrPrintTemplate"]:checked')?.value || 'arrival_inout';
-}
-
-function hrPrintSelectedCategories() {
-    return HR_PRINT_CATEGORIES.filter(item => hrPrintDocumentsState.selectedCategoryIds.has(item.id));
-}
-
-function hrPrintFocusableElements() {
-    const modal = document.querySelector('#hrPrintDocumentsModal .hr-print-documents-modal');
-    if (!modal) return [];
-    return Array.from(modal.querySelectorAll(
-        'button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), iframe:not(.hidden), [tabindex]:not([tabindex="-1"])'
-    )).filter(element => !element.closest('.hidden') && element.getClientRects().length > 0);
-}
-
-function setHrPrintStatus(message = '', tone = '') {
-    const status = document.getElementById('hrPrintDocumentsStatus');
-    if (!status) return;
-    status.textContent = message;
-    status.dataset.tone = tone;
-}
-
-function releaseHrPrintPreview({ clearFrame = true } = {}) {
-    const frame = document.getElementById('hrPrintPreviewFrame');
-    if (frame && clearFrame) {
-        frame.classList.add('hidden');
-        frame.removeAttribute('src');
-    }
-    if (hrPrintDocumentsState.previewUrl) URL.revokeObjectURL(hrPrintDocumentsState.previewUrl);
-    hrPrintDocumentsState.previewUrl = '';
-    hrPrintDocumentsState.previewBlob = null;
-    hrPrintDocumentsState.previewFileName = '';
-    document.getElementById('hrPrintDownloadButton')?.setAttribute('disabled', '');
-    document.getElementById('hrPrintPrintButton')?.setAttribute('disabled', '');
-    document.getElementById('hrPrintOpenButton')?.setAttribute('disabled', '');
-}
-
-function isHrPrintPreviewRequestCurrent(requestSeq, objectUrl = '') {
-    return hrPrintDocumentsState.open
-        && requestSeq === hrPrintDocumentsState.requestSeq
-        && (!objectUrl || objectUrl === hrPrintDocumentsState.previewUrl);
-}
-
-function waitForHrPrintPreviewFrame(frame, objectUrl, requestSeq) {
-    if (navigator.pdfViewerEnabled === false) {
-        frame.classList.add('hidden');
-        frame.removeAttribute('src');
-        return Promise.resolve({ ready: isHrPrintPreviewRequestCurrent(requestSeq, objectUrl), embedded: false });
-    }
-    return new Promise(resolve => {
-        let settled = false;
-        let timeoutId;
-        let staleCheckId;
-        const finish = loaded => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timeoutId);
-            clearInterval(staleCheckId);
-            frame.removeEventListener('load', handleLoad);
-            resolve({
-                ready: Boolean(loaded
-                && frame.getAttribute('src') === objectUrl
-                && isHrPrintPreviewRequestCurrent(requestSeq, objectUrl)),
-                embedded: true
-            });
-        };
-        const handleLoad = () => finish(true);
-        timeoutId = setTimeout(() => finish(false), 20000);
-        staleCheckId = setInterval(() => {
-            if (!isHrPrintPreviewRequestCurrent(requestSeq, objectUrl)) finish(false);
-        }, 50);
-        frame.addEventListener('load', handleLoad, { once: true });
-        frame.classList.remove('hidden');
-        frame.src = objectUrl;
-    });
-}
-
-function scrollHrPrintPreviewIntoView() {
-    if (!window.matchMedia?.('(max-width: 980px)').matches) return;
-    const body = document.querySelector('.hr-print-documents-body');
-    const panel = document.querySelector('.hr-print-preview-panel');
-    if (!body || !panel) return;
-    const bodyRect = body.getBoundingClientRect();
-    const panelRect = panel.getBoundingClientRect();
-    const top = body.scrollTop + panelRect.top - bodyRect.top;
-    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    body.scrollTo({ top: Math.max(0, top), behavior: reducedMotion ? 'auto' : 'smooth' });
-}
-
-async function showHrPrintPreview({ blob, filename, requestSeq, badgeText, statusMessage }) {
-    if (!isHrPrintPreviewRequestCurrent(requestSeq)) return false;
-    if (!(blob instanceof Blob) || (blob.type && !blob.type.includes('pdf'))) {
-        throw new Error('Сервер повернув не PDF-документ.');
-    }
-
-    releaseHrPrintPreview({ clearFrame: false });
-    if (!isHrPrintPreviewRequestCurrent(requestSeq)) return false;
-
-    const objectUrl = URL.createObjectURL(blob);
-    hrPrintDocumentsState.previewBlob = blob;
-    hrPrintDocumentsState.previewUrl = objectUrl;
-    hrPrintDocumentsState.previewFileName = filename || '';
-
-    const frame = document.getElementById('hrPrintPreviewFrame');
-    if (!frame) {
-        releaseHrPrintPreview();
-        throw new Error('Область попереднього перегляду недоступна.');
-    }
-
-    const preview = await waitForHrPrintPreviewFrame(frame, objectUrl, requestSeq);
-    if (!preview.ready) {
-        if (isHrPrintPreviewRequestCurrent(requestSeq, objectUrl)) {
-            releaseHrPrintPreview();
-            throw new Error('PDF отримано, але вбудований перегляд не завантажився.');
-        }
-        return false;
-    }
-
-    const previewState = document.getElementById('hrPrintPreviewState');
-    if (preview.embedded) {
-        previewState?.classList.add('hidden');
-    } else if (previewState) {
-        previewState.textContent = 'Вбудований перегляд PDF недоступний у цьому браузері. Відкрийте документ в окремій вкладці.';
-        previewState.classList.remove('hidden');
-    }
-    previewState?.classList.remove('is-loading');
-    document.getElementById('hrPrintDownloadButton')?.removeAttribute('disabled');
-    document.getElementById('hrPrintPrintButton')?.removeAttribute('disabled');
-    document.getElementById('hrPrintOpenButton')?.removeAttribute('disabled');
-    const badge = document.getElementById('hrPrintPreviewBadge');
-    if (badge) {
-        badge.textContent = badgeText;
-        badge.className = 'hr-print-preview-badge is-ready';
-    }
-    setHrPrintStatus(statusMessage, 'success');
-    scrollHrPrintPreviewIntoView();
-    return true;
-}
-
-function invalidateHrPrintPreview(message = 'Налаштування змінено. Сформуйте preview ще раз.') {
-    hrPrintDocumentsState.requestSeq += 1;
-    releaseHrPrintPreview();
-    const state = document.getElementById('hrPrintPreviewState');
-    const badge = document.getElementById('hrPrintPreviewBadge');
-    if (state) {
-        state.textContent = message;
-        state.classList.remove('hidden', 'is-loading');
-    }
-    if (badge) {
-        badge.textContent = 'Потрібне оновлення';
-        badge.className = 'hr-print-preview-badge is-stale';
-    }
-}
-
-function hrPrintEstimatedEmployeeIds() {
-    const ids = new Set();
-    for (const category of hrPrintSelectedCategories()) {
-        for (const professionKey of category.professionKeys) {
-            const profession = hrProfessions.find(item => normalizeProfessionKey(item.key) === professionKey);
-            for (const person of profession?.people || []) {
-                const id = Number(person.id);
-                if (person.isActive !== false && Number.isFinite(id)) ids.add(id);
-            }
-        }
-    }
-    return ids;
-}
-
-function syncHrPrintEmployeeCount() {
-    const count = document.getElementById('hrPrintEmployeeCount');
-    if (!count) return;
-    const categoryCount = hrPrintDocumentsState.selectedCategoryIds.size;
-    if (professionCatalogLoadState === 'loading') {
-        count.textContent = `${categoryCount} кат. · завантажуємо актуальний склад…`;
-        return;
-    }
-    if (professionCatalogLoadState === 'error') {
-        count.textContent = `${categoryCount} кат. · склад уточнить сервер під час preview`;
-        return;
-    }
-    const employeeCount = hrPrintEstimatedEmployeeIds().size;
-    count.textContent = `${categoryCount} кат. · попередньо ${employeeCount} унік. працівн.`;
-}
-
-function syncHrPrintSelectAllButton() {
-    const button = document.getElementById('hrPrintSelectAll');
-    if (!button) return;
-    const allSelected = hrPrintDocumentsState.selectedCategoryIds.size === HR_PRINT_CATEGORIES.length;
-    button.textContent = allSelected ? 'Скасувати вибір' : 'Вибрати всі';
-    button.setAttribute('aria-pressed', allSelected ? 'true' : 'false');
-}
-
-function renderHrPrintProfessionList() {
-    const list = document.getElementById('hrPrintProfessionList');
-    const empty = document.getElementById('hrPrintProfessionEmpty');
-    if (!list) return;
-    const query = String(hrPrintDocumentsState.professionQuery || '').trim().toLocaleLowerCase('uk-UA');
-    const visible = HR_PRINT_CATEGORIES.filter(item => !query || item.label.toLocaleLowerCase('uk-UA').includes(query));
-    list.innerHTML = visible.map(item => `
-        <label class="hr-print-profession-option">
-            <input type="checkbox" value="${escapeHtml(item.id)}" data-hr-print-category${hrPrintDocumentsState.selectedCategoryIds.has(item.id) ? ' checked' : ''}>
-            <span>${escapeHtml(item.label)}</span>
-        </label>
-    `).join('');
-    empty?.classList.toggle('hidden', visible.length > 0);
-    syncHrPrintSelectAllButton();
-    syncHrPrintEmployeeCount();
-}
-
-function renderHrPrintFontControls() {
-    const root = document.getElementById('hrPrintFontControls');
-    if (!root) return;
-    const fields = HR_PRINT_FONT_FIELDS[hrPrintTemplateId()] || HR_PRINT_FONT_FIELDS.arrival_inout;
-    root.innerHTML = fields.map(field => `
-        <label class="hr-print-font-control">
-            <span>${escapeHtml(field.label)}</span>
-            <span class="hr-print-font-control-row">
-                <input type="range" min="${field.min}" max="${field.max}" step="0.5" value="${field.value}" data-hr-print-font="${escapeHtml(field.key)}" data-default-value="${field.value}">
-                <output class="hr-print-font-value" data-hr-print-font-output="${escapeHtml(field.key)}">${field.value} pt</output>
-            </span>
-        </label>
-    `).join('');
-    syncHrPrintPresetWarning();
-}
-
-function hrPrintFontPreset() {
-    const values = {};
-    document.querySelectorAll('[data-hr-print-font]').forEach(input => {
-        values[input.dataset.hrPrintFont] = Number(input.value);
-    });
-    return values;
-}
-
-function syncHrPrintFontOutput(input) {
-    if (!input?.dataset.hrPrintFont) return;
-    const output = document.querySelector(`[data-hr-print-font-output="${input.dataset.hrPrintFont}"]`);
-    if (output) output.textContent = `${Number(input.value)} pt`;
-}
-
-function syncHrPrintPresetWarning() {
-    const customizedFonts = Array.from(document.querySelectorAll('[data-hr-print-font]'))
-        .some(input => Number(input.value) !== Number(input.dataset.defaultValue));
-    const customizedText = Boolean(
-        document.getElementById('hrPrintCustomTitle')?.value.trim()
-        || document.getElementById('hrPrintCustomFooter')?.value.trim()
-        || hrPrintDocumentsState.editingAutomationMonthlyInstruction
-    );
-    document.getElementById('hrPrintPresetWarning')?.classList.toggle('hidden', !(customizedFonts || customizedText));
-}
-
-function syncHrPrintTemplateFields() {
-    const isDaily = hrPrintTemplateId() === 'arrival_inout';
-    const dateField = document.getElementById('hrPrintDateField');
-    const monthField = document.getElementById('hrPrintMonthField');
-    const dailyModeField = document.getElementById('hrPrintDailyModeField');
-    dateField?.classList.toggle('hidden', !isDaily);
-    monthField?.classList.toggle('hidden', isDaily);
-    dailyModeField?.classList.toggle('hidden', !isDaily);
-    const dateInput = document.getElementById('hrPrintDocumentDate');
-    const monthInput = document.getElementById('hrPrintDocumentMonth');
-    if (dateInput) dateInput.required = isDaily;
-    if (monthInput) monthInput.required = !isDaily;
-    document.getElementById('hrPrintAutomationWeekdays')?.classList.toggle('hidden', !isDaily);
-    const scheduleNote = document.getElementById('hrPrintAutomationScheduleNote');
-    if (scheduleNote) {
-        scheduleNote.textContent = isDaily
-            ? 'Після перезапуску CRM ранковий документ буде створено лише в межах 120 хвилин, не ввечері.'
-            : 'Місячний табель формується першого дня місяця у вибраний час.';
-    }
-    renderHrPrintFontControls();
-}
-
-function resetHrPrintPreset() {
-    document.getElementById('hrPrintCustomTitle').value = '';
-    document.getElementById('hrPrintCustomFooter').value = '';
-    hrPrintDocumentsState.editingAutomationMonthlyInstruction = '';
-    renderHrPrintFontControls();
-    invalidateHrPrintPreview('Еталон v27 відновлено. Сформуйте preview.');
-    setHrPrintStatus('Налаштування шрифтів і текстів повернуто до еталону v27.', 'success');
-}
-
-function hrPrintRequestPayload() {
-    const templateId = hrPrintTemplateId();
-    const categoryIds = hrPrintSelectedCategories().map(item => item.id);
-    if (!categoryIds.length) throw new Error('Оберіть хоча б одну категорію працівників.');
-    const date = document.getElementById('hrPrintDocumentDate')?.value;
-    const month = document.getElementById('hrPrintDocumentMonth')?.value;
-    if (templateId === 'arrival_inout' && !date) throw new Error('Оберіть дату документа.');
-    if (templateId === 'month_grid' && !month) throw new Error('Оберіть місяць документа.');
-    const title = document.getElementById('hrPrintCustomTitle')?.value.trim() || '';
-    const footerNote = document.getElementById('hrPrintCustomFooter')?.value.trim() || '';
-    const texts = {};
-    if (title) texts.title = title;
-    if (footerNote) texts.footerNote = footerNote;
-    return {
-        templateId,
-        ...(templateId === 'arrival_inout' ? { documentDate: date } : { month }),
-        categoryIds,
-        dailyMode: templateId === 'arrival_inout'
-            ? (document.getElementById('hrPrintDailyMode')?.value || 'manual_blank')
-            : 'manual_blank',
-        rosterMode: 'all_eligible',
-        locationShift: document.getElementById('hrPrintLocationShift')?.value.trim() || '',
-        markedBy: document.getElementById('hrPrintMarkedBy')?.value.trim() || '',
-        texts,
-        fontPreset: hrPrintFontPreset()
-    };
-}
-
-function hrPrintResponseError(response) {
-    return response.text().then(text => {
-        try {
-            const body = text ? JSON.parse(text) : {};
-            return body.error || body.message || `HTTP ${response.status}`;
-        } catch {
-            return text || `HTTP ${response.status}`;
-        }
-    });
-}
-
-async function hrPrintFetchJson(path, options = {}) {
-    const request = {
-        ...options,
-        headers: { Accept: 'application/json', ...(options.headers || {}) }
-    };
-    const response = typeof apiFetchWithAuthRetry === 'function'
-        ? await apiFetchWithAuthRetry(path, request)
-        : await fetch(path, request);
-    if (!response) throw new Error('Сервер не повернув відповідь.');
-    if (!response.ok) throw new Error(await hrPrintResponseError(response));
-    return response.json();
-}
-
-function hrPrintJobStatusLabel(status) {
-    return ({
-        building: 'Формується', queued: 'PDF готовий', failed: 'Помилка', cancelled: 'Скасовано',
-        expired: 'Протерміновано', claimed: 'Отримано агентом', printing: 'Друкується',
-        completed: 'Надруковано', unknown_outcome: 'Невідомий результат'
-    })[status] || status || 'Невідомо';
-}
-
-function hrPrintFormatDateTime(value) {
-    if (!value) return '—';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return String(value);
-    return new Intl.DateTimeFormat('uk-UA', {
-        timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
-    }).format(date);
-}
-
-function renderHrPrintOperations() {
-    const automationsRoot = document.getElementById('hrPrintAutomationList');
-    const jobsRoot = document.getElementById('hrPrintJobList');
-    if (automationsRoot) {
-        automationsRoot.innerHTML = hrPrintDocumentsState.automations.length
-            ? hrPrintDocumentsState.automations.map(item => `
-                <article class="hr-print-operation-item">
-                    <div class="hr-print-operation-item-head">
-                        <strong>${escapeHtml(item.name)}</strong>
-                        <span class="hr-print-operation-status${item.enabled ? ' is-enabled' : ''}">${item.enabled ? 'Увімкнено' : 'Вимкнено'}</span>
-                    </div>
-                    <div class="hr-print-operation-meta">${item.documentType === 'arrival_inout' ? 'Лист приходу/уходу' : 'Місячний табель'} · ${escapeHtml(item.localTime || '08:00')} · ${item.categoryIds.length} кат.</div>
-                    <div class="hr-print-operation-actions">
-                        ${canManage ? `<button type="button" class="btn-page-toolbar" data-hr-print-operation="edit-automation" data-id="${item.id}">Редагувати</button>
-                        <button type="button" class="btn-page-primary" data-hr-print-operation="run-automation" data-id="${item.id}">Сформувати зараз</button>
-                        ${item.enabled ? `<button type="button" class="btn-page-toolbar" data-hr-print-operation="disable-automation" data-id="${item.id}">Вимкнути</button>` : ''}` : ''}
-                    </div>
-                </article>
-            `).join('')
-            : '<div class="hr-print-operation-item">Збережених автоматизацій ще немає.</div>';
-    }
-    if (jobsRoot) {
-        jobsRoot.innerHTML = hrPrintDocumentsState.jobs.length
-            ? hrPrintDocumentsState.jobs.map(job => `
-                <article class="hr-print-operation-item">
-                    <div class="hr-print-operation-item-head">
-                        <strong>${escapeHtml(job.automationName || `PDF #${job.id}`)}</strong>
-                        <span class="hr-print-operation-status is-${escapeHtml(job.status)}">${escapeHtml(hrPrintJobStatusLabel(job.status))}</span>
-                    </div>
-                    <div class="hr-print-operation-meta">${escapeHtml(String(job.localDate || ''))} · ${hrPrintFormatDateTime(job.createdAt)}${job.errorMessage ? `<br>${escapeHtml(job.errorMessage)}` : ''}</div>
-                    <div class="hr-print-operation-actions">
-                        ${job.pdfByteLength && job.status !== 'expired' ? `<button type="button" class="btn-page-primary" data-hr-print-operation="preview-job" data-id="${job.id}" data-filename="${escapeHtml(job.filename || '')}">Відкрити PDF</button>` : ''}
-                        ${canManage && ['failed', 'cancelled', 'queued', 'expired'].includes(job.status) ? `<button type="button" class="btn-page-toolbar" data-hr-print-operation="requeue-job" data-id="${job.id}">Повторити</button>` : ''}
-                        ${canManage && ['building', 'queued', 'failed'].includes(job.status) ? `<button type="button" class="btn-page-toolbar" data-hr-print-operation="cancel-job" data-id="${job.id}">Скасувати</button>` : ''}
-                    </div>
-                </article>
-            `).join('')
-            : '<div class="hr-print-operation-item">Черга PDF порожня.</div>';
-    }
-    if (!canExportHrReports()) {
-        jobsRoot?.querySelectorAll('[data-hr-print-operation="preview-job"]').forEach(button => button.remove());
-    }
-}
-
-async function loadHrPrintOperations({ silent = false } = {}) {
-    if (hrPrintDocumentsState.operationsLoading) return;
-    hrPrintDocumentsState.operationsLoading = true;
-    if (!silent) {
-        const automationRoot = document.getElementById('hrPrintAutomationList');
-        const jobsRoot = document.getElementById('hrPrintJobList');
-        if (automationRoot) automationRoot.textContent = 'Завантажуємо…';
-        if (jobsRoot) jobsRoot.textContent = 'Завантажуємо…';
-    }
-    try {
-        const [automationResponse, jobsResponse] = await Promise.all([
-            hrPrintFetchJson('/api/hr/attendance-document-automations'),
-            hrPrintFetchJson('/api/hr/attendance-document-jobs?limit=30')
-        ]);
-        hrPrintDocumentsState.automations = automationResponse.automations || [];
-        hrPrintDocumentsState.jobs = jobsResponse.jobs || [];
-        renderHrPrintOperations();
-    } catch (error) {
-        setHrPrintStatus(error.message || 'Не вдалося завантажити автоматизації.', 'error');
-        const root = document.getElementById('hrPrintAutomationList');
-        if (root) root.textContent = error.message || 'Помилка завантаження.';
-    } finally {
-        hrPrintDocumentsState.operationsLoading = false;
-    }
-}
-
-function hrPrintAutomationPayload() {
-    const request = hrPrintRequestPayload();
-    const texts = { ...request.texts };
-    if (hrPrintDocumentsState.editingAutomationMonthlyInstruction) {
-        texts.monthlyInstruction = hrPrintDocumentsState.editingAutomationMonthlyInstruction;
-    }
-    const weekdays = Array.from(document.querySelectorAll('#hrPrintAutomationWeekdays input:checked')).map(input => Number(input.value));
-    const name = document.getElementById('hrPrintAutomationName')?.value.trim() || '';
-    if (!name) throw new Error('Вкажіть назву автоматизації.');
-    if (request.templateId === 'arrival_inout' && !weekdays.length) throw new Error('Оберіть хоча б один день формування.');
-    return {
-        name,
-        documentType: request.templateId,
-        categoryIds: request.categoryIds,
-        weekdays,
-        localTime: document.getElementById('hrPrintAutomationTime')?.value || '08:00',
-        copies: Number(document.getElementById('hrPrintAutomationCopies')?.value || 1),
-        artifactTtlHours: Number(document.getElementById('hrPrintAutomationTtl')?.value || 168),
-        catchUpMinutes: 120,
-        enabled: document.getElementById('hrPrintAutomationEnabled')?.checked === true,
-        settings: {
-            dailyMode: request.dailyMode,
-            rosterMode: request.rosterMode,
-            locationShift: request.locationShift,
-            markedBy: request.markedBy,
-            texts,
-            fontPreset: request.fontPreset
-        }
-    };
-}
-
-function resetHrPrintAutomationEditor() {
-    hrPrintDocumentsState.editingAutomationId = null;
-    hrPrintDocumentsState.editingAutomationMonthlyInstruction = '';
-    const name = document.getElementById('hrPrintAutomationName');
-    const enabled = document.getElementById('hrPrintAutomationEnabled');
-    const save = document.getElementById('hrPrintAutomationSave');
-    if (name) name.value = '';
-    if (enabled) enabled.checked = false;
-    if (save) save.textContent = 'Зберегти автоматизацію';
-    document.getElementById('hrPrintAutomationCancelEdit')?.classList.add('hidden');
-}
-
-function editHrPrintAutomation(id) {
-    const item = hrPrintDocumentsState.automations.find(entry => Number(entry.id) === Number(id));
-    if (!item) return;
-    hrPrintDocumentsState.editingAutomationId = item.id;
-    const radio = document.querySelector(`input[name="hrPrintTemplate"][value="${item.documentType}"]`);
-    if (radio) radio.checked = true;
-    hrPrintDocumentsState.selectedCategoryIds = new Set(item.categoryIds || []);
-    document.getElementById('hrPrintAutomationName').value = item.name || '';
-    document.getElementById('hrPrintAutomationTime').value = item.localTime || '08:00';
-    document.getElementById('hrPrintAutomationCopies').value = item.copies || 1;
-    document.getElementById('hrPrintAutomationTtl').value = item.artifactTtlHours || 168;
-    document.getElementById('hrPrintAutomationEnabled').checked = item.enabled === true;
-    document.querySelectorAll('#hrPrintAutomationWeekdays input').forEach(input => {
-        input.checked = (item.weekdays || []).includes(Number(input.value));
-    });
-    const settings = item.settings || {};
-    const monthlyInstruction = settings.texts?.monthlyInstruction || '';
-    hrPrintDocumentsState.editingAutomationMonthlyInstruction = monthlyInstruction
-        && !isHrPrintDefaultText(item.documentType, 'monthlyInstruction', monthlyInstruction)
-        ? monthlyInstruction
-        : '';
-    document.getElementById('hrPrintDailyMode').value = settings.dailyMode || 'manual_blank';
-    document.getElementById('hrPrintLocationShift').value = settings.locationShift || '';
-    document.getElementById('hrPrintMarkedBy').value = settings.markedBy || '';
-    document.getElementById('hrPrintCustomTitle').value = settings.texts?.title && !isHrPrintDefaultText(item.documentType, 'title', settings.texts.title)
-        ? settings.texts.title
-        : '';
-    document.getElementById('hrPrintCustomFooter').value = settings.texts?.footerNote && !isHrPrintDefaultText(item.documentType, 'footerNote', settings.texts.footerNote)
-        ? settings.texts.footerNote
-        : '';
-    renderHrPrintProfessionList();
-    syncHrPrintTemplateFields();
-    document.querySelectorAll('[data-hr-print-font]').forEach(input => {
-        const value = Number(settings.fontPreset?.[input.dataset.hrPrintFont]);
-        if (Number.isFinite(value)) input.value = value;
-        syncHrPrintFontOutput(input);
-    });
-    syncHrPrintPresetWarning();
-    document.getElementById('hrPrintAutomationSave').textContent = 'Оновити автоматизацію';
-    document.getElementById('hrPrintAutomationCancelEdit')?.classList.remove('hidden');
-    invalidateHrPrintPreview('Налаштування автоматизації завантажено. Сформуйте preview для перевірки.');
-    document.getElementById('hrPrintAutomationName')?.focus();
-}
-
-async function saveHrPrintAutomation() {
-    let payload;
-    try {
-        payload = hrPrintAutomationPayload();
-    } catch (error) {
-        setHrPrintStatus(error.message, 'error');
-        return;
-    }
-    const button = document.getElementById('hrPrintAutomationSave');
-    if (button) { button.disabled = true; button.textContent = 'Зберігаємо…'; }
-    try {
-        const id = hrPrintDocumentsState.editingAutomationId;
-        await hrPrintFetchJson(id
-            ? `/api/hr/attendance-document-automations/${id}`
-            : '/api/hr/attendance-document-automations', {
-            method: id ? 'PATCH' : 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-        resetHrPrintAutomationEditor();
-        await loadHrPrintOperations({ silent: true });
-        setHrPrintStatus(id ? 'Автоматизацію оновлено.' : 'Автоматизацію збережено.', 'success');
-    } catch (error) {
-        setHrPrintStatus(error.message || 'Не вдалося зберегти автоматизацію.', 'error');
-    } finally {
-        if (button) { button.disabled = false; button.textContent = hrPrintDocumentsState.editingAutomationId ? 'Оновити автоматизацію' : 'Зберегти автоматизацію'; }
-    }
-}
-
-async function previewHrPrintJob(id, filename = '') {
-    if (!canExportHrReports()) {
-        showNotification('HR export permission required', 'error');
-        return;
-    }
-    invalidateHrPrintPreview('Завантажуємо збережений PDF із черги…');
-    const requestSeq = hrPrintDocumentsState.requestSeq;
-    const state = document.getElementById('hrPrintPreviewState');
-    const badge = document.getElementById('hrPrintPreviewBadge');
-    state?.classList.add('is-loading');
-    if (badge) {
-        badge.textContent = 'Завантажується';
-        badge.className = 'hr-print-preview-badge';
-    }
-    try {
-        const response = typeof apiFetchWithAuthRetry === 'function'
-            ? await apiFetchWithAuthRetry(`/api/hr/attendance-document-jobs/${id}/pdf`, { headers: { Accept: 'application/pdf' } })
-            : await fetch(`/api/hr/attendance-document-jobs/${id}/pdf`, { headers: { Accept: 'application/pdf' } });
-        if (!response?.ok) throw new Error(response ? await hrPrintResponseError(response) : 'Сервер не повернув відповідь.');
-        const blob = await response.blob();
-        if (!isHrPrintPreviewRequestCurrent(requestSeq)) return;
-        await showHrPrintPreview({
-            blob,
-            filename: filename || `event-genix-hr-job-${id}.pdf`,
-            requestSeq,
-            badgeText: 'З черги',
-            statusMessage: 'Відкрито той самий незмінний PDF, який збережений у черзі.'
-        });
-    } catch (error) {
-        if (!isHrPrintPreviewRequestCurrent(requestSeq)) return;
-        releaseHrPrintPreview();
-        if (state) {
-            state.textContent = error.message || 'Не вдалося відкрити PDF.';
-            state.classList.remove('hidden', 'is-loading');
-        }
-        if (badge) {
-            badge.textContent = 'Помилка';
-            badge.className = 'hr-print-preview-badge is-stale';
-        }
-        setHrPrintStatus(error.message || 'Не вдалося відкрити PDF.', 'error');
-    }
-}
-
-async function handleHrPrintOperation(event) {
-    const button = event.target.closest('[data-hr-print-operation]');
-    if (!button) return;
-    const id = Number(button.dataset.id);
-    const action = button.dataset.hrPrintOperation;
-    if (action === 'edit-automation') return editHrPrintAutomation(id);
-    if (action === 'preview-job') return previewHrPrintJob(id, button.dataset.filename || '');
-    button.disabled = true;
-    try {
-        if (action === 'run-automation') {
-            const response = await hrPrintFetchJson(`/api/hr/attendance-document-automations/${id}/run`, { method: 'POST' });
-            await loadHrPrintOperations({ silent: true });
-            if (response.job?.status === 'queued') await previewHrPrintJob(response.job.id, response.job.filename || '');
-            setHrPrintStatus('PDF сформовано один раз і додано до черги.', 'success');
-        } else if (action === 'disable-automation') {
-            await hrPrintFetchJson(`/api/hr/attendance-document-automations/${id}/disable`, { method: 'POST' });
-            await loadHrPrintOperations({ silent: true });
-            setHrPrintStatus('Автоматизацію вимкнено.', 'success');
-        } else if (action === 'cancel-job') {
-            await hrPrintFetchJson(`/api/hr/attendance-document-jobs/${id}/cancel`, { method: 'POST' });
-            await loadHrPrintOperations({ silent: true });
-            setHrPrintStatus('Завдання скасовано.', 'success');
-        } else if (action === 'requeue-job') {
-            const response = await hrPrintFetchJson(`/api/hr/attendance-document-jobs/${id}/requeue`, { method: 'POST' });
-            await loadHrPrintOperations({ silent: true });
-            if (response.job?.status === 'queued') await previewHrPrintJob(response.job.id, response.job.filename || '');
-            setHrPrintStatus('Завдання повернуто до черги без створення дубля.', 'success');
-        }
-    } catch (error) {
-        setHrPrintStatus(error.message || 'Операція не виконана.', 'error');
-    } finally {
-        button.disabled = false;
-    }
-}
-
-async function generateHrPrintPreview() {
-    if (hrPrintDocumentsState.generating) return;
-    if (!canExportHrReports()) {
-        showNotification('HR export permission required', 'error');
-        return;
-    }
-    let payload;
-    try {
-        payload = hrPrintRequestPayload();
-    } catch (error) {
-        setHrPrintStatus(error.message, 'error');
-        document.querySelector('[data-hr-print-category]')?.focus();
-        return;
-    }
-    invalidateHrPrintPreview('Формуємо документ із актуального server snapshot…');
-    const requestSeq = hrPrintDocumentsState.requestSeq;
-    hrPrintDocumentsState.generating = true;
-    const previewButton = document.getElementById('hrPrintPreviewButton');
-    const state = document.getElementById('hrPrintPreviewState');
-    const badge = document.getElementById('hrPrintPreviewBadge');
-    if (previewButton) {
-        previewButton.disabled = true;
-        previewButton.setAttribute('aria-busy', 'true');
-        previewButton.textContent = 'Формуємо…';
-    }
-    if (state) state.classList.add('is-loading');
-    if (badge) {
-        badge.textContent = 'Формується';
-        badge.className = 'hr-print-preview-badge';
-    }
-    setHrPrintStatus('Завантажуємо актуальний roster і будуємо PDF…');
-    try {
-        const request = {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Accept: 'application/pdf' },
-            body: JSON.stringify(payload)
-        };
-        const response = typeof apiFetchWithAuthRetry === 'function'
-            ? await apiFetchWithAuthRetry('/api/hr/attendance-documents/pdf', request)
-            : await fetch('/api/hr/attendance-documents/pdf', request);
-        if (!response) throw new Error('Сервер не повернув відповідь.');
-        if (!response.ok) throw new Error(await hrPrintResponseError(response));
-        const blob = await response.blob();
-        if (!isHrPrintPreviewRequestCurrent(requestSeq)) return;
-        await showHrPrintPreview({
-            blob,
-            filename: hrPrintFileName(),
-            requestSeq,
-            badgeText: 'Готово',
-            statusMessage: 'Preview готовий. Завантаження і друк використають цей самий server snapshot.'
-        });
-    } catch (error) {
-        if (requestSeq !== hrPrintDocumentsState.requestSeq) return;
-        releaseHrPrintPreview();
-        if (state) {
-            state.textContent = error.message || 'Не вдалося сформувати PDF.';
-            state.classList.remove('hidden', 'is-loading');
-        }
-        if (badge) {
-            badge.textContent = 'Помилка';
-            badge.className = 'hr-print-preview-badge is-stale';
-        }
-        setHrPrintStatus(error.message || 'Не вдалося сформувати PDF.', 'error');
-    } finally {
-        hrPrintDocumentsState.generating = false;
-        if (previewButton) {
-            previewButton.disabled = false;
-            previewButton.removeAttribute('aria-busy');
-            previewButton.textContent = 'Сформувати preview';
-        }
-    }
-}
-
-function hrPrintFileName() {
-    if (hrPrintDocumentsState.previewFileName) return hrPrintDocumentsState.previewFileName;
-    const isDaily = hrPrintTemplateId() === 'arrival_inout';
-    const period = isDaily
-        ? document.getElementById('hrPrintDocumentDate')?.value
-        : document.getElementById('hrPrintDocumentMonth')?.value;
-    return `event-genix-${isDaily ? 'arrival-inout' : 'month-grid'}-${period || 'v27'}.pdf`;
-}
-
-function downloadHrPrintPdf() {
-    if (!hrPrintDocumentsState.previewUrl || !hrPrintDocumentsState.previewBlob) return;
-    const link = document.createElement('a');
-    link.href = hrPrintDocumentsState.previewUrl;
-    link.download = hrPrintFileName();
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-}
-
-function printHrPrintPdf() {
-    if (!hrPrintDocumentsState.previewUrl || !hrPrintDocumentsState.previewBlob) return;
-    const frame = document.getElementById('hrPrintPreviewFrame');
-    if (navigator.pdfViewerEnabled === false || !frame || frame.classList.contains('hidden')) {
-        openHrPrintPdf();
-        return;
-    }
-    try {
-        frame?.contentWindow?.focus();
-        frame?.contentWindow?.print();
-    } catch {
-        openHrPrintPdf();
-    }
-}
-
-function openHrPrintPdf() {
-    if (!hrPrintDocumentsState.previewUrl || !hrPrintDocumentsState.previewBlob) return;
-    window.open(hrPrintDocumentsState.previewUrl, '_blank', 'noopener');
-}
-
-function closeHrPrintDocuments() {
-    const overlay = document.getElementById('hrPrintDocumentsModal');
-    if (!overlay || !hrPrintDocumentsState.open) return;
-    hrPrintDocumentsState.open = false;
-    hrPrintDocumentsState.requestSeq += 1;
-    overlay.classList.add('hidden');
-    overlay.setAttribute('aria-hidden', 'true');
-    document.body.classList.remove('hr-print-documents-open');
-    releaseHrPrintPreview();
-    hrPrintDocumentsState.generating = false;
-    const opener = hrPrintDocumentsState.opener;
-    hrPrintDocumentsState.opener = null;
-    if (opener?.isConnected) opener.focus();
-}
-
-async function openHrPrintDocuments(event) {
-    if (isTodayRecoveryReadOnly()) return;
-    const overlay = document.getElementById('hrPrintDocumentsModal');
-    if (!canExportHrReports()) {
-        showNotification('HR export permission required', 'error');
-        return;
-    }
-    if (!overlay) return;
-    hrPrintDocumentsState.open = true;
-    hrPrintDocumentsState.opener = event?.currentTarget || document.activeElement;
-    overlay.classList.remove('hidden');
-    overlay.setAttribute('aria-hidden', 'false');
-    document.body.classList.add('hr-print-documents-open');
-    setHrPrintStatus('');
-    renderHrPrintProfessionList();
-    syncHrPrintTemplateFields();
-    document.getElementById('hrPrintDocumentsClose')?.focus();
-    professionCatalogLoadState = professionCatalogLoadState === 'ready' ? 'ready' : 'loading';
-    syncHrPrintEmployeeCount();
-    const saveAutomation = document.getElementById('hrPrintAutomationSave');
-    if (saveAutomation) {
-        saveAutomation.disabled = !canManage;
-        saveAutomation.title = canManage ? '' : 'Потрібне право керування працівниками';
-    }
-    try {
-        await Promise.all([
-            ensureProfessionsLoaded({ silent: true }),
-            loadHrPrintOperations()
-        ]);
-    } finally {
-        if (hrPrintDocumentsState.open) syncHrPrintEmployeeCount();
-    }
-}
-
-function handleHrPrintModalKeydown(event) {
-    if (!hrPrintDocumentsState.open) return;
-    if (event.key === 'Escape') {
-        event.preventDefault();
-        closeHrPrintDocuments();
-        return;
-    }
-    if (event.key !== 'Tab') return;
-    const focusable = hrPrintFocusableElements();
-    if (!focusable.length) return;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-    }
-}
-
-function initHrPrintDocuments() {
-    if (hrPrintDocumentsState.initialized) return;
-    const overlay = document.getElementById('hrPrintDocumentsModal');
-    if (!overlay) return;
-    hrPrintDocumentsState.initialized = true;
-    const today = todayStr();
-    const dateInput = document.getElementById('hrPrintDocumentDate');
-    const monthInput = document.getElementById('hrPrintDocumentMonth');
-    if (dateInput) dateInput.value = today;
-    if (monthInput) monthInput.value = today.slice(0, 7);
-    const printDocumentsButton = document.getElementById('btnHrPrintDocuments');
-    if (printDocumentsButton) {
-        const canExport = canExportHrReports();
-        printDocumentsButton.hidden = !canExport;
-        printDocumentsButton.disabled = !canExport;
-    }
-    printDocumentsButton?.addEventListener('click', openHrPrintDocuments);
-    document.getElementById('hrPrintDocumentsClose')?.addEventListener('click', closeHrPrintDocuments);
-    document.getElementById('hrPrintPreviewButton')?.addEventListener('click', generateHrPrintPreview);
-    document.getElementById('hrPrintDownloadButton')?.addEventListener('click', downloadHrPrintPdf);
-    document.getElementById('hrPrintPrintButton')?.addEventListener('click', printHrPrintPdf);
-    document.getElementById('hrPrintOpenButton')?.addEventListener('click', openHrPrintPdf);
-    document.getElementById('hrPrintResetPreset')?.addEventListener('click', resetHrPrintPreset);
-    document.getElementById('hrPrintAutomationRefresh')?.addEventListener('click', () => loadHrPrintOperations());
-    document.getElementById('hrPrintAutomationSave')?.addEventListener('click', saveHrPrintAutomation);
-    document.getElementById('hrPrintAutomationCancelEdit')?.addEventListener('click', resetHrPrintAutomationEditor);
-    document.getElementById('hrPrintAutomationList')?.addEventListener('click', handleHrPrintOperation);
-    document.getElementById('hrPrintJobList')?.addEventListener('click', handleHrPrintOperation);
-    document.getElementById('hrPrintSelectAll')?.addEventListener('click', () => {
-        const allSelected = hrPrintDocumentsState.selectedCategoryIds.size === HR_PRINT_CATEGORIES.length;
-        hrPrintDocumentsState.selectedCategoryIds = new Set(allSelected ? [] : HR_PRINT_CATEGORIES.map(item => item.id));
-        renderHrPrintProfessionList();
-        invalidateHrPrintPreview();
-    });
-    document.getElementById('hrPrintProfessionSearch')?.addEventListener('input', event => {
-        hrPrintDocumentsState.professionQuery = event.target.value || '';
-        renderHrPrintProfessionList();
-    });
-    document.getElementById('hrPrintProfessionList')?.addEventListener('change', event => {
-        const input = event.target.closest('[data-hr-print-category]');
-        if (!input) return;
-        if (input.checked) hrPrintDocumentsState.selectedCategoryIds.add(input.value);
-        else hrPrintDocumentsState.selectedCategoryIds.delete(input.value);
-        syncHrPrintSelectAllButton();
-        syncHrPrintEmployeeCount();
-        invalidateHrPrintPreview();
-    });
-    document.getElementById('hrPrintDocumentsForm')?.addEventListener('input', event => {
-        if (event.target.id === 'hrPrintProfessionSearch' || event.target.matches('[data-hr-print-category]')) return;
-        if (event.target.closest('[aria-labelledby="hrPrintAutomationTitle"]')) return;
-        if (event.target.matches('[data-hr-print-font]')) syncHrPrintFontOutput(event.target);
-        syncHrPrintPresetWarning();
-        invalidateHrPrintPreview();
-    });
-    document.getElementById('hrPrintDocumentsForm')?.addEventListener('change', event => {
-        if (event.target.name === 'hrPrintTemplate') syncHrPrintTemplateFields();
-    });
-    overlay.addEventListener('click', event => {
-        if (event.target === overlay) closeHrPrintDocuments();
-    });
-    overlay.addEventListener('keydown', handleHrPrintModalKeydown);
-    window.addEventListener('beforeunload', releaseHrPrintPreview);
-    renderHrPrintProfessionList();
-    syncHrPrintTemplateFields();
-}
-
 // ==========================================
 // PAGE INIT
 // ==========================================
@@ -2808,8 +1872,6 @@ async function initPage() {
     initModals();
     initContextMenu();
     initNewTabs();
-    initHrPrintDocuments();
-    if (window.CrmAttendanceOcrUi) window.CrmAttendanceOcrUi.init({ canManage: canManageHrSchedule(), afterApply: () => loadToday() });
     const initialTab = getInitialHrTab();
     await activateHrTab(initialTab, { updateHash: false });
     const organizationLink = document.getElementById('hrOrganizationMembersLink');
@@ -3263,7 +2325,7 @@ async function activateHrTab(target, options = {}) {
 // ==========================================
 
 function isTodayFilterActive() {
-    return !!normalizeSearchText(todayFilters.query) || todayFilters.department !== 'all';
+    return !!normalizeSearchText(todayFilters.query) || todayFilters.department !== 'all' || todayFilters.reviewOnly;
 }
 
 function staffDisplayGroupKeyForStaff(staff = {}) {
@@ -3319,6 +2381,10 @@ const TODAY_METRIC_DEFINITIONS = Object.freeze({
 });
 
 function isTodayItemOnShift(item = {}) {
+    return !item.record?.auto_closed && isTodayItemAwaitingDeparture(item);
+}
+
+function isTodayItemAwaitingDeparture(item = {}) {
     return HrAttendanceState.isAttendanceRecordOpen(item.record);
 }
 
@@ -3429,12 +2495,49 @@ function filteredTodayItems(items = []) {
     const filtered = items.filter(item => {
         if (department !== 'all' && staffDisplayGroupKeyForStaff(item) !== department) return false;
         if (query && !todaySearchHaystack(item).includes(query)) return false;
+        if (todayFilters.reviewOnly && !todayReviewReason(item)) return false;
         return true;
     });
     return sortTodayItemsForReview(filtered);
 }
 
+function todayReviewReason(item) {
+    const record = item.record;
+    if (!record) return '';
+    if (record.auto_closed || record.status === 'auto_closed') return 'Автоматичне завершення';
+    if (record.status === 'manual_review' || record.compensation_manual_review) return 'Потрібне уточнення';
+    if (isTodayItemOnShift(item)) return 'Зміна відкрита';
+    if (!record.clock_in || !record.clock_out) return '';
+    if (record.allocation_source === 'proportional_fallback') return 'Потрібно уточнити тривалість';
+    if (!(record.planned_end || item.shift?.planned_end)) return 'Плановий час не задано';
+    const { lateMinutes, earlyLeaveMinutes, overtimeMinutes } = todayAttendanceFacts(record);
+    if (lateMinutes || earlyLeaveMinutes || overtimeMinutes) return 'Відхилення від графіка';
+    return '';
+}
+
 function bindTodayFilterControls() {
+    const review = document.getElementById('todayReviewOnly');
+    const group = document.getElementById('todayReviewDateGroup');
+    const date = document.getElementById('todayReviewDate');
+    if (group) group.hidden = !todayFilters.reviewOnly;
+    if (date) {
+        date.max = hrTodayKyivDate();
+        date.value = todayReviewDate || date.max;
+        date.onchange = () => {
+            todayReviewDate = date.value === date.max ? '' : date.value;
+            void loadToday();
+        };
+    }
+    if (review) {
+        review.checked = todayFilters.reviewOnly;
+        review.onchange = () => {
+            todayFilters.reviewOnly = review.checked;
+            if (!review.checked && todayReviewDate) {
+                todayReviewDate = '';
+                void loadToday();
+            } else if (todayData) renderToday(todayData);
+        };
+    }
     const search = document.getElementById('todaySearch');
     if (search) {
         if (search.value !== todayFilters.query) search.value = todayFilters.query;
@@ -3558,7 +2661,7 @@ function focusTodayStaffFromMetric(staffId) {
 
     let row = document.querySelector(`#todayList [data-staff-id="${id}"]`);
     if (!row && todayData) {
-        todayFilters = { query: '', department: 'all' };
+        todayFilters = { query: '', department: 'all', reviewOnly: false };
         renderToday(todayData);
         row = document.querySelector(`#todayList [data-staff-id="${id}"]`);
     }
@@ -3737,7 +2840,8 @@ async function loadToday({ keepOnError = false } = {}) {
     renderTodayStaffLinksState();
     let data;
     try {
-        data = await hrFetch('/today');
+        const path = todayReviewDate ? `/today?${new URLSearchParams({ review_date: todayReviewDate })}` : '/today';
+        data = await hrFetch(path);
     } catch (error) {
         console.warn('HR Today request failed', error);
     }
@@ -3757,7 +2861,8 @@ async function loadToday({ keepOnError = false } = {}) {
         renderTodayDepartmentSegments([]);
         renderTodayFilterInfo([], []);
         document.getElementById('todaySummary').innerHTML = '';
-        document.getElementById('todayList').innerHTML = '<div role="alert" style="text-align:center;color:var(--gray-400);padding:40px;">Не вдалося завантажити дані за сьогодні. Спробуйте оновити сторінку.</div>';
+        document.getElementById('todayList').innerHTML = '<div role="alert" style="text-align:center;color:var(--gray-400);padding:40px;">Не вдалося завантажити дані за вибрану дату. Спробуйте оновити сторінку.</div>';
+        bindTodayFilterControls();
         document.getElementById('contextMenu')?.classList.remove('visible');
         return;
     }
@@ -3800,14 +2905,13 @@ function reloadTodayForCurrentContext(requestSeq) {
 }
 
 function renderToday(data) {
-    updateTodayHeaderDate();
+    const historical = Boolean(todayReviewDate);
+    updateTodayHeaderDate(historical && data.date ? new Date(`${data.date}T12:00:00Z`) : undefined);
+    setTodayHeaderMetricText('todayTitle', historical ? 'Звірка змін' : 'Сьогодні');
+    setTodayHeaderMetricText('todayDescription', historical
+        ? 'Записи про присутність та зміни, які потрібно звірити.'
+        : 'Присутність, запізнення і доступність у живому режимі.');
     const recoveryReadOnly = isTodayRecoveryReadOnly(data);
-    const printDocumentsButton = document.getElementById('btnHrPrintDocuments');
-    if (printDocumentsButton && recoveryReadOnly) {
-        printDocumentsButton.hidden = true;
-        printDocumentsButton.disabled = true;
-        printDocumentsButton.style.display = 'none';
-    }
     if (recoveryReadOnly) document.getElementById('contextMenu')?.classList.remove('visible');
 
     const allItems = Array.isArray(data.data) ? data.data : [];
@@ -3844,9 +2948,10 @@ function renderToday(data) {
         const rec = item.record;
         const shift = item.shift;
         const onShift = isTodayItemOnShift(item);
+        const awaitingDeparture = isTodayItemAwaitingDeparture(item);
         let indicator = 'absent';
         let btnClass = 'clock-in';
-        let btnText = 'Прихід зараз';
+        let btnText = 'Почати зміну';
         let meta = '';
         let disabled = '';
 
@@ -3861,20 +2966,20 @@ function renderToday(data) {
             const isLate = facts.lateMinutes > 0;
             const isEarlyLeave = facts.earlyLeaveMinutes > 0;
             const st = rec.status;
+            const autoClosed = rec.auto_closed || st === 'auto_closed';
             if (onShift) {
                 indicator = isLate ? 'late' : 'present';
                 btnClass = isLate ? 'clock-out late' : 'clock-out';
-                btnText = 'Вихід зараз';
-            } else if (st === 'auto_closed') {
+                btnText = 'Завершити зміну';
+            } else if (autoClosed) {
                 indicator = 'auto_closed';
-                btnClass = 'done';
-                btnText = `Авто-закрито (${fmtMinutes(rec.total_worked_minutes)})`;
-                disabled = 'disabled';
+                btnClass = awaitingDeparture ? 'clock-out' : 'done';
+                btnText = awaitingDeparture ? 'Зафіксувати завершення' : 'Завершено автоматично';
+                disabled = awaitingDeparture ? '' : 'disabled';
             } else if (rec.clock_out) {
                 indicator = 'done';
                 btnClass = 'done';
-                const worked = fmtMinutes(rec.total_worked_minutes);
-                btnText = worked ? `Відпрацював ${worked}` : 'Зміну завершено';
+                btnText = 'Зміну завершено';
                 disabled = 'disabled';
             } else if (st === 'sick') {
                 indicator = 'sick';
@@ -3900,15 +3005,40 @@ function renderToday(data) {
             const attendanceFacts = [];
             const actualStart = rec.clock_in ? fmtTimeFromISO(rec.clock_in) : '—';
             const actualEnd = rec.clock_out ? fmtTimeFromISO(rec.clock_out) : '—';
-            meta += `${meta ? ' | ' : ''}Факт: ${actualStart}–${actualEnd}`;
+            if (rec.clock_in) meta += `${meta ? ' | ' : ''}Початок зміни: ${actualStart}`;
+            if (autoClosed && awaitingDeparture) {
+                meta += ' · Автоматично завершено · потребує звірки';
+                if (rec.planned_end && rec.planned_start && fmtTime(rec.planned_end) !== fmtTime(rec.planned_start)) {
+                    meta += ` · Орієнтир за планом: ${fmtTime(rec.planned_end)}`;
+                }
+            }
+            if (rec.clock_out) {
+                meta += ` · ${autoClosed ? 'Розрахункове завершення' : 'Завершення зміни'}: ${actualEnd}`;
+                const actualDuration = rec.allocation_source === 'clock_interval'
+                    ? formatTodayDuration(rec.actualMinutes ?? rec.actual_minutes) : '';
+                const creditedDuration = formatTodayDuration(rec.total_worked_minutes);
+                if (!autoClosed && actualDuration) meta += ` · Відпрацьовано: ${actualDuration}`;
+                if (!autoClosed && rec.allocation_source === 'clock_interval' && Array.isArray(rec.segment_allocations)) {
+                    const deductedBreak = rec.segment_allocations.reduce((minutes, segment) => {
+                        if (!Number.isSafeInteger(segment.overlapMinutes) || !Number.isSafeInteger(segment.actualMinutes)) return minutes;
+                        return minutes + Math.max(0, segment.overlapMinutes - segment.actualMinutes);
+                    }, 0);
+                    if (deductedBreak > 0) {
+                        meta += ` · Врахована перерва: ${formatTodayDuration(deductedBreak)} · час не зафіксовано`;
+                    }
+                }
+                if (!autoClosed && creditedDuration && creditedDuration !== actualDuration) {
+                    meta += ` · Зараховано до оплати: ${creditedDuration}`;
+                }
+            }
             if (isLate) {
-                attendanceFacts.push(`<span class="late-badge">Запізнення +${facts.lateMinutes}хв</span>`);
+                attendanceFacts.push(`<span class="late-badge">Запізнення +${formatTodayDuration(facts.lateMinutes)}</span>`);
             }
-            if (isEarlyLeave) {
-                attendanceFacts.push(`<span class="late-badge">Ранній вихід ${facts.earlyLeaveMinutes}хв</span>`);
+            if (isEarlyLeave && !autoClosed) {
+                attendanceFacts.push(`<span class="late-badge">Раннє завершення ${formatTodayDuration(facts.earlyLeaveMinutes)}</span>`);
             }
-            if (facts.overtimeMinutes > 0) {
-                attendanceFacts.push(`<span class="late-badge">Понаднормово +${facts.overtimeMinutes}хв</span>`);
+            if (facts.overtimeMinutes > 0 && !autoClosed) {
+                attendanceFacts.push(`<span class="late-badge">Понаднормово +${formatTodayDuration(facts.overtimeMinutes)}</span>`);
             }
             if (rec.plan_warning?.message) {
                 attendanceFacts.push(`<span class="late-badge">⚠ ${escapeHtml(rec.plan_warning.message)}</span>`);
@@ -3916,6 +3046,7 @@ function renderToday(data) {
             if (attendanceFacts.length) meta += ` | ${attendanceFacts.join(' · ')}`;
         }
 
+        if (todayFilters.reviewOnly) meta += `${meta ? ' · ' : ''}${todayReviewReason(item)}`;
         const arrived = isTodayItemArrived(item);
         const roleLabel = ROLE_LABELS[item.role_type] || item.role_type || '';
         const displayGroup = staffDisplayGroupKeyForStaff(item);
@@ -3928,15 +3059,17 @@ function renderToday(data) {
             departmentMeta && departmentMeta !== displayGroupLabel ? departmentMeta : ''
         ].filter(Boolean).join(' · ');
 
-        if (recoveryReadOnly) {
+        if (recoveryReadOnly || historical) {
             disabled = 'disabled aria-disabled="true" title="Режим перегляду"';
             if (btnClass === 'clock-in') btnText = shift ? 'Прихід не зафіксовано' : 'Немає відмітки';
             if (onShift) btnText = `На роботі (з ${fmtTimeFromISO(rec.clock_in)})`;
         }
         const staffId = Number(item.staff_id);
         const pending = todayClockPending.has(staffId);
-        const canCancel = !recoveryReadOnly && canManageHrSchedule() && onShift && rec.can_cancel_arrival === true;
-        return `<div class="hr-staff-row${arrived ? ' hr-staff-row--arrived' : ''}" data-staff-id="${item.staff_id}" data-attendance-state="${arrived ? 'arrived' : 'pending'}" tabindex="-1" ${recoveryReadOnly ? '' : `oncontextmenu="showContext(event, ${item.staff_id})"`}>
+        const canCancel = !recoveryReadOnly && !historical && canManageHrSchedule() && onShift && rec.can_cancel_arrival === true;
+        const canReview = !recoveryReadOnly && canManageHrSchedule() && rec?.id && rec.clock_in
+            && (todayFilters.reviewOnly || (rec.auto_closed && awaitingDeparture));
+        return `<div class="hr-staff-row${arrived ? ' hr-staff-row--arrived' : ''}" data-staff-id="${item.staff_id}" data-attendance-state="${arrived ? 'arrived' : 'pending'}" tabindex="-1" ${recoveryReadOnly || historical ? '' : `oncontextmenu="showContext(event, ${item.staff_id})"`}>
             <div class="hr-staff-indicator ${indicator}"></div>
             <div class="hr-staff-info">
                 <div class="hr-staff-name">
@@ -3949,24 +3082,25 @@ function renderToday(data) {
                 <div class="hr-staff-meta">${roleMeta}${meta ? ' · ' + meta : ''}</div>
             </div>
             <div class="hr-today-clock-actions">
-                <div class="hr-today-clock-triggers">
+                ${historical ? '' : `<div class="hr-today-clock-triggers">
                     <button type="button" class="hr-clock-btn ${btnClass}" ${disabled || (pending ? 'disabled' : '')}
-                        ${recoveryReadOnly ? '' : `onclick="handleClock(${staffId}, '${onShift ? 'out' : 'in'}')"`}
+                        ${recoveryReadOnly ? '' : `onclick="handleClock(${staffId}, '${awaitingDeparture ? 'out' : 'in'}')"`}
                     >${btnText}</button>
                     ${disabled ? '' : `<button type="button" class="hr-today-pick-time" ${pending ? 'disabled' : ''}
-                        aria-label="Обрати час ${onShift ? 'виходу' : 'приходу'}: ${escapeHtml(item.staff_name)}"
-                        title="Обрати час" aria-haspopup="dialog" onclick="openTodayClockTime(${staffId}, '${onShift ? 'out' : 'in'}')">
+                        aria-label="Обрати час ${awaitingDeparture ? 'виходу' : 'приходу'}: ${escapeHtml(item.staff_name)}"
+                        title="Обрати час" aria-haspopup="dialog" onclick="openTodayClockTime(${staffId}, '${awaitingDeparture ? 'out' : 'in'}')">
                         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5h4"/></svg>
                     </button>`}
-                </div>
+                </div>`}
+                ${canReview ? `<button type="button" class="btn-page-secondary" onclick="openCorrectionModal(${staffId})">Звірити зміну</button>` : ''}
                 ${canCancel ? `<button type="button" class="hr-today-cancel-arrival" ${pending ? 'disabled' : ''}
                     onclick="handleClock(${staffId}, 'cancel')">Скасувати прихід</button>` : ''}
             </div>
         </div>`;
     };
     const groups = scheduleAvailable ? [
-        { id: 'scheduled', title: 'Сьогодні за графіком', items: visibleItems.filter(item => item.shift) },
-        { id: 'unscheduled', title: 'Сьогодні поза графіком', items: visibleItems.filter(item => !item.shift) }
+        { id: 'scheduled', title: historical ? 'За графіком' : 'Сьогодні за графіком', items: visibleItems.filter(item => item.shift) },
+        { id: 'unscheduled', title: historical ? 'Поза графіком' : 'Сьогодні поза графіком', items: visibleItems.filter(item => !item.shift) }
     ] : [];
     list.innerHTML = scheduleAvailable ? groups.filter(group => group.items.length).map(({ id, title, items }) => `
         <section class="hr-today-schedule-group" aria-labelledby="today-group-${id}">
@@ -3989,7 +3123,7 @@ function focusTodayClockControl(row, previousButton) {
 function openTodayClockTime(staffId, action) {
     const dialog = document.getElementById('hrTodayClockDialog');
     const item = todayData?.data?.find(row => Number(row.staff_id) === staffId);
-    if (!dialog || dialog.open || !item || isTodayRecoveryReadOnly() || todayClockPending.has(staffId)) return;
+    if (todayReviewDate || !dialog || dialog.open || !item || isTodayRecoveryReadOnly() || todayClockPending.has(staffId)) return;
 
     const form = document.getElementById('hrTodayClockForm');
     const time = document.getElementById('hrTodayClockTime');
@@ -4001,7 +3135,7 @@ function openTodayClockTime(staffId, action) {
     const clockIn = item.record?.clock_in;
     const isExit = action === 'out';
     const trigger = document.querySelector(`#todayList [data-staff-id="${staffId}"] .hr-today-pick-time`);
-    document.getElementById('hrTodayClockTitle').textContent = isExit ? 'Завершити зміну' : 'Відмітити прихід';
+    document.getElementById('hrTodayClockTitle').textContent = isExit ? 'Завершити зміну' : 'Почати зміну';
     document.getElementById('hrTodayClockStaff').textContent = item.staff_name;
     document.getElementById('hrTodayClockSettlement').hidden = !isExit;
     time.value = fmtTimeFromISO(new Date());
@@ -4026,7 +3160,7 @@ function openTodayClockTime(staffId, action) {
         const current = todayData?.data?.find(row => Number(row.staff_id) === staffId);
         if (!current || context !== teamAccessContext() || date !== (todayData.date || hrTodayKyivDate())
             || date !== hrTodayKyivDate() || current.record?.clock_in !== clockIn || isTodayRecoveryReadOnly()
-            || (isExit ? !isTodayItemOnShift(current) : Boolean(current.record?.clock_out))) {
+            || (isExit ? !isTodayItemAwaitingDeparture(current) : Boolean(current.record?.clock_out))) {
             showError('Відмітка або дата змінилася. Закрийте вікно й відкрийте його знову.');
             return;
         }
@@ -4043,10 +3177,10 @@ function openTodayClockTime(staffId, action) {
 }
 
 async function handleClock(staffId, action, manual = null) {
-    if (isTodayRecoveryReadOnly() || todayClockPending.has(staffId)) return;
+    if (todayReviewDate || isTodayRecoveryReadOnly() || todayClockPending.has(staffId)) return;
     const todayItem = todayData?.data?.find(item => Number(item.staff_id) === Number(staffId));
     if (!todayItem) return;
-    const onShift = isTodayItemOnShift(todayItem);
+    const onShift = isTodayItemAwaitingDeparture(todayItem);
     if ((action === 'in') === onShift) return;
     const showError = manual?.showError || (message => showNotification(message, 'error'));
     if (action === 'cancel' && (!canManageHrSchedule() || todayItem.record?.can_cancel_arrival !== true)) return;
@@ -4097,11 +3231,10 @@ async function handleClock(staffId, action, manual = null) {
             data: todayData.data.map(item => Number(item.staff_id) === staffId ? { ...item, record: result.data } : item)
         };
         saved = true;
-        const worked = fmtMinutes(Number(result.data?.total_worked_minutes));
         const actual = fmtTimeFromISO(action === 'out' ? result.data?.clock_out : result.data?.clock_in);
         const message = action === 'cancel' ? 'Прихід скасовано'
-            : action === 'out' ? (actual ? `Вихід о ${actual}${worked ? ` · ${worked}` : ''}` : 'Зміну завершено')
-                : (actual ? `Прихід о ${actual}` : 'Прихід відмічено');
+            : action === 'out' ? (actual ? `Зміну завершено о ${actual}` : 'Зміну завершено')
+                : (actual ? `Зміну почато о ${actual}` : 'Зміну почато');
         showNotification(message, 'success');
     } catch (error) {
         console.warn('HR attendance request failed', error);
@@ -4287,14 +3420,21 @@ function showContext(e, staffId) {
 function openCorrectionModal(staffId) {
     if (isTodayRecoveryReadOnly()) return;
     if (!todayData) return;
-    const item = todayData.data.find(d => d.staff_id === staffId);
+    const item = todayData.data.find(d => Number(d.staff_id) === Number(staffId));
     if (!item || !item.record || !item.record.id) {
         showNotification('Немає запису для корекції', 'error');
         return;
     }
-    document.getElementById('corrRecordId').value = item.record.id;
-    document.getElementById('corrClockIn').value = item.record.clock_in ? fmtTimeFromISO(item.record.clock_in) : '';
-    document.getElementById('corrClockOut').value = item.record.clock_out ? fmtTimeFromISO(item.record.clock_out) : '';
+    const record = item.record;
+    const clockIn = record.clock_in ? fmtTimeFromISO(record.clock_in) : '';
+    const clockOut = record.clock_out ? fmtTimeFromISO(record.clock_out) : '';
+    todayCorrection = { recordId: String(record.id), version: record.record_version, clockIn, clockOut,
+        context: teamAccessContext(), date: todayData.date, saving: false };
+    const title = document.getElementById('corrTitle');
+    if (title) title.textContent = `Звірити зміну · ${todayData.date || hrTodayKyivDate()}`;
+    document.getElementById('corrRecordId').value = record.id;
+    document.getElementById('corrClockIn').value = clockIn;
+    document.getElementById('corrClockOut').value = clockOut;
     document.getElementById('corrNotes').value = '';
     showHrEditableModal('correctionModal');
 }
@@ -16141,27 +15281,45 @@ async function saveCorrection() {
     const recordId = document.getElementById('corrRecordId')?.value;
     const clockIn = document.getElementById('corrClockIn')?.value;
     const clockOut = document.getElementById('corrClockOut')?.value;
-    const notes = document.getElementById('corrNotes')?.value;
+    const notes = document.getElementById('corrNotes')?.value.trim();
+    const edit = todayCorrection;
+    if (!edit || edit.saving || edit.recordId !== recordId || edit.context !== teamAccessContext()
+        || edit.date !== todayData?.date) return;
 
     if (!clockIn && !clockOut) {
         showNotification('Вкажіть час', 'error');
         return;
     }
 
-    const body = { notes };
-    if (clockIn) body.clock_in_time = clockIn;
-    if (clockOut) body.clock_out_time = clockOut;
+    if (!notes) {
+        showNotification('Вкажіть причину зміни', 'error');
+        document.getElementById('corrNotes')?.focus();
+        return;
+    }
+    const body = { notes, record_version: edit.version };
+    if (clockIn && clockIn !== edit.clockIn) body.clock_in_time = clockIn;
+    if (clockOut && clockOut !== edit.clockOut) body.clock_out_time = clockOut;
 
-    const data = await hrFetch(`/records/${recordId}/correct`, {
-        method: 'PUT',
-        body: JSON.stringify(body)
-    });
-    if (data && data.success) {
-        showNotification('Час виправлено', 'success');
-        await closeHrEditableModal('correctionModal', true);
-        await loadToday();
-    } else {
-        showNotification(data?.error || 'Помилка', 'error');
+    const save = document.getElementById('corrSave');
+    edit.saving = true;
+    if (save) save.disabled = true;
+    try {
+        const data = await hrFetch(`/records/${recordId}/correct`, {
+            method: 'PUT', body: JSON.stringify(body)
+        });
+        if (todayCorrection !== edit || edit.context !== teamAccessContext()) return;
+        if (data?.success) {
+            showNotification('Зміну звірено', 'success');
+            await closeHrEditableModal('correctionModal', true);
+            await loadToday();
+        } else {
+            showNotification(data?.error || 'Не вдалося зберегти звірку', 'error');
+        }
+    } catch {
+        showNotification('Не вдалося зберегти звірку. Спробуйте ще раз.', 'error');
+    } finally {
+        edit.saving = false;
+        if (save) save.disabled = false;
     }
 }
 

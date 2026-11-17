@@ -1,179 +1,75 @@
 'use strict';
-const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),{randomUUID}=require('node:crypto'),{Pool}=require('pg');
-const {assertSafeTestDatabaseUrl,assertSafeIsolatedTestUrl}=require('../../scripts/test-db-safety');
-const base=process.env.TEST_URL,output=process.env.CRM_ATTENDANCE_BROWSER_OUTPUT || path.resolve(__dirname,'../../output/playwright/attendance-ocr-actual-app');
-const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=','base64');
-async function api(route,token,body,context='event_genix'){
- const response=await fetch(base+route,{method:body===undefined?'GET':'POST',headers:{'X-Business-Context':context,...(token?{Authorization:'Bearer '+token}:{}),...(body===undefined?{}:{'Content-Type':'application/json'})},body:body===undefined?undefined:JSON.stringify(body)});
- return {status:response.status,body:await response.json()};
+
+const assert = require('node:assert/strict');
+const path = require('node:path');
+const { assertSafeIsolatedTestUrl } = require('../../scripts/test-db-safety');
+
+function loadPlaywright() {
+    if (process.env.PLAYWRIGHT_MODULE_PATH) return require(process.env.PLAYWRIGHT_MODULE_PATH);
+    for (const entry of String(process.env.PATH || '').split(path.delimiter)) {
+        if (/node_modules[\\/]\.bin[\\/]?$/.test(entry)) return require(path.join(entry, '..', 'playwright'));
+    }
+    return require('playwright');
 }
-async function login(username,password){const response=await api('/api/auth/login',null,{username,password});assert.equal(response.status,200);return response.body;}
-function playwright(){
- if(process.env.PLAYWRIGHT_MODULE_PATH)return require(process.env.PLAYWRIGHT_MODULE_PATH);
- try{return require('playwright');}catch{}
- for(const entry of String(process.env.PATH || '').split(path.delimiter)){
-  if(/node_modules[\\/]\.bin[\\/]?$/.test(entry)){
-   const modulePath=path.join(path.dirname(entry.replace(/[\\/]$/,'')),'playwright');if(fs.existsSync(modulePath))return require(modulePath);
-  }
- }
- throw Error('Playwright unavailable');
+
+async function run() {
+    assert.equal(process.env.RUN_CRM_ATTENDANCE_ACTUAL_APP, 'true');
+    const base = process.env.TEST_URL;
+    assertSafeIsolatedTestUrl(base);
+
+    const login = await fetch(new URL('/api/auth/login', base), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: process.env.TEST_USER, password: process.env.TEST_PASS })
+    });
+    assert.equal(login.status, 200);
+    const auth = await login.json();
+    const token = auth.accessToken || auth.token;
+    assert.ok(token);
+
+    for (const [method, route] of [
+        ['GET', '/api/attendance-upload/status'],
+        ['POST', '/api/attendance-upload/photo'],
+        ['POST', '/api/attendance-upload/recover']
+    ]) {
+        const response = await fetch(new URL(route, base), { method });
+        assert.equal(response.status, 410, route);
+        assert.equal(response.headers.get('cache-control'), 'no-store');
+    }
+
+    const headers = { Authorization: 'Bearer ' + token, 'X-Business-Context': 'event_genix' };
+    const today = await fetch(new URL('/api/hr/today', base), { headers });
+    assert.equal(today.status, 200, 'canonical HR attendance remains available');
+    for (const [method, route] of [
+        ['GET', '/api/hr/attendance/ocr/status'],
+        ['POST', '/api/hr/attendance/ocr/preview'],
+        ['POST', '/api/hr/attendance/ocr/apply'],
+        ['POST', '/api/hr/attendance/ocr/upload-links'],
+        ['POST', '/api/hr/attendance-documents/pdf'],
+        ['POST', '/api/hr/attendance-document-automations/1/run'],
+        ['POST', '/api/hr/attendance-document-jobs/1/requeue']
+    ]) {
+        const response = await fetch(new URL(route, base), { method, headers });
+        assert.ok([403, 404, 410].includes(response.status), method + ' ' + route + ' returned ' + response.status);
+    }
+
+    const { chromium } = loadPlaywright();
+    const executablePath = process.env.CRM_AUTOMATION_CHROME_PATH;
+    const browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
+    try {
+        const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+        const requests = [];
+        page.on('request', request => requests.push(new URL(request.url()).pathname));
+        await page.goto(new URL('/attendance-upload.html#uploadKey=synthetic-retired-link', base).href);
+        await page.getByRole('heading', { name: 'Завантаження листів відвідуваності більше недоступне' }).waitFor();
+        assert.equal(await page.locator('form, input[type=file], script[src]').count(), 0);
+        assert.equal(requests.some(route => route.startsWith('/api/attendance-upload')), false);
+    } finally {
+        await browser.close();
+    }
 }
-async function run(){
- assert.equal(process.env.RUN_CRM_ATTENDANCE_ACTUAL_APP,'true');assertSafeIsolatedTestUrl(base);
- const target=assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL,{...process.env,DATABASE_URL:''});assert.equal(target.isLocal,true);
- const db=new Pool({connectionString:target.url.toString(),ssl:false});fs.mkdirSync(output,{recursive:true});
- const {chromium}=playwright();
- const browser=await chromium.launch({headless:true,...(process.env.CRM_AUTOMATION_CHROME_PATH?{executablePath:process.env.CRM_AUTOMATION_CHROME_PATH}:{})});
- let page;
- try{
-  const owner=(await db.query('SELECT id FROM users WHERE username=$1',[process.env.TEST_USER])).rows[0];assert.ok(owner);
-  const organization=(await db.query("INSERT INTO organizations(slug,name) VALUES('isolated-attendance-ocr','Synthetic attendance OCR') RETURNING id")).rows[0].id;
-  const businessIds={};
-  for(const context of ['event_genix','dar'])businessIds[context]=(await db.query(`INSERT INTO businesses(organization_id,context_key,label,short_label,access_mode)
-   VALUES($1,$2,$2,$2,'membership') RETURNING id`,[organization,context])).rows[0].id;
-  async function member(userId,role,deny=[]){
-   await db.query("INSERT INTO organization_memberships(organization_id,user_id,role) VALUES($1,$2,'owner')",[organization,userId]);
-   for(const context of ['event_genix','dar'])await db.query(`INSERT INTO business_memberships(business_id,organization_id,user_id,role,is_default,action_denylist)
-    VALUES($1,$2,$3,$4,$5,$6)`,[businessIds[context],organization,userId,role,context==='event_genix',deny]);
-  }
-  await member(owner.id,'creator');
-  const auth=await login(process.env.TEST_USER,process.env.TEST_PASS),token=auth.accessToken || auth.token;
-  assert.equal(auth.user.membershipMode,'membership');
-  const staff=(await db.query("INSERT INTO staff(name,display_name,department,position,role_type,hourly_rate,is_active,hr_pool_status,is_freelance) VALUES('Synthetic OCR Browser Employee','Synthetic OCR Browser Employee','Synthetic','Synthetic','wardrobe',100,true,'core',false) RETURNING id")).rows[0];
-  assert.equal((await api('/api/hr/attendance/ocr/status')).status,401);
-  assert.equal((await api('/api/hr/attendance/ocr/preview',token,{actor:{id:1},documentDate:'2026-11-04'},'dar')).status,403);
-  const password='synthetic-'+randomUUID(),hash=await require('bcryptjs').hash(password,4),suffix=randomUUID().slice(0,8);
-  for(const role of ['waiter','creator','restricted']){
-   const actualRole=role==='restricted'?'creator':role;
-   const user=(await db.query('INSERT INTO users(username,password_hash,role,name) VALUES($1,$2,$3,$4) RETURNING id',[role+suffix,hash,actualRole,'Synthetic OCR '+role])).rows[0];
-   await member(user.id,actualRole,role==='restricted'?['hr.schedule.manage']:[]);
-  }
-  const denied=await login('waiter'+suffix,password),deniedToken=denied.accessToken||denied.token;
-  assert.equal((await api('/api/hr/attendance/ocr/status',deniedToken)).status,403);
-  const restricted=await login('restricted'+suffix,password),restrictedToken=restricted.accessToken||restricted.token;
-  assert.equal((await api('/api/hr/attendance/ocr/status',restrictedToken)).status,403);
-  assert.equal((await api('/api/hr/attendance/ocr/preview',restrictedToken,{})).status,403);
-  assert.equal((await api('/api/hr/attendance/ocr/status',token,undefined,'all')).status,403);
-  for(const account of [null,restricted]){
-   const isolated=await browser.newContext({viewport:{width:390,height:844},serviceWorkers:'block'});
-   try{
-    if(account)await isolated.addInitScript(value=>{localStorage.setItem('pzp_access_token',value.accessToken||value.token);localStorage.setItem('pzp_current_user',JSON.stringify(value.user));},account);
-    await isolated.route('**/*',route=>new URL(route.request().url()).origin===base?route.continue():route.abort());
-    const gate=await isolated.newPage();await gate.goto(base+'/attendance-upload.html',{waitUntil:'domcontentloaded'});
-    await gate.waitForFunction(()=>document.querySelector('#attendanceOcrStatus').textContent.length>0);
-    assert.match(await gate.locator('#attendanceOcrStatus').textContent(),account?/Немає доступу/:/Увійдіть/);
-    assert.equal(await gate.locator('#attendanceOcrPreview').isDisabled(),true);
-    assert.equal(await gate.locator('#attendanceOcrReview').isHidden(),true);
-   }finally{await isolated.close();}
-  }
-  const context=await browser.newContext({viewport:{width:1440,height:1000},serviceWorkers:'block'});
-  await context.addInitScript(value=>{
-   if(sessionStorage.getItem('attendance_test_seeded'))return;
-   localStorage.setItem('pzp_token',value.accessToken||value.token);localStorage.setItem('pzp_access_token',value.accessToken||value.token);
-   localStorage.setItem('pzp_current_user',JSON.stringify(value.user));if(value.refreshToken)localStorage.setItem('pzp_refresh_token',value.refreshToken);
-   sessionStorage.setItem('attendance_test_seeded','true');
-  },auth);
-  page=await context.newPage();page.setDefaultTimeout(20000);
-  await context.route('**/*',route=>new URL(route.request().url()).origin===base?route.continue():route.abort());
-  const errors=[];page.on('pageerror',error=>errors.push(error.message));
-  await page.goto(base+'/hr',{waitUntil:'domcontentloaded'});
-  await page.waitForFunction(()=>document.querySelector('#attendanceOcrPanel')?.hidden===false && document.querySelector('#attendanceOcrPanel')?.getAttribute('aria-busy')==='false');
-  await page.locator('#attendanceOcrPanel summary').click();
-  await page.goto(base+'/attendance-upload.html',{waitUntil:'domcontentloaded'});
-  await page.waitForFunction(()=>document.querySelector('#attendanceOcrPanel')?.getAttribute('aria-busy')==='false' && !document.querySelector('#attendanceOcrDate').disabled);
-  await page.locator('#attendanceOcrDate').fill('2026-11-04');
-  await page.locator('#attendanceOcrFile').setInputFiles({name:'synthetic.png',mimeType:'image/png',buffer:png});
-  await page.locator('#attendanceOcrPaidConfirm').check();
-  // Lose the response after the actual app commits recognition; recovery must
-  // load its durable result rather than call the provider again.
-  await page.route('**/api/hr/attendance/ocr/preview',async route=>{await route.fetch();await route.abort('failed');},{times:1});
-  await page.locator('#attendanceOcrPreview').click();
-  await page.waitForFunction(()=>document.querySelector('#attendanceOcrStatus').textContent.includes('Результат потребує перевірки'));
-  assert.equal(await page.locator('#attendanceOcrPreview').isDisabled(),true);
-  await page.locator('#attendanceOcrRecover').click();
-  await page.locator('#attendanceOcrReview').waitFor({state:'visible'});
-  assert.equal(await page.locator('#attendanceOcrRows input:checked').count(),0);
-  assert.equal(await page.locator('#attendanceOcrRows input[data-ordinal="2"]').isDisabled(),true);
-  assert.match(await page.locator('#attendanceOcrRows').textContent(),/10:50.*20:15/s);
-  assert.equal((await db.query('SELECT count(*)::int AS n FROM hr_time_records WHERE staff_id=$1',[staff.id])).rows[0].n,0);
-  const firstId=new URL(page.url()).searchParams.get('attendancePreview');assert.ok(firstId);
-  const foreign=await login('creator'+suffix,password);
-  assert.equal((await api('/api/hr/attendance/ocr/previews/'+firstId,foreign.accessToken||foreign.token)).status,404);
-  const leaked=await api('/api/hr/attendance/ocr/previews/'+firstId,token);assert.equal(leaked.body.state_snapshot,undefined);
-  // The standalone mobile website uses the same actor-owned result and API.
-  // Opening it, reloading, and refreshing must never start another paid call.
-  await page.goto(base+'/attendance-upload.html?attendancePreview='+encodeURIComponent(firstId),{waitUntil:'domcontentloaded'});
-  await page.locator('#attendanceOcrReview').waitFor({state:'visible'});
-  assert.equal(await page.locator('#attendanceOcrRows input:checked').count(),0);
-  assert.equal(await page.locator('#attendanceOcrApply').isDisabled(),true);
-  assert.equal(await page.locator('.sidebar').count(),0);
-  assert.equal(await page.locator('h1').innerText(),'Лист приходу\nй виходу');
-  await page.locator('#attendanceOcrPanel').screenshot({path:path.join(output,'desktop-review.png')});
-  await page.screenshot({path:path.join(output,'standalone-desktop.png'),fullPage:true});
-  await page.reload({waitUntil:'domcontentloaded'});
-  await page.locator('#attendanceOcrReview').waitFor({state:'visible'});
-  assert.equal(new URL(page.url()).searchParams.get('attendancePreview'),firstId);
-  assert.equal(await page.locator('#attendanceOcrDate').inputValue(),'2026-11-04');
-  await page.locator('#attendanceOcrRefresh').click();
-  await page.waitForFunction(id=>new URL(location.href).searchParams.get('attendancePreview')!==id,firstId);
-  const refreshedId=new URL(page.url()).searchParams.get('attendancePreview');
-  await db.query('UPDATE staff SET hourly_rate=120 WHERE id=$1',[staff.id]);
-  await page.locator('#attendanceOcrRows input[data-ordinal="1"]').check();await page.locator('#attendanceOcrApplyConfirm').check();
-  await page.locator('#attendanceOcrApply').click();
-  await page.waitForFunction(()=>document.querySelector('#attendanceOcrStatus').textContent.includes('Дані змінилися'));
-  assert.equal((await db.query('SELECT count(*)::int AS n FROM hr_time_records WHERE staff_id=$1',[staff.id])).rows[0].n,0);
-  await db.query('UPDATE staff SET hourly_rate=100 WHERE id=$1',[staff.id]);
-  await page.locator('#attendanceOcrRefresh').click();
-  await page.waitForFunction(id=>new URL(location.href).searchParams.get('attendancePreview')!==id,refreshedId);
-  assert.equal(await page.locator('#attendanceOcrApplyConfirm').isChecked(),false);
-  await page.setViewportSize({width:390,height:844});
-  await page.locator('#attendanceOcrPanel').scrollIntoViewIfNeeded();
-  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'No horizontal overflow');
-  await page.locator('#attendanceOcrRows input[data-ordinal="1"]').focus();await page.keyboard.press('Space');
-  await page.locator('#attendanceOcrApplyConfirm').check();
-  fs.writeFileSync(path.join(output,'mobile-layout.json'),JSON.stringify(await page.evaluate(()=>{
-   const panel=document.querySelector('#attendanceOcrPanel');return {viewport:innerWidth,scrollX,scrollY,documentWidth:document.documentElement.scrollWidth,
-    panel:{x:panel.getBoundingClientRect().x,width:panel.getBoundingClientRect().width,scrollLeft:panel.scrollLeft,scrollWidth:panel.scrollWidth},
-    ancestors:[...function*(node){while(node){yield node;node=node.parentElement;}}(panel)].map(node=>({tag:node.tagName,id:node.id,scrollLeft:node.scrollLeft,x:node.getBoundingClientRect().x,width:node.getBoundingClientRect().width,scrollWidth:node.scrollWidth}))};
-  }),null,2));
-  await page.screenshot({path:path.join(output,'mobile-page.png'),fullPage:true});
-  await page.locator('#attendanceOcrPanel').screenshot({path:path.join(output,'mobile-review.png')});
-  await page.locator('#attendanceOcrApply').click();
-  await page.waitForFunction(()=>document.querySelector('#attendanceOcrStatus').textContent.includes('Застосовано рядків: 1'));
-  const record=(await db.query("SELECT total_worked_minutes,to_char(clock_in AT TIME ZONE 'Europe/Kyiv','HH24:MI') AS arrival,to_char(clock_out AT TIME ZONE 'Europe/Kyiv','HH24:MI') AS departure FROM hr_time_records WHERE staff_id=$1",[staff.id])).rows[0];
-  assert.deepEqual(record,{total_worked_minutes:565,arrival:'10:50',departure:'20:15'});
-  assert.equal((await db.query('SELECT count(*)::int AS n FROM staff_checkins WHERE staff_id=$1',[staff.id])).rows[0].n,1);
-  assert.equal((await db.query('SELECT count(*)::int AS n FROM staff_schedule WHERE staff_id=$1',[staff.id])).rows[0].n,0);
-  await assert.rejects(db.query('UPDATE hr_time_records SET business_context=NULL WHERE staff_id=$1',[staff.id]),{code:'23502'});
-  for(const badContext of ['','dar']){
-   await db.query('UPDATE hr_time_records SET business_context=$2 WHERE staff_id=$1',[staff.id,badContext]);
-   const ownership=await api('/api/hr/attendance/ocr/status',token);
-   assert.equal(ownership.status,409);assert.equal(ownership.body.code,'PARK_HR_PAYROLL_OWNERSHIP_UNVERIFIED');
-  }
-  await db.query("UPDATE hr_time_records SET business_context='event_genix' WHERE staff_id=$1",[staff.id]);
-  await db.query('UPDATE business_memberships SET is_active=false WHERE business_id=$1 AND user_id=$2',[businessIds.event_genix,owner.id]);
-  assert.equal((await api('/api/hr/attendance/ocr/status',token)).status,403);
-  assert.equal((await api('/api/hr/attendance/ocr/apply',token,{previewId:new URL(page.url()).searchParams.get('attendancePreview'),confirmed:true})).status,403);
-  await db.query('UPDATE business_memberships SET is_active=true WHERE business_id=$1 AND user_id=$2',[businessIds.event_genix,owner.id]);
-  assert.equal((await api('/api/hr/attendance/ocr/status',token)).status,200);
-  for(const route of ['/api/payroll/period/close','/api/hr/payroll-profiles/bulk/apply'])assert.equal((await api(route,token,{})).status,403);
-  const counter=JSON.parse(fs.readFileSync(path.join(output,'provider-counter.json')));assert.equal(counter.calls,1);
-  await page.locator('#attendanceOcrPanel').screenshot({path:path.join(output,'mobile-applied.png')});
-  const workerProof=await require('./attendance-upload-link-journey')({base,browser,page,db,token,
-   foreignToken:foreign.accessToken||foreign.token,restrictedToken,png,staffId:staff.id,output,api});
-  const finalCounter=JSON.parse(fs.readFileSync(path.join(output,'provider-counter.json')));assert.equal(finalCounter.calls,5);
-  await page.goto(base+'/attendance-upload.html?attendancePreview='+encodeURIComponent(new URL(page.url()).searchParams.get('attendancePreview')),{waitUntil:'domcontentloaded'});
-  await page.locator('#attendanceOcrReview').waitFor({state:'visible'});
-  const logout=await context.newPage();await logout.goto(base+'/attendance-upload.html',{waitUntil:'domcontentloaded'});
-  await logout.evaluate(()=>localStorage.clear());
-  await page.waitForFunction(()=>document.querySelector('#attendanceOcrStatus')?.textContent.includes('Увійдіть'));
-  assert.equal(await page.locator('#attendanceOcrRows').textContent(),'');
-  assert.equal(await page.locator('#attendanceOcrPreview').isDisabled(),true);
-  await logout.close();
-  assert.deepEqual(errors,[]);
-  fs.writeFileSync(path.join(output,'journey-evidence.json'),JSON.stringify({status:'PASS',...workerProof,actualApp:true,actualPostgres:true,standaloneWebsite:true,anonymousWebsiteDenied:true,restrictedWebsiteDenied:true,crossTabLogoutClearsPreview:true,membershipMode:true,explicitDenyChecked:true,revokedTokenDenied:true,foreignAndUnknownOwnershipDenied:true,unrelatedFinancialWritesDenied:true,provider:'synthetic',providerCalls:5,paidCalls:0,productionWrites:0,attendancePairs:2,blankRowsApplied:0,staleRejected:true,ownerBoundary:true,permissionBoundary:true,lostResponseRecoveredWithoutNewProvider:true,reloadAndRefreshNoNewProvider:true,keyboardAndMobile:true},null,2));
-  console.log('Attendance OCR actual-app browser journey PASS; synthetic provider only.');
- }catch(error){await page?.screenshot({path:path.join(output,'failure.png'),fullPage:true,mask:[page.locator('#attendanceUploadLinkValue')]}).catch(()=>{});throw error;}
- finally{await browser.close();await db.end();}
-}
-run().catch(error=>{console.error(error.stack);process.exitCode=1;});
+
+run().catch(error => {
+    console.error(error);
+    process.exitCode = 1;
+});

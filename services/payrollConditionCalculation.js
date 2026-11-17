@@ -35,10 +35,17 @@ function calculateConditionSnapshots(metrics, overtimeMultiplier) {
                 continue;
             }
             if (terms.rateUnit !== 'month' && !minutes) continue;
+            const share = additional ? (allocation.payMultiplier ?? 1) : 1;
+            if (share !== 1 && (share !== 0.5 || terms.rateUnit !== 'hour')) {
+                problem('PAYROLL_CONDITION_SHARE_INVALID', 'Некоректна частка додаткової ставки',
+                    { date: day.date, professionKey: allocation.professionKey });
+                continue;
+            }
             const key = `${additional ? 'additional' : 'base'}:${allocation.professionKey}:${terms.rateUnit === 'month' ? day.date.slice(0, 7) : day.date}`;
             const signature = JSON.stringify([terms.rateUnit, terms.rate, terms.rateUnit === 'month' ? terms.monthlyNorm : null]);
             if (!groups.has(key)) groups.set(key, { terms, additional, professionKey: allocation.professionKey,
-                date: day.date, minutes: 0, overtime: 0, plannedByDate: new Map(), signature, conflict: false, refs: [] });
+                date: day.date, minutes: 0, minutesByShare: new Map(), overtime: 0,
+                plannedByDate: new Map(), signature, conflict: false, refs: [] });
             const group = groups.get(key);
             if (group.signature !== signature) {
                 group.conflict = true;
@@ -46,6 +53,7 @@ function calculateConditionSnapshots(metrics, overtimeMultiplier) {
                     { date: day.date, professionKey: allocation.professionKey });
             }
             group.minutes += minutes;
+            group.minutesByShare.set(share, (group.minutesByShare.get(share) || 0) + minutes);
             group.overtime += overtime;
             group.plannedByDate.set(day.date, (group.plannedByDate.get(day.date) || 0) + planned);
             group.refs.push({ attendanceRef: day.attendanceRef, segmentRef: allocation.segmentId, roleRef: allocation.roleId, exceptionId: terms.exception?.id || null });
@@ -60,25 +68,27 @@ function calculateConditionSnapshots(metrics, overtimeMultiplier) {
     }
     for (const [key, values] of units) if (values.size > 1) problem('PAYROLL_UNIT_CHANGE_IN_MONTH_UNSUPPORTED',
         'Зміна одиниці оплати всередині місяця потребує погодженого правила', { key });
-    function addLine(group, quantity, rate, formula, overtime = false) {
+    function addLine(group, quantity, rate, formula, overtime = false, share = 1) {
         const terms = group.terms;
-        const amount = money(quantity * rate);
+        const amount = money(quantity * rate * share);
         const type = overtime ? 'overtime' : group.additional ? 'simultaneous_additional' : `profession_${terms.rateUnit}`;
         const meta = { professionKey: group.professionKey, workDate: group.date, rateUnit: terms.rateUnit,
             attendanceRef: group.refs[0]?.attendanceRef, segmentRef: group.refs[0]?.segmentRef, roleRef: group.refs[0]?.roleRef,
             profileId: terms.profileId, profileVersionId: terms.profileVersionId, profileTitle: terms.profileTitle,
             exceptionId: terms.exception?.id || null, exceptionVersion: terms.exception?.version || null,
             exceptionReason: terms.exception?.reason || null, exceptionAuthor: terms.exception?.createdBy || null,
-            appliedRule: terms.appliedRule, ruleVersion: terms.ruleVersion, formula, refs: group.refs };
+            appliedRule: terms.appliedRule, ruleVersion: terms.ruleVersion, formula, refs: group.refs,
+            ...(group.additional && terms.rateUnit === 'hour' ? { rateShares: [...group.minutesByShare].map(([share, minutes]) => ({ share, minutes })) } : {}) };
         const item = { group: overtime ? 'overtime' : group.additional ? 'additional' : 'base', lineType: type,
             label: `${group.additional ? 'Додаткова оплата' : 'Основна оплата'}: ${group.professionKey}`,
             amount, quantity, rate, source: terms.rateSource, meta, ...meta, minutes: group.minutes,
-            multiplier: 1, policyVersion: CONDITION_RULE_VERSION, rateSource: terms.rateSource };
+            multiplier: share, policyVersion: CONDITION_RULE_VERSION, rateSource: terms.rateSource };
         (overtime ? overtimeLines : group.additional ? additionalLines : baseLines).push(item);
         professionRateSummary.push({ profession: group.professionKey, profession_key: group.professionKey,
             professionKey: group.professionKey, actual_minutes: overtime ? group.overtime : group.minutes - group.overtime,
             actual_hours: group.minutes / 60, days: terms.rateUnit === 'day' ? 1 : 0, rate,
-            rate_unit: terms.rateUnit, rate_source: terms.rateSource, amount, kind: group.additional ? 'simultaneous_additional' : overtime ? 'overtime' : 'base',
+            rate_unit: terms.rateUnit, rate_source: terms.rateSource, amount, multiplier: share,
+            kind: group.additional ? 'simultaneous_additional' : overtime ? 'overtime' : 'base',
             work_date: group.date, profile_id: terms.profileId, profile_version_id: terms.profileVersionId,
             profile_title: terms.profileTitle, exception_id: meta.exceptionId, exception_reason: meta.exceptionReason,
             exception_author: meta.exceptionAuthor, applied_rule: terms.appliedRule, formula,
@@ -89,7 +99,14 @@ function calculateConditionSnapshots(metrics, overtimeMultiplier) {
         const terms = group.terms;
         if (terms.rateUnit === 'hour') {
             const minutes = Math.max(0, group.minutes - group.overtime);
-            addLine(group, minutes / 60, terms.rate, `${minutes} / 60 × ${terms.rate}`);
+            if (group.additional && group.minutesByShare.size > 1) {
+                const weightedMinutes = [...group.minutesByShare].reduce((sum, [share, value]) => sum + value * share, 0);
+                const shares = [...group.minutesByShare].map(([share, value]) => `${value} × ${share}`).join(' + ');
+                addLine(group, weightedMinutes / 60, terms.rate, `(${shares}) / 60 × ${terms.rate}`);
+            } else {
+                const share = group.additional ? group.minutesByShare.keys().next().value : 1;
+                addLine(group, minutes / 60, terms.rate, `${minutes} / 60 × ${terms.rate}${share === 1 ? '' : ` × ${share}`}`, false, share);
+            }
             if (group.overtime) addLine(group, group.overtime / 60, terms.rate * overtimeMultiplier,
                 `${group.overtime} / 60 × ${terms.rate} × ${overtimeMultiplier}`, true);
         } else if (terms.rateUnit === 'day') {

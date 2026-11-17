@@ -236,22 +236,20 @@ test('manual and QA attendance routes lock before canonical reads or writes and 
     ], 'PUT /api/hr/records/:id/correct');
 });
 
-test('HR auto-close finalizes attendance through the canonical compensation snapshot path', () => {
-    const source = read('services', 'hr.js');
-
-    assert.match(source, /require\('\.\/hrAttendance'\)/);
+test('HR auto-close queues locked attendance for review without finalizing pay', () => {
+    const source = namedFunctionBlock(read('services', 'hr.js'), 'checkHrAutoClose');
     assertInOrder(source, [
         /await client\.query\('BEGIN'\)/,
+        /await assertPayrollPeriodOpen\(month, client\)/,
         /await context\.lockAttendanceWriteTarget\(client,/,
-        /context\.recordAttendanceClockOut\(client,/,
-        /auto_closed = TRUE/,
+        /auto_closed = TRUE, status = 'manual_review'/,
         /VALUES \('auto_close'/,
         /await client\.query\('COMMIT'\)/
     ], 'services/hr.js auto-close');
     assert.doesNotMatch(
         source,
-        /clock_out = \$1, total_worked_minutes = \$2,[\s\S]{0,120}status = 'auto_closed'/,
-        'auto-close must not bypass canonical clock-out allocation'
+        /recordAttendanceClockOut|clock_out\s*=|total_worked_minutes\s*=|compensation_snapshot\s*=/,
+        'pending review preserves factual time and compensation'
     );
 });
 
@@ -308,7 +306,7 @@ test('approved leave and HR scheduler writers share the transaction-scoped day l
     assertInOrder(namedFunctionBlock(serviceSource, 'checkHrAutoClose'), [
         /await client\.query\('BEGIN'\)/,
         /await context\.lockAttendanceWriteTarget\(client,/,
-        /UPDATE hr_time_records SET/,
+        /UPDATE hr_time_records tr\s+SET/,
         /INSERT INTO hr_audit_log/,
         /await client\.query\('COMMIT'\)/
     ], 'checkHrAutoClose');

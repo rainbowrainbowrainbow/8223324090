@@ -158,38 +158,39 @@
                         <section id="schDayPlanEditor" class="sch-day-plan-editor" aria-labelledby="schDayPlanTitle">
                             <div class="sch-day-plan-head">
                                 <div>
-                                    <strong id="schDayPlanTitle">Часові блоки</strong>
-                                    <span>Основна й додаткові ролі беруться лише з HR-картки.</span>
+                                    <strong id="schDayPlanTitle">Робочі періоди</strong>
                                 </div>
-                                <button type="button" id="schAddSegmentBtn" class="btn-page-secondary sch-add-segment-btn">+ Додати часовий блок</button>
+                                <button type="button" id="schAddSegmentBtn" class="btn-page-secondary sch-add-segment-btn">Додати інший період роботи</button>
                             </div>
                             <div id="schSegmentsList" class="sch-segments-list" aria-live="polite"></div>
                             <div id="schShiftPreferencePanel" class="sch-shift-preferences" hidden></div>
                             <div class="form-group sch-primary-profession-group">
-                                <label for="schPrimaryProfession">Основна роль дня</label>
+                                <label for="schPrimaryProfession">Основна професія дня</label>
                                 <select id="schPrimaryProfession"></select>
-                                <div class="form-hint">Використовується старими звітами; має бути основною роллю одного з блоків.</div>
                             </div>
                             <div id="schPlanSummary" class="sch-plan-summary" role="status" aria-live="polite"></div>
                         </section>
-                        <div class="form-group">
-                            <label for="schNote">Примітка дня</label>
-                            <input type="text" id="schNote" placeholder="Необов'язково">
-                        </div>
-                        <div id="schReplacementDetails" class="sch-replacement-details" hidden></div>
-                        <div class="modal-actions sch-replacement-actions">
-                            <button type="button" id="schReplaceBtn" class="btn-page-secondary sch-replacement-action" hidden>Виставити заміну</button>
-                            <button type="button" id="schClearReplacementBtn" class="btn-page-secondary sch-replacement-action sch-clear-replacement-btn" hidden>Скасувати заміну</button>
-                        </div>
-                        <div class="sch-history-panel" role="region" aria-labelledby="schHistoryTitle">
+                        <details class="sch-plan-disclosure" id="schPlanExtra">
+                            <summary>Примітка та підміна</summary>
+                            <div class="form-group">
+                                <label for="schNote">Примітка дня</label>
+                                <input type="text" id="schNote" placeholder="Необов'язково">
+                            </div>
+                            <div id="schReplacementDetails" class="sch-replacement-details" hidden></div>
+                            <div class="modal-actions sch-replacement-actions">
+                                <button type="button" id="schReplaceBtn" class="btn-page-secondary sch-replacement-action" hidden>Виставити заміну</button>
+                                <button type="button" id="schClearReplacementBtn" class="btn-page-secondary sch-replacement-action sch-clear-replacement-btn" hidden>Скасувати заміну</button>
+                            </div>
+                        </details>
+                        <details class="sch-history-panel">
+                            <summary id="schHistoryTitle">Історія змін</summary>
                             <div class="sch-history-head">
-                                <strong id="schHistoryTitle">Історія клітинки</strong>
                                 <button type="button" id="schHistoryRefreshBtn" class="sch-history-refresh">Оновити</button>
                             </div>
                             <div id="schHistoryList" class="sch-history-list" aria-live="polite" aria-busy="false">
                                 <div class="sch-history-empty">Історія завантажиться після відкриття клітинки</div>
                             </div>
-                        </div>
+                        </details>
                     </div>
                     <div class="modal-actions sch-primary-actions">
                         <button type="button" id="schSaveBtn" class="btn-page-primary">Зберегти</button>

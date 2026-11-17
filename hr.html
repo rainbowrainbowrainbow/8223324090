@@ -25,8 +25,6 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/hr-page.css?v=0.83.103">
-    <link rel="stylesheet" href="css/hr-today-print.css?v=0.83.103">
-    <link rel="stylesheet" href="css/hr-attendance-ocr.css?v=0.83.103">
     <link rel="stylesheet" href="css/account-access-editor.css?v=0.83.103">
 </head>
 <body data-page-group="hr">
@@ -96,9 +94,9 @@
                 <section class="hr-today-hero" aria-label="Операційний пульс команди">
                     <div class="hr-today-hero-content">
                         <div class="hr-today-hero-copy">
-                            <h3>Сьогодні</h3>
+                            <h3 id="todayTitle">Сьогодні</h3>
                             <strong id="todayDate" class="hr-today-date">-</strong>
-                            <p>Присутність, запізнення і доступність у живому режимі.</p>
+                            <p id="todayDescription">Присутність, запізнення і доступність у живому режимі.</p>
                         </div>
                         <div class="hr-today-hero-metrics" aria-label="Ключові метрики сьогодні" aria-live="polite">
                             <button type="button" class="hr-today-metric-chip hr-today-metric-chip--shift" data-today-metric="shift" aria-controls="todayMetricPeoplePanel" aria-expanded="false" aria-label="Показати людей на зміні">
@@ -129,35 +127,17 @@
                     <div class="hr-today-filter-row">
                         <input type="search" id="todaySearch" class="hr-today-search" aria-label="Пошук у сьогоднішньому пульсі" placeholder="Пошук: ПІБ, професія, відділ, статус...">
                         <div id="todayFilterInfo" class="hr-today-filter-info"></div>
-                        <button type="button" id="btnHrTodayPrint" class="btn-page-secondary hr-today-print-trigger" hidden>Надрукувати бланк на сьогодні</button>
-                        <button type="button" id="btnHrPrintDocuments" class="btn-page-secondary hr-print-documents-trigger">
-                            <span aria-hidden="true">▣</span>
-                            Документи для друку
-                        </button>
+                    </div>
+                    <label class="hr-today-review-filter" for="todayReviewOnly">
+                        <input type="checkbox" id="todayReviewOnly" aria-controls="todayList">
+                        Показати записи для звірки
+                    </label>
+                    <div id="todayReviewDateGroup" class="form-group" hidden>
+                        <label for="todayReviewDate">Дата звірки</label>
+                        <input type="date" id="todayReviewDate">
                     </div>
                     <div id="todayDepartmentSegments" class="hr-today-segments" aria-label="Відділи"></div>
                 </div>
-                <details id="attendanceOcrPanel" class="attendance-ocr" hidden>
-                    <summary>Додати лист приходу й виходу</summary>
-                    <p>Завантажте фото фактичної відвідуваності та перевірте кожен заповнений рядок перед записом.</p>
-                    <form id="attendanceOcrForm">
-                        <label>Дата на документі<input id="attendanceOcrDate" type="date" required></label>
-                        <label>Фото листа (PNG або JPEG, до 4 МБ)<input id="attendanceOcrFile" type="file" accept="image/png,image/jpeg" required></label>
-                        <label><input id="attendanceOcrPaidConfirm" type="checkbox" required>Погоджую розпізнавання через AI. Фото буде передано провайдеру KIE.</label>
-                        <div class="attendance-ocr-actions">
-                            <button id="attendanceOcrPreview" type="submit" class="btn-page-secondary" disabled>Розпізнати фото</button>
-                            <button id="attendanceOcrRecover" type="button" class="btn-page-secondary" disabled>Перевірити збережений результат</button>
-                        </div>
-                    </form>
-                    <section id="attendanceOcrReview" aria-label="Перевірка розпізнаної відвідуваності" hidden>
-                        <p id="attendanceOcrSummary"></p>
-                        <div id="attendanceOcrRows"></div>
-                        <div class="attendance-ocr-actions"><button id="attendanceOcrRefresh" type="button" class="btn-page-secondary" disabled>Оновити перегляд без розпізнавання</button></div>
-                        <label><input id="attendanceOcrApplyConfirm" type="checkbox" disabled>Я перевірив дату, працівників, приходи й виходи вибраних рядків та підтверджую запис відвідуваності.</label>
-                        <div class="attendance-ocr-actions"><button id="attendanceOcrApply" type="button" class="btn-page-secondary" disabled>Застосувати вибрані рядки</button></div>
-                    </section>
-                    <p id="attendanceOcrStatus" role="status" aria-live="polite"></p>
-                </details>
                 <div id="todaySummary" class="hr-summary"></div>
                 <div id="todayList" class="hr-staff-list"></div>
                 <dialog id="hrTodayClockDialog" class="hr-today-clock-dialog" aria-labelledby="hrTodayClockTitle">
@@ -872,174 +852,6 @@
         </main>
     </div>
 
-    <!-- HR attendance print documents modal -->
-    <div id="hrPrintDocumentsModal" class="hr-print-documents-overlay hidden" aria-hidden="true">
-        <section class="hr-print-documents-modal" role="dialog" aria-modal="true" aria-labelledby="hrPrintDocumentsTitle" aria-describedby="hrPrintDocumentsDescription">
-            <header class="hr-print-documents-head">
-                <div>
-                    <span class="hr-print-documents-kicker">Пульс компанії · HR</span>
-                    <h2 id="hrPrintDocumentsTitle">Документи для друку</h2>
-                    <p id="hrPrintDocumentsDescription">Сформуйте точний PDF за шаблоном Event Genix v27.</p>
-                </div>
-                <button type="button" id="hrPrintDocumentsClose" class="hr-print-documents-close" aria-label="Закрити документи для друку">×</button>
-            </header>
-
-            <div class="hr-print-documents-body">
-                <form id="hrPrintDocumentsForm" class="hr-print-documents-form">
-                    <fieldset class="hr-print-documents-card hr-print-template-picker">
-                        <legend>1. Тип документа</legend>
-                        <label>
-                            <input type="radio" name="hrPrintTemplate" value="arrival_inout" checked>
-                            <span><strong>Лист приходу / уходу</strong></span>
-                        </label>
-                        <label>
-                            <input type="radio" name="hrPrintTemplate" value="month_grid">
-                            <span><strong>Місячний табель-відмічалка</strong></span>
-                        </label>
-                    </fieldset>
-
-                    <section class="hr-print-documents-card" aria-labelledby="hrPrintPeriodTitle">
-                        <h3 id="hrPrintPeriodTitle">2. Період і наповнення</h3>
-                        <div class="hr-print-field-grid">
-                            <label id="hrPrintDateField">Дата
-                                <input type="date" id="hrPrintDocumentDate" required>
-                            </label>
-                            <label id="hrPrintMonthField" class="hidden">Місяць
-                                <input type="month" id="hrPrintDocumentMonth">
-                            </label>
-                            <label id="hrPrintDailyModeField">Заповнення часу
-                                <select id="hrPrintDailyMode">
-                                    <option value="manual_blank">Порожній бланк</option>
-                                    <option value="actual_times">Заповнити відомим фактом</option>
-                                </select>
-                            </label>
-                        </div>
-                        <p class="hr-print-field-note">Запланована зміна використовується лише для roster і ніколи не підставляється як фактичний прихід.</p>
-                    </section>
-
-                    <section class="hr-print-documents-card" aria-labelledby="hrPrintProfessionsTitle">
-                        <div class="hr-print-section-head">
-                            <div>
-                                <h3 id="hrPrintProfessionsTitle">3. Категорії працівників</h3>
-                                <p id="hrPrintEmployeeCount" role="status" aria-live="polite">Завантажуємо актуальний каталог…</p>
-                            </div>
-                            <button type="button" id="hrPrintSelectAll" class="btn-page-toolbar" aria-pressed="false">Вибрати всі</button>
-                        </div>
-                        <label class="hr-print-profession-search">
-                            <input type="search" id="hrPrintProfessionSearch" aria-label="Пошук категорій" placeholder="Знайти категорію: батутисти, офіціанти…">
-                        </label>
-                        <div id="hrPrintProfessionList" class="hr-print-profession-list" role="group" aria-label="Категорії для друку"></div>
-                        <p id="hrPrintProfessionEmpty" class="hr-print-empty hidden">За цим пошуком категорій немає.</p>
-                    </section>
-
-                    <section class="hr-print-documents-card" aria-labelledby="hrPrintDetailsTitle">
-                        <h3 id="hrPrintDetailsTitle">4. Підписи документа</h3>
-                        <div class="hr-print-field-grid">
-                            <label>Локація / зміна
-                                <input type="text" id="hrPrintLocationShift" maxlength="80" placeholder="Наприклад, Парк · денна зміна">
-                            </label>
-                            <label>Хто відмічає
-                                <input type="text" id="hrPrintMarkedBy" maxlength="80" placeholder="Імʼя відповідального">
-                            </label>
-                            <label class="wide">Власний заголовок
-                                <input type="text" id="hrPrintCustomTitle" maxlength="80" placeholder="Залиште порожнім для еталону v27">
-                            </label>
-                            <label class="wide">Текст у нижньому колонтитулі
-                                <input type="text" id="hrPrintCustomFooter" maxlength="120" placeholder="Залиште порожнім для еталону v27">
-                            </label>
-                        </div>
-                    </section>
-
-                    <section class="hr-print-documents-card" aria-labelledby="hrPrintFontsTitle">
-                        <div class="hr-print-section-head">
-                            <div>
-                                <h3 id="hrPrintFontsTitle">5. Розміри шрифтів</h3>
-                                <p>Безпечний діапазон шаблону v27, крок 0.5 pt.</p>
-                            </div>
-                            <button type="button" id="hrPrintResetPreset" class="btn-page-toolbar">Скинути до еталону v27</button>
-                        </div>
-                        <div id="hrPrintFontControls" class="hr-print-font-controls"></div>
-                        <p id="hrPrintPresetWarning" class="hr-print-preset-warning hidden" role="status" aria-live="polite">Шаблон відхилено від еталону v27. Перевірте preview перед друком.</p>
-                    </section>
-
-                    <section class="hr-print-documents-card" aria-labelledby="hrPrintAutomationTitle">
-                        <div class="hr-print-section-head">
-                            <div>
-                                <h3 id="hrPrintAutomationTitle">6. Автоматичне формування</h3>
-                                <p>CRM створить один PDF у черзі. Підключення принтера додамо окремо.</p>
-                            </div>
-                            <button type="button" id="hrPrintAutomationRefresh" class="btn-page-toolbar">Оновити</button>
-                        </div>
-                        <div class="hr-print-field-grid">
-                            <label class="wide">Назва автоматизації
-                                <input type="text" id="hrPrintAutomationName" maxlength="120" placeholder="Наприклад, Ранковий лист офіціантів">
-                            </label>
-                            <label>Час (Europe/Kyiv)
-                                <input type="time" id="hrPrintAutomationTime" value="08:00">
-                            </label>
-                            <label>Копій
-                                <input type="number" id="hrPrintAutomationCopies" value="1" min="1" max="10">
-                            </label>
-                            <label>Зберігати PDF, годин
-                                <input type="number" id="hrPrintAutomationTtl" value="168" min="1" max="720">
-                            </label>
-                            <label class="hr-print-automation-enabled">Стан
-                                <span><input type="checkbox" id="hrPrintAutomationEnabled"> Увімкнути після збереження</span>
-                            </label>
-                        </div>
-                        <fieldset id="hrPrintAutomationWeekdays" class="hr-print-weekdays">
-                            <legend>Дні формування</legend>
-                            <label><input type="checkbox" value="1" checked> Пн</label>
-                            <label><input type="checkbox" value="2" checked> Вт</label>
-                            <label><input type="checkbox" value="3" checked> Ср</label>
-                            <label><input type="checkbox" value="4" checked> Чт</label>
-                            <label><input type="checkbox" value="5" checked> Пт</label>
-                            <label><input type="checkbox" value="6" checked> Сб</label>
-                            <label><input type="checkbox" value="7" checked> Нд</label>
-                        </fieldset>
-                        <p id="hrPrintAutomationScheduleNote" class="hr-print-field-note">Після перезапуску CRM ранковий документ буде створено лише в межах 120 хвилин, не ввечері.</p>
-                        <div class="hr-print-automation-actions">
-                            <button type="button" id="hrPrintAutomationSave" class="btn-page-primary">Зберегти автоматизацію</button>
-                            <button type="button" id="hrPrintAutomationCancelEdit" class="btn-page-secondary hidden">Скасувати редагування</button>
-                        </div>
-                        <div class="hr-print-automation-columns">
-                            <div>
-                                <h4>Автоматизації</h4>
-                                <div id="hrPrintAutomationList" class="hr-print-operation-list" aria-live="polite">Завантажуємо…</div>
-                            </div>
-                            <div>
-                                <h4>Останні PDF</h4>
-                                <div id="hrPrintJobList" class="hr-print-operation-list" aria-live="polite">Завантажуємо…</div>
-                            </div>
-                        </div>
-                    </section>
-                </form>
-
-                <aside class="hr-print-preview-panel" aria-labelledby="hrPrintPreviewTitle">
-                    <div class="hr-print-preview-head">
-                        <div>
-                            <span>PDF</span>
-                            <h3 id="hrPrintPreviewTitle">Попередній перегляд</h3>
-                        </div>
-                        <span id="hrPrintPreviewBadge" class="hr-print-preview-badge">Не сформовано</span>
-                    </div>
-                    <div id="hrPrintPreviewState" class="hr-print-preview-state" role="status" aria-live="polite">
-                        Оберіть категорії та сформуйте preview.
-                    </div>
-                    <iframe id="hrPrintPreviewFrame" class="hr-print-preview-frame hidden" title="Попередній перегляд PDF документа"></iframe>
-                </aside>
-            </div>
-
-            <footer class="hr-print-documents-actions">
-                <span id="hrPrintDocumentsStatus" role="status" aria-live="polite"></span>
-                <button type="button" id="hrPrintPreviewButton" class="btn-page-primary">Сформувати preview</button>
-                <button type="button" id="hrPrintDownloadButton" class="btn-page-secondary" disabled>Завантажити PDF</button>
-                <button type="button" id="hrPrintPrintButton" class="btn-page-secondary" disabled>Друкувати</button>
-                <button type="button" id="hrPrintOpenButton" class="btn-page-secondary" disabled>Відкрити PDF в окремій вкладці</button>
-            </footer>
-        </section>
-    </div>
-
     <!-- Shift modal -->
     <div id="shiftModal" class="hr-modal-overlay" style="display:none;">
         <div class="hr-modal">
@@ -1720,21 +1532,21 @@
     </div>
 
     <!-- Correction modal -->
-    <div id="correctionModal" class="hr-modal-overlay" style="display:none;">
+    <div id="correctionModal" class="hr-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="corrTitle" style="display:none;">
         <div class="hr-modal">
-            <h3>Виправити час</h3>
+            <h3 id="corrTitle">Виправити час</h3>
             <input type="hidden" id="corrRecordId">
             <div class="form-group">
-                <label>Прихід</label>
+                <label for="corrClockIn">Початок зміни</label>
                 <input type="time" id="corrClockIn">
             </div>
             <div class="form-group">
-                <label>Відхід</label>
+                <label for="corrClockOut">Завершення зміни</label>
                 <input type="time" id="corrClockOut">
             </div>
             <div class="form-group">
-                <label>Причина корекції</label>
-                <textarea id="corrNotes" rows="2" aria-label="Забув відмітитись..." placeholder="Забув відмітитись..."></textarea>
+                <label for="corrNotes">Причина зміни</label>
+                <textarea id="corrNotes" rows="2" required></textarea>
             </div>
             <div class="hr-modal-actions">
                 <button type="button" id="corrCancel" class="btn-secondary">Скасувати</button>
@@ -1779,12 +1591,9 @@
     <script src="js/staff-schedule-loader.js?v=0.83.103"></script>
     <script src="js/hr-attendance-state.js?v=0.83.103"></script>
     <script src="js/account-access-editor.js?v=0.83.103"></script>
-    <script src="js/attendance-upload-links.js?v=0.83.103"></script>
-    <script src="js/hr-attendance-ocr.js?v=0.83.103"></script>
     <script src="js/business-membership-manager.js?v=0.83.103"></script>
     <script src="js/hr-page.js?v=0.83.103"></script>
     <script src="js/staff-substitution.js?v=0.83.103"></script>
-    <script src="js/hr-today-print.js?v=0.83.103"></script>
     <script src="js/alerts.js?v=0.83.103"></script>
 </body>
 </html>

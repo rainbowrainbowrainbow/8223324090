@@ -117,7 +117,7 @@ test('hidden or absent amounts are never displayed as a zero hryvnia estimate', 
     const { c } = harness();
     Object.assign(c, { schedulePaidRoleRate: () => ({ available: true, rate: null }),
         scheduleSegmentDurationMinutes: () => 60, scheduleFormatMoney: amount => String(amount) });
-    for (const name of ['scheduleTimeToMinutes', 'scheduleSegmentAbsoluteBounds', 'schedulePaidIntervalBounds', 'schedulePaidRolePreview'])
+    for (const name of ['scheduleTimeToMinutes', 'scheduleSegmentAbsoluteBounds', 'schedulePaidIntervalBounds', 'schedulePaidBreakPeriods', 'schedulePaidRolePreview'])
         vm.runInContext(extract(staff, name), c);
     const preview = c.schedulePaidRolePreview('schedule', { professionKey: 'reception' }, { shiftStart: '12:00', shiftEnd: '13:00' });
     assert.match(preview, /Ставка налаштована/);
@@ -197,7 +197,7 @@ test('planned additional pay deducts the same segment break as attendance, inclu
         isScheduleRecoveryReadOnly: () => false, scheduleCanViewPayrollAmounts: () => true,
         schedulePaidRoleRate: () => ({ available: true, rate: 200 }), scheduleFormatMoney: String
     });
-    for (const name of ['scheduleTimeToMinutes', 'scheduleSegmentDurationMinutes', 'scheduleSegmentAbsoluteBounds', 'schedulePaidIntervalBounds', 'schedulePaidRolePreview'])
+    for (const name of ['scheduleTimeToMinutes', 'scheduleSegmentDurationMinutes', 'scheduleSegmentAbsoluteBounds', 'schedulePaidIntervalBounds', 'schedulePaidBreakPeriods', 'schedulePaidRolePreview'])
         vm.runInContext(extract(staff, name), c);
     for (const [shiftStart, shiftEnd] of [['10:00', '18:00'], ['22:00', '06:00']]) {
         const segment = { shiftStart, shiftEnd, breakMinutes: 30 };
@@ -217,11 +217,13 @@ test('live preview reads the edited break instead of retaining the original esti
     const preview = {};
     const values = { start: '10:00', end: '18:00', break: '45', 'paid-profession': 'reception' };
     const card = { querySelector: selector => selector === '[data-paid-role-preview]' ? preview :
-        { value: values[selector.match(/data-segment-field="([^" ]+)/)?.[1]] || '' } };
+        (selector.startsWith('[data-segment-field=') && !selector.includes(' option')
+            ? { value: values[selector.match(/data-segment-field="([^" ]+)/)?.[1]] || '' } : null) };
     const c = vm.createContext({ document: { querySelectorAll: () => [card] },
         schedulePlanScopeConfig: () => ({ listId: 'list' }), normalizeSchedulePlanTime: value => value,
         normalizeProfessionKey: value => value, schedulePaidRolePreview: (scope, role, segment) => { input = segment; return 'plan'; } });
-    vm.runInContext(extract(staff, 'updateSchedulePaidRolePreviews'), c);
+    for (const name of ['scheduleTimeToMinutes', 'scheduleSegmentAbsoluteBounds', 'schedulePaidIntervalBounds', 'updateSchedulePaidRolePreviews'])
+        vm.runInContext(extract(staff, name), c);
     c.updateSchedulePaidRolePreviews('schedule');
     assert.equal(input.breakMinutes, 45);
 });

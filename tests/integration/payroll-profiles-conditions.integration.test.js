@@ -7,6 +7,9 @@ const { loadPayrollConditionContext, resolvePayrollConditions, getPayrollDayCond
 const { recordAttendanceClockIn, recordAttendanceClockOut, buildAttendanceCompensationPlanSnapshot } = require('../../services/hrAttendance');
 const { lockAttendanceWriteTarget } = require('../../services/attendanceWriteLock');
 const { calculateConditionSnapshots } = require('../../services/payrollConditionCalculation');
+const { saveHrShiftDayPlan, loadHrShiftDayPlan } = require('../../services/hrShiftSegments');
+const { checkHrAutoClose } = require('../../services/hr');
+const { authRequest } = require('../helpers');
 const enabled = process.env.RUN_PAYROLL_PROFILES_INTEGRATION === 'true';
 describe('HR PAY dated conditions on disposable PostgreSQL', { skip: !enabled, concurrency: 1 }, () => {
     let db, staffId, profession, extraProfession, profileId;
@@ -20,8 +23,8 @@ describe('HR PAY dated conditions on disposable PostgreSQL', { skip: !enabled, c
         const suffix = `${process.pid}_${Date.now()}`;
         profession = `pay_base_${suffix}`.slice(0, 30); extraProfession = `pay_extra_${suffix}`.slice(0, 30);
         await db.query(`INSERT INTO hr_professions (key,title,department) VALUES ($1,'Synthetic base','QA'),($2,'Synthetic extra','QA')`, [profession, extraProfession]);
-        staffId = Number((await db.query(`INSERT INTO staff (name,department,position,role_type,hourly_rate,rate_unit,is_active)
-            VALUES ('Synthetic HR PAY','qa','Synthetic',$1,100,'hour',true) RETURNING id`, [profession])).rows[0].id);
+        staffId = Number((await db.query(`INSERT INTO staff (name,department,position,role_type,hourly_rate,rate_unit,is_active,secondary_professions)
+            VALUES ('Synthetic HR PAY','qa','Synthetic',$1,100,'hour',true,$2::jsonb) RETURNING id`, [profession, JSON.stringify([extraProfession])])).rows[0].id);
         await db.query(`INSERT INTO staff_role_assignments (staff_id,profession_key,is_primary,status,admission_status,internship_status,created_by,updated_by)
             VALUES ($1,$2,true,'active','approved','none','isolated_hr_pay','isolated_hr_pay'),
             ($1,$3,false,'active','approved','none','isolated_hr_pay','isolated_hr_pay')`, [staffId, profession, extraProfession]);
@@ -35,6 +38,57 @@ describe('HR PAY dated conditions on disposable PostgreSQL', { skip: !enabled, c
     const payload = (overrides = {}) => ({ staffId, professionKey: profession, workDate: date,
         purpose: 'base_replacement', expectedVersion: 0, rate: 120, rateUnit: 'hour',
         reason: 'Synthetic one-day coverage', idempotencyKey: 'conditions-first', ...overrides });
+
+    test('a persisted half rate survives attendance review and pays only after factual departure', async () => {
+        const workDate = '2198-10-10';
+        const exception = await savePayrollDayException(db, payload({ workDate, professionKey: extraProfession, purpose: 'additional',
+            rate: 200, idempotencyKey: 'half-rate-hourly' }), actor);
+        assert.equal(exception.workDate, workDate);
+        const client = await db.connect();
+        try {
+            await client.query('BEGIN');
+            await saveHrShiftDayPlan(client, { staffId, shiftDate: workDate, performedBy: actor.username,
+                payload: { status: 'working', primaryProfessionKey: profession, segments: [
+                    { professionKey: profession, shiftStart: '12:00', shiftEnd: '20:00', breakMinutes: 0,
+                        additionalRoles: [{ professionKey: extraProfession, compensationMode: 'paid_hourly', payMultiplier: 0.5 }] }
+                ] } });
+            await client.query('COMMIT');
+        } finally {
+            await client.query('ROLLBACK').catch(() => {});
+            client.release();
+        }
+        const loaded = await loadHrShiftDayPlan(db, { staffId, shiftDate: workDate });
+        assert.equal(loaded.plan.segments[0].additionalRoles[0].payMultiplier, 0.5);
+        const local = async time => (await db.query(
+            "SELECT (($1::date + $2::time) AT TIME ZONE 'Europe/Kyiv') AS timestamp", [workDate, time]
+        )).rows[0].timestamp;
+        await recordAttendanceClockIn(db, { staffId, recordDate: workDate, now: await local('12:00'), performedBy: actor.username });
+        assert.equal((await checkHrAutoClose({ db, now: await local('20:29') })).closed, 0);
+        assert.equal((await checkHrAutoClose({ db, now: await local('20:30') })).closed, 1);
+        const loadMetrics = async () => (await require('../../services/payroll').loadPayrollAttendanceMetrics(
+            { staffIds: [staffId], from: workDate, to: workDate }, db)).get(staffId);
+        const pending = await loadMetrics();
+        assert.equal(pending.physicalMinutes, 0);
+        assert.ok(pending.payrollBlockingIssues.some(issue => issue.code === 'PAYROLL_ATTENDANCE_OPEN' && issue.reviewRequired));
+        const review = (await db.query(`SELECT id, updated_at::text AS record_version FROM hr_time_records
+            WHERE staff_id = $1 AND record_date = $2::date`, [staffId, workDate])).rows[0];
+        const endpoint = `/api/hr/records/${review.id}/correct`;
+        const correction = { clock_out_time: '20:00', notes: 'Synthetic admin review' };
+        const stale = await authRequest('PUT', endpoint, { ...correction, record_version: 'stale' });
+        assert.equal(stale.status, 409, JSON.stringify(stale.data));
+        assert.equal(stale.data.code, 'ATTENDANCE_REVIEW_STALE');
+        const result = await authRequest('PUT', endpoint, { ...correction, record_version: review.record_version });
+        assert.equal(result.status, 200, JSON.stringify({ error: result.data?.error }));
+        assert.equal(result.data.data.auto_closed, false);
+        assert.equal(result.data.data.clock_out, (await local('20:00')).toISOString());
+        assert.equal((await authRequest('PUT', endpoint, { ...correction, record_version: review.record_version })).status, 409);
+        const metrics = await loadMetrics();
+        const pay = calculateConditionSnapshots(metrics, 1.5);
+        assert.deepEqual(pay.blockingIssues, []);
+        assert.equal(metrics.physicalMinutes, 480);
+        assert.equal(pay.additionalAmount, 800);
+        assert.equal(pay.additionalLines[0].multiplier, 0.5);
+    });
 
     test('append-only journal rejects invalid active rows and unsafe mutation', async () => {
         await assert.rejects(db.query(`INSERT INTO payroll_day_exceptions

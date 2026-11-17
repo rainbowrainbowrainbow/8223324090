@@ -11,15 +11,6 @@ const CSS_APP_SHELL_PRECACHE = [
 const CSS_SURFACE = [
     { file: 'css/telegram-crm-profile.css', owner: 'profile', category: 'page-scoped', status: 'active',
         reason: 'Optional Telegram connection, first-login prompt, accessible confirmation forms.' },
-    { file:'css/attendance-upload.css', owner:'hr', category:'page-scoped', status:'active',
-        reason:'Standalone mobile worker upload shell and confirmed attendance review.' },
-    {
-        file: 'css/hr-attendance-ocr.css',
-        owner: 'hr',
-        category: 'page-scoped',
-        status: 'active',
-        reason: 'Confirmed actual arrival/departure OCR upload and responsive review.'
-    },
     {
         file: 'css/finance-money.css',
         owner: 'finance',
@@ -362,13 +353,6 @@ const CSS_SURFACE = [
         category: 'page-scoped-large',
         status: 'active-large',
         reason: 'HR workspace styles extracted from hr.html; large-file consolidation candidate.'
-    },
-    {
-        file: 'css/hr-today-print.css',
-        owner: 'hr',
-        category: 'page-scoped',
-        status: 'active',
-        reason: 'Read-only Today attendance print dialog and A4 sheet.'
     },
     {
         file: 'css/kleshnya-widget.css',

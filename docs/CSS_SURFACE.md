@@ -21,8 +21,6 @@ this document, and `npm run test:ui` coverage in the same pack.
 
 | File | Owner | Category | Status | Notes |
 | --- | --- | --- | --- | --- |
-| `css/hr-attendance-ocr.css` | hr | `page-scoped` | active | Confirmed actual arrival/departure OCR upload and responsive review. |
-| `css/attendance-upload.css` | hr | `page-scoped` | active | Standalone mobile worker upload shell and confirmed attendance review. |
 | `css/account-access-editor.css` | hr-account-access | `page-scoped` | active | Effective account access side-sheet workspace, responsive layout, sticky save state, and accessibility affordances. |
 | `css/achievements.css` | shop | `page-scoped` | active | Gamification achievements and shop presentation styles. |
 | `css/agents.css` | chat | `page-scoped` | active | Chat assistant and agent panel styles. |
@@ -70,7 +68,6 @@ this document, and `npm run test:ui` coverage in the same pack.
 | `css/graduation.css` | graduation | `page-scoped-large` | active-large | Graduation event builder and embedded view styles. |
 | `css/hermes-studio.css` | hermes-studio | `page-scoped` | active | Hermes Studio creative job queue, brief form, asset review, and decision controls. |
 | `css/hr-page.css` | hr | `page-scoped-large` | active-large | HR workspace styles extracted from `hr.html`; large-file consolidation candidate. |
-| `css/hr-today-print.css` | hr | `page-scoped` | active | Read-only Today attendance print dialog and A4 sheet. |
 | `css/omni-workspace.css` | omnichannel | `page-scoped` | active | Pulse-aligned Omni controls, surfaces, spacing, and responsive states. |
 | `css/kleshnya-widget.css` | kleshnya | `feature-shared` | active | Root shell Kleshnya widget styles. |
 | `css/layout.css` | shared-ui | `shared-large` | active-large | Shared layout, sidebar, and content frame styles. |

@@ -40,6 +40,7 @@ function createPool(testDb) {
 function schedulerOptions(pool, date, time, overrides = {}) {
     return {
         db: pool,
+        now: date + 'T' + time + ':00+03:00',
         getKyivDateStr: () => date,
         getKyivTimeStr: () => time,
         getKyivDate: () => ({
@@ -279,17 +280,17 @@ describe('HR scheduler jobs on isolated PostgreSQL', { skip: !enabled, concurren
         }
     });
 
-    test('checkHrAutoClose records an empty successful daily tick without touching attendance rows', async () => {
+    test('checkHrAutoClose finds no due attendance in an empty window', async () => {
         const date = '2099-08-21';
         const result = await checkHrAutoClose(schedulerOptions(pool, date, '23:55'));
         assert.equal(result.processed, 0);
         assert.equal(result.closed, 0);
         assert.equal(result.errors, 0);
-        assert.equal(result.markerSaved, true);
-        assert.equal(await settingValue(pool, 'auto_close'), date);
+        assert.equal(result.markerSaved, undefined);
+        assert.equal(await settingValue(pool, 'auto_close'), null);
     });
 
-    test('checkHrAutoClose closes eligible records once through the canonical attendance writer', async () => {
+    test('checkHrAutoClose queues eligible records once and preserves the real departure', async () => {
         const date = '2099-08-22';
         const staffId = await createStaff(pool, 'auto-close-success');
         await createShift(pool, staffId, date, '09:00', '18:00');
@@ -313,13 +314,27 @@ describe('HR scheduler jobs on isolated PostgreSQL', { skip: !enabled, concurren
 
         assert.equal(first.closed, 1);
         assert.equal(first.errors, 0);
-        assert.deepEqual(second, { skipped: true, reason: 'memory_dedup', date });
-        assert.equal(stored.rows[0].status, 'auto_closed');
+        assert.deepEqual(second, { processed: 0, closed: 0, errors: 0 });
+        assert.equal(stored.rows[0].status, 'manual_review');
         assert.equal(stored.rows[0].auto_closed, true);
-        assert.equal(stored.rows[0].has_clock_out, true);
-        assert.equal(stored.rows[0].snapshot_type, 'object');
+        assert.equal(stored.rows[0].has_clock_out, false);
+        assert.equal(stored.rows[0].snapshot_type, null);
         assert.equal(await countAudit(pool, 'auto_close', staffId), 1);
-        assert.equal(await countAudit(pool, 'compensation_snapshot_created', staffId), 1);
+        assert.equal(await countAudit(pool, 'compensation_snapshot_created', staffId), 0);
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            await lockAttendanceWriteTarget(client, { staffId, date });
+            const result = await recordAttendanceClockOut(client, {
+                staffId, recordDate: date, actualTime: date + 'T18:45:00+03:00'
+            });
+            assert.equal(result.record.auto_closed, false);
+            assert.ok(result.record.clock_out);
+            await client.query('COMMIT');
+        } finally {
+            await client.query('ROLLBACK').catch(() => {});
+            client.release();
+        }
     });
 
     test('checkHrAutoClose exposes row-lock blocking and overlap skip behavior', async () => {
@@ -338,15 +353,17 @@ describe('HR scheduler jobs on isolated PostgreSQL', { skip: !enabled, concurren
         const releaseWriter = deferred();
         let holderPid = null;
         const firstRun = checkHrAutoClose(schedulerOptions(pool, date, '23:55', {
-            recordAttendanceClockOut: async (client, input) => {
+            lockAttendanceWriteTarget: async (client, input) => {
+                await lockAttendanceWriteTarget(client, input);
                 const pidResult = await client.query('SELECT pg_backend_pid() AS pid');
                 holderPid = Number(pidResult.rows[0].pid);
                 enteredWriter.resolve();
                 await releaseWriter.promise;
-                return recordAttendanceClockOut(client, input);
             }
         }));
-        await enteredWriter.promise;
+        await withDeadline(Promise.race([enteredWriter.promise, firstRun.then(() => {
+            throw new Error('Auto-close completed before acquiring the fixture attendance lock');
+        })]), 'auto-close attendance lock entry');
         const overlap = await checkHrAutoClose(schedulerOptions(pool, date, '23:55'));
         assert.deepEqual(overlap, { skipped: true, reason: 'already_running' });
 
@@ -377,7 +394,70 @@ describe('HR scheduler jobs on isolated PostgreSQL', { skip: !enabled, concurren
         }
     });
 
-    test('checkHrAutoClose does not mark the daily tick successful after service failure', async () => {
+    test('independent scheduler instances recheck candidates after a manual departure', async () => {
+        const modulePath = require.resolve('../../services/hr');
+        const originalModule = require.cache[modulePath];
+        let otherAutoClose;
+        try {
+            delete require.cache[modulePath];
+            otherAutoClose = require(modulePath).checkHrAutoClose;
+        } finally {
+            require.cache[modulePath] = originalModule;
+        }
+
+        const date = '2099-08-25';
+        const confirmed = await createStaff(pool, 'manual-departure-race');
+        const pending = await createStaff(pool, 'scheduler-instances-race');
+        await pool.query(`INSERT INTO hr_time_records
+            (business_context, staff_id, record_date, clock_in, planned_start, planned_end, status)
+            SELECT 'event_genix', staff_id, $2::date, $3::timestamptz, '09:00', '18:00', 'present'
+            FROM unnest($1::int[]) AS candidates(staff_id)`, [[confirmed, pending], date, `${date}T06:00:00Z`]);
+
+        const bothScanned = deferred();
+        const resumeWorkers = deferred();
+        let scans = 0;
+        const candidateDb = {
+            async query(...args) {
+                const result = await pool.query(...args);
+                if (++scans === 2) bothScanned.resolve();
+                await resumeWorkers.promise;
+                return result;
+            },
+            connect: () => pool.connect()
+        };
+        const options = schedulerOptions(candidateDb, date, '23:55');
+        const workers = [checkHrAutoClose(options), otherAutoClose(options)];
+        const finished = Promise.allSettled(workers);
+        try {
+            await withDeadline(bothScanned.promise, 'both auto-close scans');
+            const client = await pool.connect();
+            try {
+                await client.query('BEGIN');
+                await lockAttendanceWriteTarget(client, { staffId: confirmed, date });
+                await recordAttendanceClockOut(client, { staffId: confirmed, recordDate: date,
+                    actualTime: `${date}T18:40:00+03:00` });
+                await client.query('COMMIT');
+            } finally {
+                await client.query('ROLLBACK').catch(() => {});
+                client.release();
+            }
+        } finally {
+            resumeWorkers.resolve();
+            await finished;
+        }
+        const [first, second] = await Promise.all(workers);
+        assert.equal(first.processed, 2);
+        assert.equal(second.processed, 2);
+        assert.equal(first.closed + second.closed, 1);
+        assert.equal(await countAudit(pool, 'auto_close', confirmed), 0);
+        assert.equal(await countAudit(pool, 'auto_close', pending), 1);
+        const rows = (await pool.query('SELECT staff_id, auto_closed, clock_out FROM hr_time_records WHERE staff_id = ANY($1::int[])',
+            [[confirmed, pending]])).rows;
+        assert.equal(rows.find(row => row.staff_id === confirmed).clock_out.toISOString(), `${date}T15:40:00.000Z`);
+        assert.equal(rows.find(row => row.staff_id === pending).clock_out, null);
+    });
+
+    test('checkHrAutoClose retries a failed review transaction without a partial record', async () => {
         const date = '2099-08-24';
         const staffId = await createStaff(pool, 'auto-close-failure');
         await createShift(pool, staffId, date);
@@ -392,7 +472,7 @@ describe('HR scheduler jobs on isolated PostgreSQL', { skip: !enabled, concurren
         let thrown;
         await assert.rejects(async () => {
             await checkHrAutoClose(schedulerOptions(pool, date, '23:55', {
-                recordAttendanceClockOut: async () => {
+                lockAttendanceWriteTarget: async () => {
                     throw new Error('planned auto-close writer failure');
                 }
             }));
@@ -408,11 +488,39 @@ describe('HR scheduler jobs on isolated PostgreSQL', { skip: !enabled, concurren
         );
 
         assert.equal(thrown.result.errors, 1);
-        assert.equal(thrown.result.markerSaved, false);
+        assert.equal(thrown.result.closed, 0);
         assert.notEqual(await settingValue(pool, 'auto_close'), date);
         assert.equal(stored.rows[0].clock_out, null);
         assert.equal(stored.rows[0].auto_closed, false);
         assert.equal(await countAudit(pool, 'auto_close', staffId), 0);
+    });
+
+    test('review deadline crosses Kyiv midnight and catches up only one previous day', async () => {
+        const night = await createStaff(pool, 'overnight-review');
+        const noPlan = await createStaff(pool, 'no-plan-review');
+        const tooOld = await createStaff(pool, 'outside-review-window');
+        await pool.query(`INSERT INTO hr_time_records
+            (business_context, staff_id, record_date, clock_in, planned_start, planned_end, status)
+            VALUES ('event_genix', $1, '2099-10-24', '2099-10-24T19:00:00Z', '22:00', '05:00', 'present'),
+                   ('event_genix', $2, '2099-10-24', '2099-10-24T19:00:00Z', NULL, NULL, 'unscheduled'),
+                   ('event_genix', $3, '2099-10-23', '2099-10-23T19:00:00Z', NULL, NULL, 'unscheduled')`,
+        [night, noPlan, tooOld]);
+        const kyivInstant = async time => (await pool.query(
+            "SELECT (('2099-10-25'::date + $1::time) AT TIME ZONE 'Europe/Kyiv') AS instant", [time]
+        )).rows[0].instant;
+        assert.equal((await checkHrAutoClose({ db: pool, now: await kyivInstant('05:29') })).closed, 1);
+        assert.equal((await checkHrAutoClose({ db: pool, now: await kyivInstant('05:30') })).closed, 1);
+        const rows = (await pool.query('SELECT staff_id, auto_closed, clock_out FROM hr_time_records WHERE staff_id = ANY($1::int[])',
+            [[night, noPlan, tooOld]])).rows;
+        assert.equal(rows.find(row => row.staff_id === tooOld).auto_closed, false);
+        for (const id of [night, noPlan]) {
+            assert.equal(rows.find(row => row.staff_id === id).auto_closed, true);
+            assert.equal(rows.find(row => row.staff_id === id).clock_out, null);
+        }
+        const audit = (await pool.query("SELECT staff_id, details FROM hr_audit_log WHERE action = 'auto_close' AND staff_id = ANY($1::int[])",
+            [[night, noPlan]])).rows;
+        assert.equal(audit.find(row => row.staff_id === night).details.estimated_end_local, '2099-10-25 05:00:00');
+        assert.equal(audit.find(row => row.staff_id === noPlan).details.estimated_end_local, null);
     });
 
     test('checkHrNoShow records an empty successful daily tick without creating terminal rows', async () => {

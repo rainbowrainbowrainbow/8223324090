@@ -136,7 +136,7 @@ function summarizeHrTodayItems(items = []) {
         if (record) {
             const status = String(record.status || '').trim();
             const facts = attendanceFactMinutes(record);
-            if (isAttendanceRecordOpen(record)) summary.present += 1;
+            if (!record.auto_closed && isAttendanceRecordOpen(record)) summary.present += 1;
             else if (status === 'vacation') summary.on_vacation += 1;
             else if (status === 'sick') summary.sick += 1;
             if (facts.lateMinutes > 0) summary.late += 1;
@@ -425,7 +425,7 @@ async function buildAttendanceCompensationPlanSnapshot(db, input = {}) {
         const terms = resolvePayrollConditions(context, staffId, professionKey, recordDate, 'additional');
         if (terms.rateUnit === 'month' && terms.assignmentId && assignments.length) permanentMonthly.push(professionKey);
     }
-    function capture(segment, segmentIndex, professionKey, additional) {
+    function capture(segment, segmentIndex, professionKey, additional, role) {
         const terms = resolvePayrollConditions(context, staffId, professionKey, recordDate, additional ? 'additional' : 'base_replacement');
         if (additional && professionKey !== staff?.role_type) {
             try { assertAdditionalAdmission(context, staffId, professionKey); }
@@ -437,10 +437,16 @@ async function buildAttendanceCompensationPlanSnapshot(db, input = {}) {
         }
         if (!(terms.rate > 0)) issues.push(attendanceCompensationIssue('ATTENDANCE_COMPENSATION_RATE_REQUIRED',
             'Не вдалося зафіксувати чинну ставку професії', { professionKey }, 'manual_review'));
+        const payMultiplier = role?.payMultiplier ?? 1;
+        if (payMultiplier !== 1 && (payMultiplier !== 0.5 || terms.rateUnit !== 'hour')) {
+            issues.push(attendanceCompensationIssue('ATTENDANCE_COMPENSATION_SHARE_INVALID',
+                'Частка ставки не відповідає умовам оплачуваної ролі', { professionKey }, 'manual_review'));
+        }
         compensationAllocations.push({ ...baseCompensationAllocation(segment, 0, segmentIndex),
             allocationType: additional ? 'simultaneous_additional' : 'base', professionKey,
             compensationMode: additional ? 'paid_profile' : 'base', rate: terms.rate, rateUnit: terms.rateUnit,
-            rateSource: terms.rateSource, policyVersion: terms.ruleVersion, conditions: terms });
+            rateSource: terms.rateSource, policyVersion: terms.ruleVersion, conditions: terms,
+            ...(role ? { payMultiplier, rolePolicyVersion: role.policyVersion } : {}) });
     }
     for (const [segmentIndex, segment] of segments.entries()) {
         if (segment.workMode === 'freelance') continue;
@@ -451,7 +457,8 @@ async function buildAttendanceCompensationPlanSnapshot(db, input = {}) {
                 additional.add(role.professionKey);
                 if (!context.policies.some(policy => policy.policy_version === role.policyVersion
                     && policy.status === 'active' && dateOnly(policy.effective_from) <= recordDate
-                    && Number(policy.pay_multiplier) === Number(role.payMultiplier))) {
+                    && (Number(policy.pay_multiplier) === Number(role.payMultiplier)
+                        || (Number(policy.pay_multiplier) === 1 && role.payMultiplier === 0.5)))) {
                     issues.push(attendanceCompensationIssue('ATTENDANCE_COMPENSATION_POLICY_REQUIRED',
                         'Не вдалося підтвердити політику оплачуваної ролі', { professionKey: role.professionKey }, 'manual_review'));
                 }
@@ -462,7 +469,11 @@ async function buildAttendanceCompensationPlanSnapshot(db, input = {}) {
             if (exception.professionKey === segment.professionKey
                 || (segment.additionalRoles || []).some(role => role.professionKey === exception.professionKey)) additional.add(exception.professionKey);
         }
-        for (const professionKey of additional) capture(segment, segmentIndex, professionKey, true);
+        for (const professionKey of additional) {
+            const role = segment.additionalRoles?.find(item => item.professionKey === professionKey
+                && item.compensationMode === 'paid_hourly');
+            capture(segment, segmentIndex, professionKey, true, role);
+        }
     }
     return { schemaVersion: 2, state: issues.length ? 'manual_review' : 'planned', legacyBaseOnly: false,
         staffId, recordDate, capturedAt, finalizedAt: null, correctedAt: null, planSource: plan.source, plan,
@@ -1332,7 +1343,7 @@ function attendanceTimelineBoundaries(plannedStart, plannedEnd) {
 function attendanceStatusFromFacts(record = {}, facts = {}) {
     if (facts.lateMinutes > 0) return 'late';
     if (facts.earlyLeaveMinutes > 0) return 'early_leave';
-    if (['late', 'early_leave', 'present', 'unscheduled', 'clocked_in'].includes(record.status)) {
+    if (record.auto_closed || ['late', 'early_leave', 'present', 'unscheduled', 'clocked_in'].includes(record.status)) {
         return 'present';
     }
     return normalizedClosedStatus(record.status);
@@ -1798,7 +1809,7 @@ async function recordAttendanceClockOut(db, input = {}) {
 
     const writeResult = await db.query(
         `UPDATE hr_time_records SET
-            clock_out = $1, total_worked_minutes = $2, late_minutes = $3,
+            clock_out = $1, total_worked_minutes = $2, late_minutes = $3, auto_closed = FALSE,
             early_leave_minutes = $4, overtime_minutes = $5, status = $6,
             compensation_snapshot = $7::jsonb, updated_at = NOW()
          WHERE id = $8 RETURNING *`,

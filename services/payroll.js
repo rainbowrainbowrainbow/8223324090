@@ -1513,6 +1513,13 @@ async function loadPayrollAttendanceMetrics(options = {}, db = pool) {
             bucket.businessContexts.push(businessContext);
         }
         const attendanceRef = row.attendance_ref || row.id || null;
+        if (row.auto_closed && row.clock_in && !row.clock_out) {
+            bucket.payrollBlockingIssues.push(payrollIssue(
+                'PAYROLL_ATTENDANCE_OPEN', 'Автоматично завершена зміна потребує підтвердження фактичного часу',
+                { date, attendanceRef, reviewRequired: true }, 'error'
+            ));
+            continue;
+        }
         const timezoneIssue = attendanceTimezoneTransitionIssue(row);
         if (timezoneIssue) bucket.payrollBlockingIssues.push(payrollIssue(
             timezoneIssue.code, timezoneIssue.message,

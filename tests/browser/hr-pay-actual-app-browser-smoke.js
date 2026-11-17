@@ -132,12 +132,14 @@ async function run() {
         await card().locator('[data-segment-field="start"]').fill('10:00');
         await card().locator('[data-segment-field="end"]').fill('18:00');
         await card().locator('[data-segment-field="break"]').fill('30');
+        await page.locator('#schPlanExtra > summary').click();
         await page.locator('#schNote').fill('Keep this shift draft');
         assert.match(await panel().innerText(),/450 хв[\s\S]*750 грн/);
-        const hrRead=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/hr/staff/'+staffId);
-        await card().locator('[data-schedule-pay-conditions]').first().click();
-        await page.waitForURL(/\/hr\?/);
-        const hrResponse=await hrRead;
+        const [hrResponse] = await Promise.all([
+            page.waitForResponse(response=>new URL(response.url()).pathname==='/api/hr/staff/'+staffId),
+            page.waitForURL(/\/hr\?/),
+            card().locator('[data-schedule-pay-conditions]').click()
+        ]);
         const hrResult=await hrResponse.json();
         assert.equal(hrResponse.status(),200,JSON.stringify(hrResult));
         await page.locator('#staffEditModal').waitFor({state:'visible'});
@@ -176,6 +178,7 @@ async function run() {
         await card().locator('[data-segment-field="end"]').fill('');
         assert.doesNotMatch(await panel().locator('[data-day-pay-preview]').innerText(),/≈/);
         await card().locator('[data-segment-field="end"]').fill('18:00');
+        await card().locator('.sch-paid-role-editor > summary').click();
         await card().locator('[data-segment-field="paid-profession"]').selectOption('reception');
         await page.waitForFunction(()=>document.querySelector('[data-pay-purpose="additional"] .sch-day-pay-current')?.textContent.includes('500'));
         assert.match(await card().locator('[data-day-pay-panel][data-pay-purpose="additional"]').innerText(),/один раз за професію/);
@@ -329,6 +332,7 @@ async function run() {
         await page.locator('[data-day-pay-slot]').first().waitFor();
         assert.deepEqual(salaryReads,[]);assert.match(await page.locator('[data-day-pay-slot]').first().innerText(),/Немає доступу/);
         assert.equal(await page.locator('[data-day-pay-field]').count(),0);
+        await page.locator('#schPlanExtra > summary').click();
         await page.locator('#schNote').fill('Restricted salary view can edit schedule notes');
         const restrictedSave=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/staff/schedule'&&response.request().method()==='PUT');
         await page.locator('#schSaveBtn').click();

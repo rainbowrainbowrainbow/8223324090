@@ -1425,7 +1425,6 @@ describe('staff schedule safety guards', () => {
         assert.match(staffRoute, /'Мийка біла та чорна': \{ dept: 'cafe', role: 'dishwasher' \}/);
         assert.match(staffRoute, /'Охорона': \{ dept: 'security', role: 'security' \}/);
         assert.doesNotMatch(staffRoute, /'Охорона': \{[^}]*role: 'maintenance'/);
-        assert.match(hrPage, /id: 'security', label: 'Охорона', professionKeys: \['security'\]/);
         assert.doesNotMatch(hrPage, /id: 'security'[^\r\n]*maintenance/);
         const hrSecurityCategory = PRINT_CATEGORY_DEFINITIONS.find(category => category.id === 'security');
         const hrTechnicalCategory = PRINT_CATEGORY_DEFINITIONS.find(category => category.id === 'tech_director');
@@ -2037,7 +2036,7 @@ describe('staff schedule safety guards', () => {
 
     it('renders explicit cell history UI and fetches it from the staff API', () => {
         assert.match(staffScheduleShell, /id="schHistoryList"/);
-        assert.match(staffScheduleShell, /Історія клітинки/);
+        assert.match(staffScheduleShell, /Історія змін/);
         assert.match(staffPage, /function renderScheduleHistoryList/);
         assert.match(staffPage, /fetchScheduleHistory/);
         assert.match(staffPage, /\/api\/staff\/schedule\/history\/\$\{encodeURIComponent\(staffId\)\}/);
@@ -2399,7 +2398,7 @@ describe('staff schedule safety guards', () => {
         assert.match(staffScheduleShell, /<label class="staff-schedule-date-field">[\s\S]*?id="scheduleDateTo"[\s\S]*?<\/label>/);
         assert.match(staffScheduleShell, /id="scheduleStaffSearch"[^>]*aria-label=/);
         assert.match(staffScheduleShell, /id="schModalOverlay"[^>]*role="dialog"[^>]*aria-modal="true"[^>]*aria-labelledby="schModalTitle"/);
-        assert.match(staffScheduleShell, /class="sch-history-panel"[^>]*role="region"[^>]*aria-labelledby="schHistoryTitle"/);
+        assert.match(staffScheduleShell, /<details class="sch-history-panel">\s*<summary id="schHistoryTitle">/);
         assert.match(staffScheduleShell, /id="schHistoryList"[^>]*aria-live="polite"[^>]*aria-busy="false"/);
         assert.equal(
             (staffScheduleShell.match(/<caption class="staff-schedule-table-caption">/g) || []).length,

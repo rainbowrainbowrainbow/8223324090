@@ -337,36 +337,13 @@ test('HR static and rendered button tags declare an explicit type', () => {
     assert.equal(/createElement\(['"]button['"]\)/.test(withoutTypedButtons), false, 'new dynamic button elements must set .type = "button"');
 });
 
-test('HR print modal uses page button components without leaking its open-state class', () => {
+test('retired HR attendance paper controls and scripts are absent', () => {
     const document = new JSDOM(HR_HTML_SOURCE).window.document;
-    const expectClass = (id, className) => {
-        const element = document.getElementById(id);
-        assert.ok(element, `${id} exists`);
-        assert.equal(element.classList.contains(className), true, `${id} uses ${className}`);
-    };
-
-    expectClass('btnHrPrintDocuments', 'hr-print-documents-trigger');
-    assert.equal(document.getElementById('btnHrPrintDocuments').classList.contains('hr-print-documents-open'), false);
-    expectClass('hrPrintPreviewButton', 'btn-page-primary');
-    expectClass('hrPrintDownloadButton', 'btn-page-secondary');
-    expectClass('hrPrintPrintButton', 'btn-page-secondary');
-    expectClass('hrPrintOpenButton', 'btn-page-secondary');
-    for (const id of ['hrPrintSelectAll', 'hrPrintAutomationRefresh', 'hrPrintResetPreset']) {
-        expectClass(id, 'btn-page-toolbar');
+    for (const id of ['btnHrPrintDocuments', 'hrPrintDocumentsModal', 'btnHrTodayPrint', 'attendanceOcrPanel']) {
+        assert.equal(document.getElementById(id), null, id);
     }
-
-    const picker = document.querySelector('.hr-print-template-picker');
-    assert.equal(picker.querySelectorAll('small').length, 0, 'template cards omit secondary descriptions');
-    assert.ok(document.getElementById('hrPrintDetailsTitle'), 'PDF signature fields remain available');
-    assert.equal(document.getElementById('hrPrintProfessionSearch').getAttribute('aria-label'), 'Пошук категорій');
-    assert.match(HR_PAGE_CSS, /body\.hr-print-documents-open\s*\{\s*overflow:\s*hidden;/);
-    assert.match(HR_PAGE_CSS, /\.hr-print-documents-trigger\s*\{[^}]*white-space:\s*nowrap;/);
-    assert.doesNotMatch(HR_PAGE_CSS, /(?:^|,)\s*\.hr-print-documents-open\s*\{/m);
-
-    assert.match(HR_JS, /class="btn-page-primary" data-hr-print-operation="(?:run-automation|preview-job)"/);
-    assert.match(HR_JS, /class="btn-page-toolbar" data-hr-print-operation="(?:edit-automation|requeue-job)"/);
-    assert.match(HR_JS, /id: 'pastry_shop'[\s\S]*label: 'Кондитерський цех'[\s\S]*pastry_chef[\s\S]*confectioner[\s\S]*pastry_assistant/);
-    assert.match(HR_JS, /id: 'pizzaiolo'[\s\S]*label: 'Кухар піци'[\s\S]*pizzaiolo/);
+    assert.doesNotMatch(HR_HTML_SOURCE, /js\/(?:hr-today-print|hr-attendance-ocr|attendance-upload-links)\.js/);
+    assert.doesNotMatch(HR_JS, /initHrPrintDocuments/);
 });
 
 test('HR Today metrics expose people lists and count only open shifts as on shift', () => {

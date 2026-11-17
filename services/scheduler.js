@@ -8,7 +8,6 @@
  */
 const { pool } = require('../db');
 const { runAttendanceReviewTasks } = require('./attendanceReviewTasks');
-const { checkHrAttendancePrintAutomations } = require('./hrAttendanceDocumentAutomation');
 const { sendTelegramMessage, getConfiguredChatId, telegramRequest, scheduleAutoDelete } = require('./telegram');
 const { ensureDefaultLines, getKyivDate, getKyivDateStr, getKyivTimeStr, timeToMinutes, minutesToTime } = require('./booking');
 const { sendBackupToTelegram } = require('./backup');
@@ -2439,7 +2438,6 @@ module.exports = {
     checkCleaningTasks,
     checkGraduationOpsAutomation,
     checkAttendanceReviewTasks,
-    checkHrAttendancePrintAutomations,
     checkBirthdayTagSync,
     DIGEST_SEND_MESSAGES,
     classifyDigestSendFailure,

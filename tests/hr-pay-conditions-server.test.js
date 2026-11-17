@@ -49,6 +49,23 @@ function day(allocations, workDate = date) {
     return { date: workDate, attendanceRef: 1, worked: true, paidPlannedFactor: 1,
         snapshot: { schemaVersion: 2, state: 'final', compensationAllocations: allocations } };
 }
+
+test('hourly additional role applies its frozen share once without reducing physical work', () => {
+    const extra = (minutes, payMultiplier) => allocation('animator', 'hour', 200, minutes,
+        { allocationType: 'simultaneous_additional', payMultiplier });
+    const base = allocation('reception', 'hour', 100, 480);
+    const run = (...rows) => calculateConditionSnapshots({ conditionDays: [day([base, ...rows])] }, 1.5);
+    for (const [minutes, share, amount] of [[480, 1, 1600], [240, 1, 800], [480, 0.5, 800], [240, 0.5, 400]]) {
+        const result = run(extra(minutes, share));
+        assert.equal(result.baseAmount, 800);
+        assert.equal(result.additionalAmount, amount);
+        assert.equal(result.additionalLines[0].minutes, minutes);
+        assert.equal(result.additionalLines[0].multiplier, share);
+        assert.deepEqual(result.blockingIssues, []);
+    }
+    assert.equal(run(extra(240, undefined), extra(240, 0.5)).additionalAmount, 1200);
+    assert.equal(run(extra(240, 0.75)).blockingIssues[0].code, 'PAYROLL_CONDITION_SHARE_INVALID');
+});
 test('hourly base and daily additional role preserve physical time and pay the daily rate once across blocks', () => {
     const additional = { allocationType: 'simultaneous_additional' };
     const result = calculateConditionSnapshots({ conditionDays: [day([

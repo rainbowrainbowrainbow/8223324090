@@ -54,6 +54,7 @@ function extractDivMarkup(source, id) {
 const HR_HTML = readRepo('hr.html');
 const TODAY_MARKUP = extractDivMarkup(HR_HTML, 'tab-today');
 const CONTEXT_MARKUP = extractDivMarkup(HR_HTML, 'contextMenu');
+const CORRECTION_MARKUP = extractDivMarkup(HR_HTML, 'correctionModal');
 const HR_ATTENDANCE_STATE_CODE = readRepo('js', 'hr-attendance-state.js');
 const HR_CODE = readRepo('js', 'hr-page.js');
 const UI_CODE = readRepo('js', 'ui.js');
@@ -119,12 +120,13 @@ async function installHarness(page, { recovery = false, todayOnly = false, parkW
     });
     await page.addScriptTag({ content: HR_ATTENDANCE_STATE_CODE });
     await page.addScriptTag({ content: HR_CODE });
-    await page.evaluate(async ({ markup, contextMarkup, recovery, todayOnly, parkWritable, persistedRows }) => {
+    await page.evaluate(async ({ markup, contextMarkup, correctionMarkup, recovery, todayOnly, parkWritable, persistedRows }) => {
         document.addEventListener = window.__originalAddEventListener;
         document.body.innerHTML = [
             '<nav id="hrNav"><button type="button" class="hr-tab active" data-tab="today">Сьогодні</button></nav>',
             markup,
-            contextMarkup
+            contextMarkup,
+            correctionMarkup
         ].join('');
 
         const openItems = [
@@ -142,7 +144,8 @@ async function installHarness(page, { recovery = false, todayOnly = false, parkW
                 position: 'Barista',
                 role_type: 'barista',
                 department: 'cafe',
-                record: { status: 'late', clock_in: '2026-07-16T06:12:00.000Z', clock_out: '2026-07-16T15:00:00.000Z', late_minutes: 12, planned_start: '09:00', planned_end: '18:00', total_worked_minutes: 468 }
+                record: { status: 'late', clock_in: '2026-07-16T06:12:00.000Z', clock_out: '2026-07-16T15:00:00.000Z', late_minutes: 12, planned_start: '09:00', planned_end: '18:00', total_worked_minutes: 510,
+                    actualMinutes: 498, allocation_source: 'clock_interval', segment_allocations: [{ overlapMinutes: 528, actualMinutes: 498 }] }
             },
             {
                 staff_id: 13,
@@ -175,7 +178,7 @@ async function installHarness(page, { recovery = false, todayOnly = false, parkW
                 position: 'Manager',
                 role_type: 'manager',
                 department: 'admin',
-                record: { status: 'early_leave', clock_in: '2026-07-16T06:00:00.000Z', clock_out: '2026-07-16T13:00:00.000Z', early_leave_minutes: 120, total_worked_minutes: 420 }
+                record: { status: 'early_leave', clock_in: '2026-07-16T06:00:00.000Z', clock_out: '2026-07-16T13:00:00.000Z', early_leave_minutes: 120, total_worked_minutes: 420, actualMinutes: 420, allocation_source: 'proportional_fallback' }
             },
             {
                 staff_id: 17,
@@ -187,6 +190,7 @@ async function installHarness(page, { recovery = false, todayOnly = false, parkW
             }
         ];
         let mode = 'open';
+        let reviewed = false;
         let denied = false;
         const requests = [];
         window.canAccess = action => action === 'hr.today.view' || (!todayOnly && ['hr.staff.view', 'hr.staff.manage', 'hr.schedule.view'].includes(action));
@@ -220,6 +224,20 @@ async function installHarness(page, { recovery = false, todayOnly = false, parkW
         window.hrFetch = async (requestPath, options = {}) => {
             const method = String(options.method || 'GET').toUpperCase();
             requests.push({ path: String(requestPath), method });
+            if (requestPath === '/records/17/correct') {
+                const body = JSON.parse(options.body);
+                requests.at(-1).body = body;
+                reviewed = body.record_version === 'review-v1' && body.clock_out_time === '18:42' && body.notes === 'Підтверджено адміністратором';
+                return { success: reviewed };
+            }
+            if (requestPath.startsWith('/today?review_date=')) {
+                const date = new URLSearchParams(requestPath.split('?')[1]).get('review_date');
+                const record = { id: 17, clock_in: `${date}T07:00:00.000Z`, planned_start: '10:00', planned_end: '18:00', record_version: 'review-v1' };
+                const rows = [{ ...openItems[0], staff_id: 17, staff_name: 'Synthetic Review',
+                    record: reviewed ? { ...record, status: 'present', clock_out: `${date}T15:42:00.000Z` }
+                        : { ...record, status: 'manual_review', auto_closed: true, clock_out: null } }];
+                return { success: true, date, data: rows, summary: summarizeTodayItems(rows), displayGroups };
+            }
             if (requestPath !== '/today') return { success: true, data: [] };
             if (denied) return { success: false, status: 403, code: 'staff_not_migrated' };
             const rows = currentItems();
@@ -236,6 +254,7 @@ async function installHarness(page, { recovery = false, todayOnly = false, parkW
         todayActiveMetric = null;
         await loadToday();
         initContextMenu();
+        initModals();
         initHrRealtime();
 
         window.__hrTodayBrowserSmoke = {
@@ -284,7 +303,7 @@ async function installHarness(page, { recovery = false, todayOnly = false, parkW
                 return requests.filter(request => request.method !== 'GET').length;
             }
         };
-    }, { markup: TODAY_MARKUP, contextMarkup: CONTEXT_MARKUP, recovery, todayOnly, parkWritable, persistedRows });
+    }, { markup: TODAY_MARKUP, contextMarkup: CONTEXT_MARKUP, correctionMarkup: CORRECTION_MARKUP, recovery, todayOnly, parkWritable, persistedRows });
 }
 
 async function metricPeople(page, metric) {
@@ -520,7 +539,7 @@ async function assertRecoveryReadOnly(page) {
     assert.equal(await page.locator('#todayList .hr-clock-btn:disabled').count(), 7, 'all attendance states are read-only');
     assert.equal(await page.locator('#todayList [onclick*="handleClock"], #todayList [oncontextmenu]').count(), 0, 'no write or context handlers');
     assert.equal(await page.locator('.hr-today-row-actions a, .hr-today-row-actions button').count(), 0, 'Today-only role has no unavailable links');
-    assert.equal(await page.locator('#btnHrPrintDocuments').isHidden(), true, 'unavailable HR print action is hidden');
+    assert.equal(await page.locator('#btnHrPrintDocuments').count(), 0, 'retired HR print action is absent');
     assert.match(await page.locator('#todayList [data-staff-id="11"]').textContent(), /На роботі/);
     assert.match(await page.locator('#todayList [data-staff-id="13"]').textContent(), /Прихід не зафіксовано/);
     assert.doesNotMatch(await page.locator('#todayList').textContent(), /Відмітити прихід|Не з'явився — відмітити/);
@@ -529,7 +548,6 @@ async function assertRecoveryReadOnly(page) {
         showContext({ preventDefault() {} }, 11);
         openCorrectionModal(11);
         await saveCorrection();
-        await openHrPrintDocuments();
         await openTodayStaffSchedule(11);
         document.querySelector('.hr-context-item').click();
         await window.__hrTodayBrowserSmoke.refresh();
@@ -657,7 +675,7 @@ async function assertAttendanceTransitions(page) {
     assert.equal(await list.locator('.hr-today-schedule-group').last().evaluate(node => getComputedStyle(node).borderTopWidth), '1px');
 
     const chooseArrival = scheduled.getByRole('button', { name: /Обрати час приходу/ });
-    const timeDialog = page.getByRole('dialog', { name: 'Відмітити прихід' });
+    const timeDialog = page.getByRole('dialog', { name: 'Почати зміну' });
     await chooseArrival.click();
     await timeDialog.waitFor();
     const desktopPanel = await timeDialog.boundingBox();
@@ -689,19 +707,19 @@ async function assertAttendanceTransitions(page) {
     await page.evaluate(() => attendanceFixture.setFailMutation(false));
     await timeDialog.getByRole('button', { name: 'Зберегти' }).dblclick();
     await timeDialog.waitFor({ state: 'hidden' });
-    await scheduled.getByRole('button', { name: 'Вихід зараз' }).waitFor();
-    assert.match(await scheduled.textContent(), /Факт: 09:12/);
+    await scheduled.getByRole('button', { name: 'Завершити зміну' }).waitFor();
+    assert.match(await scheduled.textContent(), /Початок зміни: 09:12/);
     assert.equal(await page.evaluate(() => attendanceFixture.writeBodies[1].time), '09:12');
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.evaluate(() => attendanceFixture.setFailRefresh(true));
     await primary(unscheduled).dblclick();
-    await unscheduled.getByRole('button', { name: 'Вихід зараз' }).waitFor();
+    await unscheduled.getByRole('button', { name: 'Завершити зміну' }).waitFor();
     assert.deepEqual(await writes(), ['/clock-in', '/clock-in', '/clock-in']);
     assert.equal(await page.evaluate(() => attendanceFixture.writeBodies[2].time), undefined);
     assert.equal(await page.locator('#todayOnShiftMetric').textContent(), '2');
     await page.evaluate(() => attendanceFixture.setFailRefresh(false));
     await refresh();
-    assert.match(await primary(unscheduled).textContent(), /Вихід зараз/);
+    assert.match(await primary(unscheduled).textContent(), /Завершити зміну/);
 
     fs.mkdirSync(OUTPUT_DIR, { recursive: true });
     await list.screenshot({ path: path.join(OUTPUT_DIR, 'attendance-groups-desktop.png') });
@@ -720,21 +738,21 @@ async function assertAttendanceTransitions(page) {
     assert.equal(await cancel.evaluate(button => document.activeElement === button), true);
     await cancel.click();
     await dialog.getByRole('button', { name: 'Скасувати прихід' }).click();
-    await unscheduled.getByRole('button', { name: 'Прихід зараз' }).waitFor();
+    await unscheduled.getByRole('button', { name: 'Почати зміну' }).waitFor();
     assert.equal(await page.locator('#todayOnShiftMetric').textContent(), '1');
     await refresh();
-    assert.match(await primary(unscheduled).textContent(), /Прихід зараз/);
+    assert.match(await primary(unscheduled).textContent(), /Почати зміну/);
     assert.equal(await primary(unscheduled).evaluate(button => document.activeElement === button), true);
     await page.evaluate(() => attendanceFixture.setFailMutation(true));
     await primary(unscheduled).click();
     await page.waitForFunction(() => attendanceFixture.notices.some(notice => notice.type === 'error'));
-    assert.match(await primary(unscheduled).textContent(), /Прихід зараз/);
+    assert.match(await primary(unscheduled).textContent(), /Почати зміну/);
     await page.evaluate(() => attendanceFixture.setFailMutation(false));
     await primary(unscheduled).click();
-    await unscheduled.getByRole('button', { name: 'Вихід зараз' }).waitFor();
+    await unscheduled.getByRole('button', { name: 'Завершити зміну' }).waitFor();
     await primary(unscheduled).click();
     await page.getByRole('dialog', { name: /Завершити зміну/ }).getByRole('button', { name: 'Завершити' }).click();
-    await unscheduled.getByRole('button', { name: /Відпрацював/ }).waitFor();
+    await unscheduled.getByRole('button', { name: /Зміну завершено/ }).waitFor();
     assert.equal(await primary(unscheduled).isDisabled(), true);
     await scheduled.getByRole('button', { name: /Обрати час виходу/ }).click();
     const exitDialog = page.getByRole('dialog', { name: 'Завершити зміну' });
@@ -767,8 +785,8 @@ async function assertAttendanceTransitions(page) {
     assert.equal(await list.getByText('Немає активних співробітників').isVisible(), true);
     await page.reload();
     await installHarness(page, { persistedRows });
-    assert.match(await primary(scheduled).textContent(), /Відпрацював/);
-    assert.match(await primary(unscheduled).textContent(), /Відпрацював/);
+    assert.match(await primary(scheduled).textContent(), /Зміну завершено/);
+    assert.match(await primary(unscheduled).textContent(), /Зміну завершено/);
 }
 
 async function run() {
@@ -785,6 +803,22 @@ async function run() {
         assert.equal(await page.locator('#todayLateMetric').textContent(), '1');
         assert.equal(await page.locator('#todayAbsentMetric').textContent(), '1');
         assert.equal(await page.locator('#todayLeaveMetric').textContent(), '2');
+        const completedShift = await page.locator('#todayList [data-staff-id="12"]').innerText();
+        assert.match(completedShift, /Відпрацьовано: 8 год 18 хв/);
+        assert.match(completedShift, /Врахована перерва: 30 хв · час не зафіксовано/);
+        assert.match(completedShift, /Зараховано до оплати: 8 год 30 хв/);
+        const reviewFilter = page.getByRole('checkbox', { name: 'Показати записи для звірки' });
+        await reviewFilter.focus();
+        await reviewFilter.press('Space');
+        assert.equal(await reviewFilter.isChecked(), true);
+        assert.match(await page.locator('#todayList [data-staff-id="11"]').innerText(), /Зміна відкрита/);
+        assert.match(await page.locator('#todayList [data-staff-id="17"]').innerText(), /Автоматичне завершення/);
+        const estimated = await page.locator('#todayList [data-staff-id="16"]').innerText();
+        assert.match(estimated, /Потрібно уточнити тривалість/);
+        assert.doesNotMatch(estimated, /Відпрацьовано:/);
+        assert.equal(await page.locator('#todayList [data-staff-id="13"]').count(), 0);
+        await reviewFilter.press('Space');
+        assert.equal(await page.locator('#todayList [data-staff-id="13"]').count(), 1);
         await assertMetricLists(page);
         await assertKeyboardAndFocus(page);
         await assertCurrentFilters(page);
@@ -804,6 +838,29 @@ async function run() {
         page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
         page.setDefaultTimeout(15000);
         await assertAttendanceTransitions(page);
+        await page.close();
+        page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+        page.setDefaultTimeout(15000);
+        await installHarness(page);
+        await page.evaluate(() => {
+            const canAccess = window.canAccess;
+            window.canAccess = action => action === 'hr.schedule.manage' || canAccess(action);
+            window.showNotification = () => {};
+        });
+        await page.getByLabel('Показати записи для звірки').check();
+        await page.getByLabel('Дата звірки').fill('2026-07-15');
+        const row = page.locator('#todayList [data-staff-id="17"]');
+        await row.getByRole('button', { name: 'Звірити зміну' }).click();
+        assert.equal(await row.locator('.hr-clock-btn').count(), 0);
+        const review = page.getByRole('dialog', { name: /Звірити зміну/ });
+        await review.getByLabel('Завершення зміни').fill('18:42');
+        await review.getByLabel('Причина зміни').fill('Підтверджено адміністратором');
+        await page.screenshot({ path: path.join(OUTPUT_DIR, 'historical-review-mobile.png'), fullPage: true });
+        await review.getByRole('button', { name: 'Зберегти' }).click();
+        await review.waitFor({ state: 'hidden' });
+        assert.deepEqual(await page.evaluate(() => window.__hrTodayBrowserSmoke.requests().find(call => call.method === 'PUT')?.body),
+            { notes: 'Підтверджено адміністратором', record_version: 'review-v1', clock_out_time: '18:42' });
+        await row.waitFor({ state: 'hidden' });
         console.log('HR Today metrics browser smoke passed');
     } catch (err) {
         fs.mkdirSync(OUTPUT_DIR, { recursive: true });

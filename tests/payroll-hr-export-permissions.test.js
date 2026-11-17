@@ -98,8 +98,6 @@ test('payroll and HR export routes place export_data guards before service, data
     assert.match(payrollRoutes, /router\.get\('\/export', requireAction\('view_payroll'\), requireAction\('export_data'\), async \(req, res\) => \{[\s\S]*?await getSalaryReport\(/);
     assert.match(payrollRoutes, /router\.get\('\/export-xlsx', requireAction\('view_payroll'\), requireAction\('export_data'\), async \(req, res\) => \{[\s\S]*?await getSalaryReport\([\s\S]*?new ExcelJS\.Workbook\(\)/);
     assert.match(hrRoutes, /router\.get\('\/report\/export', requireAction\('export_data'\), async \(req, res\) => \{[\s\S]*?await pool\.query\(/);
-    assert.match(hrRoutes, /router\.post\('\/attendance-documents\/pdf', requireAction\('hr\.reports\.export'\), requireAction\('export_data'\), async \(req, res\) => \{[\s\S]*?await buildHrAttendanceDocumentSnapshot\(/);
-    assert.match(hrRoutes, /router\.get\('\/attendance-document-jobs\/:id\/pdf', requireAction\('export_data'\), async \(req, res\) => \{[\s\S]*?await getHrAttendanceDocumentJobPdf\(/);
 });
 
 test('permission registry and frontend keep payroll and HR export controls fail-closed', () => {
@@ -114,7 +112,6 @@ test('permission registry and frontend keep payroll and HR export controls fail-
     assert.match(reportsPage, /function canExportCanonicalPayroll\(\)[\s\S]*?canAccess\('view_payroll'\)[\s\S]*?canAccess\('export_data'\)/);
     assert.match(hrPage, /function canExportHrReports\(\)[\s\S]*?canUseAction\('export_data'\)/);
     assert.match(hrPage, /function canExportHrReports\(\)[\s\S]*?canUseHrCapability\('hr\.reports\.export'\)/);
-    assert.match(hrPage, /async function generateHrPrintPreview\(\) \{[\s\S]*?if \(!canExportHrReports\(\)\) \{/);
 });
 
 test('staff schedule XLSX export requires schedule view and export_data before workbook work', () => {

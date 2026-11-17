@@ -128,7 +128,7 @@ async function install(page, { membership = true, pending = false } = {}) {
         document.addEventListener = (name, listener, options) => name === 'DOMContentLoaded' ? undefined : listen(name, listener, options);
         window.__restoreDocumentListener = () => { document.addEventListener = listen; };
     });
-    for (const script of ['js/api.js', 'js/ui.js', 'js/hr-pulse-switcher.js', 'js/hr-attendance-state.js', 'js/hr-page.js', 'js/hr-today-print.js']) {
+    for (const script of ['js/api.js', 'js/ui.js', 'js/hr-pulse-switcher.js', 'js/hr-attendance-state.js', 'js/hr-page.js']) {
         await page.addScriptTag({ content: read(script) });
     }
     await page.evaluate(({ membership, pending }) => {
@@ -216,14 +216,7 @@ async function runMembership(browser, width) {
         await page.waitForFunction(() => document.getElementById('staffEditModal').dataset.cardState === 'ready');
         assert.equal(await page.locator('#editStaffName').inputValue(), 'Synthetic Alpha');
         await page.evaluate(() => closeHrEditableModal('staffEditModal', true));
-        await page.locator('#btnHrTodayPrint').click();
-        await page.waitForFunction(() => document.getElementById('hrTodayPrintStatus').dataset.state === 'ready');
-        await page.waitForFunction(() => !document.getElementById('hrTodayPrintGo').disabled);
-        assert.match(await page.frameLocator('#hrTodayPrintFrame').locator('body').textContent(), /Synthetic Alpha/);
-        assert.equal(await page.frameLocator('#hrTodayPrintFrame').locator('.empty-row').count(), 5);
-        assert.doesNotMatch(await page.frameLocator('#hrTodayPrintFrame').locator('body').textContent(), /грн|зарплата/i);
-        await screenshot(page, state, `membership-print-${width}`);
-        await page.locator('#hrTodayPrintClose').click();
+        assert.equal(await page.locator('#btnHrTodayPrint').count(), 0);
         assert.equal(state.calls.filter(call => ['/api/staff/link-status', '/api/hr/role-assignments/report'].includes(call.path)).length, 0);
         assert.deepEqual(state.unexpected, []);
         assert.deepEqual(state.errors, []);

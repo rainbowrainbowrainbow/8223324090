@@ -40,7 +40,7 @@ These jobs are wrapped with `guardScheduler` and are tracked in
 | `checkReplyAutoEscalations` | `checkReplyAutoEscalations` | `services/scheduler.js` | tasks | `60000` | `hourly` |
 | `checkWorkDayTriggers` | `checkWorkDayTriggers` | `services/scheduler.js` | staff | `60000` | `daily` |
 | `checkMonthlyPointsReset` | `checkMonthlyPointsReset` | `services/scheduler.js` | gamification | `60000` | `daily` |
-| `checkHrAutoClose` | `checkHrAutoClose` | `services/hr.js` | hr | `60000` | `daily` |
+| `checkHrAutoClose` | `checkHrAutoClose` | `services/hr.js` | hr | `60000` | none |
 | `checkHrNoShow` | `checkHrNoShow` | `services/hr.js` | hr | `60000` | `daily` |
 | `checkStreakUpdates` | `checkStreakUpdates` | `services/scheduler.js` | gamification | `60000` | `daily` |
 | `checkBirthdayGreetings` | `checkBirthdayGreetings` | `services/scheduler.js` | customers | `60000` | `daily` |
@@ -70,7 +70,6 @@ These jobs are wrapped with `guardScheduler` and are tracked in
 | `checkCleaningTasks` | `checkCleaningTasks` | `services/scheduler.js` | tasks | `60000` | `5min` |
 | `checkGraduationOpsAutomation` | `checkGraduationOpsAutomation` | `services/scheduler.js` | graduation | `60000` | `hourly` |
 | `checkAttendanceReviewTasks` | `checkAttendanceReviewTasks` | `services/scheduler.js` | hr | `60000` | none |
-| `checkHrAttendancePrintAutomations` | `checkHrAttendancePrintAutomations` | `services/scheduler.js` | hr | `60000` | none |
 | `checkTrainingPrompts` | `checkTrainingPrompts` | `server.js:inline` | training | `60000` | `daily` |
 | `checkTrainingSummary` | `checkTrainingSummary` | `server.js:inline` | training | `60000` | `daily` |
 | `checkGuardianReports` | `checkGuardianReports` | `server.js:inline` | guardian | `60000` | `daily` |
@@ -109,19 +108,6 @@ Cleanup fails closed and is strictly driven by the exact server-issued ID
 manifest in `trusted_qa_run_entities`; client-supplied `disposableQa` or
 `skipNotification` fields are not treated as authorization. Direct coverage
 lives in `tests/trusted-qa-runs.test.js`.
-
-`checkHrAttendancePrintAutomations` runs every minute without guard-level dedup.
-Its durable deduplication is owned by `hr_attendance_document_jobs`: the unique
-key combines automation, Kyiv local date, document type, and selection hash.
-Automation rows are locked with `FOR UPDATE`, PDF build work is claimed with
-`FOR UPDATE SKIP LOCKED` and a lease, and expired artifacts are removed by TTL.
-This allows two Railway replicas to evaluate the same minute without creating
-two documents. The current target is `queue_only`; physical printer delivery is
-intentionally outside this scheduler.
-The database guarantee is exercised by
-`tests/integration/hr-attendance-document-automation-concurrency.integration.test.js`,
-which starts two independent PostgreSQL pools and proves that concurrent
-scheduled/manual enqueue attempts converge on one idempotency key and one job.
 
 `checkAttendanceReviewTasks` performs an immediate startup catch-up and then
 runs every minute. Before 08:30 Europe/Kyiv it returns without scheduler

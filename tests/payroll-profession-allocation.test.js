@@ -1997,7 +1997,7 @@ test('payroll routes use the shared allocation service and export installment ro
     assert.match(financePage, /blocker\.code/);
     assert.match(financePage, /row\.payrollBlockingIssues/);
     assert.match(financePage, /role="alert"/);
-    assert.match(staffPage, /Hybrid, percent та manual payroll залишаються заблокованими/);
+    assert.match(staffPage, /Окрема доплата недоступна для змішаної, відсоткової та ручної схем оплати/);
 });
 
 test('freelance draft audit helper is explicit, aggregate-only, and read-only', () => {

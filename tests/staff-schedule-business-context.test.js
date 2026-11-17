@@ -279,7 +279,7 @@ test('hidden configured rate permits schedule editing without exposing the rate 
     assert.equal(validation.valid, true, validation.errors.join('; '));
     assert.equal(validation.errorCodes.includes('HR_SHIFT_PAID_ROLE_RATE_REQUIRED'), false);
     assert.equal(api.schedulePaidRolePreview('schedule', segments[0].additionalRoles[0], segments[0]),
-        'Ставка налаштована · План: 120 хв після перерви 0 хв · multiplier 1.0. Нарахування — за фактичними оплачуваними хвилинами табеля.');
+        'Ставка налаштована · План: 120 хв після перерви 0 хв · 100% ставки. Нарахування — за фактичними оплачуваними хвилинами табеля.');
     assert.equal(JSON.stringify(api.state.professions).includes('explicitRate'), false);
 });
 

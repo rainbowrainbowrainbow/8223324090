@@ -2734,6 +2734,9 @@ async function runScheduleHistoryIsolationFlow(browser, base) {
         await page.locator('[data-schedule-staff-row="101"][data-schedule-department="reception"] .sch-cell[data-date="2026-07-11"]').click();
         await delayedA.started.promise;
         await page.locator('#schModalOverlay.visible').waitFor({ state: 'visible' });
+        await page.locator('#schHistoryTitle').focus();
+        await page.keyboard.press('Enter');
+        await page.locator('#schHistoryList .sch-history-empty').waitFor({ state: 'visible' });
         assert.equal(await page.locator('#schHistoryList').getAttribute('aria-busy'), 'true', 'history A exposes its loading state');
         assert.match(await page.locator('#schHistoryList').innerText(), /Завантажую історію/, 'history A shows a loading message');
 
@@ -2960,7 +2963,10 @@ async function runScheduleKeyboardAccessibilityFlow(browser, base) {
         assert.equal(await page.getByLabel('Початок', { exact: true }).count(), 1, 'shift start has a programmatic label');
         assert.equal(await page.getByLabel('Завершення', { exact: true }).count(), 1, 'shift end has a programmatic label');
         assert.equal(await page.getByLabel('Примітка дня', { exact: true }).count(), 1, 'day note control has a programmatic label');
-        assert.equal(await page.getByRole('region', { name: 'Історія клітинки', exact: true }).count(), 1, 'history panel has a labelled region');
+        const historySummary = dialog.locator('details > summary', { hasText: 'Історія змін' });
+        assert.equal(await historySummary.count(), 1, 'history has a named disclosure');
+        await historySummary.press('Enter');
+        assert.equal(await historySummary.evaluate(summary => summary.parentElement.open), true, 'keyboard opens the history disclosure');
 
         await page.evaluate(() => {
             const selector = [
@@ -3766,14 +3772,16 @@ async function runPaidAdditionalProfessionFlow(browser, base) {
         assert.equal(await duplicateReceptionRole.isChecked(), false, 'conversion removes a duplicate unpaid copy of the paid profession');
         assert.match(
             await cards.nth(1).locator('[data-paid-role-preview]').innerText(),
-            /180 грн\/год[\s\S]*510 хв[\s\S]*multiplier 1\.0[\s\S]*1.?530 грн/,
-            'payroll-authorized user sees rate, minutes, multiplier and estimated amount'
+            /180 грн\/год[\s\S]*510 хв[\s\S]*100% ставки[\s\S]*1.?530 грн/,
+            'payroll-authorized user sees rate, minutes, share and estimated amount'
         );
         await cards.nth(1).locator('[data-segment-field="break"]').fill('30');
         assert.match(await cards.nth(1).locator('[data-paid-role-preview]').innerText(),
             /План: 480 хв[\s\S]*перерви 30 хв[\s\S]*1.?440 грн/,
             'editing a break immediately reduces the planned additional pay');
         await cards.nth(1).locator('[data-segment-field="break"]').fill('0');
+        await cards.nth(1).locator('[data-segment-field="paid-multiplier"]').selectOption('0.5');
+        assert.match(await cards.nth(1).locator('[data-paid-role-preview]').innerText(), /510 хв[\s\S]*50% ставки[\s\S]*765 грн/);
         assert.equal(await page.locator('#schSaveBtn').isDisabled(), false, 'normalized paid-role plan is saveable');
         await captureStableScheduleScreenshot(
             page,
@@ -3795,7 +3803,7 @@ async function runPaidAdditionalProfessionFlow(browser, base) {
         assert.deepEqual(savedBody.segments[1].additionalRoles, [{
             professionKey: 'reception',
             compensationMode: 'paid_hourly',
-            payMultiplier: 1,
+            payMultiplier: 0.5,
             policyVersion: null
         }]);
         assert.deepEqual(
@@ -3808,6 +3816,7 @@ async function runPaidAdditionalProfessionFlow(browser, base) {
         await waitForDayColumns(page, 9);
         await openTargetPlan();
         assert.equal(await cards.count(), 2, 'reload keeps normalized physical segments');
+        assert.equal(await cards.nth(1).locator('[data-segment-field="paid-multiplier"]').inputValue(), '0.5', 'reload keeps the chosen rate share');
         assert.equal(
             await cards.nth(1).locator('[data-segment-field="paid-profession"]').inputValue(),
             'reception',
@@ -4247,6 +4256,7 @@ async function runMobileFlow(browser, base, viewport = { width: 390, height: 844
         assert.match(await page.locator('#schPlanSummary').innerText(), /10 год/, `${label} summary adds segment duration instead of envelope duplication`);
         const simultaneousRole = page.locator('#schSegmentsList .sch-segment-card').first().locator('[data-segment-field="additional-unpaid"]:not([disabled])').first();
         assert.ok(await simultaneousRole.count(), `${label} exposes simultaneous roles from the HR card`);
+        await page.locator('#schSegmentsList .sch-segment-card').first().locator('.sch-unpaid-roles > summary').click();
         await simultaneousRole.check();
         assert.match(await page.locator('#schPlanSummary').innerText(), /10 год/, `${label} simultaneous role does not add paid time`);
         await page.locator('#schSegmentsList .sch-segment-card').nth(1).locator('[data-segment-field="start"]').fill('15:00');
@@ -4408,9 +4418,16 @@ async function runDayPayPickerFlow(browser, base) {
         assert.equal(writes.length,2);assert.equal(writes[0].idempotencyKey,writes[1].idempotencyKey);
         assert.equal(writes[1].selectedProfileId,11);assert.equal(writes[1].selectedProfileVersionId,12);
         assert.equal(writes[1].workDate,'2026-07-16');assert.match(await panel.innerText(),/450 хв[\s\S]*1.?875 грн/);
+        await card.locator('.sch-paid-role-editor > summary').click();
         await card.locator('[data-segment-field="paid-profession"]').selectOption('reception');
         assert.equal(await card.locator('[data-segment-field="paid-start"]').inputValue(),'10:00');
         assert.equal(await card.locator('[data-segment-field="paid-end"]').inputValue(),'18:00');
+        await card.locator('[data-paid-period="second"]').click();
+        assert.equal(await card.locator('[data-segment-field="paid-start"]').inputValue(), '14:00');
+        await card.locator('[data-segment-field="paid-break-period"]').selectOption('before');
+        await card.locator('[data-segment-field="paid-multiplier"]').selectOption('0.5');
+        assert.equal(await card.locator('[data-segment-field="paid-start"]').inputValue(), '14:15');
+        assert.match(await card.locator('[data-paid-role-preview]').innerText(), /225 хв.*50% ставки/);
         await panel.locator('[data-day-pay-field="choice"]').selectOption('custom');
         await panel.locator('[data-day-pay-field="rate"]').fill('280');await panel.locator('[data-day-pay-field="reason"]').fill('Unsaved');
         await page.locator('#schCancelBtn').click();
@@ -4419,7 +4436,16 @@ async function runDayPayPickerFlow(browser, base) {
         assert.equal(await panel.locator('[data-day-pay-field="rate"]').inputValue(),'280');
         await page.setViewportSize({width:390,height:844});
         await captureStableScheduleScreenshot(page,'day-pay-picker-mobile.png','#schModalOverlay .sch-modal');
+        await card.locator('[data-segment-field="paid-multiplier"]').scrollIntoViewIfNeeded();
+        await captureStableScheduleScreenshot(page,'paid-role-share-mobile.png','#schModalOverlay .sch-modal');
         assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+        await page.setViewportSize({ width: 640, height: 450 });
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false,
+            'the editor reflows at the CSS viewport of a 1280 × 900 window at 200% zoom');
+        assert.equal(await page.locator('#schSaveBtn').evaluate(button => {
+            const bounds = button.getBoundingClientRect();
+            return bounds.top >= 0 && bounds.bottom <= innerHeight;
+        }), true);
         await panel.locator('[data-day-pay-cancel]').click();
         await page.locator('#schCancelBtn').click();if(await confirm.isVisible())await confirm.locator('.confirm-ok').click();
     } catch(error) { console.error('Synthetic picker state',JSON.stringify({writes,panels:await page.locator('[data-day-pay-panel]').allTextContents()}));throw error;
@@ -4446,9 +4472,11 @@ async function runPayConditionsDraftFlow(browser, base) {
         await card().locator('[data-segment-field="start"]').fill('10:15');
         await card().locator('[data-segment-field="end"]').fill('18:30');
         await card().locator('[data-segment-field="break"]').fill('30');
+        await card().locator('.sch-paid-role-editor > summary').click();
         await card().locator('[data-segment-field="paid-profession"]').selectOption('reception');
         await card().locator('[data-segment-field="paid-start"]').fill('12:00');
         await card().locator('[data-segment-field="paid-end"]').fill('17:00');
+        await page.locator('#schPlanExtra > summary').click();
         await page.locator('#schNote').fill('Draft kept through HR');
         await card().locator('[data-segment-field="start"]').fill('');
         await card().locator('[data-schedule-pay-conditions]').click();

@@ -47,10 +47,10 @@ function createPoolFixture(state) {
             if (state.failDatabase) throw new Error(PRIVATE);
             let rows;
             if (normalized.startsWith('SELECT id, name, department, position, color, role_type,')) {
-                assert.deepEqual(params, [TODAY]);
-                rows = staff;
+                assert.deepEqual(params, state.reviewDate ? [state.reviewDate, 'event_genix', 'arrival_cancelled'] : [TODAY]);
+                rows = state.reviewDate ? staff.filter(person => records.some(record => record.staff_id === person.id)) : staff;
             } else if (normalized === 'SELECT * FROM hr_shifts WHERE shift_date = $1') {
-                assert.deepEqual(params, [TODAY]);
+                assert.deepEqual(params, [state.reviewDate || TODAY]);
                 if (state.failSchedule) throw new Error(PRIVATE);
                 rows = shifts;
             } else if (normalized.startsWith('SELECT to_jsonb(hs) AS shift_row,')) {
@@ -62,8 +62,9 @@ function createPoolFixture(state) {
                         compensationMode: 'paid_hourly', payMultiplier: 0.5, policyVersion: 'fixture-v1' }]
                 }));
             } else if (normalized.startsWith('SELECT tr.*, (tr.clock_in IS NOT NULL')) {
-                assert.deepEqual(params, [TODAY, 'arrival_cancelled']);
-                rows = records;
+                assert.deepEqual(params, state.reviewDate ? [state.reviewDate, 'arrival_cancelled', 'event_genix'] : [TODAY, 'arrival_cancelled']);
+                rows = state.reviewDate ? records.map(record => ({ ...record, record_version: 'test-version',
+                    ...(record.id === 9402 ? { auto_closed: true, status: 'manual_review' } : {}) })) : records;
             } else if (normalized === "SELECT value FROM settings WHERE key = 'hr_company_structure'") {
                 rows = [{ value: { nodes: [] } }];
             } else if (normalized.startsWith('SELECT key, structure_node_id FROM hr_professions')) {
@@ -162,6 +163,21 @@ async function withActualHrRouter(run) {
 
 test('Park Today recovery through the actual Express HR router', async t => {
     await withActualHrRouter(async ({ state, request, calls }) => {
+        await t.test('date review uses the same capability and omits pending records from the active shift count', async () => {
+            state.actor = { allow: ['hr.today.view'] };
+            state.reviewDate = '2026-09-13';
+            try {
+                const result = await request(`/api/hr/today?review_date=${state.reviewDate}`);
+                assert.equal(result.status, 200, result.text);
+                assert.equal(result.body.date, state.reviewDate);
+                assert.equal(result.body.summary.present, 0);
+                assert.equal(result.body.data.find(row => row.staff_id === 9702).record.record_version, 'test-version');
+                assert.equal(result.body.data.some(row => row.staff_id === 9703), false);
+                assert.equal((await request('/api/hr/today?review_date=2026-02-30')).status, 400);
+            } finally {
+                delete state.reviewDate;
+            }
+        });
         await t.test('Today capability alone loads real cards, attendance facts and summary without payroll or contacts', async () => {
             state.actor = { allow: ['hr.today.view'], deny: ['hr.schedule.view', 'hr.staff.view', 'hr.payroll.view'] };
             const result = await request();

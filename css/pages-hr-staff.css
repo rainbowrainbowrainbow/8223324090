@@ -5846,6 +5846,37 @@ body[data-page-group="hr"] .schedule-table td.schedule-day-cell > .schedule-heal
     margin: 0;
 }
 
+.sch-paid-period-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-block-end: 10px;
+}
+
+.sch-paid-period-options > button {
+    min-block-size: 48px;
+}
+
+.sch-modal .sch-plan-disclosure > summary,
+.sch-modal .sch-history-panel > summary {
+    min-block-size: 48px;
+    padding-block: 12px;
+    box-sizing: border-box;
+    cursor: pointer;
+    font-weight: 700;
+}
+
+.sch-modal details > summary:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+}
+
+@media (max-width: 480px) {
+    .sch-modal .sch-paid-role-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
 .sch-paid-role-preview {
     margin-top: 8px;
     color: var(--gray-600);

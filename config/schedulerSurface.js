@@ -11,7 +11,7 @@ const GUARDED_SCHEDULER_JOBS = [
     { name: 'checkReplyAutoEscalations', functionName: 'checkReplyAutoEscalations', sourceFile: 'services/scheduler.js', owner: 'tasks', interval: '60000', dedup: 'hourly', sideEffects: ['database'], tests: ['tests/reply-escalation.test.js'] },
     { name: 'checkWorkDayTriggers', functionName: 'checkWorkDayTriggers', sourceFile: 'services/scheduler.js', owner: 'staff', interval: '60000', dedup: 'daily', sideEffects: ['database'], tests: ['tests/scheduler-static-jobs-behavior.test.js'] },
     { name: 'checkMonthlyPointsReset', functionName: 'checkMonthlyPointsReset', sourceFile: 'services/scheduler.js', owner: 'gamification', interval: '60000', dedup: 'daily', sideEffects: ['database'], tests: ['tests/scheduler-static-jobs-behavior.test.js'] },
-    { name: 'checkHrAutoClose', functionName: 'checkHrAutoClose', sourceFile: 'services/hr.js', owner: 'hr', interval: '60000', dedup: 'daily', sideEffects: ['database'], tests: ['tests/integration/hr-scheduler-jobs.integration.test.js'] },
+    { name: 'checkHrAutoClose', functionName: 'checkHrAutoClose', sourceFile: 'services/hr.js', owner: 'hr', interval: '60000', dedup: null, sideEffects: ['database'], tests: ['tests/integration/hr-scheduler-jobs.integration.test.js'] },
     { name: 'checkHrNoShow', functionName: 'checkHrNoShow', sourceFile: 'services/hr.js', owner: 'hr', interval: '60000', dedup: 'daily', sideEffects: ['database'], tests: ['tests/integration/hr-scheduler-jobs.integration.test.js'] },
     { name: 'checkStreakUpdates', functionName: 'checkStreakUpdates', sourceFile: 'services/scheduler.js', owner: 'gamification', interval: '60000', dedup: 'daily', sideEffects: ['database'], tests: ['tests/scheduler-static-jobs-behavior.test.js'] },
     { name: 'checkBirthdayGreetings', functionName: 'checkBirthdayGreetings', sourceFile: 'services/scheduler.js', owner: 'customers', interval: '60000', dedup: 'daily', sideEffects: ['telegram', 'database'], tests: ['tests/scheduler-static-jobs-behavior.test.js'] },
@@ -41,7 +41,6 @@ const GUARDED_SCHEDULER_JOBS = [
     { name: 'checkCleaningTasks', functionName: 'checkCleaningTasks', sourceFile: 'services/scheduler.js', owner: 'tasks', interval: '60000', dedup: '5min', sideEffects: ['database'], tests: ['tests/scheduler-static-jobs-behavior.test.js'] },
     { name: 'checkGraduationOpsAutomation', functionName: 'checkGraduationOpsAutomation', sourceFile: 'services/scheduler.js', owner: 'graduation', interval: '60000', dedup: 'hourly', sideEffects: ['telegram', 'database'], tests: ['tests/graduation-ops-automation.test.js'] },
     { name: 'checkAttendanceReviewTasks', functionName: 'checkAttendanceReviewTasks', sourceFile: 'services/scheduler.js', owner: 'hr', interval: '60000', dedup: null, sideEffects: ['database', 'tasks'], tests: ['tests/attendance-review-tasks.test.js'] },
-    { name: 'checkHrAttendancePrintAutomations', functionName: 'checkHrAttendancePrintAutomations', sourceFile: 'services/scheduler.js', owner: 'hr', interval: '60000', dedup: null, sideEffects: ['database', 'pdf'], tests: ['tests/hr-attendance-document-automation.test.js'] },
     { name: 'checkTrainingPrompts', functionName: 'checkTrainingPrompts', sourceFile: 'server.js:inline', owner: 'training', interval: '60000', dedup: 'daily', sideEffects: ['telegram', 'database'], tests: ['tests/training.test.js'] },
     { name: 'checkTrainingSummary', functionName: 'checkTrainingSummary', sourceFile: 'server.js:inline', owner: 'training', interval: '60000', dedup: 'daily', sideEffects: ['telegram', 'database'], tests: ['tests/training.test.js'] },
     { name: 'checkGuardianReports', functionName: 'checkGuardianReports', sourceFile: 'server.js:inline', owner: 'guardian', interval: '60000', dedup: 'daily', sideEffects: ['telegram', 'database'], tests: ['tests/guardian-ops.test.js'] },
@@ -61,7 +60,6 @@ const OWNER_MANAGED_SCHEDULER_CLAIMS = Object.freeze({
     recheckActiveOmniConnections: 'session_advisory_lock',
     checkScheduledChatMessages: 'for_update_skip_locked',
     checkAttendanceReviewTasks: 'transaction_advisory_lock_and_source_key',
-    checkHrAttendancePrintAutomations: 'unique_key_and_build_lease',
     processPaymentOutboxJobs: 'for_update_skip_locked_and_lease',
     runTrustedQaCleanupWatchdog: 'for_update_skip_locked'
 });
@@ -82,7 +80,6 @@ const LONG_RUNNING_SCHEDULER_JOBS = new Set([
     'syncAgentActivities',
     'runCheckboxReadinessProbeScheduler',
     'processPaymentOutboxJobs',
-    'checkHrAttendancePrintAutomations',
     'runTrustedQaCleanupWatchdog'
 ]);
 

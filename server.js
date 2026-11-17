@@ -263,13 +263,19 @@ app.use('/api', rateLimiter);
 app.use('/api/landing/demo-request', landingLeadLimiter);
 app.use('/api/leads/landing', landingLeadLimiter);
 
-// Auth middleware: protect all API endpoints except public ones
-app.use('/api', apiAuthBoundary(authenticateToken));
-// Three exact exceptions are registered in config/authBoundary.js. The scoped
-// bearer guard remains mandatory and disabled unless explicitly activated.
-app.use('/api/attendance-upload', (_req, res) => {
+function retiredAttendanceUpload(_req, res) {
     res.set('Cache-Control', 'no-store').status(410).json({ success: false, error: 'Завантаження листів відвідуваності більше недоступне.' });
+}
+
+// Preserve the exact public responses for old links without accepting upload grants.
+app.use('/api', (req, res, next) => {
+    const retired = (req.method === 'GET' && req.path === '/attendance-upload/status')
+        || (req.method === 'POST' && (req.path === '/attendance-upload/photo' || req.path === '/attendance-upload/recover'));
+    return retired ? retiredAttendanceUpload(req, res) : next();
 });
+// Protect remaining API routes, including other retired upload requests.
+app.use('/api', apiAuthBoundary(authenticateToken));
+app.use('/api/attendance-upload', retiredAttendanceUpload);
 const backupRestorePreParserGuard = requireRole('creator', 'director');
 const backupRestorePreParserSettingsGuard = requireAction('manage_settings');
 app.use(

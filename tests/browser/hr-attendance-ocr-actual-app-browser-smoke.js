@@ -27,17 +27,35 @@ async function run() {
     const token = auth.accessToken || auth.token;
     assert.ok(token);
 
+    const headers = { Authorization: 'Bearer ' + token, 'X-Business-Context': 'event_genix' };
     for (const [method, route] of [
         ['GET', '/api/attendance-upload/status'],
         ['POST', '/api/attendance-upload/photo'],
         ['POST', '/api/attendance-upload/recover']
     ]) {
-        const response = await fetch(new URL(route, base), { method });
-        assert.equal(response.status, 410, route);
-        assert.equal(response.headers.get('cache-control'), 'no-store');
+        const guest = await fetch(new URL(route, base), { method });
+        const signedIn = await fetch(new URL(route, base), { method, headers });
+        for (const response of [guest, signedIn]) {
+            assert.equal(response.status, 410, route);
+            assert.equal(response.headers.get('cache-control'), 'no-store');
+        }
+        const payload = await guest.json();
+        assert.equal(payload.success, false);
+        assert.deepEqual(await signedIn.json(), payload);
     }
 
-    const headers = { Authorization: 'Bearer ' + token, 'X-Business-Context': 'event_genix' };
+    for (const [method, route] of [
+        ['HEAD', '/api/attendance-upload/status'],
+        ['GET', '/api/attendance-upload/status/'],
+        ['GET', '/api/attendance-upload/photo'],
+        ['POST', '/api/attendance-upload/recover/extra']
+    ]) {
+        const guest = await fetch(new URL(route, base), { method });
+        assert.equal(guest.status, 401, method + ' ' + route);
+        const signedIn = await fetch(new URL(route, base), { method, headers });
+        assert.equal(signedIn.status, 410, method + ' ' + route);
+    }
+
     const today = await fetch(new URL('/api/hr/today', base), { headers });
     assert.equal(today.status, 200, 'canonical HR attendance remains available');
     for (const [method, route] of [

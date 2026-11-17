@@ -139,6 +139,10 @@ also requires a service restart, preserving the existing queue/vault.
 PostgreSQL CI mode also runs `telegram-crm-fullstack.integration.test.js` through the
 real server and canonical task writer. The opt-in identity PostgreSQL suite exercises
 concurrent linking, revoke/commit ordering and idempotency with fault injection.
+To include the actual Python delivery worker in the isolated Telegram CRM test,
+set `NOTIFICATION_E2E_PYTHON` to the bot's Python interpreter and expose the bot's
+`src` on `PYTHONPATH`. The probe forwards CRM requests to the isolated server and
+substitutes a Telegram transport that records requests without sending them.
 `tests/browser/telegram-crm-profile.spec.js` exercises mobile/keyboard flow and skip.
 `CRM_PILOT_BROWSER_MODULE` can point to an external Playwright installation for the
 actual-app profile test; absence is reported as skipped, never as browser proof.

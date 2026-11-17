@@ -2,6 +2,7 @@
 const assert = require('node:assert/strict');
 const { execFile } = require('node:child_process');
 const { randomUUID, randomInt } = require('node:crypto');
+const { join } = require('node:path');
 const { promisify } = require('node:util');
 const { before, after, test } = require('node:test');
 const { Pool } = require('pg');
@@ -189,7 +190,7 @@ check('CRM task writes persist a distinct assignment on A to B to A, retry and c
 });
 
 test('confirmed arbitrary recipient receives a CRM assignment through the actual Python worker, with restart after CRM acknowledgement loss', {
-    skip: !enabled || !process.env.NOTIFICATION_E2E_PYTHON || !process.env.NOTIFICATION_E2E_PROBE
+    skip: !enabled || !process.env.NOTIFICATION_E2E_PYTHON
 }, async () => {
     const newTelegram = String(randomInt(940000000000, 950000000000));
     const title = 'Disposable notification lifecycle';
@@ -212,7 +213,7 @@ test('confirmed arbitrary recipient receives a CRM assignment through the actual
     assert.ok([200, 201].includes(task.status), JSON.stringify(task.data));
     const id = task.data.task.id;
     const { stdout } = await promisify(execFile)(process.env.NOTIFICATION_E2E_PYTHON, [
-        process.env.NOTIFICATION_E2E_PROBE, BASE_URL, String(peer.id), newTelegram, String(id)
+        join(__dirname, '../fixtures/telegram-crm-notification-probe.py'), BASE_URL, String(peer.id), newTelegram, String(id)
     ]);
     assert.deepEqual(JSON.parse(stdout.trim()), {
         sent: 1, messageId: 50001, restarted: true, morningWithTasks: true, emptyMorningSilent: true
@@ -364,7 +365,20 @@ check('trusted update time prevents delayed requests from crossing a new identit
     assert.equal(stale.status,403);
     const draft = await preview('Disposable stale generation task');
     assert.equal(draft.status,201,JSON.stringify(draft.data));
+    const created = await request('POST', '/api/tasks', {
+        title: 'Disposable assigned task before disconnect', ownerUserId: owner.id, businessContext: 'event_genix'
+    }, jwt);
+    assert.ok([200, 201].includes(created.status), JSON.stringify(created.data));
+    const taskId = created.data.task.id;
+    const priority = await pool.query(`UPDATE telegram_crm_assignment_outbox
+        SET available_at='epoch' WHERE task_id=$1 AND status='pending'`, [taskId]);
+    assert.equal(priority.rowCount, 1);
     assert.equal((await request('POST','/api/auth/telegram-crm/disconnect',{password:process.env.TEST_PASS},jwt)).status,200);
+    assert.equal((await notifications('/recipients')).data.recipients.some(row => row.userId === owner.id), false);
+    const next = await notifications('/claim', { leaseId: randomUUID() });
+    assert.deepEqual(next.data, { success: true, event: null, processed: true });
+    const event = (await pool.query('SELECT status, reason FROM telegram_crm_assignment_outbox WHERE task_id=$1', [taskId])).rows[0];
+    assert.deepEqual(event, { status: 'cancelled', reason: 'binding_unavailable' });
     assert.equal((await bot(`/operations/${draft.data.operationId}/confirm`,{confirmed:true})).status,403);
     assert.equal((await bot('/tasks')).status,403);
 });

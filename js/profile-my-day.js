@@ -84,7 +84,7 @@
             if (busy) return;
             busy = true;
             content.setAttribute('aria-busy', 'true');
-            content.querySelectorAll('button').forEach(button => { button.disabled = true; });
+            content.querySelectorAll('button, input, textarea, select').forEach(control => { control.disabled = true; });
             try {
                 await action();
                 dirty = false;
@@ -97,7 +97,7 @@
             finally {
                 busy = false;
                 content.removeAttribute('aria-busy');
-                content.querySelectorAll('button').forEach(button => { button.disabled = false; });
+                content.querySelectorAll('button, input, textarea, select').forEach(control => { control.disabled = false; });
             }
         }
         function render(edit = false) {

@@ -62,8 +62,21 @@ async function verifyTaskEntry({ origin, session, evidence }) {
             let writes = 0;
             const countWrites = request => { if (request.method() === 'PUT' && new URL(request.url()).pathname === `/api/tasks/${id}`) writes++; };
             page.on('request', countWrites);
+            let releaseSave;
+            const pendingSave = new Promise(resolve => { releaseSave = resolve; });
+            const saveUrl = url => url.pathname === `/api/tasks/${id}`;
+            await page.route(saveUrl, async route => {
+                if (route.request().method() !== 'PUT') return route.fallback();
+                await pendingSave;
+                return route.continue();
+            });
             await editor.getByRole('button', { name: 'Зберегти', exact: true }).click();
+            try {
+                assert.equal(await editor.locator('[name=title]').isDisabled(), true, 'pending save cannot silently overwrite typing');
+                assert.equal(await editor.getByRole('button', { name: 'Зберегти', exact: true }).isDisabled(), true);
+            } finally { releaseSave(); }
             await dialog.getByRole('heading', { name: `Task entry saved ${engine}` }).waitFor();
+            await page.unroute(saveUrl);
             assert.equal(writes, 1, 'one save must issue exactly one mutation');
             const saved = await api('/api/tasks/' + id);
             assert.equal((saved.task || saved).description, 'Local navigation fixture');

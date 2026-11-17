@@ -76,6 +76,19 @@
             `${segment.shiftStart}–${segment.shiftEnd}${segment.shiftEnd <= segment.shiftStart ? ' (+1 день)' : ''}`).join(', ') : 'без зміни';
     }
 
+    function breakPlanSummary(quote) {
+        const source = quote.evidence?.source;
+        const allocation = source?.breakAllocation;
+        if (!allocation) return '';
+        const originalBreak = allocation.beforeMinutes + allocation.afterMinutes;
+        const originalPaid = source.originalSegments.reduce((sum, segment) => sum + segment.plannedMinutes, 0);
+        return [
+            `Підтверджена перерва ${allocation.startTime}–${allocation.endTime} · ${allocation.totalMinutes} хв.`,
+            `Замінений працівник: ${originalBreak} хв цієї перерви · ${originalPaid} оплачуваних хв у плані дня.`,
+            `Виконавець за підміну: ${allocation.replacementMinutes} хв перерви · ${quote.input.plannedMinutes} оплачуваних хв.`
+        ].join('\n');
+    }
+
     function payOverrideSummary(quote, previousQuote = null) {
         const edited = quote.input?.payOverrides;
         const previous = previousQuote?.input?.payOverrides;
@@ -195,6 +208,7 @@
                 first.sourceId = source.sourceId;
             }
         }
+        const partialShift = first.sourceType === 'hr_shift' && first.slotKey === 'partial';
         const terms = await formModal('Людина на заміну · умови', [
             ...(first.sourceType === 'booking' ? [{type:'note',text:'Звичайна оплата заміненого працівника зберігається. Заміна основної оплати виконавця потребує завершеного сегмента обліку з тим самим часом, що й бронювання.'}] : []),
             ...(education ? [{ type: 'note', text: 'Оплата за підміну одного заняття нараховується викладачу в Дарі.' }] : []),
@@ -202,7 +216,12 @@
             field('startTime', education ? 'Початок заняття' : 'Початок (для погодинної або заміни основної оплати обов’язково)', source?.startTime || '', 'time', education),
             field('endDate', 'Дата завершення', source?.endDate || first.workDate, 'date'),
             field('endTime', 'Завершення', source?.endTime || '', 'time', education),
-            ...(!education ? [field('breakMinutes', 'Неоплачувана перерва, хв', String(source?.breakMinutes || 0), 'number'),
+            ...(partialShift && (!source || source.breakMinutes > 0) ? [
+                { type: 'note', text: 'Якщо передаєте частину денного сегмента з однією перервою, вкажіть її підтверджений початок. Тривалість CRM візьме з графіка.' },
+                field('breakStartTime', 'Початок підтвердженої перерви', '', 'time', false)
+            ] : []),
+            ...(!education ? [{ ...field('breakMinutes', 'Неоплачувана перерва, хв', String(source?.breakMinutes || 0), 'number'),
+                visibleWhen: values => !values.breakStartTime },
                 field('shiftUnits', 'Кількість змін / погоджена частка зміни', '1', 'text')] : []),
             { ...choice('offset', 'Лише для неоднозначного часу переведення годинника', [['+02:00','UTC+02:00'],['+03:00','UTC+03:00']]), required: false },
             ...(!education ? [choice('payMode', 'Що відбувається зі звичайною оплатою виконавця', [['additional','Підміна оплачується додатково'],['replace_base','Оплата підміни замінює звичайну за цей обсяг']]),
@@ -217,7 +236,10 @@
         const input = { ...first, ...terms, temporaryAdmission: terms.temporaryAdmission === 'true', allowConcurrent: terms.allowConcurrent === 'true',
             startsAt: localTime(first.workDate, terms.startTime, terms.offset), endsAt: localTime(terms.endDate, terms.endTime, terms.offset),
             rateMode: 'standard', originalStaffId: first.originalStaffId || null };
+        if (input.breakStartTime) input.breakMinutes = 0;
         const standard = await request('POST', '/preview', { input });
+        const breakBlocker = standard.blockers.find(item => item.code.startsWith('SUBSTITUTION_SHIFT_BREAK_'));
+        if (breakBlocker) throw new Error(breakBlocker.message);
         const rate = input.sourceType === 'hr_shift' && input.originalStaffId
             ? await editShiftPay(input, standard)
             : await formModal('Людина на заміну · ставка', [
@@ -258,8 +280,10 @@
         const assignmentSummary = first.sourceType === 'booking' && source
             ? `${source.title} · ${first.workDate}\n${first.slotKey === 'second' ? 'Другий аніматор' : 'Основний аніматор'}\n` : '';
         const editedPay = payOverrideSummary(quote);
+        const breakSummary = breakPlanSummary(quote);
         const confirmed = await confirmModal(`${assignmentSummary}Оплата підміни за планом: ${money(quote.estimateMinor)}\n${quote.effects.replacement}\n${quote.effects.original}\n`
-            + quote.warnings.map(warning => warning.message).join('\n') + beforeSchedule + scheduleEffect + originalWorkload + (payImpact ? `\n${payImpact}` : '')
+            + quote.warnings.map(warning => warning.message).join('\n') + beforeSchedule + scheduleEffect
+            + (breakSummary ? `\n${breakSummary}` : '') + originalWorkload + (payImpact ? `\n${payImpact}` : '')
             + (editedPay ? `\n${editedPay}` : '') + '\nНарахування відбудеться після підтвердження фактичної роботи.',
         { okText: 'Погоджую наслідки та зберігаю', cancelText: 'Скасувати' });
         if (!confirmed) return;
@@ -369,9 +393,11 @@
         const details = history.substitution;
         const title = `Підміна #${row.id} · ${labels[details.state]}`;
         const remainder = details.quote.evidence?.source?.remainder;
+        const breakSummary = breakPlanSummary(details.quote);
         const note = `${details.input.workload}\n${substitutionFacts(details, catalog, people)}\nПлан: ${money(details.quote.estimateMinor)}\nФакт: ${details.completion ? money(details.completion.amountMinor) : 'ще не підтверджено'}\n`
             + `${details.quote.effects.replacement}\n${details.quote.effects.original}\n`
             + (remainder ? `Залишок зміни заміненого працівника · ${remainder.date}: ${formatSegments(remainder.plan)}.\n` : '')
+            + (breakSummary ? `${breakSummary}\n` : '')
             + (details.completion?.originalPay ? `Нарахування заміненому за підміну: ${money(details.completion.originalPay.amountMinor)}.\n` : '')
             + history.events.map(event => {
                 const recordedPay = event.after_json?.quote && ['create','revise'].includes(event.action)

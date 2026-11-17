@@ -1153,6 +1153,111 @@ test('default services use the migrated schema for an unrelated permanent occupa
     } finally { await db.end(); }
 });
 
+test('Park allocates one confirmed break across a partial shift and carries it through payroll', { skip: !enabled }, async () => {
+    assert.equal(assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL).isLocal, true);
+    assert.equal(process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER, 'true');
+    const db = new Pool({ connectionString: process.env.TEST_DATABASE_URL, ssl: false });
+    const service = createSubstitutionService({ pool: db });
+    const actor = { id: 1, username: 'substitution_qa_operator', role: 'creator' };
+    const workDate = '2099-02-18';
+    const { loadHrShiftDayPlan } = require('../../services/hrShiftSegments');
+    const { recordAttendanceClockIn, recordAttendanceClockOut } = require('../../services/hrAttendance');
+    try {
+        const [original, replacement] = (await db.query(`INSERT INTO staff
+            (name,role_type,department,position,is_active,hourly_rate,rate_unit,hr_pool_status,is_freelance)
+            VALUES ($1,'reception','admin','Synthetic original',true,150,'hour','core',false),
+                   ($2,'reception','admin','Synthetic replacement',true,100,'hour','core',false) RETURNING id`,
+        [`Original break QA ${randomUUID()}`, `Replacement break QA ${randomUUID()}`])).rows;
+        const shift = (await db.query(`INSERT INTO hr_shifts
+            (staff_id,shift_date,planned_start,planned_end,break_minutes,profession_key)
+            VALUES ($1,$2,'09:00','17:00',30,'reception') RETURNING id`, [original.id, workDate])).rows[0];
+        const input = { sourceType:'hr_shift', sourceId:String(shift.id), slotKey:'partial', workDate,
+            staffId:replacement.id, originalStaffId:original.id, professionKey:'reception',
+            startsAt:`${workDate}T12:00:00+02:00`, endsAt:`${workDate}T14:00:00+02:00`,
+            payUnit:'hour', payMode:'replace_base', originalTreatment:'transfer_unworked_scope',
+            rateMode:'individual', rate:'200', rateReason:'Synthetic rate', workload:'Synthetic shift',
+            reason:'Synthetic confirmed break allocation' };
+        const preview = patch => service.preview('event_genix', actor, { ...input, ...patch });
+        assert.ok((await preview({})).blockers.some(item => item.code === 'SUBSTITUTION_SHIFT_BREAK_START_REQUIRED'));
+        assert.ok((await preview({breakStartTime:'16:45'})).blockers.some(item => item.code === 'SUBSTITUTION_SHIFT_BREAK_OUT_OF_BOUNDS'));
+        await assert.rejects(preview({breakStartTime:'13:45',startsAt:`${workDate}T12:00:30+02:00`,
+            endsAt:`${workDate}T14:00:30+02:00`}), {code:'SUBSTITUTION_TIME_INVALID'});
+        assert.ok((await preview({breakStartTime:'12:00',endsAt:`${workDate}T12:15:00+02:00`}))
+            .blockers.some(item => item.code === 'HR_SHIFT_SEGMENT_BREAK_EXCEEDS_DURATION'));
+        const minutesWithBreak = async breakStartTime => {
+            const quote = await preview({breakStartTime});
+            assert.deepEqual(quote.blockers, []);
+            return quote.input.plannedMinutes;
+        };
+        assert.equal(await minutesWithBreak('10:00'), 120);
+        assert.equal(await minutesWithBreak('12:30'), 90);
+        const agreed = { ...input, breakStartTime:'13:45' };
+        const create = async () => {
+            const quote = await preview(agreed);
+            assert.deepEqual(quote.blockers, []);
+            return service.mutate('event_genix', actor, 'create', { input:agreed,
+                previewFingerprint:quote.fingerprint, effectsAcknowledged:true, requestKey:randomUUID() });
+        };
+        const draft = await create();
+        const planFor = async staffId => (await loadHrShiftDayPlan(db, { staffId, shiftDate:workDate }))?.plan.segments
+            .map(({ shiftStart, shiftEnd, breakMinutes }) => [shiftStart, shiftEnd, breakMinutes]);
+        assert.deepEqual(await planFor(original.id), [['09:00','12:00',0], ['14:00','17:00',15]]);
+        assert.deepEqual(await planFor(replacement.id), [['12:00','14:00',15]]);
+        assert.deepEqual(draft.quote.evidence.source.breakAllocation, { startTime:'13:45', endTime:'14:15',
+            totalMinutes:30, beforeMinutes:0, replacementMinutes:15, afterMinutes:15 });
+        assert.deepEqual([draft.input.breakMinutes, draft.input.plannedMinutes, draft.quote.estimateMinor], [15,105,35000]);
+        await assert.rejects(service.preview('event_genix', actor, {...draft.input,breakStartTime:'13:30',rate:'200'}, draft.id),
+            {code:'SUBSTITUTION_SCOPE_CHANGED'});
+        const revisedInput = {...draft.input, rate:'180', rateReason:'Synthetic rate revision'};
+        const revisedQuote = await service.preview('event_genix', actor, revisedInput, draft.id);
+        assert.deepEqual(revisedQuote.blockers, []);
+        const revision = await service.mutate('event_genix', actor, 'revise', { input:revisedInput,
+            expectedVersion:1, requestKey:randomUUID(), previewFingerprint:revisedQuote.fingerprint,
+            effectsAcknowledged:true }, draft.id);
+        assert.deepEqual([revision.input.breakMinutes, revision.input.plannedMinutes, revision.quote.estimateMinor], [15,105,31500]);
+        await service.mutate('event_genix', actor, 'cancel', { expectedVersion:2, requestKey:randomUUID(),
+            reason:'Synthetic restore' }, draft.id);
+        assert.deepEqual(await planFor(original.id), [['09:00','17:00',30]]);
+        assert.equal(await planFor(replacement.id), undefined);
+
+        const saved = await create();
+        const client = await db.connect();
+        try {
+            await client.query('BEGIN');
+            for (const [staffId, start, end] of [[original.id,'07:00','15:00'], [replacement.id,'10:00','12:00']]) {
+                const attendance = { staffId, recordDate:workDate, performedBy:actor.username };
+                await recordAttendanceClockIn(client, { ...attendance, now:`${workDate}T${start}:00Z` });
+                await recordAttendanceClockOut(client, { ...attendance, now:`${workDate}T${end}:00Z`, settlementMode:'actual_time' });
+            }
+            await client.query('COMMIT');
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
+        }
+        await assert.rejects(service.mutate('event_genix', actor, 'cancel', { expectedVersion:1,
+            requestKey:randomUUID(), reason:'Synthetic late cancellation' }, saved.id), {code:'SUBSTITUTION_WORK_STARTED'});
+        const options = await service.completionOptions('event_genix', saved.id);
+        assert.deepEqual(options.allocations.map(item => item.actualMinutes), [105]);
+        const completed = await service.mutate('event_genix', actor, 'complete', { expectedVersion:1, requestKey:randomUUID(),
+            reason:'Synthetic completion', workConfirmed:true, workEvidence:'Synthetic checked attendance', actualMinutes:105,
+            attendanceId:options.attendanceId, baseAllocationIndices:[options.allocations[0].index] }, saved.id);
+        assert.equal(completed.completion.amountMinor, 35000);
+        const originalAttendance = (await db.query(`SELECT compensation_snapshot FROM hr_time_records
+            WHERE staff_id=$1 AND record_date=$2`, [original.id, workDate])).rows[0];
+        assert.deepEqual(originalAttendance.compensation_snapshot.compensationAllocations
+            .filter(line => line.allocationType === 'base').map(line => line.actualMinutes), [180,165]);
+        const { getPayrollRangePreview } = require('../../services/payroll');
+        const report = staffId => getPayrollRangePreview({ month:'2099-02', from:workDate, to:workDate, staffId }, db);
+        // Ordinary base pay retains the payroll calculator's whole-hryvnia rounding.
+        assert.equal((await report(original.id)).staff[0].netAmount, 863);
+        assert.equal((await report(replacement.id)).staff[0].netAmount, 350);
+    } finally {
+        await db.end();
+    }
+});
+
 test('Park posts completed-substitution corrections once and preserves frozen payroll', { skip: !enabled }, async () => {
     assert.equal(assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL).isLocal, true);
     assert.equal(process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER, 'true');

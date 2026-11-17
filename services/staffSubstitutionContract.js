@@ -109,6 +109,11 @@ function normalizeInput(raw = {}) {
     if (Boolean(startsAt) !== Boolean(endsAt) || (payUnit === 'hour' && !startsAt)) fail('SUBSTITUTION_TIME_REQUIRED', 'Для погодинної оплати потрібен час початку й завершення');
     if (payMode === 'replace_base' && !startsAt) fail('SUBSTITUTION_TIME_REQUIRED', 'Для заміни основної оплати вкажіть точний час роботи, навіть за фіксованої оплати або оплати за зміну');
     const breakMinutes = integer(raw.breakMinutes ?? 0, 'перерва', 0, 1440);
+    const breakStartTime = String(raw.breakStartTime ?? '').trim();
+    if (breakStartTime && (sourceType !== 'hr_shift' || raw.slotKey !== 'partial' || !startsAt
+        || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(breakStartTime))) {
+        fail('SUBSTITUTION_SHIFT_BREAK_START_INVALID', 'Вкажіть початок перерви у форматі ГГ:ХХ для частини зміни.');
+    }
     let plannedMinutes = null;
     if (startsAt) {
         if (kyivParts(startsAt).date !== workDate) fail('SUBSTITUTION_TIME_INVALID', 'Дата роботи не відповідає початку');
@@ -125,6 +130,7 @@ function normalizeInput(raw = {}) {
     return { sourceType, sourceId,
         slotKey: choice(raw.slotKey || 'primary', sourceSlots[sourceType] || ['primary'], 'слот'), workDate, staffId, originalStaffId,
         professionKey, payUnit, payMode, originalTreatment, startsAt, endsAt, breakMinutes, plannedMinutes,
+        ...(breakStartTime && { breakStartTime }),
         shiftUnitsMilli: payUnit === 'shift' ? decimalUnits(raw.shiftUnits, 3, 'кількість змін') : null,
         workload: text(raw.workload, 'обсяг роботи', 1000), reason: text(raw.reason, 'причина'),
         rateMode, rateMinor: rateMode === 'individual' ? decimalUnits(raw.rate, 2, 'ставка') : null,

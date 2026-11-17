@@ -91,13 +91,36 @@ async function lockPartialShift(db, input) {
     }
 }
 
+function allocateShiftBreak(input, target, startMinute, endMinute, targetStart, targetEnd) {
+    const shiftStart = timeToMinutes(target.shiftStart);
+    const shiftEnd = timeToMinutes(target.shiftEnd);
+    const breakStart = timeToMinutes(input.breakStartTime);
+    const breakEnd = breakStart + target.breakMinutes;
+    if (breakStart < shiftStart || breakEnd > shiftEnd) {
+        contract.fail('SUBSTITUTION_SHIFT_BREAK_OUT_OF_BOUNDS', 'Уся підтверджена перерва має бути в межах початкового сегмента.');
+    }
+    if (!localInstant(input.workDate, input.breakStartTime)
+        || (Date.parse(targetEnd) - Date.parse(targetStart)) / 60000 !== shiftEnd - shiftStart) {
+        contract.fail('SUBSTITUTION_SHIFT_CLOCK_CHANGE', 'Часова зміна через переведення годинника потребує окремого обліку.');
+    }
+    const overlap = (from, to) => Math.max(0, Math.min(to, breakEnd) - Math.max(from, breakStart));
+    const endTime = `${String(Math.floor(breakEnd / 60)).padStart(2, '0')}:${String(breakEnd % 60).padStart(2, '0')}`;
+    return {
+        startTime: input.breakStartTime, endTime, totalMinutes: target.breakMinutes,
+        beforeMinutes: overlap(shiftStart, startMinute),
+        replacementMinutes: overlap(startMinute, endMinute),
+        afterMinutes: overlap(endMinute, shiftEnd)
+    };
+}
+
 async function loadPartialShiftScope(db, input, current) {
     if (current) {
         const snapshot = current.source_snapshot;
         const agreed = current.input_json;
-        const scopeFields = ['startsAt', 'endsAt', 'professionKey', 'breakMinutes', 'payMode', 'originalTreatment'];
+        const scopeFields = ['startsAt', 'endsAt', 'professionKey', 'breakStartTime', 'payMode', 'originalTreatment'];
+        if (!snapshot.breakAllocation) scopeFields.push('breakMinutes');
         if (scopeFields.some(field => input[field] !== agreed[field])) {
-            contract.fail('SUBSTITUTION_SCOPE_CHANGED', 'Для іншого часу, ролі або способу передачі скасуйте підміну й створіть нову.', 409);
+            contract.fail('SUBSTITUTION_SCOPE_CHANGED', 'Для іншого часу, перерви, ролі або способу передачі скасуйте підміну й створіть нову.', 409);
         }
         const { replacement } = await assertCurrent(db, agreed, snapshot);
         return { ...snapshot, ownedSegmentId: replacement.plan.segments.find(segment =>
@@ -153,8 +176,17 @@ async function loadPartialShiftScope(db, input, current) {
         block('SUBSTITUTION_SHIFT_OVERNIGHT_SPLIT', 'Оберіть край нічної зміни, щоб у графіку залишився один суцільний проміжок.');
         return scope;
     }
-    if (input.breakMinutes !== (wholeSegment ? target.breakMinutes : 0)
-        || !wholeSegment && target.breakMinutes || wholeSegment && original.plan.segments.length === 1) {
+    const needsBreakAllocation = Boolean(!overnight && !wholeSegment && target.breakMinutes);
+    if (needsBreakAllocation && !input.breakStartTime) {
+        block('SUBSTITUTION_SHIFT_BREAK_START_REQUIRED', 'Для частини зміни підтвердьте початок неоплачуваної перерви.');
+        return scope;
+    }
+    if (input.breakStartTime && !needsBreakAllocation) {
+        block('SUBSTITUTION_SHIFT_BREAK_SCOPE_INVALID', 'Початок перерви можна уточнити для частини денного сегмента з перервою.');
+        return scope;
+    }
+    if (!needsBreakAllocation && (input.breakMinutes !== (wholeSegment ? target.breakMinutes : 0)
+        || !wholeSegment && target.breakMinutes || wholeSegment && original.plan.segments.length === 1)) {
         block('SUBSTITUTION_SHIFT_SCOPE_REQUIRED', 'Повний сегмент переноситься зі своєю перервою. Довільний проміжок можна передати з сегмента без перерви, якщо в початковій зміні лишається робота.');
         return scope;
     }
@@ -168,17 +200,23 @@ async function loadPartialShiftScope(db, input, current) {
         [input.staffId, input.workDate])).rows.length) {
         block('SUBSTITUTION_SHIFT_MERGE_REQUIRED', 'У виконавця є окремий запис графіка. Узгодьте його з денним планом перед підміною.');
     }
-    const transferred = { ...segmentTerms(target), shiftStart: start.time, shiftEnd: end.time, breakMinutes: input.breakMinutes };
-    const remaining = original.plan.segments.flatMap(segment => {
-        if (segment !== target) return [segment];
-        const parts = [];
-        if (segment.shiftStart < start.time) parts.push({ ...segment, shiftEnd: start.time });
-        if (input.endsAt < targetEnd && !movesRemainder) {
-            parts.push({ ...segment, id: parts.length ? null : segment.id, shiftStart: end.time });
-        }
-        return parts;
-    });
     try {
+        const breakAllocation = needsBreakAllocation
+            ? allocateShiftBreak(input, target, startMinute, endMinute, targetStart, targetEnd) : null;
+        const transferred = { ...segmentTerms(target), shiftStart: start.time, shiftEnd: end.time,
+            breakMinutes: breakAllocation?.replacementMinutes ?? input.breakMinutes };
+        const remaining = original.plan.segments.flatMap(segment => {
+            if (segment !== target) return [segment];
+            const parts = [];
+            if (segment.shiftStart < start.time) {
+                parts.push({ ...segment, shiftEnd: start.time, breakMinutes: breakAllocation?.beforeMinutes ?? segment.breakMinutes });
+            }
+            if (input.endsAt < targetEnd && !movesRemainder) {
+                parts.push({ ...segment, id: parts.length ? null : segment.id, shiftStart: end.time,
+                    breakMinutes: breakAllocation?.afterMinutes ?? segment.breakMinutes });
+            }
+            return parts;
+        });
         const originalAfter = withSegments(original.plan, remaining);
         const replacementAfter = withSegments(replacement?.plan || { status: original.plan.status },
             [...(replacement?.plan.segments || []), transferred]);
@@ -189,11 +227,12 @@ async function loadPartialShiftScope(db, input, current) {
         if (input.professionKey === 'animator' && await conflictsWithAnimatorAssignments(db, input.workDate, input.originalStaffId, originalAfter)) {
             block('SUBSTITUTION_ANIMATOR_ASSIGNMENT_OUTSIDE_SHIFT', 'У заміненого аніматора є бронювання або подія Афіші поза новим графіком.');
         }
-        return { ...scope, transferred, originalBefore: original, replacementBefore: replacement, ...(remainder && { remainder }),
+        return { ...scope, transferred, originalBefore: original, replacementBefore: replacement,
+            ...(remainder && { remainder }), ...(breakAllocation && { breakAllocation }),
             originalAfter: planTerms(originalAfter), replacementAfter: planTerms(replacementAfter),
             originalSegments: originalAfter.segments, replacementSegments: replacementAfter.segments };
     } catch (error) {
-        if (error.name !== 'HrShiftPlanError') throw error;
+        if (error.name !== 'HrShiftPlanError' && !String(error.code).startsWith('SUBSTITUTION_SHIFT_')) throw error;
         block(error.code, error.message);
         return scope;
     }

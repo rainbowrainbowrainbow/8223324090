@@ -481,6 +481,7 @@ async function commitTaskAiDraft(input = {}, options = {}) {
         }, {
             pool: client,
             skipNotifications: true,
+            notifyTelegramCrm: true,
             skipHermesOutbox: true,
             afterCommit
         });

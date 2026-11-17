@@ -61,6 +61,10 @@ class FakeKleshnyaPool {
         const compact = String(sql).replace(/\s+/g, ' ').trim();
         this.queries.push({ sql: compact, params });
 
+        if (compact.startsWith('SELECT 1 FROM telegram_crm_assignment_outbox')) {
+            return { rows: [], rowCount: 0 };
+        }
+
         if (compact.startsWith('SELECT id, username, name FROM users WHERE id = $1')) {
             const user = this.users.get(Number(params[0]));
             return { rows: user ? [clone(user)] : [], rowCount: user ? 1 : 0 };

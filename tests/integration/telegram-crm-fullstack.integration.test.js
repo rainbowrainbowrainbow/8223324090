@@ -1,5 +1,8 @@
 'use strict';
 const assert = require('node:assert/strict');
+const { execFile } = require('node:child_process');
+const { randomUUID, randomInt } = require('node:crypto');
+const { promisify } = require('node:util');
 const { before, after, test } = require('node:test');
 const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
@@ -9,8 +12,8 @@ const { applyPilot, PILOT } = require('../../scripts/telegram-crm-pilot');
 const enabled = process.env.RUN_TELEGRAM_CRM_FULLSTACK === 'true';
 const check = (name, fn) => test(name, { skip: !enabled }, fn);
 let pool, jwt, owner, peer, business;
-const telegram = '900000000001';
-const peerTelegram = '900000000002';
+const telegram = String(randomInt(900000000000, 910000000000));
+let peerTelegram = String(randomInt(920000000000, 930000000000));
 let nextUpdate = 100;
 
 async function bot(path, body, sender = telegram, extraHeaders = {}) {
@@ -55,6 +58,10 @@ async function preview(title = 'Disposable Telegram full-stack task') {
     return bot('/tasks/preview', { title, ownerUserId: peer.id, businessContext: 'event_genix', sourceUpdateId: String(nextUpdate++) });
 }
 
+const notifications = (path, body, headers = {}) => bot('/notifications' + path, body, telegram, {
+    'x-telegram-user-id': '', 'x-telegram-chat-id': '', 'x-telegram-chat-type': '', ...headers
+});
+
 check('real JWT -> one-time Telegram claim -> same authenticated account confirmation', async () => {
     assert.equal((await bot('/me')).status,403);
     const started = await request('POST', '/api/auth/telegram-crm/link', {}, jwt);
@@ -68,8 +75,24 @@ check('real JWT -> one-time Telegram claim -> same authenticated account confirm
     assert.equal(actual.status,200,JSON.stringify(actual.data));
     assert.equal(actual.data.user.id,owner.id);
     assert.equal(actual.data.canCreateTasks,true);
-    // A fixture peer is verified only inside this disposable database.
-    await pool.query("UPDATE telegram_crm_bindings SET telegram_user_id=$2,verified_at=NOW()-INTERVAL '1 minute',version=2 WHERE user_id=$1",[peer.id,peerTelegram]);
+    const peerLogin = await request('POST', '/api/auth/login', {
+        username: peer.username, password: 'fixture-only-peer-password'
+    });
+    assert.equal(peerLogin.status, 200);
+    const peerLink = await request('POST', '/api/auth/telegram-crm/link', {}, peerLogin.data.token);
+    assert.equal(peerLink.status, 201);
+    const peerStart = new URL(peerLink.data.url).searchParams.get('start').slice(4);
+    assert.equal((await bot('/link/claim', { token: peerStart }, peerTelegram)).status, 200);
+    assert.equal((await request('POST', '/api/auth/telegram-crm/link/confirm', peerLink.data, peerLogin.data.token)).status, 200);
+    // No incoming peer /me, /start, or other message after browser confirmation.
+    assert.equal((await notifications('/recipients', undefined, { Authorization: '' })).status, 401);
+    const roster = (await notifications('/recipients')).data.recipients;
+    assert.deepEqual(roster.find(row => row.userId === peer.id), {
+        userId: peer.id, telegramId: peerTelegram, bindingVersion: '2'
+    });
+    assert.ok((await notifications('/health')).data.missing.some(row => row.userId === peer.id));
+    assert.equal((await notifications('/heartbeat', { recipients: roster })).status, 200);
+    assert.deepEqual((await notifications('/health')).data.missing, []);
 });
 
 check('canonical task writer, actual membership checks and concurrent confirms share one receipt', async () => {
@@ -89,6 +112,22 @@ check('canonical task writer, actual membership checks and concurrent confirms s
     assert.equal(task.business_context,'event_genix');
     assert.equal(task.source_module,'telegram_crm');
     assert.equal(task.control_meta.operationId,id);
+    assert.equal((await pool.query('SELECT 1 FROM notification_outbox WHERE task_id=$1', [task.id])).rowCount, 0);
+    const leaseId = randomUUID();
+    const claimed = await notifications('/claim', { leaseId });
+    assert.equal(claimed.status, 200, JSON.stringify(claimed.data));
+    const { event } = claimed.data;
+    assert.equal(event.taskId, task.id);
+    assert.equal(event.telegramId, peerTelegram);
+    assert.equal(event.bindingVersion, '2');
+    assert.deepEqual((await notifications('/claim', { leaseId })).data.event, event);
+    assert.equal((await notifications('/claim', { leaseId: randomUUID() })).data.event, null);
+    const accepted = { leaseId, status: 'sent', messageId: 123456 };
+    for (let i = 0; i < 2; i++) {
+        assert.equal((await notifications(`/${event.id}/result`, accepted)).data.status, 'sent');
+    }
+    const delivery = (await pool.query('SELECT status, telegram_message_id FROM telegram_crm_assignment_outbox WHERE id=$1', [event.id])).rows[0];
+    assert.deepEqual(delivery, { status: 'sent', telegram_message_id: '123456' });
     const mine = await bot('/tasks?businessContext=event_genix');
     assert.equal(mine.status,200,JSON.stringify(mine.data));
     assert.deepEqual(mine.data.tasks.find(row=>row.id===task.id).viewerRoles,['author']);
@@ -97,6 +136,95 @@ check('canonical task writer, actual membership checks and concurrent confirms s
     assert.deepEqual(peers.data.tasks.find(row=>row.id===task.id).viewerRoles,['executor']);
     const recovered = await bot(`/operations/${id}`);
     assert.equal(recovered.data.receipt.task.id,task.id);
+});
+
+check('CRM task writes persist a distinct assignment on A to B to A, retry and cancel stale work', async () => {
+    const payload = { title: 'Disposable CRM notification fixture', businessContext: 'event_genix' };
+    const create = await request('POST', '/api/tasks', { ...payload, ownerUserId: peer.id }, jwt);
+    assert.ok([200, 201].includes(create.status), JSON.stringify(create.data));
+    const taskId = create.data.task.id;
+    const events = async () => (await pool.query(
+        'SELECT id, owner_user_id, status, attempts, reason FROM telegram_crm_assignment_outbox WHERE task_id=$1 ORDER BY id',
+        [taskId]
+    )).rows;
+    assert.deepEqual((await events()).map(row => row.owner_user_id), [peer.id]);
+    for (const ownerUserId of [owner.id, peer.id]) {
+        const update = await request('PUT', `/api/tasks/${taskId}`, { ...payload, ownerUserId }, jwt);
+        assert.equal(update.status, 200, JSON.stringify(update.data));
+    }
+    assert.deepEqual((await events()).map(row => [row.owner_user_id, row.status]), [
+        [peer.id, 'cancelled'], [owner.id, 'cancelled'], [peer.id, 'pending']
+    ]);
+    const start = async () => {
+        const claimed = await notifications('/claim', { leaseId: randomUUID() });
+        assert.equal(claimed.status, 200, JSON.stringify(claimed.data));
+        return claimed.data;
+    };
+    const { event } = await start();
+    assert.equal(event.taskId, taskId);
+    assert.equal(event.telegramId, peerTelegram);
+    assert.equal((await notifications(`/${event.id}/result`, {
+        status: 'retry', reason: 'rate_limited', retryAfterSeconds: 1, leaseId: event.leaseId
+    })).data.status, 'retry');
+    assert.equal((await start()).event, null);
+    await pool.query('UPDATE telegram_crm_assignment_outbox SET available_at=NOW() WHERE id=$1', [event.id]);
+    const { event: retry } = await start();
+    assert.equal(retry.id, event.id);
+    assert.notEqual(retry.leaseId, event.leaseId);
+    assert.equal((await notifications(`/${retry.id}/result`, {
+        status: 'uncertain', reason: 'telegram_result_unknown', leaseId: retry.leaseId
+    })).data.status, 'uncertain');
+    assert.equal((await start()).event, null);
+    assert.deepEqual((await events()).at(-1), {
+        id: retry.id, owner_user_id: peer.id, status: 'uncertain', attempts: 2, reason: 'telegram_result_unknown'
+    });
+    const another = await request('POST', '/api/tasks', { ...payload, title: payload.title + ' completed', ownerUserId: peer.id }, jwt);
+    assert.ok([200, 201].includes(another.status), JSON.stringify(another.data));
+    const completed = await request('PUT', `/api/tasks/${another.data.task.id}`, { ...payload, ownerUserId: peer.id, status: 'done' }, jwt);
+    assert.equal(completed.status, 200, JSON.stringify(completed.data));
+    assert.equal((await start()).processed, true);
+    const result = (await pool.query('SELECT status, reason FROM telegram_crm_assignment_outbox WHERE task_id=$1',
+        [another.data.task.id])).rows[0];
+    assert.deepEqual(result, { status: 'cancelled', reason: 'assignment_inactive' });
+});
+
+test('confirmed arbitrary recipient receives a CRM assignment through the actual Python worker, with restart after CRM acknowledgement loss', {
+    skip: !enabled || !process.env.NOTIFICATION_E2E_PYTHON || !process.env.NOTIFICATION_E2E_PROBE
+}, async () => {
+    const newTelegram = String(randomInt(940000000000, 950000000000));
+    const title = 'Disposable notification lifecycle';
+    const login = await request('POST', '/api/auth/login', {
+        username: peer.username, password: 'fixture-only-peer-password'
+    });
+    assert.equal(login.status, 200);
+    const token = login.data.token;
+    const invalidated = await request('POST', '/api/tasks',
+        { title: title + ' old binding', ownerUserId: peer.id, businessContext: 'event_genix' }, jwt);
+    assert.ok([200, 201].includes(invalidated.status), JSON.stringify(invalidated.data));
+    const replace = await request('POST', '/api/auth/telegram-crm/link', { password: 'fixture-only-peer-password' }, token);
+    assert.equal(replace.status, 201);
+    const start = new URL(replace.data.url).searchParams.get('start').slice(4);
+    assert.equal((await bot('/link/claim', { token: start }, newTelegram)).status, 200);
+    assert.equal((await request('POST', '/api/auth/telegram-crm/link/confirm', replace.data, token)).status, 200);
+    const task = await request('POST', '/api/tasks', {
+        title, date: '2099-11-05', ownerUserId: peer.id, businessContext: 'event_genix'
+    }, jwt);
+    assert.ok([200, 201].includes(task.status), JSON.stringify(task.data));
+    const id = task.data.task.id;
+    const { stdout } = await promisify(execFile)(process.env.NOTIFICATION_E2E_PYTHON, [
+        process.env.NOTIFICATION_E2E_PROBE, BASE_URL, String(peer.id), newTelegram, String(id)
+    ]);
+    assert.deepEqual(JSON.parse(stdout.trim()), {
+        sent: 1, messageId: 50001, restarted: true, morningWithTasks: true, emptyMorningSilent: true
+    });
+    const { rows } = await pool.query(`SELECT task_id, status, reason, telegram_message_id
+        FROM telegram_crm_assignment_outbox WHERE task_id=ANY($1::int[]) ORDER BY id`,
+    [[invalidated.data.task.id, id]]);
+    assert.deepEqual(rows, [
+        { task_id: invalidated.data.task.id, status: 'cancelled', reason: 'binding_unavailable', telegram_message_id: null },
+        { task_id: id, status: 'sent', reason: null, telegram_message_id: '50001' }
+    ]);
+    peerTelegram = newTelegram;
 });
 
 check('Telegram personal creation stays self-only and team tasks remain team-visible', async () => {

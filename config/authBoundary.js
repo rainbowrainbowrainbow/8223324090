@@ -3,6 +3,10 @@ const INTEGRATION_AUTH_CONTRACTS = Object.freeze({
         guardFiles: [{ file: 'routes/telegram-crm.js', needles: ['serviceSecretMatches(req.headers.authorization, env.HERMES_API_KEY)', 'tasks.me(req.telegramSenderId', "req.headers['x-telegram-chat-type'] !== 'private'"] },
             { file: 'services/telegramCrmTasks.js', needles: ['identity.resolve(senderId', 'assertCreate(actor, scope)', 'buildTaskPersonalQuery(actor, params)'] }],
         testFiles: ['tests/telegram-crm-routes.test.js', 'tests/telegram-crm-identity.test.js'] },
+    telegramCrmDelivery: { owner: 'telegram-crm', authentication: 'service bearer, CRM-selected recipient and event lease',
+        guardFiles: [{ file: 'routes/telegram-crm.js', needles: ['serviceSecretMatches(req.headers.authorization, env.HERMES_API_KEY)', "bot.post('/notifications/claim'"] },
+            { file: 'services/telegramCrmNotifications.js', needles: ['identity.resolve(recipient.destination', 'canViewTask(actor, task)', 'AND lease_id=$2'] }],
+        testFiles: ['tests/integration/telegram-crm-fullstack.integration.test.js'] },
     attendanceUploadGrant: { owner:'hr', authentication:'expiring upload-only 256-bit bearer grant and fresh reviewer guards',
         guardFiles:[{file:'services/crmAttendanceUploadLinks.js',needles:['CRM_ATTENDANCE_UPLOAD_LINKS_ENABLED','token_hash=$1','expires_at>NOW()','await reviewer(link,pool)']},
             {file:'services/crmAttendanceUploadHttp.js',needles:["req.headers['x-attendance-upload-key']","router.post('/photo',handlers.upload)"]}],
@@ -24,6 +28,11 @@ const INTEGRATION_AUTH_CONTRACTS = Object.freeze({
 });
 
 const PUBLIC_API_ROUTES = [
+    { method: 'GET', path: '/telegram-crm/bot/notifications/recipients', owner: 'telegram-crm', integrationContract: 'telegramCrmDelivery', reason: 'Service-only verified CRM delivery roster.' },
+    { method: 'GET', path: '/telegram-crm/bot/notifications/health', owner: 'telegram-crm', integrationContract: 'telegramCrmDelivery', reason: 'Service-only delivery diagnostics.' },
+    { method: 'POST', path: '/telegram-crm/bot/notifications/heartbeat', owner: 'telegram-crm', integrationContract: 'telegramCrmDelivery', reason: 'Service-only delivery worker health update.' },
+    { method: 'POST', path: '/telegram-crm/bot/notifications/claim', owner: 'telegram-crm', integrationContract: 'telegramCrmDelivery', reason: 'Service claims one eligible notification using an idempotent lease.' },
+    { method: 'POST', regex: /^\/telegram-crm\/bot\/notifications\/[1-9][0-9]{0,17}\/result$/, label: 'POST /telegram-crm/bot/notifications/:id/result', examplePath: '/telegram-crm/bot/notifications/912/result', owner: 'telegram-crm', integrationContract: 'telegramCrmDelivery', reason: 'Service reports acceptance or failure for the matching lease.' },
     { method: 'POST', path: '/telegram-crm/bot/link/claim', owner: 'telegram-crm', integrationContract: 'telegramCrm', reason: 'Service-authenticated private Telegram proof; never grants CRM access by itself.' },
     { method: 'GET', path: '/telegram-crm/bot/me', owner: 'telegram-crm', integrationContract: 'telegramCrm', reason: 'Service-authenticated sender resolves only its own verified pilot identity.' },
     { method: 'GET', path: '/telegram-crm/bot/tasks', owner: 'telegram-crm', integrationContract: 'telegramCrm', reason: 'Verified human identity, personal task scope and current business access.' },

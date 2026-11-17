@@ -167,6 +167,7 @@ async function createTask(data, options = {}) {
     const afterCommit = Array.isArray(options.afterCommit) ? options.afterCommit : null;
     const skipNotifications = options.skipNotifications === true;
     const skipHermesOutbox = options.skipHermesOutbox === true;
+    const suppressInitialTelegramAssignment = skipNotifications && options.notifyTelegramCrm !== true;
     const {
         business_context,
         businessContext,
@@ -238,10 +239,11 @@ async function createTask(data, options = {}) {
          template_id, afisha_id, type,
          task_mode, task_kind, visibility, workflow_state, remind_at, snoozed_until,
          last_notified_at, next_notification_at, evening_review_date, focus_rank,
-          related_entity_type, related_entity_id, source_module, effort_minutes, control_meta, created_by_user_id)
+          related_entity_type, related_entity_id, source_module, effort_minutes, control_meta, created_by_user_id,
+          suppress_initial_telegram_assignment)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
                  $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,
-                 $39,$40,$41,$42,$43,$44,$45,$46) RETURNING *`,
+                 $39,$40,$41,$42,$43,$44,$45,$46,$47) RETURNING *`,
         [taskBusinessContext, title.trim(), description || null, date || null, priority, ownerSnapshot.assigned_to, ownerSnapshot.owner,
          ownerSnapshot.owner_user_id, created_by, task_type, deadline || null, time_window_start || null, time_window_end || null,
          dependency_ids, JSON.stringify(policy), source_type, source_id || null,
@@ -252,14 +254,19 @@ async function createTask(data, options = {}) {
          type || (source_type === 'recurring' ? 'recurring' : (source_type === 'afisha' ? 'afisha' : (source_type === 'booking' ? 'auto_complete' : 'manual'))),
          task_mode, task_kind, visibility, workflow_state, remind_at, snoozed_until,
          last_notified_at, next_notification_at, evening_review_date, focus_rank,
-         related_entity_type, related_entity_id, source_module, effort_minutes, JSON.stringify(control_meta || {}), created_by_user_id || null]
+         related_entity_type, related_entity_id, source_module, effort_minutes, JSON.stringify(control_meta || {}),
+         created_by_user_id || null, suppressInitialTelegramAssignment]
     );
 
     const task = result.rows[0];
 
     // Log creation
     await logTaskAction(task.id, 'created', null, title, created_by, { pool: query });
-    const hermesOutboxResult = await emitTaskCreatedHermesOutbox(task, {
+    const telegramCrmAssignment = task.owner_user_id && (await query.query(
+        `SELECT 1 FROM telegram_crm_assignment_outbox WHERE task_id=$1 AND owner_user_id=$2 LIMIT 1`,
+        [task.id, task.owner_user_id]
+    )).rowCount > 0;
+    const hermesOutboxResult = telegramCrmAssignment ? null : await emitTaskCreatedHermesOutbox(task, {
         pool: query,
         skipHermesOutbox,
         hermesOutboxEnabled: options.hermesOutboxEnabled,
@@ -271,7 +278,9 @@ async function createTask(data, options = {}) {
     // Notify assigned person (fire-and-forget — never block task creation)
     if (!skipNotifications && !hermesOutboxOwnsDelivery && task.assigned_to && task_type === 'human') {
         const notifyCreatedTask = () => {
-            notifyTaskAssigned(task).catch(err => log.error(`Task notification error: ${err.message}`));
+            if (!telegramCrmAssignment) {
+                notifyTaskAssigned(task).catch(err => log.error(`Task notification error: ${err.message}`));
+            }
             try {
                 emitTaskAssignedToOwner(task, { id: created_by_user_id, username: created_by }, {
                     assignmentEvent: 'created',

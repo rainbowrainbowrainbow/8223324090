@@ -48,6 +48,7 @@ function createTelegramCrmRouters(options = {}) {
     const authenticate = options.authenticate || require('../middleware/auth').authenticateToken;
     const identity = options.identity || createTelegramCrmIdentity({ pool });
     const tasks = options.tasks || require('../services/telegramCrmTasks').createTelegramCrmTasks({ pool, identity });
+    const notifications = require('../services/telegramCrmNotifications').createTelegramCrmNotifications({ pool, identity });
     const account = express.Router();
     const bot = express.Router();
     const noStore = (_req, res, next) => { res.set('Cache-Control', 'private, no-store'); next(); };
@@ -71,6 +72,15 @@ function createTelegramCrmRouters(options = {}) {
         if (!serviceSecretMatches(req.headers.authorization, env.HERMES_API_KEY)) {
             return res.status(401).json({ success: false, code: 'TELEGRAM_SERVICE_AUTH_REQUIRED', error: 'Service authentication required' });
         }
+        next();
+    });
+    // The delivery worker has no incoming update. CRM chooses the destination from its verified binding.
+    bot.get('/notifications/recipients', endpoint(() => notifications.recipients()));
+    bot.get('/notifications/health', endpoint(() => notifications.health()));
+    bot.post('/notifications/heartbeat', endpoint(req => notifications.heartbeat(req.body)));
+    bot.post('/notifications/claim', endpoint(req => notifications.claim(req.body?.leaseId)));
+    bot.post('/notifications/:id/result', endpoint(req => notifications.finish(req.params.id, req.body)));
+    bot.use((req, res, next) => {
         try {
             req.telegramSenderId = telegramId(req.headers['x-telegram-user-id']);
             // Timestamp comes from the trusted update transport, never query/body text.

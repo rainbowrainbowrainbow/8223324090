@@ -39,6 +39,18 @@ receipts are bound to the human and binding generation. Task creation and receip
 commit share a PostgreSQL transaction and identity lock. A successful receipt
 never expires into permission to create a second task.
 
+`telegramCrmDelivery` uses the same service bearer in `routes/telegram-crm.js`.
+Its worker acts without a Telegram update and cannot choose the recipient of a
+notification. `GET /telegram-crm/bot/notifications/recipients` returns enabled
+CRM bindings. `GET /telegram-crm/bot/notifications/health` returns queue and
+registration diagnostics. `POST /telegram-crm/bot/notifications/heartbeat`
+records which binding generations the worker has synchronized.
+`POST /telegram-crm/bot/notifications/claim` checks the current binding, task,
+business membership and task visibility in `services/telegramCrmNotifications.js`.
+`POST /telegram-crm/bot/notifications/:id/result` requires the matching event
+lease. These endpoints are exercised by
+`tests/integration/telegram-crm-fullstack.integration.test.js`.
+
 `attendanceUploadGrant` is implemented by `services/crmAttendanceUploadLinks.js`
 and `services/crmAttendanceUploadHttp.js`. Its default-off, bounded HTTP guard is
 tested in `tests/crm-attendance-upload-links.test.js`; actual PostgreSQL, worker,

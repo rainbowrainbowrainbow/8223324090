@@ -684,6 +684,7 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
             }, {
                 pool: client,
                 skipNotifications: true,
+                notifyTelegramCrm: true,
                 skipHermesOutbox: true,
                 afterCommit
             });

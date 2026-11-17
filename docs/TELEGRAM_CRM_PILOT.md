@@ -77,6 +77,40 @@ task text or credentials. Alerts are durable and coalesced per error code for
 15 minutes. Delivered local updates are scrubbed and responses retained for seven
 days; server receipts remain canonical.
 
+## Proactive Telegram notifications
+
+CRM's service-authenticated registry includes active pilot accounts with a
+confirmed binding. Second Brain refreshes it at startup and every 30 seconds.
+The morning list uses this registry and the same task scope as My Day at 10:00
+Europe/Kyiv. It records the day without sending when the list is empty.
+
+Migration 419 adds a separate assignment outbox. The task transaction records
+each change of typed owner, including changes via ordinary CRM or Telegram
+and replacement of a previous owner. Queue claims recheck the current task,
+membership, and exact binding generation. The notification links to CRM, where
+opening the task requires authorization. The Hermes queue keeps its existing
+contract for other recipients. The canonical writer uses the dedicated queue
+for assignment DMs to its registered recipients.
+
+A Telegram acceptance stores the message ID. Known temporary failures retry
+with backoff. An ambiguous result or expired in-flight lease stops automatic
+resends and remains visible for reconciliation. The bot saves a successful
+result locally until CRM confirms the acknowledgement. Acceptance cannot
+establish whether the recipient opened or read the message.
+
+The service-only `/api/telegram-crm/bot/notifications/health` endpoint reports
+verified users missing from worker registration, the oldest pending work,
+blocked deliveries and uncertain outcomes. During cutover, Second Brain checks
+the local legacy send log for an accepted notification for the same binding,
+task and assignment window. The migration does not enqueue historical tasks.
+
+Deploy CRM first, then the verified Second Brain patch. Confirm a fresh worker
+registration and inspect the queue before reconciling individual historical
+incidents. Roll back application code with the additive outbox and audit rows
+retained. If rolling back to a writer that predates the migration, disable the
+assignment trigger before returning to the old delivery path and reconcile
+confirmed acceptances before enabling any legacy scanner.
+
 ## Operator rollout and shutdown
 
 1. Deploy the reviewed additive migration 410 and account UI with the settings row

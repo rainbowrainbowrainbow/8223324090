@@ -592,6 +592,17 @@ test('default services use the migrated schema for an unrelated permanent occupa
         assert.ok((await service.preview('event_genix',actor,chatInput)).blockers.some(item=>item.code==='SUBSTITUTION_CHAT_MEMBER_REQUIRED'));
         await db.query('INSERT INTO chat_channel_members(channel_id,user_id) VALUES($1,$2)',[channel.id,users[1].id]);
         const chatClaim=await saveReply(chatInput);
+        const channelSubstitutions = `/api/chat/channels/${channel.id}/substitutions`;
+        const activeChatRead = await authRequest('GET', channelSubstitutions);
+        assert.equal(activeChatRead.status,200,JSON.stringify(activeChatRead.data));
+        assert.deepEqual(activeChatRead.data, [{kind:'chat_task', itemId:directChat.id,
+            title:'Synthetic chat task', taskId:null, id:String(chatClaim.id), state:'active'}]);
+        const { listChannelSubstitutions } = require('../../services/staffSubstitutionChannelReadModel');
+        assert.deepEqual(await listChannelSubstitutions(db, {...actor,id:users[0].id}, channel.id), []);
+        assert.deepEqual(await listChannelSubstitutions(db, actor, unscopedChannel.id), []);
+        await db.query('UPDATE chat_channels SET is_archived=true WHERE id=$1', [channel.id]);
+        assert.deepEqual(await listChannelSubstitutions(db, actor, channel.id), []);
+        await db.query('UPDATE chat_channels SET is_archived=false WHERE id=$1', [channel.id]);
         const chatOwner=async()=> (await db.query('SELECT assigned_to FROM chat_tasks WHERE id=$1',[directChat.id])).rows[0].assigned_to;
         assert.equal(await chatOwner(),users[1].id);
         await assert.rejects(db.query('UPDATE chat_tasks SET assigned_to=$2 WHERE id=$1',[directChat.id,users[0].id]),
@@ -620,6 +631,11 @@ test('default services use the migrated schema for an unrelated permanent occupa
         await assert.rejects(service.preview('event_genix',{...actor,id:users[0].id},meetingInput),
             {code:'SUBSTITUTION_SOURCE_NOT_FOUND'});
         const meetingClaim=await saveReply(meetingInput);
+        assert.deepEqual((await authRequest('GET', channelSubstitutions)).data.map(({kind,id,state}) => [kind,id,state]), [
+            ['meeting_action',String(meetingClaim.id),'active'], ['chat_task',String(payableChat.id),'completed']
+        ]);
+        assert.deepEqual((await listChannelSubstitutions(db, {...actor,id:users[1].id}, channel.id)).map(row => row.kind),
+            ['chat_task']);
         const readAction=async()=> (await db.query('SELECT assigned_to,status,task_id FROM meeting_action_items WHERE id=$1',[action.id])).rows[0];
         assert.equal((await readAction()).assigned_to,users[1].id);
         const createTasksUrl=`/api/notes/meeting/${meeting.id}/create-tasks`;
@@ -664,6 +680,14 @@ test('default services use the migrated schema for an unrelated permanent occupa
         assert.ok(doubledConversion.every(response=>response.status===200),JSON.stringify(doubledConversion));
         assert.deepEqual(doubledConversion.map(response=>response.data.created).sort(),[0,1]);
         assert.equal((await db.query("SELECT id FROM tasks WHERE source_type='meeting_action' AND source_id=$1",[String(pendingAction.id)])).rowCount,1);
+        const convertedTask = (await db.query('SELECT task_id FROM meeting_action_items WHERE id=$1', [pendingAction.id])).rows[0].task_id;
+        assert.ok(convertedTask);
+        // The canonical task owner can differ from the original meeting action assignee.
+        await db.query('UPDATE tasks SET owner_user_id=$2 WHERE id=$1', [convertedTask,users[0].id]);
+        const converted = await saveReply({...officeInput,sourceType:'task',sourceId:String(convertedTask),workDate:'2099-01-30'});
+        const convertedRead = (await authRequest('GET', channelSubstitutions)).data.find(row => row.id === String(converted.id));
+        assert.deepEqual(convertedRead, {kind:'meeting_action',itemId:pendingAction.id,title:'[Synthetic Park meeting] Synthetic double conversion',
+            taskId:convertedTask,id:String(converted.id),state:'active'});
         const meetingPayroll = (await require('../../services/payroll').getPayrollRangePreview(
             { month:'2099-01',from:meetingInput.workDate,to:meetingInput.workDate,staffId:staff.id },db)).staff[0];
         assert.deepEqual(meetingPayroll.lines.filter(line=>line.lineType==='staff_substitution').map(line=>line.amount),[750.37]);
@@ -1652,6 +1676,57 @@ test('Park applies automatic and manual original-worker adjustments to daily and
                 assert.equal(credit(short.staff[0]), expectedRetentionMinor / 100);
                 const history = await service.history('event_genix', claim.id);
                 assert.equal(history.fixedOriginal.amountMinor, expectedRetentionMinor);
+                const correction = { payee:'original', postingMonth:'2099-03', expectedCorrectionId:null, correctedAmount:'150.50',
+                    reason:'Synthetic correction to frozen fixed pay', requestKey:randomUUID() };
+                await assert.rejects(service.correct('event_genix',actor,claim.id,correction),
+                    { code:'SUBSTITUTION_CORRECTION_PAYEE_INVALID' });
+                await db.query(`INSERT INTO payroll_reports(period_month,staff_id,status,breakdown_json)
+                    VALUES('2099-02',$1,'approved',$2::jsonb)`, [original.id,JSON.stringify({ lines:payroll.lines })]);
+                const frozenHistory = await service.history('event_genix', claim.id);
+                assert.equal(frozenHistory.fixedOriginal.frozen, true);
+                assert.equal(frozenHistory.correctionPayees.find(payee => payee.role === 'original').amountMinor, expectedRetentionMinor);
+                const posted = await service.correct('event_genix',actor,claim.id,correction);
+                assert.equal(posted.deltaMinor, 15050 - expectedRetentionMinor);
+                assert.equal(await credit(await getPayrollPreview(original.id, '2099-02', db)), expectedRetentionMinor / 100);
+                const nextPayroll = await getPayrollPreview(original.id, '2099-03', db);
+                assert.equal(nextPayroll.lines.find(line => line.meta?.correctionId === posted.id).amount, posted.deltaMinor / 100);
+                if (rateUnit === 'month') {
+                    const recipient = (await db.query(`INSERT INTO staff(name,role_type,department,position,is_active,hourly_rate,rate_unit)
+                        VALUES($1,'reception','admin','Synthetic corrected payee',true,100,'hour') RETURNING id`,
+                    [`QA actual payee ${randomUUID()}`])).rows[0];
+                    const replacementPayroll = await getPayrollPreview(replacement.id, '2099-02', db);
+                    await db.query(`INSERT INTO payroll_reports(period_month,staff_id,status,breakdown_json)
+                        VALUES('2099-02',$1,'approved',$2::jsonb)`, [replacement.id,JSON.stringify({ lines:replacementPayroll.lines })]);
+                    await assert.rejects(service.previewWorkCorrection('event_genix',claim.id,recipient.id),
+                        { code:'SUBSTITUTION_WORK_CORRECTION_ATTENDANCE_REQUIRED' });
+                    await assert.rejects(service.previewWorkCorrection('event_genix',claim.id,replacement.id),
+                        { code:'SUBSTITUTION_WORK_CORRECTION_UNCHANGED' });
+                    // The isolated fixture supplies a separately verified time record for the worker who actually covered the slot.
+                    const attendance = (await db.query(`INSERT INTO hr_time_records(staff_id,record_date,clock_in,clock_out,
+                        planned_start,planned_end,total_worked_minutes,status,business_context,compensation_snapshot)
+                        SELECT $1,record_date,clock_in,clock_out,planned_start,planned_end,total_worked_minutes,status,business_context,compensation_snapshot
+                        FROM hr_time_records WHERE id=$2 RETURNING id`, [recipient.id,completion.completion.attendanceId])).rows[0];
+                    const options = await service.previewWorkCorrection('event_genix',claim.id,recipient.id);
+                    assert.equal(options.attendanceId,attendance.id);
+                    assert.equal(options.actualMinutes,60);
+                    const body = {...options,postingMonth:'2099-03',correctedAmount:'85.25',reason:'Synthetic confirmed replacement',
+                        requestKey:randomUUID()};
+                    const [updated,replayed] = await Promise.all([service.correctWork('event_genix',actor,claim.id,body),
+                        service.correctWork('event_genix',actor,claim.id,body)]);
+                    assert.equal(updated.id,replayed.id);
+                    const workHistory = await service.history('event_genix',claim.id);
+                    assert.equal(workHistory.workCorrection.correctedAttendanceId,attendance.id);
+                    assert.equal(workHistory.workCorrection.sourceAttendanceId,completion.completion.attendanceId);
+                    assert.equal(workHistory.workCorrection.actor,actor.username);
+                    assert.deepEqual(workHistory.substitution.completion,completion.completion);
+                    const correctionLines = report => report.lines.filter(line => line.lineType === 'staff_substitution_correction')
+                        .map(line => line.amount);
+                    assert.deepEqual(correctionLines(await getPayrollPreview(replacement.id,'2099-03',db)),[-100]);
+                    assert.deepEqual(correctionLines(await getPayrollPreview(recipient.id,'2099-03',db)),[85.25]);
+                    const snapshot = (await db.query(`SELECT breakdown_json FROM payroll_reports WHERE period_month='2099-02' AND staff_id=$1`,
+                        [replacement.id])).rows[0].breakdown_json;
+                    assert.deepEqual(snapshot.lines,JSON.parse(JSON.stringify(replacementPayroll.lines)));
+                }
                 continue;
             }
             assert.equal(completion.completion.originalPay.amountMinor, -15005);
@@ -1687,6 +1762,80 @@ test('Park applies automatic and manual original-worker adjustments to daily and
             assert.deepEqual(history.corrections.map(item => item.id).sort(),
                 [originalCorrection.id, replacementCorrection.id].sort());
         }
+    } finally { await db.end(); }
+});
+
+test('Park registers and substitutes typed operational tasks without transferring source authority', { skip:!enabled }, async () => {
+    const db = new Pool({ connectionString:process.env.TEST_DATABASE_URL, ssl:false });
+    const actor = { id:1, username:'substitution_qa_operator', role:'creator' };
+    const service = createSubstitutionService({pool:db});
+    const workDate = '2099-04-20';
+    try {
+        const workers = [];
+        for (const role of ['original','replacement']) {
+            const staff = (await db.query(`INSERT INTO staff(name,role_type,department,position,is_active,hourly_rate,rate_unit,hr_pool_status,is_freelance)
+                VALUES($1,'manager','admin',$2,true,100,'hour','core',false) RETURNING id`, [`QA ${randomUUID()}`,role])).rows[0];
+            const user = (await db.query(`INSERT INTO users(username,password_hash,name,role,is_active)
+                VALUES($1,'synthetic-no-login',$2,'senior_manager',true) RETURNING id`, [`qa_${randomUUID()}`,`Synthetic ${role}`])).rows[0];
+            await db.query('INSERT INTO employee_profiles(user_id,staff_id,full_name,is_active) VALUES($1,$2,$3,true)',[user.id,staff.id,role]);
+            workers.push({staffId:staff.id,userId:user.id});
+        }
+        const [original,replacement] = workers;
+        const customer = (await db.query("INSERT INTO customers(name,business_context) VALUES('Synthetic Park contact','event_genix') RETURNING id")).rows[0];
+        const ticket = (await db.query(`INSERT INTO support_tickets(ticket_number,subject,customer_id,assigned_to)
+            VALUES($1,'Synthetic request',$2,'legacy text') RETURNING id`, [`T-${randomUUID().slice(0,8)}`,customer.id])).rows[0];
+        const content = (await db.query(`INSERT INTO content_items(title,category,assigned_to)
+            VALUES('Synthetic draft','test','legacy text') RETURNING id`)).rows[0];
+        const course = (await db.query(`INSERT INTO training_courses(title,instructor_id,source)
+            VALUES('Synthetic Park course',$1,'hr_profession_seed') RETURNING id`,[original.userId])).rows[0];
+        const lecture = (await db.query(`INSERT INTO training_course_lectures(course_id,title,scheduled_date)
+            VALUES($1,'Synthetic dated delivery',$2) RETURNING id`,[course.id,workDate])).rows[0];
+        const report = (await db.query(`INSERT INTO reports(type,description,business_context)
+            VALUES('expense','Synthetic preparation','event_genix') RETURNING id`)).rows[0];
+        const darReport = (await db.query(`INSERT INTO reports(type,description,business_context)
+            VALUES('expense','Synthetic other business','dar') RETURNING id`)).rows[0];
+        const route = '/api/staff-substitutions/operational-work';
+        const register = (sourceType,sourceId,date=workDate) => authRequest('POST',route,
+            {sourceType,sourceId,workDate:date,staffId:original.staffId,requestKey:randomUUID()});
+        assert.equal((await register('report_preparation',darReport.id)).status,404);
+        assert.equal((await register('training_delivery',lecture.id,'2099-04-21')).status,404);
+        for (const [sourceType,sourceId] of [
+            ['support_ticket',ticket.id],['content_item',content.id],['training_delivery',lecture.id],['report_preparation',report.id]
+        ]) {
+            const registered = await register(sourceType,sourceId);
+            assert.equal(registered.status,200,`${sourceType} ${JSON.stringify(registered.data)}`);
+            const { taskId } = registered.data.data;
+            assert.deepEqual((await register(sourceType,sourceId)).data.data,{taskId,created:false});
+            const options = await authRequest('GET',`/api/staff-substitutions/sources?sourceType=task&workDate=${workDate}&originalStaffId=${original.staffId}`);
+            assert.ok(options.data.data.some(item => item.id === String(taskId)),JSON.stringify(options.data));
+            const input = {sourceType:'task',sourceId:String(taskId),workDate,originalStaffId:original.staffId,staffId:replacement.staffId,
+                professionKey:'manager',payUnit:'fixed',payMode:'additional',originalTreatment:'retain',rateMode:'individual',
+                rate:'100',rateReason:'Synthetic rate',reason:'Synthetic change',workload:'Synthetic operational action',
+                temporaryAdmission:true,admissionReason:'Synthetic scope readiness'};
+            const quote = await service.preview('event_genix',actor,input);
+            assert.deepEqual(quote.blockers,[],JSON.stringify(quote));
+            assert.deepEqual(quote.evidence.source.workBinding,{source_type:sourceType,source_id:sourceId,work_date:workDate});
+            const saved = await service.mutate('event_genix',actor,'create',{input,previewFingerprint:quote.fingerprint,
+                effectsAcknowledged:true,requestKey:randomUUID()});
+            const owner = async () => (await db.query('SELECT owner_user_id FROM tasks WHERE id=$1',[taskId])).rows[0].owner_user_id;
+            assert.equal(await owner(),replacement.userId);
+            await service.mutate('event_genix',actor,'cancel',{expectedVersion:1,reason:'Synthetic restoration',requestKey:randomUUID()},saved.id);
+            assert.equal(await owner(),original.userId);
+        }
+        assert.deepEqual((await db.query('SELECT assigned_to,status FROM support_tickets WHERE id=$1',[ticket.id])).rows[0],
+            {assigned_to:'legacy text',status:'open'});
+        assert.deepEqual((await db.query('SELECT assigned_to,status,reviewed_by FROM content_items WHERE id=$1',[content.id])).rows[0],
+            {assigned_to:'legacy text',status:'draft',reviewed_by:null});
+        assert.equal((await db.query('SELECT instructor_id FROM training_courses WHERE id=$1',[course.id])).rows[0].instructor_id,original.userId);
+        assert.deepEqual((await db.query('SELECT assigned_to,approval_task_id FROM reports WHERE id=$1',[report.id])).rows[0],
+            {assigned_to:null,approval_task_id:null});
+        const approval = (await db.query(`INSERT INTO tasks(title,owner_user_id,business_context,source_type,source_id)
+            VALUES('Synthetic report approval',$1,'event_genix','report',$2) RETURNING id`,[original.userId,String(report.id)])).rows[0];
+        const preview = await service.preview('event_genix',actor,{sourceType:'task',sourceId:String(approval.id),workDate,
+            originalStaffId:original.staffId,staffId:replacement.staffId,professionKey:'manager',payUnit:'fixed',payMode:'additional',
+            originalTreatment:'retain',rateMode:'individual',rate:'100',rateReason:'Synthetic rate',reason:'Synthetic change',
+            workload:'Synthetic approval',temporaryAdmission:true,admissionReason:'Synthetic readiness'});
+        assert.ok(preview.blockers.some(item => item.code === 'SUBSTITUTION_REPORT_APPROVAL_PROTECTED'));
     } finally { await db.end(); }
 });
 

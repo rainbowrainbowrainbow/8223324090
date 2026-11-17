@@ -38,13 +38,15 @@ async function loadPayrollCorrections(db, month, staffId = null) {
     const result = await db.query(`SELECT ${CORRECTION_COLUMNS} FROM staff_substitution_pay_corrections
         WHERE posting_month=$1 AND ($2::int IS NULL OR staff_id=$2) ORDER BY id`, [month, staffId]);
     const byStaff = new Map();
-    for (const row of result.rows) {
-        const correction = mapCorrection(row);
+    const corrections = result.rows.map(mapCorrection);
+    const { loadWorkCorrectionLines } = require('./staffSubstitutionWorkCorrections');
+    corrections.push(...await loadWorkCorrectionLines(db, month, staffId));
+    for (const correction of corrections) {
         const { id, staffId: payeeId, substitutionId, deltaMinor } = correction;
         if (!byStaff.has(payeeId)) byStaff.set(payeeId, []);
         byStaff.get(payeeId).push({
             group: 'manual', lineType: 'staff_substitution_correction',
-            label: `Коригування підміни #${substitutionId} · #${id}`,
+            label: correction.label || `Коригування підміни #${substitutionId} · #${id}`,
             amount: deltaMinor / 100, quantity: 1, source: 'staff_substitution_correction',
             meta: { ...correction, correctionId: id, businessContext: PARK }
         });
@@ -52,9 +54,26 @@ async function loadPayrollCorrections(db, month, staffId = null) {
     return byStaff;
 }
 
-function allowedPayees(row) {
+async function loadFrozenFixedPay(db, row) {
+    if (!row.completion_json?.originalFixedPay || row.state !== 'completed') return null;
+    const month = row.input_json.workDate.slice(0, 7);
+    const { rows } = await db.query(`SELECT breakdown_json->'lines' AS lines FROM payroll_reports
+        WHERE staff_id=$1 AND period_month=$2 AND status IN ('reviewed','approved','paid') AND voided_at IS NULL`,
+    [row.original_staff_id, month]);
+    const lines = rows[0]?.lines;
+    if (!Array.isArray(lines)) return null;
+    const matches = lines.filter(line => line.lineType === 'staff_substitution' && line.meta?.payee === 'original'
+        && line.meta?.substitutionId === String(row.id) && line.meta.fixedRetention);
+    if (matches.length !== 1) return null;
+    const settled = matches[0].meta.fixedRetention;
+    if (!Number.isSafeInteger(settled.amountMinor) || settled.amountMinor < 0
+        || matches[0].amount !== settled.amountMinor / 100) return null;
+    return settled;
+}
+
+function allowedPayees(row, frozenFixedPay = null) {
     const replacement = row.completion_json?.amountMinor;
-    const original = row.completion_json?.originalPay?.amountMinor;
+    const original = row.completion_json?.originalPay?.amountMinor ?? frozenFixedPay?.amountMinor;
     const payees = [];
     if (row.state !== 'completed') return payees;
     if (row.staff_id && Number.isSafeInteger(replacement) && replacement >= 0) {
@@ -133,10 +152,6 @@ async function postCorrection(db, readSubstitution, business, actor, rawId, payl
 
         const row = await readSubstitution(client, business, id);
         if (row.state !== 'completed') c.fail('SUBSTITUTION_CORRECTION_NOT_COMPLETED', 'Коригувати можна лише завершену підміну.', 409);
-        const agreementPayee = allowedPayees(row).find(item => item.role === payee);
-        if (!agreementPayee) c.fail('SUBSTITUTION_CORRECTION_PAYEE_INVALID', 'За підміною немає погодженого нарахування для цього працівника.', 409);
-        const { staffId, amountMinor, maximumDebitMinor } = agreementPayee;
-        if (afterMinor < -maximumDebitMinor) c.fail('SUBSTITUTION_CORRECTION_AMOUNT_INVALID', 'Сума виходить за межі історично погодженої оплати.');
         const workDate = row.input_json.workDate;
         const previous = await latestCorrection(client, id, payee);
         assertCurrentCorrection(previous, expectedId);
@@ -144,11 +159,21 @@ async function postCorrection(db, readSubstitution, business, actor, rawId, payl
         if (postingMonth < currentMonth) c.fail('SUBSTITUTION_CORRECTION_MONTH_INVALID', 'Оберіть місяць поточного нарахування або пізніший.');
 
         // Payroll locks precede the substitution lock. Posting cannot precede the current entry.
-        for (const month of new Set([currentMonth, postingMonth])) {
+        const months = new Set([...(payee === 'original' && row.completion_json?.originalFixedPay ? [workDate.slice(0, 7)] : []),
+            currentMonth, postingMonth]);
+        for (const month of months) {
             await lockPayrollPeriodMutation(month, client);
             await acquirePayrollPeriodMutationLock(client, month);
         }
-        await readSubstitution(client, business, id, true);
+        const lockedRow = await readSubstitution(client, business, id, true);
+        if (payee === 'replacement' && await require('./staffSubstitutionWorkCorrections').loadWorkCorrection(client, id)) {
+            c.fail('SUBSTITUTION_CORRECTION_REALLOCATED', 'Нарахування виконавця вже перенесено коригуванням факту.', 409);
+        }
+        const fixed = payee === 'original' ? await loadFrozenFixedPay(client, lockedRow) : null;
+        const agreementPayee = allowedPayees(lockedRow, fixed).find(item => item.role === payee);
+        if (!agreementPayee) c.fail('SUBSTITUTION_CORRECTION_PAYEE_INVALID', 'За підміною немає зафіксованого нарахування для цього працівника.', 409);
+        const { staffId, amountMinor, maximumDebitMinor } = agreementPayee;
+        if (afterMinor < -maximumDebitMinor) c.fail('SUBSTITUTION_CORRECTION_AMOUNT_INVALID', 'Сума виходить за межі історично погодженої оплати.');
         const latest = await latestCorrection(client, id, payee);
         assertCurrentCorrection(latest, expectedId);
         if (postingMonth !== currentMonth && !await isPostingFrozen(client, currentMonth, staffId)) {
@@ -174,4 +199,4 @@ async function postCorrection(db, readSubstitution, business, actor, rawId, payl
     }
 }
 
-module.exports = { allowedPayees, loadCorrectionHistory, loadPayrollCorrections, postCorrection };
+module.exports = { allowedPayees, isPostingFrozen, loadFrozenFixedPay, loadCorrectionHistory, loadPayrollCorrections, postCorrection };

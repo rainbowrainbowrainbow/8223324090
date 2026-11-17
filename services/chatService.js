@@ -58,6 +58,7 @@ function mapChannelRow(row) {
         type: row.type || null,
         linkedEntityType: row.linked_entity_type || null,
         linkedEntityId: row.linked_entity_id || null,
+        hasLinkedBooking: Boolean(row.linked_booking_id),
         isDefault: row.is_default,
         unreadCount: parseInt(row.unread_count || '0', 10),
         lastMessageAt: row.last_message_at || null,

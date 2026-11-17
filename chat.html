@@ -522,6 +522,11 @@
                         <button type="button" class="chat-info-tab" data-tab="notes" onclick="_switchInfoTab('notes')">📝</button>
                     </div>
                     <div class="chat-info-tab-content" id="infoTab-members">
+                        <details id="chatSubstitutions" class="chat-info-substitutions" hidden>
+                            <summary>Підміни в каналі</summary>
+                            <p id="chatSubstitutionsStatus" role="status"></p>
+                            <ul id="chatSubstitutionsList"></ul>
+                        </details>
                         <div class="chat-info-panel-body" id="chatInfoPanelBody"></div>
                     </div>
                     <div class="chat-info-tab-content" id="infoTab-pinned" style="display:none">

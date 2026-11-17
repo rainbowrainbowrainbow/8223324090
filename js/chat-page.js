@@ -3203,6 +3203,49 @@
     var _infoBtn = document.getElementById('chatInfoBtn');
     var _infoPanel = document.getElementById('chatInfoPanel');
     var _infoPanelClose = document.getElementById('chatInfoPanelClose');
+    var _chatSubstitutions = document.getElementById('chatSubstitutions');
+    var _chatSubstitutionsRequest = 0;
+
+    function _resetChannelSubstitutions(channel) {
+        if (!_chatSubstitutions) return;
+        _chatSubstitutionsRequest++;
+        _chatSubstitutions.open = false;
+        _chatSubstitutions.hidden = !channel?.hasLinkedBooking || channel.isDm;
+        document.getElementById('chatSubstitutionsStatus').textContent = '';
+        document.getElementById('chatSubstitutionsList').replaceChildren();
+    }
+
+    _chatSubstitutions?.addEventListener('toggle', async function () {
+        if (!_chatSubstitutions.open || _chatSubstitutions.hidden || !_currentChannel) return;
+        var request = ++_chatSubstitutionsRequest;
+        var status = document.getElementById('chatSubstitutionsStatus');
+        var list = document.getElementById('chatSubstitutionsList');
+        list.replaceChildren();
+        status.textContent = 'Завантаження…';
+        try {
+            var rows = await _api('GET', '/channels/' + _currentChannel.id + '/substitutions');
+            if (request !== _chatSubstitutionsRequest) return;
+            status.textContent = rows.length ? '' : 'Для вас немає підмін у цьому каналі.';
+            for (var row of rows) {
+                var item = document.createElement('li');
+                var prefix = row.kind === 'chat_task' ? 'Задача чату' : 'Доручення наради';
+                var label = prefix + ' · ' + row.title;
+                if (row.taskId) {
+                    var link = document.createElement('a');
+                    link.href = 'tasks.html?open=' + encodeURIComponent(row.taskId);
+                    link.textContent = label;
+                    item.append(link);
+                } else {
+                    item.append(label);
+                }
+                var state = row.state === 'active' ? 'діє' : 'завершено';
+                item.append(' · Підміна №' + row.id + ' (' + state + ')');
+                list.append(item);
+            }
+        } catch (err) {
+            if (request === _chatSubstitutionsRequest) status.textContent = 'Не вдалося завантажити підміни.';
+        }
+    });
 
     if (_infoBtn) {
         _infoBtn.addEventListener('click', function () {
@@ -4068,6 +4111,7 @@
         }
 
         _currentChannel = channel;
+        _resetChannelSubstitutions(channel);
         _replyTo = null;
         _cancelReply();
         try {

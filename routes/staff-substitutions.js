@@ -10,6 +10,8 @@ const education = require('../services/staffSubstitutionEducation');
 const { listTeachers } = require('../services/educationGroups');
 const { canAccessTimelineContext } = require('../services/timelineContext');
 const { getBusinessCabinetSettings } = require('../services/businessCabinet');
+const operational = require('../services/staffSubstitutionOperationalWork');
+const { accountForStaff } = require('../services/staffSubstitutionSources');
 const service = createSubstitutionService();
 router.use(requireAction('hr.staff.view'), requireAction('hr.payroll.view'));
 router.use(async (req, res, next) => {
@@ -50,6 +52,8 @@ router.get('/catalog', handle(async req => {
             { key:'afisha',title:'Захід Афіші' },{key:'booking',title:'Бронювання Park'},
             {key:'procurement',title:'Завдання закупівлі'},{key:'lead',title:'Робота з лідом'},{key:'onboarding',title:'Наставництво'},{key:'inbox',title:'Відповідальний за розмову Omni'},
             {key:'inbox_reply',title:'Очікувана відповідь Omni'},{key:'chat_task',title:'Пряма задача чату Park'}, {key:'meeting_action',title:'Доручення з наради Park'}],
+        operationalSources:Object.entries(operational.SOURCES).filter(([key]) => operational.canRegister(req,key))
+            .map(([key, source]) => ({ key,title:source.title })),
         unavailableSources: [] };
 }));
 router.get('/', handle(req => service.list(req.substitutionBusiness, req.query)));
@@ -81,9 +85,14 @@ router.post('/teacher-rates', handle(req => {
     return education.saveRate(pool, req.user, req.body);
 }));
 router.post('/', handle(req => service.mutate(req.substitutionBusiness, req.user, 'create', req.body)));
+router.post('/operational-work', handle(req => operational.registerWork(pool,req,req.body,accountForStaff)));
 router.post('/:id/revise', handle(req => service.mutate(req.substitutionBusiness, req.user, 'revise', req.body, req.params.id)));
 router.post('/:id/complete', requireAction('manage_payroll_accrual'), handle(req => service.mutate(req.substitutionBusiness, req.user, 'complete', req.body, req.params.id)));
 router.post('/:id/corrections', requireAction('manage_payroll_accrual'), handle(req => service.correct(req.substitutionBusiness, req.user, req.params.id, req.body)));
+router.get('/:id/work-correction-options', requireAction('manage_payroll_accrual'),
+    handle(req => service.previewWorkCorrection(req.substitutionBusiness, req.params.id, req.query.staffId)));
+router.post('/:id/work-corrections', requireAction('manage_payroll_accrual'),
+    handle(req => service.correctWork(req.substitutionBusiness, req.user, req.params.id, req.body)));
 router.post('/:id/cancel', handle(req => service.mutate(req.substitutionBusiness, req.user, 'cancel', req.body, req.params.id)));
 
 module.exports = router;

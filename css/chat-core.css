@@ -3327,6 +3327,28 @@ body.dark-mode .chat-date-divider span,
     padding: 12px;
 }
 
+.chat-info-substitutions {
+    margin: 10px 12px 0;
+    font-size: 0.875rem;
+    overflow-wrap: anywhere;
+}
+
+.chat-info-substitutions summary {
+    min-block-size: 24px;
+    cursor: pointer;
+}
+
+.chat-info-substitutions ul {
+    max-block-size: 14rem;
+    overflow-y: auto;
+    padding-inline-start: 1.25rem;
+}
+
+.chat-info-substitutions ul:empty,
+.chat-info-substitutions p:empty {
+    display: none;
+}
+
 .chat-info-member {
     display: flex;
     align-items: center;

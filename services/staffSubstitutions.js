@@ -78,17 +78,27 @@ function createSubstitutionService(dependencies = {}) {
         const result = await db.query('SELECT version,action,actor,reason,before_json,after_json,created_at FROM staff_substitution_events WHERE substitution_id=$1 ORDER BY version', [row.id]);
         const history = { substitution: mapRow(row), events: result.rows };
         if (business === 'event_genix' && row.state === 'completed') {
-            const { allowedPayees, loadCorrectionHistory } = require('./staffSubstitutionCorrections');
-            history.correctionPayees = allowedPayees(row);
+            const { allowedPayees, loadFrozenFixedPay, loadCorrectionHistory } = require('./staffSubstitutionCorrections');
+            const frozenFixed = await loadFrozenFixedPay(db, row);
             history.corrections = await loadCorrectionHistory(db, row.id);
-            if (row.completion_json?.originalFixedPay) {
+            const workCorrections = require('./staffSubstitutionWorkCorrections');
+            history.workCorrection = await workCorrections.loadWorkCorrection(db,row.id);
+            history.correctionPayees = allowedPayees(row, frozenFixed)
+                .filter(payee => !history.workCorrection || payee.role !== 'replacement');
+            if (!history.workCorrection && !history.corrections.some(item => item.payee === 'replacement')) {
+                const frozenSource = await workCorrections.loadFrozenSource(db,row);
+                if (frozenSource) history.workCorrectionSource = { amountMinor:frozenSource.amountMinor };
+            }
+            if (frozenFixed) {
+                history.fixedOriginal = { ...frozenFixed, frozen: true };
+            } else if (row.completion_json?.originalFixedPay) {
                 const { getEmployeePayrollPreview } = require('./payroll');
                 const month = row.input_json.workDate.slice(0, 7);
                 const payroll = await getEmployeePayrollPreview(Number(row.original_staff_id), month, db, { includeReports: true });
                 const settled = payroll?.lines?.find(line => line.meta?.substitutionId === String(row.id) && line.meta?.fixedRetention);
                 const frozen = ['reviewed', 'approved', 'paid'].includes(payroll?.status);
-                if (settled && (frozen || !payroll.payrollBlockingIssues?.length)) {
-                    history.fixedOriginal = { ...settled.meta.fixedRetention, frozen };
+                if (settled && !frozen && !payroll.payrollBlockingIssues?.length) {
+                    history.fixedOriginal = { ...settled.meta.fixedRetention, frozen: false };
                 }
             }
         }
@@ -253,7 +263,13 @@ function createSubstitutionService(dependencies = {}) {
     function correct(business, actor, id, payload) {
         return require('./staffSubstitutionCorrections').postCorrection(db, read, business, actor, id, payload);
     }
-    return { list, history, preview, mutate, completionOptions, darAccruals, correct };
+    function previewWorkCorrection(business, id, staffId) {
+        return require('./staffSubstitutionWorkCorrections').quoteWorkCorrection(db, read, business, id, staffId);
+    }
+    function correctWork(business, actor, id, payload) {
+        return require('./staffSubstitutionWorkCorrections').postWorkCorrection(db, read, business, actor, id, payload);
+    }
+    return { list, history, preview, mutate, completionOptions, darAccruals, correct, previewWorkCorrection, correctWork };
 }
 
 module.exports = { createSubstitutionService, mapRow };

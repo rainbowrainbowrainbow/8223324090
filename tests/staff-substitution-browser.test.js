@@ -18,6 +18,9 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
     const commandBusinesses=[];
     const journalFilters=[];
     const corrections=[];
+    const registrations=[];
+    let workCorrection;
+    let workAvailable = true;
     const entry={id:'21',state:'completed',input:{staffId:2,originalStaffId:3,professionKey:'reception',
         sourceType:'hr_shift',workDate:'2099-01-13',workload:'Підмінити адміністратора на рецепції',payUnit:'hour',
         startsAt:'2099-01-13T08:00:00.000Z',endsAt:'2099-01-13T10:00:00.000Z'},
@@ -38,7 +41,7 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
             const dar = url.searchParams.has('dar');
             return res.end(`<!doctype html><html lang="uk"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
                 <link rel="stylesheet" href="/css/base.css"><link rel="stylesheet" href="/css/modals.css"><link rel="stylesheet" href="/css/responsive.css"><link rel="stylesheet" href="/css/education-schedule.css">
-                <body><main style="padding:24px"><h1>Синтетична перевірка підміни</h1>${dar ? darActions : '<div id="staffSubstitutionActions"><button data-substitution-action="create">Людина на заміну</button><button data-substitution-action="list">Підміни</button></div>'}</main>
+                <body><main style="padding:24px"><h1>Синтетична перевірка підміни</h1>${dar ? darActions : '<div id="staffSubstitutionActions"><button data-substitution-action="create">Людина на заміну</button><button data-substitution-action="list">Підміни</button><button data-substitution-action="register-work">Призначити роботу</button></div>'}</main>
                 <script>if (${dar}) window.TimelineBusinessContext={current:()=>({apiValue:'dar'}),presentation:()=>({mode:'education'})};
                 window.canUseAction=()=>true;window.escapeHtml=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
                 window.apiCall=async(method,url,body)=>{try{return await (await fetch('/fixture'+url,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined})).json()}catch{return null}};</script>
@@ -66,8 +69,9 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
             if (dar && url.pathname.endsWith('/sources')) return res.end(JSON.stringify({success:true,
                 data:[{id:'DAR-QA',title:'10:00 · Синтетичне заняття',startTime:'10:00',endTime:'11:00'}]}));
             if(url.pathname.endsWith('/catalog')) return res.end(JSON.stringify({success:true,data:{
-                staff:[{id:2,name:'Синтетична менеджерка'},{id:3,name:'Синтетичний адміністратор'}],
+                staff:[{id:2,name:'Синтетична менеджерка'},{id:3,name:'Синтетичний адміністратор'},{id:4,name:'Синтетична виконавиця'}],
                 professions:[{key:'reception',title:'Адміністратор'},{key:'manager',title:'Менеджер'},{key:'animator',title:'Аніматор'}],
+                operationalSources:[{key:'report_preparation',title:'Підготовка матеріалів звіту'}],
                 sources:[{key:'standalone',title:'Окрема робота'},{key:'hr_shift',title:'Зміна графіка'},{key:'booking',title:'Бронювання Park'}]
             }}));
             if(req.method==='GET' && url.pathname==='/fixture/staff-substitutions') {
@@ -85,7 +89,12 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
             if(req.method==='GET' && url.pathname==='/fixture/staff-substitutions/21/history') {
                 return res.end(JSON.stringify({success:true,data:{substitution:entry,
                     correctionPayees:[{ role:'replacement', staffId:2, amountMinor:30000, maximumDebitMinor:0 }], corrections,
+                    workCorrection, workCorrectionSource:workAvailable && !workCorrection ? { amountMinor:30000 } : undefined,
                     events:[{version:1,action:'create',actor:'synthetic',reason:'Погоджено для перевірки'}]}}));
+            }
+            if (url.pathname.endsWith('/21/work-correction-options')) {
+                return res.end(JSON.stringify({success:true,data:{staffId:Number(url.searchParams.get('staffId')),
+                    attendanceId:19,allocationIndex:0,actualMinutes:95,allocationFingerprint:'verified-synthetic-segment'}}));
             }
             if(url.pathname.endsWith('/sources')) {
                 const booking = url.searchParams.get('sourceType') === 'booking';
@@ -105,6 +114,21 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
             }
             let body='';for await(const chunk of req)body+=chunk;
             const payload=JSON.parse(body||'{}');
+            if (url.pathname.endsWith('/operational-work')) {
+                registrations.push(payload);
+                return res.end(JSON.stringify({success:true,data:{taskId:42,created:true}}));
+            }
+            if (url.pathname.endsWith('/21/work-corrections')) {
+                assert.equal(payload.staffId,4);
+                assert.equal(payload.attendanceId,19);
+                assert.equal(payload.allocationIndex,0);
+                assert.equal(payload.correctedAmount,'190.75');
+                assert.equal(payload.allocationFingerprint,'verified-synthetic-segment');
+                assert.ok(payload.requestKey);
+                workCorrection = { sourceStaffId:2,correctedStaffId:4,reverseMinor:30000,creditMinor:19075,
+                    postingMonth:payload.postingMonth,reason:payload.reason,actor:'synthetic',correctedAttendanceId:19 };
+                return res.end(JSON.stringify({success:true,data:workCorrection}));
+            }
             if (url.pathname.endsWith('/21/corrections')) {
                 assert.equal(payload.correctedAmount, '250.05');
                 assert.equal(payload.expectedCorrectionId, null);
@@ -412,6 +436,43 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
         await journal.waitForFunction(() => document.activeElement?.dataset.substitutionAction === 'list');
 
         await journal.evaluate(() => { window.canUseAction = () => true; });
+        await journal.evaluate(() => window.dispatchEvent(new Event('permissions:lifecycle')));
+        await journal.getByRole('button',{name:'Призначити роботу',exact:true}).click();
+        const assignment = journal.locator('.form-modal-overlay:not(.confirm-exit)');
+        await assignment.getByRole('combobox',{name:/^Робота/}).selectOption('report_preparation');
+        await assignment.getByLabel(/Номер тікета/).fill('9');
+        await assignment.getByLabel('Дата роботи').fill('2099-02-03');
+        await assignment.getByLabel('Хто відповідає за роботу').selectOption('3');
+        await journal.screenshot({path:path.join(output,'park-mobile-operational-registration.png')});
+        await assignment.getByRole('button',{name:'Призначити',exact:true}).click();
+        await journal.getByText(/Задача №42 · 2099-02-03/).waitFor();
+        assert.equal(registrations[0].sourceId,'9');
+        assert.equal(registrations[0].staffId,'3');
+        await journal.getByRole('button',{name:'Готово',exact:true}).click();
+        await journal.waitForFunction(() => !document.querySelector('[data-substitution-action="register-work"]').disabled);
+        await openHistory();
+        await dialog.getByRole('button', { name:'Уточнити виконавця або табель' }).click();
+        const workForm = journal.locator('.form-modal-overlay:not(.confirm-exit)');
+        await workForm.getByLabel('Виконавець за табелем').selectOption('4');
+        await workForm.getByRole('button',{name:'Перевірити табель'}).click();
+        await workForm.getByText(/Табель №19 · 95 хв/).waitFor();
+        await workForm.getByLabel('Сума за підтверджену роботу, грн').fill('190,75');
+        await workForm.getByLabel(/Відкритий місяць/).fill('2099-02');
+        await workForm.getByLabel('Причина коригування').fill('Синтетичне уточнення виконавця');
+        await workForm.getByRole('button',{name:'Перевірити нарахування'}).click();
+        await journal.getByText(/Сторно: Синтетична менеджерка/).waitFor();
+        assert.equal(workCorrection,undefined);
+        await journal.screenshot({path:path.join(output,'park-mobile-work-correction-confirmation.png')});
+        await journal.getByRole('button',{name:'Зберегти коригування'}).click();
+        await journal.waitForFunction(() => !document.querySelector('[data-substitution-action="list"]').disabled);
+        await openHistory();
+        assert.match(await dialog.innerText(),/Табель №19.*Синтетичне уточнення виконавця/);
+        assert.equal(await journal.evaluate(() => document.documentElement.scrollWidth > innerWidth),false);
+        await journal.screenshot({path:path.join(output,'park-mobile-work-correction-history.png')});
+        await closeButton.click();
+        await journal.waitForFunction(() => !document.querySelector('[data-substitution-action="list"]').disabled);
+        workCorrection = undefined;
+        workAvailable = false;
         await openHistory();
         await dialog.getByRole('button', { name:'Коригувати суму' }).click();
         const correctionForm = journal.locator('.form-modal-overlay:not(.confirm-exit)');
@@ -514,4 +575,56 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
         await page.waitForFunction(() => document.activeElement?.dataset.substitutionAction === 'accruals');
         await page.close();
     }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
+});
+
+test('Park channel substitution disclosure responds to keyboard and discards a stale response', { skip:!enabled }, async () => {
+    const { chromium } = require(process.env.PLAYWRIGHT_MODULE_PATH || 'playwright');
+    const root = path.resolve(__dirname,'..');
+    const [markup,script,css] = await Promise.all([
+        fs.readFile(path.join(root,'chat.html'),'utf8'),
+        fs.readFile(path.join(root,'js','chat-page.js'),'utf8'),
+        fs.readFile(path.join(root,'css','chat-core.css'),'utf8')
+    ]);
+    const disclosure = markup.match(/<details id="chatSubstitutions"[\s\S]*?<\/details>/)[0];
+    const code = script.slice(script.indexOf("    var _chatSubstitutions = document.getElementById"),script.indexOf('    if (_infoBtn) {'));
+    const browser = await chromium.launch({headless:true,...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+        ? { executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } : {})});
+    try {
+        const page = await browser.newPage({viewport:{width:390,height:844}});
+        await page.setContent(`<!doctype html><html lang="uk"><meta name="viewport" content="width=device-width,initial-scale=1">
+            <style>${css}</style><body><div style="max-width:260px">${disclosure}</div></body></html>`);
+        await page.addScriptTag({content:`
+            var _currentChannel;
+            var pendingChecks = [];
+            var _api = (method, path) => new Promise(resolve => pendingChecks.push({path,resolve}));
+            ${code}
+            function selectFixtureChannel(channel) {
+                _currentChannel = channel;
+                _resetChannelSubstitutions(channel);
+            }`});
+        const summary = page.getByText('Підміни в каналі',{exact:true});
+        await page.evaluate(() => window.selectFixtureChannel({id:1,hasLinkedBooking:true,isDm:false}));
+        await summary.focus();
+        await page.keyboard.press('Enter');
+        await page.waitForFunction(() => window.pendingChecks.length === 1);
+        assert.equal(await page.evaluate(() => window.pendingChecks[0].path),'/channels/1/substitutions');
+        await page.evaluate(() => window.selectFixtureChannel({id:2,hasLinkedBooking:true,isDm:false}));
+        await summary.click();
+        await page.waitForFunction(() => window.pendingChecks.length === 2);
+        await page.evaluate(() => {
+            window.pendingChecks[0].resolve([{title:'Старий канал',id:'77',kind:'chat_task',state:'active'}]);
+            window.pendingChecks[1].resolve([{title:'Синтетичне доручення <img>',id:'78',kind:'meeting_action',state:'completed',taskId:9}]);
+        });
+        const linked = page.getByRole('link',{name:/Синтетичне доручення <img>/});
+        await linked.waitFor();
+        assert.equal(await linked.getAttribute('href'),'tasks.html?open=9');
+        assert.equal(await page.getByText(/Старий канал/).count(),0);
+        assert.equal(await page.locator('details img').count(),0);
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),false);
+        const output = path.join(root,'output','substitution-browser');
+        await fs.mkdir(output,{recursive:true});
+        await page.screenshot({path:path.join(output,'park-mobile-channel-substitution.png')});
+        await page.evaluate(() => window.selectFixtureChannel({id:3,hasLinkedBooking:true,isDm:true}));
+        assert.equal(await summary.isVisible(),false);
+    } finally { await browser.close(); }
 });

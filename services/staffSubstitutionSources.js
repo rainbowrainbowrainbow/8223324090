@@ -15,6 +15,7 @@ const inbox = require('./staffSubstitutionInbox');
 const reply = require('./staffSubstitutionReply');
 const chatTask = require('./staffSubstitutionChat');
 const meeting = require('./staffSubstitutionMeeting');
+const operational = require('./staffSubstitutionOperationalWork');
 
 function requireSourceRole(actor, roles) {
     requireRole(...roles)({ user: actor }, { status() { return this; }, json() {
@@ -197,8 +198,12 @@ async function loadScope(db, business, actor, input, current) {
     if (!current && onboarding.isGeneratedTask(task)) {
         c.fail('SUBSTITUTION_USE_ONBOARDING_SOURCE', 'Оформіть підміну через призначення наставника.', 409);
     }
-    await taskExecution.getAssignableTaskOwner(replacementUserId, { pool: db, actor, businessContext: business });
+    const replacement = await taskExecution.getAssignableTaskOwner(replacementUserId, { pool: db, actor, businessContext: business });
+    const workBinding = await operational.assertOperationalScope(db, task, actor, input.workDate, { current:!!current, replacement });
     const blockers = [];
+    if (await operational.isReportApprovalTask(db,task)) {
+        blockers.push({code:'SUBSTITUTION_REPORT_APPROVAL_PROTECTED',message:'Для звіту можна передати окрему підготовчу задачу.'});
+    }
     if (!current && await meeting.taskHasActionClaim(db,business,task.id)) {
         blockers.push({code:'SUBSTITUTION_MEETING_ALIAS_CLAIMED',message:'Для доручення цієї наради вже оформлено підміну.'});
     }
@@ -214,7 +219,8 @@ async function loadScope(db, business, actor, input, current) {
     if (!current && ['done','cancelled','archived'].includes(task.status)) blockers.push({ code: 'SUBSTITUTION_TASK_FINISHED', message: 'Завершену задачу не можна передати' });
     if (task.visibility === 'private' || task.visibility === 'me_only') blockers.push({ code: 'SUBSTITUTION_PRIVATE_TASK', message: 'Спершу погодьте передачу приватної задачі через її власний діалог' });
     return { type: 'task', task: { id: task.id, ownerUserId: task.owner_user_id, version: task.version, status: task.status,
-        date:task.date,startsAt:task.scheduled_start_at,endsAt:task.scheduled_end_at }, replacementUserId, originalUserId, blockers };
+        date:task.date,startsAt:task.scheduled_start_at,endsAt:task.scheduled_end_at },
+        ...(workBinding && { workBinding }), replacementUserId, originalUserId, blockers };
 }
 
 async function changeAfisha(db, actor, row, source, restore=false) {
@@ -318,6 +324,9 @@ async function assertCurrent(db, business, actor, row, options) {
     if (source.type === 'hr_shift' && fingerprintShiftPlan(source.plan) !== fingerprintShiftPlan(row.source_snapshot.plan)) c.fail('SUBSTITUTION_SOURCE_STALE', 'Часовий план підміни змінено', 409);
     if (source.type === 'task' && c.fingerprint([source.task.date,source.task.startsAt,source.task.endsAt])
         !== c.fingerprint([row.source_snapshot.task.date,row.source_snapshot.task.startsAt,row.source_snapshot.task.endsAt])) c.fail('SUBSTITUTION_SOURCE_STALE', 'Час задачі змінено після передачі; перевірте її історію', 409);
+    if (source.type === 'task' && c.fingerprint(source.workBinding ?? null) !== c.fingerprint(row.source_snapshot.workBinding ?? null)) {
+        c.fail('SUBSTITUTION_SOURCE_STALE','Зв’язок задачі з робочим записом змінився.',409);
+    }
 }
 
 async function reviseAssignment(db, business, actor, row, input) {
@@ -420,11 +429,14 @@ async function listScopes(db, business, actor, query) {
             try {
                 const task=await taskExecution.getVisibleTask(candidate.id,actor,{pool:db,businessContext:business});
                 if (!['private','me_only'].includes(task.visibility) && task.source_type !== 'booking' && task.source_entity_type !== 'booking' && task.source_type !== 'conversation_reply' && !onboarding.isGeneratedTask(task)) {
-                    if (!await meeting.taskHasActionClaim(db,business,task.id)) {
+                    if (!await meeting.taskHasActionClaim(db,business,task.id) && !await operational.isReportApprovalTask(db,task)) {
+                        await operational.assertOperationalScope(db,task,actor,date);
                         result.push({id:String(task.id),title:task.title || `Задача №${task.id}`});
                     }
                 }
-            } catch(error) { if (![403,404].includes(error.statusCode || error.status)) throw error; }
+            } catch(error) {
+                if (![403,404].includes(error.statusCode || error.status) && error.code !== 'SUBSTITUTION_SOURCE_STALE') throw error;
+            }
         }
         return result;
     }

@@ -29,6 +29,13 @@ function manualOriginalPay(input, quote) {
     return { amountMinor, source: 'individual', reason: input.payOverrides.reason, rateUnit: reference?.rateUnit || 'hour' };
 }
 
+async function assertUnusedCorrectedAttendance(db, attendanceId, indices) {
+    if ((await db.query(`SELECT 1 FROM staff_substitution_work_corrections
+        WHERE corrected_attendance_id=$1 AND allocation_index=ANY($2::int[])`, [attendanceId,indices])).rowCount) {
+        c.fail('SUBSTITUTION_WORK_CORRECTION_CONFLICT','Цей сегмент уже використано коригуванням підміни.',409);
+    }
+}
+
 async function freezeCompletion(db, row, payload, actor) {
     const input = row.input_json;
     if (payload.workConfirmed !== true) c.fail('SUBSTITUTION_WORK_CONFIRM_REQUIRED', 'Підтвердьте фактичне виконання роботи');
@@ -71,6 +78,7 @@ async function freezeCompletion(db, row, payload, actor) {
             || covered.some(item => !(item.conditions?.rate > 0)) || !coveredMinutes || (actualMinutes !== null && actualMinutes !== coveredMinutes)) {
             c.fail('SUBSTITUTION_ADDITIONAL_ATTENDANCE_REQUIRED', 'Підтвердьте виконання за завершеним табелем саме цього сегмента.', 409);
         }
+        await assertUnusedCorrectedAttendance(db, record.id, covered.map(item => allocations.indexOf(item)));
         completion.attendanceId = record.id;
         completion.baseEvidence = covered.map(item => c.fingerprint(item));
     }
@@ -88,6 +96,7 @@ async function freezeCompletion(db, row, payload, actor) {
         }
         const indices = payload.baseAllocationIndices.map(index => c.integer(index, 'індекс базового сегмента', 0, 1000));
         if (new Set(indices).size !== indices.length) c.fail('SUBSTITUTION_DUPLICATE_BASE', 'Сегмент базової оплати вказано двічі');
+        await assertUnusedCorrectedAttendance(db, attendanceId, indices);
         const selected = indices.map(index => snapshot.compensationAllocations?.[index]);
         if (selected.some(allocation => !allocation || allocation.allocationType !== 'base' || !allocation.conditions
             || !matchesSubstitutionBaseAllocation(input, snapshot, allocation))) {

@@ -329,6 +329,24 @@
         showNotification('Підміну збережено. Історичну ставку зафіксовано.', 'success');
     }
 
+    async function registerWork() {
+        const catalog = await request('GET','/catalog');
+        if (!catalog.operationalSources?.length) throw new Error('Немає доступних процесів для призначення роботи.');
+        const values = await formModal('Призначити роботу Park', [
+            choice('sourceType','Робота',catalog.operationalSources.map(source => [source.key,source.title])),
+            field('sourceId','Номер тікета, матеріалу, заняття або звіту'),
+            field('workDate','Дата роботи',today(),'date'),
+            choice('staffId','Хто відповідає за роботу',catalog.staff.map(person => [String(person.id),person.name]))
+        ], { okText:'Призначити', validate: values => /^\d+$/.test(values.sourceId.trim()) && Number(values.sourceId) > 0
+            ? null : { key:'sourceId',message:'Введіть номер запису.' } });
+        if (!values) return;
+        const result = await saveCommand('/operational-work', { ...values,sourceId:values.sourceId.trim() });
+        if (await confirmModal(`Задача №${result.taskId} · ${values.workDate}\nДля підміни можна передати це призначення іншому працівнику.`,
+            {okText:'Оформити підміну',cancelText:'Готово'})) {
+            await create({sourceType:'task',sourceId:String(result.taskId),workDate:values.workDate,originalStaffId:values.staffId});
+        }
+    }
+
     function personLabel(people, id) {
         return people.get(String(id)) || `Працівник №${id}`;
     }
@@ -352,7 +370,7 @@
         ].filter(Boolean).join('\n');
     }
 
-    function showSubstitutionHistory(title, text, allowCorrection = false) {
+    function showSubstitutionHistory(title, text, allowCorrection = false, allowWorkCorrection = false) {
         return new Promise(resolve => {
             const dialog = document.createElement('dialog');
             dialog.className = 'confirm-dialog success form-modal-dialog substitution-history-modal';
@@ -363,20 +381,59 @@
                 <div class="form-modal-fields" tabindex="0" role="region" aria-label="Подробиці та історія підміни">
                     <p class="form-modal-note"></p>
                 </div>
-                <form class="confirm-actions" method="dialog">
-                    <button class="confirm-btn ${allowCorrection ? 'confirm-cancel' : 'confirm-ok success'}" autofocus type="submit" value="close">Закрити</button>
+                <form class="confirm-actions substitution-history-actions" method="dialog">
+                    <button class="confirm-btn ${allowCorrection || allowWorkCorrection ? 'confirm-cancel' : 'confirm-ok success'}" autofocus type="submit" value="close">Закрити</button>
                     ${allowCorrection ? '<button class="confirm-btn confirm-ok success" type="submit" value="correct">Коригувати суму</button>' : ''}
+                    ${allowWorkCorrection ? '<button class="confirm-btn confirm-ok success" type="submit" value="correct-work">Уточнити виконавця або табель</button>' : ''}
                 </form>`;
             dialog.querySelector('h2').textContent = title;
             dialog.querySelector('.form-modal-note').textContent = text;
             dialog.addEventListener('close', () => {
-                const correct = dialog.returnValue === 'correct';
+                const action = dialog.returnValue;
                 dialog.remove();
-                resolve(correct);
+                resolve(action);
             }, { once: true });
             document.body.append(dialog);
             dialog.showModal();
         });
+    }
+
+    async function correctCompletedWork(row, history, people) {
+        const input = history.substitution.input;
+        const staff = [...people].filter(([id]) => id && Number(id) !== Number(input.originalStaffId));
+        if (!staff.length) return;
+        const selected = await formModal('Хто виконав підміну', [
+            choice('staffId', 'Виконавець за табелем', staff, String(input.staffId))
+        ], { okText:'Перевірити табель' });
+        if (!selected) return;
+        const path = `/${encodeURIComponent(row.id)}/work-correction-options?staffId=${encodeURIComponent(selected.staffId)}`;
+        const attendance = await request('GET', path);
+        const workMonth = input.workDate.slice(0, 7);
+        const pay = history.workCorrectionSource.amountMinor;
+        const values = await formModal('Уточнення виконаної підміни', [
+            { type:'note', text:`${personLabel(people, attendance.staffId)} · Табель №${attendance.attendanceId} · ${attendance.actualMinutes} хв. Сторно ${money(pay)} і нову суму буде проведено в обраному місяці.` },
+            field('correctedAmount','Сума за підтверджену роботу, грн',amountText(pay)),
+            field('postingMonth','Відкритий місяць після вихідного (РРРР-ММ)'),
+            field('reason','Причина коригування')
+        ], { okText:'Перевірити нарахування', validate: values => {
+            if (!/^(?:0|[1-9]\d{0,7})(?:\.\d{1,2})?$/.test(decimalText(values.correctedAmount))) {
+                return { key:'correctedAmount', message:'Введіть суму в гривнях із точністю до копійок.' };
+            }
+            if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(values.postingMonth.trim()) || values.postingMonth.trim() <= workMonth) {
+                return { key:'postingMonth', message:`Оберіть відкритий місяць після ${workMonth}.` };
+            }
+            return null;
+        } });
+        if (!values) return;
+        const correctedAmount = decimalText(values.correctedAmount);
+        const postingMonth = values.postingMonth.trim();
+        const confirmation = `${postingMonth}\nСторно: ${personLabel(people, input.staffId)} · ${money(pay)}\n`
+            + `Нарахування: ${personLabel(people, attendance.staffId)} · ${correctedAmount} грн\nПричина: ${values.reason}`;
+        if (!await confirmModal(confirmation, { okText:'Зберегти коригування', cancelText:'Скасувати' })) return;
+        await saveCommand(`/${row.id}/work-corrections`, { staffId:attendance.staffId, attendanceId:attendance.attendanceId,
+            allocationIndex:attendance.allocationIndex, allocationFingerprint:attendance.allocationFingerprint,
+            postingMonth, correctedAmount, reason:values.reason });
+        showNotification('Сторно й уточнення збережено в історії підміни.', 'success');
     }
 
     async function correctCompleted(row, history, people) {
@@ -450,11 +507,15 @@
                     ? payOverrideSummary(event.after_json.quote, event.before_json?.quote) : '';
                 return `Версія ${event.version} · ${actions[event.action] || event.action} · ${event.actor}: ${event.reason}${recordedPay ? `\n${recordedPay}` : ''}`;
             }).join('\n') + (history.corrections || []).map(item => `\nКоригування #${item.id} · ${personLabel(people, item.staffId)} · ${item.postingMonth}\n`
-                + `${money(item.beforeMinor)} → ${money(item.afterMinor)} (${signedMoney(item.deltaMinor)}) · ${item.actor}: ${item.reason}`).join('\n');
-        if (!readOnly && !isDar && details.state === 'completed' && history.correctionPayees?.length && canCorrect()) {
-            if (await showSubstitutionHistory(title, note, true)) {
-                await correctCompleted(row, history, people);
-            }
+                + `${money(item.beforeMinor)} → ${money(item.afterMinor)} (${signedMoney(item.deltaMinor)}) · ${item.actor}: ${item.reason}`).join('\n')
+            + (history.workCorrection ? `\nУточнення виконання · ${history.workCorrection.postingMonth}\n`
+                + `${personLabel(people, history.workCorrection.sourceStaffId)}: сторно ${money(history.workCorrection.reverseMinor)} · `
+                + `${personLabel(people, history.workCorrection.correctedStaffId)}: ${money(history.workCorrection.creditMinor)} \n`
+                + `Табель №${history.workCorrection.correctedAttendanceId} · ${history.workCorrection.actor}: ${history.workCorrection.reason}` : '');
+        if (!readOnly && !isDar && details.state === 'completed' && canCorrect()) {
+            const action = await showSubstitutionHistory(title, note, !!history.correctionPayees?.length, !!history.workCorrectionSource);
+            if (action === 'correct') await correctCompleted(row, history, people);
+            if (action === 'correct-work') await correctCompletedWork(row, history, people);
             return;
         }
         if (readOnly || details.state !== 'active' || (isDar && !canManage())) return showSubstitutionHistory(title, note);
@@ -608,12 +669,16 @@
         container.hidden = !(typeof canUseAction === 'function' && canUseAction('hr.staff.view') && canUseAction('hr.payroll.view')
             && currentCabinet());
         if (dar()) container.querySelector('[data-substitution-action="create"]').hidden = !(!container.hidden && canManage());
+        const work = container.querySelector('[data-substitution-action="register-work"]');
+        if (work) work.hidden = container.hidden || dar()
+            || !['hr.schedule.manage','hr.payroll.manage','manage_payroll_rules'].every(action => canUseAction(action));
         if (container.dataset.ready) return;
         container.dataset.ready = 'true';
         container.addEventListener('click', event => {
             const action = event.target.closest('[data-substitution-action]')?.dataset.substitutionAction;
             if (action === 'create') run(() => create());
             if (action === 'list') run(workspace);
+            if (action === 'register-work' && !dar()) run(registerWork);
             if (action === 'accruals' && dar()) run(accruals);
         });
     }

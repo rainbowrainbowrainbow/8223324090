@@ -48,16 +48,16 @@ allocation and frozen periods.
 | Procurement | `procurement_lists.assigned_to` → `staff.id` | Existing ledger adapter with the existing area gate. Warehouse item custody is a separate stock movement. |
 | Leads | `leads.assigned_to` → `users.id` | Existing adapter with the linked-account requirement. The local alias guard rejects overlapping claims on a lead and its explicitly linked tasks. |
 | Afisha | `afisha.line_id`, `second_line_id` and `afisha_birthday_slots` | Regular primary/second slots in production. The local picker filters by slot and provides the event's end time. Single and two-slot greetings use occurrence-specific assignment. Automatic occurrences move with the replacement or reject the scheduling write when the replacement is unavailable. |
-| Park bookings, linked events and banquet members | Booking animator conflict checks, linked-booking contract, dated animator roster | Ordinary and active canonical banquet primary/activity members support primary and unambiguous second-animator slots locally. Legacy-only banquet links and ambiguous technical children remain outside the adapter. |
+| Park bookings, linked events and banquet members | Booking animator conflict checks, linked-booking contract, dated animator roster | Primary and unambiguous second-animator slots are supported. A single historical activity edge can corroborate a canonical parent/child pair. Other historical links require reconciliation. |
 | Education lessons, recurring lessons and group teachers | Booking occurrence lesson metadata, `assertLessonTeacher`, `education_teacher_memberships`, `education_groups.teacher_id` | Local DAR lesson occurrence adapter and teacher-specific accruals. Group and series defaults stay intact. |
 | HR onboarding mentor and generated learning tasks | `onboarding_progress.responsible_user_id`, `assignOnboardingResponsible`, `syncOnboardingTasks` | A current Park progress record and its generated tasks move through the existing assignment service in one transaction. Generated tasks cannot be separately claimed. |
 | Inbox assignments and reply expectations | `conversations.assigned_to`, `reply_owner_user_id`, reply escalation task | The general assignee of open or pending Park conversations supports local substitution with existing Omni eligibility. A pending expected reply supports a separate claim keyed by its outbound message. The reply owner, any existing escalation task owner and audit history change atomically. |
 | Chat tasks | `chat_tasks.assigned_to` → `users.id` | Direct tasks in an active Park booking channel support local substitution through the task creator or an existing chat-task manager who belongs to the channel. The replacement must already have business and channel access. |
 | Meeting actions | `meeting_action_items.assigned_to`, `task_id`, generated `tasks` | A meeting creator can substitute a pending action in an active Park booking channel they belong to. The replacement must already have business and channel access. Converted actions use the linked task. |
-| Support tickets | `support_tickets.assigned_to` | Legacy free-text field and no durable worker link. Requires scoped identity and a precise work item before exposing payable substitution. |
-| Art Director content | `content_items.assigned_to` | Free-text assignee. A payable scope needs stable identity and business ownership separate from publisher/reviewer attribution. |
-| Training courses and homework | `training_courses.instructor_id`, `training_assignments.assigned_to` | Course instructor is set from the course creator. Homework recipients are learners. A teaching shift requires a distinct delivery occurrence. |
-| Finance report duty | `reports.assigned_to` → `accountants.id` | Requires an exact accounting workflow scope and durable worker mapping without transferring approval/payment authority. |
+| Support tickets | Open ticket with a Park customer link | Register the explicitly confirmed employee as owner of a dated support task. |
+| Art Director content | Draft or returned Park content item | Register a preparation task. Publishing and review use the Art workflow. |
+| Training courses and homework | Dated lecture in an active HR profession course | Register delivery for that date. The course instructor and learner assignments stay in the training workflow. |
+| Finance report duty | Open Park report without an approval task | Register a preparation task. Accounting approval tasks are excluded from substitution. |
 
 The inventory records source paths present in this revision. Operational ownership
 that also grants visibility must continue to use the source's existing access
@@ -174,9 +174,29 @@ workspace has no current client for the separate `/api/chat/tasks` list.
 Direct meeting actions use one payable claim and require a Park booking channel.
 Conversion locks the action row, keeps task creation and linking atomic,
 rejects conversion during an active claim, and skips actions already
-completed through substitution. Legacy
-text fields on support and content records need validated worker IDs and
-business ownership.
+completed through substitution.
+
+Use **HR → Призначити роботу** to enter the exact source record and date and
+choose a linked staff account. The resulting Tasks record owns that work.
+Substitution changes its assigned owner and records the source binding.
+The older text assignees in support and content are never inferred from names.
+The report's reviewer, training course's instructor, and publishing fields
+remain on the source records and use their existing workflows.
+
+The Park booking channel information panel can show substitution status for
+direct tasks and meeting actions. A channel member sees their own created or
+assigned chat tasks. A meeting creator can see the action and open its
+converted task when the normal Tasks policy permits access.
+
+Automatic original-worker fixed-pay amounts can be corrected from the matching
+reviewed, approved or paid payroll line. A completed Park HR additional-pay
+agreement with one verified allocation can also be corrected once for the actual
+worker or attendance on the same date. The original worker's retained pay stays
+separate. A matching, finalized time record and a frozen source payroll line
+are required. The reversal and replacement are posted together in a later
+period open for both workers, with both allocation references and the author's
+reason. Prior replacement amount corrections and primary-pay replacement
+require reconciliation before changing the worker.
 
 ## Operational acceptance
 

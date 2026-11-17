@@ -21,6 +21,7 @@ const { emitTaskCreatedNotificationOutboxEvent } = require('../services/notifica
 
 const { authenticateToken, requireRole, ROLE_HIERARCHY } = require('../middleware/auth');
 const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
+const { listChannelSubstitutions } = require('../services/staffSubstitutionChannelReadModel');
 
 const log = createLogger('ChatAPI');
 
@@ -977,6 +978,16 @@ router.delete('/messages/:id', async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         log.error('Error deleting message', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.get('/channels/:id/substitutions', requireChannelMember, async (req, res) => {
+    try {
+        const rows = await listChannelSubstitutions(require('../db').pool, req.user, req.chatChannelId);
+        res.set('Cache-Control', 'no-store').json(rows);
+    } catch (err) {
+        log.error('Error fetching channel substitutions', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

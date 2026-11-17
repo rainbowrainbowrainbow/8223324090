@@ -80,34 +80,6 @@ async function pageFor(action, business='dar', width=1440) {
     }
 }
 async function shot(page,name) {await page.screenshot({path:path.join(out,`${name}.png`)});evidence.screenshots.push(`${name}.png`);}
-async function measureContrast(page,label){
-    evidence.audits.push(await page.evaluate(label=>{
-        const canvas=document.createElement('canvas');canvas.width=canvas.height=1;const pixel=canvas.getContext('2d',{willReadFrequently:true});
-        const colorCache=new Map();const rgb=color=>{if(colorCache.has(color))return colorCache.get(color);pixel.clearRect(0,0,1,1);pixel.fillStyle=color;pixel.fillRect(0,0,1,1);const c=pixel.getImageData(0,0,1,1).data,value=[c[0],c[1],c[2],c[3]/255];colorCache.set(color,value);return value;};
-        const mix=(fg,bg)=>{const a=fg[3]??1;return fg.slice(0,3).map((v,i)=>v*a+bg[i]*(1-a));};
-        const luminance=c=>c.slice(0,3).map(v=>{v/=255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4;}).reduce((a,v,i)=>a+v*[.2126,.7152,.0722][i],0);
-        const visible=el=>Boolean(el&&el.getClientRects().length&&getComputedStyle(el).visibility!=='hidden');
-        const backgroundCache=new WeakMap();function background(el){if(backgroundCache.has(el))return backgroundCache.get(el);const parent=el.parentElement?background(el.parentElement):{colors:[[255,255,255]],gradient:false},s=getComputedStyle(el);let colors=parent.colors.map(color=>mix(rgb(s.backgroundColor),color)),gradient=parent.gradient;const stops=[...s.backgroundImage.matchAll(/(?:rgba?|hsla?|color|oklab|oklch|lab|lch)\([^)]*\)|\btransparent\b|#[0-9a-f]{3,8}\b/gi)].map(match=>rgb(match[0]));if(stops.length){gradient=true;const samples=[];for(let i=1;i<stops.length;i++)for(let step=0;step<=20;step++)samples.push(stops[i-1].map((v,j)=>v+(stops[i][j]-v)*step/20));colors=colors.flatMap(color=>samples.map(sample=>mix(sample,color)));}colors=[...new Map(colors.map(c=>[c.join(','),c])).values()];const value={colors,gradient};backgroundCache.set(el,value);return value;}
-        const roots=[...document.querySelectorAll('#staffEducationAssignment')].filter(visible);
-        const controls=[],contrast=[];
-        for(const root of roots)for(const el of root.querySelectorAll('*')){
-            if(!visible(el)||el.disabled||el.closest('[inert],[aria-hidden="true"]'))continue;
-            const ownText=Array.from(el.childNodes).filter(n=>n.nodeType===Node.TEXT_NODE).map(n=>n.textContent.trim()).filter(Boolean).join(' ');
-            const placeholder=!el.value&&el.placeholder;
-            const textValue=ownText||el.value||placeholder;
-            const s=getComputedStyle(el),backgrounds=background(el);
-            if(el.tagName==='BUTTON')controls.push({id:el.id,text:el.textContent.trim(),radius:s.borderRadius,font:s.fontFamily,height:el.getBoundingClientRect().height,background:s.backgroundColor,className:el.className});
-            if(!textValue)continue;
-            const textStyle=placeholder?getComputedStyle(el,'::placeholder'):s;
-            const ratio=Math.min(...backgrounds.colors.map(bg=>{const a=luminance(mix(rgb(textStyle.color),bg)),b=luminance(bg);return(Math.max(a,b)+.05)/(Math.min(a,b)+.05);})),size=parseFloat(s.fontSize),large=size>=24||(size>=18.66&&Number(s.fontWeight)>=700);
-            contrast.push({selector:el.id?'#'+el.id:el.className||el.tagName,text:String(textValue).slice(0,70),placeholder:Boolean(placeholder),ratio:Number(ratio.toFixed(2)),minimum:large?3:4.5,gradient:backgrounds.gradient});
-            if(!Number.isFinite(ratio)){const chain=[];for(let node=el;node;node=node.parentElement){const style=getComputedStyle(node);if(style.backgroundImage!=='none')chain.push(style.backgroundImage);}contrast.at(-1).unparsedBackgrounds=chain;}
-        }
-        return {label,theme:document.documentElement.dataset.theme,controls,contrast,legendVisible:visible(document.querySelector('.legend')),minimapVisible:visible(document.getElementById('minimapContainer')),workspaceWidth:document.getElementById('educationScheduleWorkspace')?.getBoundingClientRect().width};
-    },label));
-}
-
-
 async function manager(page) {
     if ((await page.locator('#educationTeacherManager').getAttribute('open')) === null) await page.locator('#educationTeacherManager summary').click();
     await page.locator('#educationTeacherName').waitFor({state:'visible'});
@@ -516,40 +488,45 @@ async function closeChecks(){
             await pool.query("INSERT INTO business_memberships(business_id,organization_id,user_id,role,is_default) VALUES ($1,$2,$3,$5,$4)",[id,org,actorId,business.key==='event_genix',business.key==='maysternya_doli'?'director':'creator']);
         }
         evidence.proofs.hrSourcePrerequisite={organizationId:org,actorId,syntheticMemberships:['event_genix','dar','maysternya_doli'],ownershipInferred:false};
+        // Establish an existing teacher through the retained API before visiting the Park card.
+        const assignment = await api('/api/hr/staff/' + candidate + '/education-memberships?businessContext=event_genix',
+            'POST', { educationBusinessContext: 'dar', confirmAssignment: true }, 201);
+        assert.equal(assignment.data.alreadyAssigned, false);
 
         await waitTeacherRuntimeReads(page);
         await Promise.all([page.waitForURL(url=>url.pathname==='/'&&(url.searchParams.get('businessContext')||'event_genix')==='event_genix'&&!url.searchParams.has('educationSchedule'),{waitUntil:'domcontentloaded'}),page.locator('#sidebarBusinessContextSelect').selectOption('event_genix')]);await page.waitForFunction(()=>window.CrmBusinessContext?.current?.()==='event_genix'&&window.TimelineBusinessContext?.current?.().apiValue==='event_genix'&&!document.getElementById('sidebarBusinessContextSelect')?.disabled&&window.__crmBusinessNavigationPending!==true);await waitTeacherRuntimeReads(page);
-        evidence.proofs.hrRequests=[]; page.on('request',r=>{const u=new URL(r.url());if(u.pathname.startsWith('/api/hr/staff/'))evidence.proofs.hrRequests.push({path:u.pathname+u.search,context:r.headers()['x-business-context'],scope:r.headers()['x-business-scope']});});
-        await waitTeacherRuntimeReads(page);await page.goto(base+'/hr.html?businessContext=event_genix&employee='+candidate,{waitUntil:'domcontentloaded'});
-        await page.locator('#staffEditModal').waitFor({state:'visible'});
-        await page.waitForFunction(()=>document.getElementById('staffEditModal')?.dataset.cardState !== 'loading').catch(()=>{});
-        evidence.proofs.hrCardBeforeAssignment=await page.evaluate(()=>({state:document.getElementById('staffEditModal')?.dataset.cardState,profileError:document.getElementById('staffProfileCardState')?.textContent,panelHidden:document.getElementById('staffEducationAssignment')?.hidden,manager:window.canAccess?.('hr.staff.manage'),staffId:document.getElementById('editStaffId')?.value,userRole:window.AppState?.currentUser?.role,active:window.AppState?.currentUser?.activeBusinessContext,url:location.pathname+location.search,scope:typeof getCrmBusinessScope==='function'?getCrmBusinessScope():null,membership:window.AppState?.currentUser?.businessMembershipAccess}));flush();
-        await page.getByRole('tab',{name:'Робота',exact:true}).click();
-        await page.locator('#staffEducationAssignment').waitFor({state:'visible'});
-        await page.waitForFunction(()=>!document.getElementById('staffEducationBusiness').disabled);
-        await page.locator('#staffEducationBusiness').selectOption('dar');
-        await page.locator('#staffEducationConfirm').check();
-        // Explicit error-state probe only; the successful retry still reaches actual Express and SQL.
-        let postCount=0,entered,release;const barrier=new Promise(r=>{entered=r;}),held=new Promise(r=>{release=r;});
-        const assignmentRoute='**/api/hr/staff/'+candidate+'/education-memberships*';
-        await page.route(assignmentRoute,async route=>{
-            if(route.request().method()!=='POST')return route.continue();postCount++;
-            if(postCount===1)return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({success:false,error:'Контрольована тимчасова помилка'})});
-            const actual=await route.fetch();entered();await held;await route.fulfill({response:actual});
+        const educationRequests = [];
+        page.on('request', request => {
+            const pathname = new URL(request.url()).pathname;
+            if (/^\/api\/hr\/staff\/[^/]+\/education-(businesses|memberships)$/.test(pathname)) educationRequests.push(pathname);
         });
-        const failedResponse=page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname==='/api/hr/staff/'+candidate+'/education-memberships');
-        await page.locator('#staffEducationAssign').click();assert.equal((await failedResponse).status(),503);
-        await page.waitForFunction(()=>document.getElementById('staffEducationStatus').textContent.includes('Підтвердження збережено'));
-        assert.equal(await page.locator('#staffEducationBusiness').inputValue(),'dar');assert.ok(await page.locator('#staffEducationConfirm').isChecked());
-        assert.equal((await pool.query('SELECT count(*)::int n FROM education_teacher_memberships WHERE staff_id=$1',[candidate])).rows[0].n,0);
-        const response=page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname==='/api/hr/staff/'+candidate+'/education-memberships');
-        try {
-            await page.locator('#staffEducationAssign').click();let deadline;try{await Promise.race([barrier,new Promise((_,reject)=>{deadline=setTimeout(()=>reject(Error('HR response barrier timeout')),15000);})]);}finally{clearTimeout(deadline);}
-            assert.ok(await page.locator('#staffEducationAssign').isDisabled());const bounds=await page.locator('#staffEducationAssign').boundingBox();await page.mouse.click(bounds.x+bounds.width/2,bounds.y+bounds.height/2);assert.equal(postCount,2);
-        }finally{release();}
-        assert.equal((await response).status(),201);await page.unroute(assignmentRoute);
-        evidence.proofs.hrRetry={classification:'MOCK_ERROR_PLUS_VISIBLE_RETRY_ACTUAL_EXPRESS_SQL',draftPreserved:true,pendingDoubleSubmitBlocked:true,postCount};
-        await page.waitForFunction(()=>document.getElementById('staffEducationStatus').textContent.includes('Працівника призначено викладачем'));
+        const openParkWorkTab = async () => {
+            await page.goto(base + '/hr.html?businessContext=event_genix&employee=' + candidate, { waitUntil: 'domcontentloaded' });
+            await page.locator('#staffEditModal[data-card-state="ready"]').waitFor({ state: 'visible' });
+            assert.equal(await page.locator('#editStaffId').inputValue(), String(candidate));
+            assert.equal(await page.evaluate(() => window.canAccess('hr.staff.manage')), true);
+            await page.getByRole('tab', { name: 'Робота', exact: true }).click();
+            await page.getByRole('tabpanel', { name: 'Робота', exact: true }).waitFor({ state: 'visible' });
+            assert.equal(await page.locator('#staffEducationAssignment').count(), 0);
+            assert.equal(await page.getByRole('button', { name: 'Призначити викладачем' }).count(), 0);
+            await waitTeacherRuntimeReads(page);
+            assert.deepEqual(educationRequests, []);
+        };
+        await openParkWorkTab();
+        await shot(page, 'park-staff-work-desktop');
+
+        const notes = 'Перевірка редагування картки Park';
+        await page.locator('#editNotes').fill(notes);
+        const [saved] = await Promise.all([
+            page.waitForResponse(response => response.request().method() === 'PUT'
+                && new URL(response.url()).pathname === '/api/hr/staff/' + candidate),
+            page.locator('#editSaveWork').click()
+        ]);
+        assert.equal(saved.status(), 200);
+        assert.equal((await saved.json()).success, true);
+        assert.equal((await pool.query('SELECT notes FROM staff WHERE id=$1', [candidate])).rows[0].notes, notes);
+        await page.waitForFunction(() => document.getElementById('staffProfileLiveStatus').textContent.includes('Робочі дані збережено'));
+
         const rows=(await pool.query('SELECT business_context,staff_id,is_active,created_by,updated_by FROM education_teacher_memberships WHERE staff_id=$1',[candidate])).rows;
         assert.equal(rows.length,1);assert.equal(rows[0].business_context,'dar');assert.ok(rows[0].created_by);assert.equal(rows[0].created_by,rows[0].updated_by);
         const retry=await api(`/api/hr/staff/${candidate}/education-memberships?businessContext=event_genix`,'POST',{educationBusinessContext:'dar',confirmAssignment:true});assert.equal(retry.data.alreadyAssigned,true);
@@ -593,20 +570,22 @@ async function closeChecks(){
         await api('/api/hr/staff/'+candidate+'/education-memberships?businessContext=event_genix','POST',{educationBusinessContext:'maysternya_doli',confirmAssignment:true},409);
         assert.deepEqual((await pool.query("SELECT * FROM education_teacher_memberships WHERE business_context='maysternya_doli' AND staff_id=$1",[candidate])).rows[0],inactiveMembership);
         evidence.proofs.hrConcurrencyAndInactive={classification:'HTTP_SQL',twoFirstAssignments:[200,201],membershipCount:1,auditCount:1,noDuplicateStaff:true,inactiveMembership409Unchanged:true};
-        evidence.proofs.hrLinkWorkflow={status:'PASS_VISIBLE_UI_API_SQL',staffId:candidate,rows,audit,idempotent:true,noDuplicateStaff:true,unlinkedSecondBusinessHidden:true,educatorDenied:true,inactiveDenied:true};
-        assert.equal(await page.locator('#staffEducationRetry').isVisible(),false);
-        for(const theme of ['light','dark']) {
-            await page.locator('#editCloseTop').click();await page.locator('#staffEditModal').waitFor({state:'hidden'});await page.setViewportSize({width:390,height:844});
-            if(await page.evaluate(()=>document.documentElement.dataset.theme)!==theme)await page.locator('#headerThemeToggle').click();await page.waitForFunction(theme=>document.documentElement.dataset.theme===theme,theme);
-            await waitTeacherRuntimeReads(page);
-            await page.goto(base+'/hr.html?businessContext=event_genix&employee='+candidate,{waitUntil:'domcontentloaded'});
-            await page.getByRole('tab',{name:'Робота',exact:true}).click();
-            await page.locator('#staffEducationAssignment').waitFor({state:'visible'});await page.waitForFunction(()=>!document.getElementById('staffEducationBusiness').disabled);await page.locator('#staffEducationBusiness').selectOption('dar');
-            await page.locator('#staffEducationAssignment').scrollIntoViewIfNeeded();await measureContrast(page,'hr-education-phone-'+theme);
-            const audit=evidence.audits.at(-1);assert.ok(audit.contrast.length>0);assert.deepEqual(audit.contrast.filter(c=>!Number.isFinite(c.ratio)||c.ratio<c.minimum),[],'New HR education controls contrast');
-            assert.equal(await page.locator('#staffEducationAssignment').evaluate(el=>el.scrollWidth<=el.clientWidth+1),true);await shot(page,'existing-hr-assignment-phone-'+theme);
+        evidence.proofs.hrLinkWorkflow={status:'PASS_API_SQL',staffId:candidate,rows,audit,idempotent:true,noDuplicateStaff:true,unlinkedSecondBusinessHidden:true,educatorDenied:true,inactiveDenied:true};
+        for (const theme of ['light', 'dark']) {
+            await page.locator('#editCloseTop').click();
+            await page.locator('#staffEditModal').waitFor({ state: 'hidden' });
+            await page.setViewportSize({ width: 390, height: 844 });
+            if (await page.evaluate(() => document.documentElement.dataset.theme) !== theme) {
+                await page.locator('#headerThemeToggle').click();
+                await page.waitForFunction(theme => document.documentElement.dataset.theme === theme, theme);
+            }
+            await openParkWorkTab();
+            assert.equal(await page.locator('#editNotes').inputValue(), notes);
+            assert.equal(await page.locator('#editSaveWork').isEnabled(), true);
+            await shot(page, 'park-staff-work-phone-' + theme);
         }
-        await page.setViewportSize({width:1440,height:1000});await shot(page,'existing-hr-staff-explicit-education-assignment');
+        evidence.proofs.parkCard={assignmentPanelAbsent:true,educationRequests,notesPersisted:true,viewports:[1440,390]};
+        await page.setViewportSize({width:1440,height:1000});
         await page.locator('#editCloseTop').click();await page.locator('#staffEditModal').waitFor({state:'hidden'});
         // Leave the HR surface through its visible timeline launcher before changing timeline business.
         await waitTeacherRuntimeReads(page);
@@ -621,6 +600,9 @@ async function closeChecks(){
         await page.locator('[data-education-schedule-tab="groups"]').click();
         await page.locator('#educationGroupsPanel').waitFor({state:'visible'});
         await page.waitForFunction(()=>window.EducationGroups?.state.teacherStatus==='ready'&&window.EducationGroups?.state.listStatus==='ready');
+        await manager(page);
+        await page.locator('#educationTeacherManagerList [data-teacher-active="' + candidate + '"]').waitFor({ state: 'visible' });
+        await shot(page, 'education-directory-existing-teacher');
         evidence.proofs.hrReturnNavigation={visibleTimelineLauncher:true,visibleBusinessSelector:true,terminalEducationDestination:true,visibleGroupsTab:true,noCompetingGoto:true};
         await page.locator('#educationGroupsList').selectOption('');await page.locator('#educationGroupName').fill('Музика: перші ритми');await page.locator('#educationGroupTeacher').selectOption(String(candidate));
         const assignedGroup=await saveGroupUI(page);assert.equal((await pool.query('SELECT teacher_id FROM education_groups WHERE id=$1',[assignedGroup])).rows[0].teacher_id,candidate);

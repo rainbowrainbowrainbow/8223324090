@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.83.99",
+  "version": "0.83.100",
   "eventGenix": {
-    "releaseLabel": "Підміни Park: зміни, оплата й робочі задачі"
+    "releaseLabel": "Мій день і робочий профіль: завершення оновлення"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

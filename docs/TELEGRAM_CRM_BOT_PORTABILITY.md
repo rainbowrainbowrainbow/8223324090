@@ -7,6 +7,11 @@ confirmed participant follows the same CRM authorization and conversation flow.
 
 ## Host boundary
 
+The prepared dedicated entry point is `python -m d_brain.crm_bot`. It starts the
+CRM lane and durable polling only, without notes handlers or notes cron jobs.
+It uses the existing Settings contract and requires CRM configuration. Transient
+CRM validation or persistence failures leave the polling offset unacknowledged.
+
 `CrmLane(settings, notes_owner_id=None, operator_id=optional_operator)` supports a
 CRM host without the Second Brain notes owner or legacy participant seeds. Supply
 an aiogram Bot to `lane.run(bot)` and call `await lane.admit(bot, update)` followed

@@ -112,5 +112,5 @@ test('task surfaces use the shared controller rather than a second detail render
     assert.match(tasksHtml, /js\/task-detail-drawer\.js/);
     assert.match(profileHtml, /js\/task-detail-drawer\.js/);
     assert.match(route, /withTaskDrawerContract\(normalizeTaskPayload\(row, \{ user: req\.user \}\), req\.user/);
-    assert.match(route, /withTaskDrawerContract/);
+    assert.match(route, /authorReadOnly: !row\.task_standard_visibility/);
 });

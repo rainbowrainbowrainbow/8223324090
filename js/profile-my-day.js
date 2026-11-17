@@ -21,13 +21,14 @@
         const dialog = document.createElement('dialog');
         dialog.className = 'park-task-dialog';
         dialog.dataset.myDayTask = taskId;
+        dialog.dataset.myDayMode = mode || '';
         dialog.taskLocation = global.location.href;
         dialog.setAttribute('aria-labelledby', 'park-task-dialog-title');
         dialog.innerHTML = `<header class="park-task-dialog-head">
             <h2 id="park-task-dialog-title">Задача #${taskId}</h2>
             <form method="dialog"><button type="submit" autofocus>Закрити</button></form>
-        </header><p class="park-task-dialog-guard" aria-live="polite"></p>
-        <button type="button" class="park-task-dialog-discard" hidden>Відкинути зміни та закрити</button>
+        </header><p id="my-day-task-guard" class="park-task-dialog-guard" aria-live="polite"></p>
+        <button type="button" class="park-task-dialog-discard" aria-describedby="my-day-task-guard" hidden>Відкинути зміни та закрити</button>
         <div class="park-task-dialog-content"><p role="status">Завантаження задачі…</p></div>`;
         const controller = new AbortController();
         const title = dialog.querySelector('h2');

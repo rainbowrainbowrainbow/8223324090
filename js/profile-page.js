@@ -6206,7 +6206,8 @@ function syncMyDayTaskDialog(opener = null, { initialize = false } = {}) {
     const rawId = url.searchParams.get('open');
     const taskId = isOwnProfile && activeTab === 'myday' && /^[1-9]\d*$/.test(rawId || '')
         ? Number(rawId) : null;
-    if (current && Number(current.dataset.myDayTask) === taskId) return;
+    if (current && Number(current.dataset.myDayTask) === taskId
+        && current.dataset.myDayMode === (url.searchParams.get('mode') || '')) return;
     if (current?.canLeave && !current.canLeave()) {
         window.history.pushState({ ...window.history.state, myDayTask: Number(current.dataset.myDayTask) }, '', current.taskLocation);
         return;

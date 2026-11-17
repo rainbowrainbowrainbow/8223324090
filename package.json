@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.83.96",
+  "version": "0.83.97",
   "eventGenix": {
-    "releaseLabel": "Суміщені ролі у підмінах Park"
+    "releaseLabel": "Створення та картка співробітника"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

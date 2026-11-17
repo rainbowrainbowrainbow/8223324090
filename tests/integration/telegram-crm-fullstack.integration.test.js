@@ -100,7 +100,10 @@ check('canonical task writer, actual membership checks and concurrent confirms s
     const owners = await bot('/owners?businessContext=event_genix');
     assert.equal(owners.status,200,JSON.stringify(owners.data));
     assert.ok(owners.data.owners.some(row=>row.id===peer.id));
-    const draft = await preview();
+    const draft = await bot('/tasks/preview', {
+        title: 'Disposable Telegram full-stack task', ownerUserId: peer.id, businessContext: 'event_genix',
+        date: '2099-11-05', deadline: '2099-11-05T12:00:00.000Z', sourceUpdateId: String(nextUpdate++)
+    });
     assert.equal(draft.status,201,JSON.stringify(draft.data));
     const id = draft.data.operationId;
     const results = await Promise.all([bot(`/operations/${id}/confirm`,{confirmed:true}),bot(`/operations/${id}/confirm`,{confirmed:true})]);
@@ -122,9 +125,15 @@ check('canonical task writer, actual membership checks and concurrent confirms s
     assert.equal(event.task.id, task.id);
     assert.equal(event.task.title, task.title);
     assert.equal(event.task.description, task.description || null);
+    assert.equal(event.task.deadline, '2099-11-05T12:00:00.000Z');
     assert.equal(event.telegramId, peerTelegram);
     assert.equal(event.bindingVersion, '2');
     assert.deepEqual((await notifications('/claim', { leaseId })).data.event, event);
+    // Represent the canonical CRM calendar slot while the lease can still be retried.
+    await pool.query(`UPDATE tasks SET schedule_status='scheduled',
+        scheduled_start_at=$2, scheduled_end_at=$3 WHERE id=$1`,
+    [task.id, '2099-11-05T09:15:00.000Z', '2099-11-05T10:15:00.000Z']);
+    assert.equal((await notifications('/claim', { leaseId })).data.event.task.deadline, '2099-11-05T10:15:00.000Z');
     assert.equal((await notifications('/claim', { leaseId: randomUUID() })).data.event, null);
     const accepted = { leaseId, status: 'sent', messageId: 123456 };
     for (let i = 0; i < 2; i++) {
@@ -298,7 +307,8 @@ test('confirmed arbitrary recipient receives a CRM assignment through the actual
     assert.equal((await bot('/link/claim', { token: start }, newTelegram)).status, 200);
     assert.equal((await request('POST', '/api/auth/telegram-crm/link/confirm', replace.data, token)).status, 200);
     const task = await request('POST', '/api/tasks', {
-        title, date: '2099-11-05', ownerUserId: peer.id, businessContext: 'event_genix'
+        title, date: '2099-11-05', deadline: '2099-11-05T08:00:00.000Z',
+        ownerUserId: peer.id, businessContext: 'event_genix'
     }, jwt);
     assert.ok([200, 201].includes(task.status), JSON.stringify(task.data));
     const id = task.data.task.id;

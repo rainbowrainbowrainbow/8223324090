@@ -46,10 +46,7 @@ async def main(base_url, user_id, actor, task_id):
     )
 
     async def send_message(recipient, text, **_kwargs):
-        assert recipient == actor and f"/tasks?open={task_id}" in text
-        assert "Disposable notification lifecycle" in text
-        assert _kwargs["parse_mode"] == "HTML"
-        sent.append(recipient)
+        sent.append((recipient, text, _kwargs["parse_mode"]))
         return SimpleNamespace(message_id=50001)
 
     def store(path):
@@ -76,6 +73,11 @@ async def main(base_url, user_id, actor, task_id):
         else:
             raise AssertionError("Fault was not exercised")
         assert len(sent) == 1 and len(running.store.assignment_results()) == 1
+        recipient, text, parse_mode = sent[0]
+        assert recipient == actor and f"/tasks?open={task_id}" in text
+        assert "Disposable notification lifecycle" in text
+        assert "Виконати до:</b> 05.11.2099 о 10:00 (Київ)" in text, text
+        assert parse_mode == "HTML"
         restarted = lane(path)
         await process_assignments(restarted, bot)
         assert len(sent) == 1 and not restarted.store.assignment_results()

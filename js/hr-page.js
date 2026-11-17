@@ -11125,7 +11125,7 @@ function syncStaffRateUnitUi(staff = {}) {
     const suffix = staffRateUnitSuffix(unit);
     if (label) label.textContent = `Ставка грн/${suffix}`;
     if (hint) {
-        hint.textContent = `Fallback-ставка у гривнях за ${suffix}. Робочі ставки буднів і вихідних налаштовуються нижче окремо для кожної професії.`;
+        hint.textContent = 'Резервна ставка для старих нарахувань і створення першого профілю оплати.';
     }
 }
 
@@ -14658,8 +14658,8 @@ function prepareStaffProfileActionButtons(modal) {
     modal.dataset.staffProfileActionsReady = 'true';
     const payrollSave = modal.querySelector('#editPayrollSchemeSave');
     if (payrollSave) {
-        payrollSave.textContent = 'Зберегти базові ставки';
-        payrollSave.title = 'Зберегти fallback-ставки основної та додаткових професій';
+        payrollSave.textContent = 'Зберегти резервні ставки';
+        payrollSave.title = 'Зберегти резервні ставки основної та додаткових професій';
     }
     modal.querySelectorAll('.btn-primary, .btn-secondary, .btn-danger').forEach(decorateStaffProfileActionButton);
 

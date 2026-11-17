@@ -1265,7 +1265,7 @@ async function assertScopedSavesAndActionStates(page) {
     assert.equal(await page.locator('#editPayrollProfileSimulator').isVisible(), true, 'staff payroll tab exposes the payroll profile simulator');
     await page.fill('#editHourlyRate', '145');
     const payrollSave = page.locator('#editPayrollSchemeSave');
-    assert.equal(await payrollSave.textContent(), 'Зберегти базові ставки', 'payroll action is limited to the visible fallback fields');
+    assert.equal(await payrollSave.textContent(), 'Зберегти резервні ставки', 'payroll action is limited to the visible fallback fields');
     assert.ok(await payrollSave.evaluate(el => el.getBoundingClientRect().height >= 44), 'payroll save has a 44px target');
     const beforeRatesSave = await page.evaluate(() => window.__hrTeamBrowserSmoke.staffUpdates().length);
     await payrollSave.click();

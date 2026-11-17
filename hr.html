@@ -1360,7 +1360,7 @@
             <section id="staffProfilePanelPayroll" class="hr-staff-profile-panel hr-staff-foundation-panel" aria-label="Оплата" data-staff-profile-panel="payroll" role="tabpanel" aria-labelledby="staffProfileTabPayroll">
                 <div class="hr-primary-rate-card">
                     <div class="hr-rate-label-row">
-                        <span>Базова fallback-ставка основної професії</span>
+                        <span>Резервна ставка основної професії</span>
                         <select id="editRateUnit" aria-label="Одиниця ставки">
                             <option value="hour">За годину</option>
                             <option value="day">За день</option>
@@ -1371,7 +1371,7 @@
                         <span id="editHourlyRateLabel">Ставка грн/год</span>
                         <input type="number" id="editHourlyRate" min="0" step="10" value="0">
                     </label>
-                    <small class="form-hint" id="editHourlyRateHint">Резервна ставка для старих нарахувань і створення першого зарплатного профілю. Робочі ставки буднів і вихідних налаштовуються нижче окремо для кожної професії.</small>
+                    <small class="form-hint" id="editHourlyRateHint">Резервна ставка для старих нарахувань і створення першого профілю оплати.</small>
                 </div>
                 <div class="hr-profession-rate-panel">
                     <div class="hr-profession-rate-head">
@@ -1393,11 +1393,11 @@
                     <div class="hr-staff-payroll-preview">
                         <div class="hr-staff-payroll-preview-controls">
                             <div>
-                                <strong>Payroll preview</strong>
-                                <span>Попередній розрахунок через єдиний salary endpoint.</span>
+                                <strong>Попередній розрахунок</strong>
+                                <span>Показує, як чинні умови застосовуються за вибраний період.</span>
                             </div>
                             <label>Період
-                                <input type="month" id="editPayrollProfilePreviewMonth" aria-label="Період payroll preview">
+                                <input type="month" id="editPayrollProfilePreviewMonth" aria-label="Період попереднього розрахунку">
                             </label>
                             <button type="button" id="editPayrollProfileSimulator" class="btn-secondary">Симулятор</button>
                             <button type="button" id="editPayrollProfilePreviewRefresh" class="btn-secondary">Порахувати</button>
@@ -1407,10 +1407,10 @@
                 </section>
                 <div class="hr-staff-foundation-head">
                     <div>
-                        <strong>Базові fallback-ставки</strong>
-                        <span>Збережіть резервні ставки вище. Нові умови оплати налаштовуються через профілі професій; стара кастомна схема більше не редагується в картці працівника.</span>
+                        <strong>Резервні ставки</strong>
+                        <span>Для буднів, вихідних і персональних умов скористайтеся блоком «Оплата за професіями».</span>
                     </div>
-                    <button type="button" id="editPayrollSchemeSave" class="btn-primary" onclick="saveStaffPayrollScheme()">Зберегти базові ставки</button>
+                    <button type="button" id="editPayrollSchemeSave" class="btn-primary" onclick="saveStaffPayrollScheme()">Зберегти резервні ставки</button>
                 </div>
                 <div class="hr-staff-foundation-grid" hidden aria-hidden="true" data-legacy-payroll-scheme-editor>
                     <div class="form-group">

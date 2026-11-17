@@ -18,6 +18,7 @@ const BLOCK_ID_PATTERN = /^EG-[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8}$/;
 const SENSITIVE_KEY = /(secret|token|password|database.?url|authorization|cookie)/i;
 const PROTECTED_WORKFLOWS = Object.freeze({
     PROFILE_EMPLOYEE_RELEASE: 'profile-employee-release',
+    MY_DAY_PROFILE_RELEASE: 'my-day-profile-release-083100',
     SYS_MB_AUTH_CUTOVER: 'sys-mb-auth-cutover',
     CERTIFICATE_QA_ISOLATION: 'certificate-qa-isolation',
     CERTIFICATE_CI_GATE: 'certificate-ci-gate',
@@ -27,6 +28,17 @@ const PROTECTED_WORKFLOWS = Object.freeze({
     HR_PAYROLL: 'hr-payroll',
     FREELANCE_SHIFT_BLOCKS: 'freelance-shift-blocks',
     FINANCE_MANUAL_QA: 'finance-manual-qa'
+});
+const MY_DAY_PROFILE_RELEASE = Object.freeze({
+    baseSha: '125b01b21d1b62ec8d82449115044933d855503c',
+    baseVersion: '0.83.99',
+    version: '0.83.100',
+    payloadSha: '4909bb74a5b5a4d173b3d20936347f264e0d8166',
+    controllerPaths: Object.freeze([
+        'scripts/production-block-controller.js',
+        'scripts/production-block-policy.js',
+        'tests/production-block-controller.test.js'
+    ])
 });
 const FREELANCE_BASE = '46df02047c196dfa5159e27f6cfb09fe6e907b11';
 const FREELANCE_RECOVERY_PARENT = 'b67cbe8998e13bf762792361bad31534e36e2e88';
@@ -671,7 +683,8 @@ function migrationSqlHash(sql) {
 function isPreparedProtectedWorkflow(kind) {
     return [PROTECTED_WORKFLOWS.HR_PAYROLL, PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA,
         PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE, PROTECTED_WORKFLOWS.STAFF_DELETION_CI,
-        PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE, PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS].includes(kind);
+        PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE, PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE,
+        PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS].includes(kind);
 }
 
 function isPreparedProtectedRelease(manifest) {
@@ -764,6 +777,13 @@ function validateProtectedWorkflow(workflow, changedPaths = [], redPaths = []) {
     }
     fail(Object.values(PROTECTED_WORKFLOWS).includes(workflow),
         'Unsupported protected production workflow', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_INVALID');
+    if (workflow === PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE) {
+        fail(stableJson(redPaths) === stableJson(['routes/auth.js'])
+            && MY_DAY_PROFILE_RELEASE.controllerPaths.every(file => changedPaths.includes(file)),
+        'My Day profile release requires its scoped controller and profile route',
+        'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+        return { enabled: true, kind: workflow, protectedChangedPaths: ['routes/auth.js'] };
+    }
     if (workflow === PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE) {
         fail(stableJson(redPaths) === stableJson(['routes/auth.js'])
             && stableJson(normalizePathList(changedPaths)) === stableJson(PROFILE_EMPLOYEE_RELEASE_PATHS),
@@ -959,6 +979,19 @@ function assertProfileEmployeeReleaseScope(base, baseVersion, version, qa, migra
     'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
 }
 
+function assertMyDayProfilePayload(payloadSha) {
+    fail(payloadSha === MY_DAY_PROFILE_RELEASE.payloadSha,
+        'My Day release differs from its reviewed payload', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
+}
+
+function assertMyDayProfileReleaseScope(base, baseVersion, version, qa, migrations, attempts) {
+    const reviewed = MY_DAY_PROFILE_RELEASE;
+    fail(base === reviewed.baseSha && baseVersion === reviewed.baseVersion && version === reviewed.version
+        && qa.enabled === false && migrations.length === 0 && attempts === 1,
+    'My Day release requires its exact base and version, one attempt, and read-only QA',
+    'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+}
+
 function buildManifest(facts, options = {}) {
     const now = options.now instanceof Date ? options.now : new Date(options.now || Date.now());
     const validityMinutes = Number(options.validityMinutes || 360);
@@ -980,6 +1013,14 @@ function buildManifest(facts, options = {}) {
         assertProfileEmployeeAuthBlob(facts.profileEmployeeAuthBlob);
         fail(facts.remoteSha === baseLiveSha && facts.live?.deploymentMetadata?.complete === true,
             'Employee profile preparation requires matching and verified live and remote production',
+            'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
+    }
+    if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE) {
+        assertMyDayProfileReleaseScope(baseLiveSha, facts.live?.version, facts.releaseVersion,
+            qaScope, migrations, maxReleaseAttempts);
+        assertMyDayProfilePayload(facts.myDayProfilePayloadSha);
+        fail(facts.remoteSha === baseLiveSha && facts.live?.deploymentMetadata?.complete === true,
+            'My Day release requires matching and verified live and remote production',
             'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
     }
     fail(qaScope.kind !== 'finance' || protectedWorkflow.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA,
@@ -1070,6 +1111,8 @@ function buildManifest(facts, options = {}) {
                 sha: head, version: facts.releaseVersion, baseVersion: facts.live.version,
                 ...(protectedWorkflow.kind === PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE
                     ? { profileEmployeeAuthBlob: facts.profileEmployeeAuthBlob } : {}),
+                ...(protectedWorkflow.kind === PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE
+                    ? { myDayProfilePayloadSha: facts.myDayProfilePayloadSha } : {}),
                 ...(protectedWorkflow.kind === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE
                     ? { failedPredecessorSha: PERFORMANCE_CI_FAILED_SHA, failedArtifactRun: PERFORMANCE_CI_FAILED_RUN } : {})
             }
@@ -1135,6 +1178,15 @@ function validateManifest(manifest, options = {}) {
         fail(manifest.preparedRelease?.sha === manifest.initialHeadSha && manifest.allowedMigrationFiles.length === 0
             && !manifest.retryFrom && !manifest.renewalFrom,
         'Employee profile release requires one exact prepared SHA without migrations or retries',
+        'PRODUCTION_BLOCK_RELEASE_NOT_PREPARED');
+    }
+    if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE) {
+        assertMyDayProfileReleaseScope(manifest.baseLiveSha, manifest.preparedRelease?.baseVersion,
+            manifest.preparedRelease?.version, qaScope, manifest.migrationClassifications, manifest.maxReleaseAttempts);
+        assertMyDayProfilePayload(manifest.preparedRelease?.myDayProfilePayloadSha);
+        fail(manifest.preparedRelease?.sha === manifest.initialHeadSha && manifest.allowedMigrationFiles.length === 0
+            && !manifest.retryFrom && !manifest.renewalFrom,
+        'My Day release requires one exact prepared SHA without migrations or retries',
         'PRODUCTION_BLOCK_RELEASE_NOT_PREPARED');
     }
     if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.STAFF_DELETION_CI) {
@@ -1296,6 +1348,8 @@ function warningText(manifest) {
 }
 
 module.exports = {
+    MY_DAY_PROFILE_RELEASE,
+    assertMyDayProfilePayload,
     PROFILE_EMPLOYEE_RELEASE_PATHS,
     PROFILE_EMPLOYEE_AUTH_BLOB,
     assertProfileEmployeeAuthBlob,

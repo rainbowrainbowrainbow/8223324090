@@ -22,6 +22,8 @@ const {
     assertPerformanceCiWorkflowHashes,
     assertPerformanceCiRecovery,
     assertProfileEmployeeAuthBlob,
+    MY_DAY_PROFILE_RELEASE,
+    assertMyDayProfilePayload,
     isPreparedProtectedRelease,
     migrationSqlHash,
     validateProtectedWorkflow,
@@ -484,6 +486,18 @@ async function finishReleaseUpload(manifest, blockFile, runtime, mode) {
     writeBlockFile(blockFile, manifest);
 }
 
+function myDayProfilePayloadSha(head) {
+    const { payloadSha, controllerPaths } = MY_DAY_PROFILE_RELEASE;
+    fail(gitIsAncestor(payloadSha, head)
+        && stableJson(changedPaths(payloadSha, head).sort()) === stableJson(controllerPaths),
+    'My Day release differs from its reviewed payload', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
+    return payloadSha;
+}
+
+function usesStandardProtectedReleaseFlow(kind) {
+    return [PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE, PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE].includes(kind);
+}
+
 function defaultRuntime() {
     const runtime = {
         async facts(options = {}) {
@@ -494,6 +508,7 @@ function defaultRuntime() {
             const paths = changedPaths(live.commitSha, head);
             const performanceCi = options.protectedWorkflow === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE;
             const profileEmployee = options.protectedWorkflow === PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE;
+            const myDayProfile = options.protectedWorkflow === PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE;
             if (performanceCi) assertPerformanceCiRecoveryBase();
             const freelance = options.protectedWorkflow === PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS;
             if (freelance) assertFreelanceRecoveryBase();
@@ -505,10 +520,12 @@ function defaultRuntime() {
                 descendsFromLive: gitIsAncestor(live.commitSha, head),
                 changedPaths: paths,
                 migrations: loadMigrations(paths),
+                ...(usesStandardProtectedReleaseFlow(options.protectedWorkflow)
+                    ? { remoteSha: remoteProductionSha() } : {}),
                 ...(profileEmployee ? {
-                    remoteSha: remoteProductionSha(),
                     profileEmployeeAuthBlob: git(['rev-parse', `${head}:routes/auth.js`])
                 } : {}),
+                ...(myDayProfile ? { myDayProfilePayloadSha: myDayProfilePayloadSha(head) } : {}),
                 workflowHashes: performanceCi ? performanceCiWorkflowHashes(paths)
                     : options.protectedWorkflow === PROTECTED_WORKFLOWS.STAFF_DELETION_CI ? staffDeletionWorkflowHashes() : undefined,
                 staffDeletionGate: options.protectedWorkflow === PROTECTED_WORKFLOWS.STAFF_DELETION_CI
@@ -534,6 +551,8 @@ function defaultRuntime() {
                 changedPaths: paths,
                 ...(manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE
                     ? { profileEmployeeAuthBlob: git(['rev-parse', `${head}:routes/auth.js`]) } : {}),
+                ...(manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE
+                    ? { myDayProfilePayloadSha: myDayProfilePayloadSha(head) } : {}),
                 workflowHashes: performanceCi ? performanceCiWorkflowHashes(paths)
                     : manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.STAFF_DELETION_CI ? staffDeletionWorkflowHashes() : undefined,
                 performanceCiRecovery: performanceCi ? performanceCiRecoveryFacts(head) : undefined,
@@ -599,7 +618,7 @@ function defaultRuntime() {
             return scope.kind === 'certificate' ? certificateQaPreflight(scope) : trustedQaPreflight(scope, live);
         },
         async execute(manifest, blockFile) {
-            const profileEmployee = manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE;
+            const standardProtectedRelease = usesStandardProtectedReleaseFlow(manifest.allowedProtectedWorkflow?.kind);
             commandResult('npm', ['test'], { inherit: true, isolateReleaseEnv: true });
             if (isPreparedProtectedRelease(manifest)) {
                 commandResult('npm', ['run', 'check:version'], { inherit: true });
@@ -635,11 +654,11 @@ function defaultRuntime() {
                 assertPreparedProductionBase(manifest, await liveVersion(), remoteSha);
                 assertPerformanceCiRecoveryBase();
             }
-            if (profileEmployee) await assertStandardProductionBase(manifest, manifest.baseLiveSha);
+            if (standardProtectedRelease) await assertStandardProductionBase(manifest, manifest.baseLiveSha);
             if (needsRuntimeArtifactRun(manifest)) assertRuntimeArtifactPushPaths(remoteSha, releaseSha);
             fail(remoteProductionSha() === remoteSha,
                 'Remote production changed while verifying push checks', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
-            const artifactBase = profileEmployee ? manifest.baseLiveSha : remoteSha;
+            const artifactBase = standardProtectedRelease ? manifest.baseLiveSha : remoteSha;
             runAuthorizedReleaseStage(manifest, blockFile,
                 'git', ['push', 'origin', `${releaseSha}:refs/heads/${manifest.allowedBranch}`], { inherit: true });
             if (supportsReleaseResume(manifest)) {
@@ -647,7 +666,7 @@ function defaultRuntime() {
                 writeBlockFile(blockFile, manifest);
             }
             const { run: exact, evidence: ci } = waitForProductionCi(releaseSha);
-            if (protectedRelease && !profileEmployee) {
+            if (protectedRelease && !standardProtectedRelease) {
                 if (manifest.allowedProtectedWorkflow.kind === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE) {
                     const { evidence: artifact } = waitForProductionCi(releaseSha, 'runtime-artifact.yml', 'Runtime artifact smoke');
                     assertPerformanceCiResult(ci, artifact, releaseSha);
@@ -1067,9 +1086,10 @@ function releaseCommandPlan(manifest) {
 }
 
 function needsRuntimeArtifactRun(manifest) {
+    const kind = manifest.allowedProtectedWorkflow?.kind;
     return !isPreparedProtectedRelease(manifest)
-        || [PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE, PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE,
-            PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS].includes(manifest.allowedProtectedWorkflow?.kind);
+        || usesStandardProtectedReleaseFlow(kind)
+        || [PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE, PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS].includes(kind);
 }
 
 async function prepareAction(options, runtime) {
@@ -1169,6 +1189,9 @@ async function assertExecuteDrift(manifest, runtime) {
     }
     if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE) {
         assertProfileEmployeeAuthBlob(drift.profileEmployeeAuthBlob);
+    }
+    if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE) {
+        assertMyDayProfilePayload(drift.myDayProfilePayloadSha);
     }
     if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE) {
         assertPerformanceCiWorkflowHashes(drift.workflowHashes);

@@ -320,6 +320,13 @@ test('default services use the migrated schema for an unrelated permanent occupa
             assert.equal(result.status, 200, JSON.stringify(result.data));
             return result.data.tasks.find(item => item.id === task.id);
         };
+        const loadCabinetTask = async (user, business = 'event_genix') => {
+            const { buildTaskCabinetProjection } = require('../../services/taskCabinetProjection');
+            const projection = await buildTaskCabinetProjection({ pool: db, user: { ...user, role: 'manager' },
+                businessScope: { mode: 'single', activeContext: business, selectedContexts: [business] },
+                includeLegacyMetadata: false });
+            return projection.all.find(item => item.id === task.id);
+        };
         for(const [sourceType,sourceId,table,field] of [['task',task.id,'tasks','owner_user_id'],['lead',lead.id,'leads','assigned_to']]) {
             const assignment={...officeInput,sourceType,sourceId:String(sourceId),workDate:'2099-01-16'};
             const quoted=await service.preview('event_genix',actor,assignment);
@@ -331,6 +338,8 @@ test('default services use the migrated schema for an unrelated permanent occupa
                 const expected = { id:String(savedRow.id), state:'active' };
                 assert.deepEqual(visibleTask?.substitution, expected);
                 assert.deepEqual((await loadBoardTask())?.substitution, expected);
+                assert.deepEqual((await loadCabinetTask(users[1]))?.substitution, expected);
+                assert.equal(await loadCabinetTask(users[1], 'dar'), undefined);
                 const otherBoard = await authRequest('GET', `${taskListPath}&businessContext=dar`);
                 const taskVisibleInDar = otherBoard.status === 200 && otherBoard.data.tasks.some(item => item.id === task.id);
                 assert.ok([200,403,404].includes(otherBoard.status) && !taskVisibleInDar, JSON.stringify(otherBoard.data));
@@ -350,6 +359,7 @@ test('default services use the migrated schema for an unrelated permanent occupa
             assert.equal((await db.query(`SELECT ${field} AS owner FROM ${table} WHERE id=$1`,[sourceId])).rows[0].owner,users[0].id);
             if (sourceType === 'task') {
                 assert.equal((await loadBoardTask())?.substitution, null);
+                assert.equal((await loadCabinetTask(users[0]))?.substitution, null);
                 const detail = await authRequest('GET', `/api/tasks/${task.id}`);
                 assert.equal(detail.status,200,JSON.stringify(detail.data));
                 assert.equal(detail.data.substitution,null);

@@ -118,11 +118,14 @@
         return `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="${iconPaths[name]}"/></svg>`;
     }
 
-    function renderCard({ id, title, status, due, priority, mode, modeLabel, blocked, postponementBadge, isAi, priorityControl, dueState, canReschedule, canMoveToToday, role, executor }) {
+    function renderCard({ id, title, status, due, priority, mode, modeLabel, blocked, postponementBadge, substitution,
+        isAi, priorityControl, dueState, canReschedule, canMoveToToday, role, executor }) {
         const escape = global.escapeHtml;
         const attrs = `data-task-id="${id || ''}"`;
         const control = (action, label, className, enabled = true, extra = '') => `<button type="button" class="${className}" data-cabinet-task-action="${action}" ${attrs} ${extra} ${id && enabled ? '' : 'disabled'}>${label}</button>`;
         const stateLabel = dueState === 'overdue' ? 'Прострочено' : status === 'in_progress' ? 'У роботі' : 'До виконання';
+        const substitutionStates = { active: 'Погоджено', completed: 'Завершено' };
+        const agreementState = substitutionStates[substitution?.state];
         return `<article class="cabinet-task-card park-task-card priority-${escape(priority)}" ${attrs} data-task-status="${escape(status)}" data-task-due-state="${escape(dueState)}">
             ${control('open', `${isAi ? '<span class="task-ai-created-marker" aria-label="Створено з допомогою AI">AI</span> ' : ''}${escape(title)}`, 'park-task-title', true, 'aria-haspopup="dialog"')}
             <div class="park-task-heading">
@@ -136,6 +139,7 @@
                 <span class="park-task-kind" data-park-task-mode="${escape(mode)}">${escape(modeLabel)}</span>
                 ${role !== 'executor' && executor ? `<span>Виконує ${escape(executor)}</span>` : ''}
                 ${postponementBadge || ''}
+                ${substitution?.id && agreementState ? `<span data-task-substitution>Підміна №${escape(substitution.id)} · ${agreementState}</span>` : ''}
             </div>
             ${blocked ? `<p id="park-task-blocked-${id}" class="park-task-blocked">${escape(blocked)}</p>` : ''}
             <div class="park-task-actions">

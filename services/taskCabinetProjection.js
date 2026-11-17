@@ -14,6 +14,7 @@ const {
     dateOnly: taskKyivDateOnly
 } = require('./taskScheduling');
 const { normalizeTaskPayload: normalizeTaskContractPayload } = require('./taskContract');
+const { TASK_SUBSTITUTION_SELECT } = require('./taskSubstitutionReadModel');
 
 const { deriveTaskIntelligence } = require('./taskIntelligence');
 const {
@@ -482,7 +483,8 @@ async function buildTaskCabinetBucketPage(options = {}) {
         countParams
     );
     const result = await queryable.query(
-        `SELECT t.*, u.name AS owner_name, u.username AS owner_username, ${personalQuery.roles} AS viewer_roles
+        `SELECT t.*, u.name AS owner_name, u.username AS owner_username, ${personalQuery.roles} AS viewer_roles,
+                ${TASK_SUBSTITUTION_SELECT}
          FROM tasks t
          LEFT JOIN users u ON u.id = t.owner_user_id
          WHERE ${ownMatch}
@@ -563,7 +565,8 @@ async function buildTaskCabinetProjection(options = {}) {
     const completedHistoryLimit = normalizeCompletionHistoryLimit(options.completedHistoryLimit);
 
     const result = await queryable.query(
-        `SELECT t.*, u.name AS owner_name, u.username AS owner_username, ${personalQuery.roles} AS viewer_roles
+        `SELECT t.*, u.name AS owner_name, u.username AS owner_username, ${personalQuery.roles} AS viewer_roles,
+                ${TASK_SUBSTITUTION_SELECT}
          FROM tasks t
          LEFT JOIN users u ON u.id = t.owner_user_id
          WHERE ${ownMatch}
@@ -616,7 +619,8 @@ async function buildTaskCabinetProjection(options = {}) {
         ? `OR ${planningDateSql} = $${planningFocusParam}::date`
         : '';
     const planningResult = await queryable.query(
-        `SELECT t.*, u.name AS owner_name, u.username AS owner_username, ${personalQuery.roles} AS viewer_roles
+        `SELECT t.*, u.name AS owner_name, u.username AS owner_username, ${personalQuery.roles} AS viewer_roles,
+                ${TASK_SUBSTITUTION_SELECT}
          FROM tasks t
          LEFT JOIN users u ON u.id = t.owner_user_id
          WHERE ${ownMatch}

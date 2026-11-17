@@ -161,7 +161,16 @@ async function run() {
         const centerTask = await create('Локальна задача з підпунктами ' + suffix, 'work', { dayOffset: -2 });
         const legacyIds = await Promise.all([reportTask, centerTask].map(async card => Number(await card.getAttribute('data-task-id'))));
         const fixtures = new Pool({ connectionString: process.env.DATABASE_URL, ssl: false });
+        let substitutionId;
         try {
+            const { rows: [agreement] } = await fixtures.query(`INSERT INTO staff_substitutions
+                (business_context, staff_id, work_date, source_type, source_id, slot_key, state, created_by,
+                 version, input_json, quote_json, completion_json, source_snapshot)
+                SELECT 'event_genix', staff_id, CURRENT_DATE, 'task', $1, 'primary', 'completed', 'synthetic',
+                       1, '{}', '{}', '{}', '{}'
+                FROM employee_profiles WHERE user_id = $2 AND is_active = true AND staff_id IS NOT NULL
+                RETURNING id::text`, [await overdue.getAttribute('data-task-id'), session.user.id]);
+            substitutionId = agreement.id;
             await fixtures.query(`UPDATE tasks SET control_meta = COALESCE(control_meta, '{}'::jsonb)
                 || '{"reportRequired": true}'::jsonb WHERE id = ANY($1::int[])`, [legacyIds]);
             await fixtures.query(`INSERT INTO task_subtasks (task_id, title, is_done)
@@ -173,6 +182,9 @@ async function run() {
         }
         await page.reload();
         await reportTask.waitFor();
+        await overdue.getByText(`Підміна №${substitutionId} · Завершено`, { exact: true }).waitFor();
+        assert.equal(await personal.locator('[data-task-substitution]').count(), 0);
+        await overdue.screenshot({ path: path.join(evidence, 'my-day-substitution-mobile.png') });
         assert.equal(await centerTask.getByRole('button', { name: 'На сьогодні', exact: true }).count(), 0);
         assert.equal(await reportTask.getByText('Історичний підпункт').count(), 0);
         const completionPath = `**/api/tasks/${legacyIds[0]}/complete`;

@@ -6098,6 +6098,7 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
             mode: cabinetTaskMode(task), modeLabel: taskModeLabel(task),
             blocked,
             postponementBadge: renderCabinetPostponementBadge(task),
+            substitution: task.substitution,
             isAi: window.TaskAiDraft?.isAiTask?.(task) === true,
             role: window.ProfileMyDay.taskRole(task),
             executor: task.ownerLabel || task.owner_name || task.owner_username,

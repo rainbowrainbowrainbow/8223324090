@@ -323,6 +323,11 @@ existing monthly substitution row. Both participants see the agreed roles in
 their own Park results. The results response projects profession keys from the
 saved agreement alongside its existing summary fields.
 
+My Day uses the task agreement read model on the visible task. The card shows
+the agreement number and active or completed status. The migrated database
+test covers the active claim, its removal after cancellation and Park/DAR
+separation in the My Day projection.
+
 ## Decisions before expanding protected booking and pay scopes
 
 

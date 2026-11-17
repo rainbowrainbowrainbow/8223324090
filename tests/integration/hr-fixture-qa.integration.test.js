@@ -115,26 +115,31 @@ test('Park HR QA writes register exact fixtures, suppress chat and retire the ru
         }
     }
 
-    async function clickSubmit(page, endpoint, button) {
+    async function waitForSubmit(page, endpoint, submit) {
         const [response] = await Promise.all([
             page.waitForResponse(r => r.request().method() === 'POST' && new URL(r.url()).pathname === endpoint),
-            button.click()
+            submit()
         ]);
         return { status: response.status(), data: await response.json(),
             key: await response.request().headerValue('Idempotency-Key'),
             request: response.request().postDataJSON() };
     }
 
+    async function createRegisteredStaff(page, body) {
+        // Trusted QA requires an exact one-token fixture name. Exercise the
+        // browser's guarded request and recovery path with the legacy payload.
+        await page.waitForFunction(() => document.getElementById('hrCreateStaffForm')?.dataset.bound === 'true');
+        return waitForSubmit(page, '/api/staff', () => page.evaluate(async input => {
+            const { result, acknowledge } = await submitStaffCreation('staff', input, () => true);
+            if (!result?.success) return;
+            acknowledge?.();
+            await openStaffEdit(result.data.id);
+        }, body));
+    }
+
     const first = await runBrowser(delegate, 390, async page => {
-        await page.locator('#hrCreateStaffBtn').click();
         await assert.rejects(page.evaluate(() => fetch('/api/users', { method: 'POST', body: '{}' })));
-        const dialog = page.locator('#hrCreateStaffDialog');
-        const [familyName, ...givenNames] = draft.name.split(' ');
-        await dialog.locator('[name="family_name"]').fill(familyName);
-        await dialog.locator('[name="given_name"]').fill(givenNames.join(' '));
-        await dialog.locator('[name="department"]').selectOption({ label: 'Аніматори' });
-        await dialog.locator('[name="position"]').selectOption('animator');
-        const created = await clickSubmit(page, '/api/staff', dialog.locator('[type="submit"]'));
+        const created = await createRegisteredStaff(page, draft);
         await page.locator('#staffEditModal').waitFor({ state: 'visible' });
         return created;
     });
@@ -170,20 +175,13 @@ test('Park HR QA writes register exact fixtures, suppress chat and retire the ru
     assert.equal(firstAccount.data.receipt.staff.id, firstId);
     const second = await runBrowser(owner, 1440, async page => {
         await page.locator('#hrCreateStaffBtn').waitFor({ state: 'visible' });
-        await page.locator('#hrCreateStaffBtn').click();
-        const dialog = page.locator('#hrCreateStaffDialog');
-        const [familyName, ...givenNames] = staffName(2).split(' ');
-        await dialog.locator('[name="family_name"]').fill(familyName);
-        await dialog.locator('[name="given_name"]').fill(givenNames.join(' '));
-        await dialog.locator('[name="department"]').selectOption({ label: 'Аніматори' });
-        await dialog.locator('[name="position"]').selectOption('animator');
-        const staff = await clickSubmit(page, '/api/staff', dialog.locator('[type="submit"]'));
+        const staff = await createRegisteredStaff(page, { ...draft, name: staffName(2) });
         assert.equal(staff.status, 200);
         await page.locator('#staffEditModal').getByRole('button', { name: 'Створити CRM-акаунт', exact: true }).click();
         await page.locator('#accountOnboardingEditSetup').check();
         await page.locator('#accountOnboardingUsername').fill(`${runId}-account-2`);
         await page.locator('#accountOnboardingRole').selectOption('animator');
-        return clickSubmit(page, '/api/users/onboarding', page.locator('#accountOnboardingSubmit'));
+        return waitForSubmit(page, '/api/users/onboarding', () => page.locator('#accountOnboardingSubmit').click());
     });
     assert.equal(second.status, 200, JSON.stringify({ code: second.data.code,
         access: second.request.access, staff: second.request.staff,

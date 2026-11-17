@@ -7259,7 +7259,7 @@ check('HR print documents modal keeps responsive design-system controls and a st
     && hrCode.includes('Вбудований перегляд PDF недоступний у цьому браузері')
     && hrCode.includes('URL.revokeObjectURL(hrPrintDocumentsState.previewUrl)')
     && hrCode.includes("id: 'pastry_shop', label: 'Кондитерський цех'")
-    && hrCode.includes("id: 'pizzaiolo', label: 'Піцейола'")
+    && hrCode.includes("id: 'pizzaiolo', label: 'Кухар піци'")
     && hrCode.includes("'pastry_chef', 'confectioner', 'pastry_assistant', 'head_pastry'")
     && hrCode.includes('function isHrPrintPreviewRequestCurrent')
     && hrCode.includes('scrollHrPrintPreviewIntoView()')

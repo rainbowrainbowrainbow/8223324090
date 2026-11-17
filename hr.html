@@ -1249,7 +1249,7 @@
                     </optgroup>
                     <optgroup label="Кухня, кондитерка і зал">
                         <option value="cook">Кухар</option>
-                        <option value="pizzaiolo">Піцайоло</option>
+                        <option value="pizzaiolo">Кухар піци</option>
                         <option value="pastry_chef">Кондитер</option>
                         <option value="confectioner">Кондитер</option>
                         <option value="pastry_assistant">Помічник кондитера</option>
@@ -1358,28 +1358,6 @@
             </div>
             </section>
             <section id="staffProfilePanelPayroll" class="hr-staff-profile-panel hr-staff-foundation-panel" aria-label="Оплата" data-staff-profile-panel="payroll" role="tabpanel" aria-labelledby="staffProfileTabPayroll">
-                <div class="hr-primary-rate-card">
-                    <div class="hr-rate-label-row">
-                        <span>Резервна ставка основної професії</span>
-                        <select id="editRateUnit" aria-label="Одиниця ставки">
-                            <option value="hour">За годину</option>
-                            <option value="day">За день</option>
-                            <option value="month">За місяць</option>
-                        </select>
-                    </div>
-                    <label class="hr-primary-rate-field">
-                        <span id="editHourlyRateLabel">Ставка грн/год</span>
-                        <input type="number" id="editHourlyRate" min="0" step="10" value="0">
-                    </label>
-                    <small class="form-hint" id="editHourlyRateHint">Резервна ставка для старих нарахувань і створення першого профілю оплати.</small>
-                </div>
-                <div class="hr-profession-rate-panel">
-                    <div class="hr-profession-rate-head">
-                        <strong>Окремі ставки професій</strong>
-                        <span>Тут зберігаються окремі ставки професій, зокрема основної. Умови буднів і вихідних налаштовуються у зарплатному профілі.</span>
-                    </div>
-                    <div id="editProfessionRates" class="hr-profession-rate-editor"></div>
-                </div>
                 <section class="hr-staff-payroll-profile-panel" aria-label="Зарплатні профілі працівника">
                     <div class="hr-staff-payroll-profile-head">
                         <div>
@@ -1405,6 +1383,28 @@
                         <div id="editStaffPayrollProfilePreview" class="hr-staff-payroll-profile-preview-result" aria-live="polite"></div>
                     </div>
                 </section>
+                <div class="hr-primary-rate-card">
+                    <div class="hr-rate-label-row">
+                        <span>Резервна ставка основної професії</span>
+                        <select id="editRateUnit" aria-label="Одиниця ставки">
+                            <option value="hour">За годину</option>
+                            <option value="day">За день</option>
+                            <option value="month">За місяць</option>
+                        </select>
+                    </div>
+                    <label class="hr-primary-rate-field">
+                        <span id="editHourlyRateLabel">Ставка грн/год</span>
+                        <input type="number" id="editHourlyRate" min="0" step="10" value="0">
+                    </label>
+                    <small class="form-hint" id="editHourlyRateHint">Резервна ставка для старих нарахувань і створення першого профілю оплати.</small>
+                </div>
+                <div class="hr-profession-rate-panel">
+                    <div class="hr-profession-rate-head">
+                        <strong>Окремі ставки професій</strong>
+                        <span>Тут зберігаються окремі ставки професій, зокрема основної. Умови буднів і вихідних налаштовуються у зарплатному профілі.</span>
+                    </div>
+                    <div id="editProfessionRates" class="hr-profession-rate-editor"></div>
+                </div>
                 <div class="hr-staff-foundation-head">
                     <div>
                         <strong>Резервні ставки</strong>

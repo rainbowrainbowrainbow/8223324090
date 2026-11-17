@@ -273,7 +273,7 @@ const DEPT_SUB_GROUPS = {
     ],
     cafe: [
         { id: 'kitchen', key: 'cook,head_cook,head_chef', label: 'Кухня', icon: 'chef' },
-        { id: 'pizzaiolo', key: 'pizzaiolo', label: 'Піцайоло', icon: 'pizza' },
+        { id: 'pizzaiolo', key: 'pizzaiolo', label: 'Кухар піци', icon: 'pizza' },
         { id: 'barista', key: 'barista,bartender', label: 'Бариста', icon: 'coffee' },
         { id: 'waiters', key: 'waiter', label: 'Офіціанти', icon: 'utensils' },
         { id: 'dishwash', key: 'dishwasher,dishwash', label: 'Мийка', icon: 'sparkles' },
@@ -308,7 +308,7 @@ const STAFF_ROLE_OPTIONS = [
     { value: 'hr', label: 'HR' },
     { value: 'barista', label: 'Бариста' },
     { value: 'cook', label: 'Кухар' },
-    { value: 'pizzaiolo', label: 'Піцайоло' },
+    { value: 'pizzaiolo', label: 'Кухар піци' },
     { value: 'waiter', label: 'Офіціант' },
     { value: 'pastry_chef', label: 'Шеф-кондитер' },
     { value: 'confectioner', label: 'Кондитер' },
@@ -406,8 +406,11 @@ function uniqueScheduleStaffById(staffList = []) {
 function professionLabel(key) {
     const normalized = normalizeProfessionKey(key);
     const profession = StaffState.professions.find(item => normalizeProfessionKey(item.key) === normalized);
-    if (profession?.title) return profession.title;
     const option = STAFF_ROLE_OPTIONS.find(item => item.value === normalized);
+    if (normalized === 'pizzaiolo' && ['піцайоло', 'піцейола', 'pizzaiolo'].includes(String(profession?.title || '').trim().toLowerCase())) {
+        return option.label;
+    }
+    if (profession?.title) return profession.title;
     return option?.label || normalized;
 }
 

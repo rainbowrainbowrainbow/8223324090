@@ -305,7 +305,7 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(hrPage, /const isCurrentWorkspace = \(\) => professionWorkspaceState\.open[\s\S]*=== professionKey/);
         assert.match(hrPage, /key: isNew \? document\.getElementById\('professionWorkspaceKey'\)/);
         assert.match(hrPage, /profession\.source === 'system'/);
-        assert.match(hrPage, /System profession · readonly/);
+        assert.match(hrPage, /Системна · лише перегляд/);
         assert.match(hrPage, /history\.back\(\)/);
         assert.match(hrPage, /function professionChecklistDashboardQuery/);
         assert.match(hrPage, /hrFetch\(`\/checklists\/dashboard\$\{query \? `\?\$\{query\}` : ''\}`\)/);

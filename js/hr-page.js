@@ -23,7 +23,7 @@ const ROLE_LABELS = {
     reception: 'Рецепція', barista: 'Бариста', bartender: 'Бариста',
     waiter: 'Офіціант', wardrobe: 'Гардеробник',
     cleaning: 'Прибиральник', cleaner: 'Прибиральник', maintenance: 'Технічний директор',
-    pizzaiolo: 'Піцайоло',
+    pizzaiolo: 'Кухар піци',
     dishwasher: 'Посудомийник', intern: 'Стажер'
 };
 
@@ -56,7 +56,7 @@ const HR_PRINT_CATEGORIES = Object.freeze([
     { id: 'top_manager', label: 'Топ-менеджер', professionKeys: ['senior_manager'] },
     { id: 'cook', label: 'Кухарі', professionKeys: ['cook', 'head_cook', 'head_chef'] },
     { id: 'pastry_shop', label: 'Кондитерський цех', professionKeys: ['pastry_chef', 'confectioner', 'pastry_assistant', 'head_pastry'] },
-    { id: 'pizzaiolo', label: 'Піцейола', professionKeys: ['pizzaiolo'] },
+    { id: 'pizzaiolo', label: 'Кухар піци', professionKeys: ['pizzaiolo'] },
     { id: 'waiter', label: 'Офіціанти', professionKeys: ['waiter'] },
     { id: 'dishwasher', label: 'Мийниця', professionKeys: ['dishwasher'] },
     { id: 'security', label: 'Охорона', professionKeys: ['security'] }
@@ -812,7 +812,14 @@ function normalizeProfessionList(value, exclude = []) {
 function professionTitle(key) {
     const normalized = normalizeProfessionKey(key);
     const profession = hrProfessions.find(item => normalizeProfessionKey(item.key) === normalized);
-    return profession?.title || ROLE_LABELS[normalized] || normalized;
+    return professionDisplayTitle(normalized, profession?.title);
+}
+
+function professionDisplayTitle(key, title) {
+    if (key === 'pizzaiolo' && ['піцайоло', 'піцейола', 'pizzaiolo'].includes(String(title || '').trim().toLowerCase())) {
+        return ROLE_LABELS.pizzaiolo;
+    }
+    return title || ROLE_LABELS[key] || key;
 }
 
 function staffSecondaryProfessions(staff = {}) {
@@ -5115,7 +5122,7 @@ function professionMasterRowHtml(item = {}, initialTab = 'main') {
         : 'Чекліст недоступний';
     return `
         <${rowTag} class="hr-profession-master-row${active ? '' : ' is-archived'}${workspaceUnsupported ? ' is-read-only' : ''}" ${rowAttributes}>
-            <span class="hr-profession-master-title"><strong>${escapeHtml(item.title || item.key)}</strong><small>${escapeHtml(item.key)} · ${source === 'system' ? 'Системна' : 'З довідника'}</small></span>
+            <span class="hr-profession-master-title"><strong>${escapeHtml(professionDisplayTitle(item.key, item.title))}</strong><small>${escapeHtml(item.key)} · ${source === 'system' ? 'Системна' : 'З довідника'}</small></span>
             <span class="hr-profession-master-cell">${escapeHtml(professionDepartmentLabel(item.department) || 'Без відділу')}</span>
             <span class="hr-profession-master-cell">${escapeHtml(nodeTitle)}</span>
             <span class="hr-profession-master-cell">${escapeHtml(staffText)}</span>
@@ -7536,7 +7543,7 @@ function bindHrStaffCreation() {
         const matching = jobs.filter(job => job.departmentKey === department.value);
         position.replaceChildren(new Option(department.value ? 'Оберіть посаду' : 'Спочатку оберіть відділ', ''));
         matching.sort((a, b) => a.title.localeCompare(b.title, 'uk'))
-            .forEach(job => position.add(new Option(job.title, job.key)));
+            .forEach(job => position.add(new Option(professionDisplayTitle(job.key, job.title), job.key)));
         position.disabled = !matching.length;
         submit.disabled = !matching.length;
     };
@@ -11680,7 +11687,7 @@ function renderStaffRoleAssignments(rows = []) {
     return rows.map(row => {
         const key = normalizeProfessionKey(row.profession_key || row.professionKey);
         const primary = row.is_primary || row.isPrimary;
-        const title = row.profession_title || row.professionTitle || professionTitle(key);
+        const title = professionDisplayTitle(key, row.profession_title || row.professionTitle || professionTitle(key));
         return `<article class="hr-staff-role-assignment-row" data-role-assignment="${escapeHtml(key)}" data-primary="${primary ? 'true' : 'false'}">
             <div class="hr-staff-role-assignment-title">
                 <b>${escapeHtml(title)}</b>

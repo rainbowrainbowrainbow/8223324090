@@ -1368,10 +1368,10 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /const backendSubGroups = StaffState\.scheduleCategoryContract\?\.subGroups\?\.\[normalized\]/);
         assert.match(staffPage, /function scheduleProfessionDisplayGroupKey/);
         assert.doesNotMatch(staffPage, /SCHEDULE_PROFESSION_DISPLAY_GROUP_FALLBACK/);
-        assert.match(staffPage, /key:\s*'pizzaiolo',\s*label:\s*'Піцайоло'/);
+        assert.match(staffPage, /key:\s*'pizzaiolo',\s*label:\s*'Кухар піци'/);
         assert.match(staffPage, /key:\s*'wardrobe',\s*label:\s*'Гардероб'/);
         assert.match(staffPage, /value:\s*'reception',\s*label:\s*'Рецепція'/);
-        assert.match(staffPage, /value:\s*'pizzaiolo',\s*label:\s*'Піцайоло'/);
+        assert.match(staffPage, /value:\s*'pizzaiolo',\s*label:\s*'Кухар піци'/);
         assert.match(staffPage, /value:\s*'wardrobe',\s*label:\s*'Гардероб'/);
         assert.doesNotMatch(staffPage, /const SCHEDULE_DEPARTMENT_ORDER = \[[^\]]*'security'/);
         assert.doesNotMatch(staffPage, /(?:s|emp|staff)\.department === StaffState\.activeDept/);

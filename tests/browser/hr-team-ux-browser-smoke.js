@@ -33,7 +33,8 @@ async function checkCreation(page, width, dark) {
         hrProfessions = [
             { key: 'waiter', title: 'Офіціант', department: 'Кафе' },
             { key: 'barista', title: 'Бариста', department: 'cafe' },
-            { key: 'animator', title: 'Аніматор', department: 'Арт-відділ' }
+            { key: 'animator', title: 'Аніматор', department: 'Арт-відділ' },
+            { key: 'pizzaiolo', title: 'Піцайоло', department: 'kitchen' }
         ];
         renderProfessionCatalogFilterOptions();
         ensureProfessionsLoaded = async () => hrProfessions;
@@ -59,6 +60,8 @@ async function checkCreation(page, width, dark) {
     await dialog.locator('[name="phone"]').fill('+380671234567');
     await dialog.locator('[name="department"]').focus();
     assert.equal(await dialog.locator('[name="phone"]').inputValue(), '+380 67 123 45 67');
+    await dialog.locator('[name="department"]').selectOption({ label: 'Кухня' });
+    assert.equal(await dialog.locator('[name="position"] option[value="pizzaiolo"]').textContent(), 'Кухар піци');
     await dialog.locator('[name="department"]').selectOption({ label: 'Кафе' });
     assert.equal(await dialog.locator('[name="department"] option').filter({ hasText: /^Кафе$/ }).count(), 1);
     assert.equal(await dialog.locator('[name="position"] option[value="barista"]').count(), 1);
@@ -142,6 +145,8 @@ async function checkDrawer(page, width, dark) {
     await page.locator('#staffProfileTabPayroll').click();
     const preview = page.locator('.hr-staff-payroll-preview-summary');
     await preview.waitFor();
+    assert.equal(await page.locator('.hr-staff-payroll-profile-panel').evaluate(panel =>
+        Boolean(panel.compareDocumentPosition(document.querySelector('.hr-primary-rate-card')) & Node.DOCUMENT_POSITION_FOLLOWING)), true);
     await preview.scrollIntoViewIfNeeded();
     if (dark) {
         const rgb = await preview.locator('div').first().evaluate(el => getComputedStyle(el).backgroundColor);

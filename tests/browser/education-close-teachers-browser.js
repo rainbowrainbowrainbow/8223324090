@@ -525,7 +525,12 @@ async function closeChecks(){
         assert.equal(saved.status(), 200);
         assert.equal((await saved.json()).success, true);
         assert.equal((await pool.query('SELECT notes FROM staff WHERE id=$1', [candidate])).rows[0].notes, notes);
-        await page.waitForFunction(() => document.getElementById('staffProfileLiveStatus').textContent.includes('Робочі дані збережено'));
+        // The live status can be cleared by the operational refresh after a confirmed write.
+        await page.waitForFunction(() => {
+            const button = document.getElementById('editSaveWork');
+            return button.dataset.staffActionPending !== 'true' && !button.disabled;
+        });
+        await waitTeacherRuntimeReads(page);
 
         const rows=(await pool.query('SELECT business_context,staff_id,is_active,created_by,updated_by FROM education_teacher_memberships WHERE staff_id=$1',[candidate])).rows;
         assert.equal(rows.length,1);assert.equal(rows[0].business_context,'dar');assert.ok(rows[0].created_by);assert.equal(rows[0].created_by,rows[0].updated_by);

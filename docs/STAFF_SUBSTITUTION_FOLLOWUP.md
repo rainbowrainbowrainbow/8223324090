@@ -337,6 +337,15 @@ the credits against one rounded month baseline, including in shorter views. The
 history shows the resulting credit from the current or frozen payroll breakdown.
 Manual adjustments retain their existing contract.
 
+Night transfers can preserve a confirmed timed break and simultaneous roles in
+one supported overnight segment. The original worker keeps the remaining
+intervals and their assigned roles. The preview dates the break and checks
+animator commitments on each affected date. The migrated PostgreSQL scenario
+verifies a 23:00–02:00 transfer with a 01:45–02:15 break, restoration, and the
+165-minute base and simultaneous attendance allocations. The original HR day
+must still have a representable remaining plan when a next-day remainder is
+created.
+
 ## Decisions before expanding protected booking and pay scopes
 
 

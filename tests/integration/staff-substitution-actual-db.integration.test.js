@@ -1386,6 +1386,98 @@ test('Park transfers and restores simultaneous shift roles and pays the actual w
     }
 });
 
+test('Park carries rated roles and a dated break across midnight and checks both animator calendars', { skip: !enabled }, async () => {
+    assert.equal(assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL).isLocal, true);
+    assert.equal(process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER, 'true');
+    const db = new Pool({ connectionString: process.env.TEST_DATABASE_URL, ssl: false });
+    const service = createSubstitutionService({ pool: db });
+    const actor = { id:1, username:'substitution_qa_operator', role:'creator' };
+    const workDate = '2099-02-21';
+    const nextDate = '2099-02-22';
+    const { loadHrShiftDayPlan } = require('../../services/hrShiftSegments');
+    const { recordAttendanceClockIn, recordAttendanceClockOut } = require('../../services/hrAttendance');
+    const { getPayrollRangePreview } = require('../../services/payroll');
+    try {
+        const workers = (await db.query(`INSERT INTO staff
+            (name,role_type,secondary_professions,department,position,is_active,hourly_rate,rate_unit,hr_pool_status,is_freelance)
+            SELECT name,'reception','["manager","animator"]','admin','Synthetic night',true,100,'hour','core',false
+            FROM unnest($1::text[]) name RETURNING id`, [[`Original ${randomUUID()}`, `Replacement ${randomUUID()}`]])).rows;
+        const [original, replacement] = workers;
+        const workerIds = workers.map(worker => worker.id);
+        await db.query(`INSERT INTO staff_role_assignments
+            (staff_id,profession_key,is_primary,status,admission_status,internship_status,created_by,updated_by)
+            SELECT id,profession,false,'active','approved','none',$2,$2 FROM unnest($1::int[]) id
+            CROSS JOIN unnest(ARRAY['manager','animator']) profession`, [workerIds,actor.username]);
+        await db.query(`INSERT INTO staff_profession_rates (staff_id,profession_key,hourly_rate)
+            SELECT id,'manager',240 FROM unnest($1::int[]) id`, [workerIds]);
+        const shift = (await db.query(`INSERT INTO hr_shifts (staff_id,shift_date,planned_start,planned_end,break_minutes,profession_key)
+            VALUES ($1,$2,'20:00','04:00',30,'reception') RETURNING id`, [original.id,workDate])).rows[0];
+        const segment = (await db.query(`INSERT INTO hr_shift_segments
+            (hr_shift_id,profession_key,planned_start,planned_end,break_minutes) VALUES ($1,'reception','20:00','04:00',30)
+            RETURNING id`, [shift.id])).rows[0];
+        await db.query(`INSERT INTO hr_shift_segment_roles (segment_id,profession_key,compensation_mode,pay_multiplier,policy_version)
+            VALUES ($1,'manager','paid_hourly',1,'simultaneous-profession-pay-v1'),($1,'animator','unpaid',NULL,NULL)`, [segment.id]);
+
+        const input = { sourceType:'hr_shift', sourceId:String(shift.id), slotKey:'partial', workDate,
+            staffId:replacement.id, originalStaffId:original.id, professionKey:'reception',
+            startsAt:`${workDate}T23:00:00+02:00`, endsAt:`${nextDate}T02:00:00+02:00`, breakStartTime:'01:45',
+            payUnit:'hour', payMode:'replace_base', originalTreatment:'transfer_unworked_scope',
+            rateMode:'individual', rate:'200', rateReason:'Synthetic night rate', workload:'Synthetic work over midnight',
+            reason:'Synthetic night transfer' };
+        const preview = () => service.preview('event_genix', actor, input);
+        const save = quote => service.mutate('event_genix', actor, 'create', { input, previewFingerprint:quote.fingerprint,
+            effectsAcknowledged:true, requestKey:randomUUID() });
+        const cancel = claim => service.mutate('event_genix', actor, 'cancel', { expectedVersion:1, requestKey:randomUUID(),
+            reason:'Synthetic night restoration' }, claim.id);
+        const plans = async (staffId, shiftDate) => (await loadHrShiftDayPlan(db, { staffId, shiftDate }))?.plan.segments
+            .map(part => [part.shiftStart,part.shiftEnd,part.breakMinutes,part.additionalRoles.map(role => role.professionKey).sort()]);
+        const roles = ['animator','manager'];
+        const bookingId = `SUB-${randomUUID()}`;
+        await db.query(`INSERT INTO bookings(id,date,time,duration,line_id,status,business_context,room,room_resource_id)
+            VALUES($1,$2,'01:30',15,$3,'confirmed','event_genix','На виніс','room-takeaway')`, [bookingId,nextDate,String(original.id)]);
+        assert.ok((await preview()).blockers.some(item => item.code === 'SUBSTITUTION_ANIMATOR_ASSIGNMENT_OUTSIDE_SHIFT'));
+        await db.query("UPDATE bookings SET status='cancelled' WHERE id=$1", [bookingId]);
+        const quote = await preview();
+        assert.deepEqual(quote.blockers, []);
+        assert.equal(quote.input.plannedMinutes, 165);
+        assert.deepEqual(quote.evidence.source.breakAllocation, { startDate:nextDate, startTime:'01:45', endDate:nextDate,
+            endTime:'02:15', totalMinutes:30, beforeMinutes:0, replacementMinutes:15, afterMinutes:15 });
+        const claim = await save(quote);
+        assert.deepEqual(await plans(original.id,workDate), [['20:00','23:00',0,roles]]);
+        assert.deepEqual(await plans(original.id,nextDate), [['02:00','04:00',15,roles]]);
+        assert.deepEqual(await plans(replacement.id,workDate), [['23:00','02:00',15,roles]]);
+        await db.query("UPDATE bookings SET line_id=$2,status='confirmed' WHERE id=$1", [bookingId,String(replacement.id)]);
+        await assert.rejects(cancel(claim), { code:'SUBSTITUTION_ANIMATOR_ASSIGNMENT_OUTSIDE_SHIFT' });
+        await db.query("UPDATE bookings SET status='cancelled' WHERE id=$1", [bookingId]);
+        await cancel(claim);
+        assert.deepEqual(await plans(original.id,workDate), [['20:00','04:00',30,roles]]);
+        assert.equal(await plans(original.id,nextDate), undefined);
+        assert.equal(await plans(replacement.id,workDate), undefined);
+
+        const completedScope = await save(await preview());
+        const client = await db.connect();
+        try {
+            await client.query('BEGIN');
+            const attendance = { staffId:replacement.id, recordDate:workDate, performedBy:actor.username };
+            await recordAttendanceClockIn(client, { ...attendance, now:`${workDate}T21:00:00Z` });
+            await recordAttendanceClockOut(client, { ...attendance, now:`${nextDate}T00:00:00Z`, settlementMode:'actual_time' });
+            await client.query('COMMIT');
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally { client.release(); }
+        const choices = await service.completionOptions('event_genix', completedScope.id);
+        assert.deepEqual(choices.allocations.map(item => item.actualMinutes), [165]);
+        await service.mutate('event_genix', actor, 'complete', { expectedVersion:1, requestKey:randomUUID(),
+            reason:'Synthetic completion', workConfirmed:true, workEvidence:'Synthetic overnight attendance', actualMinutes:165,
+            attendanceId:choices.attendanceId, baseAllocationIndices:[choices.allocations[0].index] }, completedScope.id);
+        const payroll = await getPayrollRangePreview({ month:'2099-02', from:workDate, to:workDate, staffId:replacement.id }, db);
+        assert.equal(payroll.staff[0].netAmount, 1210);
+    } finally {
+        await db.end();
+    }
+});
+
 test('Park posts completed-substitution corrections once and preserves frozen payroll', { skip: !enabled }, async () => {
     assert.equal(assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL).isLocal, true);
     assert.equal(process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER, 'true');

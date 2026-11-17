@@ -81,10 +81,14 @@
         const allocation = source?.breakAllocation;
         if (!allocation) return '';
         const originalBreak = allocation.beforeMinutes + allocation.afterMinutes;
-        const originalPaid = source.originalSegments.reduce((sum, segment) => sum + segment.plannedMinutes, 0);
+        const originalPaid = source.originalSegments.reduce((sum, segment) => sum + segment.plannedMinutes, 0)
+            + (source.remainder?.plannedMinutes || 0);
+        const start = allocation.startDate ? `${allocation.startDate} ${allocation.startTime}` : allocation.startTime;
+        const end = allocation.endDate && allocation.startDate !== allocation.endDate
+            ? `${allocation.endDate} ${allocation.endTime}` : allocation.endTime;
         return [
-            `Підтверджена перерва ${allocation.startTime}–${allocation.endTime} · ${allocation.totalMinutes} хв.`,
-            `Замінений працівник: ${originalBreak} хв цієї перерви · ${originalPaid} оплачуваних хв у плані дня.`,
+            `Підтверджена перерва ${start}–${end} · ${allocation.totalMinutes} хв.`,
+            `Замінений працівник: ${originalBreak} хв цієї перерви · ${originalPaid} оплачуваних хв ${source.remainder ? 'у графіку зміни' : 'у плані дня'}.`,
             `Виконавець за підміну: ${allocation.replacementMinutes} хв перерви${source.simultaneousRoles?.length ? '' : ` · ${quote.input.plannedMinutes} оплачуваних хв`}.`
         ].join('\n');
     }
@@ -245,7 +249,7 @@
             field('endDate', 'Дата завершення', source?.endDate || first.workDate, 'date'),
             field('endTime', 'Завершення', source?.endTime || '', 'time', education),
             ...(partialShift && (!source || source.breakMinutes > 0) ? [
-                { type: 'note', text: 'Якщо передаєте частину денного сегмента з однією перервою, вкажіть її підтверджений початок. Тривалість CRM візьме з графіка.' },
+                { type: 'note', text: 'Якщо передаєте частину сегмента з однією перервою, вкажіть її підтверджений початок. Тривалість CRM візьме з графіка.' },
                 field('breakStartTime', 'Початок підтвердженої перерви', '', 'time', false)
             ] : []),
             ...(!education ? [{ ...field('breakMinutes', 'Неоплачувана перерва, хв', String(source?.breakMinutes || 0), 'number'),
@@ -291,7 +295,8 @@
         const beforeSchedule = sourcePlan?.partial && sourcePlan.originalBefore
             ? `\nБуло у заміненого: ${formatSegments(sourcePlan.originalBefore.plan)}. Було у виконавця: ${formatSegments(sourcePlan.replacementBefore?.plan)}.`
             : '';
-        const originalWorkload = !roleSummary && input.sourceType === 'hr_shift' && input.originalTreatment === 'transfer_unworked_scope'
+        const originalWorkload = !roleSummary && !sourcePlan?.breakAllocation
+            && input.sourceType === 'hr_shift' && input.originalTreatment === 'transfer_unworked_scope'
             ? `\nІз плану заміненого передається ${quote.input.plannedMinutes} робочих хвилин.`
             : '';
         const originalImpact = quote.payImpact?.original;
@@ -317,7 +322,8 @@
             + quote.warnings.map(warning => warning.message).join('\n') + beforeSchedule + scheduleEffect
             + (breakSummary ? `\n${breakSummary}` : '') + originalWorkload + (payImpact ? `\n${payImpact}` : '')
             + (editedPay ? `\n${editedPay}` : '') + '\nНарахування відбудеться після підтвердження фактичної роботи.',
-        { okText: 'Погоджую наслідки та зберігаю', cancelText: 'Скасувати', scrollable: Boolean(roleSummary || fixedOriginal) });
+        { okText: 'Погоджую наслідки та зберігаю', cancelText: 'Скасувати',
+            scrollable: Boolean(roleSummary || fixedOriginal || sourcePlan?.breakAllocation?.startDate) });
         if (!confirmed) return;
         await saveCommand('', { input, previewFingerprint: quote.fingerprint, effectsAcknowledged: true });
         showNotification('Підміну збережено. Історичну ставку зафіксовано.', 'success');

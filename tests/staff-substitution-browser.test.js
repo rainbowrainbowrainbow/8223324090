@@ -95,6 +95,9 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
                 if (url.searchParams.get('workDate') === '2099-01-21') {
                     Object.assign(source, { title:'Зміна 20:00–04:00', startTime:'20:00', endTime:'04:00', endDate:'2099-01-22' });
                 }
+                if (url.searchParams.get('workDate') === '2099-01-23') {
+                    Object.assign(source, { title:'Зміна 20:00–04:00', startTime:'20:00', endTime:'04:00', endDate:'2099-01-24', breakMinutes:30 });
+                }
                 if (['2099-01-15','2099-01-16'].includes(url.searchParams.get('workDate'))) {
                     Object.assign(source, { title:'Зміна 09:00–17:00', startTime:'09:00', endTime:'17:00', breakMinutes:30 });
                 }
@@ -138,6 +141,17 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
                         { professionKey:'manager',compensationMode:'paid_hourly',rateMinor:24000,amountMinor:42000 }
                     ];
                 }
+                if (source && input.breakStartTime === '01:45') {
+                    input.breakMinutes = 15;
+                    input.plannedMinutes = 165;
+                    source.originalBefore.plan.segments = [{shiftStart:'20:00',shiftEnd:'04:00'}];
+                    source.originalAfter.segments = [{shiftStart:'20:00',shiftEnd:'23:00'}];
+                    source.originalSegments = [{plannedMinutes:180}];
+                    source.replacementAfter.segments = [{shiftStart:'23:00',shiftEnd:'02:00'}];
+                    source.remainder = {date:'2099-01-24',plannedMinutes:105,plan:{segments:[{shiftStart:'02:00',shiftEnd:'04:00'}]}};
+                    source.breakAllocation = { startDate:'2099-01-24', endDate:'2099-01-24', startTime:'01:45', endTime:'02:15',
+                        totalMinutes:30, beforeMinutes:0, replacementMinutes:15, afterMinutes:15 };
+                }
                 const payImpact = source ? {
                     original: { amountMinor: source.breakAllocation ? 26250 : 30000 },
                     replacement: { amountMinor: source.breakAllocation ? 17500 : 20000 }
@@ -161,10 +175,11 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
     await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
     const browser=await chromium.launch({headless:true,...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH?{executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH}:{})});
     try{
-        for(const [name,width,height] of [['desktop',1280,900],['mobile',390,844],['booking-mobile',390,844],['night-mobile',390,844],['break-mobile',390,844],['roles-mobile',390,844],['fixed-mobile',390,844]]){
-            const night = name === 'night-mobile';
+        for(const [name,width,height] of [['desktop',1280,900],['mobile',390,844],['booking-mobile',390,844],['night-mobile',390,844],['break-mobile',390,844],['roles-mobile',390,844],['fixed-mobile',390,844],['night-break-mobile',390,844]]){
+            const nightBreak = name === 'night-break-mobile';
+            const night = name === 'night-mobile' || nightBreak;
             const withRoles = name === 'roles-mobile';
-            const withBreak = name === 'break-mobile' || withRoles;
+            const withBreak = name === 'break-mobile' || withRoles || nightBreak;
             const withFixed = name === 'fixed-mobile';
             const partial = name === 'mobile' || night || withBreak || withFixed;
             const page=await browser.newPage({viewport:{width,height}});
@@ -184,7 +199,8 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
                 await active().locator('[data-key="sourceType"]').selectOption('booking');
                 await active().locator('[data-key="animatorSlot"]').selectOption('second');
             }
-            await active().locator('[data-key="workDate"]').fill(night ? '2099-01-21' : withRoles ? '2099-01-16' : withBreak ? '2099-01-15' : withFixed ? '2099-01-17' : '2099-01-13');
+            await active().locator('[data-key="workDate"]').fill(nightBreak ? '2099-01-23' : night ? '2099-01-21'
+                : withRoles ? '2099-01-16' : withBreak ? '2099-01-15' : withFixed ? '2099-01-17' : '2099-01-13');
             await active().locator('[data-key="workload"]').fill('Синтетична робота адміністратора');
             await active().locator('[data-key="reason"]').fill('Локальна перевірка');
             await page.screenshot({path:path.join(output,`${name}-work.png`),fullPage:true});
@@ -194,11 +210,11 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
                 await active().getByRole('button',{name:'Умови оплати',exact:true}).click();
                 await active().locator('[data-key="startTime"]').fill(night ? '23:00' : withBreak ? '12:00' : '10:00');
                 await active().locator('[data-key="endTime"]').fill(night ? '02:00' : withBreak ? '14:00' : '12:00');
-                if (night) assert.equal(await active().locator('[data-key="endDate"]').inputValue(), '2099-01-22');
+                if (night) assert.equal(await active().locator('[data-key="endDate"]').inputValue(), nightBreak ? '2099-01-24' : '2099-01-22');
                 if (withBreak) {
                     const breakStart = active().getByLabel('Початок підтвердженої перерви');
                     assert.equal(await breakStart.getAttribute('type'), 'time');
-                    await breakStart.fill('13:45');
+                    await breakStart.fill(nightBreak ? '01:45' : '13:45');
                     assert.equal(await active().getByLabel('Неоплачувана перерва, хв').isVisible(), false);
                 }
                 await active().locator('[data-key="originalTreatment"]').selectOption(withFixed ? 'retain' : 'transfer_unworked_scope');
@@ -256,17 +272,23 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
                 assert.ok(await page.getByText(/Банкетне бронювання №BOOK-QA-42/).isVisible());
                 assert.ok(await page.getByText(/Другий аніматор/).isVisible());
             }
-            if (night) {
+            if (night && !nightBreak) {
                 assert.ok(await page.getByText(/2099-01-21 · 20:00–23:00/).isVisible());
                 assert.ok(await page.getByText(/Окрема зміна заміненого працівника на 2099-01-22: 02:00–04:00/).isVisible());
                 assert.ok(await page.getByText(/2099-01-21 · 23:00–02:00 \(\+1 день\)/).isVisible());
                 assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
             }
-            if (withBreak) {
+            if (withBreak && !nightBreak) {
                 assert.ok(await page.getByText(/Підтверджена перерва 13:45–14:15 · 30 хв/).isVisible());
                 assert.ok(await page.getByText(/15 хв цієї перерви · 345 оплачуваних хв/).isVisible());
                 if (!withRoles) assert.ok(await page.getByText(/15 хв перерви · 105 оплачуваних хв/).isVisible());
                 assert.ok(await page.getByText(/175,00.*звичайної погодинної оплати.*350,00/).isVisible());
+                assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+            }
+            if (nightBreak) {
+                assert.ok(await page.getByText(/Підтверджена перерва 2099-01-24 01:45–02:15 · 30 хв/).isVisible());
+                assert.ok(await page.getByText(/15 хв цієї перерви · 285 оплачуваних хв у графіку зміни/).isVisible());
+                assert.ok(await page.getByText(/15 хв перерви · 165 оплачуваних хв/).isVisible());
                 assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
             }
             if (withRoles) {
@@ -333,9 +355,9 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
             }else {
                 assert.equal(commands.length,before+1);
                 assert.equal(commands.at(-1).input.slotKey, partial ? 'partial' : 'second');
-                if (night) assert.equal(commands.at(-1).input.endsAt, '2099-01-22T02:00:00+02:00');
+                if (night) assert.equal(commands.at(-1).input.endsAt, `${nightBreak ? '2099-01-24' : '2099-01-22'}T02:00:00+02:00`);
                 if (withBreak) {
-                    assert.equal(commands.at(-1).input.breakStartTime, '13:45');
+                    assert.equal(commands.at(-1).input.breakStartTime, nightBreak ? '01:45' : '13:45');
                     assert.equal(commands.at(-1).input.breakMinutes, 0);
                 }
                 if (name === 'mobile') {

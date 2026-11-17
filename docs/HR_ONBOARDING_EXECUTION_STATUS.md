@@ -25,3 +25,5 @@ Verification on the 0.83.95 base: runtime and migration governance passed. HR re
 Questionnaire follow-up: `D:/Codex/EventGenix/hr-onboarding-cli-handoff-20261116/QUESTIONNAIRE_FOLLOWUP.md`. The external questionnaire is outside this task.
 
 Vacancy hire now copies a birth date already recorded on the candidate application into the new staff record. The isolated vacancy hire test verified the exact stored date. The existing staff attachment path and the external questionnaire retain their current behavior.
+
+Candidate check: the isolated onboarding run passed fresh database startup, vacancy conversion, and all 24 transactional account onboarding checks. Ukrainian release notes for the implemented changes are in `docs/release-notes-hr-onboarding.json`. Park catalog edits, shorter CRM issuance and changes to effective pay remain separate decisions. This notes file does not include those pending features.

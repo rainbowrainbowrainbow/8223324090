@@ -499,7 +499,7 @@ function createFakePool() {
         ]),
         jobApplications: new Map([
             [703, { id: 703, vacancy_id: 56, name: 'Кандидат на додаткову професію', status: 'offer', staff_id: null, profession_key: null, onboarding_progress_id: null }],
-            [704, { id: 704, vacancy_id: 57, name: 'Новий кандидат вакансії', phone: '+380500000704', status: 'offer', staff_id: null, profession_key: null, onboarding_progress_id: null }],
+            [704, { id: 704, vacancy_id: 57, name: 'Новий кандидат вакансії', phone: '+380500000704', birth_date: '2000-04-17', status: 'offer', staff_id: null, profession_key: null, onboarding_progress_id: null }],
             [705, { id: 705, vacancy_id: 58, name: 'Durable headcount hire', status: 'hired', staff_id: 45, profession_key: 'animator', onboarding_progress_id: null }],
             [706, { id: 706, vacancy_id: 59, name: 'Closed durable hire', status: 'hired', staff_id: 45, profession_key: 'animator', onboarding_progress_id: null }]
         ]),
@@ -3671,11 +3671,11 @@ function createFakePool() {
                 if (/closed_at=NOW\(\)/i.test(text)) vacancy.closed_at = '2099-06-06T14:00:00Z';
                 return { rows: [{ ...vacancy }], rowCount: 1 };
             }
-            if (/SELECT a\.\*, v\.role_type, v\.department AS vacancy_department, v\.title AS vac_title, v\.status AS vacancy_status, v\.target_hires FROM job_applications a JOIN job_vacancies v ON v\.id = a\.vacancy_id WHERE a\.id=\$1 FOR UPDATE OF a, v/i.test(text)) {
+            if (/SELECT a\.\*, a\.birth_date::text AS application_birth_date, v\.role_type, v\.department AS vacancy_department, v\.title AS vac_title, v\.status AS vacancy_status, v\.target_hires FROM job_applications a JOIN job_vacancies v ON v\.id = a\.vacancy_id WHERE a\.id=\$1 FOR UPDATE OF a, v/i.test(text)) {
                 const application = hrState.jobApplications.get(Number(params[0]));
                 if (!application) return { rows: [] };
                 const vacancy = hrState.jobVacancies.get(Number(application.vacancy_id));
-                return { rows: [{ ...application, role_type: vacancy.role_type, vacancy_department: vacancy.department, vac_title: vacancy.title, vacancy_status: vacancy.status, target_hires: vacancy.target_hires ?? null }] };
+                return { rows: [{ ...application, application_birth_date: application.birth_date ?? null, role_type: vacancy.role_type, vacancy_department: vacancy.department, vac_title: vacancy.title, vacancy_status: vacancy.status, target_hires: vacancy.target_hires ?? null }] };
             }
             if (/SELECT id, key, title, department, short_info, responsibilities, checklist,[\s\S]+FROM hr_professions[\s\S]+ORDER BY is_active DESC, sort_order ASC, title ASC/i.test(text)) {
                 return {
@@ -6737,7 +6737,9 @@ describe('route-level API safety smoke', () => {
         assert.notEqual(created.data.staff_id, 45);
         assert.equal(created.data.profession_key, 'barista');
         assert.equal(created.data.vacancy_status, 'filled');
-        assert.ok(queries.some(q => /INSERT INTO staff \(name, department, position/i.test(q.text)));
+        const insertStaff = queries.find(q => /INSERT INTO staff \(name, department, position/i.test(q.text));
+        assert.ok(insertStaff);
+        assert.equal(insertStaff.params[9], '2000-04-17');
         assert.ok(queries.some(q => /UPDATE job_vacancies SET status = 'filled'/i.test(q.text)));
         assert.ok(queries.some(q => /INSERT INTO hr_audit_log/i.test(q.text) && q.params[0] === 'application_hired_new_staff'));
     });

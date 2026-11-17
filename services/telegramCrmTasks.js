@@ -116,7 +116,9 @@ function createTelegramCrmTasks(options) {
     async function owner(client, ownerUserId, actor, scope) {
         const pilot = (await client.query('SELECT user_id FROM telegram_crm_bindings WHERE user_id=$1 AND pilot_enabled=true', [ownerUserId])).rows[0];
         if (!pilot) throw failure(403, 'TELEGRAM_OWNER_OUTSIDE_PILOT', 'Поки можна призначати задачі тільки учасникам пілоту.');
-        return assignableOwner(ownerUserId, { pool: client, actor, businessScope: scope });
+        return assignableOwner(ownerUserId, {
+            pool: client, actor, businessScope: scope, telegramCrmPeerAssignment: true
+        });
     }
 
     function taskReceipt(row, actor, scope) {
@@ -177,7 +179,7 @@ function createTelegramCrmTasks(options) {
     async function owners(senderId, businessContext, eventAt = null) {
         const { actor, scope } = await context(pool, senderId, businessContext, false, null, eventAt);
         assertCreate(actor, scope);
-        const candidates = await ownerCandidates({ pool, actor, businessScope: scope });
+        const candidates = await ownerCandidates({ pool, actor, businessScope: scope, telegramCrmPeerAssignment: true });
         const pilotIds = new Set((await pool.query('SELECT user_id FROM telegram_crm_bindings WHERE pilot_enabled=true')).rows.map(row => Number(row.user_id)));
         return { owners: candidates.filter(candidate => pilotIds.has(Number(candidate.id))), businessContext: scope.activeContext };
     }
@@ -281,7 +283,10 @@ function createTelegramCrmTasks(options) {
         if ((task.version || 1) !== row.payload.version) {
             throw failure(409, 'TASK_STALE_WRITE', 'Задача змінилася. Покажіть її й підтвердьте зміни ще раз.');
         }
-        const opts = { pool: client, businessScope: scope, sourceSurface: 'hermes', route: 'telegram_crm' };
+        const opts = {
+            pool: client, businessScope: scope, sourceSurface: 'hermes', route: 'telegram_crm',
+            telegramCrmPeerAssignment: true
+        };
         if (payload.action === 'complete') return (await completeTask(task.id, actor, opts)).task;
         if (payload.action === 'reassign') {
             return (await reassignTaskOwner(task.id, payload.ownerUserId, actor, opts)).task;

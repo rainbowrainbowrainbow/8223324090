@@ -63,6 +63,19 @@ creates another task. Receipts require current task visibility. Task authorship 
 the human account; `source_module=telegram_crm` and operation metadata identify the
 integration. Tasks are not copied into the note graph.
 
+Confirmed pilot participants with the current business capability `tasks.create`
+can select any other active, confirmed pilot participant in the same accessible
+business when creating a work task in Telegram. The directory and commit path
+both use this rule through the canonical task owner resolver. The resolver checks
+both bindings, active accounts and the target's current business membership.
+An enabled pilot flag without a confirmed binding is insufficient. Personal
+task creation remains self-assigned. Existing task mutation and handoff guards
+also apply when changing a task.
+
+The `telegramCrmPeerAssignment` resolver option is set only by the authenticated
+Telegram CRM service after resolving the current human actor. Request fields
+cannot enable it. Other task entry points retain their existing owner scope.
+
 Second Brain keeps a separate private `runtime_dir/crm/crm.sqlite3` inbox and response
 outbox, with per-user conversations and 20-minute wizard expiry. Each pilot user has
 an independent asynchronous worker. A CRM POST timeout triggers one receipt check

@@ -1,6 +1,7 @@
 const { pool } = require('../db');
 const {
     buildTaskVisibilityScope,
+    canUseTaskRouteCapability,
     canMutateTask,
     canReassignTask,
     canRescheduleTask,
@@ -174,7 +175,22 @@ function forbidden(message, code = 'TASK_ACTION_FORBIDDEN') {
     return err;
 }
 
-function ownerCandidateScopeSql(actor, params) {
+function ownerCandidateScopeSql(actor, params, options = {}) {
+    if (options.telegramCrmPeerAssignment === true) {
+        const actorId = normalizeUserId(actor);
+        if (!actorId || !canUseTaskRouteCapability(actor, 'create')) return 'AND 1 = 0';
+        params.push(actorId);
+        return `AND EXISTS (
+            SELECT 1 FROM telegram_crm_bindings sender
+            JOIN users sender_user ON sender_user.id=sender.user_id
+            JOIN telegram_crm_bindings recipient ON recipient.user_id=users.id
+            JOIN telegram_crm_settings settings ON settings.singleton AND settings.mode IN ('read','write')
+            WHERE sender.user_id=$${params.length}
+              AND sender.pilot_enabled AND sender.verified_at IS NOT NULL
+              AND sender_user.is_active IS DISTINCT FROM FALSE
+              AND recipient.pilot_enabled AND recipient.verified_at IS NOT NULL
+        )`;
+    }
     const perms = getPermissions(actor?.role);
     if (perms.canAssignAnyone === true || perms.taskVisibility === 'all') return '';
     const actorId = normalizeUserId(actor);
@@ -197,7 +213,7 @@ function ownerCandidateScopeSql(actor, params) {
 async function listTaskOwnerCandidates(options = {}) {
     const query = options.pool || pool;
     const params = [ASSIGNABLE_TASK_ROLES];
-    const scope = ownerCandidateScopeSql(options.actor, params);
+    const scope = ownerCandidateScopeSql(options.actor, params, options);
     const business = businessUserAccessSql(options.actor, params, 'users', options.businessScope || options.businessContext);
     const result = await query.query(
         `SELECT id, username, name, ${business.roleSql} AS role
@@ -229,7 +245,7 @@ async function getAssignableTaskOwner(ownerUserId, options = {}) {
     }
     const query = options.pool || pool;
     const params = [id, ASSIGNABLE_TASK_ROLES];
-    const scope = ownerCandidateScopeSql(options.actor, params);
+    const scope = ownerCandidateScopeSql(options.actor, params, options);
     const business = businessUserAccessSql(options.actor, params, 'users', options.businessScope || options.businessContext);
     const result = await query.query(
         `SELECT id, username, name, ${business.roleSql} AS role
@@ -459,7 +475,10 @@ async function reassignTaskOwner(taskId, ownerUserId, actor, options = {}) {
         if (!canReassignTask(actor, task)) {
             throw forbidden('You cannot reassign this task');
         }
-        const owner = await getAssignableTaskOwner(ownerUserId, { pool: query, actor, businessContext: task.business_context });
+        const owner = await getAssignableTaskOwner(ownerUserId, {
+            pool: query, actor, businessContext: task.business_context,
+            telegramCrmPeerAssignment: options.telegramCrmPeerAssignment === true
+        });
         if (Number(task.owner_user_id || 0) === Number(owner.id)) {
             const err = new Error('Task already has this owner');
             err.statusCode = 409;

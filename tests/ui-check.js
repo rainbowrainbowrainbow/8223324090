@@ -1872,7 +1872,8 @@ checkPage('staff.html', (doc, html) => {
         && staffScheduleOpenModalBlock.includes("document.getElementById('schStatus')")
         && staffScheduleOpenModalBlock.includes("document.getElementById('schCancelBtn')")
         && staffScheduleOpenModalBlock.includes('onRequestClose: () => closeEditModal(false)')
-        && staffScheduleOpenModalBlock.includes('restoreFocus: () => scheduleCellFocusTarget(staffId, date, trigger, sectionDepartment)')
+        && staffScheduleOpenModalBlock.includes('return scheduleCellFocusTarget(staffId, date, trigger, sectionDepartment)')
+        && staffScheduleOpenModalBlock.includes('trigger.dataset.freelanceDate')
         && staffScheduleCellFocusTargetBlock.includes('document.querySelector(selector)')
         && staffScheduleCellFocusTargetBlock.includes("document.getElementById('scheduleStaffSearch')")
         && staffScheduleCellFocusTargetBlock.includes("document.getElementById('scheduleWrapper')")
@@ -2149,7 +2150,8 @@ checkPage('staff.html', (doc, html) => {
         && staffScheduleRenderBlock.includes('class="schedule-category-fill-cell schedule-sub-group-fill-cell" colspan="${dates.length}"')
         && !staffScheduleRenderBlock.includes('<tr class="dept-row ${groupStateClass}" data-dept="${escapeHtml(dept)}"><td colspan="${dates.length + 1}">')
         && !staffScheduleRenderBlock.includes('<tr class="sub-group-row"><td colspan="${dates.length + 1}">')
-        && staffScheduleRenderBlock.includes('if (!groupExpanded) continue;')
+        && /if \(!groupExpanded\) \{[^}]*?\$\{deptKey\}[\s\S]*?continue;/.test(staffScheduleRenderBlock)
+        && staffScheduleRenderBlock.includes('aria-controls="scheduleFreelance-${deptKey}"')
         && staffScheduleRenderBlock.includes('bindScheduleGroupToggles(tbody)')
         && staffCode.includes('if (department) setScheduleGroupExpanded(department, true);')
         && /display:\s*flex;/.test(staffScheduleGroupToggleRule)
@@ -2202,7 +2204,7 @@ checkPage('staff.html', (doc, html) => {
         && staffCode.includes("document.getElementById('applyScheduleRangeBtn')")
         && staffCode.includes("return goToScheduleRange(range.start, range.end, 'rolling');")
         && staffCode.includes('scheduleNavigationStepDays()')
-        && staffCode.includes('await goToWeek(getScheduleFocusStart(new Date()));'));
+        && staffCode.includes('await goToWeek(getScheduleFocusStart(linkedDate || new Date()));'));
     check('Staff schedule commits confirmed ranges atomically and blocks stale responses',
         staffScheduleShellCode.includes('id="scheduleDataRegion"')
         && staffScheduleShellCode.includes('data-schedule-state="idle"')

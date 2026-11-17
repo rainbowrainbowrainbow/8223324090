@@ -7773,3 +7773,91 @@ body.dark-mode .hr-shift-multi-guard__segments span,
 .sch-day-pay-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .sch-day-pay-error { color: var(--danger-color, #b91c1c); }
 @media (max-width: 600px) { .sch-day-pay-fields { grid-template-columns: 1fr; gap: 0; } .sch-day-pay-panel { padding: 10px; } }
+
+#scheduleWrapper:not(.is-long-range) .schedule-table {
+    min-inline-size: min(900px, calc(var(--schedule-sticky-column-width, 240px) + var(--schedule-short-date-width, 900px)));
+}
+
+#scheduleWrapper {
+    scroll-padding-inline-start: var(--schedule-sticky-column-width, 240px);
+}
+
+.schedule-freelance-row[hidden] {
+    display: none;
+}
+
+.schedule-freelance-row > th {
+    position: sticky;
+    inset-inline-start: 0;
+    background: var(--surface, Canvas);
+    z-index: 1;
+}
+
+.schedule-freelance-action {
+    display: block;
+    min-block-size: 28px;
+    margin: 2px auto;
+    max-inline-size: 100%;
+    padding: 2px 5px;
+    border: 1px solid currentColor;
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: .75rem;
+}
+
+.schedule-freelance-action:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 1px;
+}
+
+.schedule-freelance-row .schedule-freelance-action {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.schedule-freelance-row .schedule-freelance-action small {
+    display: block;
+}
+
+@media (max-width: 360px) {
+    .schedule-freelance-row .schedule-freelance-action {
+        margin-inline: 0 auto;
+    }
+}
+
+.schedule-freelance-from-staff {
+    font-size: .6875rem;
+}
+
+.schedule-freelance-dialog {
+    max-inline-size: min(24rem, calc(100% - 2rem));
+    padding: 1rem;
+    border: 1px solid currentColor;
+    border-radius: 12px;
+    background: var(--surface, Canvas);
+    color: var(--gray-900, CanvasText);
+}
+
+.schedule-freelance-dialog select {
+    display: block;
+    inline-size: 100%;
+    margin-block: .5rem 1rem;
+}
+
+.schedule-freelance-dialog-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+}
+
+.schedule-freelance-dialog:modal,
+.schedule-freelance-dialog::backdrop {
+    overscroll-behavior: contain;
+}
+
+.schedule-freelance-dialog::backdrop {
+    overflow: hidden;
+    background: rgb(0 0 0 / 48%);
+}

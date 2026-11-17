@@ -1055,6 +1055,19 @@ function attendanceTimezoneTransitionIssue(input = {}) {
     };
 }
 
+function attendanceWorkIntervals(start, end, breaks = []) {
+    const intervals = [];
+    let cursor = start;
+    for (const item of breaks) {
+        if (item.start >= end) break;
+        if (item.end <= cursor) continue;
+        if (item.start > cursor) intervals.push({ start: cursor, end: item.start });
+        cursor = item.end;
+    }
+    if (cursor < end) intervals.push({ start: cursor, end });
+    return intervals;
+}
+
 function allocateAttendanceToSegments(input = {}) {
     const primaryProfessionKey = input.primaryProfessionKey || input.primary_profession_key || null;
     const segments = normalizeAttendanceSegments({
@@ -1091,9 +1104,22 @@ function allocateAttendanceToSegments(input = {}) {
                 0,
                 Math.min(actualEnd, segment.endMinutes) - Math.max(actualStart, segment.startMinutes)
             ));
-            const paidAllocations = rawOverlaps.map((overlap, index) => (
-                paidMinutesAfterSegmentBreak(overlap, segments[index].breakMinutes)
-            ));
+            const breaks = (input.breakIntervals || []).filter(item => item.endedAt).map(item => ({
+                start: timestampToTimelineMinutes(item.startedAt, recordDate),
+                end: timestampToTimelineMinutes(item.endedAt, recordDate)
+            })).filter(item => item.start !== null && item.end !== null && item.end > item.start)
+                .sort((left, right) => left.start - right.start);
+            const workIntervals = attendanceWorkIntervals(actualStart, actualEnd, breaks);
+            const overlaps = (start, end) => workIntervals.flatMap(interval => {
+                const overlapStart = Math.max(start, interval.start);
+                const overlapEnd = Math.min(end, interval.end);
+                return overlapEnd > overlapStart ? [{ start: overlapStart, end: overlapEnd }] : [];
+            });
+            const minutes = intervals => intervals.reduce((total, interval) => total + interval.end - interval.start, 0);
+            const segmentIntervals = segments.map(segment => overlaps(segment.startMinutes, segment.endMinutes));
+            const paidAllocations = rawOverlaps.map((overlap, index) => breaks.length
+                ? minutes(segmentIntervals[index])
+                : paidMinutesAfterSegmentBreak(overlap, segments[index].breakMinutes));
             const allocatedMinutes = paidAllocations.reduce((sum, value) => sum + value, 0);
             const envelopeStart = segments[0]?.startMinutes ?? null;
             const envelopeEnd = segments.length
@@ -1104,16 +1130,11 @@ function allocateAttendanceToSegments(input = {}) {
             let lateMinutes = 0;
             let earlyLeaveMinutes = 0;
             if (envelopeStart === null || envelopeEnd === null) {
-                overtimeMinutes = Math.max(0, actualEnd - actualStart);
+                overtimeMinutes = minutes(workIntervals);
             } else {
-                const beforeEnvelope = Math.max(0, Math.min(actualEnd, envelopeStart) - actualStart);
-                const afterEnvelope = Math.max(0, actualEnd - Math.max(actualStart, envelopeEnd));
-                overtimeMinutes = beforeEnvelope + afterEnvelope;
-                const insideEnvelope = Math.max(
-                    0,
-                    Math.min(actualEnd, envelopeEnd) - Math.max(actualStart, envelopeStart)
-                );
-                const rawSegmentMinutes = rawOverlaps.reduce((sum, value) => sum + value, 0);
+                overtimeMinutes = minutes(overlaps(actualStart, envelopeStart)) + minutes(overlaps(envelopeEnd, actualEnd));
+                const insideEnvelope = minutes(overlaps(envelopeStart, envelopeEnd));
+                const rawSegmentMinutes = segmentIntervals.reduce((sum, intervals) => sum + minutes(intervals), 0);
                 unallocatedGapMinutes = Math.max(0, insideEnvelope - rawSegmentMinutes);
                 lateMinutes = actualStart > envelopeStart
                     ? Math.max(0, Math.min(actualStart, envelopeEnd) - envelopeStart)
@@ -1137,9 +1158,11 @@ function allocateAttendanceToSegments(input = {}) {
                 ));
             }
             return {
-                segmentAllocations: segments.map((segment, index) => (
-                    segmentAllocationPayload(segment, paidAllocations[index], rawOverlaps[index])
-                )),
+                segmentAllocations: segments.map((segment, index) => {
+                    const allocation = segmentAllocationPayload(segment, paidAllocations[index], rawOverlaps[index]);
+                    if (input.includeClockIntervals) allocation.actualIntervals = segmentIntervals[index];
+                    return allocation;
+                }),
                 plannedMinutes,
                 actualMinutes: allocatedMinutes + overtimeMinutes,
                 allocatedMinutes,
@@ -1370,11 +1393,14 @@ function calculateHrClockOutPayroll(record = {}, options = {}) {
     const plannedStart = options.plannedStart || record.planned_start;
     const plannedEnd = options.plannedEnd || record.planned_end;
     const requestedSettlementMode = normalizeHrSettlementMode(options.settlementMode);
+    const segments = options.plan?.segments || options.segments;
+    const hasFreelance = segments?.some(segment => segment.workMode === 'freelance' || segment.work_mode === 'freelance');
     const allocation = allocateAttendanceToSegments({
         recordDate: options.recordDate || record.record_date,
         clockIn,
         clockOut,
-        segments: options.plan?.segments || options.segments,
+        segments,
+        breakIntervals: hasFreelance ? record.break_intervals : undefined,
         primaryProfessionKey: options.plan?.primaryProfessionKey || options.primaryProfessionKey,
         plannedStart,
         plannedEnd,
@@ -1388,7 +1414,7 @@ function calculateHrClockOutPayroll(record = {}, options = {}) {
     );
     const scheduledMinutes = scheduledMinutesOverride
         ?? plannedShiftWorkedMinutes(plannedStart, plannedEnd, breakMinutes);
-    const useScheduled = requestedSettlementMode === 'scheduled_shift' && scheduledMinutes !== null;
+    const useScheduled = !hasFreelance && requestedSettlementMode === 'scheduled_shift' && scheduledMinutes !== null;
 
     let lateMinutes = normalizeNonNegativeMinutes(record.late_minutes ?? record.lateMinutes);
     let earlyLeaveMinutes = 0;

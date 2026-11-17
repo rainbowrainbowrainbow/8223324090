@@ -53,6 +53,30 @@ function resolveBreakMutation({ record, action, version, endedAt, reason, now })
     return [...intervals.slice(0, -1), { ...last, endedAt: end.toISOString() }];
 }
 
+async function recalculateClosedFreelanceBreak(db, record, intervals, staffId, recordDate) {
+    if (!record.clock_out) return null;
+    const {
+        attendancePlanFromCompensationSnapshot,
+        calculateHrClockOutPayroll,
+        finalizeAttendanceCompensationSnapshot,
+        parseAttendanceCompensationSnapshot
+    } = require('./hrAttendance');
+    const { loadHrShiftDayPlan } = require('./hrShiftSegments');
+    const stored = parseAttendanceCompensationSnapshot(record.compensation_snapshot);
+    const plan = attendancePlanFromCompensationSnapshot(stored)
+        || (await loadHrShiftDayPlan(db, { staffId, shiftDate: recordDate }))?.plan;
+    if (!plan?.segments.some(segment => segment.workMode === 'freelance')) return null;
+    const fact = calculateHrClockOutPayroll({ ...record, break_intervals: intervals }, {
+        recordDate, clockOut: record.clock_out, plan
+    });
+    return {
+        minutes: fact.actualWorkedMinutes,
+        snapshot: stored ? finalizeAttendanceCompensationSnapshot(stored, fact.allocation, {
+            staffId, recordDate, finalizedAt: record.mutation_time
+        }) : null
+    };
+}
+
 async function recordAttendanceBreak(db, { recordId, staffId, recordDate, businessContext,
     action, version, endedAt, reason, performedBy, ip }) {
     const { rows: [record] } = await db.query(
@@ -64,11 +88,18 @@ async function recordAttendanceBreak(db, { recordId, staffId, recordDate, busine
         [recordId, staffId, recordDate, businessContext]
     );
     if (!record) throw breakError('ATTENDANCE_BREAK_RECORD_NOT_FOUND', 'Запис зміни не знайдено.', 404);
+    const { assertFreelanceAttendanceEditable } = require('./hrFreelanceWork');
+    await assertFreelanceAttendanceEditable(db, record.id);
     const intervals = resolveBreakMutation({ record, action, version, endedAt, reason, now: record.mutation_time });
+    const recalculated = await recalculateClosedFreelanceBreak(db, record, intervals, staffId, recordDate);
     const { rows: [updated] } = await db.query(
-        `UPDATE hr_time_records SET break_intervals = $2::jsonb, updated_at = clock_timestamp()
+        `UPDATE hr_time_records SET break_intervals = $2::jsonb,
+             total_worked_minutes = COALESCE($3::integer, total_worked_minutes),
+             compensation_snapshot = COALESCE($4::jsonb, compensation_snapshot),
+             updated_at = clock_timestamp()
          WHERE id = $1 RETURNING id, break_intervals, updated_at::text AS record_version`,
-        [recordId, JSON.stringify(intervals)]
+        [recordId, JSON.stringify(intervals), recalculated?.minutes ?? null,
+            recalculated?.snapshot ? JSON.stringify(recalculated.snapshot) : null]
     );
     await db.query(
         `INSERT INTO hr_audit_log (action, staff_id, performed_by, details, ip_address)
@@ -76,6 +107,7 @@ async function recordAttendanceBreak(db, { recordId, staffId, recordDate, busine
         [staffId, performedBy, JSON.stringify({
             action, recordId, recordDate, businessContext,
             before: record.break_intervals?.at(-1) || null, after: intervals.at(-1),
+            ...(recalculated && { previousWorkedMinutes: record.total_worked_minutes, workedMinutes: recalculated.minutes }),
             ...(action === 'confirm' ? { reason: reason.trim() } : {})
         }), ip || null]
     );

@@ -1088,19 +1088,50 @@ function freelanceRateFields() {
     ];
 }
 
-function renderFreelanceWorkday(day, canRules, canConfirm) {
+function formatFreelanceMinutes(value) {
+    const minutes = Number(value) || 0;
+    return [Math.floor(minutes / 60) ? Math.floor(minutes / 60) + ' год' : '', minutes % 60 + ' хв'].filter(Boolean).join(' ');
+}
+
+function formatFreelanceClock(minutes) {
+    const time = String(Math.floor(minutes / 60) % 24).padStart(2, '0') + ':' + String(minutes % 60).padStart(2, '0');
+    return minutes >= 1440 ? time + ' (+1 день)' : time;
+}
+
+function freelancePlannedInterval(block) {
+    const day = offset => offset === 1 ? ' (+1 день)' : '';
+    return block.shiftStart + day(block.startDayOffset) + '–' + block.shiftEnd + day(block.endDayOffset);
+}
+
+function freelanceScheduleUrl(staffId, date, segmentId) {
+    const query = new URLSearchParams({ scheduleStaff: staffId, scheduleDate: date, scheduleSegment: segmentId });
+    return '/staff?' + query;
+}
+
+function renderFreelanceWorkday(day, canRules, canConfirm, date) {
+    const needsTerms = day.attendanceState === 'ready' && day.segments.some(block =>
+        block.workMode === 'freelance' && block.observedMinutes > 0 && !block.termsId);
     return `<article class="freelance-workday">
         <header class="freelance-record-meta">
             <h4 id="freelanceWorkday-${Number(day.shift_id)}" tabindex="-1">${escapeHtml(day.staff_name)}</h4>
-            <p>${day.confirmed_at ? 'Час підтверджено' : day.clock_out
-                ? `До підтвердження · ${Number(day.actualMinutes || 0)} хв` : 'Очікує завершення виходу'}</p>
+            <p>${escapeHtml(day.attendanceStatusLabel)}${day.attendanceState === 'ready'
+                ? ' · ' + formatFreelanceMinutes(day.actualMinutes) : ''}</p>
+            ${needsTerms ? '<p>Погодьте умови відпрацьованих блоків перед підтвердженням.</p>' : ''}
         </header>
         <ul class="freelance-blocks">
             ${day.segments.map(block => `<li>
                 <div>
-                    <strong>${escapeHtml(block.shiftStart)}–${escapeHtml(block.shiftEnd)}</strong>
+                    <strong>План ${escapeHtml(freelancePlannedInterval(block))}</strong>
+                    <span> · ${formatFreelanceMinutes(block.plannedMinutes)}</span>
                     <span> · ${block.workMode === 'freelance' ? 'Фріланс' : 'За графіком'}</span>
-                    ${block.workMode === 'freelance' ? `<p>
+                    ${block.workMode === 'freelance' ? `<p>Факт
+                        ${block.actualIntervals?.length ? escapeHtml(block.actualIntervals
+                            .map(interval => formatFreelanceClock(interval.start) + '–' + formatFreelanceClock(interval.end))
+                            .join(', ') + ' · ' + formatFreelanceMinutes(block.observedMinutes)) : '—'}
+                        · До розрахунку ${formatFreelanceMinutes(block.confirmedMinutes)}
+                    </p>
+                    <a href="${escapeHtml(freelanceScheduleUrl(day.staff_id, date, block.id))}">Відкрити в графіку</a>
+                    <p>
                         ${block.rate ? escapeHtml(`${block.rate} грн ${block.rateUnit === 'hour' ? 'за годину' : 'за вихід'}`) : 'Оплату не погоджено'}
                         ${Number.isInteger(block.estimatedAmount) && !day.confirmed_at
                             ? ` · Орієнтовно ${formatMoney(block.estimatedAmount)}` : ''}
@@ -1110,7 +1141,7 @@ function renderFreelanceWorkday(day, canRules, canConfirm) {
                     data-freelance-terms="${Number(block.id)}">Погодити умови</button>` : ''}
             </li>`).join('')}
         </ul>
-        ${canConfirm && day.clock_out && !day.confirmed_at ? `<button type="button" class="btn-page-primary"
+        ${canConfirm && day.attendanceState === 'ready' && !needsTerms ? `<button type="button" class="btn-page-primary"
             data-freelance-confirm="${Number(day.shift_id)}">Підтвердити час</button>` : ''}
     </article>`;
 }
@@ -1124,6 +1155,7 @@ function renderFreelanceSettlement(row, canPay, canReverse) {
             <p class="freelance-settlement-state">${escapeHtml(freelancePayrollLabels[row.status])}</p>
         </header>
         <dl class="freelance-amounts">
+            <div><dt>До розрахунку</dt><dd>${formatFreelanceMinutes(row.minutes)}</dd></div>
             <div><dt>Нараховано</dt><dd>${formatMoney(row.amount)}</dd></div>
             <div><dt>Виплачено</dt><dd>${formatMoney(row.paid)}</dd></div>
             <div><dt>Залишок</dt><dd>${formatMoney(row.outstanding)}</dd></div>
@@ -1191,7 +1223,7 @@ async function loadFreelancePayroll(restoreFocus) {
         const canConfirm = financeCanUsePayrollAction('manage_payroll_accrual');
         const canPay = financeCanUsePayrollAction('confirm_payroll_payment');
         const canReverse = financeCanUsePayrollAction('reverse_payroll_payment');
-        const dayRows = days.map(day => renderFreelanceWorkday(day, canRules, canConfirm)).join('');
+        const dayRows = days.map(day => renderFreelanceWorkday(day, canRules, canConfirm, date)).join('');
         const renderSettlement = row => renderFreelanceSettlement(row, canPay, canReverse);
         const datePayments = payments.filter(row => row.work_date === date);
         const overdue = payments.filter(row => row.work_date < date && Number(row.outstanding) > 0);
@@ -1243,15 +1275,22 @@ async function loadFreelancePayroll(restoreFocus) {
                 } else if (freelanceConfirm) {
                     const day = days.find(item => Number(item.shift_id) === Number(freelanceConfirm));
                     const suggested = new Map((day.suggestedAllocations || []).map(item => [Number(item.segmentId), item.minutes]));
-                    const values = await openPayrollDialog({ title: `Підтвердити ${day.actualMinutes || 0} хв за блоками`, freelance: true, fields:
-                        day.segments.map(block => ({
-                            name: String(block.id), label: `${block.shiftStart}–${block.shiftEnd} · ${block.workMode === 'freelance' ? 'Фріланс' : 'За графіком'} (хв)`,
-                            type: 'number', value: suggested.get(Number(block.id)) ?? '', required: true
-                        })) });
+                    const fields = day.segments.map(block => ({
+                        name: String(block.id),
+                        label: freelancePlannedInterval(block) + ' · ' + (block.workMode === 'freelance' ? 'Фріланс' : 'За графіком') + ' (хв)',
+                        type: 'number', value: suggested.get(Number(block.id)) ?? '', required: true
+                    }));
+                    if (day.unassignedMinutes) fields.push({
+                        name: 'allocationReason', label: `Причина рознесення ${day.unassignedMinutes} хв поза планом`, required: true
+                    });
+                    const values = await openPayrollDialog({
+                        title: `Підтвердити ${day.actualMinutes || 0} хв за блоками`, freelance: true, fields
+                    });
                     if (!values || !isCurrent()) return;
                     await payrollApiRequest('POST', freelancePayrollApiUrl('attendance'), {
                         staffId: day.staff_id, attendanceId: day.attendance_id, date,
-                        allocations: Object.entries(values).map(([segmentId, minutes]) => ({ segmentId, minutes: Number(minutes) }))
+                        recordVersion: day.record_version, allocationReason: values.allocationReason,
+                        allocations: day.segments.map(block => ({ segmentId: block.id, minutes: Number(values[block.id]) }))
                     });
                     focusTarget = { selector: `#freelanceWorkday-${Number(day.shift_id)}` };
                 } else if (freelancePay || freelanceReverse) {
@@ -1311,6 +1350,7 @@ function syncFreelancePayrollPanel() {
     document.getElementById('freelanceFinanceTab').hidden = !available;
     const rate = document.getElementById('freelanceRateButton');
     rate.hidden = !financeCanUsePayrollAction('manage_payroll_rules');
+    document.getElementById('freelancePayrollExport').hidden = !available || !financeCanExportPayroll();
     if (!available) {
         resetFreelancePayroll();
         document.getElementById('freelancePayrollStatus').textContent =
@@ -1324,6 +1364,9 @@ function syncFreelancePayrollPanel() {
     panel.dataset.bound = 'true';
     const date = document.getElementById('freelancePayrollDate');
     date.value = freelancePayrollDate.format(new Date());
+    document.getElementById('freelancePayrollExport').addEventListener('click', () => {
+        if (isFreelancePayrollActive() && date.value) void exportPayrollXLSX(date.value.slice(0, 7));
+    });
     document.getElementById('freelancePayrollRetry').addEventListener('click', () => {
         date.focus({ preventScroll: true });
         void loadFreelancePayroll();
@@ -2270,8 +2313,7 @@ async function exportPayrollCSV() {
     }
 }
 
-async function exportPayrollXLSX() {
-    const month = document.getElementById('salaryMonth')?.value;
+async function exportPayrollXLSX(month = document.getElementById('salaryMonth')?.value) {
     if (!financeCanExportPayroll()) {
         showNotification('Payroll export permission required', 'error');
         return;

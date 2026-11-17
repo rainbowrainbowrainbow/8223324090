@@ -7,6 +7,7 @@ const { Pool } = require('pg');
 const { assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
 const { loadHrShiftDayPlan, saveHrShiftDayPlan } = require('../../services/hrShiftSegments');
 const { mutateStaffScheduleBatch } = require('../../services/staffScheduleMutations');
+const { cleanupFutureStaffOperationalSchedule, previewStaffOperationalScheduleCleanup } = require('../../services/staffLifecycle');
 const { loadScope: loadSubstitutionScope } = require('../../services/staffSubstitutionSources');
 const {
     allocateAttendanceToSegments, buildAttendanceCompensationPlanSnapshot,
@@ -377,6 +378,191 @@ test('monthly terms permit an extra block but reject replacing planned regular w
             ['regular', 'freelance']);
         assert.equal((await client.query('SELECT hourly_rate FROM staff WHERE id = $1', [staff.id])).rows[0].hourly_rate,
             '18000.00');
+    } finally {
+        if (client) await client.query('ROLLBACK').finally(() => client.release());
+        await db.end();
+    }
+});
+
+test('overnight fact deducts tracked breaks once and protects the confirmed allocation', {
+    skip: process.env.RUN_FREELANCE_SHIFT_INTEGRATION !== 'true'
+}, async () => {
+    const target = assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL);
+    assert.equal(target.isLocal, true, 'Freelance tests use local PostgreSQL');
+    const db = new Pool({ connectionString: target.url.toString(), ssl: false });
+    const client = await db.connect();
+    const { recordAttendanceBreak } = require('../../services/hrAttendanceBreaks');
+    try {
+        await client.query('BEGIN');
+        const date = '2026-11-10';
+        const profession = 'freelance_night_qa';
+        await client.query('INSERT INTO hr_professions (key, title, department) VALUES ($1, $2, $3)',
+            [profession, 'Freelance night QA', 'QA']);
+        const { rows: [staff] } = await client.query(
+            `INSERT INTO staff (name, department, position, role_type, is_active, hourly_rate)
+             VALUES ('Freelance night QA', 'QA', 'QA', $1, true, 120) RETURNING id`, [profession]
+        );
+        await insertFreelanceRateVersion(client, {
+            professionKey: profession, staffId: staff.id, rateUnit: 'hour', rate: '120', effectiveFrom: date
+        }, 'qa');
+        const selector = { staffId: staff.id, shiftDate: date };
+        const { plan } = await saveHrShiftDayPlan(client, {
+            ...selector, payload: { primaryProfessionKey: profession, segments: [
+                { professionKey: profession, shiftStart: '22:00', shiftEnd: '00:00', startDayOffset: 0, endDayOffset: 1, breakMinutes: 20 },
+                { professionKey: profession, shiftStart: '00:00', shiftEnd: '02:00', startDayOffset: 1, endDayOffset: 1, breakMinutes: 20, workMode: 'freelance' }
+            ] }
+        });
+        const [regular, freelance] = plan.segments;
+        const { rows: [fact] } = await client.query(
+            `INSERT INTO hr_time_records (staff_id, record_date, clock_in, clock_out, status, business_context,
+                     total_worked_minutes, break_intervals)
+             VALUES ($1, $2, $3, $4, 'present', 'event_genix', 240, $5::jsonb)
+             RETURNING id, updated_at::text AS version`,
+            [staff.id, date, '2026-11-10T22:00:00+02:00', '2026-11-11T02:10:00+02:00',
+                JSON.stringify([{ startedAt: '2026-11-10T23:45:00+02:00', endedAt: null }])]
+        );
+        const input = {
+            staffId: staff.id, date, attendanceId: fact.id,
+            allocations: [{ segmentId: regular.id, minutes: 105 }, { segmentId: freelance.id, minutes: 115 }]
+        };
+        assert.equal((await listFreelanceWorkDay(client, date, staff.id))[0].attendanceState, 'review');
+        await assert.rejects(confirmFreelanceAttendance(client, input, 'qa'), { code: 'FREELANCE_ATTENDANCE_NOT_CLOSED' });
+        await assert.rejects(saveHrShiftDayPlan(client, {
+            ...selector, payload: { primaryProfessionKey: profession, segments: [
+                regular, { ...freelance, shiftEnd: '02:30' }
+            ] }
+        }), { code: 'FREELANCE_PLAN_IN_USE' });
+        await assert.rejects(saveHrShiftDayPlan(client, {
+            ...selector, payload: { status: 'dayoff', segments: [] }
+        }), { code: 'FREELANCE_PLAN_IN_USE' });
+        const breakReview = {
+            recordId: fact.id, staffId: staff.id, recordDate: date, businessContext: 'event_genix',
+            action: 'confirm', version: fact.version, endedAt: '2026-11-11T00:15:00+02:00',
+            reason: 'Synthetic HR reconciliation', performedBy: 'qa'
+        };
+        const corrected = await recordAttendanceBreak(client, breakReview);
+        const { rows: [updatedFact] } = await client.query(
+            'SELECT total_worked_minutes FROM hr_time_records WHERE id = $1', [fact.id]
+        );
+        assert.equal(updatedFact.total_worked_minutes, 220);
+        const [ready] = await listFreelanceWorkDay(client, date, staff.id);
+        assert.equal(ready.attendanceState, 'ready');
+        assert.equal(ready.actualMinutes, 220);
+        assert.equal(ready.unassignedMinutes, 10);
+        assert.deepEqual(ready.segments.map(segment => segment.observedMinutes), [105, 105]);
+        assert.deepEqual(ready.segments[1].actualIntervals, [{ start: 1455, end: 1560 }]);
+        assert.equal(ready.segments[1].plannedMinutes, 100);
+        await assert.rejects(confirmFreelanceAttendance(client, { ...input, recordVersion: 'stale' }, 'qa'),
+            { code: 'FREELANCE_ATTENDANCE_STALE' });
+        await assert.rejects(confirmFreelanceAttendance(client, input, 'qa'), { code: 'FREELANCE_INVALID_TEXT' });
+        await assert.rejects(confirmFreelanceAttendance(client, {
+            ...input, allocations: [{ segmentId: regular.id, minutes: 70 }, { segmentId: freelance.id, minutes: 150 }],
+            allocationReason: 'Trying to move observed time'
+        }, 'qa'), { code: 'FREELANCE_INVALID_ALLOCATION' });
+        const result = await confirmFreelanceAttendance(client, {
+            ...input, recordVersion: corrected.record_version, allocationReason: 'Synthetic work after the plan'
+        }, 'qa');
+        assert.deepEqual(result.blocks.map(segment => segment.minutes), [105, 115]);
+        await assert.rejects(recordAttendanceBreak(client, { ...breakReview, version: corrected.record_version }),
+            { code: 'FREELANCE_ATTENDANCE_LOCKED' });
+        const [confirmed] = await listFreelanceWorkDay(client, date, staff.id);
+        assert.equal(confirmed.attendanceState, 'confirmed');
+        assert.equal(confirmed.actualMinutes, 220);
+        assert.equal(confirmed.segments[1].confirmedMinutes, 115);
+    } finally {
+        await client.query('ROLLBACK');
+        client.release();
+        await db.end();
+    }
+});
+
+test('staff offboarding preserves both schedule projections for agreed freelance and attendance', {
+    skip: process.env.RUN_FREELANCE_SHIFT_INTEGRATION !== 'true'
+}, async () => {
+    const target = assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL);
+    assert.equal(target.isLocal, true, 'Freelance tests use local PostgreSQL');
+    const db = new Pool({ connectionString: target.url.toString(), ssl: false });
+    let client;
+    try {
+        client = await db.connect();
+        await client.query('BEGIN');
+        const profession = 'freelance_offboarding_qa';
+        await client.query(
+            'INSERT INTO hr_professions (key, title, department) VALUES ($1, $2, $3)',
+            [profession, 'Freelance offboarding QA', 'QA']
+        );
+        const { rows: [staff] } = await client.query(
+            `INSERT INTO staff (name, department, position, role_type, is_active)
+             VALUES ('Freelance Offboarding QA', 'QA', 'QA', $1, true) RETURNING id`,
+            [profession]
+        );
+        const attendanceDate = '2026-11-27';
+        const unpricedDate = '2026-11-28';
+        const agreedDate = '2026-11-29';
+        const ordinaryDate = '2026-11-30';
+        await insertFreelanceRateVersion(client, {
+            professionKey: profession, rateUnit: 'hour', rate: '120', effectiveFrom: agreedDate
+        }, 'qa');
+        for (const [date, workMode] of [
+            [attendanceDate, 'regular'], [unpricedDate, 'freelance'],
+            [agreedDate, 'freelance'], [ordinaryDate, 'regular']
+        ]) {
+            await saveHrShiftDayPlan(client, {
+                staffId: staff.id, shiftDate: date,
+                payload: {
+                    primaryProfessionKey: profession,
+                    segments: [{ professionKey: profession, shiftStart: '12:00', shiftEnd: '16:00', workMode }]
+                }
+            });
+            await client.query(
+                `INSERT INTO staff_schedule (staff_id, date, shift_start, shift_end, status, profession_key)
+                 VALUES ($1, $2, '12:00', '16:00', 'working', $3)`,
+                [staff.id, date, profession]
+            );
+        }
+        await client.query(
+            `INSERT INTO hr_time_records (staff_id, record_date, clock_in, clock_out, status, business_context)
+             VALUES ($1, $2, $3, $4, 'present', 'event_genix')`,
+            [staff.id, attendanceDate, '2026-11-27T12:10:00+02:00', '2026-11-27T16:00:00+02:00']
+        );
+        const readTerms = async () => (await client.query(
+            `SELECT terms.id, hs.shift_date::text AS date
+             FROM hr_freelance_segment_terms terms
+             JOIN hr_shift_segments segment ON segment.id = terms.segment_id
+             JOIN hr_shifts hs ON hs.id = segment.hr_shift_id
+             WHERE hs.staff_id = $1
+             ORDER BY terms.id`,
+            [staff.id]
+        )).rows;
+        const terms = await readTerms();
+        assert.deepEqual(terms.map(row => row.date), [agreedDate]);
+
+        if (previewStaffOperationalScheduleCleanup) {
+            assert.deepEqual(await previewStaffOperationalScheduleCleanup(client, staff.id, attendanceDate), {
+                hr_shifts: 2, staff_schedule: 2,
+                preserved_hr_shifts: 2, preserved_staff_schedule: 2, from_date: attendanceDate
+            });
+        }
+        const cleanup = await cleanupFutureStaffOperationalSchedule(client, staff.id, attendanceDate);
+        assert.equal(cleanup.hr_shifts, 2);
+        assert.equal(cleanup.staff_schedule, 2);
+        assert.deepEqual(cleanup.dates, [unpricedDate, ordinaryDate]);
+
+        const projections = await client.query(
+            `SELECT shift_date::text AS date, 'hr' AS source FROM hr_shifts WHERE staff_id = $1
+             UNION ALL
+             SELECT date, 'schedule' AS source FROM staff_schedule WHERE staff_id = $1
+             ORDER BY date, source`,
+            [staff.id]
+        );
+        assert.deepEqual(projections.rows, [
+            { date: attendanceDate, source: 'hr' }, { date: attendanceDate, source: 'schedule' },
+            { date: agreedDate, source: 'hr' }, { date: agreedDate, source: 'schedule' }
+        ]);
+        assert.deepEqual(await readTerms(), terms);
+        const repeated = await cleanupFutureStaffOperationalSchedule(client, staff.id, attendanceDate);
+        assert.equal(repeated.hr_shifts, 0);
+        assert.equal(repeated.staff_schedule, 0);
     } finally {
         if (client) await client.query('ROLLBACK').finally(() => client.release());
         await db.end();

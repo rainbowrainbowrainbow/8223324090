@@ -18,13 +18,29 @@ function fallbackToday() {
     return new Date().toISOString().slice(0, 10);
 }
 
-const STAFF_SCHEDULE_WITHOUT_ATTENDANCE = `NOT EXISTS (
-    SELECT 1 FROM hr_time_records tr
-    WHERE tr.staff_id = ss.staff_id AND tr.record_date::text = LEFT(ss.date::text, 10)
+const HR_SHIFT_HAS_FREELANCE_HISTORY = `(
+    EXISTS (
+        SELECT 1 FROM hr_shift_segments segment
+        JOIN hr_freelance_segment_terms terms ON terms.segment_id = segment.id
+        WHERE segment.hr_shift_id = hs.id
+    ) OR EXISTS (
+        SELECT 1 FROM hr_freelance_attendance_confirmations confirmation
+        WHERE confirmation.hr_shift_id = hs.id
+    )
 )`;
-const HR_SHIFT_WITHOUT_ATTENDANCE = `NOT EXISTS (
+
+const HR_SHIFT_WITHOUT_HISTORY = `NOT EXISTS (
     SELECT 1 FROM hr_time_records tr
     WHERE tr.staff_id = hs.staff_id AND tr.record_date = hs.shift_date
+) AND NOT ${HR_SHIFT_HAS_FREELANCE_HISTORY}`;
+
+const STAFF_SCHEDULE_WITHOUT_HISTORY = `NOT EXISTS (
+    SELECT 1 FROM hr_time_records tr
+    WHERE tr.staff_id = ss.staff_id AND tr.record_date::text = LEFT(ss.date::text, 10)
+) AND NOT EXISTS (
+    SELECT 1 FROM hr_shifts hs
+    WHERE hs.staff_id = ss.staff_id AND hs.shift_date::text = LEFT(ss.date::text, 10)
+      AND ${HR_SHIFT_HAS_FREELANCE_HISTORY}
 )`;
 
 async function previewStaffOperationalScheduleCleanup(db, staffId, fromDate) {
@@ -33,11 +49,11 @@ async function previewStaffOperationalScheduleCleanup(db, staffId, fromDate) {
                 shifts.total - shifts.removable AS preserved_hr_shifts,
                 schedule.total - schedule.removable AS preserved_staff_schedule
          FROM (
-             SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE ${HR_SHIFT_WITHOUT_ATTENDANCE})::int AS removable
+             SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE ${HR_SHIFT_WITHOUT_HISTORY})::int AS removable
              FROM hr_shifts hs WHERE hs.staff_id = $1 AND hs.shift_date >= $2::text::date
          ) shifts
          CROSS JOIN (
-             SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE ${STAFF_SCHEDULE_WITHOUT_ATTENDANCE})::int AS removable
+             SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE ${STAFF_SCHEDULE_WITHOUT_HISTORY})::int AS removable
              FROM staff_schedule ss WHERE ss.staff_id = $1 AND LEFT(ss.date::text, 10) >= $2::text
          ) schedule`,
         [staffId, fromDate]
@@ -51,11 +67,19 @@ async function cleanupFutureStaffOperationalSchedule(db, staffId, fromDate) {
     if (!Number.isFinite(id) || id <= 0) {
         return { hr_shifts: 0, staff_schedule: 0, from_date: safeFrom, dates: [], roster_reconciliation: [] };
     }
+    // Terms and confirmation writers lock the shift before creating linked history.
+    // Read the history in the subsequent DELETE after any such writer commits.
+    await db.query(
+        `SELECT id FROM hr_shifts
+         WHERE staff_id = $1 AND shift_date >= $2::date
+         ORDER BY shift_date, id FOR UPDATE`,
+        [id, safeFrom]
+    );
     const shifts = await db.query(
         `DELETE FROM hr_shifts hs
          WHERE hs.staff_id = $1
            AND hs.shift_date >= $2::date
-           AND ${HR_SHIFT_WITHOUT_ATTENDANCE}
+           AND ${HR_SHIFT_WITHOUT_HISTORY}
          RETURNING hs.shift_date::text AS date`,
         [id, safeFrom]
     );
@@ -63,7 +87,7 @@ async function cleanupFutureStaffOperationalSchedule(db, staffId, fromDate) {
         `DELETE FROM staff_schedule ss
          WHERE ss.staff_id = $1
            AND LEFT(ss.date::text, 10) >= $2
-           AND ${STAFF_SCHEDULE_WITHOUT_ATTENDANCE}
+           AND ${STAFF_SCHEDULE_WITHOUT_HISTORY}
          RETURNING LEFT(ss.date::text, 10) AS date`,
         [id, safeFrom]
     );

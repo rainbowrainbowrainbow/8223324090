@@ -6976,6 +6976,8 @@ router.put('/records/:id/correct', requireHrManage, async (req, res) => {
         }
 
         const original = rec.rows[0];
+        const { assertFreelanceAttendanceEditable } = require('../services/hrFreelanceWork');
+        await assertFreelanceAttendanceEditable(client, original.id);
         if ((record_version !== undefined && record_version !== original.record_version)
             || (original.auto_closed && !original.clock_out && !record_version)) {
             await client.query('ROLLBACK');
@@ -7186,7 +7188,7 @@ router.put('/records/:id/correct', requireHrManage, async (req, res) => {
         });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
-        if (err.code?.startsWith('ATTENDANCE_BREAK_')) {
+        if (err.code?.startsWith('ATTENDANCE_BREAK_') || err.code === 'FREELANCE_ATTENDANCE_LOCKED') {
             return res.status(err.statusCode).json({ success: false, code: err.code, error: err.message });
         }
         log.error('PUT /hr/records/:id/correct error', err);

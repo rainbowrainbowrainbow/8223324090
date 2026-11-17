@@ -32,7 +32,7 @@ const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurf
 const { requireParkHrPayrollAccess, canReadFreelancePaymentOptions } = require('../services/parkHrPayrollAccess');
 const {
     agreeFreelanceSegmentTerms, confirmFreelanceAttendance, insertFreelanceRateVersion,
-    listFreelanceRateOptions, listFreelanceSettlement, listFreelanceWorkDay, writeFreelanceMovement
+    listFreelanceRateOptions, listFreelanceSettlement, listFreelanceWorkDay, listFreelanceWorkRange, writeFreelanceMovement
 } = require('../services/hrFreelanceWork');
 const {
     businessContextFromRequest,
@@ -747,6 +747,44 @@ router.get('/export-xlsx', requireAction('view_payroll'), requireAction('export_
         additionalLines.views = [{ state: 'frozen', ySplit: 1 }];
         additionalLines.autoFilter = { from: 'A1', to: 'V1' };
         additionalLines.getRow(1).font = { bold: true };
+
+        if (businessContextFromRequest(req) === DEFAULT_BUSINESS_CONTEXT) {
+            const start = normalizePayrollMonth(month) + '-01';
+            const monthEnd = new Date(start + 'T00:00:00Z');
+            monthEnd.setUTCMonth(monthEnd.getUTCMonth() + 1, 0);
+            const workdays = await listFreelanceWorkRange(pool, start, monthEnd.toISOString().slice(0, 10));
+            const freelance = workbook.addWorksheet('Фріланс', { views: [{ state: 'frozen', ySplit: 1 }] });
+            freelance.columns = [
+                { header: 'Дата', width: 14 },
+                { header: 'Співробітник', width: 32 },
+                { header: 'ID блоку', width: 14 },
+                { header: 'Початок плану', width: 18 },
+                { header: 'Кінець плану', width: 16 },
+                { header: 'План (хв)', width: 14 },
+                { header: 'Початок факту', width: 18 },
+                { header: 'Кінець факту', width: 16 },
+                { header: 'Факт (хв)', width: 14 },
+                { header: 'Статус', width: 24 },
+                { header: 'До розрахунку (хв)', width: 23 }
+            ];
+            const clock = minutes => {
+                const time = String(Math.floor(minutes / 60) % 24).padStart(2, '0') + ':' + String(minutes % 60).padStart(2, '0');
+                return minutes >= 1440 ? time + ' (+1 день)' : time;
+            };
+            const planClock = (time, offset) => time + (offset === 1 ? ' (+1 день)' : '');
+            for (const day of workdays) {
+                const status = day.attendanceStatusLabel;
+                for (const block of day.segments.filter(segment => segment.workMode === 'freelance')) {
+                    const intervals = block.actualIntervals || [];
+                    freelance.addRow([day.work_date, day.staff_name, Number(block.id),
+                        planClock(block.shiftStart, block.startDayOffset), planClock(block.shiftEnd, block.endDayOffset),
+                        block.plannedMinutes, intervals.map(item => clock(item.start)).join(', ') || null,
+                        intervals.map(item => clock(item.end)).join(', ') || null,
+                        block.observedMinutes ?? null, status, block.confirmedMinutes ?? 0]);
+                }
+            }
+            freelance.getRow(1).font = { bold: true };
+        }
 
         const paymentsSheet = workbook.addWorksheet('Payments');
         paymentsSheet.columns = [

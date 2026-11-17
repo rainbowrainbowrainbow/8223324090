@@ -5,7 +5,9 @@ const { randomUUID } = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const bcrypt = require('bcryptjs');
+const ExcelJS = require('exceljs');
 const { Pool } = require('pg');
+const { recordAttendanceClockIn, recordAttendanceClockOut } = require('../../services/hrAttendance');
 const { chromium } = require('../helpers/playwright')();
 const { assertSafeIsolatedTestUrl, assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
 
@@ -49,10 +51,11 @@ async function run() {
         assert.equal(response.status, 200, `Synthetic ${role} login`);
         return response.json();
     };
-    const request = async (auth, route, { method = 'GET', context = 'event_genix', scope = 'single' } = {}) => fetch(new URL(route, base), {
+    const request = async (auth, route, { method = 'GET', context = 'event_genix', scope = 'single', body } = {}) => fetch(new URL(route, base), {
         method,
+        ...(body && { body: JSON.stringify(body) }),
         headers: { Authorization: 'Bearer ' + (auth.accessToken || auth.token), 'X-Business-Context': context,
-            'X-Business-Scope': scope }
+            'X-Business-Scope': scope, ...(body && { 'Content-Type': 'application/json' }) }
     });
     let browser;
     let stage = 'fixture';
@@ -191,6 +194,12 @@ async function run() {
             });
             return cell;
         };
+        const controlName = 'Synthetic 230-minute freelance ' + suffix;
+        const { rows: [control] } = await db.query(
+            `INSERT INTO staff (name, department, position, role_type, rate_unit, hourly_rate, is_active)
+             VALUES ($1, 'animators', 'Synthetic QA', 'animator', 'hour', 120, true) RETURNING id`,
+            [controlName]
+        );
         stage = 'schedule save';
         let cell = await openSchedule();
         await cell.click();
@@ -210,8 +219,105 @@ async function run() {
         const saved = await save;
         assert.equal(saved.status(), 200, 'Schedule API accepted mixed day');
         await page.locator('#schModalOverlay').waitFor({ state: 'hidden' });
+        stage = 'freelance row creation';
+        const toggle = page.locator('[data-freelance-toggle="animators"]');
+        const row = page.locator('#scheduleFreelance-animators');
+        const controlRecords = row.locator('[data-freelance-segment][data-freelance-staff="' + control.id + '"]');
+        assert.equal(await toggle.getAttribute('aria-expanded'), 'false');
+        const savePlan = async () => {
+            const pending = page.waitForResponse(response => new URL(response.url()).pathname === '/api/staff/schedule'
+                && response.request().method() === 'PUT');
+            await page.locator('#schSaveBtn').click();
+            const result = await pending;
+            assert.equal(result.status(), 200, await result.text());
+            await page.locator('#schModalOverlay').waitFor({ state: 'hidden' });
+            return result.request().postDataJSON();
+        };
+        const setTime = async (card, start, end) => {
+            assert.equal(await card.locator('[data-segment-field="work-mode"]').inputValue(), 'freelance');
+            await card.locator('[data-segment-field="start"]').fill(start);
+            await card.locator('[data-segment-field="end"]').fill(end);
+        };
+        await page.locator('.schedule-freelance-from-staff[data-freelance-staff="' + control.id + '"][data-freelance-date="' + date + '"]').press('Enter');
+        assert.match(await page.locator('#schModalTitle').textContent(), new RegExp(controlName + '.*' + date));
+        await setTime(cards.first(), '12:00', '16:00');
+        await savePlan();
+        await toggle.press('Space');
+        await row.waitFor();
+        await row.getByRole('button', { name: '+ Додати фріланс · ' + date }).click();
+        const chooser = page.getByRole('dialog', { name: 'Додати фріланс' });
+        await chooser.getByText(date, { exact: true }).waitFor();
+        await chooser.getByLabel('Співробітник').selectOption(String(control.id));
+        await chooser.getByRole('button', { name: 'Далі' }).click();
+        await setTime(cards.nth(1), '15:59', '20:00');
+        assert.equal(await page.locator('#schSaveBtn').isDisabled(), true, 'Overlapping freelance plans cannot be saved');
+        await setTime(cards.nth(1), '16:00', '20:00');
+        const added = await savePlan();
+        const replay = await Promise.all([0, 1].map(() => request(auth, '/api/staff/schedule', { method: 'PUT', body: added })));
+        assert.deepEqual(replay.map(response => response.status), [409, 409]);
+        assert.deepEqual((await controlRecords.allTextContents()).map(text => text.trim()), ['12:00–16:00', '16:00–20:00']);
+        const mixedRecord = row.locator('[data-freelance-segment][data-freelance-staff="' + staff.id + '"]');
+        await mixedRecord.click();
+        await setTime(cards.nth(1), '16:00', '20:00');
+        await savePlan();
+        const matchingTimes = row.getByText('16:00–20:00', { exact: true });
+        assert.equal(await matchingTimes.count(), 2);
+        await matchingTimes.and(mixedRecord).click();
+        assert.ok((await page.locator('#schModalTitle').textContent()).includes(staffName));
+        await setTime(cards.nth(1), '14:00', '17:00');
+        await savePlan();
+        const selectedSegmentId = await controlRecords.nth(1).getAttribute('data-freelance-segment');
+        await controlRecords.nth(1).click();
+        assert.equal(await cards.nth(1).getAttribute('data-segment-id'), selectedSegmentId);
+        await page.locator('#schCancelBtn').click();
+        await page.locator('[data-schedule-freelance-ref="' + selectedSegmentId + '"]').click();
+        assert.ok((await page.locator('#schModalTitle').textContent()).includes(controlName));
+        assert.equal(await cards.nth(1).getAttribute('data-segment-id'), selectedSegmentId);
+        await page.locator('#schCancelBtn').click();
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.getByText('Зміну збережено', { exact: true }).first().waitFor({ state: 'hidden' });
+        await row.evaluate(node => node.scrollIntoView({ block: 'center', inline: 'nearest' }));
+        await assertFits();
+        await page.screenshot({ path: path.join(out, 'freelance-row-two-intervals-mobile.png') });
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await toggle.click();
+        await row.waitFor({ state: 'hidden' });
         stage = 'schedule reload';
         cell = await openSchedule();
+        assert.equal(await toggle.getAttribute('aria-expanded'), 'false');
+        await toggle.press('Enter');
+        await controlRecords.nth(0).press('Enter');
+        assert.match(await page.locator('#schModalTitle').textContent(), /12:00–16:00/);
+        await page.locator('#schCancelBtn').click();
+        await controlRecords.nth(1).click();
+        assert.match(await page.locator('#schModalTitle').textContent(), /16:00–20:00/);
+        await cards.nth(1).getByRole('button', { name: 'Видалити блок 2' }).click();
+        await savePlan();
+        await controlRecords.nth(1).waitFor({ state: 'detached' });
+        await controlRecords.first().click();
+        await setTime(cards.first(), '23:00', '01:00');
+        await savePlan();
+        await controlRecords.first().and(page.getByText('23:00–01:00', { exact: true })).click();
+        await setTime(cards.first(), '12:00', '16:00');
+        await savePlan();
+        await page.setViewportSize({ width: 390, height: 844 });
+        await controlRecords.first().scrollIntoViewIfNeeded();
+        await page.screenshot({ path: path.join(out, 'freelance-row-mobile.png') });
+        await page.setViewportSize({ width: 1440, height: 900 });
+        const attendanceClient = await db.connect();
+        try {
+            await attendanceClient.query('BEGIN');
+            const work = { staffId: control.id, recordDate: date, businessContext: 'event_genix', performedBy: 'qa' };
+            const { rows: [times] } = await attendanceClient.query(
+                "SELECT ($1::date + TIME '12:10') AT TIME ZONE 'Europe/Kyiv' AS arrival, ($1::date + TIME '16:00') AT TIME ZONE 'Europe/Kyiv' AS departure",
+                [date]
+            );
+            await recordAttendanceClockIn(attendanceClient, { ...work, actualTime: times.arrival });
+            await recordAttendanceClockOut(attendanceClient, { ...work, actualTime: times.departure });
+            await attendanceClient.query('COMMIT');
+        } finally {
+            attendanceClient.release();
+        }
         await cell.locator('.sch-freelance-mark').waitFor();
         await page.locator('#scheduleWorkModeFilter').selectOption('freelance');
         await cell.click();
@@ -315,6 +421,61 @@ async function run() {
         const content = page.locator('#freelancePayrollContent');
         await content.getByRole('heading', { name: 'Виходи за вибрану дату' }).waitFor();
         await content.getByRole('heading', { name: 'Розрахунки за вибрану дату' }).waitFor();
+        const controlPanel = content.locator('.freelance-workday').filter({ hasText: controlName });
+        await controlPanel.getByText(/План 12:00–16:00/).waitFor();
+        await controlPanel.getByText(/Факт\s+12:10–16:00 · 3 год 50 хв\s+· До розрахунку 0 хв/).waitFor();
+        let [controlDay] = (await (await request(auth, endpoint + '&staffId=' + control.id)).json()).data;
+        const correctionPath = '/api/hr/records/' + controlDay.attendance_id + '/correct';
+        await db.query("UPDATE hr_time_records SET auto_closed = TRUE, status = 'auto_closed', clock_out = NULL WHERE id = $1",
+            [controlDay.attendance_id]);
+        [controlDay] = (await (await request(auth, endpoint + '&staffId=' + control.id)).json()).data;
+        assert.equal(controlDay.attendanceState, 'review');
+        const correction = { record_version: controlDay.record_version, clock_out_time: '16:00', notes: 'Synthetic HR review' };
+        const corrected = await request(auth, correctionPath, { method: 'PUT', body: correction });
+        assert.equal(corrected.status, 200);
+        [controlDay] = (await (await request(auth, endpoint + '&staffId=' + control.id)).json()).data;
+        assert.equal(controlDay.actualMinutes, 230);
+        const [controlSegment] = controlDay.segments;
+        assert.equal(controlSegment.confirmedMinutes, null);
+        assert.equal((await request(auth, '/api/payroll/freelance/terms', {
+            method: 'POST', body: { staffId: control.id, date, segmentId: controlSegment.id, rateUnit: 'hour', rate: '120', reason: 'Synthetic control' }
+        })).status, 201);
+        const confirmation = { staffId: control.id, date, attendanceId: controlDay.attendance_id,
+            allocations: [{ segmentId: controlSegment.id, minutes: 230 }] };
+        await page.reload();
+        await controlPanel.getByRole('button', { name: 'Підтвердити час' }).click();
+        const controlDialog = page.getByRole('dialog');
+        assert.equal(await controlDialog.locator('input[type=number]').inputValue(), '230');
+        const confirmed = page.waitForResponse(response => response.request().method() === 'POST'
+            && new URL(response.url()).pathname === '/api/payroll/freelance/attendance');
+        await controlDialog.getByRole('button', { name: 'Підтвердити', exact: true }).click();
+        assert.equal((await confirmed).status(), 201);
+        const locked = await request(auth, correctionPath, { method: 'PUT', body: { ...correction, clock_out_time: '16:05' } });
+        assert.equal(locked.status, 409);
+        assert.equal((await locked.json()).code, 'FREELANCE_ATTENDANCE_LOCKED');
+        assert.equal((await request(auth, '/api/payroll/freelance/attendance', { method: 'POST', body: confirmation })).status, 409);
+        await page.reload();
+        await controlPanel.getByText(/До розрахунку 3 год 50 хв/).waitFor();
+        await page.setViewportSize({ width: 390, height: 844 });
+        await controlPanel.scrollIntoViewIfNeeded();
+        await page.screenshot({ path: path.join(out, 'freelance-confirmed-230-mobile.png') });
+        await page.setViewportSize({ width: 1440, height: 900 });
+        assert.equal(await content.locator('.freelance-settlement').filter({ hasText: controlName }).count(), 1);
+        const exportedPayroll = await request(auth, '/api/payroll/export-xlsx?month=' + date.slice(0, 7));
+        assert.equal(exportedPayroll.status, 200);
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(await exportedPayroll.arrayBuffer());
+        const freelanceSheet = workbook.getWorksheet('Фріланс');
+        const controlRows = freelanceSheet.getRows(2, freelanceSheet.rowCount - 1)
+            .filter(sheetRow => sheetRow.getCell(2).value === controlName);
+        assert.equal(controlRows.length, 1);
+        assert.deepEqual(controlRows[0].values.slice(4), ['12:00', '16:00', 240, '12:10', '16:00', 230, 'Підтверджено', 230]);
+        const scheduleLink = controlPanel.getByRole('link', { name: 'Відкрити в графіку' });
+        const linkedPage = await page.context().newPage();
+        await linkedPage.goto(new URL(await scheduleLink.getAttribute('href'), base).href);
+        await linkedPage.locator('#schModalOverlay').waitFor();
+        assert.match(await linkedPage.locator('#schModalTitle').textContent(), /12:00–16:00/);
+        await linkedPage.close();
         const staffPanel = content.locator('.freelance-workday').filter({ hasText: staffName });
         await staffPanel.getByText('За графіком', { exact: false }).waitFor();
         await staffPanel.getByText('Фріланс', { exact: false }).waitFor();
@@ -378,6 +539,12 @@ async function run() {
         });
         await saveScreenshot('finance-mobile-320-dark');
         await payAmount('357', 'Оплачено');
+        const [paidDay] = (await (await request(auth, endpoint + '&staffId=' + staff.id)).json()).data;
+        const paidCorrection = await request(auth, '/api/hr/records/' + paidDay.attendance_id + '/correct', {
+            method: 'PUT', body: { record_version: paidDay.record_version, clock_out_time: '17:05', notes: 'Synthetic paid correction attempt' }
+        });
+        assert.equal(paidCorrection.status, 409);
+        assert.equal((await paidCorrection.json()).code, 'FREELANCE_ATTENDANCE_LOCKED');
         assert.equal(await pay.count(), 0);
 
         stage = 'finance reversal';
@@ -496,6 +663,7 @@ async function run() {
             await card.locator('[data-segment-field="end"]').fill(end);
             await card.locator('[data-segment-field="break"]').fill('0');
             await card.getByLabel('День часового блоку').selectOption(day);
+            if (index === 1) await card.locator('[data-segment-field="work-mode"]').selectOption('freelance');
         }
         for (const width of [390, 360, 1440]) {
             await page.setViewportSize({ width, height: 844 });
@@ -517,6 +685,23 @@ async function run() {
         await cell.click();
         assert.equal(await cards.first().getByLabel('День часового блоку').inputValue(), '01');
         assert.equal(await cards.nth(1).getByLabel('День часового блоку').inputValue(), '11');
+        assert.equal(await cards.nth(1).locator('[data-segment-field="work-mode"]').inputValue(), 'freelance');
+        await page.locator('#schCancelBtn').click();
+        await toggle.press('Enter');
+        const nightRecord = row.getByRole('button', { name: /01:00 \(\+1 день\)–03:00 \(\+1 день\)/ });
+        await setWidth(320);
+        await nightRecord.scrollIntoViewIfNeeded();
+        await assertFits();
+        assert.equal(await nightRecord.evaluate(button => {
+            const viewport = document.getElementById('scheduleWrapper').getBoundingClientRect();
+            const box = button.getBoundingClientRect();
+            return box.left >= viewport.left - 1 && box.right <= viewport.right + 1;
+        }), true, 'The overnight interval and day offset must fit the visible schedule');
+        await page.screenshot({ path: path.join(out, 'schedule-freelance-overnight-320.png') });
+        await nightRecord.press('Enter');
+        assert.equal(await cards.nth(1).getByLabel('День часового блоку').inputValue(), '11');
+        await page.locator('#schCancelBtn').click();
+        await setWidth(390);
 
         stage = 'mobile factual breaks';
         const { rows: [breakStaff] } = await db.query(`INSERT INTO staff

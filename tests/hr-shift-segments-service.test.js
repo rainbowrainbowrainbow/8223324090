@@ -125,6 +125,9 @@ function createExistingMultiSegmentClient(shiftType = 'regular', segmentRows = n
             }
             if (/^DELETE FROM hr_shift_segments/.test(text)) return { rows: [] };
             if (/^UPDATE hr_shift_segments SET/.test(text)) return { rows: [] };
+            if (/^SELECT EXISTS \( SELECT 1 FROM hr_time_records .* AS started$/.test(text)) {
+                return { rows: [{ started: false }] };
+            }
             if (/^INSERT INTO hr_freelance_segment_terms/.test(text)) return { rows: [] };
             if (/FROM (payroll_profiles|payroll_profile_versions|payroll_profile_day_rates|staff_payroll_profile_assignments|payroll_day_exceptions|payroll_schemes|staff_role_assignments|staff_profession_rates|hr_compensation_policies)\b/.test(text)) {
                 return { rows: [] };

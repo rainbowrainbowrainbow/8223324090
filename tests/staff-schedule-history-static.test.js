@@ -2365,7 +2365,7 @@ describe('staff schedule safety guards', () => {
 
         assert.match(openBlock, /openModal\(overlay, trigger, \{/);
         assert.match(openBlock, /onRequestClose:\s*\(\) => closeEditModal\(false\)/);
-        assert.match(openBlock, /restoreFocus:\s*\(\) => scheduleCellFocusTarget\(staffId, date, trigger, sectionDepartment\)/);
+        assert.match(openBlock, /restoreFocus:\s*\(\) => \{[\s\S]*?trigger\.dataset\.freelanceDate[\s\S]*?return scheduleCellFocusTarget\(staffId, date, trigger, sectionDepartment\)/);
         assert.ok(
             openBlock.indexOf('openModal(overlay, trigger') < openBlock.indexOf('loadScheduleCellHistory(staffId, date)'),
             'the modal is registered and shown before its async panels start loading'
@@ -2436,7 +2436,7 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /\/api\/staff\/\$\{encodeURIComponent\(numericStaffId\)\}\/shift-preferences/);
         assert.match(staffPage, /renderScheduleShiftPreferencePanel\(preferences, \{ autoApply: 'force' \}\)/);
         assert.match(staffPage, /loadScheduleShiftPreferences\(staffId, \{/);
-        assert.match(staffPage, /autoApply: !options\.restoreDraft && \(!entry\?\.shift_start && !entry\?\.shift_end\) \? 'missing-only' : false/);
+        assert.match(staffPage, /autoApply: !options\.addFreelance && !options\.restoreDraft && \(!entry\?\.shift_start && !entry\?\.shift_end\) \? 'missing-only' : false/);
         assert.match(staffPage, /getActiveScheduleSegmentCard\(\)\?\.querySelector\('\[data-segment-field="profession"\]'\)/);
         assert.match(staffPage, /saveScheduleEntry\(staffId, date, shiftStart, shiftEnd, status, note, professionKey, \{/);
         assert.match(staffPage, /segments:\s*validation\.segments\.map/);

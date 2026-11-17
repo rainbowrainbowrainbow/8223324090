@@ -72,6 +72,7 @@ function isFrozenSubstitutionShift(error) {
 
 function isHrShiftPlanError(error) {
     return error instanceof HrShiftPlanError || error?.name === 'HrShiftPlanError'
+        || error?.code === 'FREELANCE_PLAN_IN_USE'
         || error?.code === 'FREELANCE_MONTHLY_REPLACEMENT_UNSUPPORTED'
         || error?.code === 'FREELANCE_REASSIGNMENT_REQUIRES_NEW_AGREEMENT'
         || isFrozenSubstitutionShift(error);
@@ -1503,6 +1504,14 @@ async function replaceHrShiftSegments(client, hrShiftId, plan, options = {}) {
         fail('HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT',
             'Для зміни нічного плану вкажіть день для кожного часового блоку.', {}, 409);
     }
+    if (existingRows.some(row => row.work_mode === 'freelance')
+        || normalizedPlan.segments.some(segment => segment.workMode === 'freelance')) {
+        const { assertFreelancePlanEditable } = require('./hrFreelanceWork');
+        await assertFreelancePlanEditable(client, {
+            staffId: expectedStaffId, date: normalizeShiftDate(locked.rows[0].shift_date),
+            before: existingRows.map(segmentPayloadFromRow), after: normalizedPlan.segments
+        });
+    }
     const actor = options.actor || null;
     const parent = await client.query(
         `UPDATE hr_shifts SET
@@ -1965,6 +1974,10 @@ async function saveHrShiftDayPlan(client, input = {}, options = {}) {
     if (NON_WORKING_DAY_STATUSES.has(plan.status)) {
         if (currentShift) {
             const beforePlan = await loadHrShiftDayPlan(client, { hrShiftId: currentShift.id });
+            if (beforePlan?.plan.segments.some(segment => segment.workMode === 'freelance')) {
+                const { assertFreelancePlanEditable } = require('./hrFreelanceWork');
+                await assertFreelancePlanEditable(client, { staffId, date: shiftDate, before: beforePlan.plan.segments, after: [] });
+            }
             await recordPaidRoleAuditEvents(client, {
                 staffId,
                 shiftId: currentShift.id,

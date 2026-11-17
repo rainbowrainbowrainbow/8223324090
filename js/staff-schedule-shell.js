@@ -118,7 +118,19 @@
                     <button type="button" data-schedule-month-density="detailed" aria-pressed="false">Місяць детально</button>
                     <span class="staff-schedule-month-density-hint">Натисніть зміну для повних деталей</span>
                 </div>
-                <div id="scheduleWrapper" class="schedule-wrapper">
+                <dialog id="scheduleFreelanceStaffDialog" class="schedule-freelance-dialog" aria-labelledby="scheduleFreelanceStaffTitle">
+                    <h2 id="scheduleFreelanceStaffTitle">Додати фріланс</h2>
+                    <p data-freelance-date-label></p>
+                    <form>
+                        <label for="scheduleFreelanceStaff">Співробітник</label>
+                        <select name="staff" id="scheduleFreelanceStaff" required autofocus></select>
+                        <div class="schedule-freelance-dialog-actions">
+                            <button type="button" class="btn-page-secondary" onclick="this.closest('dialog').close()">Закрити</button>
+                            <button type="submit" class="btn-page-primary">Далі</button>
+                        </div>
+                    </form>
+                </dialog>
+                <div id="scheduleWrapper" class="schedule-wrapper" role="region" aria-label="Графік співробітників" tabindex="0">
                     <table class="schedule-table">
                         <caption class="staff-schedule-table-caption">Графік роботи співробітників за вибраний період</caption>
                         <thead id="scheduleHead"></thead>

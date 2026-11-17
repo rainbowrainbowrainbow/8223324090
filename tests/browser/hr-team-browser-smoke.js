@@ -1882,7 +1882,7 @@ async function assertOffboardingDangerFlow(page) {
     const confirmationMessage = await page.locator('.confirm-overlay .confirm-message').textContent();
     assert.match(confirmationMessage, /Підтвердьте завершення співпраці/i, 'final submit shows an explicit confirmation summary');
     assert.match(confirmationMessage, /зміни HR — 2, графік — 1/i, 'final confirmation repeats the planned schedule cleanup');
-    assert.match(confirmationMessage, /За наявності відвідування залишаться: зміни HR — 1/i);
+    assert.match(confirmationMessage, /Виходи з відмітками відвідування або погодженими умовами фрілансу залишаться: зміни HR — 1/i);
     await page.waitForFunction(() => document.activeElement?.matches('.confirm-overlay .confirm-cancel'));
     assert.match(confirmationMessage, /одразу після підтвердження/i);
     assert.match(confirmationMessage, /Звільнені та чорний список/i);

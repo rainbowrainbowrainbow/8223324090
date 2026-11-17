@@ -20,7 +20,7 @@ const SHUTDOWN_TIMEOUT_MS = 20_000;
 const TEST_TIMEOUT_MS = Number(process.env.ISOLATED_TEST_TIMEOUT_MS) || 15 * 60_000;
 const POLL_INTERVAL_MS = 500;
 const ISOLATED_DATABASE_LOCK_NAMESPACE = 'eventgenix-isolated-postgres-runner-v1';
-const MANUAL_MONEY_MODES = new Set(['all', 'finance', 'finance-money', 'finance-money-browser', 'payroll', 'fullstack']);
+const MANUAL_MONEY_MODES = new Set(['all', 'finance', 'finance-money', 'finance-money-browser', 'payroll', 'fullstack', 'freelance']);
 const EDUCATION_SERIES_ACCEPTANCE = 'tests/integration/education-series.integration-acceptance.test.js';
 const MODES = {
     'telegram-crm': ['tests/integration/telegram-crm-fullstack.integration.test.js'],
@@ -179,6 +179,7 @@ const MODES = {
     ],
     backfill: ['tests/integration/hr-legacy-hire-backfill.integration.test.js'],
     'upload-backfill': ['tests/integration/legacy-upload-backfill.integration.test.js'],
+    freelance: ['tests/integration/freelance-shift-blocks.integration.test.js', 'tests/browser/freelance-shift-actual-app.js'],
     fullstack: ['tests/integration/staff-account-boundary.integration.test.js', 'tests/integration/hr-fixture-qa.integration.test.js',
         'tests/integration/freelance-shift-blocks.integration.test.js',
         'tests/browser/hr-staff-creation-browser-smoke.js',

@@ -8,6 +8,8 @@ const ExcelJS = require('exceljs');
 let server;
 let baseUrl;
 let payrollServiceCache;
+let freelanceServiceCache;
+const freelanceServiceId = require.resolve('../services/hrFreelanceWork');
 
 const blockedCode = 'PAYROLL_SIMULTANEOUS_ADDITIONAL_SNAPSHOT_INVALID';
 const blockedMessage = 'Compensation snapshot потребує перевірки';
@@ -144,6 +146,25 @@ before(async () => {
             normalizePayrollMonth: value => value
         }
     };
+    const freelanceService = require(freelanceServiceId);
+    freelanceServiceCache = require.cache[freelanceServiceId];
+    require.cache[freelanceServiceId] = {
+        ...freelanceServiceCache,
+        exports: {
+            ...freelanceService,
+            listFreelanceWorkRange: async (db, from, through) => {
+                assert.equal(from, '2026-07-01');
+                assert.equal(through, '2026-07-31');
+                return [{
+                    work_date: '2026-07-22', staff_name: 'Payroll Ready QA', attendanceStatusLabel: 'Підтверджено', confirmed_at: '2026-07-22T17:00:00Z',
+                    segments: [{
+                        id: 44, workMode: 'freelance', shiftStart: '12:00', shiftEnd: '16:00', plannedMinutes: 240,
+                        actualIntervals: [{ start: 730, end: 960 }], observedMinutes: 230, confirmedMinutes: 230
+                    }]
+                }];
+            }
+        }
+    };
     delete require.cache[payrollRouteId];
     const payrollRouter = require('../routes/payroll');
 
@@ -177,6 +198,7 @@ after(async () => {
     }
     const payrollServiceId = require.resolve('../services/payroll');
     const payrollRouteId = require.resolve('../routes/payroll');
+    if (freelanceServiceCache) require.cache[freelanceServiceId] = freelanceServiceCache;
     if (payrollServiceCache) require.cache[payrollServiceId] = payrollServiceCache;
     else delete require.cache[payrollServiceId];
     delete require.cache[payrollRouteId];
@@ -224,6 +246,8 @@ test('XLSX summary and additional-lines sheets expose the same blocker contract'
     const summary = workbook.getWorksheet('Payroll');
     const lines = workbook.getWorksheet('Additional lines');
     const bases = workbook.getWorksheet('Base lines');
+    const freelance = workbook.getWorksheet('Фріланс');
+    assert.deepEqual(freelance.getRow(2).values.slice(4), ['12:00', '16:00', 240, '12:10', '16:00', 230, 'Підтверджено', 230]);
     assert.ok(bases);
     assert.equal(xlsxValue(bases, 2, 'rate_unit'), 'hour');
     assert.equal(xlsxValue(bases, 2, 'formula'), '9h × 100');

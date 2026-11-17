@@ -372,12 +372,12 @@ const HR_TEAM_MOVE_TARGETS = [
     {
         id: 'reserve',
         label: 'Резерв',
-        hint: 'Заплановані виходи від сьогодні без запису відвідування буде прибрано.'
+        hint: 'Заплановані виходи від сьогодні без відміток відвідування й погоджених умов фрілансу буде прибрано.'
     },
     {
         id: 'blacklist',
         label: 'Чорний список',
-        hint: 'Заплановані виходи від сьогодні без запису відвідування буде прибрано.'
+        hint: 'Заплановані виходи від сьогодні без відміток відвідування й погоджених умов фрілансу буде прибрано.'
     },
     {
         id: 'dismissed',
@@ -11267,7 +11267,7 @@ function getStaffOffboardingPreview() {
         `Відображення після підтвердження: ${staffOffboardingDestinationLabel(poolStatus)}.`,
         accountText,
         schedule?.data
-            ? `З ${formatStaffDateValue(schedule.data.from_date)} буде прибрано записів: зміни HR — ${schedule.data.hr_shifts}, графік — ${schedule.data.staff_schedule}. За наявності відвідування залишаться: зміни HR — ${schedule.data.preserved_hr_shifts}, графік — ${schedule.data.preserved_staff_schedule}.`
+            ? `З ${formatStaffDateValue(schedule.data.from_date)} буде прибрано записів: зміни HR — ${schedule.data.hr_shifts}, графік — ${schedule.data.staff_schedule}. Виходи з відмітками відвідування або погодженими умовами фрілансу залишаться: зміни HR — ${schedule.data.preserved_hr_shifts}, графік — ${schedule.data.preserved_staff_schedule}.`
             : 'Кількість записів графіка для видалення ще не підтверджена.',
         ...(lifecycleMetrics ? [`Відкриті записи часу, які залишаться: ${openTimeRecordCount}.`] : []),
         openResources || documentAlerts

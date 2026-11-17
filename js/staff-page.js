@@ -475,7 +475,7 @@ function renderStaffCardBadges(staff = {}) {
         ? `<span class="staff-card-badge neutral" title="HR пул: ${escapeHtml(pool)}">${escapeHtml(pool)}</span>`
         : '';
     const freelanceBadge = staff.is_freelance
-        ? '<span class="staff-card-badge neutral freelance" title="Фріланс-слот: показано тільки в explicit режимі">ФР</span>'
+        ? '<span class="staff-card-badge neutral freelance" title="Старий фріланс-слот">Слот</span>'
         : '';
     return `${accountBadge}${faceBadge}${renderStaffCardReadinessBadge(staff)}${poolBadge}${freelanceBadge}`;
 }
@@ -547,7 +547,7 @@ function scheduleableStaffErrorMessage(result = {}, fallback = 'Помилка �
     if (code === 'STAFF_INACTIVE') return 'Працівник неактивний і не може бути доданий в активний графік.';
     if (code === 'STAFF_BLACKLISTED') return 'Працівник у чорному списку і не може бути доданий в активний графік.';
     if (code === 'STAFF_NOT_CORE_POOL') return 'Працівник не в основній команді і не може бути доданий в активний графік.';
-    if (code === 'STAFF_FREELANCE_NOT_ALLOWED') return 'Фріланс-працівник не може бути доданий без explicit режиму.';
+    if (code === 'STAFF_FREELANCE_NOT_ALLOWED') return 'Для нового виходу виберіть активну картку працівника. Старий фріланс-слот доступний в історії.';
     if (code === 'STAFF_TERMINATED') return 'Працівник звільнений на дату цієї зміни.';
     if (code === 'STAFF_NOT_SCHEDULEABLE') return 'Працівник не доступний для активного графіка на цю дату.';
     if (code === 'HR_SHIFT_SEGMENT_BREAK_EXCEEDS_DURATION') return STAFF_SCHEDULE_PLAN_ERROR_MESSAGES.HR_SHIFT_SEGMENT_BREAK_EXCEEDS_DURATION;
@@ -939,7 +939,9 @@ function renderScheduleCellSegments(entry, fallbackProfessionKey, sectionProfess
         const summary = segmentSummary(segment);
         const freelanceMark = segment.workMode === 'freelance'
             ? '<abbr class="sch-freelance-mark" title="Фріланс">ФР</abbr>' : '';
-        return `<span class="sch-segment-line ${matchesSection ? 'is-section-role' : ''}" title="${escapeHtml(summary.text)}">
+        const segmentRef = segment.workMode === 'freelance' && segment.id
+            ? ' data-schedule-freelance-ref="' + Number(segment.id) + '"' : '';
+        return `<span class="sch-segment-line ${matchesSection ? 'is-section-role' : ''}" title="${escapeHtml(summary.text)}"${segmentRef}>
             <span class="sch-time" data-schedule-compact-time="${escapeHtml(summary.compactTime)}">${escapeHtml(summary.compactTime)}</span>
             <span class="sch-profession">${escapeHtml(professionLabel(segment.professionKey))}${escapeHtml(additional)}</span>
             ${freelanceMark}
@@ -4398,6 +4400,11 @@ function renderEmpRow(emp, dates, today, health = null, options = {}) {
                  title="${escapeHtml(cellTitle)}">
                 ${cellContent}
             </div>
+            ${StaffState.canManageSchedule && isScheduleableStaffForUi(emp, ds)
+                ? '<button type="button" class="schedule-freelance-action schedule-freelance-from-staff" data-freelance-staff="'
+                    + Number(emp.id) + '" data-freelance-date="' + ds + '"' + departmentAttributes + professionAttributes
+                    + ' aria-label="' + escapeHtml('Додати фріланс · ' + employeeName + ' · ' + ds) + '">Додати фріланс</button>'
+                : ''}
             ${cellHealthBadges}
         </td>`;
     }
@@ -4414,7 +4421,7 @@ function scheduleCellFromEvent(event, tbody) {
     return cell;
 }
 
-function openScheduleCell(cell) {
+function openScheduleCell(cell, target = null) {
     if (!cell) return;
     if (!scheduleRangeDataReady()) {
         showNotification('Редагування доступне після успішного завантаження періоду', 'error');
@@ -4422,7 +4429,9 @@ function openScheduleCell(cell) {
     }
     const staffId = parseInt(cell.dataset.staff, 10);
     if (!Number.isFinite(staffId) || !cell.dataset.date) return;
+    const freelanceSegmentId = Number(target?.closest('[data-schedule-freelance-ref]')?.dataset.scheduleFreelanceRef);
     openEditModal(staffId, cell.dataset.date, {
+        freelanceSegmentId,
         trigger: cell,
         department: cell.dataset.scheduleDepartment || '',
         professionKey: cell.dataset.scheduleProfession || ''
@@ -4432,7 +4441,7 @@ function openScheduleCell(cell) {
 function bindScheduleCellActivation(tbody) {
     if (!tbody || tbody.dataset.scheduleCellActivationBound === 'true') return;
     tbody.addEventListener('click', (event) => {
-        openScheduleCell(scheduleCellFromEvent(event, tbody));
+        openScheduleCell(scheduleCellFromEvent(event, tbody), event.target);
     });
     tbody.addEventListener('keydown', (event) => {
         if (event.key !== 'Enter' && event.key !== ' ') return;
@@ -4457,10 +4466,89 @@ function bindScheduleGroupToggles(tbody) {
     tbody.dataset.scheduleGroupToggleBound = 'true';
 }
 
+const expandedFreelanceDepartments = new Set();
+
+function renderFreelanceScheduleRow(department, days) {
+    return `<tr class="schedule-freelance-row" id="scheduleFreelance-${escapeHtml(department)}" ${expandedFreelanceDepartments.has(department) ? '' : 'hidden'}>
+        <th scope="row" class="schedule-category-sticky-cell">Фріланс</th>
+        ${days.map(({ date, records }) => `<td>
+            ${records.map(({ staff, segment }) => {
+                const interval = segment.shiftStart + '–' + segment.shiftEnd;
+                const label = [scheduleStaffDisplayName(staff), date, scheduleSegmentTimeLabel(segment)].join(' · ');
+                const day = segment.startDayOffset === 1 ? '+1 день' : segment.endDayOffset === 1 ? 'Кінець +1 день' : '';
+                return `<button type="button" class="schedule-freelance-action" data-freelance-staff="${Number(staff.id)}"
+                    data-freelance-date="${date}" data-freelance-segment="${Number(segment.id)}"
+                    aria-label="${escapeHtml(label)}">${escapeHtml(interval)}${day ? '<small>' + day + '</small>' : ''}</button>`;
+            }).join('')}
+            ${StaffState.canManageSchedule ? '<button type="button" class="schedule-freelance-action" data-freelance-department="' + escapeHtml(department)
+                + '" data-freelance-date="' + date + '" aria-label="+ Додати фріланс · ' + date + '">+ Додати</button>' : ''}
+        </td>`).join('')}
+    </tr>`;
+}
+
+function chooseFreelanceStaff(button) {
+    const dialog = document.getElementById('scheduleFreelanceStaffDialog');
+    const form = dialog.querySelector('form');
+    const select = form.elements.staff;
+    const { freelanceDate: date, freelanceDepartment: department } = button.dataset;
+    const context = staffScheduleRequestContext();
+    const range = scheduleCommittedRangeKey();
+    const roster = groupStaffByScheduleDepartment(StaffState.staff, { department, grouping: 'canonical' })[department] || [];
+    select.replaceChildren(new Option('Оберіть співробітника', ''), ...uniqueScheduleStaffById(roster)
+        .filter(staff => isScheduleableStaffForUi(staff, date))
+        .map(staff => new Option(scheduleStaffDisplayName(staff), staff.id)));
+    form.querySelector('[type="submit"]').disabled = select.options.length === 1;
+    dialog.querySelector('[data-freelance-date-label]').textContent = date;
+    form.onsubmit = event => {
+        event.preventDefault();
+        dialog.close();
+        if (context !== staffScheduleRequestContext() || range !== scheduleCommittedRangeKey()) return;
+        const staffId = Number(select.value);
+        const professionKey = scheduleProfessionKeyForDepartment(scheduleStaffById(staffId), department);
+        openEditModal(staffId, date, { addFreelance: true, department, professionKey, trigger: button });
+    };
+    dialog.showModal();
+}
+
+function bindFreelanceScheduleActions(tbody) {
+    if (tbody.dataset.freelanceBound) return;
+    tbody.dataset.freelanceBound = 'true';
+    tbody.addEventListener('click', event => {
+        const button = event.target.closest('button');
+        if (!button) return;
+        const { freelanceToggle, freelanceDate, freelanceStaff, freelanceSegment } = button.dataset;
+        if (freelanceToggle) {
+            const expanded = button.getAttribute('aria-expanded') !== 'true';
+            if (expanded) expandedFreelanceDepartments.add(freelanceToggle);
+            else expandedFreelanceDepartments.delete(freelanceToggle);
+            const row = document.getElementById(button.getAttribute('aria-controls'));
+            if (expanded && !isScheduleGroupExpandedForRender(freelanceToggle)) {
+                setScheduleGroupExpanded(freelanceToggle, true);
+                renderSchedule();
+                document.getElementById(button.id)?.focus();
+            } else {
+                row.hidden = !expanded;
+                button.setAttribute('aria-expanded', String(expanded));
+            }
+        } else if (freelanceDate && scheduleRangeDataReady()) {
+            if (freelanceStaff) {
+                openEditModal(Number(freelanceStaff), freelanceDate, {
+                    trigger: button, department: button.dataset.scheduleDepartment,
+                    professionKey: button.dataset.scheduleProfession,
+                    addFreelance: !freelanceSegment, freelanceSegmentId: Number(freelanceSegment)
+                });
+            } else if (StaffState.canManageSchedule) {
+                chooseFreelanceStaff(button);
+            }
+        }
+    });
+}
+
 function renderSchedule() {
     const dates = getScheduleDates();
     const today = todayStr();
     syncScheduleRangeLayout('scheduleWrapper', dates, 'schedule');
+    document.getElementById('scheduleWrapper').style.setProperty('--schedule-short-date-width', dates.length <= 3 ? dates.length * 116 + 'px' : '900px');
     bindScheduleStaffSearchControls();
 
     // Header
@@ -4516,6 +4604,23 @@ function renderSchedule() {
             ? `Згорнути групу ${deptLabel}`
             : `Розгорнути групу ${deptLabel}`;
 
+        const freelanceDays = dates.map(day => {
+            const date = formatDateStr(day);
+            const records = uniqueScheduleStaffById(deptStaff).flatMap(staff => {
+                const entry = StaffState.schedule[staff.id + '_' + date];
+                if (!entry?.segments?.some(segment => (segment.workMode ?? segment.work_mode) === 'freelance')) return [];
+                return scheduleEntrySegmentsForUi(entry, staff.role_type)
+                    .filter(segment => segment.workMode === 'freelance'
+                        && (scheduleDisplayDepartmentKey(staff) === dept
+                            || scheduleProfessionDisplayGroupKey(segment.professionKey) === dept))
+                    .map(segment => ({ staff, segment }));
+            }).sort((left, right) => (scheduleSegmentAbsoluteBounds(left.segment)?.start ?? Infinity)
+                - (scheduleSegmentAbsoluteBounds(right.segment)?.start ?? Infinity));
+            return { date, records };
+        });
+        const count = freelanceDays.reduce((total, day) => total + day.records.length, 0);
+        const deptKey = escapeHtml(dept);
+
         // Department header
         bodyHtml += `<tr class="dept-row ${groupStateClass}" data-dept="${escapeHtml(dept)}"><td class="schedule-category-sticky-cell schedule-group-sticky-cell">
             <button type="button" class="schedule-group-toggle" data-schedule-group-toggle="${escapeHtml(dept)}" aria-expanded="${groupExpanded ? 'true' : 'false'}" aria-label="${escapeHtml(groupToggleLabel)}" title="${escapeHtml(deptLabel)}">
@@ -4524,10 +4629,16 @@ function renderSchedule() {
                 <span class="schedule-group-label">${escapeHtml(deptLabel)}</span>
                 <span class="dept-count">${deptStaff.length}</span>
             </button>
+            <button type="button" class="schedule-freelance-action" id="scheduleFreelanceToggle-${deptKey}"
+                data-freelance-toggle="${deptKey}" aria-controls="scheduleFreelance-${deptKey}"
+                aria-expanded="${groupExpanded && expandedFreelanceDepartments.has(dept)}">Фріланс${count ? ' · ' + count : ''}</button>
         </td><td class="schedule-category-fill-cell schedule-group-fill-cell" colspan="${dates.length}" aria-hidden="true">
         </td></tr>`;
 
-        if (!groupExpanded) continue;
+        if (!groupExpanded) {
+            bodyHtml += `<tr hidden id="scheduleFreelance-${deptKey}"></tr>`;
+            continue;
+        }
 
         const renderedStaffIds = new Set();
         for (const group of renderableSubGroups) {
@@ -4556,6 +4667,7 @@ function renderSchedule() {
                 department: dept
             });
         }
+        bodyHtml += renderFreelanceScheduleRow(dept, freelanceDays);
     }
 
     tbody.innerHTML = bodyHtml;
@@ -4569,6 +4681,7 @@ function renderSchedule() {
     });
     bindScheduleCellActivation(tbody);
     bindScheduleGroupToggles(tbody);
+    bindFreelanceScheduleActions(tbody);
 
     tbody.querySelectorAll('[data-attendance-action]').forEach(button => {
         button.addEventListener('click', (event) => {
@@ -6885,7 +6998,7 @@ function scheduleEntryPlanUpdatedAt(entry = null) {
 
 function openEditModal(staffId, date, options = {}) {
     if (_staffScheduleClosePromise || StaffState.editingCell?.mutationPending) return;
-    if (!scheduleRangeDataReady()) return;
+    if (!scheduleRangeDataReady() || (options.addFreelance && !StaffState.canManageSchedule)) return;
     const emp = StaffState.staff.find(s => s.id === staffId);
     if (!emp) return;
     if (StaffState.canManageSchedule && !isScheduleableStaffForUi(emp, date)) {
@@ -6921,8 +7034,31 @@ function openEditModal(staffId, date, options = {}) {
     const selectedProfessionKey = normalizeProfessionKey(
         entry?.primary_profession_key || entry?.primaryProfessionKey || entry?.profession_key || sectionProfessionKey || emp.role_type
     );
-    renderSchedulePlanEditor('schedule', scheduleEntrySegmentsForUi(entry, selectedProfessionKey), {
-        primaryProfessionKey: selectedProfessionKey
+    const segments = scheduleEntrySegmentsForUi(entry, selectedProfessionKey);
+    let activeIndex = segments.findIndex(segment => Number(segment.id) === options.freelanceSegmentId);
+    if (options.addFreelance && segments.length >= STAFF_SCHEDULE_MAX_SEGMENTS) {
+        StaffState.editingCell = null;
+        showNotification(`Максимум ${STAFF_SCHEDULE_MAX_SEGMENTS} блоків на день`, 'error');
+        return;
+    }
+    if (options.addFreelance) {
+        activeIndex = segments.length;
+        if (!schedulePlanIsWorkingStatus(document.getElementById('schStatus').value)) {
+            document.getElementById('schStatus').value = 'working';
+        }
+        segments.push(createSchedulePlanSegment('schedule', {
+            workMode: 'freelance', professionKey: sectionProfessionKey || selectedProfessionKey, date
+        }));
+        document.getElementById('schModalTitle').textContent = `Додати фріланс · ${emp.name} · ${date}`;
+    } else if (activeIndex >= 0) {
+        const segment = segments[activeIndex];
+        const attendance = scheduleAttendanceDetails(entry, scheduleAttendanceRecord(staffId, date), date);
+        document.getElementById('schModalTitle').textContent =
+            `Фріланс · ${emp.name} · ${date} · ${scheduleSegmentTimeLabel(segment)} · ${attendance.label || 'Заплановано'}`;
+    }
+    renderSchedulePlanEditor('schedule', segments, {
+        primaryProfessionKey: selectedProfessionKey,
+        activeIndex: activeIndex >= 0 ? activeIndex : undefined
     });
 
     const isReplacement = isReplacementEntry(entry);
@@ -6960,7 +7096,7 @@ function openEditModal(staffId, date, options = {}) {
     const stateBeforePreferences = getStaffScheduleState();
     const overlay = document.getElementById('schModalOverlay');
     overlay?.setAttribute?.('aria-busy', 'false');
-    _staffScheduleInitialState = stateBeforePreferences;
+    _staffScheduleInitialState = options.addFreelance ? '' : stateBeforePreferences;
     const trigger = options.trigger || document.activeElement;
     if (overlay && typeof openModal === 'function') {
         openModal(overlay, trigger, {
@@ -6973,10 +7109,14 @@ function openEditModal(staffId, date, options = {}) {
                 modal.classList.add('hidden');
             },
             initialFocus: () => StaffState.canManageSchedule
-                ? document.getElementById('schStatus')
+                ? document.querySelector(`#schSegmentsList [data-segment-index="${activeIndex}"] [data-segment-field="start"]`)
+                    || document.getElementById('schStatus')
                 : document.getElementById('schCancelBtn'),
             onRequestClose: () => closeEditModal(false),
-            restoreFocus: () => scheduleCellFocusTarget(staffId, date, trigger, sectionDepartment)
+            restoreFocus: () => {
+                if (trigger?.isConnected && trigger.dataset.freelanceDate) return trigger;
+                return scheduleCellFocusTarget(staffId, date, trigger, sectionDepartment);
+            }
         });
     } else {
         overlay?.classList.remove('hidden');
@@ -6987,9 +7127,9 @@ function openEditModal(staffId, date, options = {}) {
     loadScheduleCellHistory(staffId, date);
     if (!StaffState.recoveryReadOnly) {
         loadScheduleShiftPreferences(staffId, {
-            autoApply: !options.restoreDraft && (!entry?.shift_start && !entry?.shift_end) ? 'missing-only' : false,
+            autoApply: !options.addFreelance && !options.restoreDraft && (!entry?.shift_start && !entry?.shift_end) ? 'missing-only' : false,
             onlyIfState: stateBeforePreferences,
-            resetInitialState: !options.restoreDraft
+            resetInitialState: !options.addFreelance && !options.restoreDraft
         });
     }
 }
@@ -9360,9 +9500,11 @@ async function initStaffSchedulePage(options = {}) {
 
         // Init the rolling window: yesterday, today, and the upcoming days.
         resetSchedulePrimaryViewMode();
-        const draft = readScheduleHrDraft(new URLSearchParams(window.location.search).get('scheduleDraft') || '');
+        const query = new URLSearchParams(window.location.search);
+        const draft = readScheduleHrDraft(query.get('scheduleDraft') || '');
+        const linkedDate = parseScheduleDateInput(query.get('scheduleDate'));
         if (draft?.range?.from && draft?.range?.to) await goToScheduleRange(draft.range.from, draft.range.to, draft.rangeMode);
-        else await goToWeek(getScheduleFocusStart(new Date()));
+        else await goToWeek(getScheduleFocusStart(linkedDate || new Date()));
         if (initialContext !== staffScheduleRequestContext()) {
             clearStaffScheduleAccessState();
             staffScheduleInitPromise = null;
@@ -9457,6 +9599,14 @@ async function initStaffSchedulePage(options = {}) {
         staffScheduleInitialized = true;
         staffScheduleAccessFingerprint = staffScheduleRequestContext();
         restoreScheduleHrDraft(draft);
+        const linkedSegment = Number(query.get('scheduleSegment'));
+        if (!draft && initialFocusStaffId && linkedDate && Number.isSafeInteger(linkedSegment) && linkedSegment > 0) {
+            const date = formatDateStr(linkedDate);
+            const entry = StaffState.schedule[initialFocusStaffId + '_' + date];
+            if (scheduleEntrySegmentsForUi(entry).some(segment => Number(segment.id) === linkedSegment && segment.workMode === 'freelance')) {
+                openEditModal(initialFocusStaffId, date, { freelanceSegmentId: linkedSegment });
+            }
+        }
         window.addEventListener('pageshow', event => {
             if (event.persisted && StaffState.editingCell) void refreshScheduleProfessionRates('schedule');
         });

@@ -181,9 +181,31 @@ function normalizeAllocations(entries, segments, actualMinutes) {
 function planSignature(segments = []) {
     return JSON.stringify(segments.map(segment => [
         String(segment.id), segment.workMode || 'regular', segment.professionKey,
-        segment.shiftStart, segment.shiftEnd, segment.breakMinutes,
-        ...(segment.startDayOffset === 1 ? [segment.startDayOffset, segment.endDayOffset] : [])
-    ]));
+        segment.shiftStart, segment.shiftEnd, segment.breakMinutes || 0,
+        segment.startDayOffset ?? 0,
+        segment.endDayOffset ?? Number(segment.shiftEnd < segment.shiftStart)
+    ]).sort((left, right) => left[0].localeCompare(right[0])));
+}
+
+async function assertFreelancePlanEditable(client, { staffId, date, before, after }) {
+    const currentModes = new Map(before.map(segment => [String(segment.id), segment.workMode]));
+    const resolved = after.map(segment => ({
+        ...segment, workMode: segment.workMode ?? currentModes.get(String(segment.id)) ?? 'regular'
+    }));
+    if (![...before, ...resolved].some(segment => segment.workMode === 'freelance')
+        || planSignature(before) === planSignature(resolved)) return;
+    const attendance = await client.query(
+        `SELECT EXISTS (
+             SELECT 1 FROM hr_time_records
+             WHERE staff_id = $1 AND record_date = $2::date AND business_context = $3
+               AND clock_in IS NOT NULL AND status <> 'arrival_cancelled'
+         ) AS started`,
+        [staffId, date, DEFAULT_BUSINESS_CONTEXT]
+    );
+    if (attendance.rows[0]?.started) {
+        throw freelanceError('FREELANCE_PLAN_IN_USE',
+            'Працівник уже відмітив початок зміни. Фактичний час звіряється в HR за зафіксованим планом.', 409);
+    }
 }
 
 async function assertFreelanceDoesNotReplaceMonthlyWork(client, staffId, date, proposed, stored) {
@@ -232,18 +254,53 @@ async function assertFreelanceDoesNotReplaceMonthlyWork(client, staffId, date, p
         'Для працівника на окладі залиште планові штатні години або додайте фріланс на позначений вихідний', 409);
 }
 
+function freelanceAttendanceState(record) {
+    if (!record) return 'planned';
+    if (record.auto_closed || record.status === 'auto_closed' || record.status === 'manual_review'
+        || record.break_intervals?.some(interval => !interval.endedAt)) return 'review';
+    if (!record.clock_in) return record.clock_out ? 'review' : 'planned';
+    if (!record.clock_out) return 'open';
+    return ['present', 'late', 'early_leave', 'unscheduled'].includes(record.status) ? 'ready' : 'review';
+}
+
+function freelancePhysicalAllocation(record, plan) {
+    const { allocateAttendanceToSegments, attendancePlanFromCompensationSnapshot } = require('./hrAttendance');
+    const factPlan = attendancePlanFromCompensationSnapshot(record.compensation_snapshot) || plan;
+    return allocateAttendanceToSegments({
+        recordDate: record.record_date,
+        clockIn: record.clock_in,
+        clockOut: record.clock_out,
+        segments: factPlan.segments,
+        breakIntervals: record.break_intervals,
+        includeClockIntervals: true
+    });
+}
+
+async function assertFreelanceAttendanceEditable(client, attendanceId) {
+    const confirmation = await client.query(
+        'SELECT 1 FROM hr_freelance_attendance_confirmations WHERE attendance_id = $1', [attendanceId]
+    );
+    if (confirmation.rowCount) {
+        throw freelanceError('FREELANCE_ATTENDANCE_LOCKED',
+            'Час уже зафіксовано в розрахунку фрілансу. Для виправлення зверніться до відповідального за розрахунок.', 409);
+    }
+}
+
 async function confirmFreelanceAttendance(client, input, actor) {
     const staffId = identifier(input.staffId);
     const date = workDate(input.date);
     const attendanceId = identifier(input.attendanceId);
     const { plan, shift } = await lockFreelanceDay(client, staffId, date);
     const { rows: [record] } = await client.query(
-        `SELECT * FROM hr_time_records WHERE id = $1 AND staff_id = $2 AND record_date = $3::date
+        `SELECT *, updated_at::text AS record_version FROM hr_time_records WHERE id = $1 AND staff_id = $2 AND record_date = $3::date
          AND business_context = $4 FOR UPDATE`,
         [attendanceId, staffId, date, DEFAULT_BUSINESS_CONTEXT]
     );
-    if (!record?.clock_out || !['present', 'late', 'unscheduled', 'auto_closed'].includes(record.status)) {
-        throw freelanceError('FREELANCE_ATTENDANCE_NOT_CLOSED', 'Для підтвердження потрібен завершений фактичний вихід', 409);
+    if (freelanceAttendanceState(record) !== 'ready') {
+        throw freelanceError('FREELANCE_ATTENDANCE_NOT_CLOSED', 'Завершіть та звірте зміну і фактичні перерви в HR.', 409);
+    }
+    if (input.recordVersion !== undefined && input.recordVersion !== record.record_version) {
+        throw freelanceError('FREELANCE_ATTENDANCE_STALE', 'Запис змінився. Оновіть звіт і перевірте час.', 409);
     }
     const existing = await client.query(
         'SELECT attendance_id FROM hr_freelance_attendance_confirmations WHERE attendance_id = $1',
@@ -253,7 +310,7 @@ async function confirmFreelanceAttendance(client, input, actor) {
         throw freelanceError('FREELANCE_ATTENDANCE_ALREADY_CONFIRMED', 'Розподіл часу вже підтверджено', 409);
     }
     const {
-        attendancePlanFromCompensationSnapshot, attendanceTimezoneTransitionIssue, decorateAttendanceRecord
+        attendancePlanFromCompensationSnapshot, attendanceTimezoneTransitionIssue
     } = require('./hrAttendance');
     const storedPlan = attendancePlanFromCompensationSnapshot(record.compensation_snapshot);
     if (storedPlan && planSignature(storedPlan.segments) !== planSignature(plan.segments)) {
@@ -262,14 +319,19 @@ async function confirmFreelanceAttendance(client, input, actor) {
     if (attendanceTimezoneTransitionIssue(record)) {
         throw freelanceError('FREELANCE_ATTENDANCE_TIMEZONE_REVIEW', 'Факт на переході часу потребує окремої перевірки', 409);
     }
-    const fact = decorateAttendanceRecord(record, { plan, shift });
-    const recordedMinutes = Number(record.total_worked_minutes);
-    const actualMinutes = Number.isInteger(recordedMinutes) && recordedMinutes > 0
-        ? recordedMinutes : fact.actualMinutes;
+    const fact = freelancePhysicalAllocation(record, plan);
+    const actualMinutes = fact.actualMinutes;
     if (!Number.isInteger(actualMinutes) || actualMinutes <= 0) {
         throw freelanceError('FREELANCE_ATTENDANCE_TIME_REQUIRED', 'Підтвердьте фактичний час виходу', 409);
     }
     const minutesById = normalizeAllocations(input.allocations, plan.segments, actualMinutes);
+    if (fact.segmentAllocations.some(segment => {
+        const minutes = minutesById.get(Number(segment.segmentId));
+        return minutes < segment.actualMinutes || minutes > segment.actualMinutes + fact.overtimeMinutes;
+    })) {
+        throw freelanceError('FREELANCE_INVALID_ALLOCATION', 'Хвилини блоку мають відповідати факту. Вручну можна рознести час поза планом.');
+    }
+    const allocationReason = fact.overtimeMinutes > 0 ? requiredText(input.allocationReason, 'Причина рознесення', 500) : null;
     const terms = await client.query(
         `SELECT DISTINCT ON (segment_id) id, segment_id, rate_unit, rate
          FROM hr_freelance_segment_terms WHERE segment_id = ANY($1::bigint[])
@@ -296,7 +358,10 @@ async function confirmFreelanceAttendance(client, input, actor) {
          VALUES ($1, $2, $3::jsonb, $4)`,
         [attendanceId, shift.id, JSON.stringify({
             actualMinutes, allocationSource: fact.allocationSource,
-            clockIn: record.clock_in, clockOut: record.clock_out
+            clockIn: record.clock_in, clockOut: record.clock_out,
+            breakIntervals: record.break_intervals || [],
+            segments: fact.segmentAllocations,
+            allocationReason
         }), requiredText(actor, 'Автор', 100)]
     );
     for (const block of blocks) {
@@ -366,18 +431,25 @@ async function listFreelanceSettlement(db, date) {
 }
 
 async function listFreelanceWorkDay(db, date, staffId = null) {
-    const day = workDate(date);
+    return listFreelanceWorkRange(db, date, date, staffId);
+}
+
+async function listFreelanceWorkRange(db, startDate, endDate, staffId = null) {
     const { rows } = await db.query(
-        `SELECT shift.id AS shift_id, shift.staff_id, staff.name AS staff_name,
-                fact.id AS attendance_id, fact.clock_out, confirmation.confirmed_at,
+        `SELECT shift.id AS shift_id, shift.shift_date::text AS work_date, shift.staff_id, staff.name AS staff_name,
+                fact.id AS attendance_id, fact.clock_in, fact.clock_out, fact.status, fact.auto_closed, fact.break_intervals,
+                fact.compensation_snapshot,
+                fact.updated_at::text AS record_version, confirmation.confirmed_at, confirmation.fact_snapshot,
                 jsonb_agg(jsonb_build_object(
                     'id', segment.id, 'workMode', segment.work_mode, 'professionKey', segment.profession_key,
                     'shiftStart', LEFT(segment.planned_start::text, 5), 'shiftEnd', LEFT(segment.planned_end::text, 5),
                     'startDayOffset', segment.start_day_offset, 'endDayOffset', segment.end_day_offset,
                     'breakMinutes', segment.break_minutes, 'plannedMinutes',
                         (EXTRACT(EPOCH FROM (segment.planned_end - segment.planned_start)) / 60
-                         + CASE WHEN segment.planned_end < segment.planned_start THEN 1440 ELSE 0 END
+                         + 1440 * COALESCE(segment.end_day_offset - segment.start_day_offset,
+                             CASE WHEN segment.planned_end < segment.planned_start THEN 1 ELSE 0 END)
                          - segment.break_minutes)::int,
+                    'confirmedMinutes', confirmed.minutes,
                     'rate', terms.rate::text, 'rateUnit', terms.rate_unit,
                     'termsId', terms.id, 'rateSource', terms.source_version_id
                 ) ORDER BY segment.sort_order, segment.id) AS segments
@@ -387,16 +459,19 @@ async function listFreelanceWorkDay(db, date, staffId = null) {
          LEFT JOIN hr_time_records fact ON fact.staff_id = shift.staff_id AND fact.record_date = shift.shift_date
              AND fact.business_context = $2
          LEFT JOIN hr_freelance_attendance_confirmations confirmation ON confirmation.hr_shift_id = shift.id
+         LEFT JOIN hr_freelance_confirmed_blocks confirmed ON confirmed.segment_id = segment.id
+             AND confirmed.attendance_id = confirmation.attendance_id
          LEFT JOIN LATERAL (
              SELECT id, rate, rate_unit, source_version_id
              FROM hr_freelance_segment_terms WHERE segment_id = segment.id ORDER BY id DESC LIMIT 1
          ) terms ON TRUE
-         WHERE shift.shift_date = $1::date AND ($3::integer IS NULL OR shift.staff_id = $3) AND EXISTS (
+         WHERE shift.shift_date BETWEEN $1::date AND $4::date
+             AND ($3::integer IS NULL OR shift.staff_id = $3) AND EXISTS (
              SELECT 1 FROM hr_shift_segments work WHERE work.hr_shift_id = shift.id AND work.work_mode = 'freelance'
          )
          GROUP BY shift.id, staff.id, fact.id, confirmation.attendance_id
-         ORDER BY staff.name, shift.id`,
-        [day, DEFAULT_BUSINESS_CONTEXT, staffId == null ? null : identifier(staffId)]
+         ORDER BY shift.shift_date, staff.name, shift.id`,
+        [workDate(startDate), DEFAULT_BUSINESS_CONTEXT, staffId == null ? null : identifier(staffId), workDate(endDate)]
     );
     for (const row of rows) {
         for (const segment of row.segments) {
@@ -409,23 +484,40 @@ async function listFreelanceWorkDay(db, date, staffId = null) {
             }
         }
     }
-    const attendanceIds = rows.filter(row => row.clock_out && !row.confirmed_at).map(row => row.attendance_id);
-    if (!attendanceIds.length) return rows;
-    const facts = await db.query('SELECT * FROM hr_time_records WHERE id = ANY($1::int[])', [attendanceIds]);
-    const { hydrateAttendanceRecords } = require('./hrAttendance');
-    const attendance = await hydrateAttendanceRecords(db, facts.rows);
-    const byId = new Map(attendance.map(row => [row.id, row]));
-    return rows.map(row => {
-        const fact = byId.get(row.attendance_id);
-        if (!fact) return row;
-        const recorded = Number(fact.total_worked_minutes);
-        const actualMinutes = Number.isInteger(recorded) && recorded > 0 ? recorded : fact.actualMinutes;
+    const { attendancePlanFromCompensationSnapshot, attendanceTimezoneTransitionIssue } = require('./hrAttendance');
+    return rows.map(({ fact_snapshot: confirmed, break_intervals, status, auto_closed, clock_in, compensation_snapshot, ...row }) => {
+        const record = row.attendance_id ? {
+            record_date: row.work_date, clock_in, clock_out: row.clock_out,
+            break_intervals, status, auto_closed, compensation_snapshot
+        } : null;
+        const storedPlan = attendancePlanFromCompensationSnapshot(record?.compensation_snapshot);
+        const conflicted = record && (attendanceTimezoneTransitionIssue(record)
+            || (storedPlan && planSignature(storedPlan.segments) !== planSignature(row.segments)));
+        const attendanceState = row.confirmed_at ? 'confirmed'
+            : conflicted ? 'review' : freelanceAttendanceState(record);
+        const physical = (attendanceState === 'ready' || attendanceState === 'confirmed') && record?.clock_out && !confirmed?.segments
+            ? freelancePhysicalAllocation(confirmed ? { ...record, break_intervals: [] } : record, row) : null;
+        const allocations = confirmed?.segments || physical?.segmentAllocations || [];
+        const bySegment = new Map(allocations.map(segment => [Number(segment.segmentId), segment]));
         return {
             ...row,
-            actualMinutes,
-            allocationSource: fact.allocationSource,
-            suggestedAllocations: fact.allocationSource === 'clock_interval' && actualMinutes === fact.allocatedMinutes
-                ? fact.segmentAllocations.map(item => ({ segmentId: item.segmentId, minutes: item.actualMinutes })) : []
+            attendanceState,
+            attendanceStatusLabel: {
+                planned: 'Заплановано', open: 'Очікує завершення виходу', review: 'Потрібна звірка в HR',
+                ready: 'До підтвердження', confirmed: 'Підтверджено'
+            }[attendanceState],
+            segments: row.segments.map(segment => {
+                const allocation = bySegment.get(Number(segment.id));
+                return {
+                    ...segment,
+                    actualIntervals: allocation?.actualIntervals || [],
+                    observedMinutes: allocation?.actualIntervals?.length ? allocation.actualMinutes : null
+                };
+            }),
+            actualMinutes: confirmed?.actualMinutes ?? physical?.actualMinutes ?? null,
+            unassignedMinutes: !confirmed ? physical?.overtimeMinutes || 0 : 0,
+            suggestedAllocations: attendanceState === 'ready'
+                ? allocations.map(item => ({ segmentId: item.segmentId, minutes: item.actualMinutes })) : []
         };
     });
 }
@@ -553,7 +645,10 @@ module.exports = {
     insertFreelanceRateVersion,
     listFreelanceSettlement,
     listFreelanceRateOptions,
+    assertFreelanceAttendanceEditable,
+    assertFreelancePlanEditable,
     listFreelanceWorkDay,
+    listFreelanceWorkRange,
     loadConfirmedFreelanceAllocations,
     prepareFreelanceReassignment,
     snapshotReassignedFreelanceTerms,

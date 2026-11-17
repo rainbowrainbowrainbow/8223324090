@@ -2761,6 +2761,9 @@ function createFakePool() {
                 }
                 return { rows, rowCount: rows.length };
             }
+            if (/SELECT id FROM hr_shifts WHERE staff_id = \$1 AND shift_date >= \$2::date ORDER BY shift_date, id FOR UPDATE/i.test(text)) {
+                return { rows: [], rowCount: 0 };
+            }
             if (/DELETE FROM hr_shifts hs WHERE hs\.staff_id = \$1/i.test(text)) {
                 return { rows: [], rowCount: 2 };
             }

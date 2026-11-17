@@ -113,6 +113,29 @@
     gap: 12px;
 }
 
+.confirm-dialog-scrollable {
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 32px);
+    max-height: calc(100dvh - 32px);
+}
+
+.confirm-dialog-scrollable .confirm-message {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    overflow-wrap: anywhere;
+    padding: 4px;
+}
+
+.confirm-dialog-scrollable .confirm-message:focus-visible {
+    outline-offset: -2px;
+}
+
+.confirm-dialog-scrollable :is(.confirm-icon, .confirm-actions) {
+    flex-shrink: 0;
+}
+
 /* v0.60.37: shared formModal must keep submit actions on-screen on tall forms. */
 .confirm-overlay.form-modal-overlay {
     align-items: center;

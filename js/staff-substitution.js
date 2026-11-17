@@ -85,7 +85,21 @@
         return [
             `Підтверджена перерва ${allocation.startTime}–${allocation.endTime} · ${allocation.totalMinutes} хв.`,
             `Замінений працівник: ${originalBreak} хв цієї перерви · ${originalPaid} оплачуваних хв у плані дня.`,
-            `Виконавець за підміну: ${allocation.replacementMinutes} хв перерви · ${quote.input.plannedMinutes} оплачуваних хв.`
+            `Виконавець за підміну: ${allocation.replacementMinutes} хв перерви${source.simultaneousRoles?.length ? '' : ` · ${quote.input.plannedMinutes} оплачуваних хв`}.`
+        ].join('\n');
+    }
+
+    function simultaneousRoleSummary(quote, catalog) {
+        const roles = quote.evidence?.source?.simultaneousRoles;
+        if (!roles?.length) return '';
+        const name = key => catalog.professions.find(role => role.key === key)?.title || key;
+        return [
+            `Робочий час для всіх ролей разом — ${quote.input.plannedMinutes} хв.`,
+            `Основна роль: ${name(quote.input.professionKey)}.`,
+            ...roles.map(role => role.compensationMode === 'unpaid'
+                ? `Суміщена роль: ${name(role.professionKey)} · без доплати.`
+                : `Суміщена роль: ${name(role.professionKey)} · ${money(role.rateMinor)}/год · за планом ${money(role.amountMinor)}.`),
+            'Оплата за суміщені ролі рахується окремо за фактом у табелі. Решта часу й ролі залишаються у графіку заміненого працівника.'
         ].join('\n');
     }
 
@@ -238,8 +252,8 @@
             rateMode: 'standard', originalStaffId: first.originalStaffId || null };
         if (input.breakStartTime) input.breakMinutes = 0;
         const standard = await request('POST', '/preview', { input });
-        const breakBlocker = standard.blockers.find(item => item.code.startsWith('SUBSTITUTION_SHIFT_BREAK_'));
-        if (breakBlocker) throw new Error(breakBlocker.message);
+        const shiftBlocker = standard.blockers.find(item => /^(SUBSTITUTION_SHIFT_(BREAK|ROLE)_|HR_SHIFT_PAID_ROLE_)/.test(item.code));
+        if (shiftBlocker) throw new Error(shiftBlocker.message);
         const rate = input.sourceType === 'hr_shift' && input.originalStaffId
             ? await editShiftPay(input, standard)
             : await formModal('Людина на заміну · ставка', [
@@ -253,6 +267,7 @@
         const quote = await request('POST', '/preview', { input });
         if (!quote.available) throw new Error(quote.blockers.map(blocker => blocker.message).join('\n'));
         const sourcePlan = quote.evidence?.source;
+        const roleSummary = simultaneousRoleSummary(quote, catalog);
         const remainder = sourcePlan?.remainder;
         const dayLabel = remainder ? `${input.workDate} · ` : '';
         const nextDate = remainder ? `\nОкрема зміна заміненого працівника на ${remainder.date}: ${formatSegments(remainder.plan)}.` : '';
@@ -262,7 +277,7 @@
         const beforeSchedule = sourcePlan?.partial && sourcePlan.originalBefore
             ? `\nБуло у заміненого: ${formatSegments(sourcePlan.originalBefore.plan)}. Було у виконавця: ${formatSegments(sourcePlan.replacementBefore?.plan)}.`
             : '';
-        const originalWorkload = input.sourceType === 'hr_shift' && input.originalTreatment === 'transfer_unworked_scope'
+        const originalWorkload = !roleSummary && input.sourceType === 'hr_shift' && input.originalTreatment === 'transfer_unworked_scope'
             ? `\nІз плану заміненого передається ${quote.input.plannedMinutes} робочих хвилин.`
             : '';
         const originalImpact = quote.payImpact?.original;
@@ -281,11 +296,13 @@
             ? `${source.title} · ${first.workDate}\n${first.slotKey === 'second' ? 'Другий аніматор' : 'Основний аніматор'}\n` : '';
         const editedPay = payOverrideSummary(quote);
         const breakSummary = breakPlanSummary(quote);
-        const confirmed = await confirmModal(`${assignmentSummary}Оплата підміни за планом: ${money(quote.estimateMinor)}\n${quote.effects.replacement}\n${quote.effects.original}\n`
+        const planPayLabel = roleSummary ? 'Оплата підміни за основною роллю' : 'Оплата підміни за планом';
+        const confirmed = await confirmModal(`${assignmentSummary}${planPayLabel}: ${money(quote.estimateMinor)}\n`
+            + (roleSummary ? `${roleSummary}\n\n` : '') + `${quote.effects.replacement}\n${quote.effects.original}\n`
             + quote.warnings.map(warning => warning.message).join('\n') + beforeSchedule + scheduleEffect
             + (breakSummary ? `\n${breakSummary}` : '') + originalWorkload + (payImpact ? `\n${payImpact}` : '')
             + (editedPay ? `\n${editedPay}` : '') + '\nНарахування відбудеться після підтвердження фактичної роботи.',
-        { okText: 'Погоджую наслідки та зберігаю', cancelText: 'Скасувати' });
+        { okText: 'Погоджую наслідки та зберігаю', cancelText: 'Скасувати', scrollable: Boolean(roleSummary) });
         if (!confirmed) return;
         await saveCommand('', { input, previewFingerprint: quote.fingerprint, effectsAcknowledged: true });
         showNotification('Підміну збережено. Історичну ставку зафіксовано.', 'success');
@@ -394,10 +411,14 @@
         const title = `Підміна #${row.id} · ${labels[details.state]}`;
         const remainder = details.quote.evidence?.source?.remainder;
         const breakSummary = breakPlanSummary(details.quote);
-        const note = `${details.input.workload}\n${substitutionFacts(details, catalog, people)}\nПлан: ${money(details.quote.estimateMinor)}\nФакт: ${details.completion ? money(details.completion.amountMinor) : 'ще не підтверджено'}\n`
+        const roleSummary = simultaneousRoleSummary(details.quote, catalog);
+        const planLabel = roleSummary ? 'План за основною роллю' : 'План';
+        const factLabel = roleSummary ? 'Факт за основною роллю' : 'Факт';
+        const note = `${details.input.workload}\n${substitutionFacts(details, catalog, people)}\n${planLabel}: ${money(details.quote.estimateMinor)}\n${factLabel}: ${details.completion ? money(details.completion.amountMinor) : 'ще не підтверджено'}\n`
             + `${details.quote.effects.replacement}\n${details.quote.effects.original}\n`
             + (remainder ? `Залишок зміни заміненого працівника · ${remainder.date}: ${formatSegments(remainder.plan)}.\n` : '')
             + (breakSummary ? `${breakSummary}\n` : '')
+            + (roleSummary ? `${roleSummary}\n` : '')
             + (details.completion?.originalPay ? `Нарахування заміненому за підміну: ${money(details.completion.originalPay.amountMinor)}.\n` : '')
             + history.events.map(event => {
                 const recordedPay = event.after_json?.quote && ['create','revise'].includes(event.action)

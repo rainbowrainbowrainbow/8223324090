@@ -1885,7 +1885,7 @@ function confirmModal(message, options = {}) {
     return new Promise((resolve) => {
         closeActiveConfirmModal(false);
         document.querySelectorAll('.confirm-overlay[data-confirm-kind="confirm"]').forEach(el => el.remove());
-        const { cancelText = 'Скасувати' } = options;
+        const { cancelText = 'Скасувати', scrollable = false } = options;
         const okText = options.okText ?? options.confirmText ?? 'Підтвердити';
         const type = options.type ?? (options.danger ? 'danger' : 'warning');
         const icons = { danger: '🗑️', success: '✅', warning: '⚠️' };
@@ -1899,9 +1899,9 @@ function confirmModal(message, options = {}) {
         overlay.setAttribute('aria-modal', 'true');
         overlay.setAttribute('aria-labelledby', 'confirmModalMessage');
         overlay.innerHTML = `
-            <div class="confirm-dialog ${type}">
+            <div class="confirm-dialog ${type}${scrollable ? ' confirm-dialog-scrollable' : ''}">
                 <div class="confirm-icon" aria-hidden="true">${icon}</div>
-                <div class="confirm-message" id="confirmModalMessage">${safeMsg}</div>
+                <div class="confirm-message" id="confirmModalMessage"${scrollable ? ' tabindex="0" role="region" aria-label="Підсумок погодження"' : ''}>${safeMsg}</div>
                 <div class="confirm-actions">
                     <button class="confirm-btn confirm-cancel">${cancelText}</button>
                     <button class="confirm-btn confirm-ok ${type}">${okText}</button>
@@ -1932,7 +1932,7 @@ function confirmModal(message, options = {}) {
         container.appendChild(overlay);
         window.ModalLayer?.ensureTopLayer(overlay);
         openModal(overlay, document.activeElement, {
-            initialFocus: '.confirm-ok',
+            initialFocus: scrollable ? '.confirm-message' : '.confirm-ok',
             onRequestClose: () => close(false),
             hide: () => {}
         });

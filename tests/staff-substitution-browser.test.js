@@ -67,7 +67,7 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
                 data:[{id:'DAR-QA',title:'10:00 · Синтетичне заняття',startTime:'10:00',endTime:'11:00'}]}));
             if(url.pathname.endsWith('/catalog')) return res.end(JSON.stringify({success:true,data:{
                 staff:[{id:2,name:'Синтетична менеджерка'},{id:3,name:'Синтетичний адміністратор'}],
-                professions:[{key:'reception',title:'Адміністратор'}],
+                professions:[{key:'reception',title:'Адміністратор'},{key:'manager',title:'Менеджер'},{key:'animator',title:'Аніматор'}],
                 sources:[{key:'standalone',title:'Окрема робота'},{key:'hr_shift',title:'Зміна графіка'},{key:'booking',title:'Бронювання Park'}]
             }}));
             if(req.method==='GET' && url.pathname==='/fixture/staff-substitutions') {
@@ -95,7 +95,7 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
                 if (url.searchParams.get('workDate') === '2099-01-21') {
                     Object.assign(source, { title:'Зміна 20:00–04:00', startTime:'20:00', endTime:'04:00', endDate:'2099-01-22' });
                 }
-                if (url.searchParams.get('workDate') === '2099-01-15') {
+                if (['2099-01-15','2099-01-16'].includes(url.searchParams.get('workDate'))) {
                     Object.assign(source, { title:'Зміна 09:00–17:00', startTime:'09:00', endTime:'17:00', breakMinutes:30 });
                 }
                 return res.end(JSON.stringify({success:true,data:[source]}));
@@ -132,6 +132,12 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
                     source.breakAllocation = { startTime:'13:45',endTime:'14:15',totalMinutes:30,
                         beforeMinutes:0,replacementMinutes:15,afterMinutes:15 };
                 }
+                if (source && input.workDate === '2099-01-16') {
+                    source.simultaneousRoles = [
+                        { professionKey:'animator',compensationMode:'unpaid' },
+                        { professionKey:'manager',compensationMode:'paid_hourly',rateMinor:24000,amountMinor:42000 }
+                    ];
+                }
                 const payImpact = source ? {
                     original: { amountMinor: source.breakAllocation ? 26250 : 30000 },
                     replacement: { amountMinor: source.breakAllocation ? 17500 : 20000 }
@@ -150,9 +156,10 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
     await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
     const browser=await chromium.launch({headless:true,...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH?{executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH}:{})});
     try{
-        for(const [name,width,height] of [['desktop',1280,900],['mobile',390,844],['booking-mobile',390,844],['night-mobile',390,844],['break-mobile',390,844]]){
+        for(const [name,width,height] of [['desktop',1280,900],['mobile',390,844],['booking-mobile',390,844],['night-mobile',390,844],['break-mobile',390,844],['roles-mobile',390,844]]){
             const night = name === 'night-mobile';
-            const withBreak = name === 'break-mobile';
+            const withRoles = name === 'roles-mobile';
+            const withBreak = name === 'break-mobile' || withRoles;
             const page=await browser.newPage({viewport:{width,height}});
             page.setDefaultTimeout(12000);
             const errors=[];page.on('pageerror',error=>errors.push(error.message));
@@ -170,7 +177,7 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
                 await active().locator('[data-key="sourceType"]').selectOption('booking');
                 await active().locator('[data-key="animatorSlot"]').selectOption('second');
             }
-            await active().locator('[data-key="workDate"]').fill(night ? '2099-01-21' : withBreak ? '2099-01-15' : '2099-01-13');
+            await active().locator('[data-key="workDate"]').fill(night ? '2099-01-21' : withRoles ? '2099-01-16' : withBreak ? '2099-01-15' : '2099-01-13');
             await active().locator('[data-key="workload"]').fill('Синтетична робота адміністратора');
             await active().locator('[data-key="reason"]').fill('Локальна перевірка');
             await page.screenshot({path:path.join(output,`${name}-work.png`),fullPage:true});
@@ -198,8 +205,10 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
             assert.equal(await active().locator('[data-key="payMode"]').inputValue(),'','pay mode must require an explicit choice');
             await active().locator('[data-key="payUnit"]').selectOption(withBreak ? 'hour' : 'fixed');
             await active().locator('[data-key="payMode"]').selectOption(name === 'desktop' ? 'additional' : 'replace_base');
-            await active().locator('[data-key="temporaryAdmission"]').selectOption('true');
-            await active().locator('[data-key="admissionReason"]').fill('Перевірені навички');
+            if (!withRoles) {
+                await active().locator('[data-key="temporaryAdmission"]').selectOption('true');
+                await active().locator('[data-key="admissionReason"]').fill('Перевірені навички');
+            }
             await page.screenshot({path:path.join(output,`${name}-terms.png`),fullPage:true});
             assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'no page horizontal overflow');
             await active().getByRole('button',{name:'Показати стандартну ставку'}).click();
@@ -243,9 +252,30 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
             if (withBreak) {
                 assert.ok(await page.getByText(/Підтверджена перерва 13:45–14:15 · 30 хв/).isVisible());
                 assert.ok(await page.getByText(/15 хв цієї перерви · 345 оплачуваних хв/).isVisible());
-                assert.ok(await page.getByText(/15 хв перерви · 105 оплачуваних хв/).isVisible());
+                if (!withRoles) assert.ok(await page.getByText(/15 хв перерви · 105 оплачуваних хв/).isVisible());
                 assert.ok(await page.getByText(/175,00.*звичайної погодинної оплати.*350,00/).isVisible());
                 assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+            }
+            if (withRoles) {
+                const confirm = page.locator('.confirm-overlay[data-confirm-kind="confirm"]');
+                const summary = confirm.getByRole('region', { name:'Підсумок погодження' });
+                const visibleText = await summary.innerText();
+                assert.equal(visibleText.match(/105 хв/g).length, 1);
+                assert.match(visibleText, /Оплата підміни за основною роллю: 350,00/);
+                assert.match(visibleText, /Суміщена роль: Аніматор · без доплати/);
+                assert.match(visibleText, /Суміщена роль: Менеджер · 240,00.*420,00/);
+                const save = confirm.getByRole('button', { name:'Погоджую наслідки та зберігаю' });
+                assert.ok(await summary.evaluate(element => element === document.activeElement));
+                const saveBounds = await save.boundingBox();
+                assert.ok(saveBounds.y >= 0 && saveBounds.y + saveBounds.height <= height);
+                await page.keyboard.press('PageDown');
+                await page.waitForFunction(() => {
+                    const message = document.querySelector('.confirm-dialog-scrollable .confirm-message');
+                    return message.scrollTop > 0 && message.scrollHeight - message.clientHeight - message.scrollTop <= 1;
+                });
+                await page.screenshot({path:path.join(output,`${name}-preview-scrolled.png`)});
+                await page.keyboard.press('Home');
+                await page.waitForFunction(() => document.querySelector('.confirm-dialog-scrollable .confirm-message').scrollTop === 0);
             }
             await page.screenshot({path:path.join(output,`${name}-preview.png`),fullPage:true});
             const before=commands.length;

@@ -4,6 +4,7 @@ const { failure, transaction } = require('./telegramCrmIdentity');
 const { defaultActorContext } = require('./telegramCrmTasks');
 const { canViewTask } = require('./taskPolicy');
 const { isActiveTaskForHermesOutbox } = require('./notificationOutbox');
+const { canonicalTaskDue } = require('./taskReschedule');
 
 const eligible = `FROM telegram_crm_bindings b
     JOIN users u ON u.id = b.user_id
@@ -52,7 +53,10 @@ function createTelegramCrmNotifications({ pool, identity, actorContext = default
                 return { event: null, processed: true };
             };
             if (event.expired) return finish('expired', 'stale_assignment');
-            const { rows: [task] } = await client.query(`SELECT * FROM tasks WHERE id=$1
+            // Legacy tasks.deadline stores a UTC timestamp without a zone. Attach
+            // the zone before node-postgres can interpret it in the host timezone.
+            const { rows: [task] } = await client.query(`SELECT tasks.*,
+                deadline AT TIME ZONE 'UTC' AS assignment_deadline FROM tasks WHERE id=$1
                 AND NOT EXISTS (SELECT 1 FROM telegram_crm_assignment_outbox WHERE task_id=$1 AND id>$2)`,
             [event.task_id, event.id]);
             if (!task || !isActiveTaskForHermesOutbox(task)
@@ -78,12 +82,13 @@ function createTelegramCrmNotifications({ pool, identity, actorContext = default
                 SET status='sending', attempts=attempts+1, lease_id=$2,
                     lease_expires_at=NOW() + INTERVAL '2 minutes'
                 WHERE id=$1`, [event.id, leaseId]);
+            const due = canonicalTaskDue({ ...task, deadline: task.assignment_deadline });
             return { event: {
                 id: String(event.id), leaseId, taskId: event.task_id, telegramId: recipient.destination,
                 bindingVersion: String(event.binding_version), createdAt: event.created_at,
                 task: {
                     id: task.id, title: task.title, description: task.description || null,
-                    date: task.date || null, deadline: task.deadline || null,
+                    date: task.date || null, deadline: due.instant && due.source !== 'date' ? due.instant : null,
                     businessContext: task.business_context
                 }
             } };

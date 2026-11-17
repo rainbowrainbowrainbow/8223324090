@@ -2,8 +2,10 @@
 
 const contract = require('./staffSubstitutionContract');
 const { localInstant } = require('./staffSubstitutionContext');
-const { loadHrShiftDayPlan, normalizeHrShiftDayPlan, replaceHrShiftSegments } = require('./hrShiftSegments');
-const { staffProfessionKeys } = require('./professions');
+const { loadHrShiftDayPlan, normalizeHrShiftDayPlan, replaceHrShiftSegments,
+    loadPaidRoleValidationContext, validatePaidAdditionalRoles } = require('./hrShiftSegments');
+const { resolvePayrollConditions } = require('./hrPayrollConditions');
+const { normalizeProfessionKey, staffProfessionKeys } = require('./professions');
 const { isBookingWithinAvailabilityWindows, lockBookingConflictResources, timeToMinutes } = require('./booking');
 const { birthdaySlotsForEvents, eventLineIds } = require('./afishaBirthdaySlots');
 const { normalizeScheduleDate, upsertScheduleMirrorFromPlan, reconcileAnimatorRosterDates } = require('./staffScheduleMutations');
@@ -21,6 +23,10 @@ function planTerms(plan) {
 function sameSegmentScope(left, right) {
     return left.shiftStart === right.shiftStart && left.shiftEnd === right.shiftEnd
         && left.professionKey === right.professionKey;
+}
+
+function hasAnimatorRole(segment) {
+    return segment.professionKey === 'animator' || segment.additionalRoles?.some(role => role.professionKey === 'animator');
 }
 
 function withSegments(plan, segments) {
@@ -65,9 +71,8 @@ async function hasHrSubstitutionClaim(db, input, { partialOnly = false, nextDate
 }
 
 async function conflictsWithAnimatorAssignments(db, date, staffId, plan) {
-    const windows = (plan?.segments || []).filter(segment =>
-        segment.professionKey === 'animator' || segment.additionalRoles?.some(role => role.professionKey === 'animator')
-    ).map(segment => ({ start: segment.shiftStart, end: segment.shiftEnd }));
+    const windows = (plan?.segments || []).filter(hasAnimatorRole)
+        .map(segment => ({ start: segment.shiftStart, end: segment.shiftEnd }));
     const bookings = (await db.query(`SELECT time,duration FROM bookings
         WHERE date=$1 AND line_id=$2 AND COALESCE(business_context,'event_genix')='event_genix'
         AND LOWER(COALESCE(NULLIF(BTRIM(status),''),'confirmed')) <> 'cancelled'`, [date,String(staffId)])).rows;
@@ -85,10 +90,49 @@ async function lockPartialShift(db, input) {
             OR (shift_date=$4 AND $4::date<>$3::date AND staff_id=ANY($5::int[]))
         ORDER BY id FOR UPDATE`,
     [input.sourceId, input.staffId, input.workDate, endDate, [input.staffId, input.originalStaffId]]);
-    if (input.professionKey === 'animator') {
+    const hasAdditionalAnimator = input.slotKey === 'partial' && input.professionKey !== 'animator'
+        && (await db.query(`SELECT 1 FROM hr_shifts hs
+            JOIN hr_shift_segments seg ON seg.hr_shift_id=hs.id
+            JOIN hr_shift_segment_roles sr ON sr.segment_id=seg.id
+            WHERE hs.shift_date=$1 AND hs.staff_id=ANY($2::int[]) AND sr.profession_key='animator'
+            LIMIT 1`, [input.workDate, [input.staffId, input.originalStaffId]])).rows.length > 0;
+    if (input.professionKey === 'animator' || hasAdditionalAnimator) {
         await lockBookingConflictResources(db, [input.originalStaffId, input.staffId].filter(Boolean)
             .map(staffId => ({ date: input.workDate, lineId: String(staffId) })));
     }
+}
+
+async function quoteSimultaneousRoles(db, input, transferred, originalAfter, replacementAfter) {
+    const { staffId, originalStaffId, workDate } = input;
+    const context = await loadPaidRoleValidationContext(db, [originalStaffId, staffId]);
+    const staff = context.payrollConditions.staff.get(staffId);
+    const primary = normalizeProfessionKey(staff?.role_type);
+    const approved = role => context.approvedAssignments.has(`${staffId}:${role}`);
+    const card = new Set(staffProfessionKeys(staff));
+    for (const key of [transferred.professionKey, ...transferred.additionalRoles.map(role => role.professionKey)]) {
+        if (!card.has(key) || key !== primary && !approved(key)) {
+            contract.fail('SUBSTITUTION_SHIFT_ROLE_ADMISSION_REQUIRED',
+                `Для передачі суміщених ролей потрібен чинний допуск виконавця в HR-картці: ${key}.`);
+        }
+    }
+    validatePaidAdditionalRoles(originalAfter, originalStaffId, workDate, context);
+    validatePaidAdditionalRoles(replacementAfter, staffId, workDate, context);
+    return transferred.additionalRoles.map(role => {
+        const { professionKey, compensationMode, policyVersion, payMultiplier } = role;
+        if (compensationMode === 'unpaid') return { professionKey, compensationMode };
+        const terms = resolvePayrollConditions(context.payrollConditions, staffId, professionKey, workDate, 'additional');
+        if (terms.rateUnit !== 'hour') {
+            contract.fail('SUBSTITUTION_SHIFT_ROLE_RATE_UNIT_UNSUPPORTED',
+                `Для передачі оплачуваної суміщеної ролі потрібна погодинна ставка: ${professionKey}.`);
+        }
+        const rateMinor = contract.decimalUnits(String(terms.rate), 2, 'ставка суміщеної ролі');
+        // Ordinary condition-based payroll rounds its hourly line to whole hryvnias.
+        const amountMinor = Math.round(transferred.plannedMinutes / 60 * terms.rate) * 100;
+        return { professionKey, compensationMode, policyVersion, payMultiplier, rateMinor, amountMinor,
+            rateSource: terms.rateSource, profileVersionId: terms.profileVersionId ?? null,
+            assignmentId: terms.assignmentId ?? null, exceptionId: terms.exception?.id ?? null,
+            exceptionVersion: terms.exception?.version ?? null };
+    });
 }
 
 function allocateShiftBreak(input, target, startMinute, endMinute, targetStart, targetEnd) {
@@ -136,11 +180,15 @@ async function loadPartialShiftScope(db, input, current) {
         const to = localInstant(input.workDate, segment.shiftEnd, segment.shiftEnd <= segment.shiftStart);
         return from && to && input.startsAt >= from && input.endsAt <= to;
     });
-    if (!target || target.professionKey !== input.professionKey || target.additionalRoles.length) {
-        block('SUBSTITUTION_SHIFT_SCOPE_REQUIRED', 'Оберіть час у межах одного сегмента тієї самої професії без суміщених ролей.');
+    if (!target || target.professionKey !== input.professionKey) {
+        block('SUBSTITUTION_SHIFT_SCOPE_REQUIRED', 'Оберіть час у межах одного сегмента тієї самої основної професії.');
         return scope;
     }
     const overnight = target.shiftEnd <= target.shiftStart;
+    if (target.additionalRoles.length && (overnight || target.workMode === 'freelance')) {
+        block('SUBSTITUTION_SHIFT_ROLE_SCOPE_UNSUPPORTED', 'Суміщені ролі можна передати в межах однієї дати штатної зміни Park.');
+        return scope;
+    }
     const targetEnd = localInstant(input.workDate, target.shiftEnd, overnight);
     if (input.professionKey === 'animator' && overnight) {
         block('SUBSTITUTION_ANIMATOR_OVERNIGHT', 'Нічне вікно аніматора потребує перевірки призначень на обох датах.');
@@ -224,15 +272,20 @@ async function loadPartialShiftScope(db, input, current) {
             date: end.date,
             plan: planTerms(withSegments(original.plan, [{ ...segmentTerms(target), shiftStart: end.time }]))
         };
-        if (input.professionKey === 'animator' && await conflictsWithAnimatorAssignments(db, input.workDate, input.originalStaffId, originalAfter)) {
+        if (hasAnimatorRole(target) && await conflictsWithAnimatorAssignments(db, input.workDate, input.originalStaffId, originalAfter)) {
             block('SUBSTITUTION_ANIMATOR_ASSIGNMENT_OUTSIDE_SHIFT', 'У заміненого аніматора є бронювання або подія Афіші поза новим графіком.');
         }
+        const simultaneousRoles = target.additionalRoles.length
+            ? await quoteSimultaneousRoles(db, input,
+                replacementAfter.segments.find(segment => sameSegmentScope(segment, transferred)), originalAfter, replacementAfter)
+            : null;
         return { ...scope, transferred, originalBefore: original, replacementBefore: replacement,
-            ...(remainder && { remainder }), ...(breakAllocation && { breakAllocation }),
+            ...(remainder && { remainder }), ...(breakAllocation && { breakAllocation }), ...(simultaneousRoles && { simultaneousRoles }),
             originalAfter: planTerms(originalAfter), replacementAfter: planTerms(replacementAfter),
             originalSegments: originalAfter.segments, replacementSegments: replacementAfter.segments };
     } catch (error) {
-        if (error.name !== 'HrShiftPlanError' && !String(error.code).startsWith('SUBSTITUTION_SHIFT_')) throw error;
+        if (error.name !== 'HrShiftPlanError' && error.code !== 'HR_SHIFT_PAID_ROLE_NOT_ALLOWED'
+            && !String(error.code).startsWith('SUBSTITUTION_SHIFT_')) throw error;
         block(error.code, error.message);
         return scope;
     }
@@ -278,7 +331,7 @@ async function restorePartialShift(db, actor, row) {
     const input = row.input_json;
     const saved = row.source_snapshot;
     const { original, replacement, remainder } = await assertCurrent(db, input, saved);
-    if (input.professionKey === 'animator' && await conflictsWithAnimatorAssignments(db, input.workDate, input.staffId, saved.replacementBefore?.plan)) {
+    if (hasAnimatorRole(saved.transferred) && await conflictsWithAnimatorAssignments(db, input.workDate, input.staffId, saved.replacementBefore?.plan)) {
         contract.fail('SUBSTITUTION_ANIMATOR_ASSIGNMENT_OUTSIDE_SHIFT',
             'Після відновлення графіка у виконавця залишиться бронювання або подія Афіші поза зміною.', 409);
     }

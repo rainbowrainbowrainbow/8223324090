@@ -74,9 +74,9 @@ mode preserves attendance-based pay plus one agreed premium. Base replacement
 consumes only verified allocations for the transferred work. The preview shows
 both schedules, transferred minutes and planned ordinary amounts when calculable.
 Version 0.83.93 creates a separately dated remainder for a bounded
-reception shift. The same-day partial transfer of a segment with one
-confirmed break is implemented in the local candidate below. Simultaneous
-roles still need explicit role allocation. Daytime animator
+reception shift. Version 0.83.95 supports partial transfers of a same-day
+segment with one confirmed break. The local simultaneous-role candidate
+adds the allocation described below. Daytime animator
 transfers use the dated roster and reject any existing booking or Afisha slot
 outside the resulting coverage. Overnight animator shift transfers and
 ambiguous historical banquet links remain unsupported. Completed agreements
@@ -253,8 +253,8 @@ later retry in the original cabinet.
   guarantees against the matching ordinary base. Automatic prorating still
   needs an explicit allocation rule. Cross-date reception remainders
   shipped in 0.83.93. Partial same-day transfers with one confirmed unpaid
-  break are available in the local candidate. Simultaneous roles remain
-  open. Park amount
+  break shipped in 0.83.95. Same-day partial transfers of simultaneous
+  roles are implemented locally and still need a production release. Park amount
   corrections after completion are available from 0.83.90. Corrections to
   the worker or attendance allocation still require separate rules.
 - Sources: Park legacy-only banquet links and ambiguous linked bookings,
@@ -327,6 +327,31 @@ Merging with an existing next-day plan, breaks, concurrent roles, animator
 coverage, daylight-saving changes and other payroll months remain outside
 this scope. Resolve active cross-date agreements before reverting the app
 implementation and preserve their guards and history.
+
+### Same-day partial transfer of simultaneous roles
+
+The owner approved local implementation in `RED-SUBSTITUTION-SIMULTANEOUS-ROLES-LOCAL-17`.
+Transfer a Park segment's primary and simultaneous roles together for the
+selected same-day interval. The original worker retains the same roles on
+the remaining intervals. Require existing admission for the replacement and
+use their dated hourly rate and active policy for each paid simultaneous role.
+The preview and history show one duration and separate amounts for the roles.
+Changes to the replacement's additional rate require a fresh preview.
+
+The ordinary attendance snapshot records each worker's additional allocation.
+Replacing base pay consumes only the matching base allocation. Cancellation
+before attendance restores the prior plans. If the transferred segment includes
+an animator role, the existing availability check also protects bookings and
+Afisha assignments on creation and cancellation. Cross-date segments and
+non-hourly simultaneous pay require their own rules.
+
+For synthetic QA, transfer 12:00–14:00 from a 09:00–17:00 segment with a paid
+manager role and a 13:45–14:15 confirmed break. The replacement has 105 work
+minutes and an independent paid manager line. The original worker keeps both
+roles on 09:00–12:00 and 14:00–17:00. Inspect the agreed terms in history,
+cancel to restore the original plans, then recreate and finish attendance.
+Replace only the base line and check that both workers' manager allocations
+remain in payroll for the minutes they worked.
 
 ### Same-day partial transfer with one confirmed unpaid break
 

@@ -2,6 +2,7 @@
 const c = require('./staffSubstitutionContract');
 const { matchesSubstitutionBaseAllocation } = require('./staffSubstitutionShift');
 const { timeToMinutes } = require('./booking');
+const { settleFixedRetentions } = require('./staffSubstitutionFixedPay');
 
 function parseSnapshot(value) {
     return typeof value === 'string' ? JSON.parse(value) : value;
@@ -48,10 +49,14 @@ async function freezeCompletion(db, row, payload, actor) {
         completion.originalPay = original;
     } else if (input.sourceType === 'hr_shift' && input.originalTreatment === 'retain') {
         const original = row.quote_json.payImpact?.original;
-        if (!validRetainedPay(original, input)) {
+        const fixed = row.quote_json.payImpact?.fixedOriginal;
+        if (fixed) {
+            completion.originalFixedPay = fixed;
+        } else if (!validRetainedPay(original, input)) {
             c.fail('SUBSTITUTION_ORIGINAL_RATE_UNSUPPORTED', 'Не зафіксовано оплату за передані хвилини.', 409);
+        } else {
+            completion.originalPay = original;
         }
-        completion.originalPay = original;
     }
     if (input.sourceType === 'hr_shift' && input.payMode === 'additional') {
         const record = (await db.query(`SELECT id,clock_out,compensation_snapshot FROM hr_time_records
@@ -151,13 +156,14 @@ async function loadPayrollSubstitutions(db, staffIds, from, to) {
     return map;
 }
 
-function applyPayrollSubstitutions(metrics, rows = []) {
+function applyPayrollSubstitutions(metrics, rows = [], monthlyFixedOverrides = null) {
     if (!rows.length) return metrics;
     const result = { ...metrics, conditionDays: (metrics.conditionDays || []).map(day => ({ ...day,
         snapshot: day.snapshot ? { ...day.snapshot, compensationAllocations: (day.snapshot.compensationAllocations || []).map(item => ({ ...item })) } : null })),
     substitutionLines: [], payrollBlockingIssues: [...(metrics.payrollBlockingIssues || [])] };
     const claims = new Set();
     const seen = new Set();
+    const fixedRetentions = [];
     const block = (code, message, id) => result.payrollBlockingIssues.push({ code, message, substitutionId: String(id), severity: 'error' });
     for (const row of rows) {
         const id = String(row.id);
@@ -171,25 +177,30 @@ function applyPayrollSubstitutions(metrics, rows = []) {
         }
         if (row.originalPayee) {
             const manual = manualOriginalPay(row.input_json, row.quote_json);
-            const expected = row.input_json.payOverrides?.originalMinor != null ? manual : row.quote_json.payImpact?.original;
+            const fixed = row.input_json.payOverrides?.originalMinor == null ? row.quote_json.payImpact?.fixedOriginal : null;
+            const expected = row.input_json.payOverrides?.originalMinor != null ? manual : fixed ?? row.quote_json.payImpact?.original;
             const retained = completion.originalPay;
-            if (!expected || (!manual && !validRetainedPay(retained, row.input_json))
-                || c.fingerprint(retained ?? null) !== c.fingerprint(expected)) {
+            const recorded = fixed ? completion.originalFixedPay : retained;
+            if (!expected || (!manual && !fixed && !validRetainedPay(retained, row.input_json))
+                || c.fingerprint(recorded ?? null) !== c.fingerprint(expected)) {
                 block('SUBSTITUTION_ORIGINAL_PAY_INVALID', 'Не підтверджено збережену оплату за переданий обсяг', id);
                 continue;
             }
             // A corrected or out-of-plan attendance record must not silently pay the same transferred time.
             const relevantDays = result.conditionDays.filter(day => day.date === row.work_date);
             const repeatsTransferredTime = relevantDays.some(day => {
-                if (!day.worked) return false;
+                const monthly = fixed?.rateUnit === 'month';
+                if (!day.worked && !monthly) return false;
                 const allocations = day.snapshot?.compensationAllocations;
-                if (!row.source_snapshot?.partial || !allocations?.length) return true;
+                if (!allocations?.length) return day.worked || monthly && day.paidPlannedMinutes > 0;
+                const paidBase = allocations.filter(allocation => allocation.allocationType === 'base'
+                    && (allocation.actualMinutes > 0 || monthly && allocation.plannedMinutes * (day.paidPlannedFactor ?? 1) > 0));
+                if (!row.source_snapshot?.partial) return fixed ? paidBase.length > 0 : day.worked;
                 const from = c.kyivParts(row.input_json.startsAt);
                 const to = c.kyivParts(row.input_json.endsAt);
                 const start = timeToMinutes(from.time);
                 const end = timeToMinutes(to.time) + (to.date === from.date ? 0 : 1440);
-                return allocations.some(allocation => {
-                    if (allocation.allocationType !== 'base' || !(allocation.actualMinutes > 0)) return false;
+                return paidBase.some(allocation => {
                     const segment = day.snapshot.plan?.segments?.[allocation.segmentIndex];
                     if (!segment || !segment.shiftStart || !segment.shiftEnd || allocation.overtimeMinutes > 0) return true;
                     const segmentStart = timeToMinutes(segment.shiftStart);
@@ -197,8 +208,12 @@ function applyPayrollSubstitutions(metrics, rows = []) {
                     return segmentStart < end && start < segmentEnd;
                 });
             });
-            if (retained.amountMinor > 0 && repeatsTransferredTime) {
+            if ((fixed || retained.amountMinor > 0) && repeatsTransferredTime) {
                 block('SUBSTITUTION_ORIGINAL_PAY_OVERLAP', 'Табель заміненого працівника потребує звірки з оплатою переданих годин', id);
+                continue;
+            }
+            if (fixed) {
+                fixedRetentions.push({ id, terms: fixed, workDate: row.work_date, professionKey: row.input_json.professionKey });
                 continue;
             }
             result.substitutionLines.push({ group: 'base', lineType: 'staff_substitution',
@@ -250,6 +265,23 @@ function applyPayrollSubstitutions(metrics, rows = []) {
                 originalStaffId: row.input_json.originalStaffId, originalTreatment: row.input_json.originalTreatment, baseClaims: completion.baseClaims,
                 rate: row.quote_json.rate, ...(row.input_json.payOverrides && { payOverrides: row.input_json.payOverrides }),
                 workEvidence: completion.workEvidence, approvedBy: completion.approvedBy } });
+    }
+    if (fixedRetentions.length) {
+        const amounts = settleFixedRetentions(result.conditionDays, fixedRetentions.filter(row =>
+            !monthlyFixedOverrides || row.terms.rateUnit !== 'month'));
+        result.fixedRetentionSettlements = amounts;
+        for (const row of fixedRetentions) {
+            const { id, workDate, professionKey, terms } = row;
+            const settled = monthlyFixedOverrides && terms.rateUnit === 'month' ? monthlyFixedOverrides.get(id) : amounts.get(id);
+            if (!settled) {
+                block('SUBSTITUTION_FIXED_PAY_CONDITIONS_CHANGED', 'Умови фіксованої оплати в табелі потребують звірки з погодженою підміною', id);
+                continue;
+            }
+            result.substitutionLines.push({ group: 'base', lineType: 'staff_substitution',
+                label: `Збережена оплата за підміну #${id}: ${professionKey}`, amount: settled.amountMinor / 100, quantity: 1,
+                source: 'staff_substitution', meta: { substitutionId: id, workDate, professionKey, payee: 'original',
+                    originalTreatment: 'retain', rate: terms, fixedRetention: settled } });
+        }
     }
     return result;
 }

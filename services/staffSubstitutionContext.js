@@ -2,6 +2,7 @@
 const c = require('./staffSubstitutionContract');
 const { validateStaffScheduleabilityCardForDate } = require('./staffOperationalFilters');
 const { resolveCapability } = require('./accountAccessPolicy');
+const { plannedFixedRetention } = require('./staffSubstitutionFixedPay');
 
 function localInstant(date, time, nextDay = false) {
     const localDate = nextDay ? new Date(Date.parse(date) + 86400000).toISOString().slice(0, 10) : date;
@@ -11,7 +12,7 @@ function localInstant(date, time, nextDay = false) {
     return new Date(candidates[0]).toISOString();
 }
 
-async function shiftPayImpact(db, input, current, blockers) {
+async function shiftPayImpact(db, input, source, current, blockers) {
     if (!input.plannedMinutes || !input.originalStaffId) return null;
     const { loadPayrollConditionContext, resolvePayrollConditions, payrollRateBlocker } = require('./hrPayrollConditions');
     const terms = await loadPayrollConditionContext(db, [input.originalStaffId,input.staffId], { from: input.workDate, to: input.workDate });
@@ -22,7 +23,8 @@ async function shiftPayImpact(db, input, current, blockers) {
             || !/^\d+(?:\.\d{1,2})?$/.test(String(ordinary.rate))) return null;
         const rateMinor = c.decimalUnits(ordinary.rate, 2, 'звичайна ставка');
         if (ordinary.rateUnit !== 'hour') return { rateUnit: ordinary.rateUnit, rateMinor,
-            source: ordinary.rateSource, profileVersionId: ordinary.profileVersionId ?? null };
+            source: ordinary.rateSource, profileVersionId: ordinary.profileVersionId ?? null,
+            ...(ordinary.rateUnit === 'month' ? { monthlyNorm: ordinary.monthlyNorm } : {}) };
         return { rateMinor, amountMinor: c.amountFor({ payUnit: 'hour' }, rateMinor, input.plannedMinutes),
             source: ordinary.rateSource, profileVersionId: ordinary.profileVersionId ?? null,
             exceptionId: ordinary.exception?.id ?? null, exceptionVersion: ordinary.exception?.version ?? null };
@@ -33,16 +35,18 @@ async function shiftPayImpact(db, input, current, blockers) {
     const originalReference = originalTerms?.rateUnit ? originalTerms : null;
     const original = originalReference ? null : originalTerms;
     const override = input.payOverrides?.originalMinor;
+    const fixedOriginal = input.originalTreatment === 'retain'
+        ? await plannedFixedRetention(db, input, originalReference, source, Boolean(current)) : null;
     if (override != null && !original && !originalReference) {
         blockers.push({ code: 'SUBSTITUTION_ORIGINAL_RATE_UNSUPPORTED', message: 'Не вдалося перевірити чинні умови оплати заміненого працівника.' });
     } else if (override < 0 && (!originalReference || -override > originalReference.rateMinor)) {
         blockers.push({ code: 'SUBSTITUTION_ORIGINAL_ADJUSTMENT_INVALID', message: 'Від’ємне коригування доступне в межах чинної денної або місячної ставки.' });
-    } else if (input.originalTreatment === 'retain' && !original && override == null) {
-        blockers.push({ code: 'SUBSTITUTION_ORIGINAL_RATE_UNSUPPORTED', message: 'Щоб зберегти оплату за передані хвилини, потрібна чинна погодинна ставка заміненого працівника.' });
+    } else if (input.originalTreatment === 'retain' && !original && !fixedOriginal && override == null) {
+        blockers.push({ code: 'SUBSTITUTION_ORIGINAL_RATE_UNSUPPORTED', message: 'Для збереження оплати потрібні підтверджені умови на дату підміни або погоджена ручна сума.' });
     }
     const replacement = rateFor(input.staffId);
     return { original: original ?? null, replacement: replacement?.rateUnit ? null : replacement,
-        ...(originalReference && { originalReference }) };
+        ...(originalReference && { originalReference }), ...(fixedOriginal && { fixedOriginal }) };
 }
 
 async function loadContext(db, business, actor, input, source, current = null) {
@@ -158,7 +162,7 @@ async function loadContext(db, business, actor, input, source, current = null) {
         blockers.push({ code: 'SUBSTITUTION_WORK_STARTED', message: 'Виконавець уже почав облік роботи. Його денний план не можна змінити підміною.' });
     }
     const payImpact = source.type === 'hr_shift' && input.originalStaffId
-        ? await shiftPayImpact(db, input, current, blockers) : null;
+        ? await shiftPayImpact(db, input, source, current, blockers) : null;
     return { blockers, commitments, standardRate, payImpact,
         evidence: { staff: staff ? { id: staff.id, isActive: staff.is_active, role: staff.role_type, terminationDate: staff.termination_date } : null,
             profession: profession ? { key: profession.key, title: profession.title } : null, admission: admission || null,

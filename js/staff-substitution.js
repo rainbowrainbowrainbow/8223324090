@@ -103,12 +103,25 @@
         ].join('\n');
     }
 
+    function plannedOriginalAdjustment(quote) {
+        return quote.input?.originalTreatment === 'retain'
+            ? quote.payImpact?.original?.amountMinor ?? quote.payImpact?.fixedOriginal?.estimatedMinor : 0;
+    }
+
+    function fixedOriginalSummary(quote) {
+        const fixed = quote.payImpact?.fixedOriginal;
+        if (!fixed) return '';
+        const period = fixed.rateUnit === 'day' ? 'денна' : 'місячна';
+        return `Звичайна ${period} оплата за планом — ${money(fixed.plannedBeforeMinor)} → ${money(fixed.plannedAfterMinor)}. `
+            + `Різниця за планом — ${money(fixed.estimatedMinor)}. `
+            + (quote.input.payOverrides?.originalMinor != null ? 'Для цієї підміни діє погоджена ручна сума.' : 'Остаточну різницю розрахує табель.');
+    }
+
     function payOverrideSummary(quote, previousQuote = null) {
         const edited = quote.input?.payOverrides;
         const previous = previousQuote?.input?.payOverrides;
         if (!edited && !previous) return '';
-        const originalAmount = value => value.input?.payOverrides?.originalMinor
-            ?? (value.input?.originalTreatment === 'retain' ? value.payImpact?.original?.amountMinor : 0);
+        const originalAmount = value => value.input?.payOverrides?.originalMinor ?? plannedOriginalAdjustment(value);
         const compare = (label, before, after) => {
             if (after == null) return `${label}: автоматичний розрахунок.`;
             return before == null ? `${label}: погоджено ${money(after)}.`
@@ -130,7 +143,7 @@
     async function editShiftPay(input, quote, { revising = false } = {}) {
         const stored = quote.input?.payOverrides;
         const originalTerms = quote.payImpact?.originalReference;
-        const originalAuto = input.originalTreatment === 'retain' ? quote.payImpact?.original?.amountMinor : 0;
+        const originalAuto = plannedOriginalAdjustment(quote);
         const replacementAuto = quote.payOverrides?.replacementCalculatedMinor ?? (stored?.replacementMinor == null ? quote.estimateMinor : null);
         const defaults = {
             originalPayAmount: amountText(stored?.originalMinor ?? originalAuto),
@@ -163,6 +176,7 @@
             { type:'note', text: [
                 rate ? `Ставка для розрахунку: ${money(rate.rateMinor)}.` : 'Стандартну ставку для обраної одиниці не знайдено.',
                 originalTerms ? `Звичайна ставка заміненого: ${money(originalTerms.rateMinor)} ${originalTerms.rateUnit === 'day' ? 'за вихід' : 'на місяць'}. У полі нижче вкажіть лише зміну до оплати за табелем. Мінус зменшує її.` : null,
+                fixedOriginalSummary(quote),
                 'Суми стосуються цієї підміни. Очистіть поле, щоб повернутися до автоматичного розрахунку.'
             ].filter(Boolean).join('\n') },
             choice('rateMode', 'Джерело ставки', [['standard','Стандартна ставка'],['individual','Індивідуальна ставка']],
@@ -281,12 +295,13 @@
             ? `\nІз плану заміненого передається ${quote.input.plannedMinutes} робочих хвилин.`
             : '';
         const originalImpact = quote.payImpact?.original;
+        const fixedOriginal = fixedOriginalSummary(quote);
         const replacementImpact = quote.payImpact?.replacement;
         const payImpact = quote.payImpact ? [
             originalImpact ? (input.originalTreatment === 'retain'
                 ? `Замінений працівник зберігає ${money(originalImpact.amountMinor)} за передані години.`
                 : `У заміненого працівника планова оплата зменшується на ${money(originalImpact.amountMinor)} за передані години.`)
-                : 'Оплата заміненого працівника за передані години залежить від його тарифу й умов табеля.',
+                : fixedOriginal || 'Оплата заміненого працівника за передані години залежить від його тарифу й умов табеля.',
             replacementImpact ? (input.payMode === 'additional'
                 ? `Виконавець: ${money(replacementImpact.amountMinor)} основної оплати + ${money(quote.estimateMinor)} доплати = ${money(replacementImpact.amountMinor + quote.estimateMinor)} за планом.`
                 : `Виконавець: ${money(replacementImpact.amountMinor)} звичайної погодинної оплати за планом замінюється на ${money(quote.estimateMinor)}.`)
@@ -302,7 +317,7 @@
             + quote.warnings.map(warning => warning.message).join('\n') + beforeSchedule + scheduleEffect
             + (breakSummary ? `\n${breakSummary}` : '') + originalWorkload + (payImpact ? `\n${payImpact}` : '')
             + (editedPay ? `\n${editedPay}` : '') + '\nНарахування відбудеться після підтвердження фактичної роботи.',
-        { okText: 'Погоджую наслідки та зберігаю', cancelText: 'Скасувати', scrollable: Boolean(roleSummary) });
+        { okText: 'Погоджую наслідки та зберігаю', cancelText: 'Скасувати', scrollable: Boolean(roleSummary || fixedOriginal) });
         if (!confirmed) return;
         await saveCommand('', { input, previewFingerprint: quote.fingerprint, effectsAcknowledged: true });
         showNotification('Підміну збережено. Історичну ставку зафіксовано.', 'success');
@@ -412,6 +427,8 @@
         const remainder = details.quote.evidence?.source?.remainder;
         const breakSummary = breakPlanSummary(details.quote);
         const roleSummary = simultaneousRoleSummary(details.quote, catalog);
+        const fixedOriginal = fixedOriginalSummary(details.quote);
+        const fixedActual = history.fixedOriginal;
         const planLabel = roleSummary ? 'План за основною роллю' : 'План';
         const factLabel = roleSummary ? 'Факт за основною роллю' : 'Факт';
         const note = `${details.input.workload}\n${substitutionFacts(details, catalog, people)}\n${planLabel}: ${money(details.quote.estimateMinor)}\n${factLabel}: ${details.completion ? money(details.completion.amountMinor) : 'ще не підтверджено'}\n`
@@ -419,6 +436,8 @@
             + (remainder ? `Залишок зміни заміненого працівника · ${remainder.date}: ${formatSegments(remainder.plan)}.\n` : '')
             + (breakSummary ? `${breakSummary}\n` : '')
             + (roleSummary ? `${roleSummary}\n` : '')
+            + (fixedOriginal ? `${fixedOriginal}\n` : '')
+            + (fixedActual ? `${fixedActual.frozen ? 'У зафіксованому розрахунку' : 'За поточним табелем'} різниця складає ${money(fixedActual.amountMinor)}.\n` : '')
             + (details.completion?.originalPay ? `Нарахування заміненому за підміну: ${money(details.completion.originalPay.amountMinor)}.\n` : '')
             + history.events.map(event => {
                 const recordedPay = event.after_json?.quote && ['create','revise'].includes(event.action)
@@ -452,7 +471,10 @@
             const quote=await request('POST','/preview',{input,id:row.id});
             if (!quote.available) throw new Error(quote.blockers.map(item=>item.message).join('\n'));
             const editedPay = payOverrideSummary(quote, details.quote);
-            if (!await confirmModal(`Було: ${money(details.quote.estimateMinor)}\nСтане: ${money(quote.estimateMinor)}\n${quote.effects.replacement}\n${quote.effects.original}${editedPay ? `\n${editedPay}` : ''}`,{okText:'Погоджую зміни'})) return;
+            const fixedPay = fixedOriginalSummary(quote);
+            if (!await confirmModal([`Було: ${money(details.quote.estimateMinor)}`, `Стане: ${money(quote.estimateMinor)}`,
+                quote.effects.replacement, quote.effects.original, fixedPay, editedPay].filter(Boolean).join('\n'),
+            { okText:'Погоджую зміни', scrollable: Boolean(fixedPay) })) return;
             await saveCommand(`/${row.id}/revise`,{input,previewFingerprint:quote.fingerprint,effectsAcknowledged:true,expectedVersion:details.version});
             showNotification('Нову ставку зафіксовано в історії','success');
             return;

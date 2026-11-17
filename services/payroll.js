@@ -1677,6 +1677,7 @@ async function loadPayrollAttendanceMetrics(options = {}, db = pool) {
         }
         if (!bucket.conditionDays) bucket.conditionDays = [];
         bucket.conditionDays.push({ date, attendanceRef, snapshot: compensationSnapshot, worked,
+            ...(businessContext ? { businessContext } : {}),
             paidPlannedMinutes: Math.round(plannedMinutes * leavePolicy.paidPlannedFactor),
             paidPlannedFactor: leavePolicy.paidPlannedFactor });
         bucket.attendanceDays.push({
@@ -3921,8 +3922,32 @@ async function buildPayrollContext(month, options = {}, db = pool) {
     const { loadPayrollSubstitutions, applyPayrollSubstitutions } = require('./staffSubstitutionPayroll');
     const substitutionMap = await loadPayrollSubstitutions(db, staffIds,
         periodOptions.from || monthBounds.from, periodOptions.to || monthBounds.to);
+    const monthlyRetentionAmounts = new Map();
+    if (!isFullMonth) {
+        const staffByMonth = new Map();
+        for (const [staffId, rows] of substitutionMap) for (const row of rows) {
+            if (!row.originalPayee || row.completion_json?.originalFixedPay?.rateUnit !== 'month') continue;
+            const retentionMonth = row.work_date.slice(0, 7);
+            if (!staffByMonth.has(retentionMonth)) staffByMonth.set(retentionMonth, new Set());
+            staffByMonth.get(retentionMonth).add(staffId);
+        }
+        // A short payroll view still uses the full month's rounded baseline for retention credits.
+        for (const [retentionMonth, workers] of staffByMonth) {
+            const bounds = getMonthBounds(retentionMonth);
+            const ids = [...workers];
+            const monthMetrics = await loadPayrollAttendanceMetrics({ ...bounds, staffIds: ids }, db);
+            const monthSubstitutions = await loadPayrollSubstitutions(db, ids, bounds.from, bounds.to);
+            for (const staffId of ids) {
+                const full = applyPayrollSubstitutions(monthMetrics.get(staffId) || {}, monthSubstitutions.get(staffId));
+                if (!monthlyRetentionAmounts.has(staffId)) monthlyRetentionAmounts.set(staffId, new Map());
+                for (const [id, settlement] of full.fixedRetentionSettlements || []) {
+                    monthlyRetentionAmounts.get(staffId).set(id, settlement);
+                }
+            }
+        }
+    }
     for (const [staffId, substitutions] of substitutionMap) {
-        timeMap.set(staffId, applyPayrollSubstitutions(timeMap.get(staffId) || {}, substitutions));
+        timeMap.set(staffId, applyPayrollSubstitutions(timeMap.get(staffId) || {}, substitutions, monthlyRetentionAmounts.get(staffId)));
     }
     const corrections = includeMonthlyAdjustments
         ? await require('./staffSubstitutionCorrections').loadPayrollCorrections(db, normalizedMonth, periodOptions.staffId)
@@ -4275,9 +4300,9 @@ async function getPayrollPreview(staffId, month, db = pool) {
     return row;
 }
 
-async function getEmployeePayrollPreview(staffId, month, db = pool) {
+async function getEmployeePayrollPreview(staffId, month, db = pool, { includeReports = false } = {}) {
     if (!Number.isSafeInteger(staffId) || staffId <= 0) throw new TypeError('Invalid employee identity');
-    const context = await buildPayrollContext(month, { staffId, includeReports: false }, db);
+    const context = await buildPayrollContext(month, { staffId, includeReports }, db);
     return buildPayrollRowsFromContext(context).staffRows[0] || null;
 }
 

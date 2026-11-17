@@ -81,6 +81,16 @@ function createSubstitutionService(dependencies = {}) {
             const { allowedPayees, loadCorrectionHistory } = require('./staffSubstitutionCorrections');
             history.correctionPayees = allowedPayees(row);
             history.corrections = await loadCorrectionHistory(db, row.id);
+            if (row.completion_json?.originalFixedPay) {
+                const { getEmployeePayrollPreview } = require('./payroll');
+                const month = row.input_json.workDate.slice(0, 7);
+                const payroll = await getEmployeePayrollPreview(Number(row.original_staff_id), month, db, { includeReports: true });
+                const settled = payroll?.lines?.find(line => line.meta?.substitutionId === String(row.id) && line.meta?.fixedRetention);
+                const frozen = ['reviewed', 'approved', 'paid'].includes(payroll?.status);
+                if (settled && (frozen || !payroll.payrollBlockingIssues?.length)) {
+                    history.fixedOriginal = { ...settled.meta.fixedRetention, frozen };
+                }
+            }
         }
         return history;
     }

@@ -328,6 +328,15 @@ the agreement number and active or completed status. The migrated database
 test covers the active claim, its removal after cancellation and Park/DAR
 separation in the My Day projection.
 
+The integration branch also calculates the retained fixed base from the ordinary
+pay scope. The agreement freezes the rate, monthly norm and transferred minutes.
+The preview compares the original worker's before and after schedules. Payroll
+uses the finalized attendance evidence and applies daily retention only when the
+ordinary exit has not already paid the same daily base. Monthly retention sums
+the credits against one rounded month baseline, including in shorter views. The
+history shows the resulting credit from the current or frozen payroll breakdown.
+Manual adjustments retain their existing contract.
+
 ## Decisions before expanding protected booking and pay scopes
 
 

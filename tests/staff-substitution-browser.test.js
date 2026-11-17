@@ -142,6 +142,11 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
                     original: { amountMinor: source.breakAllocation ? 26250 : 30000 },
                     replacement: { amountMinor: source.breakAllocation ? 17500 : 20000 }
                 } : null;
+                if (payImpact && input.workDate === '2099-01-17') {
+                    payImpact.original = null;
+                    payImpact.originalReference = { rateUnit:'month', rateMinor:3000000 };
+                    payImpact.fixedOriginal = { rateUnit:'month', plannedBeforeMinor:150300, plannedAfterMinor:114100, estimatedMinor:36200 };
+                }
                 return res.end(JSON.stringify({success:true,data:contract.preview(input,{blockers:[],commitments:[],payImpact,evidence:{source}})}));
             }
             commands.push(payload);
@@ -156,10 +161,12 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
     await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
     const browser=await chromium.launch({headless:true,...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH?{executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH}:{})});
     try{
-        for(const [name,width,height] of [['desktop',1280,900],['mobile',390,844],['booking-mobile',390,844],['night-mobile',390,844],['break-mobile',390,844],['roles-mobile',390,844]]){
+        for(const [name,width,height] of [['desktop',1280,900],['mobile',390,844],['booking-mobile',390,844],['night-mobile',390,844],['break-mobile',390,844],['roles-mobile',390,844],['fixed-mobile',390,844]]){
             const night = name === 'night-mobile';
             const withRoles = name === 'roles-mobile';
             const withBreak = name === 'break-mobile' || withRoles;
+            const withFixed = name === 'fixed-mobile';
+            const partial = name === 'mobile' || night || withBreak || withFixed;
             const page=await browser.newPage({viewport:{width,height}});
             page.setDefaultTimeout(12000);
             const errors=[];page.on('pageerror',error=>errors.push(error.message));
@@ -168,7 +175,7 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
             await page.getByRole('button',{name:'Людина на заміну',exact:true}).click();
             await active().locator('[data-key="staffId"]').selectOption('2');
             await active().locator('[data-key="professionKey"]').selectOption('reception');
-            if (name === 'mobile' || night || withBreak) {
+            if (partial) {
                 await active().locator('[data-key="originalStaffId"]').selectOption('3');
                 await active().locator('[data-key="sourceType"]').selectOption('hr_shift');
                 await active().locator('[data-key="shiftScope"]').selectOption('partial');
@@ -177,12 +184,12 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
                 await active().locator('[data-key="sourceType"]').selectOption('booking');
                 await active().locator('[data-key="animatorSlot"]').selectOption('second');
             }
-            await active().locator('[data-key="workDate"]').fill(night ? '2099-01-21' : withRoles ? '2099-01-16' : withBreak ? '2099-01-15' : '2099-01-13');
+            await active().locator('[data-key="workDate"]').fill(night ? '2099-01-21' : withRoles ? '2099-01-16' : withBreak ? '2099-01-15' : withFixed ? '2099-01-17' : '2099-01-13');
             await active().locator('[data-key="workload"]').fill('Синтетична робота адміністратора');
             await active().locator('[data-key="reason"]').fill('Локальна перевірка');
             await page.screenshot({path:path.join(output,`${name}-work.png`),fullPage:true});
             await active().getByRole('button',{name:'Умови оплати',exact:true}).click();
-            if (name === 'mobile' || night || withBreak) {
+            if (partial) {
                 await active().locator('[data-key="sourceId"]').selectOption('42');
                 await active().getByRole('button',{name:'Умови оплати',exact:true}).click();
                 await active().locator('[data-key="startTime"]').fill(night ? '23:00' : withBreak ? '12:00' : '10:00');
@@ -194,7 +201,7 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
                     await breakStart.fill('13:45');
                     assert.equal(await active().getByLabel('Неоплачувана перерва, хв').isVisible(), false);
                 }
-                await active().locator('[data-key="originalTreatment"]').selectOption('transfer_unworked_scope');
+                await active().locator('[data-key="originalTreatment"]').selectOption(withFixed ? 'retain' : 'transfer_unworked_scope');
             } else if (name === 'booking-mobile') {
                 await active().locator('[data-key="sourceId"]').selectOption('BOOK-QA-42');
                 await active().getByRole('button',{name:'Умови оплати',exact:true}).click();
@@ -214,6 +221,12 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
             await active().getByRole('button',{name:'Показати стандартну ставку'}).click();
             await active().locator('[data-key="rate"]').fill(withBreak ? '200' : '750');
             await active().locator('[data-key="rateReason"]').fill('Разова погоджена сума');
+            if (withFixed) {
+                const retained = active().getByLabel('Замінений працівник · зміна до оплати за табелем, грн');
+                assert.equal(await retained.inputValue(), '362.00');
+                await retained.fill('351.25');
+                await active().getByLabel('Причина ручної зміни оплати').fill('Погоджене коригування за місяць');
+            }
             if (name === 'mobile') {
                 const originalAmount = active().getByLabel('Замінений працівник · зміна до оплати за табелем, грн');
                 const replacementAmount = active().getByLabel('Виконавець · оплата підміни, грн');
@@ -277,6 +290,13 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
                 await page.keyboard.press('Home');
                 await page.waitForFunction(() => document.querySelector('.confirm-dialog-scrollable .confirm-message').scrollTop === 0);
             }
+            if (withFixed) {
+                const summary = page.getByRole('region', { name:'Підсумок погодження' });
+                const visibleText = await summary.innerText();
+                assert.match(visibleText, /Звичайна місячна оплата за планом.*→/);
+                assert.match(visibleText, /362,00.*351,25/s);
+                assert.match(visibleText, /Для цієї підміни діє погоджена ручна сума/);
+            }
             await page.screenshot({path:path.join(output,`${name}-preview.png`),fullPage:true});
             const before=commands.length;
             await page.getByRole('button',{name:'Погоджую наслідки та зберігаю'}).click();
@@ -312,7 +332,7 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
                 assert.deepEqual(commandBusinesses.slice(-2), ['event_genix', 'event_genix']);
             }else {
                 assert.equal(commands.length,before+1);
-                assert.equal(commands.at(-1).input.slotKey, name === 'mobile' || night || withBreak ? 'partial' : 'second');
+                assert.equal(commands.at(-1).input.slotKey, partial ? 'partial' : 'second');
                 if (night) assert.equal(commands.at(-1).input.endsAt, '2099-01-22T02:00:00+02:00');
                 if (withBreak) {
                     assert.equal(commands.at(-1).input.breakStartTime, '13:45');

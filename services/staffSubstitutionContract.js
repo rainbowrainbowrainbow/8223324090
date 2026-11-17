@@ -185,13 +185,15 @@ function preview(input, context) {
         replacement: input.payMode === 'additional' ? 'Звичайна оплата зберігається; підміна нараховується додатково.'
             : 'Звичайна оплата лише за погоджений обсяг замінюється оплатою підміни.',
         original: originalOverride != null ? 'Звичайна оплата заміненого працівника розраховується за табелем; погоджена сума за підміну враховується один раз.'
+            : context.payImpact?.fixedOriginal ? 'До звичайної оплати заміненого працівника додається лише різниця за підтвердженою підміною.'
             : input.originalTreatment === 'retain' ? (input.sourceType === 'hr_shift'
             ? 'Оплата переданих годин зберігається окремим рядком після підтвердження підміни.' : 'Оплата заміненого працівника не змінюється.')
             : input.originalTreatment === 'transfer_unworked_scope' ? 'Передається лише невідпрацьований обсяг. Уже зароблена оплата зберігається.' : 'Заміненого працівника немає.'
     };
     const result = { input, rate, estimateMinor, currency: 'UAH', ruleVersion: RULE_VERSION,
         ...(input.payOverrides && { payOverrides: {
-            originalCalculatedMinor: input.originalTreatment === 'retain' ? context.payImpact?.original?.amountMinor ?? 0 : 0,
+            originalCalculatedMinor: input.originalTreatment === 'retain'
+                ? context.payImpact?.original?.amountMinor ?? context.payImpact?.fixedOriginal?.estimatedMinor ?? 0 : 0,
             replacementCalculatedMinor: calculatedMinor
         } }),
         effects, ...(context.payImpact && { payImpact: context.payImpact }), warnings, blockers,

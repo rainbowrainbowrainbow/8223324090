@@ -1468,17 +1468,17 @@ test('Park posts completed-substitution corrections once and preserves frozen pa
     } finally { await db.end(); }
 });
 
-test('Park posts a manual original-worker adjustment against real daily and monthly payroll', { skip: !enabled }, async () => {
+test('Park applies automatic and manual original-worker adjustments to daily and monthly payroll', { skip: !enabled }, async () => {
     assert.equal(assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL).isLocal, true);
     assert.equal(process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER, 'true');
     const db = new Pool({ connectionString: process.env.TEST_DATABASE_URL, ssl: false });
     const service = createSubstitutionService({ pool: db });
     const actor = { id: 1, username: 'substitution_qa_operator', role: 'creator' };
     const { recordAttendanceClockIn, recordAttendanceClockOut } = require('../../services/hrAttendance');
-    const { getPayrollPreview } = require('../../services/payroll');
+    const { getPayrollPreview, getPayrollRangePreview } = require('../../services/payroll');
     const workDate = '2099-02-17';
     try {
-        for (const rateUnit of ['day', 'month']) {
+        for (const [rateUnit, manual] of [['day', true], ['month', true], ['day', false], ['month', false]]) {
             const staff = (await db.query(`INSERT INTO staff(name,role_type,department,position,is_active,hourly_rate,rate_unit,hr_pool_status,is_freelance)
                 VALUES ($1,'reception','admin','Synthetic original',true,1200,$2,'core',false),
                        ($3,'reception','admin','Synthetic replacement',true,100,'hour','core',false)
@@ -1492,7 +1492,8 @@ test('Park posts a manual original-worker adjustment against real daily and mont
                 VALUES($1,'reception',$2,'explicit','2099-02-01',$3)`, [original.id, profile.id, actor.username]);
             const scheme = rateUnit === 'day' ? 'per_shift' : 'monthly_fixed';
             const config = rateUnit === 'day' ? { shiftRate:1200 } : { monthlyRate:1200,
-                monthlyNormConfirmed:true, monthlyNormSource:'approved_norm', monthlyNormMinutes:240, monthlyNormMonth:'2099-02' };
+                monthlyNormConfirmed:true, monthlyNormSource:'approved_norm', monthlyNormMinutes:manual ? 240 : 480,
+                monthlyNormMonth:'2099-02' };
             await db.query(`INSERT INTO payroll_schemes(staff_id,scheme_type,title,is_active,config_json,effective_from,created_by)
                 VALUES($1,$2,'Synthetic compensation',true,$3,'2099-02-01',$4)`,
             [original.id, scheme, JSON.stringify(config), actor.username]);
@@ -1503,10 +1504,12 @@ test('Park posts a manual original-worker adjustment against real daily and mont
                 startsAt:`${workDate}T13:00:00+02:00`, endsAt:`${workDate}T14:00:00+02:00`,
                 payUnit:'hour', payMode:'additional', originalTreatment:'retain',
                 workload:'Synthetic last hour', reason:'Synthetic adjustment', rateMode:'individual', rate:'100', rateReason:'Synthetic hourly rate',
-                originalPayAmount:'-150.05', replacementPayAmount:'75.25', payOverrideReason:'Synthetic manual amounts' };
+                ...(manual ? { originalPayAmount:'-150.05', replacementPayAmount:'75.25', payOverrideReason:'Synthetic manual amounts' } : {}) };
             const quote = await service.preview('event_genix', actor, input);
             assert.deepEqual(quote.blockers, [], rateUnit);
             assert.equal(quote.payImpact.originalReference.rateUnit, rateUnit);
+            const expectedRetentionMinor = rateUnit === 'day' ? 0 : 15000;
+            if (!manual) assert.equal(quote.payImpact.fixedOriginal.estimatedMinor, expectedRetentionMinor);
             const claim = await service.mutate('event_genix', actor, 'create', { input, previewFingerprint:quote.fingerprint,
                 effectsAcknowledged:true, requestKey:randomUUID() });
             const client = await db.connect();
@@ -1526,6 +1529,19 @@ test('Park posts a manual original-worker adjustment against real daily and mont
             const completion = await service.mutate('event_genix', actor, 'complete', { expectedVersion:1,
                 workConfirmed:true, actualMinutes:60, workEvidence:'Synthetic attendance', reason:'Synthetic confirmation',
                 requestKey:randomUUID() }, claim.id);
+            if (!manual) {
+                assert.deepEqual(completion.completion.originalFixedPay, quote.payImpact.fixedOriginal);
+                const payroll = await getPayrollPreview(original.id, '2099-02', db);
+                assert.deepEqual(payroll.payrollBlockingIssues, [], rateUnit);
+                assert.equal(payroll.baseAmount, rateUnit === 'day' ? 1200 : 750);
+                const short = await getPayrollRangePreview({ month:'2099-02',from:workDate,to:workDate,staffId:original.id }, db);
+                const credit = report => report.lines.find(line => line.meta?.substitutionId === claim.id)?.amount;
+                assert.equal(credit(payroll), expectedRetentionMinor / 100);
+                assert.equal(credit(short.staff[0]), expectedRetentionMinor / 100);
+                const history = await service.history('event_genix', claim.id);
+                assert.equal(history.fixedOriginal.amountMinor, expectedRetentionMinor);
+                continue;
+            }
             assert.equal(completion.completion.originalPay.amountMinor, -15005);
             assert.equal(completion.completion.amountMinor, 7525);
             const report = await getPayrollPreview(original.id, '2099-02', db);

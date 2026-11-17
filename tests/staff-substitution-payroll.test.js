@@ -71,6 +71,48 @@ test('manual original-worker adjustments consume only matching daily or monthly 
     }
 });
 
+test('automatic retention uses the ordinary daily payment and one rounded monthly baseline', async () => {
+    const { calculateConditionSnapshots } = require('../services/payrollConditionCalculation');
+    const norm = { monthlyNormConfirmed:true, monthlyNormSource:'synthetic', monthlyNormMinutes:9600, monthlyNormMonth:'2099-01' };
+    const fixedRow = (id, day, rateUnit, rateMinor, transferredMinutes) => {
+        const terms = { rateUnit, rateMinor, transferredMinutes, ...(rateUnit === 'month' && { monthlyNorm:norm }) };
+        return { ...row, id, work_date:day, originalPayee:true, state:'completed', source_snapshot:{ partial:true },
+            input_json:{ ...input, workDate:day, sourceType:'hr_shift', originalStaffId:3, originalTreatment:'retain',
+                startsAt:`${day}T09:00:00+02:00`, endsAt:`${day}T11:00:00+02:00`, plannedMinutes:transferredMinutes },
+            quote_json:{ ...row.quote_json, payImpact:{ fixedOriginal:terms } } };
+    };
+    const day = (date, minutes, rateUnit, rate) => ({ date, worked:true, snapshot:{ schemaVersion:2,
+        plan:{ segments:[{ shiftStart:'12:00', shiftEnd:'20:00' }] }, compensationAllocations:[{
+            ...allocation({ rateUnit, rate, ...(rateUnit === 'month' && { monthlyNorm:norm }) }), segmentIndex:0,
+            actualMinutes:minutes, plannedMinutes:minutes }] } });
+    const complete = async item => {
+        const minutes = Math.min(60, item.input_json.plannedMinutes);
+        return { ...item, completion_json:await freezeCompletion(fixture([{ ...allocation(), actualMinutes:minutes }]), item,
+            { ...payload, actualMinutes:minutes }, { username:'qa' }) };
+    };
+    const daily = await complete(fixedRow('1', '2099-01-13', 'day', 90000, 120));
+    assert.equal(daily.completion_json.originalFixedPay.rateUnit, 'day');
+    const firstDay = day('2099-01-13', 365, 'day', 900);
+    assert.equal(applyPayrollSubstitutions({ conditionDays:[firstDay] }, [daily]).substitutionLines[0].amount, 0);
+    assert.equal(applyPayrollSubstitutions({}, [daily]).substitutionLines[0].amount, 900);
+    const badRate = day('2099-01-13', 365, 'day', 901);
+    assert.ok(applyPayrollSubstitutions({ conditionDays:[badRate] }, [daily]).payrollBlockingIssues
+        .some(issue => issue.code === 'SUBSTITUTION_FIXED_PAY_CONDITIONS_CHANGED'));
+    const monthly = await complete(fixedRow('2', '2099-01-13', 'month', 3000000, 116));
+    const next = await complete(fixedRow('3', '2099-01-15', 'month', 3000000, 12));
+    const actual = [day('2099-01-13', 365, 'month', 30000), day('2099-01-14', 4, 'month', 30000)];
+    const full = applyPayrollSubstitutions({ conditionDays:actual }, [monthly, next]);
+    assert.deepEqual(full.payrollBlockingIssues, []);
+    assert.deepEqual(full.substitutionLines.map(line => line.amount), [363,37]);
+    const ordinary = calculateConditionSnapshots({ conditionDays:actual }, 1);
+    const restored = calculateConditionSnapshots({ conditionDays:[day('2099-01-13', 481, 'month', 30000),
+        ...actual.slice(1), day('2099-01-15', 12, 'month', 30000)] }, 1);
+    assert.equal(ordinary.baseAmount + full.substitutionLines.reduce((sum, line) => sum + line.amount, 0), restored.baseAmount);
+    const short = applyPayrollSubstitutions({ conditionDays:actual.slice(0,1) }, [monthly], full.fixedRetentionSettlements);
+    assert.equal(short.substitutionLines[0].amount, full.substitutionLines[0].amount);
+    assert.equal(applyPayrollSubstitutions({ conditionDays:[{ ...actual[0], businessContext:'dar' }] }, [monthly]).substitutionLines.length, 0);
+});
+
 test('substitution cents survive payroll summary, reviewed snapshot and final installment',()=>{
     const payroll=require('../services/payroll');
     const lines=[{group:'base',lineType:'hourly',amount:1000},{group:'additional',lineType:'staff_substitution',amount:750.37}];

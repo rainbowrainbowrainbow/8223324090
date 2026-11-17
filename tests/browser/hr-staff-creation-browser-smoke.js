@@ -106,6 +106,72 @@ async function expectDelayedStaffSaveIgnored(page, staffId, switchContext) {
     }
 }
 
+async function verifyKitchenAccount(browser, managerPage, pool) {
+    const { rows: [worker] } = await pool.query(
+        "INSERT INTO staff (name, department, position, role_type) VALUES ($1, 'Кухня', 'Кухар піци', 'pizzaiolo') RETURNING id",
+        ['QA Cook ' + runId]
+    );
+    await managerPage.evaluate(id => openAccountOnboardingWizard(null, { staffId: id }), worker.id);
+    const role = managerPage.locator('#accountOnboardingRole');
+    await role.waitFor({ state: 'visible' });
+    assert.equal(await role.inputValue(), 'cook', 'pizza cook receives the existing cook role default');
+    const username = 'qa_hr_cook_' + runId;
+    await managerPage.locator('#accountOnboardingUsername').fill(username);
+    const password = await managerPage.locator('#accountOnboardingPassword').inputValue();
+    const [created] = await Promise.all([
+        waitForResponse(managerPage, 'POST', '/api/users/onboarding'),
+        managerPage.locator('#accountOnboardingSubmit').click()
+    ]);
+    assert.equal(created.status(), 200);
+    const result = await created.json();
+    assert.equal(result.receipt.staff.id, worker.id);
+    assert.equal(result.receipt.account.role, 'cook');
+    assert.equal(result.businessAccessReady, true);
+    await managerPage.locator('[data-account-onboarding-finish]').click();
+
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
+    try {
+        const page = await context.newPage();
+        await page.route('**/*', route => new URL(route.request().url()).origin === new URL(target).origin ? route.continue() : route.abort());
+        const scheduleReads = [];
+        page.on('response', response => {
+            const pathname = new URL(response.url()).pathname;
+            if (['/api/hr/professions', '/api/staff', '/api/staff/schedule'].includes(pathname)) {
+                scheduleReads.push({ pathname, status: response.status() });
+            }
+        });
+        await page.goto(new URL('/', target).href);
+        await page.locator('#username').fill(username);
+        await page.locator('#password').fill(password);
+        const schedulePromise = waitForResponse(page, 'GET', '/api/staff/schedule').catch(() => null);
+        const [signIn] = await Promise.all([
+            waitForResponse(page, 'POST', '/api/auth/login'),
+            page.locator('#loginForm button[type="submit"]').click()
+        ]);
+        assert.equal(signIn.status(), 200, 'kitchen account can sign in');
+        await page.waitForURL(url => url.pathname === '/staff', { timeout: 10000 }).catch(() => {});
+        assert.equal(new URL(page.url()).pathname, '/staff', 'kitchen login destination');
+        const schedule = await schedulePromise;
+        assert.ok(schedule, 'staff schedule should request data after login: ' + JSON.stringify(scheduleReads));
+        assert.equal(schedule.status(), 200, 'the schedule starts with data for a kitchen account');
+        assert.equal((await schedule.json()).success, true);
+        await page.locator('#scheduleStaffSearch').waitFor({ state: 'visible' });
+        await page.evaluate(async () => {
+            const user = AppState.currentUser;
+            if (user?.role !== 'cook' || !resolveCapability(user, 'hr.schedule.view', { type: 'action' }).allowed) {
+                throw new Error('Expected signed-in cook with schedule view');
+            }
+            if (resolveCapability(user, 'hr.schedule.manage', { type: 'action' }).allowed) {
+                throw new Error('A cook must not receive schedule management through onboarding');
+            }
+        });
+        await page.screenshot({ path: path.join(output, 'mobile-cook-schedule.png') });
+        process.stdout.write('[hr-staff] cook CRM issuance and mobile schedule landing confirmed\n');
+    } finally {
+        await context.close();
+    }
+}
+
 async function runActor(browser, pool, actor, existingAccountId) {
     const session = await login(actor.username, actor.password);
     const context = await browser.newContext({ viewport: { width: actor.width, height: 900 }, serviceWorkers: 'block' });
@@ -479,6 +545,7 @@ async function runActor(browser, pool, actor, existingAccountId) {
             await dialog.locator('[name="department"]').selectOption({ label: 'Кухня' });
             await dialog.locator('[name="position"]').selectOption(professionKey);
             await dialog.locator('#hrCreateStaffCancel').click();
+            await verifyKitchenAccount(browser, page, pool);
 
             await page.goto(new URL('/hr?tab=team', target).href);
             await otherCard.getByRole('button', { name: /відкрити/i }).click();

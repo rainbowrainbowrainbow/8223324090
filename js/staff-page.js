@@ -3476,7 +3476,11 @@ async function fetchHrProfessions() {
         const res = await staffApiFetch('/api/hr/professions');
         if (seq !== staffProfessionCatalogRequestSeq || context !== staffScheduleRequestContext()) return { success: false, stale: true };
         if (!res) return { success: false, stale: true };
-        if ([401, 403].includes(res.status)) { StaffState.professionsLoadState = 'restricted'; return { success: false, status: res.status }; }
+        if ([401, 403].includes(res.status)) {
+            StaffState.professions = [];
+            StaffState.professionsLoadState = 'restricted';
+            return { success: false, status: res.status };
+        }
         if (!res.ok) throw new Error('Profession catalog unavailable');
         const data = await res.json();
         if (seq !== staffProfessionCatalogRequestSeq || context !== staffScheduleRequestContext()) return { success: false, stale: true };
@@ -9070,12 +9074,13 @@ async function performStaffScheduleRefresh(options = {}) {
         clearStaffScheduleAccessState();
         return { success: false, stale: true };
     }
-    if ([professionsResult, staffResult].some(result => [401, 403].includes(result?.status))) {
+    if (professionsResult?.status === 401 || [401, 403].includes(staffResult?.status)) {
         clearStaffScheduleAccessState();
         return { success: false, restricted: true, professions: professionsResult, staff: staffResult };
     }
     if (professionsResult?.stale || staffResult?.stale) return { success: false, stale: true };
-    if (!professionsResult?.success) StaffState.professions = previousData.professions;
+    const catalogRestricted = professionsResult?.status === 403;
+    if (!professionsResult?.success && !catalogRestricted) StaffState.professions = previousData.professions;
     if (!staffResult?.success) {
         StaffState.staff = previousData.staff;
         StaffState.departments = previousData.departments;
@@ -9088,13 +9093,13 @@ async function performStaffScheduleRefresh(options = {}) {
     renderDeptFilter();
     renderSchedule();
     if (StaffState.showLoadView) renderLoadView();
-    if (options.reloadRange && professionsResult?.success && staffResult?.success) {
+    if (options.reloadRange && (professionsResult?.success || catalogRestricted) && staffResult?.success) {
         const range = scheduleCurrentRange();
         await goToScheduleRange(range.start, range.end, StaffState.rangeMode);
     }
 
     return {
-        success: Boolean(professionsResult?.success && staffResult?.success),
+        success: Boolean((professionsResult?.success || catalogRestricted) && staffResult?.success),
         professions: professionsResult,
         staff: staffResult
     };
@@ -9200,8 +9205,10 @@ async function initStaffSchedulePage(options = {}) {
         const initialContext = staffScheduleRequestContext();
         const professionsResult = await fetchHrProfessions();
         const staffResult = await fetchStaff();
+        // The HR catalog is optional for the schedule. A permitted roster can
+        // supply names and profession grouping without opening the catalog.
         if (initialContext !== staffScheduleRequestContext() || professionsResult?.stale || staffResult?.stale
-            || [professionsResult, staffResult].some(result => [401, 403].includes(result?.status))) {
+            || professionsResult?.status === 401 || [401, 403].includes(staffResult?.status)) {
             clearStaffScheduleAccessState();
             staffScheduleInitPromise = null;
             return;

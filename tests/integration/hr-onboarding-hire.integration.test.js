@@ -31,11 +31,12 @@ async function createVacancy(roleType, targetHires, suffix) {
     return data.vacancy;
 }
 
-async function createApplication(vacancyId, suffix) {
+async function createApplication(vacancyId, suffix, details = {}) {
     const data = await expectOk('POST', `/api/hr/vacancies/${vacancyId}/applications`, {
         name: `Disposable Candidate ${suffix}`,
         phone: `+38099${String(Date.now()).slice(-7)}`,
-        source: 'other'
+        source: 'other',
+        ...details
     }, 'create application');
     return data.application;
 }
@@ -72,7 +73,7 @@ describe('PostgreSQL-backed profession onboarding and vacancy hire flow', { skip
         for (const key of ['animator', 'barista', 'cook']) assert.ok(professionByKey.has(key), `${key} profession exists`);
 
         const animatorVacancy = await createVacancy('animator', 2, suffix);
-        const animatorApplication = await createApplication(animatorVacancy.id, `${suffix}-animator`);
+        const animatorApplication = await createApplication(animatorVacancy.id, `${suffix}-animator`, { birth_date: '1998-02-17' });
         const animatorHire = await expectOk('POST', `/api/hr/applications/${animatorApplication.id}/hire`, {
             hire_mode: 'new_staff',
             department: 'qa',
@@ -81,6 +82,14 @@ describe('PostgreSQL-backed profession onboarding and vacancy hire flow', { skip
         }, 'hire new animator');
         const staffId = Number(animatorHire.staff_id);
         assert.ok(staffId > 0);
+        const verificationDb = new Client({ connectionString: process.env.TEST_DATABASE_URL });
+        try {
+            await verificationDb.connect();
+            const { rows } = await verificationDb.query('SELECT birth_date::text AS birth_date FROM staff WHERE id = $1', [staffId]);
+            assert.deepEqual(rows, [{ birth_date: '1998-02-17' }]);
+        } finally {
+            await verificationDb.end();
+        }
         assert.equal(animatorHire.vacancy_status, 'open');
         assert.equal(animatorHire.vacancy_action, 'kept_open_by_headcount');
         assert.equal(animatorHire.hired_count, 1);

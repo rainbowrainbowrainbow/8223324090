@@ -9544,7 +9544,7 @@ router.post('/applications/:id/hire', requireHrManage, async (req, res) => {
 
         await client.query('BEGIN');
         const app = await client.query(
-            `SELECT a.*, v.role_type, v.department AS vacancy_department, v.title AS vac_title,
+            `SELECT a.*, a.birth_date::text AS application_birth_date, v.role_type, v.department AS vacancy_department, v.title AS vac_title,
                     v.status AS vacancy_status, v.target_hires
              FROM job_applications a
              JOIN job_vacancies v ON v.id = a.vacancy_id
@@ -9585,12 +9585,12 @@ router.post('/applications/:id/hire', requireHrManage, async (req, res) => {
             const staffResult = await client.query(
                 `INSERT INTO staff
                     (name, department, position, phone, role_type, secondary_professions, hire_date,
-                     telegram_username, telegram_id, hourly_rate, address, is_active)
-                 VALUES ($1,$2,$3,$4,$5,'[]'::jsonb,CURRENT_DATE,$6,$7,$8,$9,true)
+                     telegram_username, telegram_id, hourly_rate, address, birth_date, is_active)
+                 VALUES ($1,$2,$3,$4,$5,'[]'::jsonb,CURRENT_DATE,$6,$7,$8,$9,$10,true)
                  RETURNING id, name, department, position, role_type,
                            COALESCE(secondary_professions, '[]'::jsonb) AS secondary_professions, is_active`,
                 [a.name, department, a.vac_title, a.phone || null, professionKey,
-                 a.telegram_username || null, a.telegram_id || null, salary, a.address || null]
+                 a.telegram_username || null, a.telegram_id || null, salary, a.address || null, a.application_birth_date || null]
             );
             staff = staffResult.rows[0];
             await replaceStaffRoleAssignments(client, staff.id, [{

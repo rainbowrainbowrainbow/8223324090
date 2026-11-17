@@ -23,3 +23,5 @@ Photo verification: focused staff card and avatar storage tests passed. The isol
 Verification on the 0.83.95 base: runtime and migration governance passed. HR release B passed 139 tests. Targeted schedule and HR tests, UI checks, the full isolated staff creation browser suite, and the 390px/1366px HR UX smoke passed. The UI uses the display label “Кухар піци” for known legacy aliases without changing profession identifiers or custom labels. Effective pay now precedes reserve rates in the card. Trusted QA still requires its exact single-token name; its integration suite passed using the compatible browser request for registered fixtures. End-user split-name persistence remains covered by the full isolated browser suite.
 
 Questionnaire follow-up: `D:/Codex/EventGenix/hr-onboarding-cli-handoff-20261116/QUESTIONNAIRE_FOLLOWUP.md`. The external questionnaire is outside this task.
+
+Vacancy hire now copies a birth date already recorded on the candidate application into the new staff record. The isolated vacancy hire test verified the exact stored date. The existing staff attachment path and the external questionnaire retain their current behavior.

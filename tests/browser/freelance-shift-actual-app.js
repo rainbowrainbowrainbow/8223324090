@@ -155,14 +155,15 @@ async function run() {
                 clip: { x: 0, y: 0, width, height }
             });
         };
-        const financeMenuSelector = '#sidebarPrimaryLinks > a[href="/finance"]';
-        const menuFinance = page.locator(financeMenuSelector);
-        const waitForFinanceMenu = () => page.waitForFunction(selector => {
-            const link = document.querySelector(selector);
-            if (!link) return false;
-            const box = link.getBoundingClientRect();
-            return box.width > 0 && box.left >= 0 && box.top >= 0 && box.bottom < 500;
-        }, financeMenuSelector);
+        const salesMenu = '#sidebarLinks [data-group-key="sales"]';
+        const menuFinance = page.locator(`${salesMenu} a[href="/finance"]`);
+        const revealFinanceMenu = async () => {
+            const salesToggle = page.locator(`${salesMenu} .sidebar-group-header`);
+            await salesToggle.waitFor();
+            if (await salesToggle.getAttribute('aria-expanded') !== 'true') await salesToggle.click();
+            await menuFinance.scrollIntoViewIfNeeded();
+            assert.equal(await menuFinance.getAttribute('aria-current'), 'page');
+        };
 
         const openSchedule = async () => {
             await page.goto(new URL('/staff', base).href, { waitUntil: 'domcontentloaded' });
@@ -271,8 +272,7 @@ async function run() {
         await page.locator('#freelanceFinanceTab').waitFor();
         assert.equal(await page.locator('#freelanceFinanceTab').getAttribute('aria-current'), 'page');
         await page.locator('#sidebarToggle').click();
-        await waitForFinanceMenu();
-        assert.equal(await menuFinance.getAttribute('aria-current'), 'page');
+        await revealFinanceMenu();
         await page.screenshot({ path: path.join(out, 'menu-mobile.png'), animations: 'disabled' });
         await menuFinance.click();
         await page.locator('[data-finance-group="overview"][aria-current="page"]').waitFor();
@@ -289,7 +289,7 @@ async function run() {
         await page.reload();
         await page.locator('#freelanceTitle').waitFor();
         await setWidth(1440);
-        await waitForFinanceMenu();
+        await revealFinanceMenu();
         await saveScreenshot('menu-desktop');
         await setWidth(900);
         assert.equal(await menuFinance.getAttribute('aria-current'), 'page');
@@ -430,7 +430,8 @@ async function run() {
         await viewerPage.goto(new URL('/profile', base).href, { waitUntil: 'domcontentloaded' });
         await viewerPage.locator('#sidebarToggle').click();
         await viewerPage.locator('#sidebarNav.open').waitFor();
-        assert.equal(await viewerPage.locator('#sidebarPrimaryLinks a[href="/finance"]').count(), 0);
+        await viewerPage.locator('#sidebarLinks.rendered').waitFor({ state: 'attached' });
+        assert.equal(await viewerPage.locator('#sidebarLinks a[href="/finance"]').count(), 0);
         await viewerContext.close();
 
         if (membership) {

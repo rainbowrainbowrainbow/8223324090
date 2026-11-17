@@ -49,7 +49,7 @@ const Sidebar = (() => {
         { href: '/tasks?view=waiting', icon: 'alert', label: 'Очікування', description: 'завислі задачі', access: 'tasks', businessModule: 'tasks' },
         { href: '/profile?tab=achievements', icon: 'analytics', label: 'Досягнення', description: 'прогрес і нагороди' }
     ]);
-    const UTILITY_RAIL_PRIMARY_HREFS = ['/dashboard', '/', '/tasks', '/chat'];
+    const UTILITY_RAIL_PRIMARY_HREFS = ['/dashboard', '/', '/tasks', '/chat', '/finance'];
     const UTILITY_RAIL_CONTEXT_GROUPS = ['sales', 'product', 'team', 'system'];
     const UTILITY_RAIL_MAX_FAVORITES = 4;
     const UTILITY_RAIL_MAX_GROUP_LINKS = 5;

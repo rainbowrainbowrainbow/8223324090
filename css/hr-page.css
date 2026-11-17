@@ -11194,7 +11194,7 @@ body.dark-mode #staffProfilePanelPayroll .hr-staff-payroll-preview-controls butt
 }
 body.dark-mode #staffProfilePanelPayroll .hr-payroll-profile-badge,
 [data-theme="dark"] #staffProfilePanelPayroll .hr-payroll-profile-badge {
-    background: rgba(16, 185, 129, 0.18);
+    background: #064e3b;
     color: #A7F3D0;
 }
 

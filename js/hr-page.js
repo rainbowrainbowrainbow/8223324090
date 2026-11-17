@@ -12584,7 +12584,7 @@ function staffPayrollProfileDayDiff(activeProfile = null, baseProfile = null) {
     const activeDefault = payrollProfileNumber(activeVersion.defaultRate ?? activeVersion.default_rate, 0);
     const baseDefault = payrollProfileNumber(baseVersion.defaultRate ?? baseVersion.default_rate, 0);
     if (activeDefault !== baseDefault) {
-        diffs.push(`default: ${payrollProfileMoney(baseDefault)} → ${payrollProfileMoney(activeDefault)}`);
+        diffs.push(`Базова ставка: ${payrollProfileMoney(baseDefault)} → ${payrollProfileMoney(activeDefault)}`);
     }
     if (activeUnit !== 'month' || baseUnit !== 'month') {
         PAYROLL_PROFILE_WEEKDAYS.forEach(day => {

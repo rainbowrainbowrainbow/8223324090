@@ -56,6 +56,9 @@ async function verifyTaskEntry({ origin, session, evidence }) {
             await page.goto(origin + href + '&mode=edit');
             const editor = dialog.locator('[data-dialog-editor]');
             await editor.waitFor();
+            assert.deepEqual(await editor.locator('[name=priority] option').evaluateAll(options => options.map(option => option.value)),
+                ['urgent', 'high', 'normal', 'low'], 'dialog uses the canonical CRM task priorities');
+            await editor.locator('[name=priority]').selectOption('high');
             await editor.locator('[name=title]').fill(`Task entry saved ${engine}`);
             await page.keyboard.press('Escape');
             await dialog.getByText('Є незбережені зміни.', { exact: false }).waitFor();
@@ -80,6 +83,7 @@ async function verifyTaskEntry({ origin, session, evidence }) {
             assert.equal(writes, 1, 'one save must issue exactly one mutation');
             const saved = await api('/api/tasks/' + id);
             assert.equal((saved.task || saved).description, 'Local navigation fixture');
+            assert.equal((saved.task || saved).priority, 'high');
             await dialog.locator('[data-dialog-schedule] [name=date]').fill('2099-11-21');
             await dialog.getByRole('button', { name: 'Перенести', exact: true }).click();
             await dialog.locator('time[datetime="2099-11-21"]').waitFor();

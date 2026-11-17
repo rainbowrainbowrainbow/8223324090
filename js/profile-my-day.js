@@ -104,6 +104,7 @@
             const due = selectDate(task);
             const executor = task.ownerLabel || task.owner_name || task.owner_username;
             const actions = task.drawer?.actions || {};
+            const priorities = global.TaskUiShared?.TASK_PRIORITY_OPTIONS || [];
             title.textContent = task.title || `Задача #${taskId}`;
             const description = typeof task.description === 'string' ? task.description.trim() : '';
             content.innerHTML = `<dl class="park-task-dialog-facts">
@@ -118,9 +119,9 @@
                 ${actions.complete && complete ? '<button type="button" data-dialog-complete>Виконати</button>' : ''}
             </div>
             ${actions.edit && save ? `<form data-dialog-editor ${edit ? '' : 'hidden'}>
-                <label for="my-day-edit-title">Назва</label><input id="my-day-edit-title" name="title" required maxlength="500" value="${escape(task.title || '')}">
+                <label for="my-day-edit-title">Назва</label><input id="my-day-edit-title" name="title" required value="${escape(task.title || '')}">
                 <label for="my-day-edit-description">Опис</label><textarea id="my-day-edit-description" name="description" rows="4">${escape(task.description || '')}</textarea>
-                <label for="my-day-edit-priority">Пріоритет</label><select id="my-day-edit-priority" name="priority">${['low','normal','high','urgent','critical'].map(value => `<option value="${value}" ${value === task.priority ? 'selected' : ''}>${({ low: 'Низький', normal: 'Звичайний', high: 'Високий', urgent: 'Терміновий', critical: 'Критичний' })[value]}</option>`).join('')}</select>
+                <label for="my-day-edit-priority">Пріоритет</label><select id="my-day-edit-priority" name="priority">${priorities.map(item => `<option value="${escape(item.value)}" ${item.value === task.priority ? 'selected' : ''}>${escape(item.label)}</option>`).join('')}</select>
                 <button type="submit">Зберегти</button>
             </form>` : ''}
             ${actions.reschedule && reschedule ? `<form data-dialog-schedule>

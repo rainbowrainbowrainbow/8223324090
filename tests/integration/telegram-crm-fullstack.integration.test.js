@@ -119,6 +119,9 @@ check('canonical task writer, actual membership checks and concurrent confirms s
     assert.equal(claimed.status, 200, JSON.stringify(claimed.data));
     const { event } = claimed.data;
     assert.equal(event.taskId, task.id);
+    assert.equal(event.task.id, task.id);
+    assert.equal(event.task.title, task.title);
+    assert.equal(event.task.description, task.description || null);
     assert.equal(event.telegramId, peerTelegram);
     assert.equal(event.bindingVersion, '2');
     assert.deepEqual((await notifications('/claim', { leaseId })).data.event, event);
@@ -544,4 +547,36 @@ test('actual profile browser reconnects Telegram with password and explicit acco
         assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
         assert.deepEqual(errors,[]);
     } finally {await browser.close();}
+});
+
+check('owner directory paginates more than 200 authorized confirmed participants', async () => {
+    await pool.query(`UPDATE business_memberships SET action_allowlist=ARRAY['tasks.create']
+        WHERE user_id=$1 AND business_id=$2`, [peer.id, business.id]);
+    const fixture = await pool.query(`INSERT INTO users(username,name,role,password_hash,business_contexts,default_business_context)
+        SELECT 'telegram.directory.'||n, 'Directory Fixture '||n, 'animator', 'fixture-disabled-login',
+               ARRAY['event_genix'], 'event_genix' FROM generate_series(1,350) n RETURNING id`);
+    const ids = fixture.rows.map(row => row.id);
+    await pool.query(`INSERT INTO organization_memberships(organization_id,user_id,role)
+        SELECT $1, id, 'member' FROM unnest($2::int[]) id`, [business.organization_id, ids]);
+    await pool.query(`INSERT INTO business_memberships(business_id,organization_id,user_id,role,is_default)
+        SELECT $1,$2,id,'animator',true FROM unnest($3::int[]) id`, [business.id,business.organization_id,ids]);
+    await pool.query(`INSERT INTO telegram_crm_bindings(user_id,pilot_enabled,telegram_user_id,verified_at,version)
+        SELECT id,true,950000000000::bigint+id,NOW(),2 FROM unnest($1::int[]) id`, [ids]);
+    const found = [];
+    let cursor = '0', pages = 0;
+    do {
+        const result = await bot('/owners?businessContext=event_genix&cursor='+cursor,undefined,peerTelegram);
+        assert.equal(result.status,200,JSON.stringify(result.data));
+        assert.ok(result.data.owners.length <= 200);
+        found.push(...result.data.owners.map(row => row.id));
+        cursor = result.data.pagination.nextCursor;
+        pages++;
+        assert.ok(pages <= 3);
+    } while (cursor);
+    assert.equal(pages,2);
+    assert.equal(new Set(found).size,found.length);
+    assert.ok(ids.every(id => found.includes(id)));
+    for (const cursor of ['-1','abc','2147483648']) {
+        assert.equal((await bot('/owners?businessContext=event_genix&cursor='+cursor,undefined,peerTelegram)).status,400);
+    }
 });

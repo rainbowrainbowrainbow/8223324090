@@ -215,6 +215,16 @@ async function listTaskOwnerCandidates(options = {}) {
     const params = [ASSIGNABLE_TASK_ROLES];
     const scope = ownerCandidateScopeSql(options.actor, params, options);
     const business = businessUserAccessSql(options.actor, params, 'users', options.businessScope || options.businessContext);
+    let pagination = '';
+    let order = "COALESCE(NULLIF(name, ''), username), id";
+    if (options.afterUserId !== undefined) {
+        if (!Number.isSafeInteger(options.afterUserId) || options.afterUserId < 0) {
+            throw new TypeError('Invalid task owner cursor');
+        }
+        params.push(options.afterUserId);
+        pagination = `AND users.id > $${params.length}`;
+        order = 'users.id';
+    }
     const result = await query.query(
         `SELECT id, username, name, ${business.roleSql} AS role
          FROM users
@@ -222,8 +232,9 @@ async function listTaskOwnerCandidates(options = {}) {
            AND ${business.roleSql} = ANY($1::text[])
            ${scope}
            ${business.condition}
-         ORDER BY COALESCE(NULLIF(name, ''), username), id
-         LIMIT 200`,
+           ${pagination}
+         ORDER BY ${order}
+         LIMIT ${options.afterUserId === undefined ? 200 : 201}`,
         params
     );
     return result.rows.map(row => ({

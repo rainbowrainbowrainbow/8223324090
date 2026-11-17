@@ -177,12 +177,22 @@ function createTelegramCrmTasks(options) {
             pagination: { limit, offset, hasMore: rows.length > limit, nextOffset: rows.length > limit ? offset + limit : null } };
     }
 
-    async function owners(senderId, businessContext, eventAt = null) {
+    async function owners(senderId, businessContext, eventAt = null, query = {}) {
         const { actor, scope } = await context(pool, senderId, businessContext, false, null, eventAt);
         assertCreate(actor, scope);
-        const candidates = await ownerCandidates({ pool, actor, businessScope: scope, telegramCrmPeerAssignment: true });
-        const pilotIds = new Set((await pool.query('SELECT user_id FROM telegram_crm_bindings WHERE pilot_enabled=true')).rows.map(row => Number(row.user_id)));
-        return { owners: candidates.filter(candidate => pilotIds.has(Number(candidate.id))), businessContext: scope.activeContext };
+        const cursor = String(query.cursor ?? '0');
+        if (!/^(0|[1-9][0-9]{0,9})$/.test(cursor) || Number(cursor) > 2147483647) {
+            throw failure(400, 'TELEGRAM_OWNER_CURSOR_INVALID', 'Некоректна сторінка виконавців.');
+        }
+        const candidates = await ownerCandidates({
+            pool, actor, businessScope: scope, telegramCrmPeerAssignment: true, afterUserId: Number(cursor)
+        });
+        const page = candidates.slice(0, 200);
+        const hasMore = candidates.length > 200;
+        return {
+            owners: page, businessContext: scope.activeContext,
+            pagination: { hasMore, nextCursor: hasMore ? String(page.at(-1).id) : null }
+        };
     }
 
     async function preview(senderId, input) {

@@ -11,7 +11,7 @@ const eligible = `FROM telegram_crm_bindings b
     WHERE b.pilot_enabled AND b.verified_at IS NOT NULL AND u.is_active IS DISTINCT FROM FALSE`;
 const supportedResults = new Map([
     ['sent', new Set([null])],
-    ['retry', new Set(['rate_limited', 'connection_refused'])],
+    ['retry', new Set(['rate_limited', 'connection_refused', 'crm_task_content_unavailable'])],
     ['blocked', new Set(['bot_blocked', 'chat_unavailable', 'telegram_rejected'])],
     ['cancelled', new Set(['legacy_delivery_evidence'])],
     ['uncertain', new Set(['telegram_result_unknown'])]
@@ -80,7 +80,12 @@ function createTelegramCrmNotifications({ pool, identity, actorContext = default
                 WHERE id=$1`, [event.id, leaseId]);
             return { event: {
                 id: String(event.id), leaseId, taskId: event.task_id, telegramId: recipient.destination,
-                bindingVersion: String(event.binding_version), createdAt: event.created_at
+                bindingVersion: String(event.binding_version), createdAt: event.created_at,
+                task: {
+                    id: task.id, title: task.title, description: task.description || null,
+                    date: task.date || null, deadline: task.deadline || null,
+                    businessContext: task.business_context
+                }
             } };
         });
     }

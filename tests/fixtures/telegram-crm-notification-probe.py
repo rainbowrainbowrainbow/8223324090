@@ -47,6 +47,8 @@ async def main(base_url, user_id, actor, task_id):
 
     async def send_message(recipient, text, **_kwargs):
         assert recipient == actor and f"/tasks?open={task_id}" in text
+        assert "Disposable notification lifecycle" in text
+        assert _kwargs["parse_mode"] == "HTML"
         sent.append(recipient)
         return SimpleNamespace(message_id=50001)
 

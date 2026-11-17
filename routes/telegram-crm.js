@@ -107,7 +107,7 @@ function createTelegramCrmRouters(options = {}) {
     })));
     bot.get('/me', endpoint(req => tasks.me(req.telegramSenderId, req.query.businessContext, req.telegramEventAt)));
     bot.get('/tasks', endpoint(req => tasks.list(req.telegramSenderId, { ...req.query, eventAt: req.telegramEventAt })));
-    bot.get('/owners', endpoint(req => tasks.owners(req.telegramSenderId, req.query.businessContext, req.telegramEventAt)));
+    bot.get('/owners', endpoint(req => tasks.owners(req.telegramSenderId, req.query.businessContext, req.telegramEventAt, req.query)));
     bot.post('/tasks/preview', endpoint(req => {
         const input = { ...req.body, eventAt: req.telegramEventAt };
         return input.action === undefined

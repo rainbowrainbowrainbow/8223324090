@@ -13,6 +13,19 @@ function functionSource(name) {
     return source.slice(start, start + 1 + next.index);
 }
 const version = (id, unit, rate, from, to = null) => ({ id, rateUnit: unit, defaultRate: rate, effectiveFrom: from, effectiveTo: to });
+
+test('date-based rate display uses weekday overrides and defaults on weekends', () => {
+    const c = vm.createContext({ payrollProfileNumber: Number });
+    for (const name of ['payrollProfileDayRateMap', 'payrollProfileRateForDay', 'staffPayrollProfileRateOnDate']) {
+        vm.runInContext(functionSource(name), c);
+    }
+    const daily = { rateUnit: 'day', defaultRate: 900,
+        dayRates: [1, 2, 3, 4, 5].map(isoWeekday => ({ isoWeekday, rate: 1100 })) };
+    assert.equal(c.staffPayrollProfileRateOnDate(daily, '2026-11-16'), 1100);
+    assert.equal(c.staffPayrollProfileRateOnDate(daily, '2026-11-21'), 900);
+    assert.equal(c.staffPayrollProfileRateOnDate(daily, '2026-11-22'), 900);
+    assert.equal(c.staffPayrollProfileRateOnDate({ ...daily, rateUnit: 'month', defaultRate: 18000 }, '2026-11-16'), 18000);
+});
 function context() {
     const fields = { editPayrollConditionsDate: { value: '2026-10-03' }, editRoleType: { value: 'animator' }, editHourlyRate: { value: '30000' } };
     const inputs = [];

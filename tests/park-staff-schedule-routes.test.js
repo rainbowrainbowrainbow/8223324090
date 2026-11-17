@@ -43,7 +43,9 @@ function createPoolFixture() {
             calls.push({ sql: normalized, params });
             assert.match(normalized, /^(SELECT|WITH)\b/i, 'schedule recovery may only read');
             let rows;
-            if (normalized.startsWith('SELECT EXISTS ( SELECT 1 FROM hr_time_records WHERE business_context IS DISTINCT FROM $1')) {
+            if (normalized.startsWith('SELECT profession_id, department FROM park_profession_departments')) {
+                rows = [];
+            } else if (normalized.startsWith('SELECT EXISTS ( SELECT 1 FROM hr_time_records WHERE business_context IS DISTINCT FROM $1')) {
                 rows = [{ ownership_conflict: false }];
             } else if (normalized.includes('FROM staff_substitutions agreement')) {
                 assert.deepEqual(params, ['2026-09-13', '2026-09-21', 'event_genix']);

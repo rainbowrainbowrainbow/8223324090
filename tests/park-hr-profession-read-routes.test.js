@@ -119,7 +119,8 @@ async function withActualHrRouter(run) {
         async function request(path, options = {}) {
             const response = await fetch(origin + path, {
                 method: options.method || 'GET',
-                headers: { 'X-Business-Context': options.context || 'event_genix', 'Content-Type': 'application/json', 'X-Business-Scope': options.scope || 'single' }
+                headers: { 'X-Business-Context': options.context || 'event_genix', 'Content-Type': 'application/json', 'X-Business-Scope': options.scope || 'single' },
+                ...(options.body ? { body: JSON.stringify(options.body) } : {})
             });
             const text = await response.text();
             return { status: response.status, body: text ? JSON.parse(text) : null, text };
@@ -135,6 +136,21 @@ async function withActualHrRouter(run) {
         for (const [id, cached] of savedCache) require.cache[id] = cached;
     }
 }
+
+test('Park department edit rejects other businesses, missing permission and additional fields before SQL', async () => {
+    await withActualHrRouter(async ({ state, calls, request }) => {
+        const path = '/api/hr/professions/1/department';
+        const options = { method: 'PATCH', body: { department: 'Кухня' } };
+        assert.equal((await request(path, { ...options, context: 'dar' })).status, 403);
+        state.actor = { role: 'cook' };
+        assert.equal((await request(path, options)).status, 403);
+        state.actor = { role: 'director', revoked: true };
+        assert.equal((await request(path, options)).status, 403);
+        state.actor = { role: 'director' };
+        assert.equal((await request(path, { ...options, body: { department: 'Кухня', title: 'Other' } })).status, 400);
+        assert.equal(calls.length, 0);
+    });
+});
 
 
 const paths=['/checklists/dashboard','/professions/animator/checklist','/professions/animator/staff/'+STAFF_ID+'/checklist','/professions/workspace/animator','/staff/'+STAFF_ID+'/onboarding-assignment','/staff/'+STAFF_ID+'/onboarding-processes'];

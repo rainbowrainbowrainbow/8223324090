@@ -441,6 +441,7 @@ function shapeHrStaffList(rows, capability, user) {
     return shapeHrPayrollFields(rows, user);
 }
 router.use(requireHrCapabilityContract);
+router.use(require('../services/parkProfessionDepartments').parkProfessionDepartments(pool));
 router.use(require('../services/parkHrHiringAccess').requireParkHrHiringAccess(pool));
 router.use(require('../services/parkHrProfessionRead').requireParkProfessionReads(pool));
 // Owner-approved narrow assignment lane; other legacy HR routes retain their guards.

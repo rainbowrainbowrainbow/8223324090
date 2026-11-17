@@ -294,14 +294,15 @@ test('payroll profile simulator, diagnostics, forecast, and bulk operations reus
     assert.doesNotMatch(serviceCode, /\bINSERT INTO finance_/i);
 });
 
-test('staff card payroll tab exposes profile assignments, preview, onboarding hint, and legacy conversion', () => {
+test('staff card payroll tab exposes profile assignments, applicable daily amounts, preview, and legacy conversion', () => {
     assert.match(hrHtmlCode, /id="editStaffPayrollProfiles"/);
     assert.match(hrHtmlCode, /id="editPayrollProfilePreviewMonth"/);
     assert.match(hrHtmlCode, /id="editPayrollProfileSimulator"/);
     assert.match(hrHtmlCode, /id="editStaffPayrollProfilePreview"/);
-    assert.match(hrHtmlCode, /id="accountOnboardingPayrollProfileHint"/);
+
 
     assert.match(hrPageCode, /loadStaffPayrollProfiles/);
+    assert.match(hrPageCode, /Ставка профілю на вибрану дату/);
     assert.match(hrPageCode, /staffPayrollPlanAssignmentReplacement/);
     assert.match(hrPageCode, /chooseStaffPayrollProfile/);
     assert.match(hrPageCode, /cloneStaffPayrollProfile/);
@@ -313,13 +314,13 @@ test('staff card payroll tab exposes profile assignments, preview, onboarding hi
     assert.match(hrPageCode, /Резервна ставка/);
     assert.match(hrPageCode, /Резервні значення старої моделі/);
     assert.match(hrPageCode, /ensureStaffPayrollProfileCanMutate/);
-    assert.match(hrPageCode, /ensureAccountOnboardingPayrollProfiles/);
+
     assert.match(hrPageCode, /Спершу збережіть робочі дані працівника/);
 
     assert.match(hrCssCode, /\.hr-staff-payroll-profile-panel/);
     assert.match(hrCssCode, /\.hr-staff-payroll-preview-summary/);
     assert.match(hrCssCode, /\.hr-staff-payroll-legacy-panel/);
-    assert.match(hrCssCode, /\.hr-account-payroll-profile-hint/);
+
 });
 
 test('HR team browser smoke covers staff-card payroll profile panel', () => {

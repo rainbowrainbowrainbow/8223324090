@@ -4918,6 +4918,7 @@ function bindProfessionWorkspaceControls() {
     const overlay = document.getElementById('professionWorkspaceOverlay');
     if (!overlay || overlay.dataset.bound === 'true') return;
     overlay.dataset.bound = 'true';
+    document.getElementById('professionWorkspaceSaveDepartment')?.addEventListener('click', saveParkProfessionDepartment);
     document.getElementById('professionWorkspaceForm')?.addEventListener('submit', event => event.preventDefault());
     document.getElementById('professionWorkspaceBack')?.addEventListener('click', closeProfessionWorkspace);
     document.getElementById('professionWorkspaceClose')?.addEventListener('click', closeProfessionWorkspace);
@@ -5106,6 +5107,7 @@ function professionMatchesCatalogFilters(item = {}) {
 function professionMasterRowHtml(item = {}, initialTab = 'main') {
     const active = item.is_active !== false && item.isActive !== false;
     const source = item.source === 'system' || item.isVirtual ? 'system' : 'db';
+    const department = escapeHtml(professionDepartmentLabel(item.department) || 'Без відділу');
     const nodeTitle = item.structureNode?.title || companyStructureNodeTitle(item.structure_node_id || item.structureNodeId) || 'Без вузла';
     const hasStaffCount = Object.hasOwn(item, 'staffCount') || Object.hasOwn(item, 'staff_count');
     const staffCount = Number(item.staffCount ?? item.staff_count);
@@ -5122,12 +5124,12 @@ function professionMasterRowHtml(item = {}, initialTab = 'main') {
         : 'Чекліст недоступний';
     return `
         <${rowTag} class="hr-profession-master-row${active ? '' : ' is-archived'}${workspaceUnsupported ? ' is-read-only' : ''}" ${rowAttributes}>
-            <span class="hr-profession-master-title"><strong>${escapeHtml(professionDisplayTitle(item.key, item.title))}</strong><small>${escapeHtml(item.key)} · ${source === 'system' ? 'Системна' : 'З довідника'}</small></span>
-            <span class="hr-profession-master-cell">${escapeHtml(professionDepartmentLabel(item.department) || 'Без відділу')}</span>
+            <span class="hr-profession-master-title"><strong>${escapeHtml(professionDisplayTitle(item.key, item.title))}</strong><small>${escapeHtml(item.key)} · ${source === 'system' ? 'Системна' : 'З довідника'}<span class="hr-profession-mobile-department"> · ${department}</span></small></span>
+            <span class="hr-profession-master-cell">${department}</span>
             <span class="hr-profession-master-cell">${escapeHtml(nodeTitle)}</span>
             <span class="hr-profession-master-cell">${escapeHtml(staffText)}</span>
             <span class="hr-profession-master-cell">${escapeHtml(checklistText)}</span>
-            <span class="hr-profession-master-state${active ? '' : ' is-archived'}">${workspaceUnsupported ? 'Лише список' : (source === 'system' ? 'Readonly' : (active ? 'Активна' : 'Архівна'))}</span>
+            <span class="hr-profession-master-state${active ? '' : ' is-archived'}">${workspaceUnsupported ? 'Лише список' : (source === 'system' ? 'Лише перегляд' : (active ? 'Активна' : 'Архівна'))}</span>
         </${rowTag}>`;
 }
 
@@ -5159,8 +5161,8 @@ function renderProfessions() {
     }
     const items = hrProfessions.filter(professionMatchesCatalogFilters);
     if (stats) {
-        const partialNote = isProfessionCatalogPartial() ? ' · скорочений read-only список: люди й чеклісти недоступні' : '';
-        stats.textContent = `Показано ${items.length} із ${hrProfessions.length} · system: ${hrProfessions.filter(item => item.source === 'system').length} · архівних: ${hrProfessions.filter(item => item.is_active === false || item.isActive === false).length}${partialNote}`;
+        const partialNote = isProfessionCatalogPartial() ? ' · скорочений список для перегляду без працівників і чеклістів' : '';
+        stats.textContent = `Показано ${items.length} із ${hrProfessions.length} · системних: ${hrProfessions.filter(item => item.source === 'system').length} · архівних: ${hrProfessions.filter(item => item.is_active === false || item.isActive === false).length}${partialNote}`;
     }
     if (!items.length) {
         root.innerHTML = '<div class="hr-account-empty">Професій за вибраними фільтрами не знайдено.</div>';
@@ -5378,7 +5380,7 @@ function professionChecklistDashboardRowHtml(item, type) {
     return `<article class="hr-checklist-dashboard-row is-${escapeHtml(status)}">
         <button type="button" class="hr-checklist-dashboard-profession" data-checklist-open-profession="${escapeHtml(professionKey)}">
             <strong>${escapeHtml(professionTitle)}</strong>
-            <span>${escapeHtml(item.department || 'Без напряму')}</span>
+            <span>${escapeHtml(professionDepartmentLabel(item.department) || 'Без відділу')}</span>
         </button>
         <div class="hr-checklist-dashboard-person">
             ${staffId ? `<button type="button" data-checklist-open-staff="${staffId}">${escapeHtml(staffName || `Працівник #${staffId}`)}</button>` : '<span>Шаблон професії</span>'}
@@ -5485,7 +5487,8 @@ function setProfessionWorkspaceBanner(message = '', state = '') {
 
 function professionWorkspaceReadOnly(data = professionWorkspaceState.data) {
     const profession = data?.profession || {};
-    return profession.isReadonly === true || profession.is_readonly === true || profession.source === 'system' || !canEditProfessionCatalog();
+    return data?.parkDepartmentEditable === true || profession.isReadonly === true
+        || profession.is_readonly === true || profession.source === 'system' || !canEditProfessionCatalog();
 }
 
 function professionWorkspaceStructureOptions(selected = '') {
@@ -5689,7 +5692,7 @@ function renderProfessionWorkspacePeople(people = []) {
                 : `Одиниця ${professionRateUnitLabel(person.rateUnit)} успадковується зі staff; profession override у цьому MVP не змінюється`);
         return `<article class="hr-profession-person-condition" data-profession-condition-row="${Number(person.id)}" data-state="${escapeHtml(rowState.status || (saving ? 'saving' : 'clean'))}" data-condition-weekday-source="${escapeHtml(draft.weekdaySource || weekdayPreference.source)}" data-condition-weekday-touched="${draft.weekdayTouched ? 'true' : 'false'}" data-condition-weekend-source="${escapeHtml(draft.weekendSource || weekendPreference.source)}" data-condition-weekend-touched="${draft.weekendTouched ? 'true' : 'false'}">
             <header class="hr-profession-person-condition__head">
-                <div><strong>${escapeHtml(person.name || `#${person.id}`)}</strong><span>${escapeHtml(person.department || 'Без напряму')} · ${person.isPrimary ? 'основна професія' : 'додаткова професія'}</span></div>
+                <div><strong>${escapeHtml(person.name || `#${person.id}`)}</strong><span>${escapeHtml(professionDepartmentLabel(person.department) || 'Без відділу')} · ${person.isPrimary ? 'основна професія' : 'додаткова професія'}</span></div>
                 <span class="hr-profession-person-state${person.isActive === false ? ' is-archived' : ''}">${person.isActive === false ? 'Архівний працівник' : 'Активний працівник'}</span>
             </header>
             <div class="hr-profession-condition-statuses">
@@ -6298,6 +6301,10 @@ function renderProfessionWorkspace() {
     workspace.querySelectorAll('[data-profession-workspace-panel="main"] input, [data-profession-workspace-panel="main"] select, [data-profession-workspace-panel="main"] textarea').forEach(control => {
         control.disabled = readOnly;
     });
+    const canEditDepartment = data.parkDepartmentEditable === true && canEditProfessionCatalog();
+    const departmentActions = document.getElementById('professionWorkspaceDepartmentActions');
+    if (departmentActions) departmentActions.hidden = !canEditDepartment;
+    if (canEditDepartment) document.getElementById('professionWorkspaceDepartment').disabled = false;
     const archive = document.getElementById('professionWorkspaceArchive');
     if (archive) {
         archive.classList.toggle('hidden', isNew);
@@ -6394,6 +6401,43 @@ async function openProfessionWorkspace({ id = null, key = null, initialTab = 'ma
     document.getElementById('professionWorkspaceChecklistNewTitle').value = professionChecklistDrafts.get(professionWorkspaceState.data?.profession?.key) || '';
     renderProfessionWorkspace();
     return professionWorkspaceState.data;
+}
+
+async function saveParkProfessionDepartment(event) {
+    const state = professionWorkspaceState;
+    const profession = state.data?.profession;
+    if (!state.open || !profession?.id || state.data.parkDepartmentEditable !== true || !canEditProfessionCatalog()) return;
+    const context = salaryAccessContext();
+    const input = document.getElementById('professionWorkspaceDepartment');
+    const department = professionDepartmentLabel(input.value);
+    if (!department || department.length > 50) {
+        input.setAttribute('aria-invalid', 'true');
+        setProfessionWorkspaceBanner('Вкажіть відділ до 50 символів.', 'error');
+        input.focus();
+        return;
+    }
+    input.removeAttribute('aria-invalid');
+    const button = event.currentTarget;
+    button.disabled = true;
+    setProfessionWorkspaceBanner('Збереження відділу…', 'saving');
+    try {
+        const response = await hrFetch(`/professions/${profession.id}/department`, {
+            method: 'PATCH', body: { department }, allowForbiddenResponse: true
+        }).catch(() => null);
+        if (state !== professionWorkspaceState || context !== salaryAccessContext()) return;
+        if (!response?.success) {
+            setProfessionWorkspaceBanner(response?.error || 'Не вдалося зберегти відділ.', 'error');
+            return;
+        }
+        profession.department = response.data.department;
+        await ensureProfessionsLoaded({ force: true, silent: true });
+        if (state !== professionWorkspaceState || context !== salaryAccessContext()) return;
+        renderProfessions();
+        renderProfessionWorkspace();
+        setProfessionWorkspaceBanner('Відділ у Парк збережено.', 'ready');
+    } finally {
+        button.disabled = false;
+    }
 }
 
 async function saveProfessionWorkspace(options = {}) {
@@ -6498,8 +6542,6 @@ let accountCenterConflictDrilldown = null;
 let accountDetailMobilePortal = null;
 let accountConflictRequestSeq = 0;
 let accountOnboardingOptions = null;
-let accountOnboardingPayrollProfiles = null;
-let accountOnboardingPayrollProfilesError = '';
 let onboardingStartRequestSeq = 0;
 let onboardingListRequestSeq = 0;
 let onboardingListReadOnly = true;
@@ -9450,19 +9492,6 @@ function accountOnboardingEl(id) {
     return document.getElementById(id);
 }
 
-function parseAccountProfessionKeys(value) {
-    if (Array.isArray(value)) return value.map(normalizeProfessionKey).filter(Boolean);
-    const raw = String(value || '').trim();
-    if (!raw) return [];
-    if (raw.startsWith('[')) {
-        try {
-            const parsed = JSON.parse(raw);
-            if (Array.isArray(parsed)) return parsed.map(normalizeProfessionKey).filter(Boolean);
-        } catch {}
-    }
-    return normalizeAccountListInput(raw).map(normalizeProfessionKey).filter(Boolean);
-}
-
 async function loadAccountOnboardingOptions(force = false, expectedRequestSeq = null) {
     if (accountOnboardingOptions && !force) return accountOnboardingOptions;
     const [options, roleDefinitions] = await Promise.all([
@@ -9480,137 +9509,6 @@ async function loadAccountOnboardingOptions(force = false, expectedRequestSeq = 
     return accountOnboardingOptions;
 }
 
-async function ensureAccountOnboardingPayrollProfiles(force = false) {
-    if (!accountOnboardingChangesConditions()) return null;
-    if (accountOnboardingPayrollProfiles && !force) return accountOnboardingPayrollProfiles;
-    const requestSeq = accountOnboardingRequestSeq;
-    accountOnboardingPayrollProfiles = null;
-    accountOnboardingPayrollProfilesError = '';
-    updateAccountOnboardingPayrollProfileHint();
-    let response;
-    try {
-        response = await hrFetch('/payroll-profiles?include_archived=true');
-    } catch (error) {
-        response = { success: false, error: error?.message || 'Мережевий збій' };
-    }
-    if (requestSeq !== accountOnboardingRequestSeq) return null;
-    if (response?.success && Array.isArray(response.data)) {
-        accountOnboardingPayrollProfiles = response.data;
-    } else {
-        accountOnboardingPayrollProfilesError = response?.status === 403
-            ? 'Зарплатні профілі недоступні для цього бізнесу або вашої ролі.'
-            : `Не вдалося перевірити зарплатні профілі: ${response?.error || 'некоректна відповідь'}.`;
-    }
-    updateAccountOnboardingPayrollProfileHint();
-    return accountOnboardingPayrollProfiles;
-}
-
-function accountOnboardingDefaultPayrollProfile(professionKey) {
-    const key = normalizeProfessionKey(professionKey);
-    return (accountOnboardingPayrollProfiles || []).find(profile =>
-        normalizeProfessionKey(profile.professionKey || profile.profession_key) === key
-        && (profile.profileKind || profile.profile_kind) === 'shared'
-        && profile.status === 'active'
-        && (profile.isDefaultForProfession || profile.is_default_for_profession)
-    ) || null;
-}
-
-function updateAccountOnboardingPayrollProfileHint() {
-    const root = accountOnboardingEl('accountOnboardingPayrollProfileHint');
-    if (!root) return;
-    const key = normalizeProfessionKey(accountOnboardingEl('accountOnboardingConditionProfession')?.value || accountOnboardingSelectedProfessions().find(item => item.isPrimary)?.key || '');
-    if (!key) {
-        root.textContent = 'Оберіть професію, щоб побачити типовий зарплатний профіль.';
-        root.dataset.state = 'empty';
-        return;
-    }
-    if (accountOnboardingPayrollProfilesError) {
-        root.textContent = `${accountOnboardingPayrollProfilesError} Не можна визначити default профіль. `;
-        root.dataset.state = 'error';
-        const retry = document.createElement('button');
-        retry.type = 'button';
-        retry.className = 'btn-secondary';
-        retry.textContent = 'Повторити перевірку';
-        retry.addEventListener('click', () => void ensureAccountOnboardingPayrollProfiles(true));
-        root.appendChild(retry);
-        return;
-    }
-    if (!accountOnboardingPayrollProfiles) {
-        root.textContent = 'Зарплатні профілі завантажуються…';
-        root.dataset.state = 'loading';
-        return;
-    }
-    const profile = accountOnboardingDefaultPayrollProfile(key);
-    if (!profile) {
-        root.textContent = `Default зарплатного профілю для "${professionTitle(key) || key}" ще немає. Onboarding не створить salary assignment; payroll піде legacy fallback до конвертації.`;
-        root.dataset.state = 'warning';
-        return;
-    }
-    const version = payrollProfileCurrentVersion(profile);
-    const unit = version ? payrollProfileRateUnitLabel(version.rateUnit || version.rate_unit) : 'без активної версії';
-    const rate = version ? payrollProfileMoney(version.defaultRate ?? version.default_rate) : '—';
-    root.textContent = `Default зарплатний профіль: ${profile.title || `#${profile.id}`} · ${rate} · ${unit}. Assignment не створюється, поки немає персональних умов.`;
-    root.dataset.state = 'ready';
-}
-
-function renderAccountOnboardingCheckboxList(rootId, options, selected = [], attribute = 'account-onboarding-value') {
-    const root = accountOnboardingEl(rootId);
-    if (!root) return;
-    const selectedSet = new Set(normalizeAccountArray(selected));
-    root.innerHTML = options.map(option => {
-        const value = String(option.value || '');
-        const disabled = option.disabled === true;
-        return `<label class="${disabled ? 'is-disabled' : ''}"><input type="checkbox" data-${attribute}="${escapeHtml(value)}" value="${escapeHtml(value)}" ${selectedSet.has(value) ? 'checked' : ''} ${disabled ? 'disabled aria-disabled="true"' : ''}><span>${escapeHtml(option.label || value)}</span></label>`;
-    }).join('');
-}
-
-function checkedAccountOnboardingValues(rootId, attribute) {
-    return Array.from(accountOnboardingEl(rootId)?.querySelectorAll(`input[data-${attribute}]:checked`) || [])
-        .map(input => input.value)
-        .filter(Boolean);
-}
-
-function accountOnboardingSelectedProfessions() {
-    const primary = accountOnboardingEl('accountOnboardingProfessions')?.querySelector('input[name="accountOnboardingPrimaryProfession"]:checked')?.value || '';
-    return Array.from(accountOnboardingEl('accountOnboardingProfessions')?.querySelectorAll('input[data-account-onboarding-profession]:checked') || [])
-        .map(input => ({ key: normalizeProfessionKey(input.value), isPrimary: normalizeProfessionKey(input.value) === normalizeProfessionKey(primary) }))
-        .filter(item => item.key);
-}
-
-function setAccountOnboardingProfessionSelection(keys = [], primaryKey = '') {
-    const selected = new Set(parseAccountProfessionKeys(keys));
-    const normalizedPrimary = normalizeProfessionKey(primaryKey) || selected.values().next().value || '';
-    const root = accountOnboardingEl('accountOnboardingProfessions');
-    root?.querySelectorAll('input[data-account-onboarding-profession]').forEach(input => {
-        input.checked = selected.has(normalizeProfessionKey(input.value));
-    });
-    root?.querySelectorAll('input[name="accountOnboardingPrimaryProfession"]').forEach(input => {
-        input.checked = selected.has(normalizeProfessionKey(input.value)) && normalizeProfessionKey(input.value) === normalizedPrimary;
-    });
-    syncAccountOnboardingProfessionDependants({ recommendRole: true });
-}
-
-function renderAccountOnboardingProfessions() {
-    const root = accountOnboardingEl('accountOnboardingProfessions');
-    if (!root) return;
-    const current = accountOnboardingSelectedProfessions();
-    const selected = new Set(current.map(item => item.key));
-    const primary = current.find(item => item.isPrimary)?.key || '';
-    const professions = Array.isArray(accountOnboardingOptions?.professions) ? accountOnboardingOptions.professions : [];
-    root.innerHTML = professions.map(profession => {
-        const key = normalizeProfessionKey(profession.key);
-        const safeId = key.replace(/[^a-z0-9_-]+/gi, '-');
-        const checkboxId = `accountOnboardingProfession-${safeId}`;
-        const primaryId = `accountOnboardingPrimaryProfession-${safeId}`;
-        return `<div class="hr-account-profession-option">
-            <input id="${escapeHtml(checkboxId)}" type="checkbox" data-account-onboarding-profession value="${escapeHtml(key)}" ${selected.has(key) ? 'checked' : ''}>
-            <label class="hr-account-profession-copy" for="${escapeHtml(checkboxId)}"><strong>${escapeHtml(profession.title || key)}</strong><small>${escapeHtml(profession.department || 'Без напряму')}</small></label>
-            <input id="${escapeHtml(primaryId)}" class="hr-account-primary-radio" type="radio" name="accountOnboardingPrimaryProfession" value="${escapeHtml(key)}" ${primary === key ? 'checked' : ''}>
-            <label class="hr-account-primary-label" for="${escapeHtml(primaryId)}">Основна<span class="sr-only">: ${escapeHtml(profession.title || key)}</span></label>
-        </div>`;
-    }).join('');
-}
-
 function renderAccountOnboardingStaffOptions() {
     const select = accountOnboardingEl('accountOnboardingStaffId');
     if (!select) return;
@@ -9624,246 +9522,27 @@ function renderAccountOnboardingStaffOptions() {
     if (Array.from(select.options).some(option => option.value === current && !option.disabled)) select.value = current;
 }
 
-function renderAccountOnboardingStructureOptions() {
-    const select = accountOnboardingEl('accountOnboardingStructureNode');
-    if (!select) return;
-    const current = select.value;
-    const rows = visibleCompanyStructureSubdivisionNodes(Array.isArray(accountOnboardingOptions?.structureNodes) ? accountOnboardingOptions.structureNodes : []);
-    select.innerHTML = '<option value="">Без вузла</option>' + rows.map(node => `<option value="${escapeHtml(node.id)}">${escapeHtml(node.title || node.id)}</option>`).join('');
-    select.value = rows.some(node => node.id === current) ? current : '';
-}
-
-function renderAccountOnboardingAccessControls(options = {}) {
-    const roleSelect = accountOnboardingEl('accountOnboardingRole');
-    if (!roleSelect) return;
-    const requestedRole = options.role || roleSelect.value || accountOnboardingSelectedProfessions().find(item => item.isPrimary)?.key || 'animator';
-    const mappedRole = accountOnboardingOptions?.professionRoleMap?.[requestedRole] || staffRoleToAccountRole(requestedRole);
-    const workerOnboarding = accountOnboardingOptions?.parkWorkerOnboarding === true;
-    const roleOptions = getAccountRoleOptions(mappedRole || 'animator')
-        .filter(option => !workerOnboarding || accountOnboardingOptions.allowedAccountRoles.includes(option.value))
-        .filter(option => !accountOnboardingOptions?.membershipBusinesses?.length || option.value !== 'creator');
-    const allowedRoles = new Set(roleOptions.map(option => option.value));
-    const role = allowedRoles.has(options.role || roleSelect.value) ? (options.role || roleSelect.value) : (allowedRoles.has(mappedRole) ? mappedRole : roleOptions[0]?.value || 'animator');
-    roleSelect.innerHTML = roleOptions.map(option => `<option value="${escapeHtml(option.value)}" ${option.value === role ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('');
-
-    const roleHint = accountOnboardingEl('accountOnboardingRoleHint');
-    const rolePages = accountOnboardingOptions?.rolePages?.filter(page => page.roles.includes(role)).slice(0, 3) || [];
-    if (roleHint) roleHint.textContent = rolePages.length
-        ? `Типові розділи ролі: ${rolePages.map(page => page.label).join(', ')}` : '';
-    const businessNote = accountOnboardingEl('accountOnboardingBusinessNote');
-    const canActivate = workerOnboarding || Boolean(accountOnboardingOptions?.membershipBusinesses?.length);
-    const pending = accountOnboardingOptions?.parkMembershipRequired && !canActivate;
-    if (businessNote) {
-        businessNote.hidden = !pending;
-        businessNote.textContent = pending ? 'Акаунт очікуватиме, поки власник призначить доступ до бізнесу.' : '';
-    }
-    const workerNote = accountOnboardingEl('accountOnboardingWorkerAccessNote');
-    if (workerNote) {
-        workerNote.hidden = !workerOnboarding;
-        workerNote.parentElement.querySelectorAll('details').forEach(element => { element.hidden = workerOnboarding; });
-    }
-
-    if (workerOnboarding) {
-        for (const id of ['accountOnboardingExtraRoles', 'accountOnboardingPages', 'accountOnboardingActionAllow', 'accountOnboardingActionDeny', 'accountOnboardingRolePresets']) {
-            accountOnboardingEl(id).replaceChildren();
-        }
-        renderAccountOnboardingBusinessControls();
-        return;
-    }
-
-    const selectedExtras = options.extraRoles || checkedAccountOnboardingValues('accountOnboardingExtraRoles', 'account-onboarding-extra-role');
-    renderAccountOnboardingCheckboxList('accountOnboardingExtraRoles', getAccountExtraRoleOptions(role, selectedExtras), selectedExtras, 'account-onboarding-extra-role');
-    renderAccountOnboardingCheckboxList('accountOnboardingPages', getAccountPageOptions(checkedAccountOnboardingValues('accountOnboardingPages', 'account-onboarding-page')), checkedAccountOnboardingValues('accountOnboardingPages', 'account-onboarding-page'), 'account-onboarding-page');
-    renderAccountOnboardingCheckboxList('accountOnboardingActionAllow', getAccountActionOptions(checkedAccountOnboardingValues('accountOnboardingActionAllow', 'account-onboarding-action-allow'), { includeNonDelegable: false }), checkedAccountOnboardingValues('accountOnboardingActionAllow', 'account-onboarding-action-allow'), 'account-onboarding-action-allow');
-    renderAccountOnboardingCheckboxList('accountOnboardingActionDeny', getAccountActionOptions(checkedAccountOnboardingValues('accountOnboardingActionDeny', 'account-onboarding-action-deny')), checkedAccountOnboardingValues('accountOnboardingActionDeny', 'account-onboarding-action-deny'), 'account-onboarding-action-deny');
-
-    const presetRoot = accountOnboardingEl('accountOnboardingRolePresets');
-    if (presetRoot) {
-        presetRoot.innerHTML = getAccountRolePresetButtons(role).map(preset => `<button type="button" data-account-onboarding-preset-role="${escapeHtml(preset.values.role)}" data-account-onboarding-preset-extra="${escapeHtml((preset.values.extraRoles || []).join(','))}" data-account-onboarding-preset-business="${escapeHtml((preset.values.businessContexts || []).join(','))}" data-account-onboarding-preset-default="${escapeHtml(preset.values.defaultBusinessContext || '')}"><strong>${escapeHtml(preset.label)}</strong><small>${escapeHtml(preset.hint || '')}</small></button>`).join('');
-    }
-    renderAccountOnboardingBusinessControls(options.businessContexts, options.defaultBusinessContext);
-}
-
-function renderAccountOnboardingBusinessControls(selectedInput = null, defaultInput = '') {
-    const role = accountOnboardingEl('accountOnboardingRole')?.value || 'animator';
-    const canSwitch = accountRoleCanSwitchBusinessContext(role);
-    const membershipBusinesses = accountOnboardingOptions?.membershipBusinesses || [];
-    const membershipMode = membershipBusinesses.length || accountOnboardingOptions?.parkMembershipRequired
-        || accountOnboardingOptions?.parkWorkerOnboarding;
-    const catalog = membershipBusinesses.length ? membershipBusinesses : getAccountBusinessCatalog()
-        .filter(item => (!membershipMode && canSwitch) || item.key === 'event_genix');
-    if (membershipBusinesses.length > 1) {
-        const select = accountOnboardingEl('accountOnboardingDefaultBusiness');
-        const requested = defaultInput || select.value || 'event_genix';
-        select.replaceChildren(...catalog.map(item => new Option(item.label, item.key, false, item.key === requested)));
-        select.disabled = false;
-        accountOnboardingEl('accountOnboardingDefaultBusinessField').hidden = false;
-        accountOnboardingEl('accountOnboardingBusinessChoices').hidden = true;
-        accountOnboardingEl('accountOnboardingSingleBusiness').hidden = true;
-        return;
-    }
-    const fixedBusiness = catalog.length === 1 ? catalog[0] : null;
-    const selected = fixedBusiness ? [fixedBusiness.key]
-        : normalizeAccountBusinessSelection(selectedInput || checkedAccountOnboardingValues('accountOnboardingBusinesses', 'account-onboarding-business'));
-    renderAccountOnboardingCheckboxList(
-        'accountOnboardingBusinesses',
-        catalog.map(item => ({ value: item.key, label: item.label || item.key })),
-        selected,
-        'account-onboarding-business'
-    );
-    const defaultSelect = accountOnboardingEl('accountOnboardingDefaultBusiness');
-    if (!defaultSelect) return;
-    const defaultKey = fixedBusiness?.key || getAccountDefaultBusinessValue({ defaultBusinessContext: defaultInput || defaultSelect.value }, selected);
-    defaultSelect.innerHTML = catalog
-        .filter(item => selected.includes(item.key))
-        .map(item => `<option value="${escapeHtml(item.key)}" ${item.key === defaultKey ? 'selected' : ''}>${escapeHtml(item.label || item.key)}</option>`)
-        .join('');
-    defaultSelect.disabled = Boolean(fixedBusiness);
-    const businessChoices = accountOnboardingEl('accountOnboardingBusinessChoices');
-    const defaultField = accountOnboardingEl('accountOnboardingDefaultBusinessField');
-    const singleBusiness = accountOnboardingEl('accountOnboardingSingleBusiness');
-    if (businessChoices) businessChoices.hidden = Boolean(fixedBusiness);
-    if (defaultField) defaultField.hidden = Boolean(fixedBusiness);
-    if (singleBusiness) {
-        singleBusiness.hidden = !fixedBusiness;
-        singleBusiness.textContent = fixedBusiness ? `Бізнес: ${fixedBusiness.label || fixedBusiness.key}` : '';
-    }
-}
-
-function syncAccountOnboardingProfessionDependants(options = {}) {
-    let selected = accountOnboardingSelectedProfessions();
-    if (!accountOnboardingChangesSetup()) {
-        const staff = accountOnboardingOptions?.staff?.find(item => Number(item.id) === Number(accountOnboardingEl('accountOnboardingStaffId')?.value));
-        const assignments = Array.isArray(staff?.role_assignments) ? staff.role_assignments : [];
-        const primary = assignments.find(item => item.isPrimary === true || item.is_primary === true);
-        const primaryKey = normalizeProfessionKey(primary?.key || primary?.professionKey || primary?.profession_key || staff?.role_type);
-        const keys = new Set([primaryKey, ...parseAccountProfessionKeys(staff?.secondary_professions),
-            ...assignments.map(item => normalizeProfessionKey(item.key || item.professionKey || item.profession_key))].filter(Boolean));
-        selected = [...keys].map(key => ({ key, isPrimary: key === primaryKey }));
-    }
-    const conditionSelect = accountOnboardingEl('accountOnboardingConditionProfession');
-    const previous = conditionSelect?.value || '';
-    if (conditionSelect) {
-        conditionSelect.innerHTML = selected.map(item => {
-            const profession = accountOnboardingOptions?.professions?.find(row => normalizeProfessionKey(row.key) === item.key);
-            return `<option value="${escapeHtml(item.key)}">${escapeHtml(profession?.title || item.key)}</option>`;
-        }).join('');
-        conditionSelect.value = selected.some(item => item.key === previous) ? previous : (selected.find(item => item.isPrimary)?.key || selected[0]?.key || '');
-    }
-    if (options.recommendRole) {
-        const primary = selected.find(item => item.isPrimary)?.key;
-        if (primary) renderAccountOnboardingAccessControls({ role: accountOnboardingOptions?.professionRoleMap?.[primary] || staffRoleToAccountRole(primary) });
-    }
-    updateAccountOnboardingPayrollProfileHint();
-    void ensureAccountOnboardingPayrollProfiles(false);
-}
-
-function syncAccountOnboardingRateControls() {
-    const modeSelect = accountOnboardingEl('accountOnboardingRateMode');
-    if (modeSelect) {
-        modeSelect.disabled = accountOnboardingOptions?.canManagePayrollRules === false;
-        if (modeSelect.disabled) modeSelect.value = 'keep';
-    }
-    const mode = modeSelect?.value || 'keep';
-    const rate = accountOnboardingEl('accountOnboardingHourlyRate');
-    const hint = accountOnboardingEl('accountOnboardingRateHint');
-    const label = accountOnboardingEl('accountOnboardingHourlyRateLabel');
-    const timeDisabled = mode === 'keep';
-    const rateDisabled = !['explicit', 'fallback'].includes(mode);
-    if (rate) {
-        rate.disabled = rateDisabled;
-        rate.min = mode === 'explicit' ? '0.01' : '0';
-    }
-    if (label) label.textContent = mode === 'explicit' ? 'Індивідуальна ставка за годину' : 'Базова ставка staff за годину';
-    if (hint) hint.textContent = mode === 'keep'
-        ? 'Ставка й типовий час існуючого staff лишаться без змін.'
-        : (mode === 'explicit' ? 'Застосовується лише до вибраної професії.' : (mode === 'unchanged' ? 'Ставка залишиться без змін; оновляться лише побажання часу.' : 'Професія використовуватиме базову ставку staff.'));
-    ['accountOnboardingWeekdayStart', 'accountOnboardingWeekdayEnd', 'accountOnboardingWeekendStart', 'accountOnboardingWeekendEnd']
-        .forEach(id => { const input = accountOnboardingEl(id); if (input) input.disabled = timeDisabled; });
-}
-
-function prefillAccountOnboardingCondition(staff, professionKey, options = {}) {
-    if (!staff) return;
-    const key = normalizeProfessionKey(professionKey);
-    const conditions = Array.isArray(staff.profession_conditions)
-        ? staff.profession_conditions
-        : (Array.isArray(staff.professionConditions) ? staff.professionConditions : []);
-    const condition = conditions.find(item => normalizeProfessionKey(item.professionKey || item.profession_key) === key) || null;
-    const rateMode = accountOnboardingEl('accountOnboardingRateMode')?.value || 'keep';
-    const rate = accountOnboardingEl('accountOnboardingHourlyRate');
-    if (rate && options.includeRate !== false) {
-        const explicitRate = condition?.explicitRate ?? condition?.explicit_rate;
-        rate.value = rateMode === 'explicit' && explicitRate != null
-            ? String(explicitRate)
-            : (rateMode === 'fallback' && staff.hourly_rate != null ? String(staff.hourly_rate) : '');
-    }
-    if (options.includeTimes === false) return;
-    const preferences = Array.isArray(condition?.shiftPreferences)
-        ? condition.shiftPreferences
-        : (Array.isArray(condition?.shift_preferences) ? condition.shift_preferences : []);
-    const values = Object.fromEntries(preferences.map(item => [String(item.dayType || item.day_type || ''), item]));
-    for (const [dayType, startId, endId] of [
-        ['weekday', 'accountOnboardingWeekdayStart', 'accountOnboardingWeekdayEnd'],
-        ['weekend', 'accountOnboardingWeekendStart', 'accountOnboardingWeekendEnd']
-    ]) {
-        const preference = values[dayType];
-        const active = preference && preference.isActive !== false && preference.is_active !== false;
-        const start = accountOnboardingEl(startId);
-        const end = accountOnboardingEl(endId);
-        if (start) start.value = active ? String(preference.startTime || preference.start_time || '').slice(0, 5) : '';
-        if (end) end.value = active ? String(preference.endTime || preference.end_time || '').slice(0, 5) : '';
-    }
-}
-
-function prefillSelectedAccountOnboardingCondition(options = {}) {
-    const staffId = Number(accountOnboardingEl('accountOnboardingStaffId')?.value || 0);
-    const staff = accountOnboardingOptions?.staff?.find(item => Number(item.id) === staffId);
-    prefillAccountOnboardingCondition(staff, accountOnboardingEl('accountOnboardingConditionProfession')?.value, options);
-    updateAccountOnboardingPayrollProfileHint();
-}
-
 function syncAccountOnboardingForm() {
     const lockedStaff = Number(accountOnboardingState.context?.staffId || accountOnboardingState.context?.staff?.id || 0);
     accountOnboardingEl('accountOnboardingName').readOnly = true;
     accountOnboardingEl('accountOnboardingStaffId').disabled = Boolean(lockedStaff);
-    accountOnboardingEl('accountOnboardingExistingSetup').hidden = !canManageAccountSecurity();
-    accountOnboardingEl('accountOnboardingExistingProfessionFields').hidden = !accountOnboardingChangesSetup();
-    accountOnboardingEl('accountOnboardingConditionsDetails').hidden = accountOnboardingOptions?.canManagePayrollRules !== true;
-    accountOnboardingEl('accountOnboardingAccessDetails').hidden = !canManageAccountSecurity();
-    accountOnboardingEl('accountOnboardingConditions').disabled = !accountOnboardingChangesConditions();
-    accountOnboardingEl('accountOnboardingAdvancedAccess').disabled = !canManageAccountSecurity() || !accountOnboardingEl('accountOnboardingEditAccess').checked;
-    const activateAccess = accountOnboardingOptions?.parkWorkerOnboarding || accountOnboardingOptions?.membershipBusinesses?.length;
+    accountOnboardingEl('accountOnboardingExistingStaffFields').hidden = Boolean(lockedStaff);
+    const activateAccess = accountOnboardingOptions?.parkWorkerOnboarding
+        || accountOnboardingOptions?.membershipBusinesses?.some(item => item.key === 'event_genix');
     accountOnboardingEl('accountOnboardingSubmit').textContent = activateAccess
-        ? 'Створити акаунт і надати доступ'
-        : 'Створити CRM-акаунт';
-    if (accountOnboardingEl('accountOnboardingExistingStaffFields')) accountOnboardingEl('accountOnboardingExistingStaffFields').hidden = Boolean(lockedStaff);
-    const rateMode = accountOnboardingEl('accountOnboardingRateMode');
-    if (rateMode && !rateMode.dataset.userChanged) rateMode.value = 'keep';
-    syncAccountOnboardingRateControls();
-    updateAccountOnboardingPayrollProfileHint();
+        ? 'Створити акаунт і надати доступ' : 'Створити CRM-акаунт';
 }
 
-function prefillAccountOnboardingFromStaff(staffId, options = {}) {
+function prefillAccountOnboardingFromStaff(staffId) {
     const staff = accountOnboardingOptions?.staff?.find(item => Number(item.id) === Number(staffId));
-    if (!staff) return;
-    const name = accountOnboardingEl('accountOnboardingName');
-    const username = accountOnboardingEl('accountOnboardingUsername');
-    if (name && (!name.value || options.force)) name.value = staff.name || '';
-    if (username && (!username.value || options.force)) username.value = suggestAccountUsernameFromStaff(staff);
-    if (accountOnboardingEl('accountOnboardingStructureNode')) accountOnboardingEl('accountOnboardingStructureNode').value = staff.company_structure_node_id || '';
-    const assignments = Array.isArray(staff.role_assignments) ? staff.role_assignments : [];
-    const assignmentKeys = assignments.map(item => normalizeProfessionKey(item.key || item.professionKey || item.profession_key)).filter(Boolean);
-    const secondary = parseAccountProfessionKeys(staff.secondary_professions);
-    const primary = normalizeProfessionKey(assignments.find(item => item.isPrimary === true || item.is_primary === true)?.key || staff.role_type);
-    setAccountOnboardingProfessionSelection([primary, ...secondary, ...assignmentKeys], primary);
-    const rateMode = accountOnboardingEl('accountOnboardingRateMode');
-    if (rateMode) {
-        rateMode.value = 'keep';
-        delete rateMode.dataset.userChanged;
-    }
-    prefillAccountOnboardingCondition(staff, primary);
-    syncAccountOnboardingRateControls();
-    updateAccountOnboardingPayrollProfileHint();
+    accountOnboardingEl('accountOnboardingName').value = staff?.name || '';
+    accountOnboardingEl('accountOnboardingUsername').value = staff ? suggestAccountUsernameFromStaff(staff) : '';
+    const profession = normalizeProfessionKey(staff?.role_type);
+    const role = accountOnboardingOptions?.professionRoleMap?.[profession] || profession;
+    const summary = accountOnboardingEl('accountOnboardingAccessSummary');
+    if (summary) summary.textContent = !staff ? '' : accountOnboardingOptions?.roleHierarchy?.includes(role)
+        ? `Бізнес: Парк · CRM-роль: ${ROLE_LABELS[role] || role}`
+        : 'Для основної посади в картці не визначено CRM-роль.';
 }
 
 function setAccountOnboardingStatus(message = '', type = 'error') {
@@ -9885,121 +9564,38 @@ function focusInvalidAccountOnboarding(message, element) {
     return false;
 }
 
-function validateAccountOnboardingSection(step) {
+function validateAccountOnboardingStep() {
     setAccountOnboardingStatus('');
-    if (step === 1) {
-        const name = accountOnboardingEl('accountOnboardingName');
-        const username = accountOnboardingEl('accountOnboardingUsername');
-        if (!String(name?.value || '').trim()) return focusInvalidAccountOnboarding('Вкажіть імʼя в CRM.', name);
-        if (!/^[a-zA-Z0-9._-]{3,50}$/.test(String(username?.value || '').trim())) return focusInvalidAccountOnboarding('Логін: 3–50 символів, лише латиниця, цифри, крапка, дефіс або підкреслення.', username);
+    const select = accountOnboardingEl('accountOnboardingStaffId');
+    const staff = accountOnboardingOptions?.staff?.find(item => Number(item.id) === Number(select?.value));
+    if (!select?.value || !staff || staff.linked_user_id || staff.linkedUserId || select.selectedOptions?.[0]?.disabled) {
+        return focusInvalidAccountOnboarding('Оберіть картку без прив’язаного CRM-акаунта.', select);
     }
-    if (step === 1) {
-        const input = accountOnboardingEl('accountOnboardingPassword');
-        const password = input.value;
-        if ([...password].length < 12 || new TextEncoder().encode(password).length > 72
-            || /[\r\n;]/.test(password) || password.normalize('NFKC').trim() !== password) {
-            return focusInvalidAccountOnboarding('Вкажіть пароль від 12 символів, до 72 байтів, без крайніх пробілів, крапки з комою та переносів рядка.', input);
-        }
+    const username = accountOnboardingEl('accountOnboardingUsername');
+    if (!/^[a-zA-Z0-9._-]{3,50}$/.test(username.value.trim())) {
+        return focusInvalidAccountOnboarding('Логін: 3–50 символів, лише латиниця, цифри, крапка, дефіс або підкреслення.', username);
     }
-    if (step === 2) {
-        const select = accountOnboardingEl('accountOnboardingStaffId');
-        const selectedStaff = accountOnboardingOptions?.staff?.find(item => Number(item.id) === Number(select?.value));
-        if (!select?.value || !selectedStaff || selectedStaff.linked_user_id || selectedStaff.linkedUserId || select.selectedOptions?.[0]?.disabled) {
-            return focusInvalidAccountOnboarding('Оберіть картку без прив’язаного CRM-акаунта.', select);
-        }
+    const input = accountOnboardingEl('accountOnboardingPassword');
+    const password = input.value;
+    if ([...password].length < 12 || new TextEncoder().encode(password).length > 72
+        || /[\r\n;]/.test(password) || password.normalize('NFKC').trim() !== password) {
+        return focusInvalidAccountOnboarding('Вкажіть пароль від 12 символів, до 72 байтів, без крайніх пробілів, крапки з комою та переносів рядка.', input);
     }
-    if (step === 3) {
-        const professions = accountOnboardingSelectedProfessions();
-        if (!professions.length) return focusInvalidAccountOnboarding('Оберіть щонайменше одну професію.', accountOnboardingEl('accountOnboardingProfessions')?.querySelector('input[data-account-onboarding-profession]'));
-        if (professions.filter(item => item.isPrimary).length !== 1) return focusInvalidAccountOnboarding('Позначте одну професію як основну.', accountOnboardingEl('accountOnboardingProfessions')?.querySelector('input[name="accountOnboardingPrimaryProfession"]'));
-    }
-    if (step === 4) {
-        const mode = accountOnboardingEl('accountOnboardingRateMode')?.value || 'keep';
-        if (mode !== 'keep') {
-            if (!accountOnboardingEl('accountOnboardingConditionProfession')?.value) return focusInvalidAccountOnboarding('Оберіть професію для умов.', accountOnboardingEl('accountOnboardingConditionProfession'));
-            const rateValue = String(accountOnboardingEl('accountOnboardingHourlyRate')?.value || '').trim();
-            if (mode === 'explicit' && (!rateValue || Number(rateValue) <= 0)) return focusInvalidAccountOnboarding('Вкажіть індивідуальну ставку більше нуля.', accountOnboardingEl('accountOnboardingHourlyRate'));
-            if (rateValue && (!Number.isFinite(Number(rateValue)) || Number(rateValue) < 0)) return focusInvalidAccountOnboarding('Ставка має бути невідʼємним числом.', accountOnboardingEl('accountOnboardingHourlyRate'));
-            for (const [startId, endId, label] of [['accountOnboardingWeekdayStart', 'accountOnboardingWeekdayEnd', 'Будні'], ['accountOnboardingWeekendStart', 'accountOnboardingWeekendEnd', 'Вихідні']]) {
-                const start = accountOnboardingEl(startId)?.value || '';
-                const end = accountOnboardingEl(endId)?.value || '';
-                if (Boolean(start) !== Boolean(end) || (start && start === end)) return focusInvalidAccountOnboarding(`${label}: заповніть різні початок і кінець або лишіть обидва поля порожніми.`, accountOnboardingEl(startId));
-            }
-        }
-    }
-    if (step === 5 && !accountOnboardingEl('accountOnboardingRole')?.value) return focusInvalidAccountOnboarding('Оберіть роль у CRM.', accountOnboardingEl('accountOnboardingRole'));
     return true;
 }
 
-function validateAccountOnboardingStep() {
-    const sections = [2, 1, 5];
-    if (accountOnboardingChangesSetup()) sections.push(3);
-    if (accountOnboardingChangesConditions()) sections.push(4);
-    return sections.every(validateAccountOnboardingSection);
-}
-
 function buildAccountOnboardingPayload() {
-    const rateMode = accountOnboardingChangesConditions() ? accountOnboardingEl('accountOnboardingRateMode').value : 'keep';
-    const rateValue = String(accountOnboardingEl('accountOnboardingHourlyRate')?.value || '').trim();
-    const staff = { mode: 'existing', id: Number(accountOnboardingEl('accountOnboardingStaffId')?.value) };
-    if (rateMode === 'fallback' && rateValue !== '') {
-        staff.hourlyRate = Number(rateValue);
-        staff.rateUnit = 'hour';
-    }
-    const role = accountOnboardingEl('accountOnboardingRole')?.value || 'animator';
-    const selectedBusiness = accountOnboardingEl('accountOnboardingDefaultBusiness')?.value || 'event_genix';
-    const activateMembership = accountOnboardingOptions?.membershipBusinesses?.some(item => item.key === selectedBusiness) === true;
-    const businessContexts = activateMembership ? [selectedBusiness]
-        : accountRoleCanSwitchBusinessContext(role)
-            ? checkedAccountOnboardingValues('accountOnboardingBusinesses', 'account-onboarding-business')
-            : ['event_genix'];
-    const payload = {
+    return {
+        deriveRoleFromStaff: true,
         personal: {
-            name: String(accountOnboardingEl('accountOnboardingName')?.value || '').trim(),
-            username: String(accountOnboardingEl('accountOnboardingUsername')?.value || '').trim()
+            name: accountOnboardingEl('accountOnboardingName').value.trim(),
+            username: accountOnboardingEl('accountOnboardingUsername').value.trim()
         },
-        staff,
-        access: {
-            role,
-            extraRoles: checkedAccountOnboardingValues('accountOnboardingExtraRoles', 'account-onboarding-extra-role'),
-            businessContexts,
-            defaultBusinessContext: activateMembership || accountRoleCanSwitchBusinessContext(role) ? selectedBusiness : 'event_genix',
-            ...(activateMembership ? { activateMembership: true } : {}),
-            pageAllowlist: checkedAccountOnboardingValues('accountOnboardingPages', 'account-onboarding-page'),
-            actionAllowlist: checkedAccountOnboardingValues('accountOnboardingActionAllow', 'account-onboarding-action-allow'),
-            actionDenylist: checkedAccountOnboardingValues('accountOnboardingActionDeny', 'account-onboarding-action-deny')
-        },
+        staff: { mode: 'existing', id: Number(accountOnboardingEl('accountOnboardingStaffId').value) },
+        access: { activateMembership: accountOnboardingOptions?.membershipBusinesses?.some(item => item.key === 'event_genix') === true },
         issueOneTime: true,
         initialPassword: accountOnboardingEl('accountOnboardingPassword').value
     };
-    if (accountOnboardingChangesSetup()) {
-        payload.structureNodeId = accountOnboardingEl('accountOnboardingStructureNode')?.value || null;
-        payload.professions = accountOnboardingSelectedProfessions();
-    }
-    if (!canManageAccountSecurity() || !accountOnboardingEl('accountOnboardingEditAccess')?.checked) {
-        for (const key of ['extraRoles', 'pageAllowlist', 'actionAllowlist', 'actionDenylist']) payload.access[key] = [];
-    }
-    if (rateMode !== 'keep') {
-        payload.conditions = {
-            professionKey: accountOnboardingEl('accountOnboardingConditionProfession')?.value,
-            rateMode,
-            hourlyRate: rateMode === 'explicit' ? Number(rateValue) : undefined,
-            shiftPreferences: [
-                { dayType: 'weekday', startTime: accountOnboardingEl('accountOnboardingWeekdayStart')?.value || null, endTime: accountOnboardingEl('accountOnboardingWeekdayEnd')?.value || null },
-                { dayType: 'weekend', startTime: accountOnboardingEl('accountOnboardingWeekendStart')?.value || null, endTime: accountOnboardingEl('accountOnboardingWeekendEnd')?.value || null }
-            ]
-        };
-    }
-    return payload;
-}
-
-function accountOnboardingChangesSetup() {
-    return canManageAccountSecurity() && accountOnboardingEl('accountOnboardingEditSetup')?.checked === true;
-}
-
-function accountOnboardingChangesConditions() {
-    return accountOnboardingOptions?.canManagePayrollRules === true
-        && accountOnboardingEl('accountOnboardingEditConditions')?.checked === true;
 }
 
 function renderAccountOnboardingReceipt(response) {
@@ -10123,8 +9719,6 @@ function completeAccountOnboarding(response, operationKey) {
     renderAccountOnboardingReceipt(response);
     accountCenterLastUpdatedId = response.receipt?.account?.id || response.user?.id || null;
     accountOnboardingOptions = null;
-    accountOnboardingPayrollProfiles = null;
-    accountOnboardingPayrollProfilesError = '';
     void Promise.allSettled([loadAccountStaffOptions(true), loadTeam(), loadAccountCenter({ resetFilters: true })]);
 }
 
@@ -10149,9 +9743,6 @@ function closeAccountOnboardingWizard({ force = false } = {}) {
     accountOnboardingEl('accountOnboardingPassword').type = 'password';
     const passwordToggle = accountOnboardingEl('accountOnboardingPasswordToggle');
     passwordToggle.setAttribute('aria-pressed', 'false');
-    if (accountOnboardingEl('accountOnboardingRateMode')) {
-        delete accountOnboardingEl('accountOnboardingRateMode').dataset.userChanged;
-    }
     accountOnboardingEl('accountOnboardingForm')?.classList.remove('hidden');
     accountOnboardingEl('accountOnboardingActions')?.classList.remove('hidden');
     accountOnboardingEl('accountOnboardingReceipt')?.classList.add('hidden');
@@ -10221,49 +9812,7 @@ function bindAccountOnboardingControls() {
         event.preventDefault();
         void submitAccountOnboarding();
     });
-    accountOnboardingEl('accountOnboardingEditSetup')?.addEventListener('change', () => {
-        syncAccountOnboardingForm();
-        syncAccountOnboardingProfessionDependants();
-    });
-    accountOnboardingEl('accountOnboardingEditConditions')?.addEventListener('change', event => {
-        accountOnboardingEl('accountOnboardingConditions').disabled = !event.target.checked;
-        if (event.target.checked) void ensureAccountOnboardingPayrollProfiles();
-    });
-    accountOnboardingEl('accountOnboardingEditAccess')?.addEventListener('change', event => {
-        accountOnboardingEl('accountOnboardingAdvancedAccess').disabled = !event.target.checked;
-    });
-    accountOnboardingEl('accountOnboardingStaffId')?.addEventListener('change', event => prefillAccountOnboardingFromStaff(event.target.value, { force: true }));
-    accountOnboardingEl('accountOnboardingRateMode')?.addEventListener('change', event => {
-        event.target.dataset.userChanged = 'true';
-        prefillSelectedAccountOnboardingCondition({ includeTimes: false });
-        syncAccountOnboardingRateControls();
-    });
-    accountOnboardingEl('accountOnboardingConditionProfession')?.addEventListener('change', () => {
-        prefillSelectedAccountOnboardingCondition();
-        updateAccountOnboardingPayrollProfileHint();
-    });
-    accountOnboardingEl('accountOnboardingRole')?.addEventListener('change', event => renderAccountOnboardingAccessControls({ role: event.target.value }));
-    accountOnboardingEl('accountOnboardingProfessions')?.addEventListener('change', event => {
-        const previousCondition = accountOnboardingEl('accountOnboardingConditionProfession')?.value || '';
-        if (event.target.matches('input[name="accountOnboardingPrimaryProfession"]')) {
-            const checkbox = Array.from(accountOnboardingEl('accountOnboardingProfessions').querySelectorAll('input[data-account-onboarding-profession]')).find(input => input.value === event.target.value);
-            if (checkbox) checkbox.checked = true;
-        }
-        if (event.target.matches('input[data-account-onboarding-profession]') && !event.target.checked) {
-            const primary = accountOnboardingEl('accountOnboardingProfessions').querySelector(`input[name="accountOnboardingPrimaryProfession"][value="${event.target.value}"]`);
-            if (primary) primary.checked = false;
-        }
-        syncAccountOnboardingProfessionDependants({ recommendRole: true });
-        if (previousCondition !== (accountOnboardingEl('accountOnboardingConditionProfession')?.value || '')) {
-            prefillSelectedAccountOnboardingCondition();
-        }
-    });
-    accountOnboardingEl('accountOnboardingRolePresets')?.addEventListener('click', event => {
-        const button = event.target.closest('[data-account-onboarding-preset-role]');
-        if (!button) return;
-        renderAccountOnboardingAccessControls({ role: button.dataset.accountOnboardingPresetRole, extraRoles: normalizeAccountListInput(button.dataset.accountOnboardingPresetExtra), businessContexts: normalizeAccountListInput(button.dataset.accountOnboardingPresetBusiness), defaultBusinessContext: button.dataset.accountOnboardingPresetDefault });
-    });
-    accountOnboardingEl('accountOnboardingBusinesses')?.addEventListener('change', () => renderAccountOnboardingBusinessControls());
+    accountOnboardingEl('accountOnboardingStaffId')?.addEventListener('change', event => prefillAccountOnboardingFromStaff(event.target.value));
     accountOnboardingEl('accountOnboardingReceipt')?.addEventListener('click', async event => {
         const verify = event.target.closest('[data-account-onboarding-verify-access]');
         if (verify && accountOnboardingState.operationKey) {
@@ -10337,8 +9886,6 @@ async function openAccountOnboardingWizard(button, context = {}) {
     const overlay = accountOnboardingEl('accountOnboardingOverlay');
     if (!overlay) return false;
     const requestSeq = ++accountOnboardingRequestSeq;
-    accountOnboardingPayrollProfiles = null;
-    accountOnboardingPayrollProfilesError = '';
     accountOnboardingState = { open: true, requestSeq, returnFocus: button || document.activeElement, context, accessContext: teamAccessContext(), submitting: false, receipt: null, credential: null, payload: null };
     bindAccountOnboardingControls();
     overlay.classList.remove('hidden');
@@ -10369,9 +9916,6 @@ async function openAccountOnboardingWizard(button, context = {}) {
         if (!loadedOptions) return false;
 
         renderAccountOnboardingStaffOptions();
-        renderAccountOnboardingStructureOptions();
-        renderAccountOnboardingProfessions();
-        renderAccountOnboardingAccessControls({ role: 'animator' });
         const requestedStaffId = Number(context.staff?.id || context.staffId || 0);
         const contextStaff = requestedStaffId
             ? accountOnboardingOptions.staff.find(staff => Number(staff.id) === requestedStaffId)
@@ -10390,11 +9934,10 @@ async function openAccountOnboardingWizard(button, context = {}) {
         }
         if (contextStaff) {
             accountOnboardingEl('accountOnboardingStaffId').value = String(contextStaff.id);
-            prefillAccountOnboardingFromStaff(contextStaff.id, { force: true });
         }
+        prefillAccountOnboardingFromStaff(accountOnboardingEl('accountOnboardingStaffId').value);
         accountOnboardingEl('accountOnboardingPassword').value = generateInitialAccountPassword();
         syncAccountOnboardingForm();
-        syncAccountOnboardingProfessionDependants();
         loaded = true;
     } catch (error) {
         if (!accountOnboardingState.open || requestSeq !== accountOnboardingRequestSeq) return false;
@@ -12970,7 +12513,7 @@ function staffPayrollEffectiveProfileForProfession(professionKey, date = staffPa
 
 function staffPayrollProfileSourceLabel(source = '') {
     return {
-        inherited: 'Успадковано від професії',
+        inherited: 'За посадою',
         explicit: 'Вибрані умови працівника',
         temporary: 'тимчасове призначення',
         unresolved: 'не визначено'
@@ -13100,12 +12643,20 @@ function renderStaffPayrollProfileDiff(activeProfile = null, baseProfile = null)
     </div>`;
 }
 
+function staffPayrollProfileRateOnDate(version, date) {
+    if ((version.rateUnit || version.rate_unit) === 'month') return version.defaultRate ?? version.default_rate;
+    const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
+    return payrollProfileRateForDay(version, weekday === 0 ? 7 : weekday);
+}
+
 function renderStaffPayrollProfileCard(professionKey) {
     const key = normalizeProfessionKey(professionKey);
     const { assignment, profile, defaultProfile, source, version, warning } = staffPayrollEffectiveProfileForProfession(key);
     const conditionsDate = staffPayrollConditionsDate();
     const primary = normalizeProfessionKey(document.getElementById('editRoleType')?.value || '');
     const profileKind = profile?.profileKind || profile?.profile_kind || '';
+    const sourceLabel = source === 'explicit' && profileKind === 'personal'
+        ? 'Індивідуальна' : staffPayrollProfileSourceLabel(source);
     const effectiveDates = assignment
         ? `${formatStaffDateValue(staffPayrollAssignmentFrom(assignment))}${staffPayrollAssignmentTo(assignment) ? ` → ${formatStaffDateValue(staffPayrollAssignmentTo(assignment))}` : ' → без завершення'}`
         : (version ? payrollProfileVersionLabel(version) : '—');
@@ -13119,17 +12670,17 @@ function renderStaffPayrollProfileCard(professionKey) {
         <header class="hr-staff-payroll-profile-card-head">
             <div>
                 <strong>${escapeHtml(professionTitle(key) || key)}</strong>
-                <span>${key === primary ? 'Основна оплата' : 'Умови додаткової професії'} · ${escapeHtml(staffPayrollProfileSourceLabel(source))}</span>
+                <span>${key === primary ? 'Основна оплата' : 'Умови додаткової професії'}</span>
             </div>
             <div class="hr-payroll-profile-badges">
-                <span class="hr-payroll-profile-badge ${source === 'temporary' ? 'is-draft' : source === 'unresolved' ? 'is-legacy' : 'is-ready'}">${escapeHtml(staffPayrollProfileSourceLabel(source))}</span>
+                <span class="hr-payroll-profile-badge ${source === 'temporary' ? 'is-draft' : source === 'unresolved' ? 'is-legacy' : 'is-ready'}">${escapeHtml(sourceLabel)}</span>
                 ${profileKind ? `<span class="hr-payroll-profile-badge">${escapeHtml(payrollProfileKindLabel(profileKind))}</span>` : ''}
             </div>
         </header>
         <div class="hr-payroll-profile-rate-grid">
             <div><span>Варіант оплати</span><strong>${profile ? escapeHtml(profile.title || `Профіль #${profile.id}`) : '—'}</strong><small>${profile ? `ID ${Number(profile.id)}` : 'Немає чинних умов на вибрану дату'}</small></div>
             <div><span>Одиниця</span><strong>${version ? escapeHtml(payrollProfileRateUnitLabel(version.rateUnit || version.rate_unit)) : '—'}</strong></div>
-            <div><span>Сума</span><strong>${version ? payrollProfileMoney(version.defaultRate ?? version.default_rate) : '—'}</strong><small>${escapeHtml(legacyLabel)}</small></div>
+            <div><span>Ставка профілю на вибрану дату</span><strong>${version ? payrollProfileMoney(staffPayrollProfileRateOnDate(version, conditionsDate)) : '—'}</strong><small>${escapeHtml(legacyLabel)}</small></div>
             <div><span>Умови на ${escapeHtml(conditionsDate)}</span><strong>${escapeHtml(version ? payrollProfileVersionLabel(version) : '—')}</strong><small>${escapeHtml(effectiveDates)}</small></div>
         </div>
         <p class="hr-staff-payroll-profile-diff">${version ? escapeHtml(payrollProfilePaymentHint(version.rateUnit || version.rate_unit)) : escapeHtml(legacyLabel)}</p>
@@ -13138,9 +12689,9 @@ function renderStaffPayrollProfileCard(professionKey) {
         ${renderStaffPayrollFutureConditions(key)}
         ${renderStaffPayrollProfileDiff(profile, defaultProfile)}
         <div class="hr-staff-payroll-profile-actions">
-            <button type="button" data-staff-payroll-profile-action="use-default" data-profession-key="${escapeHtml(key)}"${!assignment ? ' disabled' : actionDisabled}>Успадковувати від професії</button>
+            <button type="button" data-staff-payroll-profile-action="use-default" data-profession-key="${escapeHtml(key)}"${!assignment ? ' disabled' : actionDisabled}>Повернути ставку за посадою</button>
             <button type="button" data-staff-payroll-profile-action="choose" data-profession-key="${escapeHtml(key)}"${actionDisabled}>Обрати варіант оплати</button>
-            <button type="button" data-staff-payroll-profile-action="clone" data-profession-key="${escapeHtml(key)}" data-profile-id="${profile ? Number(profile.id) : ''}"${!profile ? ' disabled' : actionDisabled}>Створити персональні умови</button>
+            <button type="button" data-staff-payroll-profile-action="clone" data-profession-key="${escapeHtml(key)}" data-profile-id="${profile ? Number(profile.id) : ''}"${!profile ? ' disabled' : actionDisabled}>Створити індивідуальну ставку</button>
             <button type="button" data-staff-payroll-profile-action="temporary" data-profession-key="${escapeHtml(key)}"${actionDisabled}>Тимчасове призначення</button>
             <button type="button" data-staff-payroll-profile-action="change" data-profession-key="${escapeHtml(key)}" data-profile-id="${profile ? Number(profile.id) : ''}"${!profile ? ' disabled' : actionDisabled}>Змінити з дати</button>
             <button type="button" data-staff-payroll-profile-action="history" data-profession-key="${escapeHtml(key)}">Історія</button>

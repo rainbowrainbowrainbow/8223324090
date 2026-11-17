@@ -112,9 +112,10 @@ async function verifyKitchenAccount(browser, managerPage, pool) {
         ['QA Cook ' + runId]
     );
     await managerPage.evaluate(id => openAccountOnboardingWizard(null, { staffId: id }), worker.id);
-    const role = managerPage.locator('#accountOnboardingRole');
-    await role.waitFor({ state: 'visible' });
-    assert.equal(await role.inputValue(), 'cook', 'pizza cook receives the existing cook role default');
+    const summary = managerPage.locator('#accountOnboardingAccessSummary');
+    await summary.waitFor({ state: 'visible' });
+    assert.match(await summary.textContent(), /Кухар/i);
+    assert.equal(await managerPage.locator('#accountOnboardingRole').count(), 0);
     const username = 'qa_hr_cook_' + runId;
     await managerPage.locator('#accountOnboardingUsername').fill(username);
     const password = await managerPage.locator('#accountOnboardingPassword').inputValue();
@@ -530,14 +531,15 @@ async function runActor(browser, pool, actor, existingAccountId) {
             assert.equal(await departmentEditor.inputValue(), 'Кафе');
             await departmentEditor.fill('Кухня');
             const [updatedProfession] = await Promise.all([
-                waitForResponse(page, 'PUT', `/api/hr/professions/${profession.id}`),
-                page.locator('#professionWorkspaceSave').click()
+                waitForResponse(page, 'PATCH', `/api/hr/professions/${profession.id}/department`),
+                page.locator('#professionWorkspaceSaveDepartment').click()
             ]);
-            assert.equal(updatedProfession.status(), 403, 'membership-mode catalog write keeps the existing access boundary');
+            assert.equal(updatedProfession.status(), 200, 'Park can save the department override');
             assert.equal((await pool.query('SELECT department FROM hr_professions WHERE id = $1', [profession.id])).rows[0].department, 'cafe');
+            assert.deepEqual((await pool.query('SELECT department FROM park_profession_departments WHERE profession_id = $1', [profession.id])).rows,
+                [{ department: 'Кухня' }]);
+            await page.getByText('Відділ у Парк збережено.', { exact: true }).waitFor();
             await page.screenshot({ path: path.join(output, 'desktop-profession-department.png') });
-            // Simulate an already-persisted catalog change without opening the protected write lane.
-            await pool.query("UPDATE hr_professions SET department = 'Кухня' WHERE id = $1", [profession.id]);
             await page.locator('#professionWorkspaceClose').click();
             await page.evaluate(() => ensureProfessionsLoaded({ force: true, silent: true }));
             await page.evaluate(() => activateHrTab('team', { updateHash: true }));

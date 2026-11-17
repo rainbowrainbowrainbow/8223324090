@@ -178,9 +178,7 @@ test('Park HR QA writes register exact fixtures, suppress chat and retire the ru
         const staff = await createRegisteredStaff(page, { ...draft, name: staffName(2) });
         assert.equal(staff.status, 200);
         await page.locator('#staffEditModal').getByRole('button', { name: 'Створити CRM-акаунт', exact: true }).click();
-        await page.locator('#accountOnboardingEditSetup').check();
         await page.locator('#accountOnboardingUsername').fill(`${runId}-account-2`);
-        await page.locator('#accountOnboardingRole').selectOption('animator');
         return waitForSubmit(page, '/api/users/onboarding', () => page.locator('#accountOnboardingSubmit').click());
     });
     assert.equal(second.status, 200, JSON.stringify({ code: second.data.code,

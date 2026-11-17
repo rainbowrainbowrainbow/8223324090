@@ -227,13 +227,13 @@
             <div id="tab-professions" class="hr-tab-content">
                 <div class="hr-professions-head">
                     <div>
-                        <h3>Каталог професій</h3>
-                        <p>Єдине джерело описів, відповідальностей і чеклістів для профілю, HR та призначень співробітників.</p>
+                        <h3>Відділи та посади</h3>
+                        <p>Відфільтруйте посади за відділом і відкрийте посаду, щоб переглянути її налаштування.</p>
                     </div>
                     <button type="button" id="btnAddProfession" class="btn-add">+ Професія</button>
                 </div>
-                <div class="hr-profession-toolbar" aria-label="Фільтри каталогу професій">
-                    <input type="search" id="professionCatalogSearch" placeholder="Знайти професію, напрям або вузол..." aria-label="Пошук професії">
+                <div class="hr-profession-toolbar" aria-label="Фільтри каталогу посад">
+                    <input type="search" id="professionCatalogSearch" placeholder="Посада, відділ або вузол" aria-label="Пошук посад">
                     <select id="professionCatalogStatus" aria-label="Статус професії">
                         <option value="active">Активні</option>
                         <option value="archived">Архівні</option>
@@ -316,6 +316,9 @@
                                         <small id="professionWorkspaceDepartmentHint">Під час найму ця посада буде доступна в обраному відділі.</small>
                                     </label>
                                     <datalist id="professionWorkspaceDepartments"></datalist>
+                                    <div id="professionWorkspaceDepartmentActions" hidden>
+                                        <button type="button" id="professionWorkspaceSaveDepartment" class="btn-secondary">Зберегти відділ у Парк</button>
+                                    </div>
                                     <label class="hr-profession-workspace-wide">Короткий опис<textarea id="professionWorkspaceShortInfo"></textarea></label>
                                     <label class="hr-profession-workspace-wide">Відповідальності<textarea id="professionWorkspaceResponsibilities" placeholder="Кожен пункт з нового рядка"></textarea></label>
                                     <label>Вузол структури<select id="professionWorkspaceStructureNode"></select></label>
@@ -410,13 +413,13 @@
                         <div>
                             <span class="hr-account-eyebrow">Контрольоване створення</span>
                             <h3 id="accountOnboardingTitle">Надати CRM-доступ</h3>
-                            <p>Перевірте дані співробітника та виберіть доступ до CRM.</p>
+                            <p>CRM-роль визначається за основною посадою у картці співробітника.</p>
                         </div>
                         <button type="button" id="accountOnboardingClose" class="hr-account-icon-btn" aria-label="Закрити створення акаунта">×</button>
                     </header>
                     <div id="accountOnboardingLoading" class="hr-account-onboarding-loading hidden" role="status">Завантаження довідників…</div>
                     <form id="accountOnboardingForm" class="hr-account-onboarding-form" novalidate>
-<section class="hr-account-onboarding-panel">
+                        <section class="hr-account-onboarding-panel">
                             <div id="accountOnboardingExistingStaffFields" class="hr-account-form-grid">
                                 <label for="accountOnboardingStaffId" class="is-wide"><span>Картка співробітника *</span><select id="accountOnboardingStaffId" required><option value="">Оберіть співробітника</option></select><small>Вже зайняті профілі недоступні для вибору.</small></label>
                             </div>
@@ -432,41 +435,8 @@
                                     <small id="accountOnboardingPasswordHint">Можна відредагувати. Від 12 символів, без крайніх пробілів, крапки з комою та переносів рядка.</small>
                                 </div>
                             </div>
-                        <div id="accountOnboardingExistingSetup" hidden><label class="hr-account-option"><input id="accountOnboardingEditSetup" type="checkbox"> Змінити професії та структуру цієї картки</label><div id="accountOnboardingExistingProfessionFields" hidden><div id="accountOnboardingProfessionSetup" class="hr-account-onboarding-panel">
-                            <div class="hr-account-onboarding-panel-head"><h4>Структура та професії</h4><p>Оберіть вузол і щонайменше одну професію; одна має бути основною.</p></div>
-                            <div class="hr-account-form-grid">
-                                <label class="is-wide"><span>Вузол структури</span><select id="accountOnboardingStructureNode"><option value="">Без вузла</option></select></label>
-                            </div>
-                            <div id="accountOnboardingProfessions" class="hr-account-option-list" role="group" aria-label="Професії" tabindex="-1"></div>
-                        </div></div></div>
-                            <div class="hr-account-onboarding-panel-head"><h4>Роль у CRM і бізнес</h4><p>Оберіть роль, яка відповідає роботі співробітника.</p></div>
-                            <div id="accountOnboardingRolePresets" class="hr-account-preset-grid" aria-label="Швидкі пакети ролей"></div>
-                            <div class="hr-account-form-grid">
-                                <label><span>Основна роль *</span><select id="accountOnboardingRole" aria-describedby="accountOnboardingRoleHint"></select><small id="accountOnboardingRoleHint"></small></label>
-                                <label id="accountOnboardingDefaultBusinessField"><span>Бізнес за замовченням</span><select id="accountOnboardingDefaultBusiness"></select></label>
-                                <p id="accountOnboardingSingleBusiness" hidden></p>
-                            </div>
-                            <div><div id="accountOnboardingBusinessChoices"><strong class="hr-account-field-title">Бізнеси профілю</strong><div id="accountOnboardingBusinesses" class="hr-account-option-list is-compact"></div></div><p id="accountOnboardingBusinessNote" class="hr-account-field-note" role="note">Вибір бізнесу задає контекст профілю, але сам по собі не створює членство чи доступ до цього бізнесу.</p></div>
-                        <details id="accountOnboardingConditionsDetails" class="hr-account-advanced"><summary>Умови роботи</summary><label class="hr-account-option"><input id="accountOnboardingEditConditions" type="checkbox"> Змінити ставку або типовий час</label><fieldset disabled id="accountOnboardingConditions" class="hr-account-onboarding-panel">
-                            <div class="hr-account-onboarding-panel-head"><h4>Ставка і типовий час</h4><p>Умови для планування роботи співробітника.</p></div>
-                            <div class="hr-account-form-grid">
-                                <label><span>Професія для умов</span><select id="accountOnboardingConditionProfession"></select></label>
-                                <label><span>Джерело ставки</span><select id="accountOnboardingRateMode"><option value="keep">Не змінювати наявні умови</option><option value="unchanged">Ставку не змінювати, оновити час</option><option value="fallback">Базова ставка співробітника</option><option value="explicit">Індивідуальна ставка професії</option></select></label>
-                                <label><span id="accountOnboardingHourlyRateLabel">Ставка за годину</span><input id="accountOnboardingHourlyRate" type="number" min="0" step="0.01" disabled><small id="accountOnboardingRateHint">Наявні умови залишаться без змін, доки ви явно не ввімкнете їх редагування.</small></label>
-                            </div>
-                            <div id="accountOnboardingPayrollProfileHint" class="hr-account-payroll-profile-hint" role="status" aria-live="polite"></div>
-                            <div class="hr-account-time-grid">
-                                <fieldset><legend>Будні</legend><label><span>Початок</span><input id="accountOnboardingWeekdayStart" type="time"></label><label><span>Кінець</span><input id="accountOnboardingWeekdayEnd" type="time"></label></fieldset>
-                                <fieldset><legend>Вихідні</legend><label><span>Початок</span><input id="accountOnboardingWeekendStart" type="time"></label><label><span>Кінець</span><input id="accountOnboardingWeekendEnd" type="time"></label></fieldset>
-                            </div>
-                        </fieldset></details><details id="accountOnboardingAccessDetails" class="hr-account-advanced"><summary>Додаткові права</summary><label class="hr-account-option"><input id="accountOnboardingEditAccess" type="checkbox"> Налаштувати додаткові права</label><fieldset disabled id="accountOnboardingAdvancedAccess" class="hr-account-onboarding-panel">
-                            <div class="hr-account-onboarding-panel-head"><h4>Розширені права</h4><p>Додаткові дозволи й заборони для цього акаунта.</p></div>
-                            <p id="accountOnboardingWorkerAccessNote" class="hr-account-field-note">Акаунт отримає стандартні права вибраної ролі у ПАРК.</p>
-                            <details class="hr-account-advanced" open><summary>Додаткові ролі</summary><div id="accountOnboardingExtraRoles" class="hr-account-option-list is-compact"></div></details>
-                            <details class="hr-account-advanced"><summary>Дозволити окремі сторінки</summary><div id="accountOnboardingPages" class="hr-account-option-list is-compact"></div></details>
-                            <details class="hr-account-advanced"><summary>Дозволити окремі дії</summary><div id="accountOnboardingActionAllow" class="hr-account-option-list is-compact"></div></details>
-                            <details class="hr-account-advanced"><summary>Заборонити окремі дії</summary><div id="accountOnboardingActionDeny" class="hr-account-option-list is-compact"></div></details>
-                        </fieldset></details></section>
+                            <p id="accountOnboardingAccessSummary" class="hr-account-field-note" role="status"></p>
+                        </section>
                     </form>
                     <section id="accountOnboardingReceipt" class="hr-account-receipt hidden" aria-live="polite"></section>
                     <div id="accountOnboardingStatus" class="hr-account-onboarding-status" role="alert" aria-live="assertive"></div>

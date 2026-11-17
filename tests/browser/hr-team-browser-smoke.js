@@ -2096,7 +2096,7 @@ async function assertPayrollConditions(page) {
     const card = key => page.locator('[data-staff-payroll-profession="' + key + '"]');
     assert.match(await card('animator').innerText(), /30.?000/);
     assert.match(await card('animator').innerText(), /місячний оклад/);
-    assert.match(await card('animator').innerText(), /Успадковано від професії/);
+    assert.match(await card('animator').innerText(), /За посадою/);
     assert.match(await card('barista').innerText(), /180/);
     assert.match(await card('barista').innerText(), /за годину/);
     assert.match(await card('waiter').innerText(), /за вихід/);

@@ -21,7 +21,9 @@ async function checkCreation(page, width, dark) {
         if (dark) document.documentElement.dataset.theme = 'dark';
         const parsed = new DOMParser().parseFromString(markup, 'text/html');
         for (const id of ['hrNewStaffFields', 'hrCreateStaffDialog']) document.body.append(parsed.getElementById(id));
-        document.body.append(parsed.getElementById('professionCatalogDepartment'));
+        for (const id of ['tab-professions', 'professionWorkspaceOverlay']) {
+            document.body.append(parsed.getElementById(id));
+        }
         const button = document.createElement('button');
         button.id = 'hrCreateStaffBtn';
         button.textContent = 'Додати співробітника';
@@ -36,7 +38,10 @@ async function checkCreation(page, width, dark) {
             { key: 'animator', title: 'Аніматор', department: 'Арт-відділ' },
             { key: 'pizzaiolo', title: 'Піцайоло', department: 'kitchen' }
         ];
+        document.getElementById('tab-professions').classList.add('active');
+        bindProfessionWorkspaceControls();
         renderProfessionCatalogFilterOptions();
+        renderProfessions();
         ensureProfessionsLoaded = async () => hrProfessions;
         recoverStaffCreation = async () => null;
         submitStaffCreation = async (_kind, body) => {
@@ -48,11 +53,13 @@ async function checkCreation(page, width, dark) {
     const filter = page.locator('#professionCatalogDepartment');
     assert.equal(await filter.locator('option').filter({ hasText: /^Кафе$/ }).count(), 1);
     await filter.selectOption({ label: 'Кафе' });
-    const matching = await page.evaluate(() => {
-        professionCatalogFilters.department = document.getElementById('professionCatalogDepartment').value;
-        return hrProfessions.filter(professionMatchesCatalogFilters).map(item => item.key);
-    });
-    assert.deepEqual(matching, ['waiter', 'barista']);
+    const rows = page.locator('#professionCatalogList .hr-profession-master-row');
+    assert.equal(await rows.count(), 2);
+    const search = page.getByRole('searchbox', { name: 'Пошук посад' });
+    await search.fill('Бариста');
+    assert.equal(await rows.count(), 1);
+    assert.match(await rows.first().textContent(), /Бариста.*Кафе/s);
+    await page.locator('#tab-professions').screenshot({ path: path.join(output, `departments-${width}-${dark ? 'dark' : 'light'}.png`) });
     await page.locator('#hrCreateStaffBtn').click();
     const dialog = page.locator('#hrCreateStaffDialog');
     await dialog.locator('[name="family_name"]').fill('Тестова');

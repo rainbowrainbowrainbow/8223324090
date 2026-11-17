@@ -109,25 +109,12 @@ async function runHrCrmVisualAudit({ browser, pool, actors, login, target, outpu
                     await page.locator('#accountOnboardingUsername').fill(username);
                     await assertLayout();
                     await capture('account');
-                    await page.locator('#accountOnboardingRole').waitFor({ state: 'visible' });
-                    const roleSelect = page.locator('#accountOnboardingRole');
-                    const businessSelect = page.locator('#accountOnboardingDefaultBusiness');
-                    if (await businessSelect.isVisible()) {
-                        await businessSelect.selectOption('dar');
-                        const access = await page.evaluate(() => buildAccountOnboardingPayload().access);
-                        assert.deepEqual(access.businessContexts, ['dar']);
-                        assert.equal(access.defaultBusinessContext, 'dar');
-                        await capture('multiple-businesses');
-                        await businessSelect.selectOption('event_genix');
-                    }
-                    await roleSelect.selectOption('animator');
-                    record.contrast = [...(record.contrast || []), ...await measureContrast('.hr-account-eyebrow, .hr-account-preset-grid button strong, .hr-account-preset-grid button small, #accountOnboardingForm .hr-account-onboarding-panel-head p, #accountOnboardingBusinesses > label:not(.is-disabled)')];
+                    const summary = page.locator('#accountOnboardingAccessSummary');
+                    assert.match(await summary.innerText(), /Парк/);
+                    record.contrast = [...(record.contrast || []), ...await measureContrast('.hr-account-eyebrow, #accountOnboardingAccessSummary')];
                     assert.ok(record.contrast.every(item => item.ratio >= 4.5), JSON.stringify(record.contrast));
                     await assertLayout();
-                    assert.equal(await page.locator('#accountOnboardingBusinessChoices').isVisible(), false);
-                    if (actor.parkWorker) assert.match(await page.locator('#accountOnboardingSingleBusiness').innerText(), /Парк/);
                     await capture('access');
-                    await assertLayout();
                     const [response] = await Promise.all([
                         page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/users/onboarding'),
                         page.locator('#accountOnboardingSubmit').click()

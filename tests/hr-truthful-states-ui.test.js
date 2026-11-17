@@ -174,7 +174,7 @@ test('schedule-only partial Park catalog keeps unknown counts and cannot open st
     try {
         await win.loadProfessions();
         const text = win.document.getElementById('professionCatalogList').textContent;
-        assert.match(win.document.getElementById('professionCatalogStats').textContent, /скорочений read-only список/);
+        assert.match(win.document.getElementById('professionCatalogStats').textContent, /скорочений список для перегляду без працівників і чеклістів/);
         assert.match(text, /— людей/);
         assert.match(text, /Чекліст недоступний/);
         assert.doesNotMatch(text, /0 людей|Без чекліста/);
@@ -800,28 +800,16 @@ test('late onboarding list cannot show people from the previous business', async
     } finally { dom.window.close(); }
 });
 
-test('account onboarding payroll hint distinguishes denial from missing default profile', async () => {
-    const markup = '<input id="accountOnboardingEditConditions" type="checkbox"><select id="accountOnboardingConditionProfession"><option value="animator" selected>Animator</option></select><div id="accountOnboardingPayrollProfileHint"></div>';
-    let denied = true;
-    const { dom, win } = harness(markup, {
-        fetch: async () => denied
-            ? response(403, { success: false, code: 'HR_CAPABILITY_REQUIRED' })
-            : response(200, { success: true, data: [] })
-    });
+test('short account issuance sends credentials and a staff reference only', () => {
+    const { dom, win } = harness('<input id="accountOnboardingName" value="QA Cook"><input id="accountOnboardingUsername" value="qa_cook"><input id="accountOnboardingPassword" value="synthetic-long-password"><select id="accountOnboardingStaffId"><option selected value="45">QA Cook</option></select>');
     try {
-        win.__setAccountOnboardingOptions({ canManagePayrollRules: true });
-        assert.equal(await win.ensureAccountOnboardingPayrollProfiles(true), null);
-        win.document.getElementById('accountOnboardingEditConditions').checked = true;
-        await win.ensureAccountOnboardingPayrollProfiles(true);
-        const hint = win.document.getElementById('accountOnboardingPayrollProfileHint');
-        assert.equal(hint.dataset.state, 'error');
-        assert.match(hint.textContent, /недоступні/);
-        assert.doesNotMatch(hint.textContent, /ще немає/);
-        denied = false;
-        hint.querySelector('button').click();
-        for (let i = 0; i < 20 && hint.dataset.state !== 'warning'; i++) await new Promise(resolve => setTimeout(resolve, 5));
-        assert.equal(hint.dataset.state, 'warning');
-        assert.match(hint.textContent, /ще немає/);
+        win.__setAccountOnboardingOptions({ membershipBusinesses: [{ key: 'event_genix' }] });
+        const payload = JSON.parse(JSON.stringify(win.buildAccountOnboardingPayload()));
+        assert.deepEqual(payload.staff, { mode: 'existing', id: 45 });
+        assert.deepEqual(payload.access, { activateMembership: true });
+        assert.equal(payload.deriveRoleFromStaff, true);
+        assert.equal(Object.hasOwn(payload, 'conditions'), false);
+        assert.equal(Object.hasOwn(payload, 'professions'), false);
     } finally { dom.window.close(); }
 });
 

@@ -369,13 +369,13 @@ function normalizeConditions(value, selectedProfessionKeys) {
     });
 }
 
-function normalizeAccess(value, primaryProfessionKey) {
+function normalizeAccess(value, primaryProfessionKey, deriveRoleFromStaff = false) {
     const source = objectOrEmpty(value);
     if (hasOwn(source, 'activateMembership') && typeof source.activateMembership !== 'boolean') {
         throw onboardingError('Вкажіть, чи потрібно активувати членство', 400, 'ACCOUNT_ONBOARDING_INVALID_ACCESS_MODE');
     }
-    const role = cleanText(source.role || professionToAccountRole(primaryProfessionKey), 64);
-    if (!ROLE_HIERARCHY.includes(role)) {
+    const role = deriveRoleFromStaff ? null : cleanText(source.role || professionToAccountRole(primaryProfessionKey), 64);
+    if (!deriveRoleFromStaff && !ROLE_HIERARCHY.includes(role)) {
         throw onboardingError('Для основної професії не визначена коректна CRM role', 400, 'ACCOUNT_ONBOARDING_INVALID_ACCOUNT_ROLE', { primaryProfessionKey });
     }
 
@@ -489,6 +489,15 @@ function normalizeAccountOnboardingPayload(payload = {}) {
         throw onboardingError('Вибрана картка несумісна зі створенням нової', 400, 'ACCOUNT_ONBOARDING_STAFF_MODE_CONFLICT');
     }
     const staffId = mode === 'existing' ? normalizePositiveId(rawStaffId, 'staff.id') : null;
+    const deriveRoleFromStaff = source.deriveRoleFromStaff === true;
+    if (deriveRoleFromStaff && (mode !== 'existing'
+        || Object.keys(source).some(key => !['deriveRoleFromStaff', 'personal', 'staff', 'access', 'issueOneTime', 'initialPassword'].includes(key))
+        || Object.keys(staffSource).some(key => !['mode', 'id'].includes(key))
+        || Object.keys(personalSource).some(key => !['name', 'username'].includes(key))
+        || Object.keys(accessSource).some(key => key !== 'activateMembership'))) {
+        throw onboardingError('Коротке оформлення призначене лише для надання CRM-доступу до наявної картки',
+            400, 'ACCOUNT_ONBOARDING_ISSUANCE_SCOPE_INVALID');
+    }
     const phoneValue = firstDefined(personalSource.phone, staffSource.phone, source.phone);
     const hireDateInput = firstDefined(staffSource.hireDate, staffSource.hire_date, source.hireDate);
     const newStaff = mode === 'new' ? normalizeStaffCreateFields({
@@ -556,7 +565,8 @@ function normalizeAccountOnboardingPayload(payload = {}) {
         professionsProvided,
         primaryProfessionKey,
         conditions,
-        access: normalizeAccess(accessSource, primaryProfessionKey)
+        access: normalizeAccess(accessSource, primaryProfessionKey, deriveRoleFromStaff),
+        ...(deriveRoleFromStaff ? { deriveRoleFromStaff } : {})
     };
 }
 
@@ -1029,13 +1039,16 @@ async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = 
         && (delegated || !canManageStaffPayrollRules(actor))) {
         throw onboardingError('Немає доступу до зміни зарплатних умов', 403, 'ACCOUNT_ONBOARDING_PAYROLL_FORBIDDEN');
     }
-    const { role, extraRoles, pageAllowlist, actionAllowlist, actionDenylist } = normalized.access;
-    const canAssignRole = delegated
-        ? PARK_WORKER_ROLES.includes(role) && !extraRoles.length && !pageAllowlist.length && !actionAllowlist.length && !actionDenylist.length
-        : actorCanManageRoleSet(actor, role, extraRoles);
-    if (!canAssignRole) {
-        throw onboardingError('Недостатньо прав для створення акаунта з таким рівнем доступу', 403, 'ACCOUNT_ONBOARDING_ROLE_FORBIDDEN');
+    const { extraRoles, pageAllowlist, actionAllowlist, actionDenylist } = normalized.access;
+    function checkRole(role) {
+        const canAssignRole = delegated
+            ? PARK_WORKER_ROLES.includes(role) && !extraRoles.length && !pageAllowlist.length && !actionAllowlist.length && !actionDenylist.length
+            : actorCanManageRoleSet(actor, role, extraRoles);
+        if (!canAssignRole) {
+            throw onboardingError('Недостатньо прав для створення акаунта з таким рівнем доступу', 403, 'ACCOUNT_ONBOARDING_ROLE_FORBIDDEN');
+        }
     }
+    if (!normalized.deriveRoleFromStaff) checkRole(normalized.access.role);
     if (!dbPool || typeof dbPool.connect !== 'function') throw new TypeError('Database pool is required');
 
     const initialPassword = payload?.initialPassword;
@@ -1062,18 +1075,21 @@ async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = 
     try {
         await client.query('BEGIN');
         const park = delegated ? await lockParkOnboardingMembership(client, actor, normalized.staff.mode) : null;
-        const membership = !delegated && normalized.access.activateMembership === true
-            ? await prepareNewAccountMembership(client, actor, normalized.access.defaultBusinessContext, normalized.access, req)
-            : null;
-        if (membership) {
-            requireOnboardingStaffOperation(membership.actor, normalized.staff.mode);
-            if (!canUseAction(membership.actor, 'hr.staff.manage') || !actorCanManageRoleSet(membership.actor, role, extraRoles)) {
-                throw onboardingError('Право створювати акаунт із цією роллю більше недоступне', 403, 'ACCOUNT_ONBOARDING_ROLE_FORBIDDEN');
+        async function lockMembership() {
+            if (delegated || normalized.access.activateMembership !== true) return null;
+            const membership = await prepareNewAccountMembership(client, actor, normalized.access.defaultBusinessContext, normalized.access, req);
+            if (membership) {
+                requireOnboardingStaffOperation(membership.actor, normalized.staff.mode);
+                if (!canUseAction(membership.actor, 'hr.staff.manage') || !actorCanManageRoleSet(membership.actor, normalized.access.role, extraRoles)) {
+                    throw onboardingError('Право створювати акаунт із цією роллю більше недоступне', 403, 'ACCOUNT_ONBOARDING_ROLE_FORBIDDEN');
+                }
             }
+            return membership;
         }
+        let membership = normalized.deriveRoleFromStaff ? null : await lockMembership();
         const marker = normalized.personal.username.startsWith('hrqa-') ? normalized.personal.username : normalized.personal.name;
         qa = await prepareHrFixtureQa(client, req, 'onboard', marker);
-        assertHrQaOnboarding(qa, operation, normalized);
+        if (!normalized.deriveRoleFromStaff) assertHrQaOnboarding(qa, operation, normalized);
         const saved = await lockStaffCreationOperation(client, operation);
         if (saved) {
             await requireHrQaEntity(client, qa, 'hr_staff', saved.staff_id);
@@ -1095,6 +1111,23 @@ async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = 
 
         if (normalized.staff.mode === 'existing') {
             const currentStaff = await loadAndLockStaff(client, normalized);
+            if (normalized.deriveRoleFromStaff) {
+                const role = professionToAccountRole(currentStaff.role_type);
+                if (!role) {
+                    throw onboardingError('Для основної посади в картці не визначено CRM-роль',
+                        400, 'ACCOUNT_ONBOARDING_INVALID_ACCOUNT_ROLE');
+                }
+                checkRole(role);
+                normalized.access.role = role;
+                normalized.personal.name = currentStaff.name;
+                normalized.primaryProfessionKey = normalizeProfessionKey(currentStaff.role_type);
+                if (qa) {
+                    assertHrQaOnboarding(qa, operation, {
+                        ...normalized, professions: [{ key: normalized.primaryProfessionKey, isPrimary: true }]
+                    });
+                }
+                membership = await lockMembership();
+            }
             if (structureNode?.archived === true && currentStaff.company_structure_node_id !== normalized.structureNodeId) {
                 throw onboardingError('Не можна перемістити працівника до архівного вузла', 409, 'ACCOUNT_ONBOARDING_STRUCTURE_NODE_ARCHIVED', { nodeId: normalized.structureNodeId });
             }
@@ -1202,7 +1235,7 @@ async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = 
             await client.query(
                 `INSERT INTO business_memberships (business_id, organization_id, user_id, role, is_default, created_by_user_id)
                  VALUES ($1, $2, $3, $4, true, $5)`,
-                [park.businessId, park.organizationId, user.id, role, actor.id]
+                [park.businessId, park.organizationId, user.id, normalized.access.role, actor.id]
             );
         }
         loginCheck = await verifyIssuedCredential({

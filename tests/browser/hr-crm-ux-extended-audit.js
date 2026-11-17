@@ -114,34 +114,12 @@ async function runHrCrmExtendedAudit({ browser, pool, actors, login, target, out
                 await overlay.waitFor({ state: 'visible' });
                 if (mode === 'center') await page.locator('#accountOnboardingStaffId').selectOption(String(staffId));
                 await page.locator('#accountOnboardingUsername').fill(username);
-                if (advanced) {
-                    await page.locator('#accountOnboardingEditSetup').check();
-                    await page.locator('#accountOnboardingProfession-waiter').check();
-                    await page.locator('#accountOnboardingEditSetup').uncheck();
-                    assert.equal(await page.locator('#accountOnboardingConditionProfession option[value="waiter"]').count(), 0);
-                    assert.equal(await page.evaluate(() => Object.hasOwn(buildAccountOnboardingPayload(), 'professions')), false);
-                }
+                const payload = await page.evaluate(() => buildAccountOnboardingPayload());
+                assert.equal(payload.deriveRoleFromStaff, true);
+                assert.deepEqual(Object.keys(payload.access), ['activateMembership']);
+                assert.equal(Object.hasOwn(payload, 'professions'), false);
+                assert.equal(Object.hasOwn(payload, 'conditions'), false);
                 await capture('account');
-                await page.locator('#accountOnboardingRole').selectOption('animator');
-                if (advanced) {
-                    await page.locator('#accountOnboardingConditionsDetails > summary').click();
-                    await page.locator('#accountOnboardingEditConditions').check();
-                    await page.locator('#accountOnboardingRateMode').selectOption('explicit');
-                    await page.locator('#accountOnboardingHourlyRate').fill('0');
-                    await page.locator('#accountOnboardingSubmit').click();
-                    assert.equal(await page.locator('#accountOnboardingHourlyRate').evaluate(el => el === document.activeElement), true);
-                    await capture('rate-error');
-                    await page.locator('#accountOnboardingHourlyRate').fill('456');
-                    await page.locator('#accountOnboardingEditConditions').uncheck();
-                    assert.equal(await page.evaluate(() => Object.hasOwn(buildAccountOnboardingPayload(), 'conditions')), false);
-                    await page.locator('#accountOnboardingEditConditions').check();
-                    await page.locator('#accountOnboardingAccessDetails > summary').click();
-                    await page.locator('#accountOnboardingEditAccess').check();
-                    await page.locator('#accountOnboardingExtraRoles input').first().check();
-                    await page.locator('#accountOnboardingEditAccess').uncheck();
-                    assert.deepEqual(await page.evaluate(() => buildAccountOnboardingPayload().access.extraRoles), []);
-                    await capture('advanced');
-                }
                 const submit = page.locator('#accountOnboardingSubmit');
                 assert.equal(await submit.evaluate(el => {
                     const rect = el.getBoundingClientRect();
@@ -162,7 +140,6 @@ async function runHrCrmExtendedAudit({ browser, pool, actors, login, target, out
                 if (staffId) {
                     assert.equal(result.receipt.staff.id, staffId);
                     assert.equal((await pool.query('SELECT hourly_rate FROM staff WHERE id=$1', [staffId])).rows[0].hourly_rate, '123.00');
-                    if (advanced) assert.equal(Number((await pool.query('SELECT hourly_rate FROM staff_profession_rates WHERE staff_id=$1 AND profession_key=$2', [staffId, 'animator'])).rows[0].hourly_rate), 456);
                 }
                 await page.locator('[data-account-onboarding-finish]').waitFor();
                 await capture('result');
@@ -172,7 +149,6 @@ async function runHrCrmExtendedAudit({ browser, pool, actors, login, target, out
                 assert.deepEqual(errors, []);
                 record.checks.push('keyboard wrap/Enter/Escape/focus return', 'visible primary action');
                 if (staffId) record.checks.push('edge menus', 'same staff/base rate');
-                if (advanced) record.checks.push('setup opt-out clears condition choices', 'conditions opt-out omits payload', 'extra access opt-out omits grants', 'explicit rate saved', 'invalid rate focuses field');
                 evidence.push(record);
                 fs.writeFileSync(path.join(directory, 'extended-evidence.json'), JSON.stringify(evidence, null, 2));
                 process.stdout.write(`[hr-ux-extended] ${key} passed\n`);

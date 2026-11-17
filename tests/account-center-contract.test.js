@@ -88,7 +88,7 @@ test('account center is a dense master-detail surface with conflict drill-down',
 test('account creation uses an existing staff card in one access form', () => {
     assert.doesNotMatch(HR_HTML, /accountOnboardingStaffMode|accountOnboardingNewStaffFields|data-account-onboarding-step=/);
     assert.match(HR_HTML, /Надати CRM-доступ працівнику/);
-    assert.match(HR_PAGE_CODE, /staff = \{ mode: 'existing'/);
+    assert.match(HR_PAGE_CODE, /staff: \{ mode: 'existing'/);
     assert.match(HR_HTML, /id="accountOnboardingReceipt"/);
     assert.match(HR_HTML, /id="accountOnboardingPassword" type="password"/);
     assert.match(HR_PAGE_CODE, /async function openAccountOnboardingWizard/);
@@ -96,14 +96,12 @@ test('account creation uses an existing staff card in one access form', () => {
     assert.match(HR_PAGE_CODE, /crmApiFetch\('\/api\/users\/onboarding\/options'\)/);
     assert.match(HR_PAGE_CODE, /onboarding: \{ submit: '\/api\/users\/onboarding'/);
     assert.match(HR_PAGE_CODE, /submitStaffCreation\('onboarding', accountOnboardingState\.payload, isCurrent\)/);
-    assert.match(HR_PAGE_CODE, /rateMode !== 'keep'/);
     assert.match(USERS_ROUTE, /router\.post\('\/onboarding', requireParkAccountOnboarding, requireParkStaffAccounts/);
     assert.match(USERS_ROUTE, /router\.get\('\/onboarding\/options', requireParkAccountOnboarding, requireParkStaffAccounts/);
     assert.match(HR_PAGE_CODE, /function canRunAccountOnboarding/);
-    assert.match(HR_HTML, /option value="unchanged"/);
     assert.match(HR_PAGE_CODE, /expectedRequestSeq !== accountOnboardingRequestSeq/);
-    assert.match(HR_PAGE_CODE, /function prefillSelectedAccountOnboardingCondition/);
-    assert.match(HR_PAGE_CODE, /accountOnboardingConditionProfession'\)\?\.addEventListener\('change'/);
+    assert.match(HR_PAGE_CODE, /deriveRoleFromStaff: true/);
+    assert.doesNotMatch(HR_HTML, /accountOnboarding(?:EditSetup|RolePresets|ConditionsDetails|AccessDetails)/);
     assert.match(HR_PAGE_CODE, /document\.body\.appendChild\(overlay\)/);
     assert.match(HR_PAGE_CODE, /document\.body\.appendChild\(panel\)/);
     assert.match(HR_PAGE_CODE, /panel\.setAttribute\('aria-modal', 'true'\)/);
@@ -148,9 +146,7 @@ test('account receipt separates password readiness, profile context, and busines
         assert.doesNotMatch(html, /Парк Закревського/);
         assert.match(html, /role="status" aria-live="polite"/);
     }
-    assert.match(HR_HTML, /Бізнеси профілю/);
-    assert.match(HR_HTML, /Вибір бізнесу задає контекст профілю, але сам по собі не створює членство/);
-    assert.match(HR_PAGE_CODE, /Акаунт очікуватиме, поки власник призначить доступ до бізнесу/);
+    assert.match(HR_HTML, /accountOnboardingAccessSummary/);
 });
 
 test('recovered receipt distinguishes unavailable details from empty data and preserves staff identity', () => {
@@ -220,7 +216,7 @@ test('account onboarding commits async definitions and restores focus only throu
     const optionsSource = between(
         HR_PAGE_CODE,
         'async function loadAccountOnboardingOptions(',
-        'function renderAccountOnboardingCheckboxList('
+        'function renderAccountOnboardingStaffOptions('
     );
     const guardIndex = optionsSource.indexOf('expectedRequestSeq !== accountOnboardingRequestSeq');
     const roleCommitIndex = optionsSource.indexOf('commitAccountRoleDefinitions(roleDefinitions)');

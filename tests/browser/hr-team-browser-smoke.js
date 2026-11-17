@@ -2096,7 +2096,7 @@ async function assertPayrollConditions(page) {
     const card = key => page.locator('[data-staff-payroll-profession="' + key + '"]');
     assert.match(await card('animator').innerText(), /30.?000/);
     assert.match(await card('animator').innerText(), /місячний оклад/);
-    assert.match(await card('animator').innerText(), /За посадою/);
+    assert.match(await card('animator').innerText(), /За посадою/i);
     assert.match(await card('barista').innerText(), /180/);
     assert.match(await card('barista').innerText(), /за годину/);
     assert.match(await card('waiter').innerText(), /за вихід/);
@@ -2106,7 +2106,7 @@ async function assertPayrollConditions(page) {
     await date.fill('2026-12-01');
     await date.dispatchEvent('change');
     assert.match(await card('animator').innerText(), /35.?000/);
-    assert.match(await card('animator').innerText(), /Вибрані умови працівника/);
+    assert.match(await card('animator').innerText(), /Індивідуальна/i);
     assert.match(await card('animator').innerText(), /Персональні/i);
     await page.evaluate(() => { hrCanUsePayrollAction = () => false; renderStaffPayrollProfiles(); });
     assert.equal(await card('animator').locator('[data-staff-payroll-profile-action="change"]').isDisabled(), true);

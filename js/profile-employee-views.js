@@ -146,13 +146,15 @@ export function createEmployeeRenderers({ escapeHtml, profileEmployeeDateText, p
             profileProfessionByKey(item.key)?.title || profileRoleLabel(item.key), admission[item.admissionStatus]
         ]);
         const substitutionStates = { active: 'Погоджено', completed: 'Завершено', cancelled: 'Скасовано' };
+        const professionLabel = key => profileProfessionByKey(key)?.title || profileRoleLabel(key);
         const substitutions = (data.substitutions || []).map(item => {
             const role = item.role === 'original'
                 ? (item.partial ? 'Частину зміни передано' : 'Роботу передано')
                 : (item.partial ? 'Часткова підміна' : 'Підміна');
-            const profession = item.professionKey
-                ? (profileProfessionByKey(item.professionKey)?.title || profileRoleLabel(item.professionKey)) : '';
-            const label = [profileEmployeeDateText(item.date), `${role} №${item.id}`, profession].filter(Boolean).join(' · ');
+            const profession = item.professionKey ? professionLabel(item.professionKey) : '';
+            const simultaneous = (item.simultaneousProfessionKeys || []).map(professionLabel).filter(Boolean);
+            const label = [profileEmployeeDateText(item.date), `${role} №${item.id}`, profession,
+                simultaneous.length && `суміщення — ${simultaneous.join(', ')}`].filter(Boolean).join(' · ');
             return [label, substitutionStates[item.state]];
         });
         return `

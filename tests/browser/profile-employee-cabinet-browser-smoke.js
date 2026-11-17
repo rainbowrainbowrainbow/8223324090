@@ -34,8 +34,11 @@ function results(month) {
     return { month, state: 'ready',
         current: { ...period, month, from: month + '-01', through: last.toISOString().slice(0, 10) },
         previous: { ...period, month: previousMonth, from: previousMonth + '-01', through: previous.toISOString().slice(0, 10) },
+        dailyTasks: { overdue: 1, days: Array.from({ length: 7 }, (_, index) => ({
+            date: `${month}-0${index + 1}`, work: index % 3, personal: index % 2
+        })) },
         substitutions: month === '2024-04' ? [
-            { id:'91', date:'2024-04-08', role:'replacement', state:'active', partial:true, professionKey:'animator' },
+            { id:'91', date:'2024-04-08', role:'replacement', state:'active', partial:true, professionKey:'animator', simultaneousProfessionKeys:['host'] },
             { id:'89', date:'2024-04-01', role:'original', state:'cancelled', partial:false, professionKey:'host' }
         ] : []
     };
@@ -128,7 +131,9 @@ async function main() {
             }, own);
         }
         await open('/profile?month=2024-02');
-        assert.equal(await page.locator('.profile-park-nav .profile-primary-tab').count(), 5);
+        const profileNav = page.locator('.profile-park-nav .profile-primary-tab');
+        assert.deepEqual(await profileNav.evaluateAll(tabs => tabs.map(tab => tab.dataset.profileTab)),
+            ['myday', 'control', 'results', 'salary', 'workbase', 'settings']);
         assert.equal(await page.locator('.profile-park-nav').getByText(/^(Ще|Скоро)$/).count(), 0);
         assert.equal(await page.getByText('Арт-директор', { exact: true }).count(), 1);
         assert.equal(await page.locator('[data-profile-profession="art_director"]').innerText(), 'Арт-директор\nКреатив\nОсновна');
@@ -174,10 +179,12 @@ async function main() {
         await page.goForward();
         await page.waitForFunction(() => document.querySelector('#profileEmployeeMonthInput')?.value === '2024-04');
         await page.getByRole('button', { name: 'Мої результати', exact: true }).click();
+        const comparison = page.locator('.profile-employee-comparison');
+        await comparison.locator('summary').click();
         await page.getByText('1 із 2', { exact: true }).first().waitFor();
-        assert.match(await page.locator('.profile-employee-comparison thead').innerText(), /01\.04\.24/);
+        assert.match(await comparison.locator('thead').innerText(), /01\.04\.24/);
         const substitutions = page.locator('.profile-employee-details').filter({ has: page.getByRole('heading', {name:'Мої підміни'}) });
-        assert.match(await substitutions.innerText(), /Часткова підміна №91 · Аніматор\s+Погоджено/);
+        assert.match(await substitutions.innerText(), /Часткова підміна №91 · Аніматор · суміщення — Ведучий\s+Погоджено/);
         assert.match(await substitutions.innerText(), /Роботу передано №89 · Ведучий\s+Скасовано/);
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
         await substitutions.screenshot({ path: path.join(evidence, 'substitutions-mobile.png') });
@@ -188,9 +195,8 @@ async function main() {
         await page.setViewportSize({width:320,height:790});
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
         await page.locator('#tabContent').screenshot({ path: path.join(evidence, 'results-320.png') });
-        assert.equal(await page.getByRole('link', { name: 'Мої задачі', exact: true }).getAttribute('href'), '/profile?tab=myday&period=today');
-        await page.getByRole('link', { name: 'Чеклісти професій', exact: true }).click();
-        await page.waitForURL('**/profile?tab=workbase#work-base-checklists');
+        await page.getByRole('button', { name: 'Мій день', exact: true }).click();
+        await page.waitForURL(url => url.pathname === '/profile' && url.searchParams.get('tab') === 'myday');
         await open('/profile?tab=workbase#work-base-checklists');
         await page.waitForFunction(() => document.activeElement?.id === 'work-base-checklists');
         await page.getByRole('button', { name: 'Налаштування', exact: true }).click();

@@ -279,7 +279,17 @@ async function loadEmployeeResults(db, employee, userId, scope, range, options =
             `SELECT id::text AS id, work_date::text AS date, state,
                     CASE WHEN staff_id = $1 THEN 'replacement' ELSE 'original' END AS role,
                     (source_type = 'hr_shift' AND slot_key = 'partial') AS partial,
-                    input_json->>'professionKey' AS "professionKey"
+                    input_json->>'professionKey' AS "professionKey",
+                    ARRAY(
+                        SELECT role.value->>'professionKey'
+                        FROM jsonb_array_elements(CASE
+                            WHEN source_type = 'hr_shift' AND slot_key = 'partial'
+                              AND jsonb_typeof(source_snapshot->'simultaneousRoles') = 'array'
+                            THEN source_snapshot->'simultaneousRoles' ELSE '[]'::jsonb END
+                        ) WITH ORDINALITY AS role(value, position)
+                        WHERE jsonb_typeof(role.value->'professionKey') = 'string'
+                        ORDER BY role.position
+                    ) AS "simultaneousProfessionKeys"
              FROM staff_substitutions
              WHERE business_context = $4 AND (staff_id = $1 OR original_staff_id = $1)
                AND work_date >= $2::date AND work_date < $3::date

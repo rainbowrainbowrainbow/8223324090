@@ -75,8 +75,8 @@ consumes only verified allocations for the transferred work. The preview shows
 both schedules, transferred minutes and planned ordinary amounts when calculable.
 Version 0.83.93 creates a separately dated remainder for a bounded
 reception shift. Version 0.83.95 supports partial transfers of a same-day
-segment with one confirmed break. The local simultaneous-role candidate
-adds the allocation described below. Daytime animator
+segment with one confirmed break. Version 0.83.96 adds the simultaneous-role
+allocation described below. Daytime animator
 transfers use the dated roster and reject any existing booking or Afisha slot
 outside the resulting coverage. Overnight animator shift transfers and
 ambiguous historical banquet links remain unsupported. Completed agreements
@@ -253,8 +253,8 @@ later retry in the original cabinet.
   guarantees against the matching ordinary base. Automatic prorating still
   needs an explicit allocation rule. Cross-date reception remainders
   shipped in 0.83.93. Partial same-day transfers with one confirmed unpaid
-  break shipped in 0.83.95. Same-day partial transfers of simultaneous
-  roles are implemented locally and still need a production release. Park amount
+  break shipped in 0.83.95. Same-day partial transfers of simultaneous roles
+  shipped in 0.83.96 (`92148fec9459f9db50eccac5850afb454f6966d3`). Park amount
   corrections after completion are available from 0.83.90. Corrections to
   the worker or attendance allocation still require separate rules.
 - Sources: Park legacy-only banquet links and ambiguous linked bookings,
@@ -287,6 +287,41 @@ later retry in the original cabinet.
   For a meeting, start with the creator who can access Park and is a current
   member of the linked booking channel. Keep converted actions on their linked
   task and take agreement details from the existing journal.
+
+## Proposed remaining batch after 0.83.96
+
+The owner requested one release for the remaining changes. Use one integration
+branch from the verified production head and merge the approved changes locally.
+Release once after the combined acceptance checks. Record any business rules
+that still need confirmation before changing payroll, identities or access.
+
+| Area | Proposed behavior and acceptance |
+| --- | --- |
+| Fixed Park pay | Compare the original worker's ordinary base before and after the transfer for the same profession and pay scope. A daily base counts once if a payable exit remains. For monthly pay reuse the confirmed norm and compare rounded period totals. Post only the missing difference for retained pay and preserve the manual override. Verify multiple agreements in one open month against a single period baseline. |
+| Payee or attendance corrections | Require authoritative replacement attendance, an explicit reason and an approved open posting period. Record linked reversals and replacement entries, with exact original and corrected allocation references and replay protection. Keep completed agreements and approved or paid snapshots immutable. |
+| Overnight Park shifts | Transfer only intervals with an explicit Kyiv date, offset and determinable break. Preserve roles and per-date payroll evidence. Validate both dates for calendar conflicts and verify cancellation restores both plans. Route ambiguous time or missing break evidence to manual review. |
+| Historical bookings | Resolve only an explicit, unambiguous canonical booking/child or banquet member relationship with matching identity, timing and slot. Require reconciliation or review for other historical links. Verify booking and Afisha guards with synthetic records. |
+| Chat and meetings | Bind the item to a Park channel and use the existing eligible creator, assignee and member constraints for the relevant surface. Display the agreement at that item and follow the linked task for converted meeting actions. Verify permissions, visibility and business-context isolation before adding provenance. |
+| Support, content, training and reports | Require a durable responsible worker for open support or content work, a dated delivery occurrence for training, and an explicitly assigned preparation task for report work. Verify that source-specific rights continue to govern publishing, accounting approval and payment. Historical free-text assignees require explicit identity confirmation. |
+
+Synthetic checks against `calculateConditionSnapshots` on 0.83.96 verified a
+900 UAH daily rate for both 481 and 365 payable minutes, and zero for no
+payable minutes. A 30,000 UAH monthly rate on a confirmed 9,600-minute norm
+produced 1,503 and 1,141 UAH for the same before/after scenarios. Adding four
+other payable minutes in the month changed the difference from 362 to 363 UAH.
+The batch should use canonical period rounding and expose planned and final
+figures in the agreement history.
+
+Production acceptance uses a single integrated candidate and exact-SHA CI,
+with migrated PostgreSQL and browser checks across the affected surfaces.
+A real-data correction or reconciliation requires a separately identified
+record and its approved access. This includes the outstanding individual
+payroll reconciliation.
+
+The integration branch adds simultaneous profession names to the employee's
+existing monthly substitution row. Both participants see the agreed roles in
+their own Park results. The results response projects profession keys from the
+saved agreement alongside its existing summary fields.
 
 ## Decisions before expanding protected booking and pay scopes
 

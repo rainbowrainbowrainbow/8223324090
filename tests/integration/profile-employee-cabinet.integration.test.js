@@ -83,17 +83,20 @@ test('profile endpoints return only the linked employee’s payroll and results'
     assert.equal(currentSalary.data.state, 'empty');
     assert.equal(currentSalary.data.gross, null);
 
-    const agreement = async (business, worker, original, day, state) => (await db.query(
+    const agreement = async (business, worker, original, day, state, simultaneousRoles = null) => (await db.query(
         `INSERT INTO staff_substitutions (business_context, staff_id, original_staff_id, work_date,
                  source_type, source_id, slot_key, state, version, input_json, quote_json,
                  source_snapshot, created_by)
-         VALUES ($1,$2,$3,$4,'standalone',$5,'main',$6,1,
+         VALUES ($1,$2,$3,$4,$7,$5,$8,$6,1,
                  '{"professionKey":"animator","reason":"Private fixture reason"}',
-                 '{"estimateMinor":99999}','{}','synthetic')
+                 '{"estimateMinor":99999}',$9::jsonb,'synthetic')
          RETURNING id::text`,
-        [business, worker, original, day, randomBytes(8).toString('hex'), state]
+        [business, worker, original, day, randomBytes(8).toString('hex'), state,
+            simultaneousRoles ? 'hr_shift' : 'standalone', simultaneousRoles ? 'partial' : 'main',
+            JSON.stringify(simultaneousRoles ? { simultaneousRoles } : {})]
     )).rows[0].id;
-    const cover = await agreement('event_genix', own.staffId, foreign.staffId, '2024-02-29', 'active');
+    const cover = await agreement('event_genix', own.staffId, foreign.staffId, '2024-02-29', 'active',
+        [{ professionKey:'host', amountMinor:12345 }, { professionKey:'manager' }]);
     const handedOff = await agreement('event_genix', foreign.staffId, own.staffId, '2024-02-03', 'cancelled');
     const unrelated = await agreement('event_genix', foreign.staffId, unlinked.staffId, '2024-02-11', 'active');
     await agreement('event_genix', own.staffId, foreign.staffId, '2024-03-01', 'active');
@@ -107,13 +110,14 @@ test('profile endpoints return only the linked employee’s payroll and results'
     assert.equal(results.data.dailyTasks.days.length, 7);
     assert.equal(results.data.previous.month, '2024-01');
     assert.deepEqual(results.data.substitutions, [
-        { id:cover, date:'2024-02-29', state:'active', role:'replacement', partial:false, professionKey:'animator' },
-        { id:handedOff, date:'2024-02-03', state:'cancelled', role:'original', partial:false, professionKey:'animator' }
+        { id:cover, date:'2024-02-29', state:'active', role:'replacement', partial:true, professionKey:'animator', simultaneousProfessionKeys:['host','manager'] },
+        { id:handedOff, date:'2024-02-03', state:'cancelled', role:'original', partial:false, professionKey:'animator', simultaneousProfessionKeys:[] }
     ]);
     const foreignResults = await request('GET', resultsPath, null, foreign.token);
     assert.equal(foreignResults.status, 200, JSON.stringify(foreignResults.data));
     assert.deepEqual(foreignResults.data.substitutions.map(item => item.id), [cover, unrelated, handedOff]);
-    assert.doesNotMatch(JSON.stringify(results.data.substitutions), /Private fixture reason|99999/);
+    assert.deepEqual(foreignResults.data.substitutions[0].simultaneousProfessionKeys, ['host','manager']);
+    assert.doesNotMatch(JSON.stringify(results.data.substitutions), /Private fixture reason|99999|12345/);
     const otherProfile = await request('GET', `/api/auth/profile/${own.userId}`, null, foreign.token);
     assert.doesNotMatch(JSON.stringify(otherProfile.data), /gross|deductions|Fixture review/);
 });

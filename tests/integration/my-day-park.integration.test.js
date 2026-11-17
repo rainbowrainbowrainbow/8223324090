@@ -232,6 +232,39 @@ test('park edition paginates all periods and disables legacy module writes', {
         assert.equal((await request('POST', `${allowedInbox}/read`, { all: true }, observer.token)).status, 200);
         assert.equal((await request('GET', allowedInbox, undefined, observer.token)).data.unread, 0);
 
+        const { rows: [historical] } = await pool.query(`WITH fixtures AS (
+            INSERT INTO tasks (title, status, visibility, task_mode, owner_user_id, created_by_user_id,
+                               business_context, completed_at)
+            VALUES ('Historical reopened task', 'todo', 'team', 'work', $1, $2, 'event_genix', NULL),
+                   ('Historical closed task', 'done', 'team', 'work', $1, $2, 'event_genix', '2023-02-01'),
+                   ('Historical self completion', 'done', 'team', 'work', $1, $2, 'event_genix', '2023-02-01'),
+                   ('Historical private task', 'todo', 'private', 'work', $1, $2, 'event_genix', NULL)
+            RETURNING id, title
+        ) SELECT jsonb_object_agg(title, id) AS tasks FROM fixtures`, [peer.id, observer.id]);
+        const reopenedId = historical.tasks['Historical reopened task'];
+        const closedId = historical.tasks['Historical closed task'];
+        const selfId = historical.tasks['Historical self completion'];
+        const privateId = historical.tasks['Historical private task'];
+        await pool.query('DELETE FROM task_control_completion_inbox WHERE task_id = ANY($1::int[])', [[closedId, selfId]]);
+        await pool.query(`INSERT INTO task_action_history (task_id, action_type, new_value_json, created_at)
+            SELECT task_id, 'task_completed', jsonb_build_object('status', 'done', 'ownerUserId', owner_id), happened_at
+            FROM (VALUES ($1::int, $5::int, '2023-01-01 00:00:00+00'::timestamptz),
+                         ($1, $5, '2023-02-01 00:00:00+00'), ($2::int, $5, '2023-02-01 00:00:00+00'),
+                         ($3::int, $6::int, '2023-02-01 00:00:00+00'), ($4::int, $5, '2023-02-01 00:00:00+00'))
+                         AS events(task_id, owner_id, happened_at)`,
+        [reopenedId, closedId, selfId, privateId, peer.id, observer.id]);
+        const beforeRead = await request('GET', allowedInbox, undefined, observer.token);
+        assert.equal(beforeRead.status, 200);
+        assert.equal(beforeRead.data.unread, 3);
+        assert.deepEqual(beforeRead.data.alerts.filter(alert => !alert.read)
+            .map(alert => Number(alert.eventKey.split(':')[0])).sort((a, b) => a - b), [reopenedId, reopenedId, closedId]);
+        const historicalAlert = beforeRead.data.alerts.find(alert => alert.eventKey.startsWith(`${reopenedId}:`));
+        assert.ok(historicalAlert);
+        assert.equal((await request('POST', `${allowedInbox}/read`, { eventKey: historicalAlert.eventKey }, observer.token)).status, 200);
+        const afterRead = await request('GET', allowedInbox, undefined, observer.token);
+        assert.equal(afterRead.data.unread, 2);
+        assert.deepEqual(afterRead.data.alerts.filter(alert => alert.id === historicalAlert.id), [{ ...historicalAlert, read: true }]);
+
         // Keep the existing reschedule fixture open for the rest of the scenario.
         await pool.query("UPDATE tasks SET status = 'todo', completed_at = NULL WHERE id = $1", [own.id]);
 

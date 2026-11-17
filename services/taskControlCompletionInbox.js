@@ -1,6 +1,7 @@
 'use strict';
 
-const { normalizeUserId } = require('./taskPolicy');
+const { TASK_ACTION_TYPES } = require('./taskActionConstants');
+const { buildTaskOwnerMatch, normalizeUserId } = require('./taskPolicy');
 const { buildTaskControlPredicates } = require('./taskPersonalScope');
 const { appendTaskBusinessScopeSql } = require('./taskBusinessScope');
 
@@ -17,7 +18,10 @@ function eventScope(user, businessScope, params) {
     const { author, control } = buildTaskControlPredicates(user, params, 't');
     const business = appendTaskBusinessScopeSql(params, businessScope, 't');
     const recipient = `$${params.push(userId)}::int`;
-    // Read the last completion of pre-inbox tasks without a production backfill.
+    const snapshotOwner = buildTaskOwnerMatch(user, params, 'completion_owner');
+    const completionAction = `$${params.push(TASK_ACTION_TYPES.COMPLETED)}`;
+    // The canonical completion writes its task timestamp and action history in one transaction.
+    // Use that history for pre-inbox completions whose current task may have been reopened.
     return {
         recipient,
         sql: `WITH authored AS (
@@ -27,18 +31,38 @@ function eventScope(user, businessScope, params) {
             FROM tasks t
             WHERE (${author}) IS TRUE AND COALESCE(t.visibility, 'team') = 'team'
               AND COALESCE(t.task_mode, 'work') NOT IN ('personal', 'private') ${business}
+        ), recorded_completions AS (
+            SELECT a.id AS task_id, h.created_at AT TIME ZONE 'UTC' AS completed_at,
+                   (${snapshotOwner}) IS NOT TRUE AS delegated
+            FROM authored a
+            JOIN task_action_history h ON h.task_id = a.id AND h.action_type = ${completionAction}
+            CROSS JOIN LATERAL (
+                SELECT CASE WHEN jsonb_typeof(h.new_value_json->'ownerUserId') = 'number'
+                            THEN (h.new_value_json->>'ownerUserId')::numeric END AS owner_user_id,
+                       h.new_value_json->>'assignedTo' AS assigned_to,
+                       h.new_value_json->>'owner' AS owner
+            ) completion_owner
+            WHERE h.new_value_json->>'status' = 'done' AND h.new_value_json ? 'ownerUserId'
+        ), candidate_legacy_completions AS (
+            SELECT task_id, completed_at FROM recorded_completions WHERE delegated
+            UNION
+            SELECT a.id, a.completed_at FROM authored a
+            WHERE a.status = 'done' AND a.controlled AND a.completed_at IS NOT NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM recorded_completions h WHERE h.task_id = a.id AND h.completed_at = a.completed_at
+              )
         ), events AS (
             SELECT a.id AS task_id, a.title, a.business_context, i.completed_at, i.read_at
             FROM task_control_completion_inbox i
             JOIN authored a ON a.id = i.task_id AND a.business_context = i.business_context
             WHERE i.recipient_id = ${recipient}
             UNION ALL
-            SELECT a.id, a.title, a.business_context, a.completed_at, NULL::timestamptz
-            FROM authored a
-            WHERE a.status = 'done' AND a.controlled AND a.completed_at IS NOT NULL
-              AND NOT EXISTS (
+            SELECT a.id, a.title, a.business_context, h.completed_at, NULL::timestamptz
+            FROM candidate_legacy_completions h
+            JOIN authored a ON a.id = h.task_id
+            WHERE NOT EXISTS (
                   SELECT 1 FROM task_control_completion_inbox i
-                  WHERE i.recipient_id = ${recipient} AND i.task_id = a.id AND i.completed_at = a.completed_at
+                  WHERE i.recipient_id = ${recipient} AND i.task_id = h.task_id AND i.completed_at = h.completed_at
               )
         ), keyed AS (
             SELECT events.*, (EXTRACT(EPOCH FROM completed_at) * 1000000)::bigint AS micros

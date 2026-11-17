@@ -6239,14 +6239,9 @@ function syncMyDayTaskDialog(opener = null, { initialize = false } = {}) {
         load: signal => apiGetScopedJson(`/tasks/${taskId}`, { signal }),
         save: (task, patch) => updateCabinetTaskFields(taskId, patch, { task, notify: false }),
         complete: task => setCabinetTaskStatus(taskId, 'done', { task, silent: true, allowUndo: false }),
-        reschedule: async date => {
-            const result = await apiPost(`/tasks/${taskId}/reschedule`, {
-                deadline: profileDeadlineForDate(date), sourceSurface: 'profile_my_cabinet'
-            });
-            if (!result?.success) throw new Error(result?.error || 'Не вдалося перенести задачу');
-            notifyTaskWidgetsChanged({ action: 'task_reschedule', taskId });
-            await refreshMyCabinetTab({ force: true });
-        },
+        reschedule: date => rescheduleCabinetTask(taskId, 'date', {
+            date, notify: false, sourceSurface: 'profile_my_cabinet'
+        }),
         selectDate: task => {
             const due = cabinetTaskFocusDateKey(task);
             if (!opener && due !== date) focusMyDayTaskDate(due);
@@ -6933,7 +6928,9 @@ async function rescheduleCabinetTask(taskId, option = 'tomorrow', options = {}) 
     const id = normalizeCabinetTaskId(taskId);
     if (!id) throw new Error('Invalid task id');
     let dateText = '';
-    if (option === 'today') {
+    if (options.date) {
+        dateText = options.date;
+    } else if (option === 'today') {
         dateText = cabinetDateKeyOffset();
     } else if (option === 'day_after') {
         dateText = profileDateOffsetStr(2);

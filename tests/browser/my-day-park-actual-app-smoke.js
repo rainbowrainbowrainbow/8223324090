@@ -487,10 +487,16 @@ async function run() {
         assert.equal(mobileNavRows, 2);
         await page.screenshot({ path: path.join(evidence, 'profile-control-390.png'), animations: 'disabled' });
         await authoredTask.click();
-        await page.waitForURL(url => url.pathname === '/tasks' && url.searchParams.has('open'));
-        const taskDrawerTitle = page.locator('#taskDetailOverlay #_tdTitle');
-        await taskDrawerTitle.waitFor();
-        assert.equal(await taskDrawerTitle.inputValue(), assignedTitle);
+        await page.waitForURL(url => url.pathname === '/profile' && url.searchParams.get('tab') === 'myday' && url.searchParams.has('open'));
+        await page.locator('.park-task-dialog').getByRole('heading', { name: assignedTitle, exact: true }).waitFor();
+        const openedTaskId = new URL(page.url()).searchParams.get('open');
+        const openedTask = await (await fetch(origin + '/api/tasks/' + openedTaskId, {
+            headers: { authorization: 'Bearer ' + session.token }
+        })).json();
+        assert.equal(await page.locator('.park-task-dialog [data-dialog-complete]').count(),
+            openedTask.drawer.actions.complete ? 1 : 0, 'dialog follows the server-derived action contract');
+        await page.goBack();
+        await page.locator('.park-task-dialog').waitFor({ state: 'hidden' });
         await page.goBack();
         await authoredTask.waitFor();
         await page.reload();
@@ -577,7 +583,7 @@ async function run() {
         assert.deepEqual(pageErrors, []);
         assert.deepEqual(gameRequests, []);
         assert.deepEqual(hermesRequests, []);
-        console.log('Park local app / PostgreSQL browser: fixed board layout, legacy completion on both surfaces, keyboard undo, history restore, date reschedule, edit route, and timer recovery.');
+        console.log('Park local app / PostgreSQL browser: fixed board layout, legacy-link completion in My Day, keyboard undo, history restore, date reschedule, in-place editing, server action contracts, and timer recovery.');
     } finally {
         await browser.close();
     }

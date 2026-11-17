@@ -75,10 +75,10 @@
             if ([403, 404].includes(error.status)) return 'Задача недоступна або її видалено.';
             return 'Не вдалося завантажити або зберегти задачу. Перевірте з’єднання та спробуйте ще раз.';
         }
-        function showError(error) {
+        function showError(error, mutation = false) {
             let alert = content.querySelector('[role="alert"]');
             if (!alert) { alert = document.createElement('p'); alert.setAttribute('role', 'alert'); content.prepend(alert); }
-            alert.textContent = errorText(error);
+            alert.textContent = mutation && error.name !== 'TypeError' && error.message ? error.message : errorText(error);
         }
         async function run(action) {
             if (busy) return;
@@ -92,7 +92,8 @@
                 guard.textContent = '';
                 discard.hidden = true;
                 await refresh();
-            } catch (error) { if (dialog.open) showError(error); }
+                content.querySelector('button')?.focus({ preventScroll: true });
+            } catch (error) { if (dialog.open) showError(error, true); }
             finally {
                 busy = false;
                 content.removeAttribute('aria-busy');

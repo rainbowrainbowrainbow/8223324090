@@ -18,6 +18,33 @@ function fallbackToday() {
     return new Date().toISOString().slice(0, 10);
 }
 
+const STAFF_SCHEDULE_WITHOUT_ATTENDANCE = `NOT EXISTS (
+    SELECT 1 FROM hr_time_records tr
+    WHERE tr.staff_id = ss.staff_id AND tr.record_date::text = LEFT(ss.date::text, 10)
+)`;
+const HR_SHIFT_WITHOUT_ATTENDANCE = `NOT EXISTS (
+    SELECT 1 FROM hr_time_records tr
+    WHERE tr.staff_id = hs.staff_id AND tr.record_date = hs.shift_date
+)`;
+
+async function previewStaffOperationalScheduleCleanup(db, staffId, fromDate) {
+    const { rows: [preview] } = await db.query(
+        `SELECT shifts.removable AS hr_shifts, schedule.removable AS staff_schedule,
+                shifts.total - shifts.removable AS preserved_hr_shifts,
+                schedule.total - schedule.removable AS preserved_staff_schedule
+         FROM (
+             SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE ${HR_SHIFT_WITHOUT_ATTENDANCE})::int AS removable
+             FROM hr_shifts hs WHERE hs.staff_id = $1 AND hs.shift_date >= $2::text::date
+         ) shifts
+         CROSS JOIN (
+             SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE ${STAFF_SCHEDULE_WITHOUT_ATTENDANCE})::int AS removable
+             FROM staff_schedule ss WHERE ss.staff_id = $1 AND LEFT(ss.date::text, 10) >= $2::text
+         ) schedule`,
+        [staffId, fromDate]
+    );
+    return { ...preview, from_date: fromDate };
+}
+
 async function cleanupFutureStaffOperationalSchedule(db, staffId, fromDate) {
     const id = Number(staffId);
     const safeFrom = normalizeLifecycleDate(fromDate) || fallbackToday();
@@ -28,11 +55,7 @@ async function cleanupFutureStaffOperationalSchedule(db, staffId, fromDate) {
         `DELETE FROM hr_shifts hs
          WHERE hs.staff_id = $1
            AND hs.shift_date >= $2::date
-           AND NOT EXISTS (
-                SELECT 1 FROM hr_time_records tr
-                WHERE tr.staff_id = hs.staff_id
-                  AND tr.record_date = hs.shift_date
-           )
+           AND ${HR_SHIFT_WITHOUT_ATTENDANCE}
          RETURNING hs.shift_date::text AS date`,
         [id, safeFrom]
     );
@@ -40,11 +63,7 @@ async function cleanupFutureStaffOperationalSchedule(db, staffId, fromDate) {
         `DELETE FROM staff_schedule ss
          WHERE ss.staff_id = $1
            AND LEFT(ss.date::text, 10) >= $2
-           AND NOT EXISTS (
-                SELECT 1 FROM hr_time_records tr
-                WHERE tr.staff_id = ss.staff_id
-                  AND tr.record_date::text = LEFT(ss.date::text, 10)
-           )
+           AND ${STAFF_SCHEDULE_WITHOUT_ATTENDANCE}
          RETURNING LEFT(ss.date::text, 10) AS date`,
         [id, safeFrom]
     );
@@ -209,6 +228,7 @@ async function syncLinkedStaffAccountDeactivation(client, staffId, options = {})
 
 module.exports = {
     cleanupFutureStaffOperationalSchedule,
+    previewStaffOperationalScheduleCleanup,
     normalizeLifecycleDate,
     syncLinkedStaffAccountDeactivation
 };

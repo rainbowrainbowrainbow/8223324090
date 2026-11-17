@@ -491,12 +491,15 @@ function normalizeAccountOnboardingPayload(payload = {}) {
     const staffId = mode === 'existing' ? normalizePositiveId(rawStaffId, 'staff.id') : null;
     const deriveRoleFromStaff = source.deriveRoleFromStaff === true;
     if (deriveRoleFromStaff && (mode !== 'existing'
-        || Object.keys(source).some(key => !['deriveRoleFromStaff', 'personal', 'staff', 'access', 'issueOneTime', 'initialPassword'].includes(key))
+        || Object.keys(source).some(key => !['deriveRoleFromStaff', 'expectedRole', 'personal', 'staff', 'access', 'issueOneTime', 'initialPassword'].includes(key))
         || Object.keys(staffSource).some(key => !['mode', 'id'].includes(key))
         || Object.keys(personalSource).some(key => !['name', 'username'].includes(key))
         || Object.keys(accessSource).some(key => key !== 'activateMembership'))) {
         throw onboardingError('Коротке оформлення призначене лише для надання CRM-доступу до наявної картки',
             400, 'ACCOUNT_ONBOARDING_ISSUANCE_SCOPE_INVALID');
+    }
+    if (deriveRoleFromStaff && hasOwn(source, 'expectedRole') && !ROLE_HIERARCHY.includes(source.expectedRole)) {
+        throw onboardingError('Не вдалося перевірити очікувану CRM-роль', 400, 'ACCOUNT_ONBOARDING_INVALID_ACCOUNT_ROLE');
     }
     const phoneValue = firstDefined(personalSource.phone, staffSource.phone, source.phone);
     const hireDateInput = firstDefined(staffSource.hireDate, staffSource.hire_date, source.hireDate);
@@ -566,7 +569,8 @@ function normalizeAccountOnboardingPayload(payload = {}) {
         primaryProfessionKey,
         conditions,
         access: normalizeAccess(accessSource, primaryProfessionKey, deriveRoleFromStaff),
-        ...(deriveRoleFromStaff ? { deriveRoleFromStaff } : {})
+        ...(deriveRoleFromStaff ? { deriveRoleFromStaff } : {}),
+        ...(deriveRoleFromStaff && hasOwn(source, 'expectedRole') ? { expectedRole: source.expectedRole } : {})
     };
 }
 
@@ -1033,7 +1037,9 @@ async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = 
         throw onboardingError('HR-картки доступні для оформлення акаунта ПАРК', 403, 'ACCOUNT_ONBOARDING_STAFF_FORBIDDEN');
     }
     requireOnboardingStaffOperation(actor, normalized.staff.mode);
-    const operation = describeStaffCreationOperation(req, 'onboarding', normalized);
+    // A stale preview check does not change the identity of a retried operation.
+    const { expectedRole, ...operationPayload } = normalized;
+    const operation = describeStaffCreationOperation(req, 'onboarding', operationPayload);
     const delegated = canOnboardParkWorker(req) && !canUseAction(actor, 'manage_accounts');
     if ((normalized.staff.fallbackRateProvided || normalized.staff.rateUnitProvided || normalized.conditions.length)
         && (delegated || !canManageStaffPayrollRules(actor))) {
@@ -1074,6 +1080,9 @@ async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = 
     const savedConditions = [];
     try {
         await client.query('BEGIN');
+        if (normalized.deriveRoleFromStaff && normalized.access.activateMembership && !delegated) {
+            await lockOrganizationOwnership(client);
+        }
         const park = delegated ? await lockParkOnboardingMembership(client, actor, normalized.staff.mode) : null;
         async function lockMembership() {
             if (delegated || normalized.access.activateMembership !== true) return null;
@@ -1116,6 +1125,10 @@ async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = 
                 if (!role) {
                     throw onboardingError('Для основної посади в картці не визначено CRM-роль',
                         400, 'ACCOUNT_ONBOARDING_INVALID_ACCOUNT_ROLE');
+                }
+                if (expectedRole && expectedRole !== role) {
+                    throw onboardingError('Основна посада змінилася. Відкрийте форму знову й перевірте CRM-роль.',
+                        409, 'ACCOUNT_ONBOARDING_ROLE_CHANGED');
                 }
                 checkRole(role);
                 normalized.access.role = role;

@@ -1869,7 +1869,8 @@ function createFakePool() {
                 );
                 return { rows: user ? [{ id: user.id, username: user.username, name: user.name }] : [] };
             }
-            if (/SELECT id, name, is_active, hr_pool_status, blacklist_reason, notes FROM staff WHERE id = \$1/i.test(text)) {
+            if (/^SELECT id, name, is_active, hr_pool_status, blacklist_reason, notes\b/i.test(text)
+                && /FROM staff WHERE id = \$1(?: FOR UPDATE)?$/i.test(text)) {
                 const staff = hrState.staff.get(Number(params[0]));
                 return { rows: staff ? [staff] : [] };
             }

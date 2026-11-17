@@ -131,6 +131,7 @@ const {
 } = require('../services/staffDisplayGroups');
 const {
     cleanupFutureStaffOperationalSchedule,
+    previewStaffOperationalScheduleCleanup,
     syncLinkedStaffAccountDeactivation
 } = require('../services/staffLifecycle');
 const { lockOrganizationOwnership } = require('../services/organizationOwnership');
@@ -693,9 +694,18 @@ function staffRoleAssignmentMeta(row) {
     };
 }
 
-async function loadStaffRowOrNull(staffId, db = pool, { lock = false } = {}) {
+const STAFF_OFFBOARDING_COMPLETED_SQL = `(staff.is_active IS FALSE AND EXISTS (
+    SELECT 1 FROM staff_offboarding_events event
+    WHERE event.staff_id = staff.id
+      AND event.status = 'completed'
+      AND event.effective_date = staff.termination_date
+      AND event.completed_at >= staff.termination_recorded_at
+))`;
+
+async function loadStaffRowOrNull(staffId, db = pool, { lock = false, offboarding = false } = {}) {
     const result = await db.query(
         `SELECT id, name, is_active, hr_pool_status, blacklist_reason, notes
+                ${offboarding ? `, ${STAFF_OFFBOARDING_COMPLETED_SQL} AS offboarding_completed` : ''}
          FROM staff
          WHERE id = $1${lock ? ' FOR UPDATE' : ''}`,
         [staffId]
@@ -4648,7 +4658,7 @@ router.put('/staff/:id/role-assignments', requireHrManage, async (req, res) => {
 
 router.get('/staff/:id/offboarding', requireAction('hr.staff.manage'), async (req, res) => {
     try {
-        const staff = await loadStaffRowOrNull(req.params.id);
+        const staff = await loadStaffRowOrNull(req.params.id, pool, { offboarding: true });
         if (!staff) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
         const result = await pool.query(
             `SELECT *
@@ -4658,7 +4668,7 @@ router.get('/staff/:id/offboarding', requireAction('hr.staff.manage'), async (re
              LIMIT 20`,
             [req.params.id]
         );
-        res.json({ success: true, data: result.rows });
+        res.json({ success: true, data: result.rows, completed: staff.offboarding_completed });
     } catch (err) {
         log.error('GET /hr/staff/:id/offboarding error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
@@ -4669,13 +4679,29 @@ router.get('/staff/:id/offboarding-readiness', requireAction('hr.staff.manage'),
     try {
         const staff = await loadStaffRowOrNull(req.params.id);
         if (!staff) return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
+        if (req.query.effective_date !== undefined) {
+            const effectiveDate = cleanStaffDate(req.query.effective_date);
+            const parsedDate = effectiveDate ? new Date(`${effectiveDate}T00:00:00Z`) : null;
+            if (!parsedDate || !Number.isFinite(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== effectiveDate) {
+                return res.status(400).json({ success: false, error: 'Вкажіть коректну дату звільнення.' });
+            }
+            await assertParkLifecycleAccountScope(pool, req);
+            const schedule = await previewStaffOperationalScheduleCleanup(pool, staff.id, staffOffboardingCleanupFromDate(effectiveDate));
+            return res.json({ success: true, data: { schedule_cleanup: schedule } });
+        }
         const data = await loadStaffOffboardingReadiness(req.params.id, pool, { currentUserId: req.user?.id, actor: req.user });
         res.json({ success: true, data });
     } catch (err) {
+        if (err.statusCode) return res.status(err.statusCode).json({ success: false, code: err.code, error: err.message });
         log.error('GET /hr/staff/:id/offboarding-readiness error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     }
 });
+
+function staffOffboardingCleanupFromDate(effectiveDate) {
+    const today = todayKyiv();
+    return effectiveDate < today ? today : effectiveDate;
+}
 
 router.get('/staff/:id/delete-readiness', requireAction('hr.staff.manage'), async (req, res) => {
     try {
@@ -4702,13 +4728,13 @@ router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
 
         await client.query('BEGIN');
         await lockOrganizationOwnership(client);
-        const staff = await loadStaffRowOrNull(req.params.id, client, { lock: true });
+        const staff = await loadStaffRowOrNull(req.params.id, client, { lock: true, offboarding: true });
         if (!staff) {
             await client.query('ROLLBACK');
             return res.status(404).json({ success: false, error: 'Співробітника не знайдено' });
         }
         await assertParkLifecycleAccountScope(client, req);
-        if (staff.is_active === false) {
+        if (staff.offboarding_completed) {
             await client.query('ROLLBACK');
             return res.status(409).json({ success: false, code: 'staff_already_dismissed', error: 'Співпрацю вже завершено.' });
         }
@@ -4770,7 +4796,7 @@ router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
              RETURNING *`,
             [req.params.id, targetPoolStatus, reason, effectiveDate, req.user?.username || null]
         );
-        const scheduleCleanupFromDate = effectiveDate < todayKyiv() ? todayKyiv() : effectiveDate;
+        const scheduleCleanupFromDate = staffOffboardingCleanupFromDate(effectiveDate);
         const scheduleCleanup = await cleanupFutureStaffOperationalSchedule(client, req.params.id, scheduleCleanupFromDate);
         const accountDeactivation = await syncLinkedStaffAccountDeactivation(client, req.params.id, {
             actor: req.user,

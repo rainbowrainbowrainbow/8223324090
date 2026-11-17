@@ -607,6 +607,8 @@ let staffShiftPreferencesLoadSeq = 0;
 let staffShiftPreferencesByStaffId = new Map();
 let staffOffboardingReadiness = null;
 let staffOffboardingLifecycle = null;
+let staffOffboardingSchedulePreview = null;
+let staffOffboardingCompleted = null;
 let staffLifecycleLoadSeq = 0;
 let staffProfileHistoryLoadSeq = 0;
 let staffEditOpenSeq = 0;
@@ -1830,7 +1832,8 @@ async function confirmHrAction(message, options = {}) {
         return confirmModal(message, {
             type: options.type || 'warning',
             okText: options.okText || 'Підтвердити',
-            cancelText: options.cancelText || 'Скасувати'
+            cancelText: options.cancelText || 'Скасувати',
+            initialFocus: options.initialFocus
         });
     }
     showNotification('Підтвердження дії недоступне. Оновіть сторінку і повторіть дію.', 'error');
@@ -6821,8 +6824,8 @@ async function submitStaffCreation(kind, initialBody, isCurrent) {
                 ? { ...body, staff: { ...body.staff, distinctStaffIds: attempt.distinctStaffIds } }
                 : { ...body, distinctStaffIds: attempt.distinctStaffIds };
         }
-        // Persist the operation identity without deriving a reusable hash of a password.
-        const { initialPassword: _initialPassword, ...operationBody } = body;
+        // Keep the existing operation identity across password and role-preview changes.
+        const { initialPassword: _initialPassword, expectedRole: _expectedRole, ...operationBody } = body;
         const fingerprint = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',
             new TextEncoder().encode(JSON.stringify(operationBody))))).map(byte => byte.toString(16).padStart(2, '0')).join('');
         if (attempt) {
@@ -8833,16 +8836,25 @@ function syncAccountOnboardingForm() {
         ? 'Створити акаунт і надати доступ' : 'Створити CRM-акаунт';
 }
 
+function accountOnboardingRoleForStaff(staff) {
+    const profession = normalizeProfessionKey(staff?.role_type);
+    const role = accountOnboardingOptions?.professionRoleMap?.[profession] || profession;
+    return accountOnboardingOptions?.roleHierarchy?.includes(role) ? role : null;
+}
+
 function prefillAccountOnboardingFromStaff(staffId) {
     const staff = accountOnboardingOptions?.staff?.find(item => Number(item.id) === Number(staffId));
     accountOnboardingEl('accountOnboardingName').value = staff?.name || '';
     accountOnboardingEl('accountOnboardingUsername').value = staff ? suggestAccountUsernameFromStaff(staff) : '';
-    const profession = normalizeProfessionKey(staff?.role_type);
-    const role = accountOnboardingOptions?.professionRoleMap?.[profession] || profession;
+    const password = accountOnboardingEl('accountOnboardingPassword');
+    password.value = staff ? generateInitialAccountPassword() : '';
+    password.type = 'password';
+    accountOnboardingEl('accountOnboardingPasswordToggle').setAttribute('aria-pressed', 'false');
+    const role = accountOnboardingRoleForStaff(staff);
     const summary = accountOnboardingEl('accountOnboardingAccessSummary');
-    if (summary) summary.textContent = !staff ? '' : accountOnboardingOptions?.roleHierarchy?.includes(role)
+    if (summary) summary.textContent = !staff ? '' : role
         ? `Бізнес: Парк · CRM-роль: ${ROLE_LABELS[role] || role}`
-        : 'Для основної посади в картці не визначено CRM-роль.';
+        : 'Для основної посади в картці не визначено CRM-роль. Перевірте посаду в картці працівника або зверніться до HR.';
 }
 
 function setAccountOnboardingStatus(message = '', type = 'error') {
@@ -8871,6 +8883,12 @@ function validateAccountOnboardingStep() {
     if (!select?.value || !staff || staff.linked_user_id || staff.linkedUserId || select.selectedOptions?.[0]?.disabled) {
         return focusInvalidAccountOnboarding('Оберіть картку без прив’язаного CRM-акаунта.', select);
     }
+    const role = accountOnboardingRoleForStaff(staff);
+    if (!role) {
+        const summary = accountOnboardingEl('accountOnboardingAccessSummary');
+        summary?.focus();
+        return false;
+    }
     const username = accountOnboardingEl('accountOnboardingUsername');
     if (!/^[a-zA-Z0-9._-]{3,50}$/.test(username.value.trim())) {
         return focusInvalidAccountOnboarding('Логін: 3–50 символів, лише латиниця, цифри, крапка, дефіс або підкреслення.', username);
@@ -8881,12 +8899,13 @@ function validateAccountOnboardingStep() {
         || /[\r\n;]/.test(password) || password.normalize('NFKC').trim() !== password) {
         return focusInvalidAccountOnboarding('Вкажіть пароль від 12 символів, до 72 байтів, без крайніх пробілів, крапки з комою та переносів рядка.', input);
     }
-    return true;
+    return role;
 }
 
-function buildAccountOnboardingPayload() {
+function buildAccountOnboardingPayload(expectedRole) {
     return {
         deriveRoleFromStaff: true,
+        expectedRole,
         personal: {
             name: accountOnboardingEl('accountOnboardingName').value.trim(),
             username: accountOnboardingEl('accountOnboardingUsername').value.trim()
@@ -8982,8 +9001,9 @@ function renderAccountOnboardingReceipt(response) {
 
 async function submitAccountOnboarding() {
     if (accountOnboardingState.submitting) return;
-    if (!validateAccountOnboardingStep()) return;
-    accountOnboardingState.payload = buildAccountOnboardingPayload();
+    const expectedRole = validateAccountOnboardingStep();
+    if (!expectedRole) return;
+    accountOnboardingState.payload = buildAccountOnboardingPayload(expectedRole);
     const submit = accountOnboardingEl('accountOnboardingSubmit');
     accountOnboardingState.submitting = true;
     if (submit) submit.disabled = true;
@@ -9236,7 +9256,6 @@ async function openAccountOnboardingWizard(button, context = {}) {
             accountOnboardingEl('accountOnboardingStaffId').value = String(contextStaff.id);
         }
         prefillAccountOnboardingFromStaff(accountOnboardingEl('accountOnboardingStaffId').value);
-        accountOnboardingEl('accountOnboardingPassword').value = generateInitialAccountPassword();
         syncAccountOnboardingForm();
         loaded = true;
     } catch (error) {
@@ -11173,8 +11192,31 @@ function renderStaffOffboardingReadiness(payload = {}, lifecycle = null) {
 }
 
 function staffOffboardingIsCompleted() {
+    return staffOffboardingCompleted === true;
+}
+
+async function loadStaffOffboardingSchedulePreview({ force = false } = {}) {
     const staffId = Number(activeEditStaffId());
-    return teamStaff.find(staff => Number(staff.id) === staffId)?.is_active === false;
+    const date = document.getElementById('editOffboardingDate')?.value;
+    if (!canManage || !staffId || !date || staffOffboardingIsCompleted()) {
+        staffOffboardingSchedulePreview = null;
+        updateStaffOffboardingActionState();
+        return;
+    }
+    const current = staffOffboardingSchedulePreview;
+    if (!force && current?.staffId === staffId && current.date === date) return;
+    const request = { staffId, date, state: 'loading', data: null };
+    staffOffboardingSchedulePreview = request;
+    updateStaffOffboardingActionState();
+    const isCurrent = staffProfileSaveIsCurrent(staffId);
+    const result = await hrFetch(
+        `/staff/${staffId}/offboarding-readiness?effective_date=${encodeURIComponent(date)}`,
+        { allowForbiddenResponse: true }
+    ).catch(() => null);
+    if (staffOffboardingSchedulePreview !== request || !isCurrent()) return;
+    request.data = result?.success ? result.data?.schedule_cleanup : null;
+    request.state = request.data ? 'ready' : 'error';
+    updateStaffOffboardingActionState();
 }
 
 function getStaffOffboardingPreview() {
@@ -11186,17 +11228,24 @@ function getStaffOffboardingPreview() {
         ? staffOffboardingReadiness
         : null;
     const lifecycleMetrics = staffOffboardingLifecycle?.metrics || null;
+    const schedule = staffOffboardingSchedulePreview?.staffId === Number(activeEditStaffId())
+        && staffOffboardingSchedulePreview.date === date ? staffOffboardingSchedulePreview : null;
     const blockers = [];
     if (!date) blockers.push('Вкажіть дату завершення співпраці.');
     if (!reason) blockers.push('Вкажіть причину завершення співпраці.');
+    if (staffOffboardingCompleted === null) blockers.push('Статус звільнення не підтверджено. Оновіть перевірку.');
     if (!readiness) blockers.push('Перевірку готовності не завантажено. Оновіть readiness.');
+    if (date && schedule?.state !== 'ready') {
+        blockers.push(schedule?.state === 'error'
+            ? 'Не вдалося перевірити графік. Натисніть «Оновити перевірку».'
+            : 'Перевіряємо наслідки для графіка.');
+    }
 
     const activeAccounts = Number(readiness?.active_account_count || 0);
     const openResources = Number(readiness?.open_resource_count || 0);
     const documentAlerts = Number(readiness?.document_alert_count || 0);
     const outstandingPayroll = Number(readiness?.outstanding_payroll_installment_count || 0);
     const outstandingPayrollAmount = Number(readiness?.outstanding_payroll_installment_amount || 0);
-    const futureScheduleCount = Number(lifecycleMetrics?.future_schedule_count || 0);
     const openTimeRecordCount = Number(lifecycleMetrics?.open_time_record_count || 0);
     const needsAccountAccess = (readiness?.disable_blockers || []).some(item => item.block_reason === 'requires_manage_accounts');
     if (accountAction === 'disable' && readiness?.disable_available === false) {
@@ -11217,9 +11266,10 @@ function getStaffOffboardingPreview() {
             : 'Дата звільнення ще не вказана.',
         `Відображення після підтвердження: ${staffOffboardingDestinationLabel(poolStatus)}.`,
         accountText,
-        lifecycleMetrics
-            ? `Буде прибрано майбутніх змін: ${futureScheduleCount}; активних тайм-записів: ${openTimeRecordCount}.`
-            : 'Стан майбутніх та активних змін ще перевіряється.',
+        schedule?.data
+            ? `З ${formatStaffDateValue(schedule.data.from_date)} буде прибрано записів: зміни HR — ${schedule.data.hr_shifts}, графік — ${schedule.data.staff_schedule}. За наявності відвідування залишаться: зміни HR — ${schedule.data.preserved_hr_shifts}, графік — ${schedule.data.preserved_staff_schedule}.`
+            : 'Кількість записів графіка для видалення ще не підтверджена.',
+        ...(lifecycleMetrics ? [`Відкриті записи часу, які залишаться: ${openTimeRecordCount}.`] : []),
         openResources || documentAlerts
             ? `Попередження не блокують серверну операцію: ресурси ${openResources}, документи ${documentAlerts}.`
             : 'Ресурсів і критичних документів у readiness не знайдено.',
@@ -11237,7 +11287,6 @@ function getStaffOffboardingPreview() {
         documentAlerts,
         outstandingPayroll,
         outstandingPayrollAmount,
-        futureScheduleCount,
         openTimeRecordCount,
         blockers,
         consequences,
@@ -13219,6 +13268,7 @@ async function completeStaffOffboarding(button = null) {
     }, async () => {
         const staffId = activeEditStaffId();
         if (!staffId) return { success: false, error: 'missing_staff_id' };
+        const isCurrent = staffProfileSaveIsCurrent(staffId);
         const preview = updateStaffOffboardingActionState();
         if (!preview.ready) {
             showNotification(preview.blockers[0] || 'Завершення співпраці поки недоступне', 'error');
@@ -13245,9 +13295,9 @@ async function completeStaffOffboarding(button = null) {
         const confirmationSummary = preview.consequences.map(item => `• ${item}`).join('\n');
         const ok = await confirmHrAction(
             `Підтвердьте завершення співпраці.\n\n${confirmationSummary}\n\nПричину буде збережено в історії HR-картки.`,
-            { type: 'danger', okText: 'Звільнити', cancelText: 'Повернутись' }
+            { type: 'danger', okText: 'Звільнити', cancelText: 'Повернутись', initialFocus: '.confirm-cancel' }
         );
-        if (!ok) return { success: false, cancelled: true };
+        if (!ok || !isCurrent()) return { success: false, cancelled: true };
         const body = {
             effective_date: preview.date,
             target_pool_status: preview.poolStatus,
@@ -13262,10 +13312,15 @@ async function completeStaffOffboarding(button = null) {
         }
         const resourceNote = data.open_resource_count ? ` Неповернуті ресурси: ${data.open_resource_count}.` : '';
         const accountNote = data.disabled_accounts ? ` Вимкнено CRM-акаунтів: ${data.disabled_accounts}.` : '';
+        const cleanup = data.schedule_cleanup;
+        const scheduleNote = cleanup
+            ? ` Прибрано записів: зміни HR — ${cleanup.hr_shifts}, графік — ${cleanup.staff_schedule}.`
+            : '';
         const destinationNote = preview.poolStatus === 'blacklisted'
             ? ' Працівник у «Звільнених» і «Чорному списку».'
             : ' Працівник у «Звільнених».';
-        showNotification(`Співпрацю завершено.${destinationNote}${resourceNote}${accountNote}${skippedAccountActionNote}`, data.open_resource_count ? 'warning' : 'success');
+        showNotification(`Співпрацю завершено.${destinationNote}${resourceNote}${accountNote}${skippedAccountActionNote}${scheduleNote}`, data.open_resource_count ? 'warning' : 'success');
+        if (!isCurrent()) return data;
         markStaffProfileScopesClean(['offboarding']);
         if (data.staff?.id) mergeFreshStaffProfile(data.staff);
         accountCenterDetailRequestSeq += 1;
@@ -13538,7 +13593,13 @@ function prepareStaffProfileActionButtons(modal) {
         loadingLabel: 'Оновлення…',
         successLabel: 'Оновлено',
         errorLabel: 'Помилка'
-    }, () => loadStaffProfileTabData('offboarding', { force: true })));
+    }, async () => {
+        const [result] = await Promise.all([
+            loadStaffProfileTabData('offboarding', { force: true }),
+            loadStaffOffboardingSchedulePreview({ force: true })
+        ]);
+        return result;
+    }));
     bindStaffProfileActionButton('editLifecycleRefresh', button => runStaffProfileAction(button, {
         loadingLabel: 'Оновлення…',
         successLabel: 'Оновлено',
@@ -13593,8 +13654,11 @@ function bindStaffOffboardingActionState(modal) {
         .map(id => modal.querySelector(`#${id}`))
         .filter(Boolean)
         .forEach(field => {
-            field.addEventListener('input', updateStaffOffboardingActionState);
-            field.addEventListener('change', updateStaffOffboardingActionState);
+            const update = field.id === 'editOffboardingDate'
+                ? () => void loadStaffOffboardingSchedulePreview()
+                : updateStaffOffboardingActionState;
+            field.addEventListener('input', update);
+            field.addEventListener('change', update);
         });
     updateStaffOffboardingActionState();
 }
@@ -13884,9 +13948,11 @@ async function loadStaffOffboardingSurface(staffId) {
         readinessRoot.innerHTML = 'Перевірка готовності завантажується...';
     }
     updateStaffOffboardingActionState();
+    const offboarding = await hrFetch(`/staff/${id}/offboarding`).catch(error => ({ success: false, error: error?.message }));
+    if (seq !== staffOffboardingLoadSeq || !isActiveStaffEditLoad(id)) return { success: false, stale: true };
+    staffOffboardingCompleted = offboarding?.success && typeof offboarding.completed === 'boolean' ? offboarding.completed : null;
     const completed = staffOffboardingIsCompleted();
-    const [offboarding, readiness, lifecycle] = await Promise.all([
-        hrFetch(`/staff/${id}/offboarding`).catch(error => ({ success: false, error: error?.message })),
+    const [readiness, lifecycle] = await Promise.all([
         completed ? null : hrFetch(`/staff/${id}/offboarding-readiness`).catch(error => ({ success: false, error: error?.message })),
         completed ? null : hrFetch(`/staff/${id}/lifecycle-checklist`).catch(error => ({ success: false, error: error?.message }))
     ]);
@@ -14278,6 +14344,8 @@ async function openStaffEdit(staffId, options = {}) {
     if (resourceQuantity) resourceQuantity.value = '1';
     const offboardingDate = document.getElementById('editOffboardingDate');
     if (offboardingDate) offboardingDate.value = '';
+    staffOffboardingSchedulePreview = null;
+    staffOffboardingCompleted = null;
     const offboardingPool = document.getElementById('editOffboardingPoolStatus');
     if (offboardingPool) offboardingPool.value = staffPoolStatus(s) === 'blacklisted' ? 'blacklisted' : 'reserve';
     const offboardingAccount = document.getElementById('editOffboardingAccountAction');

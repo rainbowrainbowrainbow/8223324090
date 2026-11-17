@@ -503,4 +503,171 @@ test('staff account operations enforce Park ownership and payroll/operation perm
         assert.equal((await result).status, 403);
         assert.equal((await pool.query('SELECT id FROM users WHERE username = $1', [username])).rowCount, 0);
     });
+
+    await t.test('account issuance and deactivation serialize on the same staff card in either order', async () => {
+        async function waitForBlockedStatement(blockingPid, pattern) {
+            for (let attempt = 0; attempt < 150; attempt++) {
+                const { rows } = await pool.query(
+                    `SELECT pid FROM pg_stat_activity
+                     WHERE datname = current_database() AND $1 = ANY(pg_blocking_pids(pid)) AND query ILIKE $2`,
+                    [blockingPid, pattern]
+                );
+                if (rows.length) return rows[0].pid;
+                await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            assert.fail('Expected a PostgreSQL wait for ' + pattern);
+        }
+
+        for (const issueFirst of [true, false]) {
+            const username = marker + (issueFirst ? '-issue-first' : '-deactivate-first');
+            const { rows: [person] } = await pool.query(
+                "INSERT INTO staff (name, department, position, role_type) VALUES ($1, 'QA', 'QA', 'animator') RETURNING id",
+                [username]
+            );
+            const idempotencyKey = randomUUID();
+            const issue = () => api('/api/users/onboarding', {
+                actor: owner, method: 'POST', headers: { 'Idempotency-Key': idempotencyKey },
+                body: {
+                    deriveRoleFromStaff: true, expectedRole: 'animator',
+                    personal: { name: username, username },
+                    staff: { mode: 'existing', id: person.id },
+                    access: { activateMembership: true },
+                    issueOneTime: true, initialPassword: password
+                }
+            });
+            const deactivate = () => api('/api/hr/staff/' + person.id + '/status', {
+                actor: owner, method: 'PUT', body: { is_active: false }
+            });
+
+            const barrier = await pool.connect();
+            let scheduled = [];
+            try {
+                await barrier.query('BEGIN');
+                const { rows: [{ pid }] } = await barrier.query('SELECT pg_backend_pid() AS pid');
+                await barrier.query('SELECT id FROM staff WHERE id = $1 FOR UPDATE', [person.id]);
+                scheduled.push((issueFirst ? issue : deactivate)());
+                const firstPid = await waitForBlockedStatement(pid, '%FROM staff%FOR UPDATE%');
+                scheduled.push((issueFirst ? deactivate : issue)());
+                await waitForBlockedStatement(firstPid, '%eventgenix:organization-ownership%');
+            } finally {
+                await barrier.query('ROLLBACK');
+                barrier.release();
+                await Promise.allSettled(scheduled);
+            }
+            const [first, second] = await Promise.all(scheduled);
+            const [issued, deactivated] = issueFirst ? [first, second] : [second, first];
+            assert.equal(deactivated.status, 200, JSON.stringify(deactivated.data));
+            assert.equal((await pool.query('SELECT is_active FROM staff WHERE id = $1', [person.id])).rows[0].is_active, false);
+            const { rows: accounts } = await pool.query(
+                `SELECT u.is_active AS user_active, ep.is_active AS profile_active, ep.staff_id,
+                        bm.business_id, bm.role, u.session_revoked_at IS NOT NULL AS revoked
+                 FROM users u JOIN employee_profiles ep ON ep.user_id = u.id
+                 JOIN business_memberships bm ON bm.user_id = u.id
+                 WHERE u.username = $1`, [username]
+            );
+            if (issueFirst) {
+                assert.equal(issued.status, 200);
+                assert.deepEqual(accounts, [{ user_active: false, profile_active: false, staff_id: person.id,
+                    business_id: park.id, role: 'animator', revoked: true }]);
+                const replay = await issue();
+                assert.equal(replay.status, 200);
+                assert.equal(replay.data.replayed, true);
+                assert.equal(replay.data.credential, null);
+            } else {
+                assert.equal(issued.status, 409);
+                assert.equal(issued.data.code, 'ACCOUNT_ONBOARDING_STAFF_INACTIVE');
+                assert.deepEqual(accounts, []);
+                assert.equal((await pool.query('SELECT 1 FROM users WHERE username = $1', [username])).rowCount, 0);
+            }
+        }
+    });
+
+    await t.test('a changed staff profession requires reviewing the derived CRM role again', async () => {
+        const name = marker + '-stale-role';
+        const { rows: [person] } = await pool.query(
+            "INSERT INTO staff (name, department, position, role_type) VALUES ($1, 'QA', 'QA', 'cook') RETURNING id", [name]
+        );
+        const result = await onboard(owner, {
+            deriveRoleFromStaff: true, expectedRole: 'animator',
+            personal: { name, username: name }, staff: { mode: 'existing', id: person.id },
+            access: { activateMembership: true }
+        });
+        assert.equal(result.status, 409);
+        assert.equal(result.data.code, 'ACCOUNT_ONBOARDING_ROLE_CHANGED');
+        assert.equal((await pool.query('SELECT 1 FROM users WHERE username = $1', [name])).rowCount, 0);
+    });
+
+    await t.test('offboarding distinguishes work cycles and reports the exact schedule row selection', async () => {
+        const { rows: [person] } = await pool.query(
+            "INSERT INTO staff (name, department, position, role_type) VALUES ($1, 'QA', 'QA', 'animator') RETURNING id",
+            [marker + '-dismissal']
+        );
+        const path = '/api/hr/staff/' + person.id;
+        const status = isActive => api(path + '/status', { actor: owner, method: 'PUT', body: { is_active: isActive } });
+        const completed = async () => (await api(path + '/offboarding', { actor: owner })).data.completed;
+        const dismiss = effectiveDate => api(path + '/offboarding', {
+            actor: owner, method: 'POST', body: { effective_date: effectiveDate, reason: 'QA dismissal' }
+        });
+        const preview = async effectiveDate => {
+            const result = await api(path + '/offboarding-readiness?effective_date=' + effectiveDate, { actor: owner });
+            assert.equal(result.status, 200, JSON.stringify(result.data));
+            return result.data.data.schedule_cleanup;
+        };
+        const { rows: [dates] } = await pool.query(
+            `SELECT to_char(now() AT TIME ZONE 'Europe/Kyiv' - INTERVAL '1 day', 'YYYY-MM-DD') AS yesterday,
+                    to_char(now() AT TIME ZONE 'Europe/Kyiv', 'YYYY-MM-DD') AS today,
+                    to_char(now() AT TIME ZONE 'Europe/Kyiv' + INTERVAL '1 day', 'YYYY-MM-DD') AS tomorrow,
+                    to_char(now() AT TIME ZONE 'Europe/Kyiv' + INTERVAL '2 days', 'YYYY-MM-DD') AS attended,
+                    to_char(now() AT TIME ZONE 'Europe/Kyiv' + INTERVAL '3 days', 'YYYY-MM-DD') AS absent`
+        );
+        assert.equal((await status(false)).status, 200);
+        assert.equal(await completed(), false);
+        const first = await Promise.all([dismiss(dates.today), dismiss(dates.today)]);
+        assert.deepEqual(first.map(row => row.status).sort(), [200, 409]);
+        assert.equal(first.find(row => row.status === 409).data.code, 'staff_already_dismissed');
+        assert.equal(await completed(), true);
+        assert.equal((await status(true)).status, 200);
+        assert.equal((await status(false)).status, 200);
+        assert.equal(await completed(), false);
+
+        assert.equal((await api(path + '/offboarding-readiness?effective_date=2026-02-30', { actor: owner })).status, 400);
+        assert.equal((await api(path + '/offboarding-readiness?effective_date=' + dates.today, { actor: viewer })).status, 403);
+        assert.deepEqual(await preview(dates.today), {
+            from_date: dates.today, hr_shifts: 0, staff_schedule: 0, preserved_hr_shifts: 0, preserved_staff_schedule: 0
+        });
+        const scheduled = [dates.today, dates.attended, dates.absent];
+        await pool.query(
+            `INSERT INTO hr_shifts(staff_id, shift_date, planned_start, planned_end, shift_type, profession_key)
+             SELECT $1, day, '09:00', '17:00', 'working', 'animator' FROM unnest($2::date[]) AS day`, [person.id, scheduled]
+        );
+        await pool.query(
+            `INSERT INTO staff_schedule(staff_id, date, status)
+             SELECT $1, day, 'working' FROM unnest($2::date[]) AS day`, [person.id, scheduled]
+        );
+        await pool.query(
+            "INSERT INTO hr_time_records(staff_id, record_date, clock_in, status) VALUES ($1, $2, $2::date + TIME '09:00', 'present')",
+            [person.id, dates.attended]
+        );
+        const todayPreview = await preview(dates.today);
+        assert.deepEqual(await preview(dates.yesterday), todayPreview);
+        assert.equal(todayPreview.hr_shifts, 2);
+        assert.equal(todayPreview.staff_schedule, 2);
+        const future = await preview(dates.tomorrow);
+        assert.deepEqual(future, {
+            from_date: dates.tomorrow, hr_shifts: 1, staff_schedule: 1, preserved_hr_shifts: 1, preserved_staff_schedule: 1
+        });
+        const second = await dismiss(dates.tomorrow);
+        assert.equal(second.status, 200, JSON.stringify(second.data));
+        assert.equal(second.data.schedule_cleanup.hr_shifts, future.hr_shifts);
+        assert.equal(second.data.schedule_cleanup.staff_schedule, future.staff_schedule);
+        for (const sql of [
+            'SELECT shift_date::text AS day FROM hr_shifts WHERE staff_id = $1 ORDER BY shift_date',
+            'SELECT date::text AS day FROM staff_schedule WHERE staff_id = $1 ORDER BY date'
+        ]) {
+            assert.deepEqual((await pool.query(sql, [person.id])).rows.map(row => row.day), [dates.today, dates.attended]);
+        }
+        assert.equal((await pool.query('SELECT 1 FROM hr_time_records WHERE staff_id = $1', [person.id])).rowCount, 1);
+        assert.equal((await pool.query('SELECT 1 FROM staff_offboarding_events WHERE staff_id = $1', [person.id])).rowCount, 2);
+        assert.equal(await completed(), true);
+    });
 });

@@ -1932,7 +1932,7 @@ function confirmModal(message, options = {}) {
         container.appendChild(overlay);
         window.ModalLayer?.ensureTopLayer(overlay);
         openModal(overlay, document.activeElement, {
-            initialFocus: scrollable ? '.confirm-message' : '.confirm-ok',
+            initialFocus: options.initialFocus ?? (scrollable ? '.confirm-message' : '.confirm-ok'),
             onRequestClose: () => close(false),
             hide: () => {}
         });

@@ -13,6 +13,14 @@ export function createEmployeeRenderers({ escapeHtml, profileEmployeeDateText, p
         const disclosure = (title, rows, empty) => renderProfileEmployeeDetails(title, rows, empty, true);
         const reportStatus = { preview: 'Попередній розрахунок', draft: 'Збережена чернетка', reviewed: 'Перевірено',
             approved: 'Затверджено', paid: 'Закрито в обліку', voided: 'Скасовано', reversed: 'Сторновано' };
+        const status = reportStatus[data.status];
+        const periodStatus = data.locked ? 'Період закрито.' : '';
+        const summary = [
+            [data.status === 'preview' ? 'Попередньо нараховано' : 'Нараховано', data.gross],
+            ['Утримано', data.deductions],
+            ['Виплачено', data.paid],
+            ['Залишок до виплати', data.balance, 'profile-pay-balance']
+        ].filter(([, value]) => data.state !== 'empty' || value != null);
         const adjustmentStatus = { applied: 'Враховано', pending: 'Очікує погодження', pending_review: 'Очікує погодження',
             rejected: 'Відхилено', voided: 'Скасовано' };
         const types = { bonus: 'Премія', kpi_bonus: 'Бонус за показниками', tip: 'Чайові', deduction: 'Утримання',
@@ -60,13 +68,15 @@ export function createEmployeeRenderers({ escapeHtml, profileEmployeeDateText, p
             ])
         ]);
         return `
-            <p class="profile-pay-status" role="status">${escapeHtml(reportStatus[data.status] || 'За цей місяць немає збереженого розрахунку.')}
-                ${data.locked ? ' · період закрито' : ''}
-                ${data.updatedAt ? ` · станом на ${profileEmployeeDateText(data.updatedAt)}` : ''}</p>
-            <dl class="profile-employee-summary profile-pay-summary">
-                ${[['Нараховано', data.gross], ['Утримано', data.deductions], ['Виплачено', data.paid], ['Залишок до виплати', data.balance]]
-                    .map(([label, value], index) => `<div${index === 3 ? ' class="profile-pay-balance"' : ''}><dt>${label}</dt><dd>${profileEmployeeMoney(value)}</dd></div>`).join('')}
-            </dl>
+            ${data.state === 'empty'
+                ? `<p class="profile-month-message" role="status">За цей місяць немає збереженого розрахунку.${periodStatus ? ` ${periodStatus}` : ''}</p>`
+                : `<p class="profile-pay-status" role="status">${escapeHtml(status || 'Розрахунок')}
+                    ${periodStatus ? ` · ${periodStatus}` : ''}
+                    ${data.updatedAt ? ` · станом на ${profileEmployeeDateText(data.updatedAt)}` : ''}</p>`}
+            ${summary.length ? `<dl class="profile-employee-summary profile-pay-summary">
+                ${summary.map(([label, value, cssClass]) =>
+                    `<div${cssClass ? ` class="${cssClass}"` : ''}><dt>${label}</dt><dd>${profileEmployeeMoney(value)}</dd></div>`).join('')}
+            </dl>` : ''}
             ${data.legacyAccounted ? '<p>Старий звіт закрито в обліку. Підтверджених дат і сум виплат у цьому джерелі немає.</p>' : ''}
             ${detail.hasBlockingIssues ? '<p>Розрахунок містить позиції, які потребують звірки.</p>' : ''}
             ${disclosure('Розрахунок', [

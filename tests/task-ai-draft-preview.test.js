@@ -33,42 +33,6 @@ test('task AI draft normalization filters against the same top active impact cat
     assert.equal(preview.activeImpactPayload(activeImpacts).length, normalization.MAX_ACTIVE_IMPACTS_FOR_NORMALIZATION);
 });
 
-test('legacy decomposition response preserves canonical proposal fallback text and filtered impacts', () => {
-    const result = preview.legacyDecompositionResponseFromPreview({
-        provider: 'openai',
-        model: 'gpt-5.6-luna',
-        contractVersion: preview.TASK_AI_DRAFT_CONTRACT_VERSION,
-        proposalToken: 'token.signature',
-        diff: { changedFields: ['title', 'description', 'impactIds', 'subtasks'] },
-        proposal: {
-            decision: 'checklist',
-            action: 'apply',
-            mode: 'checklist',
-            title: 'Readable CRM handoff',
-            description: 'Prepare a readable CRM lead handoff with owner risks and next actions.',
-            impactIds: [101],
-            subtasks: [
-                { title: 'Check lead card' },
-                { title: 'Write owner risks' }
-            ],
-            confidence: { overall: 0.91 },
-            reason: 'Canonical preview already normalized this proposal.'
-        }
-    }, 'ai');
-
-    assert.equal(result.success, true);
-    assert.equal(result.deprecated, true);
-    assert.equal(result.deprecatedEndpoint, '/api/tasks/ai-draft/preview');
-    assert.equal(result.source, 'ai_draft_preview');
-    assert.equal(result.proposal.title, 'Readable CRM handoff');
-    assert.equal(result.proposal.description, 'Prepare a readable CRM lead handoff with owner risks and next actions.');
-    assert.deepEqual(result.proposal.impactIds, [101]);
-    assert.deepEqual(result.subtasks.map(item => item.title), ['Check lead card', 'Write owner risks']);
-    assert.equal(result.proposalToken, 'token.signature');
-    assert.equal(result.meta.aiUsed, true);
-    assert.equal(result.meta.humanReviewRequired, true);
-});
-
 function validProposal(overrides = {}) {
     return {
         decision: 'checklist',

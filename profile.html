@@ -1158,7 +1158,7 @@
         .profile-work-avatar {
             width: 76px;
             height: 76px;
-            border-radius: 18px;
+            border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -1279,8 +1279,9 @@
         }
 
         .profile-identity-meta-row span {
-            display: inline-flex;
-            align-items: center;
+            display: block;
+            max-width: 100%;
+            overflow-wrap: anywhere;
             min-height: 24px;
             padding: 3px 9px;
             border-radius: 999px;
@@ -1289,7 +1290,7 @@
             color: var(--gray-500);
             font-size: 12px;
             font-weight: 800;
-            line-height: 1;
+            line-height: 1.3;
         }
 
         .profile-identity-meta-row span.is-ok {
@@ -2292,10 +2293,10 @@
             flex-wrap: wrap;
         }
 
-        .profile-employee-month input[type="month"] {
+        .profile-month-picker select,
+        .profile-month-picker button {
             max-width: 100%;
             padding: .55rem;
-            margin-inline-start: .4rem;
             border: 1px solid currentColor;
             border-radius: .5rem;
             font: inherit;
@@ -2910,7 +2911,7 @@
         .profile-avatar-preview {
             width: 148px;
             height: 148px;
-            border-radius: 24px;
+            border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -3071,14 +3072,14 @@
             color: var(--primary);
         }
 
-        .profile-avatar-file-pick b,
-        .profile-avatar-file-pick small {
+        .profile-avatar-file-pick b {
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
         }
 
         .profile-avatar-file-pick small {
+            overflow-wrap: anywhere;
             color: var(--gray-500);
             font-size: 11px;
             font-weight: 800;
@@ -4511,7 +4512,6 @@
             .profile-work-avatar {
                 width: 58px;
                 height: 58px;
-                border-radius: 13px;
                 font-size: 24px;
             }
 
@@ -4676,7 +4676,6 @@
             .profile-avatar-preview {
                 width: 112px;
                 height: 112px;
-                border-radius: 20px;
                 font-size: 44px;
             }
 
@@ -4854,7 +4853,6 @@
             .profile-work-avatar {
                 width: 58px;
                 height: 58px;
-                border-radius: 13px;
                 font-size: 24px;
             }
 

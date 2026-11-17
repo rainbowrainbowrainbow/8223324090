@@ -21,7 +21,6 @@ function clearRouteModules() {
         '../middleware/auth',
         '../services/kleshnya',
         '../services/taskActionHistory',
-        '../services/taskDecomposition',
         '../services/taskAiDraftPreview',
         '../services/taskAiDraftCommit',
         '../services/taskAiDraftBundleCommit',
@@ -58,7 +57,6 @@ function close(server) {
 
 function installBaseRouteMocks({
     activeImpacts = [],
-    taskDecomposition = null,
     taskAiDraftPreview = null,
     taskAiDraftCommit = null,
     telemetryEvents = []
@@ -98,16 +96,6 @@ function installBaseRouteMocks({
         pushTaskBusinessScopeCondition: () => '',
         taskBusinessScopeMeta: scope => ({ businessContext: scope?.businessContext || 'event_genix' })
     });
-    installMock('../services/taskDecomposition', taskDecomposition || {
-        generateTaskDecompositionDraft: async () => {
-            throw new Error('taskDecomposition should not be called by this test');
-        },
-        getTaskDecompositionTemplates: () => [],
-        normalizeDecompositionMode: (value, fallback = 'manual') => {
-            const raw = String(value || '').trim();
-            return ['none', 'manual', 'template', 'ai', 'template_ai'].includes(raw) ? raw : fallback;
-        }
-    });
     installMock('../services/taskAiDraftFeatureGate', {
         assertTaskAiDraftBundleFeatureEnabled: () => true,
         assertTaskAiDraftFeatureEnabled: () => true,
@@ -140,7 +128,6 @@ function installBaseRouteMocks({
         generateTaskAiDraftPreview: async () => {
             throw new Error('taskAiDraftPreview should not be called by this test');
         },
-        legacyDecompositionResponseFromPreview: () => ({ success: false }),
         ...(taskAiDraftPreview || {})
     });
     installMock('../services/taskAiDraftCommit', taskAiDraftCommit || {
@@ -243,7 +230,6 @@ test('direct task create route replays simultaneous requests with the same idemp
             generateTaskAiDraftPreview: async () => {
                 throw new Error('AI preview is not part of direct create idempotency');
             },
-            legacyDecompositionResponseFromPreview: () => ({ success: false })
         }
     });
     installMock('../db', { pool });
@@ -528,7 +514,6 @@ test('AI draft preview route uses the canonical preview handler and active impac
                 }
             };
         },
-        legacyDecompositionResponseFromPreview: () => ({ success: false })
     });
     installMock('../services/taskAiDraftCommit', {
         commitTaskAiDraft: async () => {

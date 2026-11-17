@@ -211,7 +211,6 @@ describe('transaction ownership helpers', () => {
     it('reuses already checked-out pg clients instead of reconnecting them', () => {
         const customerChildren = readProjectFile('services/customerChildren.js');
         const leadRepair = readProjectFile('services/leadCustomerRepair.js');
-        const taskLibrary = readProjectFile('services/taskDecompositionLibrary.js');
         const taskScheduling = readProjectFile('services/taskScheduling.js');
         const hermesStudio = readProjectFile('routes/hermes-studio.js');
         const backfillRoom = readProjectFile('scripts/backfill-room-resource-id.js');
@@ -233,10 +232,6 @@ describe('transaction ownership helpers', () => {
             'lead repair must reuse a passed client before connecting a pool'
         );
 
-        const taskLibraryBlock = sliceFrom(taskLibrary, 'async function withTransaction(db, callback)');
-        assert.match(taskLibraryBlock, /existingClient/);
-        assert.match(taskLibraryBlock, /typeof db\.release === 'function'/);
-        assert.match(taskLibraryBlock, /!existingClient && typeof db\.connect === 'function'/);
 
         const taskSchedulingBlock = sliceFrom(taskScheduling, 'async function withTransaction(options, work)');
         assert.match(taskSchedulingBlock, /typeof query\.release === 'function'/);

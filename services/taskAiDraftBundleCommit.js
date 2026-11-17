@@ -8,7 +8,7 @@ const { replaceTaskClassification } = require('./myDayTaxonomy');
 const { MY_DAY_TASK_AI_MODEL, compactString } = require('./myDayTaskOpenAIClient');
 const { getAssignableTaskOwner } = require('./taskExecution');
 const { recordTaskAiDraftTelemetry, taskAiHistoryTelemetryMetadata } = require('./taskAiDraftTelemetry');
-const { normalizeDraftItems } = require('./taskDecomposition');
+const { normalizeDraftItems } = require('./taskAiDraftItems');
 const {
     TASK_AI_DRAFT_CONTRACT_VERSION,
     TASK_AI_DRAFT_BUNDLE_COMMIT_AUDIENCE,

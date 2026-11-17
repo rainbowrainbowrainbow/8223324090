@@ -1,5 +1,5 @@
 /**
- * services/taskTaxonomy.js — shared Tasks taxonomy and checklist pack helpers.
+ * services/taskTaxonomy.js — shared Tasks taxonomy and operation pack templates.
  */
 
 const TASK_CATEGORY_TREE = {
@@ -47,85 +47,37 @@ const VALID_TASK_SUBCATEGORIES = Array.from(new Set(Object.values(CATEGORY_SUBCA
 const PACK_STATUSES = ['draft', 'confirmed', 'in_production', 'ready', 'issued', 'cancelled'];
 const SOURCE_ENTITY_TYPES = ['booking', 'order', 'lead', 'customer'];
 
-const CHECKLIST_TEMPLATE_PACKS = {
+const OPERATION_TASK_TEMPLATES = {
     hall_prep_base: {
         label: 'Підготовка залу',
         subcategory: 'hall_prep',
-        title: 'Чек-лист підготовки залу',
         owner_role: 'operations',
-        sla_minutes: 60,
-        items: [
-            { title: 'Перевірити чистоту залу', sort_order: 10 },
-            { title: 'Підготувати столи та зони посадки', sort_order: 20 },
-            { title: 'Перевірити реквізит і декор', sort_order: 30 },
-            { title: 'Увімкнути музику та техніку', sort_order: 40 },
-            { title: 'Підтвердити готовність до гостей', sort_order: 50 }
-        ]
+        sla_minutes: 60
     },
     kitchen_base: {
         label: 'Кухня',
         subcategory: 'kitchen',
-        title: 'Чек-лист видачі кухні',
         owner_role: 'kitchen',
-        sla_minutes: 60,
-        items: [
-            { title: 'Підтвердити меню замовлення', sort_order: 10 },
-            { title: 'Перевірити закупку продуктів', sort_order: 20 },
-            { title: 'Передати кухні таймінг видачі', sort_order: 30 },
-            { title: 'Підготувати сервірування', sort_order: 40 },
-            { title: 'Підтвердити видачу кухні', sort_order: 50 }
-        ]
+        sla_minutes: 60
     },
     cake_base: {
         label: 'Торт',
         subcategory: 'cakes',
-        title: 'Чек-лист торта',
         owner_role: 'confectioner',
-        sla_minutes: 30,
-        items: [
-            { title: 'Узгодити дизайн', sort_order: 10 },
-            { title: 'Підтвердити начинку', sort_order: 20 },
-            { title: 'Передати в кондитерку', sort_order: 30 },
-            { title: 'Перевірити декор', sort_order: 40 },
-            { title: 'Підготувати до видачі', sort_order: 50 }
-        ]
+        sla_minutes: 30
     },
     cake_decor_base: {
         label: 'Прикраси',
         subcategory: 'cake_decor',
-        title: 'Чек-лист прикрас на торт',
         owner_role: 'decorator',
-        sla_minutes: 20,
-        items: [
-            { title: 'Погодити тему прикрас', sort_order: 10 },
-            { title: 'Замовити топер і цифру', sort_order: 20 },
-            { title: 'Перевірити колір і напис', sort_order: 30 },
-            { title: 'Передати декор до торта', sort_order: 40 },
-            { title: 'Підтвердити фінальний вигляд', sort_order: 50 }
-        ]
+        sla_minutes: 20
     },
     purchase_base: {
         label: 'Закупка',
         subcategory: 'purchase',
-        title: 'Чек-лист закупки',
         owner_role: 'procurement',
-        sla_minutes: 90,
-        items: [
-            { title: 'Зібрати список позицій', sort_order: 10 },
-            { title: 'Підтвердити бюджет', sort_order: 20 },
-            { title: 'Оформити закупку', sort_order: 30 },
-            { title: 'Перевірити доставку', sort_order: 40 },
-            { title: 'Закрити закупку в задачах', sort_order: 50 }
-        ]
+        sla_minutes: 90
     }
-};
-
-const CHECKLIST_TEMPLATE_BY_SUBCATEGORY = {
-    hall_prep: 'hall_prep_base',
-    kitchen: 'kitchen_base',
-    cakes: 'cake_base',
-    cake_decor: 'cake_decor_base',
-    purchase: 'purchase_base'
 };
 
 const ORDER_OPERATION_PRESETS = {
@@ -181,13 +133,6 @@ function normalizePackStatus(status, fallback = null) {
     return fallback;
 }
 
-function normalizeChecklistTemplateKey(key, subcategory = null) {
-    const raw = String(key || '').trim();
-    if (CHECKLIST_TEMPLATE_PACKS[raw]) return raw;
-    const bySubcategory = CHECKLIST_TEMPLATE_BY_SUBCATEGORY[String(subcategory || '').trim()];
-    return bySubcategory || null;
-}
-
 function normalizeSourceEntityType(value) {
     const raw = String(value || '').trim();
     return SOURCE_ENTITY_TYPES.includes(raw) ? raw : null;
@@ -214,27 +159,8 @@ function normalizeSlaMinutes(value) {
     return Number.isInteger(parsed) && parsed > 0 && parsed <= 10080 ? parsed : null;
 }
 
-function getChecklistTemplate(key) {
-    return CHECKLIST_TEMPLATE_PACKS[normalizeChecklistTemplateKey(key)] || null;
-}
-
-async function createChecklistSubtasks(dbPool, taskId, templateKey) {
-    const template = getChecklistTemplate(templateKey);
-    if (!template || !template.items.length) return [];
-    const values = [];
-    const placeholders = template.items.map((item, index) => {
-        const offset = index * 4;
-        values.push(taskId, item.title, item.sort_order);
-        values.push('template');
-        return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4})`;
-    });
-    const result = await dbPool.query(
-        `INSERT INTO task_subtasks (task_id, title, sort_order, source_type)
-         VALUES ${placeholders.join(', ')}
-         RETURNING *`,
-        values
-    );
-    return result.rows;
+function getOperationTaskTemplate(key) {
+    return Object.hasOwn(OPERATION_TASK_TEMPLATES, key) ? OPERATION_TASK_TEMPLATES[key] : null;
 }
 
 module.exports = {
@@ -245,17 +171,15 @@ module.exports = {
     CATEGORY_SUBCATEGORIES,
     PACK_STATUSES,
     SOURCE_ENTITY_TYPES,
-    CHECKLIST_TEMPLATE_PACKS,
+    OPERATION_TASK_TEMPLATES,
     ORDER_OPERATION_PRESETS,
     normalizeTaskCategory,
     normalizeTaskSubcategory,
     normalizePackStatus,
-    normalizeChecklistTemplateKey,
     normalizeSourceEntityType,
     normalizeSourceEntityId,
     normalizeUuid,
     normalizeOwnerRole,
     normalizeSlaMinutes,
-    getChecklistTemplate,
-    createChecklistSubtasks
+    getOperationTaskTemplate
 };

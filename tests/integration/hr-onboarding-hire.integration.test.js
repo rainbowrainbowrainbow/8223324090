@@ -147,6 +147,21 @@ describe('PostgreSQL-backed profession onboarding and vacancy hire flow', { skip
         }, 'repeat barista onboarding start');
         assert.equal(repeatStart.reused, true);
         assert.equal(Number(repeatStart.progress.id), Number(barista.id));
+        const taskDb = new Client({ connectionString: process.env.TEST_DATABASE_URL });
+        await taskDb.connect();
+        try {
+            const { rows: linkedTasks } = await taskDb.query(`
+                SELECT id, task_kind, status, owner_user_id, related_entity_id FROM tasks
+                WHERE source_type = 'onboarding' AND related_entity_type = 'onboarding_progress'
+                  AND related_entity_id = ANY($1::text[])
+            `, [beforeProcesses.map(row => String(row.id))]);
+            assert.ok(linkedTasks.length > 0);
+            const baristaTasks = linkedTasks.filter(task => Number(task.related_entity_id) === Number(barista.id));
+            assert.ok(baristaTasks.length > 0 && baristaTasks.every(task => Number(task.owner_user_id) === secondOwnerId));
+            assert.ok(linkedTasks.every(task => task.task_kind === 'action' && task.status === 'todo'));
+        } finally {
+            await taskDb.end();
+        }
 
         const checklistItem = Array.isArray(professionByKey.get('barista').checklist)
             ? professionByKey.get('barista').checklist[0]

@@ -282,11 +282,6 @@
                 type: task.relatedEntityType ?? task.related_entity_type ?? task.sourceEntityType ?? task.source_entity_type ?? null,
                 id: task.relatedEntityId ?? task.related_entity_id ?? task.sourceEntityId ?? task.source_entity_id ?? null
             },
-            subtasks: {
-                count: Number(task.subtaskCount ?? task.subtask_count ?? 0),
-                doneCount: Number(task.subtaskDoneCount ?? task.subtask_done_count ?? 0),
-                items: Array.isArray(task.subtasks) ? task.subtasks : []
-            },
             dependencies: {
                 count: Number(task.dependencyCount ?? task.dependency_count ?? 0),
                 openCount: Number(task.openDependencyCount ?? task.open_dependency_count ?? 0)

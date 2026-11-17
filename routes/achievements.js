@@ -189,7 +189,7 @@ router.post('/check', requireRole(...ANY_ROLE), async (req, res) => {
         }
 
         // v38.4.0: Batch all criteria data in parallel to prevent N+1 queries
-        const [streakR, quizPlayR, quizPerfR, minigameR, bossR, walletR, roomR, tasksR, giftsR, taskDecompositionR] = await Promise.all([
+        const [streakR, quizPlayR, quizPerfR, minigameR, bossR, walletR, roomR, tasksR, giftsR] = await Promise.all([
             optionalAchievementQuery('game_streaks', 'SELECT MAX(best_count) as best FROM game_streaks WHERE user_id = $1', [userId], { best: 0 }),
             optionalAchievementQuery('quiz_sessions_play', "SELECT COUNT(*)::int as cnt FROM quiz_sessions WHERE user_id = $1 AND completed = true", [userId], { cnt: 0 }),
             optionalAchievementQuery('quiz_sessions_perfect', "SELECT COUNT(*)::int as cnt FROM quiz_sessions WHERE user_id = $1 AND completed = true AND correct_count = questions_count", [userId], { cnt: 0 }),
@@ -198,50 +198,12 @@ router.post('/check', requireRole(...ANY_ROLE), async (req, res) => {
             optionalAchievementQuery('game_wallets', 'SELECT total_earned FROM game_wallets WHERE user_id = $1', [userId], { total_earned: 0 }),
             optionalAchievementQuery('user_rooms', 'SELECT visitor_count, wallpaper_item_id, floor_item_id FROM user_rooms WHERE user_id = $1', [userId], {}),
             optionalAchievementQuery('task_completion', `
-                SELECT
-                    (
-                        COUNT(*) FILTER (WHERE ${taskKpiEligibleSql('t')} AND ${taskKpiCompletedSql('t')})
-                        + COALESCE(SUM(COALESCE(st.done, 0)) FILTER (WHERE ${taskKpiEligibleSql('t')}), 0)
-                    )::int AS cnt,
-                    COUNT(*) FILTER (WHERE ${taskKpiEligibleSql('t')} AND ${taskKpiCompletedSql('t')})::int AS parent_cnt,
-                    COALESCE(SUM(COALESCE(st.done, 0)) FILTER (WHERE ${taskKpiEligibleSql('t')}), 0)::int AS subtask_cnt
+                SELECT COUNT(*) FILTER (WHERE ${taskKpiEligibleSql('t')} AND ${taskKpiCompletedSql('t')})::int AS cnt
                 FROM tasks t
-                LEFT JOIN (
-                    SELECT task_id,
-                           COUNT(*) FILTER (WHERE is_done = true)::int AS done
-                    FROM task_subtasks
-                    GROUP BY task_id
-                ) st ON st.task_id = t.id
                 WHERE ${taskOwnerMatch}
-            `, taskOwnerParams, { cnt: 0, parent_cnt: 0, subtask_cnt: 0 }),
-            optionalAchievementQuery('coin_transactions_gifts', "SELECT COUNT(*)::int as cnt FROM coin_transactions WHERE user_id = $1 AND type = 'gift' AND amount < 0", [userId], { cnt: 0 }),
-            optionalAchievementQuery('task_decomposition', `
-                SELECT
-                    COUNT(DISTINCT t.id) FILTER (WHERE ${taskKpiEligibleSql('t')} AND COALESCE(st.total, 0) > 0)::int AS decomposed_tasks,
-                    COUNT(DISTINCT t.id) FILTER (WHERE ${taskKpiEligibleSql('t')} AND COALESCE(st.total, 0) > 0 AND ${taskKpiCompletedSql('t')})::int AS decomposed_tasks_completed,
-                    COALESCE(SUM(COALESCE(st.done, 0)) FILTER (WHERE ${taskKpiEligibleSql('t')}), 0)::int AS subtasks_completed,
-                    COUNT(DISTINCT t.id) FILTER (WHERE ${taskKpiEligibleSql('t')} AND ${taskKpiCompletedSql('t')} AND COALESCE(st.ai_count, 0) > 0)::int AS ai_decomposed_tasks_completed,
-                    COUNT(DISTINCT t.id) FILTER (WHERE ${taskKpiEligibleSql('t')} AND ${taskKpiCompletedSql('t')} AND COALESCE(st.template_count, 0) > 0)::int AS template_decomposed_tasks_completed
-                FROM tasks t
-                LEFT JOIN (
-                    SELECT task_id,
-                           COUNT(*)::int AS total,
-                           COUNT(*) FILTER (WHERE is_done = true)::int AS done,
-                           COUNT(*) FILTER (WHERE source_type = 'ai')::int AS ai_count,
-                           COUNT(*) FILTER (WHERE source_type = 'template')::int AS template_count
-                    FROM task_subtasks
-                    GROUP BY task_id
-                ) st ON st.task_id = t.id
-                WHERE ${taskOwnerMatch}
-            `, taskOwnerParams, {
-                decomposed_tasks: 0,
-                decomposed_tasks_completed: 0,
-                subtasks_completed: 0,
-                ai_decomposed_tasks_completed: 0,
-                template_decomposed_tasks_completed: 0
-            })
+            `, taskOwnerParams, { cnt: 0 }),
+            optionalAchievementQuery('coin_transactions_gifts', "SELECT COUNT(*)::int as cnt FROM coin_transactions WHERE user_id = $1 AND type = 'gift' AND amount < 0", [userId], { cnt: 0 })
         ]);
-        const taskDecomposition = taskDecompositionR.rows[0] || {};
         const criteria = {
             streak: streakR.rows[0]?.best || 0,
             quiz_play: quizPlayR.rows[0]?.cnt || 0,
@@ -252,13 +214,6 @@ router.post('/check', requireRole(...ANY_ROLE), async (req, res) => {
             room_decorate: (roomR.rows[0]?.wallpaper_item_id || roomR.rows[0]?.floor_item_id) ? 1 : 0,
             room_visitors: roomR.rows[0]?.visitor_count || 0,
             tasks_completed: tasksR.rows[0]?.cnt || 0,
-            completed_parent_tasks: tasksR.rows[0]?.parent_cnt || 0,
-            completed_subtasks: tasksR.rows[0]?.subtask_cnt || 0,
-            decomposed_tasks: taskDecomposition.decomposed_tasks || 0,
-            decomposed_tasks_completed: taskDecomposition.decomposed_tasks_completed || 0,
-            subtasks_completed: taskDecomposition.subtasks_completed || 0,
-            ai_decomposed_tasks_completed: taskDecomposition.ai_decomposed_tasks_completed || 0,
-            template_decomposed_tasks_completed: taskDecomposition.template_decomposed_tasks_completed || 0,
             gift_sent: giftsR.rows[0]?.cnt || 0
         };
 
@@ -296,21 +251,6 @@ router.post('/check', requireRole(...ANY_ROLE), async (req, res) => {
                 achieved = progress >= cond.count;
             } else if (cond.type === 'tasks_completed') {
                 progress = criteria.tasks_completed;
-                achieved = progress >= cond.count;
-            } else if (cond.type === 'decomposed_tasks') {
-                progress = criteria.decomposed_tasks;
-                achieved = progress >= cond.count;
-            } else if (cond.type === 'decomposed_tasks_completed') {
-                progress = criteria.decomposed_tasks_completed;
-                achieved = progress >= cond.count;
-            } else if (cond.type === 'subtasks_completed') {
-                progress = criteria.subtasks_completed;
-                achieved = progress >= cond.count;
-            } else if (cond.type === 'ai_decomposed_tasks_completed') {
-                progress = criteria.ai_decomposed_tasks_completed;
-                achieved = progress >= cond.count;
-            } else if (cond.type === 'template_decomposed_tasks_completed') {
-                progress = criteria.template_decomposed_tasks_completed;
                 achieved = progress >= cond.count;
             } else if (cond.type === 'gift_sent') {
                 progress = criteria.gift_sent;

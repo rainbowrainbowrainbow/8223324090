@@ -17,7 +17,6 @@ const {
     taskCompletionReportId,
     taskControlMeta
 } = require('./taskExecution');
-const { normalizeSubtaskRow, subtaskProgress } = require('./taskSubtasks');
 const { deriveTaskIntelligence } = require('./taskIntelligence');
 const {
     buildPostponementExplanation,
@@ -63,10 +62,6 @@ function normalizeTaskPayload(row = {}, options = {}) {
     } : null;
     const canReschedule = actionPermissions ? actionPermissions.canReschedule : fallbackCanReschedule;
     const reportId = taskCompletionReportId(row);
-    const subtaskCount = Number(row.subtask_count || 0);
-    const subtaskDoneCount = Number(row.subtask_done_count || 0);
-    const progress = subtaskProgress(subtaskDoneCount, subtaskCount);
-    const subtasks = Array.isArray(row.subtasks) ? row.subtasks.map(normalizeSubtaskRow) : [];
     const postponementCount = normalizePostponementCount(row.postponement_count ?? row.postponementCount);
     const postponementExplanation = buildPostponementExplanation(row, options.postponementEvent);
 
@@ -125,11 +120,6 @@ function normalizeTaskPayload(row = {}, options = {}) {
         allowReschedule: canReschedule,
         ...(actionPermissions ? { actionPermissions } : {}),
         reportId,
-        subtaskCount,
-        subtaskDoneCount,
-        subtaskProgress: progress,
-        subtaskProgressPercent: progress,
-        subtasks,
         dependencyCount: Number(row.dependency_count || 0),
         openDependencyCount: Number(row.open_dependency_count || 0),
         blockedByTitles: row.blocked_by_titles || null,

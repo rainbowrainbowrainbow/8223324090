@@ -12,7 +12,7 @@ const {
     PACK_STATUSES,
     TASK_CATEGORY_TREE,
     TOP_LEVEL_ORDER,
-    normalizeChecklistTemplateKey,
+    getOperationTaskTemplate,
     normalizeOwnerRole,
     normalizePackStatus,
     normalizeSlaMinutes,
@@ -50,11 +50,11 @@ describe('task taxonomy helpers', () => {
         assert.equal(normalizeTaskSubcategory('admin', 'kitchen'), null);
     });
 
-    it('maps checklist template keys from explicit keys or checklist subcategories', () => {
-        assert.equal(normalizeChecklistTemplateKey('cake_base'), 'cake_base');
-        assert.equal(normalizeChecklistTemplateKey('', 'kitchen'), 'kitchen_base');
-        assert.equal(normalizeChecklistTemplateKey('bad_key', 'cake_decor'), 'cake_decor_base');
-        assert.equal(normalizeChecklistTemplateKey('bad_key', 'unknown'), null);
+    it('returns operation task metadata without checklist items', () => {
+        assert.deepEqual(getOperationTaskTemplate('cake_base'), {
+            label: 'Торт', subcategory: 'cakes', owner_role: 'confectioner', sla_minutes: 30
+        });
+        assert.equal(getOperationTaskTemplate('toString'), null);
     });
 
     it('keeps operation presets as checklist bundles with dependencies where needed', () => {

@@ -429,7 +429,14 @@ function isTrustedCancelledBookingAutoArchiveMarked(row = {}) {
         && lifecycle.autoArchivePolicy === MACHINE_AUTO_ARCHIVE_POLICY_CANCELLED_BOOKING;
 }
 
+// Historical checklist rows are evidence of human work. Keep this guard while
+// these rows exist; retiring the checklist UI must not widen archive eligibility.
+function historicalTaskWorkSql(taskAlias = 't') {
+    return `EXISTS (SELECT 1 FROM task_subtasks history WHERE history.task_id = ${taskAlias}.id)`;
+}
+
 module.exports = {
+    historicalTaskWorkSql,
     AI_SOURCE_TYPES,
     AUTOMATION_MARKER_CREATORS,
     AUTOMATION_MARKER_SOURCE_TYPES,

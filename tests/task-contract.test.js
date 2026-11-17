@@ -45,7 +45,7 @@ test('frontend task contract preserves a legacy owner and uses the canonical due
     assert.equal(normalized.taskContext.source.module, null);
     assert.equal(normalized.taskContext.source.surface, null);
     assert.equal(normalized.taskContext.businessContext, 'event_genix');
-    assert.equal(normalized.taskContext.subtasks.count, 2);
+    assert.equal(Object.hasOwn(normalized.taskContext, 'subtasks'), false);
     assert.equal(normalized.taskContext.dependencies.openCount, 1);
     assert.equal(normalized.taskContext.report.required, undefined);
 });

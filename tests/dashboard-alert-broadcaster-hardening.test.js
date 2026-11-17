@@ -19,7 +19,6 @@ function clearModules() {
         '../utils/logger',
         '../services/booking',
         '../services/taskPolicy',
-        '../services/taskSubtasks',
         '../services/taskIntelligence',
         '../services/websocket',
         '../services/bookingVisibility',
@@ -75,9 +74,6 @@ function installDashboardMocks() {
         normalizeUserId: user => user?.id || null,
         taskOwnerState: () => ({}),
         userNameTokens: () => []
-    });
-    installMock('../services/taskSubtasks', {
-        normalizeSubtaskSummary: () => ({ subtasks: [], subtaskCount: 0, subtaskDoneCount: 0 })
     });
     installMock('../services/taskIntelligence', {
         buildTaskOperationsSummary: () => ({}),

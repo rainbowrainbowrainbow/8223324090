@@ -4,9 +4,14 @@ const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const { Pool } = require('pg');
 const { randomBytes } = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
 const { loadEmployeeResults, employeeMonthRange } = require('../../services/profileEmployeeMonths');
 const { request, getToken } = require('../helpers');
 const { assertSafeIsolatedTestUrl } = require('../../scripts/test-db-safety');
+const { inventory } = require('../../scripts/my-day-legacy-task-inventory');
+const { cancelledBookingAutoArchivePredicateSql } = require('../../services/taskLifecycle');
+const { buildMachineTaskControlMetaPatch, MACHINE_AUTO_ARCHIVE_POLICY_CANCELLED_BOOKING } = require('../../services/taskAutomationPolicy');
 
 test('park edition paginates all periods and disables legacy module writes', {
     skip: process.env.RUN_MY_DAY_PARK_INTEGRATION !== 'true'
@@ -197,6 +202,90 @@ test('park edition paginates all periods and disables legacy module writes', {
         assert.equal(active.data.timer.taskId, futureTask.id);
         assert.equal((await request('POST', '/api/my-day/timer/stop', {}, token)).status, 200);
         assert.equal((await request('GET', '/api/my-day/timer', undefined, token)).data.timer, null);
+    } finally {
+        await pool.end();
+    }
+});
+
+test('legacy flags cannot require a report; historical rows and references remain intact', {
+    skip: process.env.RUN_MY_DAY_PARK_INTEGRATION !== 'true'
+}, async () => {
+    assert.equal(process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER, 'true');
+    assertSafeIsolatedTestUrl(process.env.TEST_URL);
+    const token = await getToken();
+    const created = await request('POST', '/api/tasks', {
+        title: 'Legacy report fixture ' + randomBytes(4).toString('hex'), reportRequired: true,
+        controlMeta: { reportRequired: true, requires_report: true }
+    }, token);
+    assert.ok([200, 201].includes(created.status), JSON.stringify(created.data));
+    const { id } = created.data.task;
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: false });
+    const legacyFlag = async () => (await pool.query('SELECT control_meta FROM tasks WHERE id = $1', [id])).rows[0].control_meta;
+    try {
+        assert.equal((await legacyFlag()).reportRequired, undefined);
+        assert.equal((await legacyFlag()).requires_report, undefined);
+        await pool.query(`UPDATE tasks SET task_kind = 'checklist',
+            control_meta = control_meta || '{"reportRequired":true}'::jsonb WHERE id = $1`, [id]);
+        await pool.query("INSERT INTO task_subtasks (task_id, title, is_done) VALUES ($1, 'Unfinished historical step', false)", [id]);
+        const edited = await request('PUT', `/api/tasks/${id}`, {
+            title: 'Edited legacy report fixture ' + id, requires_report: true,
+            controlMeta: { reportRequired: false, requiresReport: true }
+        }, token);
+        assert.equal(edited.status, 200, JSON.stringify(edited.data));
+        assert.equal((await legacyFlag()).reportRequired, true);
+        assert.equal((await legacyFlag()).requiresReport, undefined);
+        const { rows: [typeOnly, linkedSystem] } = await pool.query(`
+            INSERT INTO tasks (title, status, business_context, task_kind, source_type, source_id)
+            VALUES ('Type-only legacy fixture', 'todo', 'event_genix', 'checklist', 'manual', NULL),
+                   ('Linked system fixture', 'todo', 'event_genix', 'action', 'automation', 'QA-rule')
+            RETURNING id`);
+        await pool.query('UPDATE tasks SET duplicate_of_task_id = $1 WHERE id = $2', [id, linkedSystem.id]);
+        const completed = await request('POST', `/api/tasks/${id}/complete`, { controlMeta: { reportRequired: true } }, token);
+        assert.equal(completed.status, 200, JSON.stringify(completed.data));
+        assert.equal(completed.data.task.status, 'done');
+        const compatibility = await request('GET', `/api/tasks/${id}/subtasks`, undefined, token);
+        assert.equal(compatibility.status, 410);
+        assert.equal((await pool.query('SELECT is_done FROM task_subtasks WHERE task_id = $1', [id])).rows[0].is_done, false);
+        const report = await inventory(pool);
+        const record = taskId => report.tasks.find(task => task.id === Number(taskId));
+        assert.equal(report.readOnly, true);
+        assert.deepEqual(record(id).cohorts, ['hasSubtasks']);
+        assert.ok(record(id).references.some(ref => ref.table === 'task_subtasks' && ref.action === 'cascade'));
+        assert.ok(record(id).references.some(ref => ref.table === 'tasks' && ref.column === 'duplicate_of_task_id' && ref.action === 'set_null'));
+        assert.equal(record(typeOnly.id).disposition, 'review-type-only');
+        assert.deepEqual(record(linkedSystem.id).cohorts, ['linkedSystem']);
+        assert.equal(record(linkedSystem.id).disposition, 'protect');
+        const directory = path.join(__dirname, '../../output/qa');
+        fs.mkdirSync(directory, { recursive: true });
+        fs.writeFileSync(path.join(directory, 'legacy-task-inventory-isolated.json'), JSON.stringify(report, null, 2) + '\n');
+    } finally {
+        await pool.end();
+    }
+});
+
+test('automatic archive eligibility preserves historical checklist work', {
+    skip: process.env.RUN_MY_DAY_PARK_INTEGRATION !== 'true'
+}, async () => {
+    assert.equal(process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER, 'true');
+    assertSafeIsolatedTestUrl(process.env.TEST_URL);
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: false });
+    try {
+        const marker = buildMachineTaskControlMetaPatch('booking', {
+            lifecycleAutoArchivePolicy: MACHINE_AUTO_ARCHIVE_POLICY_CANCELLED_BOOKING
+        });
+        const { rows: [unprotected, historical] } = await pool.query(`
+            INSERT INTO tasks (title, date, type, status, created_by, source_type, source_id, control_meta)
+            VALUES ('Machine cleanup fixture', '2024-01-01', 'auto', 'todo', 'rule_engine', 'booking', 'qa-booking', $1),
+                   ('Machine history fixture', '2024-01-01', 'auto', 'todo', 'rule_engine', 'booking', 'qa-booking', $1)
+            RETURNING id
+        `, [marker]);
+        await pool.query("INSERT INTO task_subtasks (task_id, title, is_done) VALUES ($1, 'Historical work', false)", [historical.id]);
+        const { rows } = await pool.query(`
+            SELECT t.id, ${cancelledBookingAutoArchivePredicateSql('t', 'b', '$1')} AS eligible
+            FROM tasks t CROSS JOIN (SELECT 'qa-booking' AS id, 'cancelled' AS status) b
+            WHERE t.id = ANY($2::int[]) ORDER BY t.id
+        `, ['2024-01-15', [unprotected.id, historical.id]]);
+        assert.deepEqual(rows, [{ id: unprotected.id, eligible: true }, { id: historical.id, eligible: false }]);
     } finally {
         await pool.end();
     }

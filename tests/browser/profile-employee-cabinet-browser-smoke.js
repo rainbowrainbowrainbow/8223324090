@@ -45,7 +45,7 @@ function results(month) {
 }
 
 async function main() {
-    const { chromium } = require('playwright');
+    const { chromium } = require('./timeline-room-summary-browser-smoke').requirePlaywright();
     fs.mkdirSync(evidence, { recursive: true });
     const browser = await chromium.launch({
         headless: true,
@@ -138,6 +138,7 @@ async function main() {
         assert.equal(await page.getByText('Арт-директор', { exact: true }).count(), 1);
         assert.equal(await page.locator('[data-profile-profession="art_director"]').innerText(), 'Арт-директор\nКреатив\nОсновна');
         await page.getByText('Перевірити дизайни', { exact: true }).waitFor();
+        assert.equal(await page.locator('#work-base-checklists').getByText('Загальна задача', { exact: true }).count(), 0);
         await page.getByText('Гайд арт-директора', { exact: true }).waitFor();
         await page.locator('#tabContent').screenshot({ path: path.join(evidence, 'work-base-mobile.png') });
         const selected = page.locator('.profile-work-base-profession[data-profile-profession="host"]');
@@ -151,8 +152,8 @@ async function main() {
         assert.equal(await page.getByText('Редагувати в HR', { exact: true }).count(), 0);
         await page.getByRole('button', { name: 'Зарплата', exact: true }).click();
         await page.getByText('Завантаження…', { exact: true }).waitFor();
-        const month = page.locator('#profileEmployeeMonthInput');
-        await month.fill('2024-03');
+        const month = page.getByLabel('Місяць', { exact: true });
+        await month.selectOption('03');
         await page.getByText(/3\s450/).waitFor();
         const breakdown = page.locator('details.park-employee-disclosure').filter({ has: page.locator('summary', { hasText: 'Розрахунок' }) });
         assert.equal(await breakdown.getAttribute('open'), null);
@@ -170,14 +171,14 @@ async function main() {
         await (await olderResponse).finished();
         assert.equal(await page.getByText(/2\s100/).count(), 0);
         await page.locator('#tabContent').screenshot({ path: path.join(evidence, 'salary-mobile.png') });
-        await month.fill('2024-04');
+        await month.selectOption('04');
         await page.getByRole('alert').waitFor();
         await page.getByRole('button', { name: 'Спробувати ще раз' }).click();
         await page.getByText(/3\s450/).waitFor();
         await page.goBack();
-        await page.waitForFunction(() => document.querySelector('#profileEmployeeMonthInput')?.value === '2024-03');
+        await page.waitForFunction(() => document.querySelector('#profileEmployeeMonthSelect')?.value === '03');
         await page.goForward();
-        await page.waitForFunction(() => document.querySelector('#profileEmployeeMonthInput')?.value === '2024-04');
+        await page.waitForFunction(() => document.querySelector('#profileEmployeeMonthSelect')?.value === '04');
         await page.getByRole('button', { name: 'Мої результати', exact: true }).click();
         const comparison = page.locator('.profile-employee-comparison');
         await comparison.locator('summary').click();
@@ -189,7 +190,7 @@ async function main() {
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
         await substitutions.screenshot({ path: path.join(evidence, 'substitutions-mobile.png') });
         await page.locator('#tabContent').screenshot({ path: path.join(evidence, 'results-mobile.png') });
-        await page.locator('#profileEmployeeMonthInput').fill('2024-03');
+        await month.selectOption('03');
         await substitutions.getByText('За цей місяць підмін немає.', { exact: true }).waitFor();
         assert.equal(await substitutions.locator('li').count(), 0);
         await page.setViewportSize({width:320,height:790});

@@ -40,7 +40,7 @@
         let busy = false;
         let checking = false;
         let lastChecked = 0;
-        const heading = element('h2', 'Telegram', { id: 'telegramCrmHeading', tabindex: '-1' });
+        const heading = element('h3', 'Telegram', { id: 'telegramCrmHeading', tabindex: '-1' });
         const info = element('div', '', { class: 'telegram-crm-info' });
         const actions = element('div', '', { class: 'telegram-crm-actions' });
         const flow = element('div');

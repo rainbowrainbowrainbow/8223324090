@@ -265,35 +265,6 @@ test('profile My Day compact capsule uses existing identity and profession helpe
     assert.match(source, /renderProfileProfessionHeaderPanel\(professionEntries\)/);
 });
 
-test('profile quick task card uses completed-today and active My Day workload counts', () => {
-    const ctx = loadProfileTaskerContext();
-    const counts = ctx.cabinetTaskQuickCounts({
-        stats: {
-            taskQuick: {
-                completed: 99,
-                completedToday: 12,
-                remaining: 3,
-                activeMyDay: 4,
-                todayRemaining: 3,
-                overdueCarryover: 1,
-                scope: 'completed_units_today_and_active_my_day_or_undated'
-            }
-        }
-    });
-
-    assert.equal(counts.completed, 12);
-    assert.equal(counts.remaining, 4);
-    assert.equal(counts.todayRemaining, 3);
-    assert.equal(counts.overdueCarryover, 1);
-    assert.equal(counts.scope, 'completed_units_today_and_active_my_day_or_undated');
-    const html = ctx.renderCabinetTaskQuickSplit(counts);
-    assert.match(html, /cabinet-quick-half--completed/);
-    assert.match(html, /cabinet-quick-half--remaining/);
-    assert.match(html, />12</);
-    assert.match(html, />4</);
-    assert.match(html, /виконано сьогодні/);
-});
-
 test('park profile separates planning periods and shows waiting in its date group', () => {
     const ctx = loadProfileTaskerContext();
     const taskCreateCtx = loadTaskCreateContext();
@@ -337,20 +308,11 @@ test('park profile separates planning periods and shows waiting in its date grou
             stats: { taskQuick: { completedParentTotal: 2, completedUnitsTotal: 4, completedTotal: 4, completedToday: 3, activeMyDay: 4 } }
         };
         cabinetTaskComposerExpanded = false;
-        cabinetMyDayListMode = 'focused';
         cabinetCreateDuePreset = 'today';
-        cabinetMyDaySegment = 'today';
         completedDashboardExpanded = false;
         completedDashboardShowAll = false;
         completedDashboardTab = 'today';
     `, ctx);
-
-    const counts = ctx.cabinetMyDaySegmentCounts();
-    assert.equal(counts.today, 1);
-    assert.equal(counts.overdue, 1);
-    assert.equal(counts.waiting, 1);
-    assert.equal(counts.completed, 2);
-    assert.equal(counts.private, 1);
 
     let html = ctx.renderMyDayTab();
     assert.match(html, /data-park-task-group="today"/);
@@ -721,8 +683,6 @@ test('park overdue period uses the same actions and card as today', () => {
 
     vm.runInContext(`
         activeTab = 'myday';
-        cabinetMyDaySegment = 'overdue';
-        cabinetMyDayListMode = 'focused';
         cabinetCreateDuePreset = 'today';
         MyDayClassification = { renderTaskBadges: myDay => myDay?.impacts?.length ? '<span class="my-day-task-impact-chips">CRM + Hermes</span>' : '' };
         MyDayDependencies = { renderTaskBlocker: task => '<button type="button" class="cabinet-task-dependency-action" data-cabinet-task-action="dependencies" data-task-id="' + task.id + '">Потрібно спочатку</button>' };
@@ -770,8 +730,6 @@ test('profile My Day hides sound shortcut after command bar cleanup while preser
 
     vm.runInContext(`
         activeTab = 'myday';
-        cabinetMyDaySegment = 'today';
-        cabinetMyDayListMode = 'focused';
         cabinetCreateDuePreset = 'today';
         myCabinetData = {
             all: [],
@@ -804,7 +762,6 @@ test('profile My Day completion pulse exposes history as an expanded tab', () =>
 
     vm.runInContext(`
         activeTab = 'myday';
-        cabinetMyDaySegment = 'completed';
         myCabinetData = {
             all: [],
             today: [],
@@ -832,47 +789,6 @@ test('profile My Day completion pulse exposes history as an expanded tab', () =>
     assert.match(html, /data-cabinet-task-action="open" data-task-id="301"/);
     assert.doesNotMatch(html, /cabinet-completed-strip/);
     assert.doesNotMatch(html, /cabinet-completed-tile/);
-});
-
-test('profile quick task card counts overdue carry-over when activeMyDay is absent', () => {
-    const ctx = loadProfileTaskerContext();
-    const counts = ctx.cabinetTaskQuickCounts({
-        today: [{ id: 1 }],
-        overdue: [{ id: 2 }],
-        stats: {
-            taskQuick: {
-                completedToday: 0,
-                remaining: 1
-            }
-        }
-    });
-
-    assert.equal(counts.completed, 0);
-    assert.equal(counts.remaining, 2);
-    assert.equal(counts.todayRemaining, 1);
-    assert.equal(counts.overdueCarryover, 1);
-    assert.equal(counts.scope, 'completed_units_today_and_active_my_day_or_undated');
-});
-
-test('profile task-count quick segment keeps users in My Day cockpit', () => {
-    const ctx = loadProfileTaskerContext();
-    vm.runInContext(`
-        myCabinetData = {
-            stats: {
-                taskQuick: {
-                    completedToday: 2,
-                    remaining: 4
-                }
-            }
-        };
-        cabinetPulseCounts = { alerts: 0, funnel: 0 };
-    `, ctx);
-
-    const html = ctx.renderCabinetPulseCluster();
-
-    assert.match(html, /cabinet-quick-segment--tasks/);
-    assert.match(html, /switchTab\('myday'\)/);
-    assert.doesNotMatch(html, /switchTab\('mytasks'\)/);
 });
 
 test('profile task composer keeps one date on the quick row and one priority in additional options', () => {
@@ -944,41 +860,6 @@ test('shared TaskCreate direct create sends Idempotency-Key header without mutat
     assert.equal(JSON.parse(calls[0].options.body).idempotencyKey, undefined);
 });
 
-test('profile My Day state keeps list mode separate from due preset', () => {
-    const ctx = loadProfileTaskerContext();
-    const taskCreateCtx = loadTaskCreateContext();
-    const controls = new Map([
-        ['cabinetTaskDate', { value: '' }]
-    ]);
-    ctx.TaskCreate = taskCreateCtx.TaskCreate;
-    ctx.document = {
-        addEventListener() {},
-        getElementById(id) {
-            return controls.get(id) || null;
-        },
-        querySelectorAll() {
-            return [];
-        }
-    };
-
-    assert.equal(ctx.getCabinetMyDayState().selectedDuePreset, 'today');
-    assert.equal(ctx.getCabinetMyDayState().listMode, 'focused');
-
-    assert.equal(ctx.setCabinetMyDayListMode('all'), 'all');
-    ctx.setCabinetDuePreset('day_after_tomorrow');
-    const state = ctx.getCabinetMyDayState();
-    const today = taskCreateCtx.TaskCreate.todayStr();
-
-    assert.equal(state.selectedDuePreset, 'day_after_tomorrow');
-    assert.equal(state.selectedDueDate, addDaysToDateKey(today, 2));
-    assert.equal(state.selectedPriority, 'normal');
-    assert.equal(state.listMode, 'all');
-    assert.equal(controls.get('cabinetTaskDate').value, addDaysToDateKey(today, 2));
-
-    ctx.setCabinetDuePreset('not-real');
-    assert.equal(ctx.getCabinetMyDayState().selectedDuePreset, 'today');
-    assert.equal(ctx.getCabinetMyDayState().listMode, 'all');
-});
 test('profile My Day due changes keep the draft composer DOM intact', () => {
     const ctx = loadProfileTaskerContext();
     const taskCreateCtx = loadTaskCreateContext();
@@ -1050,7 +931,6 @@ test('profile My Day composer due presets leave the three planning periods intac
             stats: { taskQuick: { completedToday: 0, activeMyDay: ${tasks.length} } }
         };
         cabinetTaskComposerExpanded = false;
-        cabinetMyDayListMode = 'focused';
         cabinetCreateDuePreset = 'tomorrow';
     `, ctx);
 
@@ -1066,7 +946,7 @@ test('profile My Day composer due presets leave the three planning periods intac
     }
 });
 
-test('profile My Day custom date retains future groups while focus helpers stay available', () => {
+test('profile My Day custom date retains future groups', () => {
     const ctx = loadProfileTaskerContext();
     const taskCreateCtx = loadTaskCreateContext();
     const customDate = addDaysToDateKey(taskCreateCtx.TaskCreate.todayStr(), 10);
@@ -1096,14 +976,10 @@ test('profile My Day custom date retains future groups while focus helpers stay 
             stats: { taskQuick: { completedToday: 0, activeMyDay: 2 } }
         };
         cabinetTaskComposerExpanded = false;
-        cabinetMyDayListMode = 'focused';
         cabinetCreateDuePreset = 'custom';
     `, ctx);
 
-    const state = ctx.getCabinetMyDayState();
-    const focusedTasks = ctx.cabinetFocusedMyDayTasks(state);
     const html = ctx.renderMyDayTab();
-    assert.equal(focusedTasks[0]?.title, 'Custom date focus task');
     assert.match(html, /data-park-task-group="future"/);
     assert.match(html, /Custom date focus task/);
     assert.match(html, /Other date focus task/);
@@ -1137,18 +1013,16 @@ test('profile My Day ignores an invalid composer date and still renders the boar
             stats: { taskQuick: { completedToday: 0, activeMyDay: 1 } }
         };
         cabinetTaskComposerExpanded = false;
-        cabinetMyDayListMode = 'focused';
         cabinetCreateDuePreset = 'custom';
     `, ctx);
 
-    const state = ctx.getCabinetMyDayState();
     const html = ctx.renderMyDayTab();
-    assert.equal(state.selectedDueDate, '');
+    assert.equal(ctx.cabinetSelectedDueDate(), '');
     assert.match(html, /data-park-task-group="future"/);
     assert.match(html, /Invalid custom date task/);
 });
 
-test('profile My Day keeps the focus helper alongside the future planning period', () => {
+test('profile My Day shows tasks present only in the planning projection', () => {
     const ctx = loadProfileTaskerContext();
     const taskCreateCtx = loadTaskCreateContext();
     const today = taskCreateCtx.TaskCreate.todayStr();
@@ -1174,15 +1048,11 @@ test('profile My Day keeps the focus helper alongside the future planning period
             stats: { taskQuick: { completedToday: 0, activeMyDay: 1 } }
         };
         cabinetTaskComposerExpanded = false;
-        cabinetMyDayListMode = 'focused';
         cabinetCreateDuePreset = 'month_end';
     `, ctx);
 
-    const state = ctx.getCabinetMyDayState();
-    const focusedTasks = ctx.cabinetFocusedMyDayTasks(state);
     const html = ctx.renderMyDayTab();
 
-    assert.equal(focusedTasks[0]?.title, 'Planning month end task');
     assert.match(html, /data-park-task-group="future"/);
     assert.match(html, /Planning month end task/);
 });
@@ -1219,16 +1089,11 @@ test('profile My Day shows three periods without the legacy all-mode controls', 
             stats: { taskQuick: { completedToday: 0, activeMyDay: ${tasks.length} } }
         };
         cabinetTaskComposerExpanded = false;
-        cabinetMyDayListMode = 'all';
         cabinetCreateDuePreset = 'tomorrow';
     `, ctx);
-    ctx.setCabinetAllGroupCollapsed('later', false);
-    ctx.setCabinetAllGroupCollapsed('no_date', false);
 
     const html = ctx.renderMyDayTab();
 
-    assert.equal(ctx.getCabinetMyDayState().selectedDuePreset, 'tomorrow');
-    assert.equal(ctx.getCabinetMyDayState().listMode, 'all');
     assert.match(html, /data-park-task-group="future"/);
     assert.doesNotMatch(html, /cabinet-list-mode-toggle/);
     assert.doesNotMatch(html, /data-cabinet-list-mode="all"/);
@@ -1244,56 +1109,7 @@ test('profile My Day shows three periods without the legacy all-mode controls', 
     assert.doesNotMatch(html, /All deferred task/);
 });
 
-test('profile My Day group helpers do not collapse the current planning board', () => {
-    const ctx = loadProfileTaskerContext();
-    const taskCreateCtx = loadTaskCreateContext();
-    const today = taskCreateCtx.TaskCreate.todayStr();
-    const later = addDaysToDateKey(today, 6);
-    vm.runInContext(`
-        myCabinetData = {
-            all: [
-                { id: 31, title: 'Visible today all task', date: '${today}' },
-                { id: 32, title: 'Hidden later all task', date: '${later}' },
-                { id: 33, title: 'Hidden no date all task' }
-            ],
-            today: [],
-            next: [],
-            overdue: [],
-            waiting: [],
-            deferred: [],
-            private: [],
-            completedHistory: [],
-            stats: { taskQuick: { completedToday: 0, activeMyDay: 3 } }
-        };
-        cabinetTaskComposerExpanded = false;
-        cabinetMyDayListMode = 'all';
-        cabinetCreateDuePreset = 'today';
-    `, ctx);
-
-    let html = ctx.renderMyDayTab();
-    const groupsHtml = ctx.renderCabinetAllMyDayGroups();
-
-    assert.equal(ctx.isCabinetAllGroupCollapsed('later'), true);
-    assert.equal(ctx.isCabinetAllGroupCollapsed('no_date'), true);
-    assert.doesNotMatch(html, /data-cabinet-all-group=/);
-    assert.doesNotMatch(html, /cabinet-list-mode-toggle/);
-    assert.match(groupsHtml, /data-cabinet-all-group="today"[\s\S]*?aria-expanded="true"[\s\S]*?<span>1<\/span>/);
-    assert.match(groupsHtml, /cabinet-task-section[\s\S]*?is-collapsed[\s\S]*?data-cabinet-all-group="later"[\s\S]*?data-cabinet-all-group-toggle="later"[\s\S]*?aria-expanded="false"[\s\S]*?hidden><\/div>/);
-    assert.match(groupsHtml, /data-cabinet-all-group="no_date"[\s\S]*?data-cabinet-all-group-toggle="no_date"[\s\S]*?aria-expanded="false"[\s\S]*?<span>1<\/span>/);
-    assert.match(html, /Visible today all task/);
-    assert.match(html, /Hidden later all task/);
-    assert.match(html, /Hidden no date all task/);
-
-    ctx.setCabinetAllGroupCollapsed('later', false);
-    html = ctx.renderCabinetAllMyDayGroups();
-
-    assert.match(html, /data-cabinet-all-group-toggle="later"[\s\S]*?aria-expanded="true"/);
-    assert.match(html, /Hidden later all task/);
-    assert.equal(ctx.toggleCabinetAllGroup('later'), true);
-    assert.equal(ctx.isCabinetAllGroupCollapsed('later'), true);
-});
-
-test('profile My Day uses authoritative planning groups alongside the legacy merge helper', () => {
+test('profile My Day uses authoritative planning groups with the cabinet fallback', () => {
     const ctx = loadProfileTaskerContext();
     const taskCreateCtx = loadTaskCreateContext();
     const today = taskCreateCtx.TaskCreate.todayStr();
@@ -1327,19 +1143,11 @@ test('profile My Day uses authoritative planning groups alongside the legacy mer
             stats: { taskQuick: { completedToday: 0, activeMyDay: 3 } }
         };
         cabinetTaskComposerExpanded = false;
-        cabinetMyDayListMode = 'all';
         cabinetCreateDuePreset = 'tomorrow';
     `, ctx);
-    ctx.setCabinetAllGroupCollapsed('later', false);
-    ctx.setCabinetAllGroupCollapsed('no_date', false);
 
-    const helperHtml = ctx.renderCabinetAllMyDayGroups();
     const html = ctx.renderMyDayTab();
 
-    assert.match(helperHtml, /Planning tomorrow task/);
-    assert.match(helperHtml, /Planning no date task/);
-    assert.match(helperHtml, /Legacy later task/);
-    assert.doesNotMatch(helperHtml, /Legacy duplicate title/);
     assert.match(html, /Planning tomorrow task/);
     assert.match(html, /Planning no date task/);
     assert.match(html, /Legacy later task/);
@@ -1490,7 +1298,6 @@ test('profile My Day renders immediate skeleton and partial bucket controls', ()
         myCabinetData = null;
         myCabinetLoadState = 'loading';
         cabinetTaskComposerExpanded = false;
-        cabinetMyDayListMode = 'focused';
         cabinetCreateDuePreset = 'today';
     `, ctx);
 
@@ -1533,7 +1340,6 @@ test('profile My Day fallback payload leaves no_date unscheduled', async () => {
     ctx.TaskCreate = undefined;
     ctx.AppState = { currentUser: { id: 17 } };
     ctx.showNotification = (message, type) => notices.push({ message, type });
-    ctx.refreshCabinetPulseCounts = async () => {};
     ctx.renderCabinetActiveTab = () => {};
     ctx.apiPost = async (url, payload) => {
         assert.equal(url, '/tasks');
@@ -1967,7 +1773,6 @@ test('profile routes mytasks compatibility into the single My Day projection', (
     `, ctx);
 
     const myDayHtml = ctx.renderMyDayTab();
-    const myTasksHtml = ctx.renderMyTasksTab();
     const source = fs.readFileSync(path.join(ROOT, 'js', 'profile-page.js'), 'utf8');
 
     assert.doesNotMatch(myDayHtml, /cabinet-quick-cluster/);
@@ -1978,10 +1783,6 @@ test('profile routes mytasks compatibility into the single My Day projection', (
     assert.doesNotMatch(myDayHtml, /data-cabinet-list-mode="all"/);
     assert.match(myDayHtml, /id="cabinetMyDaySegmentPanel"/);
     assert.doesNotMatch(myDayHtml, /data-cabinet-due-preset="all"/);
-    assert.doesNotMatch(myTasksHtml, /cabinet-quick-cluster/);
-    assert.doesNotMatch(myTasksHtml, /cabinet-day-command-bar/);
-    assert.match(myTasksHtml, /cabinet-task-composer/);
-    assert.match(myTasksHtml, /id="cabinetMyDaySegmentPanel"/);
     assert.match(source, /function normalizeProfileTaskTab/);
     assert.match(source, /return tab === 'mytasks' \? 'myday' : tab;/);
     assert.match(source, /function syncProfileTabToUrl/);
@@ -2005,10 +1806,8 @@ test('profile My Day keeps existing projection and shows a non-sensitive load no
         };
         myCabinetLoadError = '';
         cabinetTaskComposerExpanded = false;
-        cabinetMyDayListMode = 'focused';
         cabinetCreateDuePreset = 'today';
         apiGet = async function() { return null; };
-        refreshCabinetPulseCounts = async function() {};
     `, ctx);
 
     const result = await ctx.refreshMyCabinetTab({ silent: true, keepExistingOnError: true });
@@ -2156,24 +1955,6 @@ test('park lets a task with legacy checklist data use normal completion', async 
     assert.deepEqual(calls, [['/tasks/44/complete', ['sourceSurface']]]);
 });
 
-test('profile My Day overdue triage row exposes a single move-to-today action', () => {
-    const ctx = loadProfileTaskerContext();
-    const html = ctx.renderCabinetOverdueTriageRow({
-        id: 44,
-        title: 'Overdue task',
-        deadline: '2000-01-01T09:00:00.000Z',
-        priority: 'high',
-        controlMeta: { canReschedule: true }
-    });
-
-    assert.equal((html.match(/data-cabinet-task-action="move-to-today"/g) || []).length, 1);
-    assert.match(html, /cabinet-overdue-triage-action is-primary"[^>]+data-cabinet-task-action="move-to-today"/);
-    assert.doesNotMatch(html, /cabinet-task-move-today/);
-    assert.equal((html.match(/data-cabinet-task-action="reschedule-overdue"[^>]+data-reschedule-option="custom"/g) || []).length, 1);
-    assert.match(html, /cabinet-overdue-triage-action"[^>]+data-cabinet-task-action="reschedule-overdue"[^>]+data-reschedule-option="custom"/);
-    assert.doesNotMatch(html, /cabinet-reschedule-menu/);
-});
-
 test('profile task cards expose move-to-today drag for typed planned tasks', () => {
     const ctx = loadProfileTaskerContext();
     const html = ctx.renderCabinetTaskCard({
@@ -2224,7 +2005,6 @@ test('park card ignores legacy report requirements and opens the canonical task 
         };
     `, ctx);
     const compact = ctx.renderCabinetTaskCard(task, false, { surface: 'myday' });
-    vm.runInContext("cabinetMyDayViewMode = 'detailed';", ctx);
     const full = ctx.renderCabinetTaskCard(task, false, { surface: 'myday' });
     for (const html of [compact, full]) {
         assert.match(html, /park-task-card/);
@@ -2248,8 +2028,6 @@ test('park keeps the task details path singular even with legacy checklists', ()
 
     vm.runInContext(`
         activeTab = 'myday';
-        cabinetMyDaySegment = 'today';
-        cabinetMyDayListMode = 'focused';
         cabinetCreateDuePreset = 'today';
         myCabinetData = {
             all: [
@@ -2288,7 +2066,6 @@ test('park keeps the task details path singular even with legacy checklists', ()
     `, ctx);
 
     const compact = ctx.renderMyDayTab();
-    vm.runInContext("cabinetMyDayViewMode = 'detailed';", ctx);
     const full = ctx.renderMyDayTab();
     for (const html of [compact, full]) {
         assert.doesNotMatch(html, /Чекліст|First done|Second next/i);
@@ -2326,18 +2103,6 @@ test('profile planned task cards respect disabled rescheduling control meta', ()
     assert.doesNotMatch(html, /draggable="true"/);
     assert.doesNotMatch(html, /data-cabinet-task-drag="to-today"/);
     assert.doesNotMatch(html, /data-cabinet-task-action="move-to-today"/);
-});
-
-test('profile my day exposes today as a real overdue drop target', () => {
-    const ctx = loadProfileTaskerContext();
-    const html = ctx.renderCabinetSection('Сьогодні', [], 'Порожньо', false, {
-        dropTarget: 'today',
-        dropHint: 'Киньте сюди прострочену задачу'
-    });
-
-    assert.match(html, /cabinet-task-section--drop-target/);
-    assert.match(html, /data-cabinet-task-drop-target="today"/);
-    assert.match(html, /Киньте сюди прострочену задачу/);
 });
 
 test('profile overdue to today move persists through reschedule endpoint with today deadline', async () => {
@@ -2626,10 +2391,9 @@ test('my cabinet task projection counts today, undated and overdue carry-over wo
     assert.match(source, /completedHistory:\s*\{\s*\n\s*\.\.\.completedHistoryPage\.pagination/);
     assert.doesNotMatch(source, /task_subtasks/);
     assert.match(source, /\.\.\.completedHistorySourceRowsRaw,\s*\.\.\.completedTodaySourceRowsRaw/);
-    assert.match(authSource, /Completed work units \(parent tasks \+ completed subtasks\)/);
-    assert.match(authSource, /tasks\.completedUnits = parentDoneTotal \+ subtaskDoneTotal/);
+    assert.doesNotMatch(authSource, /task_subtasks/);
+    assert.match(authSource, /tasks\.completedUnits = parentDoneTotal/);
     assert.match(authSource, /tasks\.done = tasks\.completedUnits/);
-    assert.match(authSource, /subtasksDoneToday/);
     assert.doesNotMatch(source, /const openTaskCount = rows\.length;/);
     assert.doesNotMatch(sidebarSource, /Number\(tasks\.assigned \|\| 0\) \+ Number\(tasks\.in_progress \|\| 0\)/);
 });
@@ -3040,8 +2804,6 @@ test('my cabinet and tasks expose explicit deferred task bucket', () => {
     assert.match(tasksSource, /isTaskDeferred\(task, now\)/);
     assert.match(tasksSource, /deferred: buckets\.deferred/);
     assert.match(tasksSource, /deferredCount: buckets\.deferred\.length/);
-    assert.match(profileSource, /const deferred = cabinetList\('deferred'\)/);
-    assert.match(profileSource, /renderCabinetSection\('Відкладено'/);
     assert.match(tasksPageSource, /function isDeferredTask/);
     assert.match(tasksPageSource, /case 'deferred'/);
     assert.match(tasksHtml, /data-view="deferred"/);

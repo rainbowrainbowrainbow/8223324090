@@ -10,6 +10,7 @@ const {
     MACHINE_AUTO_ARCHIVE_POLICY_CANCELLED_BOOKING,
     MACHINE_LIFECYCLE_MARKER_VERSION,
     hasStrictMachineProvenance,
+    historicalTaskWorkSql,
     isAiAssisted,
     isIntegration,
     isPrivateOrPersonal,
@@ -89,7 +90,7 @@ function cancelledBookingAutoArchivePredicateSql(taskAlias = 't', bookingAlias =
         AND LOWER(COALESCE(${taskAlias}.source_type, '')) NOT IN ('ai_draft', 'ai_draft_bundle', 'hermes', 'integration', 'attendance', 'attendance_daily_review', 'recurring')
         AND LOWER(COALESCE(${taskAlias}.type, '')) NOT IN ('ai_draft', 'ai_draft_bundle', 'recurring')
         AND NOT ${taskHumanTouchSql(taskAlias)}
-        AND NOT EXISTS (SELECT 1 FROM task_subtasks ts WHERE ts.task_id = ${taskAlias}.id LIMIT 1)
+        AND NOT ${historicalTaskWorkSql(taskAlias)}
         AND NOT EXISTS (SELECT 1 FROM task_dependencies td WHERE td.task_id = ${taskAlias}.id OR td.depends_on_task_id = ${taskAlias}.id LIMIT 1)
         AND NOT EXISTS (SELECT 1 FROM task_observers tob WHERE tob.task_id = ${taskAlias}.id LIMIT 1)
     )`;

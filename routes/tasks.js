@@ -41,7 +41,7 @@ const {
 } = require('../services/taskExecution');
 const { undoQuickTodayReschedule } = require('../services/taskReschedule');
 const { listTaskActionHistory, logTaskActionEvent, TASK_ACTION_TYPES } = require('../services/taskActionHistory');
-const { isTerminalStatus } = require('../services/taskAutomationPolicy');
+const { historicalTaskWorkSql, isTerminalStatus } = require('../services/taskAutomationPolicy');
 const { normalizeTaskPayload: normalizeTaskContractPayload } = require('../services/taskContract');
 const { withTaskDrawerContract } = require('../services/taskDetailContract');
 const { TASK_SUBSTITUTION_SELECT } = require('../services/taskSubstitutionReadModel');
@@ -82,7 +82,6 @@ const {
 } = require('../services/taskAiDraftFeatureGate');
 const { checkTaskAiDraftRateLimit } = require('../services/taskAiDraftLimiter');
 const { recordTaskAiDraftTelemetry } = require('../services/taskAiDraftTelemetry');
-const { getTaskProductivity } = require('../services/taskProductivity');
 const {
     VALID_TASK_CATEGORIES,
     VALID_TASK_SUBCATEGORIES,
@@ -95,7 +94,7 @@ const {
     normalizeUuid,
     normalizeOwnerRole,
     normalizeSlaMinutes,
-    getChecklistTemplate
+    getOperationTaskTemplate
 } = require('../services/taskTaxonomy');
 const {
     activeTaskBusinessContext,
@@ -335,12 +334,10 @@ function taskPriorityOrderSql(alias = 't') {
 
 function normalizeTaskControlMeta(body = {}, oldTask = {}) {
     const base = taskControlMeta(oldTask);
-    const incoming = parseJsonObject(body.controlMeta || body.control_meta || {});
+    const incoming = { ...parseJsonObject(body.controlMeta || body.control_meta || {}) };
+    // Ignore retired flags from old clients; preserve stored metadata for other consumers.
+    for (const key of ['reportRequired', 'requiresReport', 'report_required', 'requires_report']) delete incoming[key];
     const meta = { ...base, ...incoming };
-    for (const key of ['reportRequired', 'requiresReport', 'report_required', 'requires_report']) {
-        if (hasOwn(base, key)) meta[key] = base[key];
-        else delete meta[key];
-    }
 
     const rescheduleRaw = hasOwn(body, 'allowReschedule')
         ? body.allowReschedule
@@ -864,10 +861,6 @@ function directTaskCreateRequestHashPayload(fields = {}) {
             sourceModule: fields.source_module || fields.sourceModule || null
         },
         schedule: fields.schedule || null,
-        subtasks: Array.isArray(fields.subtasks) ? fields.subtasks.map(item => ({
-            title: String((item && typeof item === 'object' ? item.title || item.name : item) || '').trim(),
-            sourceType: String(item?.sourceType || item?.source_type || 'manual').trim()
-        })).filter(item => item.title) : [],
         controlMeta: fields.controlMeta || fields.control_meta || null,
         allowReschedule: fields.allowReschedule !== false && fields.allow_reschedule !== false,
         force: isTruthy(fields.force || fields.forceDuplicate)
@@ -1146,7 +1139,7 @@ function taskSystemArchiveSql(alias = 't') {
                   OR LOWER(COALESCE(system_archive_tah.actor_name_snapshot, '')) NOT IN ('', 'system', 'kleshnya', 'rule_engine', 'scheduler', 'task_lifecycle')
               )
         )
-        OR EXISTS (SELECT 1 FROM task_subtasks system_archive_st WHERE system_archive_st.task_id = ${task}.id)
+        OR ${historicalTaskWorkSql(task)}
         OR EXISTS (
             SELECT 1 FROM task_dependencies system_archive_td
             WHERE system_archive_td.task_id = ${task}.id OR system_archive_td.depends_on_task_id = ${task}.id
@@ -2254,7 +2247,6 @@ router.get('/my-cabinet', async (req, res) => {
     }
 });
 
-// GET /api/tasks/productivity — personal task productivity cockpit data
 async function loadPersonalDependencyTask(queryable, rawTaskId, user, businessScope, options = {}) {
     const id = Number(rawTaskId);
     if (!Number.isInteger(id) || id <= 0) throw dependencyError('Invalid task dependency identifier.');
@@ -2386,22 +2378,6 @@ router.post('/:id/dependencies/quick-create', requireTaskRouteCapability('create
         _alertPush();
     } catch (error) {
         sendTaskActionError(res, error);
-    }
-});
-
-router.get('/productivity', async (req, res) => {
-    try {
-        const businessScope = requireTaskReadScope(req, res);
-        if (!businessScope) return;
-        const productivity = await getTaskProductivity(pool, req.user, { businessScope });
-        res.json({
-            success: true,
-            ...productivity
-        });
-    } catch (err) {
-        if (err.statusCode === 401) return res.status(401).json({ error: 'Unauthenticated' });
-        log.error('Task productivity error', err);
-        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -3078,7 +3054,7 @@ router.post('/operation-pack', requireTaskRouteCapability('create'), async (req,
         const taskByTemplateKey = {};
 
         for (const item of preset.bundle) {
-            const template = getChecklistTemplate(item.templateKey);
+            const template = getOperationTaskTemplate(item.templateKey);
             if (!template) continue;
             const taskTitle = preset.bundle.length > 1
                 ? `${baseTitle}: ${template.label}`

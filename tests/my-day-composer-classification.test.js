@@ -219,7 +219,7 @@ test('My Day editable impact chips and task editor have compact responsive CSS s
     assert.match(css, /body\.dark-mode \.task-ui-action-surface--my-day-impacts \.my-day-impact-editor-actions/);
     assert.match(css, /\.my-day-task-impact-chips\.is-classification-pending/);
     assert.match(css, /@media \(prefers-reduced-motion:\s*reduce\)/);
-    assert.match(cabinetCss, /\.cabinet-overdue-triage-row \.my-day-task-chip--editable/);
+    assert.doesNotMatch(cabinetCss, /\.cabinet-overdue-triage-row/);
 });
 
 test('My Day cards preserve completion and omit manual impact controls', () => {
@@ -241,17 +241,12 @@ test('Park cards use separate facts and actions, without the legacy time UI', ()
     assert.doesNotMatch(html, /js\/my-day-time-tracking\.js/);
 });
 
-test('Profile My Day card view mode is localStorage-scoped and has per-card expansion', () => {
+test('Profile My Day retires the global card view switch and keeps individual details helpers', () => {
     const profile = read('js/profile-page.js');
     const css = read('css/pages-cabinet.css');
     const timeUi = read('js/my-day-time-tracking.js');
 
-    assert.match(profile, /let cabinetMyDayViewMode = 'compact'/);
-    assert.match(profile, /CABINET_MY_DAY_VIEW_MODE_OPTIONS/);
-    assert.match(profile, /data-cabinet-my-day-view-mode/);
-    assert.match(profile, /localStorage\?\.getItem\?\.\(cabinetMyDayViewPreferenceKey\(\)\)/);
-    assert.match(profile, /localStorage\?\.setItem\?\.\(cabinetMyDayViewPreferenceKey\(\), cabinetMyDayViewMode\)/);
-    assert.match(profile, /TimelineBusinessContext\?\.storageKey/);
+    assert.doesNotMatch(profile, /my-day-card-view|cabinetMyDayViewMode|data-cabinet-my-day-view-mode/);
     assert.match(profile, /data-cabinet-task-action="toggle-my-day-details"/);
     assert.match(profile, /function renderCabinetMyDayDetailToggle\(taskIdAttr = '', expanded = false/);
     assert.match(profile, /aria-expanded="\$\{expanded \? 'true' : 'false'\}"/);
@@ -261,7 +256,5 @@ test('Profile My Day card view mode is localStorage-scoped and has per-card expa
     assert.match(timeUi, /data-my-day-time-menu-action="\$\{timerAction\}"/);
     assert.match(timeUi, /data-my-day-time-menu-action="time-entry"/);
     assert.match(timeUi, /data-my-day-time-menu-action="time-entries"/);
-    assert.match(css, /\.cabinet-day-list-toolbar/);
-    assert.match(css, /\.cabinet-view-mode-toggle/);
     assert.match(css, /@media \(prefers-reduced-motion:\s*reduce\)/);
 });

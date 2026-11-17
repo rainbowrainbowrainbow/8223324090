@@ -6,6 +6,8 @@ const path = require('node:path');
 const { Pool } = require('pg');
 const { assertSafeIsolatedTestUrl } = require('../../scripts/test-db-safety');
 const { requirePlaywright } = require('./timeline-room-summary-browser-smoke');
+const { verifyLocales, verifySalary, verifySettings } = require('./profile-cleanup-checks');
+const { benchmark } = require('./my-day-cleanup-benchmark');
 
 async function run() {
     assert.equal(process.env.RUN_MY_DAY_PARK_ACTUAL_BROWSER, 'true');
@@ -56,17 +58,25 @@ async function run() {
                 pzp_crm_business_context: 'event_genix'
             })) if (!localStorage.getItem(key)) localStorage.setItem(key, value);
         }, session);
+        if (process.env.MY_DAY_CLEANUP_BENCHMARK_ONLY === '1') {
+            await benchmark(context, origin, session, evidence);
+            return;
+        }
         const page = await context.newPage();
         page.setDefaultTimeout(20000);
         const pageErrors = [];
         const taskBoot = [];
         const gameRequests = [];
+        const hermesRequests = [];
         page.on('pageerror', error => pageErrors.push(error.message));
         page.on('console', message => {
             if (message.text().startsWith('[tasks:boot]')) taskBoot.push(message.text());
         });
         page.on('request', request => {
             const url = new URL(request.url());
+            if (/(?:^|[.-])hermes(?:[.-]|$)/i.test(url.hostname) || /(?:^|\/)hermes(?:[/-]|$)/i.test(url.pathname)) {
+                hermesRequests.push(url.pathname);
+            }
             if (/^\/api\/(?:wallet|achievements|quests|gamification)(?:\/|$)/.test(url.pathname)) {
                 gameRequests.push(url.pathname);
             }
@@ -77,6 +87,30 @@ async function run() {
         const mode = composer.locator('#cabinetTaskMode');
         const newTask = page.locator('.park-composer > summary');
         await page.locator('[data-park-period=today]').waitFor();
+        await page.locator('[data-park-task-group=today]').getByText('На сьогодні задач немає.', { exact: true }).waitFor();
+        assert.equal(await page.locator('[data-park-my-day-notice]').innerText(), '');
+        await context.setOffline(true);
+        await page.locator('[data-park-my-day-notice]').getByText(/Немає з’єднання/).waitFor();
+        assert.equal(await page.locator('[data-park-period=today]').isVisible(), true);
+        await context.setOffline(false);
+        await page.waitForFunction(() => document.querySelector('[data-park-my-day-notice]')?.textContent.trim() === '');
+        const cabinetApi = url => url.pathname === '/api/tasks/my-cabinet'
+            && url.searchParams.get('planningView') === 'my-day' && !url.searchParams.has('bucket');
+        let finishSlowRequest;
+        const pendingFailure = new Promise(resolve => { finishSlowRequest = resolve; });
+        await page.route(cabinetApi, async route => {
+            await pendingFailure;
+            await route.fulfill({ status: 503, json: { error: 'QA load retry' } });
+        }, { times: 1 });
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        try {
+            await page.locator('[data-park-my-day-notice]').getByText('Завантажую Мій день…', { exact: true }).waitFor();
+        } finally {
+            finishSlowRequest();
+        }
+        await page.locator('[data-cabinet-refresh]').click();
+        await page.locator('[data-park-period=today]').waitFor();
+        assert.equal(await page.locator('[data-park-my-day-notice]').innerText(), '');
         assert.equal(new URL(page.url()).searchParams.get('tab'), 'myday');
         assert.equal(await titleInput.isVisible(), false);
         await newTask.press('Enter');
@@ -358,8 +392,7 @@ async function run() {
         }
         await page.setViewportSize({ width: 1440, height: 1000 });
         await page.goto(origin + '/profile?tab=settings');
-        const account = page.locator('.profile-settings-identity');
-        await account.getByRole('button', { name: 'Вийти', exact: true }).waitFor();
+        const account = page.locator('.profile-settings-account');
         await account.getByText('Логін для входу', { exact: true }).waitFor();
         const favorites = page.locator('#sidebarDesignExtras');
         await favorites.locator('a[href="/profile?tab=myday"]').waitFor();
@@ -372,21 +405,22 @@ async function run() {
         await page.setViewportSize({ width: 1440, height: 1000 });
         await page.evaluate(() => {
             localStorage.removeItem('eg_sidebar_favorites_productivity_merged_v1');
-            localStorage.setItem('eg_sidebar_extra_menu_items_v3', JSON.stringify([{ href: '/chat' }, { href: '/profile.html?tab=myday' }]));
-            localStorage.setItem('eg_sidebar_productivity_menu_items_v1', JSON.stringify(['/profile?tab=myday', '/tasks?view=my']));
+            localStorage.removeItem('eg_sidebar_extra_menu_items_v3');
+            localStorage.setItem('eg_sidebar_productivity_menu_items_v1', JSON.stringify(['/profile.html?tab=myday', '/profile?tab=myday', '/tasks?view=my', '/tasks?view=today']));
         });
         await page.reload();
         await favorites.locator('a[href="/tasks?view=my"]').waitFor();
         assert.equal(await favorites.locator('a[href="/profile?tab=myday"]').count(), 1);
-        await favorites.locator('a[href="/chat"]').waitFor();
-        const uploadCard = page.locator('.profile-avatar-upload-card');
-        await uploadCard.waitFor();
-        assert.ok(await uploadCard.evaluate(node => node.scrollWidth <= node.clientWidth));
-        await page.screenshot({ path: path.join(evidence, 'profile-settings-1440.png'), animations: 'disabled' });
+        await favorites.locator('a[href="/tasks?view=today"]').waitFor();
+        await verifySettings(page, origin, evidence);
+        const salaryPage = await context.newPage();
+        try {
+            await verifySalary(salaryPage, origin, evidence);
+        } finally {
+            await salaryPage.close();
+        }
+        await verifyLocales(browser, origin, session);
         await page.setViewportSize({ width: 390, height: 844 });
-        assert.ok(await account.evaluate(node => node.scrollWidth <= node.clientWidth));
-        assert.ok(await uploadCard.evaluate(node => node.scrollWidth <= node.clientWidth));
-        await page.screenshot({ path: path.join(evidence, 'profile-settings-390.png'), animations: 'disabled' });
 
         const resultsFixtures = new Pool({ connectionString: process.env.DATABASE_URL, ssl: false });
         try {
@@ -463,6 +497,7 @@ async function run() {
         await authoredTask.waitFor();
         assert.deepEqual(pageErrors, []);
         assert.deepEqual(gameRequests, []);
+        assert.deepEqual(hermesRequests, []);
         console.log('Park local app / PostgreSQL browser: fixed board layout, legacy completion on both surfaces, keyboard undo, history restore, date reschedule, edit route, and timer recovery.');
     } finally {
         await browser.close();

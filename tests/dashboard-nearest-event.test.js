@@ -19,7 +19,6 @@ function clearModules() {
         '../utils/logger',
         '../services/booking',
         '../services/taskPolicy',
-        '../services/taskSubtasks',
         '../services/taskIntelligence',
         '../services/websocket',
         '../services/bookingVisibility',
@@ -84,19 +83,6 @@ function installDashboardMocks() {
         normalizeUserId: user => user?.id || null,
         taskOwnerState: () => ({ state: 'assigned' }),
         userNameTokens: user => [user?.name, user?.username].filter(Boolean)
-    });
-    installMock('../services/taskSubtasks', {
-        normalizeSubtaskSummary: row => {
-            const subtasks = Array.isArray(row.subtasks) ? row.subtasks : [];
-            const done = subtasks.filter(item => item.is_done || item.isDone).length;
-            return {
-                subtasks,
-                subtaskCount: Number(row.subtask_count ?? subtasks.length),
-                subtaskDoneCount: Number(row.subtask_done_count ?? done),
-                subtaskProgress: null,
-                subtaskProgressPercent: null
-            };
-        }
     });
     installMock('../services/taskIntelligence', {
         buildTaskOperationsSummary: () => ({}),

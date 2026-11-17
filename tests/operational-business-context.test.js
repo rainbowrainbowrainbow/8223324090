@@ -189,7 +189,6 @@ test('task engine reads, writes, duplicates, and dashboard task widgets are busi
     const execution = read('services/taskExecution.js');
     const reschedule = read('services/taskReschedule.js');
     const scheduling = read('services/taskScheduling.js');
-    const productivity = read('services/taskProductivity.js');
     const board = read('routes/board.js');
     const dashboard = read('routes/dashboard.js');
     const auth = read('routes/auth.js');
@@ -233,7 +232,6 @@ test('task engine reads, writes, duplicates, and dashboard task widgets are busi
     assert.match(scheduling, /appendTaskBusinessScopeSql/);
     assert.match(scheduling, /loadScheduledIntervals\(query, \{ ownerUserId, start, end, excludeTaskId = null, businessContext = null \}/);
     assert.match(scheduling, /applyCanonicalRescheduleMutation/);
-    assert.match(productivity, /taskBusinessScopeMeta/);
 
     assert.match(board, /pushBusinessScopeCondition\(taskParams, businessScope, 't'\)/);
     assert.match(dashboard, /dashboardBusinessScope/);

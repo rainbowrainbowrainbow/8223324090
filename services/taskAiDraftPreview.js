@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 
 const { MAX_IMPACTS_PER_TASK } = require('./myDayTaxonomy');
 const { guidanceForImpactName } = require('./myDayImpactCatalog');
-const { normalizeDraftItems } = require('./taskDecomposition');
+const { normalizeDraftItems } = require('./taskAiDraftItems');
 const {
     MY_DAY_TASK_AI_MODEL,
     callMyDayTaskOpenAIResponses,
@@ -1009,34 +1009,6 @@ async function generateTaskAiDraftPreview(input = {}, options = {}) {
     };
 }
 
-function legacyDecompositionResponseFromPreview(preview = {}, fallbackMode = 'ai') {
-    const proposal = preview.proposal || {};
-    const subtasks = normalizeDraftItems(proposal.subtasks || [], {
-        sourceType: 'ai',
-        maxItems: MAX_SUBTASKS
-    });
-    return {
-        success: true,
-        deprecated: true,
-        deprecatedEndpoint: '/api/tasks/ai-draft/preview',
-        mode: fallbackMode,
-        source: 'ai_draft_preview',
-        decision: proposal.action,
-        subtasks,
-        draftItems: subtasks,
-        proposal,
-        diff: preview.diff,
-        proposalToken: preview.proposalToken,
-        meta: {
-            aiUsed: true,
-            provider: preview.provider,
-            model: preview.model,
-            contractVersion: preview.contractVersion,
-            humanReviewRequired: true
-        }
-    };
-}
-
 module.exports = {
     MAX_SUBTASKS,
     MAX_BUNDLE_TASKS,
@@ -1064,7 +1036,6 @@ module.exports = {
     createProposalToken,
     draftFingerprint,
     generateTaskAiDraftPreview,
-    legacyDecompositionResponseFromPreview,
     hasActionableDraftContext,
     filterKnownActiveImpactIds,
     mergeServerExplicitImpacts,

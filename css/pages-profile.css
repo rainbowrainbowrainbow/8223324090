@@ -1564,14 +1564,6 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
     width: 40px;
 }
 
-.cabinet-overdue-triage-actions--header .cabinet-task-action-timer {
-    height: 36px;
-    min-height: 36px;
-    min-width: 36px;
-    padding: 0;
-    width: 36px;
-}
-
 .cabinet-task-action-timer.is-active {
     background: rgba(20, 184, 166, 0.14);
     border-color: rgba(20, 184, 166, 0.48);
@@ -2656,7 +2648,6 @@ html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-taxonomy-no
     margin: 4px 0 0;
 }
 
-
 .my-day-setup-intro,
 .my-day-taxonomy-guide {
     background: linear-gradient(135deg, rgba(20, 184, 166, 0.10), rgba(37, 99, 235, 0.08));
@@ -3027,7 +3018,6 @@ html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-taxonomy-no
     border-color: color-mix(in srgb, var(--my-day-chip-color, #64748b) 35%, rgba(148, 163, 184, 0.30));
 }
 
-
 .my-day-starter-card {
     display: grid;
     gap: 14px;
@@ -3168,7 +3158,6 @@ html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-taxonomy-no
         overflow-x: hidden;
     }
 }
-
 
 body.dark-mode .profile-page.profile-work-mode .my-day-setup-intro,
 body.dark-mode .profile-page.profile-work-mode .my-day-taxonomy-guide,

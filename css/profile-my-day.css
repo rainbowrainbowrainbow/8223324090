@@ -346,6 +346,7 @@ html:has(.park-my-day.is-completing-task)::view-transition-new(root) { animation
     display: grid;
     gap: .85rem;
 }
+.profile-settings-shell { grid-template-columns: minmax(0, 1fr); }
 .profile-work-base .profile-work-panel,
 .profile-settings-shell > .profile-settings-panel {
     min-inline-size: 0;
@@ -468,25 +469,61 @@ html:has(.park-my-day.is-completing-task)::view-transition-new(root) { animation
     font-weight: 650;
     cursor: pointer;
 }
-.profile-pay-status,
 .profile-employee-summary > .profile-pay-balance {
     border: 1px solid #378370;
     background: #e5f4e8;
     color: #184d3d;
 }
-.profile-pay-status { width: fit-content; border-radius: .5rem; padding: .42rem .65rem; font-weight: 650; }
-.profile-settings-identity,
+.profile-pay-status,
+.profile-month-message {
+    margin-block: 0 .75rem;
+    border: 1px solid var(--gray-400);
+    border-radius: .55rem;
+    padding: .65rem .85rem;
+    background: var(--gray-50);
+    color: var(--gray-900);
+}
+.profile-month-message p { margin: 0 0 .55rem; }
+.profile-month-picker {
+    display: flex;
+    align-items: end;
+    flex-wrap: wrap;
+    gap: .4rem;
+}
+.profile-month-field { display: grid; gap: .2rem; font-size: .85rem; }
+.profile-month-picker :is(select, button) { min-block-size: 2.75rem; }
+.profile-month-picker button { min-inline-size: 2.75rem; cursor: pointer; }
+.profile-month-picker button:disabled { opacity: .5; cursor: default; }
 .profile-settings-identity dl {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: .65rem 1rem;
 }
-.profile-settings-identity { justify-content: space-between; }
 .profile-settings-identity dl { margin: 0; min-inline-size: 0; }
+.profile-settings-identity dl > div { min-inline-size: 0; }
 .profile-settings-identity dt { color: var(--gray-600); font-size: .85rem; }
 .profile-settings-identity dd { margin: 0; font-weight: 650; overflow-wrap: anywhere; }
-.profile-settings-shell #telegram-crm h2 { margin-block: 0 .7rem; }
+.profile-settings-account > :is(#telegram-crm, .profile-security-panel) {
+    margin-block-start: 1rem;
+    padding-block-start: 1rem;
+    border-block-start: 1px solid var(--gray-400);
+}
+.profile-settings-account h3 { margin-block: 0 .55rem; }
+.profile-settings-account :is(.profile-security-grid, .profile-security-columns) {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+}
+.profile-settings-account :is(.profile-security-row, .profile-security-card-head) { overflow-wrap: anywhere; }
+.profile-settings-account .profile-security-row { grid-template-columns: minmax(0, 1fr); gap: .25rem; }
+.profile-security-more summary { min-block-size: 2.75rem; padding-block: .65rem; cursor: pointer; }
+.profile-security-more:not([open]) summary span:last-child,
+.profile-security-more[open] summary span:first-child { display: none; }
+.profile-settings-shell .profile-avatar-editor {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+}
+.profile-settings-shell .profile-avatar-crop-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 7.5rem), 1fr));
+}
 .profile-settings-shell .profile-avatar-upload-row {
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
 }
@@ -497,8 +534,7 @@ html:has(.park-my-day.is-completing-task)::view-transition-new(root) { animation
 }
 .profile-settings-shell .profile-avatar-upload-actions button { min-inline-size: 0; }
 @media (min-width: 64rem) {
-    .profile-settings-shell { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
-    .profile-settings-shell > :is(.profile-settings-identity, .profile-security-panel) { grid-column: 1 / -1; }
+    .profile-settings-shell { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
 }
 .telegram-crm-info { overflow-wrap: anywhere; }
 .telegram-crm-connection-status { width: fit-content; padding: .3rem .55rem; border: 1px solid var(--gray-400); border-radius: .4rem; font-weight: 650; }
@@ -516,7 +552,7 @@ html:has(.park-my-day.is-completing-task)::view-transition-new(root) { animation
     color: white;
     font-weight: 650;
 }
-:is(.dark-mode, [data-theme="dark"]) :is(.profile-pay-status, .profile-employee-summary > .profile-pay-balance) {
+:is(.dark-mode, [data-theme="dark"]) .profile-employee-summary > .profile-pay-balance {
     background: #18352b;
     color: #beefd1;
     border-color: #72ae91;

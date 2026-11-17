@@ -159,6 +159,34 @@
                         </div>
                     </form>
                 </dialog>
+                <dialog id="hrTodayBreakDialog" class="hr-today-clock-dialog" aria-labelledby="hrTodayBreakTitle">
+                    <form>
+                        <header>
+                            <h2 id="hrTodayBreakTitle">Підтвердити завершення перерви</h2>
+                            <p id="hrTodayBreakStaff"></p>
+                        </header>
+                        <label class="hr-today-clock-field">
+                            <span>Дата й час за Києвом</span>
+                            <input type="datetime-local" name="endedAt" required autofocus aria-describedby="hrTodayBreakError">
+                        </label>
+                        <label class="hr-today-clock-field" data-break-offset hidden>
+                            <span>Повторювана година</span>
+                            <select name="offset">
+                                <option value="+03:00">Перший раз (UTC+3)</option>
+                                <option value="+02:00">Другий раз (UTC+2)</option>
+                            </select>
+                        </label>
+                        <label class="hr-today-clock-field">
+                            <span>Причина</span>
+                            <input name="reason" required maxlength="500">
+                        </label>
+                        <p id="hrTodayBreakError" role="alert" hidden></p>
+                        <div class="hr-today-clock-footer">
+                            <button type="button" class="btn-page-secondary">Скасувати</button>
+                            <button type="submit" class="btn-page-primary">Зберегти час перерви</button>
+                        </div>
+                    </form>
+                </dialog>
             </div>
 
             <!-- TAB 2: SCHEDULE -->

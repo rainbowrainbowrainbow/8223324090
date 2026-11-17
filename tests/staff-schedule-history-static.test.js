@@ -947,7 +947,7 @@ describe('staff schedule safety guards', () => {
             '20:00'
         );
         assert.match(ariaLabel, /Reception, додатково Manager/);
-        assert.match(ariaLabel, /17:00-20:00, Animator/);
+        assert.match(ariaLabel, /17:00–20:00, Animator/);
     });
 
     it('defensively sorts unsorted segment payloads without mutating their IDs or source order', () => {

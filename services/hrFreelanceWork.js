@@ -181,7 +181,8 @@ function normalizeAllocations(entries, segments, actualMinutes) {
 function planSignature(segments = []) {
     return JSON.stringify(segments.map(segment => [
         String(segment.id), segment.workMode || 'regular', segment.professionKey,
-        segment.shiftStart, segment.shiftEnd, segment.breakMinutes
+        segment.shiftStart, segment.shiftEnd, segment.breakMinutes,
+        ...(segment.startDayOffset === 1 ? [segment.startDayOffset, segment.endDayOffset] : [])
     ]));
 }
 
@@ -202,6 +203,7 @@ async function assertFreelanceDoesNotReplaceMonthlyWork(client, staffId, date, p
         return !nextRegular.some(segment => segment.professionKey === row.profession_key
             && segment.shiftStart === normalizeShiftTime(row.planned_start)
             && segment.shiftEnd === normalizeShiftTime(row.planned_end)
+            && (segment.startDayOffset ?? 0) === (row.start_day_offset ?? 0)
             && segment.breakMinutes === Number(row.break_minutes || 0));
     });
     if (!replacesRegular && priorRegular.length) return;
@@ -219,8 +221,8 @@ async function assertFreelanceDoesNotReplaceMonthlyWork(client, staffId, date, p
             const end = timeToMinutes(preference.endTime);
             let coveredUntil = start;
             for (const block of nextRegular) {
-                const blockStart = timeToMinutes(block.shiftStart);
-                const blockEnd = timeToMinutes(block.shiftEnd);
+                const blockStart = block.startMinutes ?? timeToMinutes(block.shiftStart);
+                const blockEnd = block.endMinutes ?? timeToMinutes(block.shiftEnd);
                 if (blockStart <= coveredUntil && blockEnd > coveredUntil) coveredUntil = blockEnd;
             }
             if (end > start && coveredUntil >= end) return;
@@ -371,6 +373,7 @@ async function listFreelanceWorkDay(db, date, staffId = null) {
                 jsonb_agg(jsonb_build_object(
                     'id', segment.id, 'workMode', segment.work_mode, 'professionKey', segment.profession_key,
                     'shiftStart', LEFT(segment.planned_start::text, 5), 'shiftEnd', LEFT(segment.planned_end::text, 5),
+                    'startDayOffset', segment.start_day_offset, 'endDayOffset', segment.end_day_offset,
                     'breakMinutes', segment.break_minutes, 'plannedMinutes',
                         (EXTRACT(EPOCH FROM (segment.planned_end - segment.planned_start)) / 60
                          + CASE WHEN segment.planned_end < segment.planned_start THEN 1440 ELSE 0 END

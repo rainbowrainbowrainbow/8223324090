@@ -87,6 +87,7 @@ async function checkHrAutoClose(options = {}) {
         );
         let closed = 0;
         let errors = 0;
+        let lockedPeriods = 0;
         for (const candidate of due.rows) {
             let client;
             try {
@@ -122,7 +123,9 @@ async function checkHrAutoClose(options = {}) {
                 if (result.rows.length) closed++;
             } catch (err) {
                 if (client) await client.query('ROLLBACK').catch(() => {});
-                if (err.statusCode !== 423) {
+                if (err.statusCode === 423) {
+                    lockedPeriods++;
+                } else {
                     errors++;
                     log.error('Unable to queue overdue attendance for review', err);
                 }
@@ -131,6 +134,12 @@ async function checkHrAutoClose(options = {}) {
             }
         }
         const result = { processed: due.rows.length, closed, errors };
+        log.info('HR automatic attendance review tick', {
+            businessContext: DEFAULT_BUSINESS_CONTEXT,
+            ...result,
+            lockedPeriods,
+            changedBeforeLock: result.processed - closed - errors - lockedPeriods
+        });
         if (errors) {
             const failure = new Error(`checkHrAutoClose failed for ${errors} record(s)`);
             failure.result = result;

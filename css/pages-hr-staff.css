@@ -5730,7 +5730,7 @@ body[data-page-group="hr"] .schedule-table td.schedule-day-cell > .schedule-heal
 
 .sch-segment-grid {
     display: grid;
-    grid-template-columns: minmax(170px, 1.6fr) repeat(3, minmax(95px, 1fr));
+    grid-template-columns: minmax(150px, 1.4fr) repeat(2, minmax(140px, 1.2fr)) minmax(90px, 0.8fr);
     gap: 10px;
 }
 

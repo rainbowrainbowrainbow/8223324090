@@ -100,7 +100,7 @@ async function withActualHrRouter(run) {
             'hrVacancyPlatformFormatter', 'hrPayrollPeriod', 'payroll', 'payrollSettlement',
             'hrPayrollSchemes', 'hrPayrollProfiles', 'liveMultiSegmentQa', 'hrStaffDocuments',
             'hrStaffMedicalBook', 'hrStaffResources', 'hrAttendanceDocuments',
-            'hrAttendanceDocumentsPdf', 'hrAttendanceDocumentAutomation', 'booking'
+            'hrAttendanceDocumentsPdf', 'booking'
         ]) {
             installMock(`../services/${name}`, new Proxy({}, {
                 get(_target, key) {

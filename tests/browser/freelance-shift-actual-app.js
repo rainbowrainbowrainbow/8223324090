@@ -156,26 +156,39 @@ async function run() {
             });
         };
         const salesMenu = '#sidebarLinks [data-group-key="sales"]';
-        const menuFinance = page.locator(`${salesMenu} a[href="/finance"]`);
+        const menuFinanceSelector = `${salesMenu} a[href="/finance"]`;
+        const menuFinance = page.locator(menuFinanceSelector);
         const revealFinanceMenu = async () => {
             const salesToggle = page.locator(`${salesMenu} .sidebar-group-header`);
             await salesToggle.waitFor();
             if (await salesToggle.getAttribute('aria-expanded') !== 'true') await salesToggle.click();
-            await menuFinance.scrollIntoViewIfNeeded();
-            assert.equal(await menuFinance.getAttribute('aria-current'), 'page');
+            await page.locator(`${menuFinanceSelector}[aria-current="page"]`).waitFor({ state: 'visible' });
+            await page.waitForFunction(selector => {
+                const link = document.querySelector(selector);
+                if (!link?.getClientRects().length) return false;
+                link.scrollIntoView({ block: 'nearest' });
+                return true;
+            }, `${menuFinanceSelector}[aria-current="page"]`);
         };
 
-        const openSchedule = async () => {
+        const openSchedule = async (workDate = date) => {
             await page.goto(new URL('/staff', base).href, { waitUntil: 'domcontentloaded' });
             await page.waitForFunction(() => window.StaffSchedulePage?.isInitialized());
-            await page.locator('#scheduleDateFrom').fill(date);
-            await page.locator('#scheduleDateTo').fill(date);
+            await page.locator('#scheduleWorkModeFilter').selectOption('all');
+            await page.locator('#scheduleDateFrom').fill(workDate);
+            await page.locator('#scheduleDateTo').fill(workDate);
             await page.locator('#applyScheduleRangeBtn').click();
             await page.locator('#deptFilter [data-dept="animators"]').click();
             const toggle = page.locator('[data-schedule-group-toggle="animators"]');
             if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
-            const cell = page.locator(`.sch-cell[data-staff="${staff.id}"][data-date="${date}"]`).first();
-            await cell.waitFor();
+            const cell = page.locator(`.sch-cell[data-staff="${staff.id}"][data-date="${workDate}"]`).first();
+            await cell.waitFor().catch(async error => {
+                const visibleDates = await page.locator(`.sch-cell[data-staff="${staff.id}"]`)
+                    .evaluateAll(cells => cells.map(node => node.dataset.date));
+                const shownRange = await Promise.all(['#scheduleDateFrom', '#scheduleDateTo']
+                    .map(selector => page.locator(selector).inputValue()));
+                throw new Error(`Schedule range ${shownRange.join('–')}, visible staff dates ${visibleDates.join(', ')}: ${error.message}`);
+            });
             return cell;
         };
         stage = 'schedule save';
@@ -470,6 +483,126 @@ async function run() {
             path: path.join(out, 'schedule-hr-320.png'), animations: 'disabled',
             style: '#toastContainer { visibility: hidden }'
         });
+        stage = 'mobile night schedule';
+        const nightDate = kyivDate.format(new Date(browserTime.getTime() + 2 * 86400000));
+        await page.setViewportSize({ width: 390, height: 844 });
+        cell = await openSchedule(nightDate);
+        await cell.click();
+        await page.locator('#schStatus').selectOption('working');
+        for (const [index, start, end, day] of [[0, '22:00', '01:00', '01'], [1, '01:00', '03:00', '11']]) {
+            if (index === 1) await page.locator('#schAddSegmentBtn').click();
+            const card = cards.nth(index);
+            await card.locator('[data-segment-field="start"]').fill(start);
+            await card.locator('[data-segment-field="end"]').fill(end);
+            await card.locator('[data-segment-field="break"]').fill('0');
+            await card.getByLabel('День часового блоку').selectOption(day);
+        }
+        for (const width of [390, 360, 1440]) {
+            await page.setViewportSize({ width, height: 844 });
+            await cards.nth(1).getByLabel('День часового блоку').scrollIntoViewIfNeeded();
+            await assertFits();
+            await page.locator('#schModalOverlay').screenshot({
+                path: path.join(out, `schedule-night-${width}.png`), animations: 'disabled',
+                style: '#toastContainer { visibility: hidden }'
+            });
+        }
+        await page.setViewportSize({ width: 390, height: 844 });
+        const nightSave = page.waitForResponse(response => new URL(response.url()).pathname === '/api/staff/schedule'
+            && response.request().method() === 'PUT');
+        await page.locator('#schSaveBtn').click();
+        const savedNight = await nightSave;
+        assert.equal(savedNight.status(), 200);
+        await page.locator('#schModalOverlay').waitFor({ state: 'hidden' });
+        cell = await openSchedule(nightDate);
+        await cell.click();
+        assert.equal(await cards.first().getByLabel('День часового блоку').inputValue(), '01');
+        assert.equal(await cards.nth(1).getByLabel('День часового блоку').inputValue(), '11');
+
+        stage = 'mobile factual breaks';
+        const { rows: [breakStaff] } = await db.query(`INSERT INTO staff
+            (name, department, position, role_type, rate_unit, hourly_rate, is_active)
+            VALUES ('Synthetic break operator', 'animators', 'Synthetic QA', 'animator', 'hour', 120, true)
+            RETURNING id`);
+        const { rows: [breakRecord] } = await db.query(`INSERT INTO hr_time_records
+            (staff_id, record_date, clock_in, status, business_context)
+            VALUES ($1, $2, clock_timestamp() - INTERVAL '1 hour', 'present', 'event_genix') RETURNING id`,
+            [breakStaff.id, date]);
+        await page.goto(new URL('/hr#today', base).href, { waitUntil: 'domcontentloaded' });
+        const breakRow = page.locator(`#todayList [data-staff-id="${breakStaff.id}"]`);
+        await breakRow.waitFor();
+        await page.locator('#todaySearch').fill('Synthetic break operator');
+        const breakRequest = async label => {
+            const control = breakRow.getByRole('button', { name: label, exact: true });
+            try {
+                const [response] = await Promise.all([
+                    page.waitForResponse(item => new URL(item.url()).pathname ===
+                        `/api/hr/records/${breakRecord.id}/correct` && item.request().method() === 'PUT'),
+                    control.click()
+                ]);
+                assert.equal(response.status(), 200, (await response.json()).error);
+            } catch (error) {
+                const state = await page.evaluate(staffId => {
+                    const record = todayData?.data?.find(item => Number(item.staff_id) === staffId)?.record;
+                    return { hasRecord: Boolean(record), hasVersion: Boolean(record?.record_version),
+                        managed: canManageHrSchedule(), readOnly: isTodayRecoveryReadOnly(),
+                        pending: todayClockPending.has(staffId), breakCount: record?.break_intervals?.length };
+                }, breakStaff.id);
+                throw new Error(`${label} (${JSON.stringify(state)}): ${error.message}`);
+            }
+        };
+        await breakRequest('Почати перерву');
+        await breakRow.getByText(/Перерва триває/).waitFor();
+        assert.doesNotMatch(await breakRow.innerText(), /Фактичні перерви/);
+        await page.mouse.move(0, 0);
+        await page.getByText('Перерву почато', { exact: true }).waitFor({ state: 'hidden' });
+        await breakRequest('Завершити перерву');
+        await breakRow.getByText(/Фактичні перерви/).waitFor();
+        for (const width of [360, 390]) {
+            await page.setViewportSize({ width, height: 844 });
+            await assertFits();
+            await breakRow.screenshot({ path: path.join(out, `attendance-breaks-${width}.png`), animations: 'disabled',
+                style: '#toastContainer { visibility: hidden }' });
+        }
+
+        stage = 'manual confirmation of a break after departure';
+        const { rows: [reviewStaff] } = await db.query(`INSERT INTO staff
+            (name, department, position, role_type, rate_unit, hourly_rate, is_active)
+            VALUES ('Synthetic break review', 'animators', 'Synthetic QA', 'animator', 'hour', 120, true)
+            RETURNING id`);
+        const { rows: [reviewBreak] } = await db.query(`INSERT INTO hr_time_records
+            (staff_id, record_date, clock_in, clock_out, status, business_context, break_intervals)
+            VALUES ($1, $2, clock_timestamp() - INTERVAL '1 hour', clock_timestamp() - INTERVAL '2 minutes',
+                'present', 'event_genix', jsonb_build_array(jsonb_build_object(
+                    'startedAt', to_char((clock_timestamp() - INTERVAL '20 minutes') AT TIME ZONE 'UTC',
+                        'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 'endedAt', NULL)))
+            RETURNING id, to_char((clock_timestamp() - INTERVAL '10 minutes') AT TIME ZONE 'Europe/Kyiv',
+                'YYYY-MM-DD"T"HH24:MI') AS end_local`, [reviewStaff.id, date]);
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        const reviewRow = page.locator(`#todayList [data-staff-id="${reviewStaff.id}"]`);
+        await page.locator('#todaySearch').fill('');
+        await reviewRow.waitFor();
+        await page.locator('#todaySearch').fill('Synthetic break review');
+        const reviewTrigger = reviewRow.getByRole('button', { name: 'Підтвердити завершення перерви' });
+        const reviewDialog = page.getByRole('dialog', { name: 'Підтвердити завершення перерви' });
+        await reviewTrigger.press('Enter');
+        await reviewDialog.waitFor();
+        await page.keyboard.press('Escape');
+        await reviewDialog.waitFor({ state: 'hidden' });
+        assert.equal(await reviewTrigger.evaluate(button => button === document.activeElement), true);
+        await reviewTrigger.click();
+        await reviewDialog.getByLabel('Дата й час за Києвом').fill(reviewBreak.end_local);
+        await reviewDialog.getByLabel('Причина').fill('Синтетичне підтвердження часу');
+        await page.setViewportSize({ width: 360, height: 844 });
+        await assertFits();
+        await reviewDialog.screenshot({ path: path.join(out, 'attendance-break-review-360.png'), animations: 'disabled',
+            style: '#toastContainer { visibility: hidden }' });
+        const [reviewed] = await Promise.all([
+            page.waitForResponse(response => new URL(response.url()).pathname ===
+                `/api/hr/records/${reviewBreak.id}/correct` && response.request().method() === 'PUT'),
+            reviewDialog.getByRole('button', { name: 'Зберегти час перерви' }).click()
+        ]);
+        assert.equal(reviewed.status(), 200, (await reviewed.json()).error);
+        await reviewRow.getByText(/Фактичні перерви/).waitFor();
         console.log(`Freelance actual-app browser journey passed (${membership ? 'Park membership' : 'compatibility'})`);
     } catch (error) {
         throw new Error(`Freelance browser stage failed: ${stage}: ${error.message}`, { cause: error });

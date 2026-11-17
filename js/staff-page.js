@@ -698,6 +698,8 @@ function normalizeScheduleSegmentForUi(segment = {}, fallbackProfessionKey = '',
         workMode: (segment.workMode ?? segment.work_mode) === 'freelance' ? 'freelance' : 'regular',
         shiftStart: normalizeSchedulePlanTime(segment.shiftStart || segment.shift_start || segment.planned_start) || defaultTimes.shiftStart,
         shiftEnd: normalizeSchedulePlanTime(segment.shiftEnd || segment.shift_end || segment.planned_end) || defaultTimes.shiftEnd,
+        startDayOffset: segment.startDayOffset ?? segment.start_day_offset ?? undefined,
+        endDayOffset: segment.endDayOffset ?? segment.end_day_offset ?? undefined,
         breakMinutes: Math.max(0, Number.parseInt(segment.breakMinutes ?? segment.break_minutes ?? 0, 10) || 0),
         note: String(segment.note ?? segment.notes ?? '').trim(),
         additionalRoles,
@@ -709,16 +711,12 @@ function sortScheduleSegmentsForUi(segments = [], fallbackProfessionKey = '', op
     return segments
         .map((segment, inputIndex) => {
             const normalized = normalizeScheduleSegmentForUi(segment, fallbackProfessionKey, options);
-            const startMinutes = scheduleTimeToMinutes(normalized.shiftStart);
-            const rawEndMinutes = scheduleTimeToMinutes(normalized.shiftEnd);
-            const endMinutes = startMinutes === null || rawEndMinutes === null
-                ? Number.MAX_SAFE_INTEGER
-                : (rawEndMinutes <= startMinutes ? rawEndMinutes + (24 * 60) : rawEndMinutes);
+            const bounds = scheduleSegmentAbsoluteBounds(normalized);
             return {
                 segment: normalized,
                 inputIndex,
-                startMinutes: startMinutes ?? Number.MAX_SAFE_INTEGER,
-                endMinutes
+                startMinutes: bounds?.start ?? Number.MAX_SAFE_INTEGER,
+                endMinutes: bounds?.end ?? Number.MAX_SAFE_INTEGER
             };
         })
         .sort((left, right) => left.startMinutes - right.startMinutes
@@ -848,7 +846,7 @@ function scheduleEntryTitle(emp, date, entry, shiftStart, shiftEnd) {
                 ? ` + ${segment.additionalProfessionKeys.map(professionLabel).join(', ')}`
                 : '';
             const workMode = segment.workMode === 'freelance' ? ' · Фріланс' : '';
-            return `${segment.shiftStart}-${segment.shiftEnd} ${professionLabel(segment.professionKey)}${additional}${workMode}`;
+            return `${scheduleSegmentTimeLabel(segment)} ${professionLabel(segment.professionKey)}${additional}${workMode}`;
         }));
         parts.push(`Оплачувано: ${formatScheduleMinutes(entry?.planned_minutes ?? entry?.plannedMinutes ?? schedulePlanMetrics(segments).plannedMinutes)}`);
     } else if (shiftStart && shiftEnd) {
@@ -880,7 +878,7 @@ function scheduleCellAriaLabel(emp, date, entry, status, shiftStart, shiftEnd, a
                 .map(professionLabel)
                 .filter(Boolean);
             const roleLabel = [professionLabel(segment.professionKey), ...additionalRoles].filter(Boolean).join(', додатково ');
-            return `блок ${index + 1}: ${segment.shiftStart}-${segment.shiftEnd}, ${roleLabel}`;
+            return `блок ${index + 1}: ${scheduleSegmentTimeLabel(segment)}, ${roleLabel}`;
         }));
     } else if (shiftStart && shiftEnd) {
         parts.push(`час ${String(shiftStart).slice(0, 5)}-${String(shiftEnd).slice(0, 5)}`);
@@ -5378,6 +5376,15 @@ function renderSchedulePlanSegmentCard(scope, segment, index, segmentCount) {
                     <div class="sch-field-error" data-field-error="break"></div>
                 </div>
                 <div class="form-group sch-segment-note-field">
+                    <label for="${escapeHtml(startId)}-day">День часового блоку</label>
+                    <select id="${escapeHtml(startId)}-day" data-segment-field="day">
+                        <option value="" ${segment.startDayOffset === undefined ? 'selected' : ''}>Автоматично</option>
+                        <option value="00" ${segment.startDayOffset === 0 && segment.endDayOffset === 0 ? 'selected' : ''}>У день зміни</option>
+                        <option value="01" ${segment.startDayOffset === 0 && segment.endDayOffset === 1 ? 'selected' : ''}>Завершується наступного дня</option>
+                        <option value="11" ${segment.startDayOffset === 1 ? 'selected' : ''}>Починається наступного дня</option>
+                    </select>
+                </div>
+                <div class="form-group sch-segment-note-field">
                     <label for="${escapeHtml(noteId)}">Примітка блоку</label>
                     <input type="text" id="${escapeHtml(noteId)}" data-segment-field="note" value="${escapeHtml(segment.note || '')}" placeholder="Необов'язково">
                 </div>
@@ -5464,6 +5471,7 @@ function readSchedulePlanSegments(scope) {
         }
     }
     return cards.map(card => {
+        const day = card.querySelector('[data-segment-field="day"]')?.value;
         const checkedRoles = Array.from(card.querySelectorAll('[data-segment-field="additional-unpaid"]:checked'));
         const paidProfessionKey = normalizeProfessionKey(card.querySelector('[data-segment-field="paid-profession"]')?.value);
         const paidRole = paidProfessionKey
@@ -5485,6 +5493,7 @@ function readSchedulePlanSegments(scope) {
             professionKey: normalizeProfessionKey(card.querySelector('[data-segment-field="profession"]')?.value),
             shiftStart: normalizeSchedulePlanTime(card.querySelector('[data-segment-field="start"]')?.value),
             shiftEnd: normalizeSchedulePlanTime(card.querySelector('[data-segment-field="end"]')?.value),
+            ...(day ? { startDayOffset: Number(day[0]), endDayOffset: Number(day[1]) } : {}),
             breakMinutes: Number.parseInt(card.querySelector('[data-segment-field="break"]')?.value, 10) || 0,
             note: String(card.querySelector('[data-segment-field="note"]')?.value || '').trim(),
             additionalRoles: checkedRoles.map(input => ({
@@ -5504,13 +5513,17 @@ function readSchedulePlanSegments(scope) {
 }
 
 function scheduleSegmentAbsoluteBounds(segment) {
-    const start = scheduleTimeToMinutes(segment.shiftStart);
+    const rawStart = scheduleTimeToMinutes(segment.shiftStart);
     const rawEnd = scheduleTimeToMinutes(segment.shiftEnd);
-    if (start === null || rawEnd === null || start === rawEnd) return null;
-    return {
-        start,
-        end: rawEnd <= start ? rawEnd + (24 * 60) : rawEnd
-    };
+    if (rawStart === null || rawEnd === null || rawStart === rawEnd) return null;
+    const start = rawStart + (segment.startDayOffset ?? 0) * 1440;
+    const end = rawEnd + (segment.endDayOffset ?? Number(rawEnd < rawStart)) * 1440;
+    return end > start && end - start < 1440 ? { start, end } : null;
+}
+
+function scheduleSegmentTimeLabel(segment) {
+    const nextDay = ' (+1 день)';
+    return `${segment.shiftStart}${segment.startDayOffset === 1 ? nextDay : ''}–${segment.shiftEnd}${segment.endDayOffset === 1 ? nextDay : ''}`;
 }
 
 function schedulePaidIntervalBounds(segment, role) {
@@ -5518,8 +5531,10 @@ function schedulePaidIntervalBounds(segment, role) {
     const rawStart = scheduleTimeToMinutes(role?.intervalStart || segment.shiftStart);
     const rawEnd = scheduleTimeToMinutes(role?.intervalEnd || segment.shiftEnd);
     if (!segmentBounds || rawStart === null || rawEnd === null || rawStart === rawEnd) return null;
-    const start = rawStart < segmentBounds.start ? rawStart + (24 * 60) : rawStart;
-    let end = rawEnd < segmentBounds.start ? rawEnd + (24 * 60) : rawEnd;
+    const dayStart = Math.floor(segmentBounds.start / 1440) * 1440;
+    const relativeStart = segmentBounds.start - dayStart;
+    const start = dayStart + rawStart + (rawStart < relativeStart ? 1440 : 0);
+    let end = dayStart + rawEnd + (rawEnd < relativeStart ? 1440 : 0);
     if (end <= start) end += 24 * 60;
     return { start, end, segmentBounds };
 }
@@ -5626,6 +5641,10 @@ function normalizeSchedulePaidRoleSegments(segments = []) {
                 clientKey: sliceIndex === 0 ? segment.clientKey : scheduleSegmentClientKey(),
                 shiftStart: scheduleMinutesToTime(sliceStart),
                 shiftEnd: scheduleMinutesToTime(sliceEnd),
+                ...(segment.startDayOffset !== undefined ? {
+                    startDayOffset: Math.floor(sliceStart / 1440),
+                    endDayOffset: Math.floor(sliceEnd / 1440)
+                } : {}),
                 breakMinutes: !needsSplit || paidRole.breakPeriod === breakPeriod ? breakMinutes : 0,
                 additionalRoles: roles,
                 additionalProfessionKeys: [...new Set(roles.map(role => role.professionKey))]
@@ -5745,7 +5764,7 @@ function scheduleOverlapConversionAnalysis(segments = []) {
     if (left.bounds.end > 24 * 60 || right.bounds.end > 24 * 60) {
         return {
             candidate: null,
-            blocker: 'Автоматична конвертація нічних блоків недоступна без погодженої day-offset моделі. Залиште один overnight-блок або розбийте план після впровадження explicit day offsets.'
+            blocker: 'Для нічних блоків виправте перетин вручну або задайте період оплачуваного суміщення в одному блоці.'
         };
     }
     if (left.segment.professionKey === right.segment.professionKey) {
@@ -5812,11 +5831,9 @@ function convertScheduleOverlap(scope, candidate, breakTargetKey = '') {
 
 function schedulePlanMetrics(segments = []) {
     const timeline = segments.map((segment, index) => {
-        const startMinutes = scheduleTimeToMinutes(segment.shiftStart);
-        const rawEndMinutes = scheduleTimeToMinutes(segment.shiftEnd);
-        const endMinutes = startMinutes === null || rawEndMinutes === null
-            ? null
-            : (rawEndMinutes <= startMinutes ? rawEndMinutes + (24 * 60) : rawEndMinutes);
+        const bounds = scheduleSegmentAbsoluteBounds(segment);
+        const startMinutes = bounds?.start ?? null;
+        const endMinutes = bounds?.end ?? null;
         const durationMinutes = startMinutes === null || endMinutes === null
             ? 0
             : Math.max(0, endMinutes - startMinutes);
@@ -5828,7 +5845,8 @@ function schedulePlanMetrics(segments = []) {
     }).filter(item => item.startMinutes !== null && item.endMinutes !== null)
         .sort((left, right) => left.startMinutes - right.startMinutes || left.endMinutes - right.endMinutes);
     const plannedMinutes = segments.reduce((total, segment) => {
-        const duration = scheduleSegmentDurationMinutes(segment.shiftStart, segment.shiftEnd);
+        const bounds = scheduleSegmentAbsoluteBounds(segment);
+        const duration = bounds ? bounds.end - bounds.start : null;
         return total + (duration && duration > 0 ? Math.max(0, duration - Number(segment.breakMinutes || 0)) : 0);
     }, 0);
     const mergedTimeline = [];
@@ -5898,7 +5916,7 @@ function scheduleOverlappingSegmentIndexes(timeline = []) {
 
 const STAFF_SCHEDULE_PLAN_ERROR_MESSAGES = Object.freeze({
     HR_SHIFT_SEGMENT_BREAK_EXCEEDS_DURATION: 'Перерва має бути коротшою за тривалість сегмента',
-    HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT: 'Нічний часовий блок без day offsets можна зберігати лише як єдиний блок дня'
+    HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT: 'Для нічного плану з кількома блоками явно оберіть день кожного блоку'
 });
 
 function validateSchedulePlan(scope, options = {}) {
@@ -5937,6 +5955,8 @@ function validateSchedulePlan(scope, options = {}) {
         const duration = scheduleSegmentDurationMinutes(segment.shiftStart, segment.shiftEnd);
         if (segment.shiftStart && segment.shiftStart === segment.shiftEnd) {
             addFieldError(index, 'end', 'Початок і завершення не можуть збігатися.');
+        } else if (segment.shiftStart && segment.shiftEnd && !scheduleSegmentAbsoluteBounds(segment)) {
+            addFieldError(index, 'end', 'Завершення має бути після початку, а блок має тривати менше доби.');
         }
         if (duration !== null && Number(segment.breakMinutes || 0) >= duration) {
             fieldErrors.push({
@@ -5992,23 +6012,28 @@ function validateSchedulePlan(scope, options = {}) {
             if (!paidRole.intervalStart) addFieldError(index, 'paid-start', 'Задайте початок додаткової оплати.');
             if (!paidRole.intervalEnd) addFieldError(index, 'paid-end', 'Задайте завершення додаткової оплати.');
         }
-        const exactKey = [segment.professionKey, segment.shiftStart, segment.shiftEnd].join('|');
+        const exactKey = [segment.professionKey, segment.shiftStart, segment.shiftEnd,
+            segment.startDayOffset, segment.endDayOffset].join('|');
         if (exactSegments.has(exactKey)) errors.push(`${label}: точний дубль іншого блоку.`);
         exactSegments.add(exactKey);
     });
     paidNormalization.errors.forEach(error => addFieldError(error.index, error.field, error.message));
-    const overnightSegments = sourceSegments.filter(segment => {
-        const start = scheduleTimeToMinutes(segment.shiftStart);
-        const end = scheduleTimeToMinutes(segment.shiftEnd);
-        return start !== null && end !== null && end < start;
-    });
-    if (sourceSegments.length > 1 && overnightSegments.length > 0) {
+    const overnight = segments.some(segment => (scheduleSegmentAbsoluteBounds(segment)?.end ?? 0) > 1440);
+    if (segments.length > 1 && overnight
+        && segments.some(segment => segment.startDayOffset === undefined)) {
         addCodedError(
             'HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT',
             `${STAFF_SCHEDULE_PLAN_ERROR_MESSAGES.HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT}.`
         );
     }
     const metrics = schedulePlanMetrics(segments);
+    if (segments.some(segment => segment.startDayOffset !== undefined) && metrics.timeline.length) {
+        const first = metrics.timeline[0].startMinutes;
+        const last = Math.max(...metrics.timeline.map(segment => segment.endMinutes));
+        if (first >= 1440 || last - first >= 1440) {
+            addCodedError('HR_SHIFT_PLAN_INVALID_DAY_OFFSETS', 'План має починатися в день зміни й охоплювати менше доби.');
+        }
+    }
     const sourceMetrics = schedulePlanMetrics(sourceSegments);
     const overlapIndexes = scheduleOverlappingSegmentIndexes(sourceMetrics.timeline);
     let overlapCandidate = null;
@@ -7339,6 +7364,8 @@ async function handleSave() {
                 workMode: segment.workMode,
                 shiftStart: segment.shiftStart,
                 shiftEnd: segment.shiftEnd,
+                startDayOffset: segment.startDayOffset,
+                endDayOffset: segment.endDayOffset,
                 breakMinutes: segment.breakMinutes,
                 note: segment.note || null,
                 additionalRoles: (segment.additionalRoles || []).map(role => ({ ...role })),
@@ -7737,6 +7764,8 @@ async function handleFillWeekSave() {
         workMode: segment.workMode,
         shiftStart: segment.shiftStart,
         shiftEnd: segment.shiftEnd,
+        startDayOffset: segment.startDayOffset,
+        endDayOffset: segment.endDayOffset,
         breakMinutes: segment.breakMinutes,
         note: segment.note || null,
         additionalRoles: (segment.additionalRoles || []).map(role => ({ ...role })),

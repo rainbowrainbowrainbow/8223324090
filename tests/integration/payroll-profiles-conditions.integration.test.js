@@ -39,6 +39,160 @@ describe('HR PAY dated conditions on disposable PostgreSQL', { skip: !enabled, c
         purpose: 'base_replacement', expectedVersion: 0, rate: 120, rateUnit: 'hour',
         reason: 'Synthetic one-day coverage', idempotencyKey: 'conditions-first', ...overrides });
 
+    test('the manual endpoint ends the selected prior-date record when another shift is open today', async () => {
+        const { rows: [dates] } = await db.query(`SELECT
+            (now() AT TIME ZONE 'Europe/Kyiv')::date::text AS today,
+            ((now() AT TIME ZONE 'Europe/Kyiv')::date - 1)::text AS previous`);
+        const { rows } = await db.query(`INSERT INTO hr_time_records
+            (staff_id, record_date, clock_in, planned_start, planned_end, status, business_context)
+            VALUES ($1, $2::date, (($2::date + TIME '22:00') AT TIME ZONE 'Europe/Kyiv'),
+                '22:00', '02:00', 'present', 'event_genix'),
+                ($1, $3::date, clock_timestamp(), '09:00', '18:00', 'present', 'event_genix')
+            RETURNING id, record_date::text AS record_date, clock_in`, [staffId, dates.previous, dates.today]);
+        const previous = rows.find(row => row.record_date === dates.previous);
+        const current = rows.find(row => row.record_date === dates.today);
+        const response = await authRequest('POST', '/api/hr/clock-out', {
+            staff_id: staffId, record_id: previous.id, clock_in: previous.clock_in.toISOString(),
+            settlement_mode: 'actual_time'
+        });
+        assert.equal(response.status, 200, JSON.stringify({ error: response.data?.error, code: response.data?.code }));
+        assert.equal(response.data.data.id, previous.id);
+        assert.ok(response.data.data.clock_out);
+        assert.equal((await db.query('SELECT clock_out FROM hr_time_records WHERE id = $1', [current.id])).rows[0].clock_out, null);
+    });
+
+    test('round-trips explicit night segments and freezes them when the employee arrives', async () => {
+        const workDate = '2198-10-11';
+        const copyDate = '2198-10-18';
+        for (const day of [workDate, copyDate]) {
+            await savePayrollDayException(db, payload({ workDate: day, professionKey: extraProfession,
+                purpose: 'additional', rate: 200, idempotencyKey: `night-additional-${day}` }), actor);
+        }
+        const segments = [
+            { professionKey: profession, shiftStart: '22:00', shiftEnd: '01:00', startDayOffset: 0, endDayOffset: 1,
+                additionalRoles: [{ professionKey: extraProfession, compensationMode: 'paid_hourly', payMultiplier: 0.5 }] },
+            { professionKey: extraProfession, shiftStart: '01:00', shiftEnd: '03:00', startDayOffset: 1, endDayOffset: 1 }
+        ];
+        const client = await db.connect();
+        try {
+            await client.query('BEGIN');
+            await saveHrShiftDayPlan(client, { staffId, shiftDate: workDate, performedBy: actor.username,
+                payload: { status: 'working', primaryProfessionKey: profession, segments } });
+            await client.query('COMMIT');
+        } finally {
+            await client.query('ROLLBACK').catch(() => {});
+            client.release();
+        }
+        const loaded = await loadHrShiftDayPlan(db, { staffId, shiftDate: workDate });
+        assert.equal(loaded.plan.plannedMinutes, 300);
+        const offsets = items => items.map(({ startDayOffset, endDayOffset }) => [startDayOffset, endDayOffset]);
+        assert.deepEqual(offsets(loaded.plan.segments), [[0, 1], [1, 1]]);
+        const legacyClient = await db.connect();
+        try {
+            await legacyClient.query('BEGIN');
+            await assert.rejects(saveHrShiftDayPlan(legacyClient, { staffId, shiftDate: workDate,
+                payload: { status: 'working', primaryProfessionKey: profession, segments: [
+                    { professionKey: profession, shiftStart: '22:00', shiftEnd: '01:00' }
+                ] } }), { code: 'HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT' });
+        } finally {
+            await legacyClient.query('ROLLBACK').catch(() => {});
+            legacyClient.release();
+        }
+        const afterLegacyWrite = (await loadHrShiftDayPlan(db, { staffId, shiftDate: workDate })).plan;
+        assert.deepEqual(offsets(afterLegacyWrite.segments), [[0, 1], [1, 1]]);
+        const copied = await authRequest('POST', '/api/hr/shifts/copy-week', {
+            source_week: workDate, target_week: copyDate
+        });
+        assert.equal(copied.status, 200, JSON.stringify({ error: copied.data?.error, code: copied.data?.code }));
+        const copiedPlan = (await loadHrShiftDayPlan(db, { staffId, shiftDate: copyDate })).plan;
+        assert.equal(copiedPlan.plannedMinutes, 300);
+        assert.deepEqual(offsets(copiedPlan.segments), [[0, 1], [1, 1]]);
+        assert.equal(copiedPlan.segments[0].additionalRoles[0].payMultiplier, 0.5);
+        const local = async (day, time) => (await db.query(
+            "SELECT ((($1::date + $2::integer) + $3::time) AT TIME ZONE 'Europe/Kyiv') AS timestamp", [workDate, day, time]
+        )).rows[0].timestamp;
+        const clockIn = await local(0, '22:00');
+        await recordAttendanceClockIn(db, { staffId, recordDate: workDate, now: clockIn, performedBy: actor.username });
+        const departure = await recordAttendanceClockOut(db, { staffId, recordDate: workDate, now: await local(1, '03:00'),
+            clockIn, performedBy: actor.username, settlementMode: 'actual_time' });
+        const additional = departure.record.compensation_snapshot.compensationAllocations
+            .find(allocation => allocation.allocationType === 'simultaneous_additional');
+        assert.equal(additional?.actualMinutes, 180);
+        assert.equal(additional.payMultiplier, 0.5);
+        const metrics = (await require('../../services/payroll').loadPayrollAttendanceMetrics(
+            { staffIds: [staffId], from: workDate, to: workDate }, db)).get(staffId);
+        assert.equal(metrics.physicalMinutes, 300);
+    });
+
+    test('records multiple factual breaks and requires explicit confirmation after departure', async () => {
+        const { rows: [record] } = await db.query(`INSERT INTO hr_time_records
+            (staff_id, record_date, clock_in, status, business_context)
+            VALUES ($1, (now() AT TIME ZONE 'Europe/Kyiv')::date - 2,
+                clock_timestamp() - INTERVAL '1 hour', 'present', 'event_genix')
+            RETURNING id, record_date::text AS record_date, updated_at::text AS record_version`, [staffId]);
+        const endpoint = `/api/hr/records/${record.id}/correct`;
+        const request = (action, version, extra) => authRequest('PUT', endpoint, {
+            record_version: version, break_action: action, ...extra
+        });
+        const update = async (action, version, extra) => {
+            const result = await request(action, version, extra);
+            assert.equal(result.status, 200, JSON.stringify({ error: result.data?.error, code: result.data?.code }));
+            return result.data.data;
+        };
+        const attempts = await Promise.all([request('start', record.record_version), request('start', record.record_version)]);
+        assert.deepEqual(attempts.map(response => response.status).sort(), [200, 409]);
+        assert.equal(attempts.find(response => response.status === 409).data.code, 'ATTENDANCE_BREAK_STALE');
+        const first = attempts.find(response => response.status === 200).data.data;
+        assert.equal(first.break_intervals[0].endedAt, null);
+        const duplicate = await request('start', first.record_version);
+        assert.equal(duplicate.data.code, 'ATTENDANCE_BREAK_CANNOT_START');
+        const ended = await update('finish', first.record_version);
+        assert.ok(ended.break_intervals[0].endedAt);
+        const second = await update('start', ended.record_version);
+        const { rows: [departure] } = await db.query(
+            'SELECT clock_timestamp() AS time');
+        await recordAttendanceClockOut(db, { staffId, recordDate: record.record_date,
+            now: departure.time, performedBy: actor.username });
+        const load = async () => (await db.query(
+            `SELECT *, updated_at::text AS record_version FROM hr_time_records WHERE id = $1`, [record.id]
+        )).rows[0];
+        const closed = await load();
+        assert.ok(closed.clock_out);
+        assert.equal(closed.break_intervals[1].endedAt, null);
+        const ordinaryFinish = await request('finish', closed.record_version);
+        assert.equal(ordinaryFinish.data.code, 'ATTENDANCE_BREAK_CONFIRM_REQUIRED');
+        const confirmed = await update('confirm', closed.record_version, {
+            notes: 'Synthetic check of factual return', break_ended_at: departure.time.toISOString()
+        });
+        assert.equal(confirmed.break_intervals.length, 2);
+        assert.equal(confirmed.break_intervals[1].startedAt, second.break_intervals[1].startedAt);
+        assert.equal(confirmed.break_intervals[1].endedAt, departure.time.toISOString());
+        const after = await load();
+        assert.equal(after.total_worked_minutes, closed.total_worked_minutes);
+        assert.deepEqual(after.compensation_snapshot, closed.compensation_snapshot);
+        const { rows: audits } = await db.query(`SELECT details FROM hr_audit_log
+            WHERE action = 'attendance_break' AND details->>'recordId' = $1 ORDER BY id`, [String(record.id)]);
+        assert.deepEqual(audits.map(row => row.details.action), ['start', 'finish', 'start', 'confirm']);
+        assert.equal(audits.at(-1).details.reason, 'Synthetic check of factual return');
+    });
+
+    test('manual confirmation distinguishes the repeated Kyiv hour instead of guessing', async () => {
+        const { rows: [record] } = await db.query(`INSERT INTO hr_time_records
+            (staff_id, record_date, clock_in, clock_out, status, business_context, break_intervals)
+            VALUES ($1, '2025-10-26', '2025-10-26 02:50+03', '2025-10-26 04:30+02',
+                'present', 'event_genix', '[{"startedAt":"2025-10-26T00:05:00Z","endedAt":null}]')
+            RETURNING id, updated_at::text AS record_version`, [staffId]);
+        const endpoint = `/api/hr/records/${record.id}/correct`;
+        const correction = { record_version: record.record_version, break_action: 'confirm',
+            break_ended_at_local: '2025-10-26T03:30', notes: 'Synthetic first occurrence' };
+        const ambiguous = await authRequest('PUT', endpoint, correction);
+        assert.equal(ambiguous.status, 400);
+        assert.equal(ambiguous.data.code, 'ATTENDANCE_BREAK_TIME_AMBIGUOUS');
+        const confirmed = await authRequest('PUT', endpoint, { ...correction, break_offset: '+03:00' });
+        assert.equal(confirmed.status, 200, JSON.stringify({ error: confirmed.data?.error, code: confirmed.data?.code }));
+        assert.equal(confirmed.data.data.break_intervals[0].endedAt, '2025-10-26T00:30:00.000Z');
+    });
+
     test('a persisted half rate survives attendance review and pays only after factual departure', async () => {
         const workDate = '2198-10-10';
         const exception = await savePayrollDayException(db, payload({ workDate, professionKey: extraProfession, purpose: 'additional',

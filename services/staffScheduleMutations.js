@@ -265,6 +265,8 @@ function normalizeScheduleAuditPlan(plan = null) {
             workMode: segment.workMode || 'regular',
             shiftStart: segment.shiftStart || null,
             shiftEnd: segment.shiftEnd || null,
+            startDayOffset: segment.startDayOffset,
+            endDayOffset: segment.endDayOffset,
             breakMinutes: Number(segment.breakMinutes || 0),
             note: segment.note || null,
             additionalRoles: (segment.additionalRoles || []).map(role => ({
@@ -300,8 +302,10 @@ function schedulePlanAuditChanges(beforePlan, afterPlan) {
     addChange('primaryProfessionKey', before.primaryProfessionKey || null, after.primaryProfessionKey || null);
     addChange('segments', before.segments || [], after.segments || []);
     addChange('segmentTimes',
-        (before.segments || []).map(segment => ({ shiftStart: segment.shiftStart, shiftEnd: segment.shiftEnd })),
-        (after.segments || []).map(segment => ({ shiftStart: segment.shiftStart, shiftEnd: segment.shiftEnd })));
+        (before.segments || []).map(({ shiftStart, shiftEnd, startDayOffset, endDayOffset }) => (
+            { shiftStart, shiftEnd, startDayOffset, endDayOffset })),
+        (after.segments || []).map(({ shiftStart, shiftEnd, startDayOffset, endDayOffset }) => (
+            { shiftStart, shiftEnd, startDayOffset, endDayOffset })));
     addChange('segmentProfessions',
         (before.segments || []).map(segment => segment.professionKey || null),
         (after.segments || []).map(segment => segment.professionKey || null));

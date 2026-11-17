@@ -230,9 +230,18 @@ async function installHarness(page, { recovery = false, todayOnly = false, parkW
                 reviewed = body.record_version === 'review-v1' && body.clock_out_time === '18:42' && body.notes === 'Підтверджено адміністратором';
                 return { success: reviewed };
             }
+            if (requestPath === '/clock-out') {
+                const body = JSON.parse(options.body);
+                requests.at(-1).body = body;
+                reviewed = body.record_id === 17 && body.date === '2026-07-16' && body.time === '01:30';
+                return { success: reviewed, data: { id: 17, clock_in: '2026-07-15T19:00:00.000Z',
+                    clock_out: '2026-07-15T22:30:00.000Z', status: 'present' } };
+            }
             if (requestPath.startsWith('/today?review_date=')) {
                 const date = new URLSearchParams(requestPath.split('?')[1]).get('review_date');
-                const record = { id: 17, clock_in: `${date}T07:00:00.000Z`, planned_start: '10:00', planned_end: '18:00', record_version: 'review-v1' };
+                const night = hrTodayKyivDate() === '2026-07-16';
+                const record = { id: 17, clock_in: `${date}T${night ? '19' : '07'}:00:00.000Z`,
+                    planned_start: night ? '22:00' : '10:00', planned_end: night ? '02:00' : '18:00', record_version: 'review-v1' };
                 const rows = [{ ...openItems[0], staff_id: 17, staff_name: 'Synthetic Review',
                     record: reviewed ? { ...record, status: 'present', clock_out: `${date}T15:42:00.000Z` }
                         : { ...record, status: 'manual_review', auto_closed: true, clock_out: null } }];
@@ -805,7 +814,8 @@ async function run() {
         assert.equal(await page.locator('#todayLeaveMetric').textContent(), '2');
         const completedShift = await page.locator('#todayList [data-staff-id="12"]').innerText();
         assert.match(completedShift, /Відпрацьовано: 8 год 18 хв/);
-        assert.match(completedShift, /Врахована перерва: 30 хв · час не зафіксовано/);
+        assert.match(completedShift, /Перерва за чинним розрахунком: 30 хв/);
+        assert.doesNotMatch(completedShift, /Фактичні перерви/);
         assert.match(completedShift, /Зараховано до оплати: 8 год 30 хв/);
         const reviewFilter = page.getByRole('checkbox', { name: 'Показати записи для звірки' });
         await reviewFilter.focus();
@@ -861,6 +871,29 @@ async function run() {
         assert.deepEqual(await page.evaluate(() => window.__hrTodayBrowserSmoke.requests().find(call => call.method === 'PUT')?.body),
             { notes: 'Підтверджено адміністратором', record_version: 'review-v1', clock_out_time: '18:42' });
         await row.waitFor({ state: 'hidden' });
+        await page.close();
+        page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+        page.setDefaultTimeout(15000);
+        await page.clock.setFixedTime(new Date('2026-07-15T23:00:00.000Z'));
+        await installHarness(page);
+        await page.evaluate(() => {
+            const canAccess = window.canAccess;
+            window.canAccess = action => action === 'hr.schedule.manage' || canAccess(action);
+            window.showNotification = () => {};
+        });
+        await page.getByLabel('Показати записи для звірки').check();
+        await page.getByLabel('Дата звірки').fill('2026-07-15');
+        const previousRow = page.locator('#todayList [data-staff-id="17"]');
+        await previousRow.getByRole('button', { name: /Обрати час виходу/ }).click();
+        const departure = page.getByRole('dialog', { name: 'Завершити зміну' });
+        await departure.locator('input[type="time"]').fill('01:30');
+        assert.match(await departure.innerText(), /зміна за 2026-07-15 · відмітка за 2026-07-16/);
+        await page.screenshot({ path: path.join(OUTPUT_DIR, 'night-departure-mobile.png'), fullPage: true });
+        await departure.locator('button[type="submit"]').click();
+        await departure.waitFor({ state: 'hidden' });
+        assert.deepEqual(await page.evaluate(() => window.__hrTodayBrowserSmoke.requests().find(call => call.path === '/clock-out')?.body),
+            { staff_id: 17, date: '2026-07-16', time: '01:30', settlement_mode: 'scheduled_shift',
+                clock_in: '2026-07-15T19:00:00.000Z', record_id: 17 });
         console.log('HR Today metrics browser smoke passed');
     } catch (err) {
         fs.mkdirSync(OUTPUT_DIR, { recursive: true });

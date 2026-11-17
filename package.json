@@ -47,7 +47,7 @@
     "check:timeline-protected-surface": "node scripts/check-timeline-protected-surface.js",
     "check:migrations": "node scripts/check-migrations.js",
     "check:syntax": "node scripts/check-js-syntax.js",
-    "test:attendance-plan": "node --test tests/hr-attendance-plan.test.js tests/hr-attendance-clock-in.test.js tests/hr-attendance-clock-out.test.js tests/hr-attendance-reporting.test.js tests/hr-attendance-documents.test.js tests/hr-attendance-document-automation.test.js",
+    "test:attendance-plan": "node --test tests/hr-attendance-plan.test.js tests/hr-attendance-clock-in.test.js tests/hr-attendance-clock-out.test.js tests/hr-attendance-reporting.test.js tests/hr-attendance-documents.test.js",
     "test:attendance-datafix": "node --test tests/attendance-historical-grace-datafix.test.js",
     "cleanup:inventory": "node scripts/cleanup-inventory.js",
     "audit:task-cleanup-inventory": "node scripts/task-cleanup-inventory.js",

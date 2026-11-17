@@ -22,6 +22,7 @@ const SCHEDULE_FIELDS = [
 ];
 const SEGMENT_FIELDS = [
     'id', 'professionKey', 'profession_key', 'shiftStart', 'shift_start', 'shiftEnd', 'shift_end',
+    'startDayOffset', 'start_day_offset', 'endDayOffset', 'end_day_offset',
     'workMode', 'work_mode',
     'breakMinutes', 'break_minutes', 'note', 'additionalProfessionKeys', 'additional_profession_keys',
     'paidAdditionalProfessionKeys', 'paid_additional_profession_keys', 'countsAsPhysicalTime', 'physicalTimeSource'
@@ -125,6 +126,10 @@ function projectToday(row) {
         projected.shift.segments = mapRows(row.shift.segments, projectSegment);
     }
     projected.record = row.record ? { ...pick(row.record, ['id', 'can_cancel_arrival']), ...projectAttendance(row.record) } : null;
+    if (projected.record && Object.hasOwn(row.record, 'break_intervals')) {
+        projected.record.break_intervals = mapRows(row.record.break_intervals, interval =>
+            pick(interval, ['startedAt', 'endedAt']));
+    }
     if (projected.record && Object.hasOwn(row.record, 'plan_warning')) {
         projected.record.plan_warning = row.record.plan_warning
             ? pick(row.record.plan_warning, ['code', 'message']) : null;

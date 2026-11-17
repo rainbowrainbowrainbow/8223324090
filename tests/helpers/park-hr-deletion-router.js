@@ -49,7 +49,7 @@ async function withDeletionRouter(run, database = null, { realServices = [] } = 
         for (const name of ['websocket', 'accountSecurity', 'accountOnboarding', 'costumeInventory', 'taskExecution',
             'taskPerformancePolicy', 'staffLifecycle', 'hrVacancyPlatformFormatter', 'hrPayrollPeriod', 'payroll',
             'hrPayrollSchemes', 'hrPayrollProfiles', 'liveMultiSegmentQa', 'hrStaffDocuments', 'hrStaffMedicalBook',
-            'hrStaffResources', 'hrAttendanceDocuments', 'hrAttendanceDocumentsPdf', 'hrAttendanceDocumentAutomation']) {
+            'hrStaffResources', 'hrAttendanceDocuments', 'hrAttendanceDocumentsPdf']) {
             if (realServices.includes(name)) { delete require.cache[require.resolve(`../../services/${name}`)]; continue; }
             mock(`../../services/${name}`, new Proxy({}, { get: (_target, key) => () => {
                 unexpected.push(`${name}.${String(key)}`);

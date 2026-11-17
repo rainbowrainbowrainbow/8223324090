@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+    allocateAttendanceToSegments,
     calculateHrClockOutPayroll,
     HR_ATTENDANCE_PLAN_SOURCES,
     isAttendanceRecordOpen,
@@ -9,6 +10,23 @@ const {
     summarizeHrTodayItems
 } = require('../services/hrAttendance');
 const { isAttendanceRecordOpen: sharedIsAttendanceRecordOpen } = require('../js/hr-attendance-state');
+
+test('an explicit next-day segment retains existing manual review on the Kyiv DST transition', () => {
+    const result = allocateAttendanceToSegments({
+        recordDate: '2026-03-28',
+        clockIn: '2026-03-28T22:00:00+02:00',
+        clockOut: '2026-03-29T06:00:00+03:00',
+        segments: [
+            { professionKey: 'reception', shiftStart: '22:00', shiftEnd: '01:00', startDayOffset: 0, endDayOffset: 1 },
+            { professionKey: 'reception', shiftStart: '01:00', shiftEnd: '06:00', startDayOffset: 1, endDayOffset: 1 }
+        ]
+    });
+    assert.deepEqual(result.segmentAllocations.map(item => item.overlapMinutes), [180, 300]);
+    const issue = result.allocationIssues.find(item => item.code === 'ATTENDANCE_TIMEZONE_TRANSITION_REVIEW_REQUIRED');
+    assert.equal(issue.severity, 'manual_review');
+    assert.equal(issue.elapsedMinutes, 420);
+    assert.equal(issue.civilMinutes, 480);
+});
 
 function createClockOutDb(existing, options = {}) {
     const calls = [];
@@ -70,6 +88,26 @@ const baseRecord = {
     late_minutes: 10,
     status: 'late'
 };
+
+test('an explicit night shift keeps its original record date and scopes the locked row', async () => {
+    const { db, calls } = createClockOutDb({
+        ...baseRecord,
+        clock_in: '2026-07-17T19:00:00.000Z',
+        planned_start: '22:00',
+        planned_end: '02:00',
+        late_minutes: 0,
+        status: 'present'
+    });
+    const { record } = await recordAttendanceClockOut(db, {
+        staffId: baseRecord.staff_id, recordId: baseRecord.id, businessContext: 'event_genix',
+        recordDate: baseRecord.record_date, actualTime: '2026-07-17T23:00:00.000Z'
+    });
+    assert.match(calls[0].text, /AND id = \$3 AND COALESCE\(business_context, 'event_genix'\) = \$4 FOR UPDATE/);
+    assert.deepEqual(calls[0].params, [7, '2026-07-17', 91, 'event_genix']);
+    assert.equal(record.record_date, '2026-07-17');
+    assert.equal(record.clock_out, '2026-07-17T23:00:00.000Z');
+    assert.equal(record.total_worked_minutes, 240);
+});
 
 test('a stale close request cannot end a replacement arrival', async () => {
     const db = {

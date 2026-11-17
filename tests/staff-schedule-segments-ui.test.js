@@ -50,7 +50,7 @@ test('client validation blocks invalid and overlapping paid plans before save', 
     assert.match(page, /HR_SHIFT_SEGMENT_BREAK_EXCEEDS_DURATION/);
     assert.match(page, /Перерва має бути коротшою за тривалість сегмента/);
     assert.match(page, /HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT/);
-    assert.match(page, /Нічний часовий блок без day offsets можна зберігати лише як єдиний блок дня/);
+    assert.match(page, /Для нічного плану з кількома блоками явно оберіть день кожного блоку/);
     assert.match(page, /errorCodes: \[\.\.\.new Set\(errorCodes\)\]/);
     assert.match(page, /left\.startMinutes < right\.endMinutes && right\.startMinutes < left\.endMinutes/);
     assert.match(page, /Для одночасної роботи використайте оплачувану додаткову роль, а не другий блок/);
@@ -81,7 +81,7 @@ test('client validation blocks invalid and overlapping paid plans before save', 
     assert.match(page, /role\.professionKey !== candidate\.professionKey/);
     assert.match(page, /candidate\.kind === 'partial'/);
     assert.match(page, /Перерва не буде розподілена автоматично/);
-    assert.match(page, /Автоматична конвертація нічних блоків недоступна/);
+    assert.match(page, /Для нічних блоків виправте перетин вручну/);
     assert.match(page, /понад два блоки/);
     assert.match(hrPage, /HR_SHIFT_SEGMENT_BREAK_EXCEEDS_DURATION/);
     assert.match(hrPage, /HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT/);

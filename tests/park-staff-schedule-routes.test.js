@@ -151,7 +151,7 @@ async function withActualRouters(run) {
             'professionChecklists', 'hrVacancyPlatformFormatter', 'hrPayrollPeriod',
             'hrPayrollSchemes', 'hrPayrollProfiles', 'liveMultiSegmentQa', 'hrStaffDocuments',
             'hrStaffMedicalBook', 'hrStaffResources', 'hrAttendanceDocuments',
-            'hrAttendanceDocumentsPdf', 'hrAttendanceDocumentAutomation'
+            'hrAttendanceDocumentsPdf'
         ];
         for (const name of unusedServices) {
             installMock(`../services/${name}`, new Proxy({}, {

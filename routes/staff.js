@@ -566,6 +566,8 @@ function copyableDayPlanPayload(loadedPlan) {
             workMode: segment.workMode || 'regular',
             shiftStart: segment.shiftStart,
             shiftEnd: segment.shiftEnd,
+            startDayOffset: segment.startDayOffset,
+            endDayOffset: segment.endDayOffset,
             breakMinutes: segment.breakMinutes,
             note: segment.note,
             additionalRoles: (segment.additionalRoles || []).map(role => ({ ...role })),
@@ -615,6 +617,8 @@ function scheduleEntryWithDayPlan(entry, plan = null) {
             workMode: segment.workMode || 'regular',
             shiftStart: segment.shiftStart,
             shiftEnd: segment.shiftEnd,
+            startDayOffset: segment.startDayOffset,
+            endDayOffset: segment.endDayOffset,
             breakMinutes: segment.breakMinutes,
             note: segment.note,
             additionalRoles: (segment.additionalRoles || []).map(role => ({
@@ -858,6 +862,8 @@ router.get('/schedule', requireAction('hr.schedule.view'), async (req, res) => {
                                 'workMode', hss.work_mode,
                                 'shiftStart', LEFT(hss.planned_start::text, 5),
                                 'shiftEnd', LEFT(hss.planned_end::text, 5),
+                                'startDayOffset', hss.start_day_offset,
+                                'endDayOffset', hss.end_day_offset,
                                 'breakMinutes', hss.break_minutes,
                                 'note', hss.notes,
                                 'additionalRoles', COALESCE((

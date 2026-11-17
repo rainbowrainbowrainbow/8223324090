@@ -484,14 +484,21 @@ function normalizeSegment(segment = {}, segmentIndex = 0, options = {}) {
         });
     }
 
-    // Timeline convention for this MVP: every segment starts on shift_date.
-    // Only an end at/before its own start moves to shift_date + 1. Representing
-    // a separate continuation segment that starts after midnight needs a future
-    // explicit day offset; inferring it from sort order would be ambiguous.
-    const startMinutes = timeToMinutes(shiftStart);
+    // Legacy segments start on shift_date and infer the end date from the clock times.
+    const startDayOffset = segment.startDayOffset ?? segment.start_day_offset ?? undefined;
+    const endDayOffset = segment.endDayOffset ?? segment.end_day_offset ?? undefined;
+    const hasDayOffsets = startDayOffset !== undefined || endDayOffset !== undefined;
+    if (hasDayOffsets && (![0, 1].includes(startDayOffset) || ![0, 1].includes(endDayOffset))) {
+        fail('HR_SHIFT_SEGMENT_INVALID_DAY_OFFSETS', 'Оберіть день початку та завершення часового блоку.', { segmentIndex });
+    }
+    const rawStartMinutes = timeToMinutes(shiftStart);
+    const startMinutes = rawStartMinutes + (startDayOffset ?? 0) * MINUTES_PER_DAY;
     const rawEndMinutes = timeToMinutes(shiftEnd);
-    const endMinutes = rawEndMinutes <= startMinutes ? rawEndMinutes + MINUTES_PER_DAY : rawEndMinutes;
+    const endMinutes = rawEndMinutes + (endDayOffset ?? Number(rawEndMinutes < rawStartMinutes)) * MINUTES_PER_DAY;
     const durationMinutes = endMinutes - startMinutes;
+    if (durationMinutes <= 0 || durationMinutes >= MINUTES_PER_DAY) {
+        fail('HR_SHIFT_SEGMENT_INVALID_DAY_OFFSETS', 'Часовий блок має завершуватися після початку й тривати менше доби.', { segmentIndex });
+    }
     const breakMinutes = normalizeBreakMinutes(firstDefined(segment.breakMinutes, segment.break_minutes), segmentIndex);
     if (breakMinutes >= durationMinutes) {
         fail('HR_SHIFT_SEGMENT_BREAK_EXCEEDS_DURATION', HR_SHIFT_PLAN_MESSAGES.HR_SHIFT_SEGMENT_BREAK_EXCEEDS_DURATION, {
@@ -530,6 +537,7 @@ function normalizeSegment(segment = {}, segmentIndex = 0, options = {}) {
         professionKey,
         shiftStart,
         shiftEnd,
+        ...(hasDayOffsets ? { startDayOffset, endDayOffset } : {}),
         breakMinutes,
         note: normalizeSegmentNote(firstDefined(segment.note, segment.notes)),
         additionalRoles,
@@ -703,7 +711,8 @@ function normalizeHrShiftDayPlan(payload = {}, options = {}) {
     const normalizedSegments = rawSegments.map((segment, index) =>
         normalizeSegment(segment, index, professionOptions));
     const overnightSegments = normalizedSegments.filter(segment => segment.endMinutes > MINUTES_PER_DAY);
-    if (normalizedSegments.length > 1 && overnightSegments.length > 0) {
+    if (normalizedSegments.length > 1 && overnightSegments.length > 0
+        && normalizedSegments.some(segment => segment.startDayOffset === undefined)) {
         fail(
             'HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT',
             HR_SHIFT_PLAN_MESSAGES.HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT,
@@ -715,6 +724,11 @@ function normalizeHrShiftDayPlan(payload = {}, options = {}) {
         );
     }
     const segments = sortSegmentsChronologically(normalizedSegments);
+    if (segments.some(segment => segment.startDayOffset !== undefined)
+        && (segments[0].startMinutes >= MINUTES_PER_DAY
+            || segments.at(-1).endMinutes - segments[0].startMinutes >= MINUTES_PER_DAY)) {
+        fail('HR_SHIFT_PLAN_INVALID_DAY_OFFSETS', 'План має починатися в день зміни й охоплювати менше доби.');
+    }
     const overlap = findOverlappingSegments(segments);
     if (overlap) {
         fail('HR_SHIFT_PLAN_SEGMENTS_OVERLAP', 'Оплачувані сегменти не можуть перетинатися', {
@@ -1226,6 +1240,8 @@ async function loadHrShiftSnapshots(db, whereSql, params) {
                 hss.work_mode,
                 hss.planned_start,
                 hss.planned_end,
+                hss.start_day_offset,
+                hss.end_day_offset,
                 hss.break_minutes,
                 hss.notes,
                 hss.sort_order,
@@ -1273,6 +1289,8 @@ async function loadHrShiftSnapshots(db, whereSql, params) {
                 work_mode: row.work_mode,
                 planned_start: row.planned_start,
                 planned_end: row.planned_end,
+                start_day_offset: row.start_day_offset,
+                end_day_offset: row.end_day_offset,
                 break_minutes: row.break_minutes,
                 notes: row.notes,
                 sort_order: row.sort_order,
@@ -1362,6 +1380,9 @@ function segmentPayloadFromRow(row = {}) {
         workMode: row.work_mode || 'regular',
         shiftStart: row.planned_start,
         shiftEnd: row.planned_end,
+        ...(row.start_day_offset != null ? {
+            startDayOffset: row.start_day_offset, endDayOffset: row.end_day_offset
+        } : {}),
         breakMinutes: row.break_minutes,
         note: row.notes,
         additionalProfessionKeys: row.additional_profession_keys || []
@@ -1476,6 +1497,12 @@ async function replaceHrShiftSegments(client, hrShiftId, plan, options = {}) {
         );
     }
 
+    const existingRows = await loadHrShiftSegments(client, hrShiftId);
+    if (existingRows.some(row => row.end_day_offset === 1)
+        && normalizedPlan.segments.some(segment => segment.startDayOffset === undefined)) {
+        fail('HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT',
+            'Для зміни нічного плану вкажіть день для кожного часового блоку.', {}, 409);
+    }
     const actor = options.actor || null;
     const parent = await client.query(
         `UPDATE hr_shifts SET
@@ -1495,7 +1522,6 @@ async function replaceHrShiftSegments(client, hrShiftId, plan, options = {}) {
         ]
     );
 
-    const existingRows = await loadHrShiftSegments(client, hrShiftId);
     if (normalizedPlan.segments.some(segment => segment.workMode === 'freelance')) {
         const { assertFreelanceDoesNotReplaceMonthlyWork } = require('./hrFreelanceWork');
         await assertFreelanceDoesNotReplaceMonthlyWork(
@@ -1543,6 +1569,8 @@ async function replaceHrShiftSegments(client, hrShiftId, plan, options = {}) {
                 || (existing.work_mode || 'regular') !== workMode
                 || normalizeShiftTime(existing.planned_start) !== segment.shiftStart
                 || normalizeShiftTime(existing.planned_end) !== segment.shiftEnd
+                || (existing.start_day_offset ?? null) !== (segment.startDayOffset ?? null)
+                || (existing.end_day_offset ?? null) !== (segment.endDayOffset ?? null)
                 || Number(existing.break_minutes || 0) !== segment.breakMinutes
                 || normalizeSegmentNote(existing.notes) !== segment.note
                 || Number(existing.sort_order || 0) !== segment.sortOrder;
@@ -1557,7 +1585,7 @@ async function replaceHrShiftSegments(client, hrShiftId, plan, options = {}) {
                         sort_order = $6,
                         updated_by = $7,
                         updated_at = NOW(),
-                        work_mode = $10
+                        work_mode = $10, start_day_offset = $11, end_day_offset = $12
                      WHERE id = $8 AND hr_shift_id = $9`,
                     [
                         segment.professionKey,
@@ -1569,7 +1597,9 @@ async function replaceHrShiftSegments(client, hrShiftId, plan, options = {}) {
                         actor,
                         segmentId,
                         hrShiftId,
-                        workMode
+                        workMode,
+                        segment.startDayOffset ?? null,
+                        segment.endDayOffset ?? null
                     ]
                 );
             }
@@ -1590,9 +1620,9 @@ async function replaceHrShiftSegments(client, hrShiftId, plan, options = {}) {
             const inserted = await client.query(
                 `INSERT INTO hr_shift_segments (
                     hr_shift_id, profession_key, planned_start, planned_end,
-                    break_minutes, notes, sort_order, created_by, updated_by, work_mode
+                    break_minutes, notes, sort_order, created_by, updated_by, work_mode, start_day_offset, end_day_offset
                  )
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, $9)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, $9, $10, $11)
                  RETURNING *`,
                 [
                     hrShiftId,
@@ -1603,7 +1633,9 @@ async function replaceHrShiftSegments(client, hrShiftId, plan, options = {}) {
                     segment.note,
                     segment.sortOrder,
                     actor,
-                    workMode
+                    workMode,
+                    segment.startDayOffset ?? null,
+                    segment.endDayOffset ?? null
                 ]
             );
             segmentId = inserted.rows[0].id;

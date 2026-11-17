@@ -67,6 +67,7 @@ const {
     summarizeHrTodayItems,
     timeToMinutes
 } = require('../services/hrAttendance');
+const { assertAttendanceBreakBounds, recordAttendanceBreak } = require('../services/hrAttendanceBreaks');
 const { listTaskOwnerCandidates } = require('../services/taskExecution');
 const {
     TASK_PERFORMANCE_POLICY_VERSION,
@@ -3287,6 +3288,8 @@ async function mirrorHrDayPlanToStaffSchedule(saved, staffId, shiftDate, note = 
 function publicHrShiftSegment(segment = {}) {
     const shiftStart = segment.shiftStart ?? segment.planned_start ?? null;
     const shiftEnd = segment.shiftEnd ?? segment.planned_end ?? null;
+    const startDayOffset = segment.startDayOffset ?? segment.start_day_offset ?? undefined;
+    const endDayOffset = segment.endDayOffset ?? segment.end_day_offset ?? undefined;
     const additionalRoles = segment.additionalRoles ?? segment.additional_roles ?? [];
     const paidAdditionalProfessionKeys = segment.paidAdditionalProfessionKeys
         ?? segment.paid_additional_profession_keys
@@ -3299,6 +3302,7 @@ function publicHrShiftSegment(segment = {}) {
         professionKey: segment.professionKey ?? segment.profession_key ?? null,
         shiftStart: shiftStart === null ? null : String(shiftStart).slice(0, 5),
         shiftEnd: shiftEnd === null ? null : String(shiftEnd).slice(0, 5),
+        ...(startDayOffset !== undefined ? { startDayOffset, endDayOffset } : {}),
         breakMinutes: Number(segment.breakMinutes ?? segment.break_minutes ?? 0),
         workMode: segment.workMode ?? segment.work_mode ?? 'regular',
         note: segment.note ?? segment.notes ?? null,
@@ -6324,7 +6328,9 @@ router.get('/today', async (req, res) => {
                 record: record ? {
                     id: record.id,
                     record_version: record.record_version,
-                    can_cancel_arrival: record.can_cancel_arrival,
+                    can_cancel_arrival: record.can_cancel_arrival && !record.break_intervals?.length,
+                    ...((record.business_context ?? 'event_genix') === context
+                        ? { break_intervals: record.break_intervals || [] } : {}),
                     clock_in: record.clock_in,
                     clock_out: record.clock_out,
                     planned_start: record.planned_start,
@@ -6610,7 +6616,7 @@ router.delete('/qa/multi-segment/:runId', requireRole('creator', 'director'), as
     }
 });
 
-async function resolveHrTodayClockTime(client, body, today) {
+async function resolveHrTodayClockTime(client, body, today, { rejectAmbiguous = false, offset } = {}) {
     if (body?.date !== undefined && body.date !== today) {
         return { error: 'Дата змінилася. Оновіть список і повторіть відмітку.', code: 'ATTENDANCE_DATE_CHANGED', status: 409 };
     }
@@ -6619,15 +6625,25 @@ async function resolveHrTodayClockTime(client, body, today) {
     if (typeof time !== 'string' || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)) {
         return { error: 'Введіть час у форматі ГГ:ХХ.', code: 'ATTENDANCE_TIME_INVALID', status: 400 };
     }
+    if (offset !== undefined && !['+02:00', '+03:00'].includes(offset)) {
+        return { error: 'Оберіть часовий зсув для Києва.', code: 'ATTENDANCE_TIME_INVALID', status: 400 };
+    }
     const { rows: [result] } = await client.query(
         `WITH local_time AS (SELECT $1::date + $2::time AS value),
-              instant AS (SELECT value, value AT TIME ZONE 'Europe/Kyiv' AS timestamp FROM local_time)
+              instant AS (
+                  SELECT value, COALESCE($3::timestamptz, value AT TIME ZONE 'Europe/Kyiv') AS timestamp FROM local_time
+              )
          SELECT timestamp AS "actualTime",
                 (timestamp AT TIME ZONE 'Europe/Kyiv') = value AS valid,
+                ((timestamp - INTERVAL '1 hour') AT TIME ZONE 'Europe/Kyiv') = value AS ambiguous,
                 timestamp > clock_timestamp() AS future
          FROM instant`,
-        [today, time]
+        [today, time, offset ? `${today}T${time}${offset}` : null]
     );
+    if (rejectAmbiguous && !offset && result.ambiguous) {
+        return { error: 'Цей час повторюється при переведенні годинника. Оберіть, яку з двох годин маєте на увазі.',
+            code: 'ATTENDANCE_BREAK_TIME_AMBIGUOUS', status: 400 };
+    }
     if (!result.valid || result.future) {
         return {
             error: result.future && result.valid ? 'Час відмітки не може бути в майбутньому.'
@@ -6725,6 +6741,10 @@ router.post('/clock-out', requireHrManage, async (req, res) => {
     if (!Number.isSafeInteger(staffId) || staffId <= 0 || staffId > 2147483647) {
         return res.status(400).json({ success: false, error: 'Потрібен staff_id' });
     }
+    const recordId = req.body?.record_id === undefined ? null : parsePositiveSafeInteger(req.body.record_id);
+    if (req.body?.record_id !== undefined && !recordId) {
+        return res.status(400).json({ success: false, error: 'Потрібен коректний record_id' });
+    }
     const client = await pool.connect();
     try {
         const { settlement_mode, settlementMode } = req.body;
@@ -6732,11 +6752,34 @@ router.post('/clock-out', requireHrManage, async (req, res) => {
         const today = todayKyiv();
         const { actualTime, error, code, status } = await resolveHrTodayClockTime(client, req.body, today);
         if (error) return res.status(status).json({ success: false, error, code });
+        const businessContext = hrBusinessContextFromRequest(req);
         await client.query('BEGIN');
-        await lockAttendanceWriteTarget(client, { staffId, date: today });
+        let recordDate = today;
+        if (recordId) {
+            const { rows: [target] } = await client.query(
+                `SELECT record_date::text AS record_date
+                 FROM hr_time_records
+                 WHERE id = $1 AND staff_id = $2
+                   AND COALESCE(business_context, 'event_genix') = $3
+                   AND record_date BETWEEN $4::date - 1 AND $4::date`,
+                [recordId, staffId, businessContext, today]
+            );
+            if (!target) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ success: false, code: 'ATTENDANCE_RECORD_NOT_FOUND',
+                    error: 'Запис зміни не знайдено. Оновіть список.' });
+            }
+            recordDate = target.record_date;
+            const month = recordDate.slice(0, 7);
+            await lockPayrollPeriodMutation(month, client);
+            await acquirePayrollPeriodMutationLock(client, month);
+            await assertPayrollPeriodOpen(month, client);
+        }
+        await lockAttendanceWriteTarget(client, { staffId, date: recordDate });
         const clockOutResult = await recordAttendanceClockOut(client, {
             staffId,
-            recordDate: today,
+            recordDate,
+            ...(recordId ? { recordId, businessContext } : {}),
             actualTime,
             expectedClockIn: req.body.clock_in,
             settlementMode: settlement_mode || settlementMode,
@@ -6755,7 +6798,8 @@ router.post('/clock-out', requireHrManage, async (req, res) => {
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         log.error('POST /hr/clock-out error', err);
-        if (['ATTENDANCE_CLOCK_IN_REQUIRED', 'ATTENDANCE_ARRIVAL_CHANGED', 'ATTENDANCE_EXIT_BEFORE_ARRIVAL'].includes(err?.code)) {
+        if (['ATTENDANCE_CLOCK_IN_REQUIRED', 'ATTENDANCE_ARRIVAL_CHANGED', 'ATTENDANCE_EXIT_BEFORE_ARRIVAL',
+            'ATTENDANCE_BREAK_OUTSIDE_SHIFT'].includes(err?.code)) {
             return res.status(err.statusCode || 400).json({ success: false, code: err.code, error: err.message });
         }
         if (sendHrMutationFailure(res, err)) return;
@@ -6823,10 +6867,14 @@ router.put('/records/:id/correct', requireHrManage, async (req, res) => {
             settlement_mode,
             settlementMode,
             record_version,
+            break_action,
+            break_ended_at,
+            break_ended_at_local,
+            break_offset,
             notes
         } = req.body;
         const correctionReason = String(notes || '').trim();
-        if (!correctionReason) {
+        if (break_action === undefined && !correctionReason) {
             return res.status(400).json({
                 success: false,
                 code: 'ATTENDANCE_CORRECTION_REASON_REQUIRED',
@@ -6856,6 +6904,40 @@ router.put('/records/:id/correct', requireHrManage, async (req, res) => {
             staffId: target.rows[0].staff_id,
             date: recordDate
         });
+
+        if (break_action !== undefined) {
+            let endedAt = break_ended_at;
+            if (break_action === 'confirm' && break_ended_at_local !== undefined) {
+                const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})$/.exec(break_ended_at_local);
+                const day = match && new Date(`${match[1]}T00:00:00Z`);
+                if (!day || !Number.isFinite(day.getTime()) || day.toISOString().slice(0, 10) !== match[1]) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ success: false, error: 'Вкажіть коректні дату й час завершення перерви.' });
+                }
+                const time = await resolveHrTodayClockTime(client, { time: match[2] }, match[1], {
+                    rejectAmbiguous: true, offset: break_offset
+                });
+                if (time.error) {
+                    await client.query('ROLLBACK');
+                    return res.status(time.status).json({ success: false, code: time.code, error: time.error });
+                }
+                endedAt = time.actualTime.toISOString();
+            }
+            const data = await recordAttendanceBreak(client, {
+                recordId: req.params.id,
+                staffId: target.rows[0].staff_id,
+                recordDate,
+                businessContext: hrBusinessContextFromRequest(req),
+                action: break_action,
+                version: record_version,
+                endedAt,
+                reason: notes,
+                performedBy: req.user?.username || 'manual',
+                ip: req.ip
+            });
+            await client.query('COMMIT');
+            return res.json({ success: true, data });
+        }
 
         const rec = await client.query(
             `SELECT *, updated_at::text AS record_version FROM hr_time_records
@@ -6946,6 +7028,7 @@ router.put('/records/:id/correct', requireHrManage, async (req, res) => {
         }
         newClockIn = newClockIn ? new Date(newClockIn).toISOString() : null;
         newClockOut = newClockOut ? new Date(newClockOut).toISOString() : null;
+        assertAttendanceBreakBounds(original.break_intervals, newClockIn, newClockOut);
 
         const settlementAudit = await client.query(
             `SELECT details->>'settlement_mode' AS settlement_mode
@@ -7077,6 +7160,9 @@ router.put('/records/:id/correct', requireHrManage, async (req, res) => {
         });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
+        if (err.code?.startsWith('ATTENDANCE_BREAK_')) {
+            return res.status(err.statusCode).json({ success: false, code: err.code, error: err.message });
+        }
         log.error('PUT /hr/records/:id/correct error', err);
         if (err.statusCode === 423) return res.status(423).json({ success: false, error: err.message });
         res.status(500).json({ success: false, error: 'Помилка сервера' });

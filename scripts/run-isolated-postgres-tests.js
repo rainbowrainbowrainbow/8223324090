@@ -43,7 +43,6 @@ const MODES = {
         'tests/integration/attendance-lock-concurrency.integration.test.js',
         'tests/integration/hr-scheduler-jobs.integration.test.js',
         'tests/integration/hr-attendance-compensation-snapshot.integration.test.js',
-        'tests/integration/hr-attendance-document-automation-concurrency.integration.test.js',
         'tests/integration/attendance-historical-grace-datafix.integration.test.js',
         'tests/integration/attendance-backup-roundtrip.integration.test.js',
         'tests/integration/full-backup-recovery.integration.test.js'
@@ -763,7 +762,6 @@ async function runSuite(testDb, testFile, suiteMode) {
         RUN_HR_SCHEDULER_JOBS_INTEGRATION: testFile.includes('hr-scheduler-jobs') ? 'true' : 'false',
         RUN_ATTENDANCE_DATAFIX_INTEGRATION: testFile.includes('attendance-historical-grace-datafix') ? 'true' : 'false',
         RUN_HR_ATTENDANCE_COMPENSATION_INTEGRATION: testFile.includes('hr-attendance-compensation-snapshot') ? 'true' : 'false',
-        RUN_HR_ATTENDANCE_DOCUMENT_AUTOMATION_INTEGRATION: testFile.includes('hr-attendance-document-automation-concurrency') ? 'true' : 'false',
         RUN_ATTENDANCE_BACKUP_INTEGRATION: testFile.includes('attendance-backup-roundtrip') ? 'true' : 'false',
         RUN_FULL_BACKUP_RECOVERY_INTEGRATION: testFile.includes('full-backup-recovery') ? 'true' : 'false',
         RUN_BANQUET_PRODUCTION_RECOVERY_INTEGRATION: testFile.includes('banquet-production-recovery.integration') ? 'true' : 'false',

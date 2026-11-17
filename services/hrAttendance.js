@@ -9,6 +9,7 @@ const { normalizeBusinessContext } = require('./businessContext');
 const { isAttendanceRecordOpen } = require('../js/hr-attendance-state');
 
 const MINUTES_PER_DAY = 24 * 60;
+const { assertAttendanceBreakBounds } = require('./hrAttendanceBreaks');
 const CANCELLED_ARRIVAL_STATUS = 'arrival_cancelled';
 // Match the specific arrival, since a new arrival can reuse the same row ID.
 const HR_TODAY_MANUAL_ARRIVAL_SQL = `tr.clock_in IS NOT NULL AND tr.clock_out IS NULL
@@ -233,10 +234,16 @@ function normalizeAttendanceSegments(input = {}) {
     return segments.map((segment, index) => {
         const shiftStart = segment.shiftStart || segment.shift_start || segment.planned_start;
         const shiftEnd = segment.shiftEnd || segment.shift_end || segment.planned_end;
-        const startMinutes = timeToMinutes(shiftStart);
+        const rawStartMinutes = timeToMinutes(shiftStart);
         const rawEndMinutes = timeToMinutes(shiftEnd);
-        if (startMinutes === null || rawEndMinutes === null || rawEndMinutes === startMinutes) return null;
-        const endMinutes = rawEndMinutes <= startMinutes ? rawEndMinutes + MINUTES_PER_DAY : rawEndMinutes;
+        if (rawStartMinutes === null || rawEndMinutes === null || rawEndMinutes === rawStartMinutes) return null;
+        const startDayOffset = segment.startDayOffset ?? segment.start_day_offset ?? undefined;
+        const endDayOffset = segment.endDayOffset ?? segment.end_day_offset ?? undefined;
+        const hasDayOffsets = startDayOffset !== undefined || endDayOffset !== undefined;
+        if (hasDayOffsets && (![0, 1].includes(startDayOffset) || ![0, 1].includes(endDayOffset))) return null;
+        const startMinutes = rawStartMinutes + (startDayOffset ?? 0) * MINUTES_PER_DAY;
+        const endMinutes = rawEndMinutes + (endDayOffset ?? Number(rawEndMinutes < rawStartMinutes)) * MINUTES_PER_DAY;
+        if (endMinutes <= startMinutes || endMinutes - startMinutes >= MINUTES_PER_DAY) return null;
         const breakMinutes = Math.min(
             endMinutes - startMinutes,
             normalizeNonNegativeMinutes(segment.breakMinutes ?? segment.break_minutes)
@@ -255,6 +262,7 @@ function normalizeAttendanceSegments(input = {}) {
                 ? { workMode: 'freelance' } : {}),
             shiftStart: String(shiftStart).slice(0, 5),
             shiftEnd: String(shiftEnd).slice(0, 5),
+            ...(hasDayOffsets ? { startDayOffset, endDayOffset } : {}),
             breakMinutes,
             additionalRoles: additionalRoles.map(role => ({
                 professionKey: role.professionKey ?? role.profession_key ?? null,
@@ -318,6 +326,9 @@ function publicAttendancePlanSegment(segment = {}) {
         ...(segment.workMode === 'freelance' ? { workMode: segment.workMode } : {}),
         shiftStart: segment.shiftStart || null,
         shiftEnd: segment.shiftEnd || null,
+        ...(segment.startDayOffset !== undefined ? {
+            startDayOffset: segment.startDayOffset, endDayOffset: segment.endDayOffset
+        } : {}),
         breakMinutes: normalizeNonNegativeMinutes(segment.breakMinutes),
         plannedMinutes: normalizeNonNegativeMinutes(segment.plannedMinutes),
         additionalRoles: (segment.additionalRoles || []).map(role => ({
@@ -992,6 +1003,9 @@ function segmentAllocationPayload(segment, actualMinutes, overlapMinutes = null)
         ...(segment.workMode === 'freelance' ? { workMode: segment.workMode } : {}),
         shiftStart: segment.shiftStart,
         shiftEnd: segment.shiftEnd,
+        ...(segment.startDayOffset !== undefined ? {
+            startDayOffset: segment.startDayOffset, endDayOffset: segment.endDayOffset
+        } : {}),
         breakMinutes: segment.breakMinutes,
         plannedMinutes: segment.plannedMinutes,
         actualMinutes: normalizeNonNegativeMinutes(actualMinutes),
@@ -1473,7 +1487,7 @@ async function cancelAttendanceClockIn(db, { staffId, recordId, recordDate, cloc
     if (!isAttendanceRecordOpen(record) || Number(record.id) !== recordId
         || timestampAuditValue(record.clock_in) !== timestampAuditValue(clockIn)
         || record.business_context !== businessContext || !record.manual_arrival
-        || record.auto_closed || Number(record.total_worked_minutes || 0) !== 0
+        || record.auto_closed || record.break_intervals?.length || Number(record.total_worked_minutes || 0) !== 0
         || snapshot?.finalizedAt || snapshot?.state === 'final') {
         throw attendanceMutationError('ATTENDANCE_ARRIVAL_NOT_CANCELLABLE',
             'Цей прихід уже змінився або його не можна скасувати. Оновіть дані.', 409);
@@ -1701,10 +1715,14 @@ async function recordAttendanceClockOut(db, input = {}) {
         throw new TypeError('recordAttendanceClockOut requires a valid recordDate');
     }
 
-    const existingResult = await db.query(
-        'SELECT * FROM hr_time_records WHERE staff_id = $1 AND record_date = $2 FOR UPDATE',
-        [staffId, recordDate]
-    );
+    const existingResult = input.recordId === undefined
+        ? await db.query('SELECT * FROM hr_time_records WHERE staff_id = $1 AND record_date = $2 FOR UPDATE',
+            [staffId, recordDate])
+        : await db.query(
+            `SELECT * FROM hr_time_records WHERE staff_id = $1 AND record_date = $2
+               AND id = $3 AND COALESCE(business_context, 'event_genix') = $4 FOR UPDATE`,
+            [staffId, recordDate, input.recordId, normalizeBusinessContext(input.businessContext)]
+        );
     const record = existingResult.rows?.[0] || null;
     if (!record?.clock_in) {
         throw attendanceMutationError(
@@ -1774,6 +1792,7 @@ async function recordAttendanceClockOut(db, input = {}) {
             'Час виходу має бути пізніше за час приходу.', 400);
     }
     const clockOut = clockOutDate.toISOString();
+    assertAttendanceBreakBounds(record.break_intervals, record.clock_in, clockOut);
     const payroll = calculateHrClockOutPayroll(record, {
         clockOut,
         plannedStart,

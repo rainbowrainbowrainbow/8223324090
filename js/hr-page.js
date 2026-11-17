@@ -1734,6 +1734,18 @@ function fmtTimeFromISO(iso) {
     return d.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Kyiv' });
 }
 
+function formatTodayBreakInterval({ startedAt, endedAt }) {
+    const start = new Date(startedAt);
+    const end = new Date(endedAt);
+    if (hrTodayKyivDate(start) === hrTodayKyivDate(end)) {
+        return `${fmtTimeFromISO(start)}–${fmtTimeFromISO(end)}`;
+    }
+    const format = new Intl.DateTimeFormat('uk-UA', {
+        timeZone: 'Europe/Kyiv', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+    });
+    return `${format.format(start)}–${format.format(end)}`;
+}
+
 function fmtMinutes(min) {
     if (!min || min <= 0) return '';
     const h = Math.floor(min / 60);
@@ -2504,6 +2516,8 @@ function filteredTodayItems(items = []) {
 function todayReviewReason(item) {
     const record = item.record;
     if (!record) return '';
+    const lastBreak = record.break_intervals?.at(-1);
+    if (lastBreak && !lastBreak.endedAt && !isTodayItemOnShift(item)) return 'Потрібно звірити завершення перерви';
     if (record.auto_closed || record.status === 'auto_closed') return 'Автоматичне завершення';
     if (record.status === 'manual_review' || record.compensation_manual_review) return 'Потрібне уточнення';
     if (isTodayItemOnShift(item)) return 'Зміна відкрита';
@@ -2947,6 +2961,9 @@ function renderToday(data) {
     const renderStaffRow = item => {
         const rec = item.record;
         const shift = item.shift;
+        const breakIntervals = rec?.break_intervals || [];
+        const lastBreak = breakIntervals.at(-1);
+        const openBreak = lastBreak && !lastBreak.endedAt;
         const onShift = isTodayItemOnShift(item);
         const awaitingDeparture = isTodayItemAwaitingDeparture(item);
         let indicator = 'absent';
@@ -3024,7 +3041,7 @@ function renderToday(data) {
                         return minutes + Math.max(0, segment.overlapMinutes - segment.actualMinutes);
                     }, 0);
                     if (deductedBreak > 0) {
-                        meta += ` · Врахована перерва: ${formatTodayDuration(deductedBreak)} · час не зафіксовано`;
+                        meta += ` · Перерва за чинним розрахунком: ${formatTodayDuration(deductedBreak)}`;
                     }
                 }
                 if (!autoClosed && creditedDuration && creditedDuration !== actualDuration) {
@@ -3044,6 +3061,14 @@ function renderToday(data) {
                 attendanceFacts.push(`<span class="late-badge">⚠ ${escapeHtml(rec.plan_warning.message)}</span>`);
             }
             if (attendanceFacts.length) meta += ` | ${attendanceFacts.join(' · ')}`;
+            const completedBreaks = breakIntervals.filter(interval => interval.startedAt && interval.endedAt);
+            if (completedBreaks.length) {
+                const intervals = completedBreaks.map(formatTodayBreakInterval);
+                meta += ` · Фактичні перерви: ${escapeHtml(intervals.join(', '))}`;
+            }
+            if (openBreak) {
+                meta += onShift ? ' · Перерва триває' : ' · Перерва відкрита. Підтвердьте час її завершення.';
+            }
         }
 
         if (todayFilters.reviewOnly) meta += `${meta ? ' · ' : ''}${todayReviewReason(item)}`;
@@ -3059,7 +3084,9 @@ function renderToday(data) {
             departmentMeta && departmentMeta !== displayGroupLabel ? departmentMeta : ''
         ].filter(Boolean).join(' · ');
 
-        if (recoveryReadOnly || historical) {
+        const canFinishPrevious = historical && !recoveryReadOnly && canManageHrSchedule()
+            && awaitingDeparture && rec?.id && todayClockDateAllowed('out', data.date);
+        if (recoveryReadOnly || (historical && !canFinishPrevious)) {
             disabled = 'disabled aria-disabled="true" title="Режим перегляду"';
             if (btnClass === 'clock-in') btnText = shift ? 'Прихід не зафіксовано' : 'Немає відмітки';
             if (onShift) btnText = `На роботі (з ${fmtTimeFromISO(rec.clock_in)})`;
@@ -3069,6 +3096,9 @@ function renderToday(data) {
         const canCancel = !recoveryReadOnly && !historical && canManageHrSchedule() && onShift && rec.can_cancel_arrival === true;
         const canReview = !recoveryReadOnly && canManageHrSchedule() && rec?.id && rec.clock_in
             && (todayFilters.reviewOnly || (rec.auto_closed && awaitingDeparture));
+        const canManageBreak = !recoveryReadOnly && canManageHrSchedule() && rec?.id && rec.clock_in
+            && rec.record_version && Array.isArray(rec.break_intervals);
+        const canRecordBreakNow = canManageBreak && onShift && (!historical || canFinishPrevious);
         return `<div class="hr-staff-row${arrived ? ' hr-staff-row--arrived' : ''}" data-staff-id="${item.staff_id}" data-attendance-state="${arrived ? 'arrived' : 'pending'}" tabindex="-1" ${recoveryReadOnly || historical ? '' : `oncontextmenu="showContext(event, ${item.staff_id})"`}>
             <div class="hr-staff-indicator ${indicator}"></div>
             <div class="hr-staff-info">
@@ -3082,7 +3112,7 @@ function renderToday(data) {
                 <div class="hr-staff-meta">${roleMeta}${meta ? ' · ' + meta : ''}</div>
             </div>
             <div class="hr-today-clock-actions">
-                ${historical ? '' : `<div class="hr-today-clock-triggers">
+                ${historical && !canFinishPrevious ? '' : `<div class="hr-today-clock-triggers">
                     <button type="button" class="hr-clock-btn ${btnClass}" ${disabled || (pending ? 'disabled' : '')}
                         ${recoveryReadOnly ? '' : `onclick="handleClock(${staffId}, '${awaitingDeparture ? 'out' : 'in'}')"`}
                     >${btnText}</button>
@@ -3092,6 +3122,12 @@ function renderToday(data) {
                         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5h4"/></svg>
                     </button>`}
                 </div>`}
+                ${canRecordBreakNow ? `<button type="button" class="btn-page-secondary hr-today-break-action" ${pending ? 'disabled' : ''}
+                    data-today-break onclick="handleTodayBreak(${staffId}, '${openBreak ? 'finish' : 'start'}')">
+                    ${openBreak ? 'Завершити перерву' : 'Почати перерву'}</button>` : ''}
+                ${canManageBreak && openBreak && !canRecordBreakNow ? `<button type="button"
+                    class="btn-page-secondary hr-today-break-action" data-today-break aria-haspopup="dialog"
+                    ${pending ? 'disabled' : ''} onclick="openTodayBreakConfirmation(${staffId})">Підтвердити завершення перерви</button>` : ''}
                 ${canReview ? `<button type="button" class="btn-page-secondary" onclick="openCorrectionModal(${staffId})">Звірити зміну</button>` : ''}
                 ${canCancel ? `<button type="button" class="hr-today-cancel-arrival" ${pending ? 'disabled' : ''}
                     onclick="handleClock(${staffId}, 'cancel')">Скасувати прихід</button>` : ''}
@@ -3123,7 +3159,8 @@ function focusTodayClockControl(row, previousButton) {
 function openTodayClockTime(staffId, action) {
     const dialog = document.getElementById('hrTodayClockDialog');
     const item = todayData?.data?.find(row => Number(row.staff_id) === staffId);
-    if (todayReviewDate || !dialog || dialog.open || !item || isTodayRecoveryReadOnly() || todayClockPending.has(staffId)) return;
+    if (!dialog || dialog.open || !item || isTodayRecoveryReadOnly() || todayClockPending.has(staffId)
+        || !todayClockDateAllowed(action, todayData.date)) return;
 
     const form = document.getElementById('hrTodayClockForm');
     const time = document.getElementById('hrTodayClockTime');
@@ -3131,12 +3168,15 @@ function openTodayClockTime(staffId, action) {
     const cancel = document.getElementById('hrTodayClockCancel');
     const save = form.querySelector('[type="submit"]');
     const date = todayData.date || hrTodayKyivDate();
+    const actionDate = hrTodayKyivDate();
     const context = teamAccessContext();
     const clockIn = item.record?.clock_in;
     const isExit = action === 'out';
     const trigger = document.querySelector(`#todayList [data-staff-id="${staffId}"] .hr-today-pick-time`);
     document.getElementById('hrTodayClockTitle').textContent = isExit ? 'Завершити зміну' : 'Почати зміну';
-    document.getElementById('hrTodayClockStaff').textContent = item.staff_name;
+    document.getElementById('hrTodayClockStaff').textContent = todayReviewDate
+        ? `${item.staff_name} · зміна за ${date} · відмітка за ${actionDate}`
+        : item.staff_name;
     document.getElementById('hrTodayClockSettlement').hidden = !isExit;
     time.value = fmtTimeFromISO(new Date());
     error.hidden = true;
@@ -3159,7 +3199,8 @@ function openTodayClockTime(staffId, action) {
         if (save.disabled) return;
         const current = todayData?.data?.find(row => Number(row.staff_id) === staffId);
         if (!current || context !== teamAccessContext() || date !== (todayData.date || hrTodayKyivDate())
-            || date !== hrTodayKyivDate() || current.record?.clock_in !== clockIn || isTodayRecoveryReadOnly()
+            || actionDate !== hrTodayKyivDate() || !todayClockDateAllowed(action, date, actionDate)
+            || current.record?.id !== item.record?.id || current.record?.clock_in !== clockIn || isTodayRecoveryReadOnly()
             || (isExit ? !isTodayItemAwaitingDeparture(current) : Boolean(current.record?.clock_out))) {
             showError('Відмітка або дата змінилася. Закрийте вікно й відкрийте його знову.');
             return;
@@ -3176,8 +3217,115 @@ function openTodayClockTime(staffId, action) {
     dialog.showModal();
 }
 
+function openTodayBreakConfirmation(staffId) {
+    const dialog = document.getElementById('hrTodayBreakDialog');
+    const item = todayData?.data?.find(row => Number(row.staff_id) === staffId);
+    if (!dialog || dialog.open || !item?.record?.record_version || isTodayRecoveryReadOnly() || !canManageHrSchedule()) return;
+    const form = dialog.querySelector('form');
+    const offset = form.querySelector('[data-break-offset]');
+    const error = document.getElementById('hrTodayBreakError');
+    const cancel = form.querySelector('[type="button"]');
+    const save = form.querySelector('[type="submit"]');
+    const trigger = document.activeElement;
+    const context = teamAccessContext();
+    const date = todayData.date;
+    const rowSelector = `#todayList [data-staff-id="${staffId}"]`;
+    form.reset();
+    offset.hidden = error.hidden = true;
+    document.getElementById('hrTodayBreakStaff').textContent = item.staff_name;
+    const showError = message => {
+        error.textContent = message;
+        error.hidden = false;
+    };
+    cancel.onclick = () => dialog.close();
+    dialog.oncancel = event => {
+        if (save.disabled) event.preventDefault();
+    };
+    dialog.onclose = () => {
+        if (trigger?.isConnected) return;
+        const row = document.querySelector(rowSelector);
+        (row?.querySelector('[data-today-break]') || row)?.focus({ preventScroll: true });
+    };
+    form.onsubmit = async event => {
+        event.preventDefault();
+        if (save.disabled) return;
+        const current = todayData?.data?.find(row => Number(row.staff_id) === staffId)?.record;
+        if (context !== teamAccessContext() || date !== todayData?.date
+            || current?.id !== item.record.id || current?.record_version !== item.record.record_version
+            || isTodayRecoveryReadOnly() || !canManageHrSchedule()) {
+            showError('Запис змінився. Закрийте вікно й відкрийте його знову.');
+            return;
+        }
+        error.hidden = true;
+        save.disabled = cancel.disabled = true;
+        try {
+            if (await handleTodayBreak(staffId, 'confirm', form, showError)) dialog.close();
+        } finally {
+            save.disabled = cancel.disabled = false;
+        }
+    };
+    dialog.showModal();
+}
+
+async function handleTodayBreak(staffId, action, form = null, showError = message => showNotification(message, 'error')) {
+    if (isTodayRecoveryReadOnly() || !canManageHrSchedule() || todayClockPending.has(staffId)) return;
+    const record = todayData?.data?.find(item => Number(item.staff_id) === staffId)?.record;
+    if (!record?.id || !record.record_version) return;
+    const context = teamAccessContext();
+    const date = todayData.date;
+    const selectedRow = `#todayList [data-staff-id="${staffId}"]`;
+    const button = document.activeElement;
+    const body = { break_action: action, record_version: record.record_version };
+    if (form) {
+        body.break_ended_at_local = form.elements.endedAt.value;
+        if (!form.querySelector('[data-break-offset]').hidden) body.break_offset = form.elements.offset.value;
+        body.notes = form.elements.reason.value;
+    }
+    todayClockPending.add(staffId);
+    document.querySelectorAll(`${selectedRow} .hr-today-clock-actions button`).forEach(control => {
+        if (!control.disabled) {
+            control.disabled = true;
+            control.dataset.breakPending = 'true';
+        }
+    });
+    try {
+        const result = await hrFetch(`/records/${record.id}/correct`, { method: 'PUT', body: JSON.stringify(body) });
+        if (context !== teamAccessContext() || date !== todayData?.date) return;
+        if (!result?.success) {
+            showError(result?.error || 'Не вдалося зберегти перерву.');
+            if (form && result?.code === 'ATTENDANCE_BREAK_TIME_AMBIGUOUS') {
+                form.querySelector('[data-break-offset]').hidden = false;
+                form.elements.offset.focus();
+            }
+            if (result?.code === 'ATTENDANCE_BREAK_STALE') await loadToday({ keepOnError: true });
+            return;
+        }
+        todayRequestSeq++;
+        todayData = { ...todayData, data: todayData.data.map(item => Number(item.staff_id) === staffId
+            ? { ...item, record: { ...item.record, ...result.data, can_cancel_arrival: false } } : item) };
+        todayClockPending.delete(staffId);
+        renderToday(todayData);
+        if (!button?.isConnected) {
+            const row = document.querySelector(selectedRow);
+            (row?.querySelector('[data-today-break]') || row)?.focus();
+        }
+        showNotification(action === 'start' ? 'Перерву почато' : 'Завершення перерви збережено', 'success');
+        return true;
+    } catch (error) {
+        console.warn('HR break request failed', error);
+        showError('Не вдалося зберегти перерву.');
+    } finally {
+        todayClockPending.delete(staffId);
+        document.querySelectorAll(`${selectedRow} [data-break-pending]`).forEach(control => {
+            control.disabled = false;
+            delete control.dataset.breakPending;
+        });
+    }
+}
+
 async function handleClock(staffId, action, manual = null) {
-    if (todayReviewDate || isTodayRecoveryReadOnly() || todayClockPending.has(staffId)) return;
+    if (isTodayRecoveryReadOnly() || todayClockPending.has(staffId)
+        || !todayClockDateAllowed(action, todayData?.date)) return;
     const todayItem = todayData?.data?.find(item => Number(item.staff_id) === Number(staffId));
     if (!todayItem) return;
     const onShift = isTodayItemAwaitingDeparture(todayItem);
@@ -3190,6 +3338,7 @@ async function handleClock(staffId, action, manual = null) {
     }
     const context = teamAccessContext();
     const date = todayData.date;
+    const actionDate = hrTodayKyivDate();
     const name = todayItem.staff_name;
     const clockIn = todayItem.record?.clock_in;
     const rowSelector = `#todayList [data-staff-id="${staffId}"]`;
@@ -3198,7 +3347,7 @@ async function handleClock(staffId, action, manual = null) {
     todayClockPending.add(staffId);
     try {
         const body = { staff_id: staffId };
-        if (action !== 'cancel' && date) body.date = date;
+        if (action !== 'cancel' && date) body.date = todayReviewDate ? actionDate : date;
         if (manual) body.time = manual.time;
         let endpoint = '/clock-in';
         if (action === 'out') {
@@ -3207,6 +3356,7 @@ async function handleClock(staffId, action, manual = null) {
             endpoint = '/clock-out';
             body.settlement_mode = 'scheduled_shift';
             body.clock_in = clockIn;
+            if (todayReviewDate) body.record_id = todayItem.record.id;
         } else if (action === 'cancel') {
             const message = `Скасувати прихід для ${name}?\nПрацівник більше не відображатиметься на зміні. Прихід можна буде відмітити знову.`;
             if (!await confirmModal(message, { type: 'warning', okText: 'Скасувати прихід', cancelText: 'Залишити' })) return;
@@ -3214,7 +3364,8 @@ async function handleClock(staffId, action, manual = null) {
             body.record_id = todayItem.record.id;
             body.clock_in = clockIn;
         }
-        if (context !== teamAccessContext() || date !== todayData?.date || isTodayRecoveryReadOnly()) return;
+        if (context !== teamAccessContext() || date !== todayData?.date || actionDate !== hrTodayKyivDate()
+            || isTodayRecoveryReadOnly()) return;
         document.querySelectorAll(`${rowSelector} .hr-today-clock-actions button`)
             .forEach(button => { button.disabled = true; });
         const result = await hrFetch(endpoint, { method: 'POST', body: JSON.stringify(body) });
@@ -3250,6 +3401,14 @@ async function handleClock(staffId, action, manual = null) {
     }
     if (saved) await loadToday({ keepOnError: true });
     return saved;
+}
+
+function todayClockDateAllowed(action, listDate, currentDate = hrTodayKyivDate()) {
+    if (!todayReviewDate) return true;
+    if (action !== 'out' || !canManageHrSchedule() || !listDate) return false;
+    const previous = new Date(`${currentDate}T00:00:00Z`);
+    previous.setUTCDate(previous.getUTCDate() - 1);
+    return listDate === previous.toISOString().slice(0, 10);
 }
 
 function hrTodayKyivDate(now = new Date()) {
@@ -3581,7 +3740,8 @@ function legacyHrShiftSegmentLabel(segment = {}) {
     const start = fmtTime(segment.shiftStart || segment.shift_start || segment.planned_start);
     const end = fmtTime(segment.shiftEnd || segment.shift_end || segment.planned_end);
     const profession = professionTitle(segment.professionKey || segment.profession_key) || 'Професія не задана';
-    return `${start}–${end} · ${profession}`;
+    const nextDay = ' (+1 день)';
+    return `${start}${(segment.startDayOffset ?? segment.start_day_offset) === 1 ? nextDay : ''}–${end}${(segment.endDayOffset ?? segment.end_day_offset) === 1 ? nextDay : ''} · ${profession}`;
 }
 
 function legacyHrShiftMutationErrorMessage(result = {}, fallback = 'Не вдалося зберегти зміну') {
@@ -3592,7 +3752,7 @@ function legacyHrShiftMutationErrorMessage(result = {}, fallback = 'Не вда�
         return 'План дня вже змінив інший менеджер. Відкрийте його у «Графіку команди» та оновіть дані.';
     }
     if (result?.code === 'HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT') {
-        return 'Нічний часовий блок без day offsets можна зберігати лише як єдиний блок дня';
+        return 'Для нічного плану з кількома блоками явно оберіть день кожного блоку.';
     }
     if (result?.code === 'HR_SHIFT_SEGMENT_BREAK_EXCEEDS_DURATION') {
         return 'Перерва має бути коротшою за тривалість сегмента';

@@ -232,7 +232,7 @@ test('does not infer a separate post-midnight segment without a day offset', () 
     );
 });
 
-test('rejects every multi-segment day containing an overnight block until day offsets exist', () => {
+test('rejects a multi-segment night plan with omitted day offsets', () => {
     assert.throws(
         () => normalize({
             primaryProfessionKey: 'reception',
@@ -244,6 +244,28 @@ test('rejects every multi-segment day containing an overnight block until day of
         error => error.code === 'HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT'
             && error.details.segmentCount === 2
     );
+});
+
+test('sorts explicit night segments on a continuous timeline and rejects overlap after midnight', () => {
+    const evening = segment('manager', '22:00', '01:00', { startDayOffset: 0, endDayOffset: 1 });
+    const morning = segment('reception', '01:00', '03:00', { startDayOffset: 1, endDayOffset: 1 });
+    const plan = normalize({ primaryProfessionKey: 'manager', segments: [morning, evening] });
+    assert.equal(plan.plannedStart, '22:00');
+    assert.equal(plan.plannedEnd, '03:00');
+    assert.equal(plan.plannedMinutes, 300);
+    assert.deepEqual(plan.segments.map(item => [item.startDayOffset, item.endDayOffset]), [[0, 1], [1, 1]]);
+    assert.throws(() => normalize({
+        primaryProfessionKey: 'manager',
+        segments: [evening, { ...morning, shiftStart: '00:30' }]
+    }), { code: 'HR_SHIFT_PLAN_SEGMENTS_OVERLAP' });
+});
+
+test('nullable offsets from legacy schedule JSON leave the single night block unchanged', () => {
+    const plan = normalize({ primaryProfessionKey: 'manager', segments: [
+        segment('manager', '22:00', '02:00', { startDayOffset: null, endDayOffset: null })
+    ] });
+    assert.equal(plan.plannedMinutes, 240);
+    assert.equal(plan.segments[0].startDayOffset, undefined);
 });
 
 test('additional simultaneous roles do not add hours and cannot duplicate the main role', () => {
@@ -1353,7 +1375,7 @@ test('persists a mixed work day and returns the same mode on each saved segment'
     ]);
     const writes = state.calls.filter(call => /^UPDATE hr_shift_segments SET/.test(call.text));
     assert.equal(writes.length, 1);
-    assert.deepEqual(writes[0].params.slice(7), [72, 42, 'freelance']);
+    assert.deepEqual(writes[0].params.slice(7), [72, 42, 'freelance', null, null]);
 });
 
 test('older schedule updates preserve an identified freelance block and reject implicit removal', async () => {

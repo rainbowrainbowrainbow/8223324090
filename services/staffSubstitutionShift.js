@@ -11,8 +11,9 @@ const { birthdaySlotsForEvents, eventLineIds } = require('./afishaBirthdaySlots'
 const { addScheduleCalendarDays, normalizeScheduleDate, upsertScheduleMirrorFromPlan, reconcileAnimatorRosterDates } = require('./staffScheduleMutations');
 
 function segmentTerms(segment) {
-    const { professionKey, shiftStart, shiftEnd, breakMinutes, note, additionalRoles } = segment;
-    return { professionKey, shiftStart, shiftEnd, breakMinutes, note, additionalRoles };
+    const { professionKey, shiftStart, shiftEnd, breakMinutes, note, additionalRoles, startDayOffset, endDayOffset } = segment;
+    return { professionKey, shiftStart, shiftEnd, breakMinutes, note, additionalRoles,
+        ...(startDayOffset !== undefined ? { startDayOffset, endDayOffset } : {}) };
 }
 
 function planTerms(plan) {
@@ -22,6 +23,9 @@ function planTerms(plan) {
 
 function sameSegmentScope(left, right) {
     return left.shiftStart === right.shiftStart && left.shiftEnd === right.shiftEnd
+        && (left.startDayOffset ?? 0) === (right.startDayOffset ?? 0)
+        && (left.endDayOffset ?? Number(left.shiftEnd < left.shiftStart))
+            === (right.endDayOffset ?? Number(right.shiftEnd < right.shiftStart))
         && left.professionKey === right.professionKey;
 }
 
@@ -200,6 +204,11 @@ async function loadPartialShiftScope(db, input, current) {
     const { original, replacement } = await loadPlans(db, input);
     const scope = { type: 'hr_shift', partial: true, blockers: [] };
     const block = (code, message) => scope.blockers.push({ code, message });
+    if ([original.plan, replacement?.plan].some(plan => plan?.segments.some(segment => segment.endDayOffset === 1))) {
+        block('SUBSTITUTION_EXPLICIT_NIGHT_PLAN_REQUIRES_REVIEW',
+            'Для плану з явно заданими нічними блоками часткову підміну потрібно узгодити окремо.');
+        return scope;
+    }
     const start = input.startsAt && contract.kyivParts(input.startsAt);
     const end = input.endsAt && contract.kyivParts(input.endsAt);
     const target = start && end && original.plan.segments.find(segment => {

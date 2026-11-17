@@ -3258,8 +3258,10 @@ body.dark-mode #tab-kpi .hr-payroll-detail-toggle,
 .hr-today-clock-dialog header p { margin-block-start: 4px; }
 .hr-today-clock-dialog :is(header p, small, #hrTodayClockSettlement) { color: var(--gray-600); }
 .hr-today-clock-field { display: grid; gap: 6px; }
+.hr-today-clock-field[hidden] { display: none; }
 .hr-today-clock-field span { display: flex; justify-content: space-between; gap: 8px; }
-.hr-today-clock-field input {
+.hr-today-clock-field input,
+.hr-today-clock-field select {
     box-sizing: border-box;
     inline-size: 100%;
     min-block-size: 44px;
@@ -3272,7 +3274,7 @@ body.dark-mode #tab-kpi .hr-payroll-detail-toggle,
     color: inherit;
 }
 
-#hrTodayClockError { color: #b91c1c; }
+#hrTodayClockError, #hrTodayBreakError { color: #b91c1c; }
 .hr-today-clock-footer { display: flex; justify-content: flex-end; gap: 8px; }
 
 body.dark-mode .hr-today-pick-time {
@@ -3281,9 +3283,9 @@ body.dark-mode .hr-today-pick-time {
 }
 body.dark-mode .hr-today-pick-time:hover:not(:disabled) { background: #3d3d5c; }
 body.dark-mode .hr-today-clock-dialog { background: #292b46; border-color: #515575; color: #f8fafc; }
-body.dark-mode .hr-today-clock-field input { background: #202237; border-color: #616986; }
+body.dark-mode .hr-today-clock-field :is(input, select) { background: #202237; border-color: #616986; }
 body.dark-mode .hr-today-clock-dialog :is(header p, small, #hrTodayClockSettlement) { color: #cbd5e1; }
-body.dark-mode #hrTodayClockError { color: #fecaca; }
+body.dark-mode :is(#hrTodayClockError, #hrTodayBreakError) { color: #fecaca; }
 
 @media (pointer: coarse), (max-width: 600px) {
     #tab-today .hr-today-clock-triggers button,
@@ -9457,18 +9459,19 @@ body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
 }
 
 @media (max-width: 480px) {
-    #tab-today .hr-staff-row:has(.hr-today-cancel-arrival) {
+    #tab-today .hr-staff-row:has(.hr-today-cancel-arrival, .hr-today-break-action) {
         flex-wrap: wrap;
     }
 
-    #tab-today .hr-staff-row:has(.hr-today-cancel-arrival) .hr-staff-info {
+    #tab-today .hr-staff-row:has(.hr-today-cancel-arrival, .hr-today-break-action) .hr-staff-info {
         flex-basis: calc(100% - 24px);
     }
 
-    .hr-today-clock-actions:has(.hr-today-cancel-arrival) {
+    .hr-today-clock-actions:has(.hr-today-cancel-arrival, .hr-today-break-action) {
         flex-direction: row;
         flex-wrap: wrap;
         margin-inline-start: 18px;
+        max-width: calc(100% - 18px);
     }
 
     #tab-salary .hr-payroll-group-header,

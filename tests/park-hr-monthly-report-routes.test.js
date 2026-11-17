@@ -56,7 +56,7 @@ async function withHrRouter(run) {
             'staffLifecycle', 'hrVacancyPlatformFormatter', 'hrPayrollPeriod', 'payroll',
             'payrollSettlement', 'hrPayrollSchemes', 'hrPayrollProfiles', 'liveMultiSegmentQa',
             'hrStaffDocuments', 'hrStaffMedicalBook', 'hrStaffResources', 'hrAttendanceDocuments',
-            'hrAttendanceDocumentsPdf', 'hrAttendanceDocumentAutomation'
+            'hrAttendanceDocumentsPdf'
         ]) {
             installMock(`../services/${name}`, new Proxy({}, { get(_target, key) {
                 return () => { sideEffects.push(`${name}.${String(key)}`); throw new Error(`Unexpected ${name} service`); };

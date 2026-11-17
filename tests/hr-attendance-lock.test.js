@@ -211,7 +211,8 @@ test('manual and QA attendance routes lock before canonical reads or writes and 
 
     assertInOrder(routeBlock(source, 'post', '/clock-out'), [
         /await client\.query\('BEGIN'\)/,
-        /await lockAttendanceWriteTarget\(client, \{ staffId, date: today \}\)/,
+        /await assertPayrollPeriodOpen\(month, client\)/,
+        /await lockAttendanceWriteTarget\(client, \{ staffId, date: recordDate \}\)/,
         /recordAttendanceClockOut\(client/,
         /await client\.query\('COMMIT'\)/
     ], 'POST /api/hr/clock-out');

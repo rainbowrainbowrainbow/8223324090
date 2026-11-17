@@ -169,6 +169,12 @@ describe('API auth boundary middleware', () => {
         assert.equal(isPublicApiRequest({ method: 'POST', path: '/omni/webhook/unknown' }), false);
     });
 
+    it('keeps retired attendance upload paths out of the API grant allowlist', () => {
+        assert.equal(isPublicApiRequest({ method: 'GET', path: '/attendance-upload/status' }), false);
+        assert.equal(isPublicApiRequest({ method: 'POST', path: '/attendance-upload/photo' }), false);
+        assert.equal(isPublicApiRequest({ method: 'POST', path: '/attendance-upload/recover' }), false);
+    });
+
     it('allows the landing demo request without JWT', async () => {
         const res = await request(baseUrl, 'POST', '/api/landing/demo-request', {
             name: 'Boundary Test',

@@ -269,6 +269,9 @@ class LifecyclePool {
             return { rows: [], rowCount: 0 };
         }
 
+        if (text.startsWith('SELECT 1 FROM telegram_crm_assignment_outbox')) {
+            return { rows: [], rowCount: 0 };
+        }
         throw new Error(`Unexpected lifecycle query: ${text}`);
     }
 }

@@ -294,8 +294,10 @@ async function runActor(browser, pool, actor, existingAccountId) {
             await passwordInput.fill(initialPassword);
             await page.locator('#accountOnboardingPasswordToggle').click();
             assert.equal(await passwordInput.getAttribute('type'), 'text');
+            assert.equal(await page.locator('#accountOnboardingPasswordToggle').getAttribute('aria-pressed'), 'true');
             await page.locator('#accountOnboardingPasswordToggle').click();
             assert.equal(await passwordInput.getAttribute('type'), 'password');
+            assert.equal(await page.locator('#accountOnboardingPasswordGenerate').count(), 0);
             assert.equal(await page.locator('#accountOnboardingStaffId').inputValue(), String(staff.id));
             assert.equal(await page.locator('[name="accountOnboardingStaffMode"]').count(), 0);
             const workBefore = (await pool.query(`SELECT role_type, secondary_professions, company_structure_node_id, hourly_rate

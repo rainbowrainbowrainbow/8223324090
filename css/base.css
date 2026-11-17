@@ -1073,3 +1073,48 @@ body.dark-mode .staff-crm-badge.has-account:hover {
 }
 body.dark-mode .staff-crm-badge.no-account { background: rgba(255,255,255,0.05); color: var(--gray-500); border-color: rgba(255,255,255,0.08); }
 
+.password-visibility-field {
+    position: relative;
+}
+
+.password-visibility-field > input[id] {
+    width: 100%;
+    min-height: 44px;
+    padding-inline-end: 50px;
+}
+
+.password-visibility-field > input::-ms-reveal {
+    display: none;
+}
+
+.password-visibility-toggle {
+    position: absolute;
+    inset-block-start: 50%;
+    inset-inline-end: 2px;
+    transform: translateY(-50%);
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+}
+
+.password-visibility-toggle:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: -4px;
+}
+
+.password-visibility-toggle svg {
+    width: 20px;
+    height: 20px;
+}
+
+.password-visibility-toggle[aria-pressed="false"] .password-eye-closed,
+.password-visibility-toggle[aria-pressed="true"] .password-eye-open {
+    display: none;
+}

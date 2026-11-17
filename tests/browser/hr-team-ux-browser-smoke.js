@@ -184,6 +184,22 @@ async function checkPassword(page) {
     assert.equal(await page.locator('[data-fm-password-regenerate]').count(), 0);
     await page.locator('#fm_newPassword').fill('');
     await page.locator('.confirm-cancel').click();
+    await page.locator('#fm_newPassword').waitFor({ state: 'detached' });
+    await page.evaluate(() => {
+        void formModal('Початковий пароль', [
+            { key: 'password', label: 'Пароль', type: 'password', initialPasswordControls: true, defaultValue: 'SyntheticInitial123!' }
+        ]);
+    });
+    const initial = page.locator('#fm_password');
+    const initialToggle = page.getByRole('button', { name: 'Показати пароль', exact: true });
+    assert.equal(await initial.getAttribute('autocomplete'), 'new-password');
+    await initialToggle.click();
+    assert.equal(await initial.getAttribute('type'), 'text');
+    await initialToggle.click();
+    assert.equal(await initial.getAttribute('type'), 'password');
+    assert.equal(await initial.inputValue(), 'SyntheticInitial123!');
+    assert.equal(await page.locator('[data-fm-password-regenerate]').count(), 0);
+    await page.locator('.confirm-cancel').click();
 }
 
 async function run() {

@@ -581,6 +581,13 @@ function bindSmartCredentialPaste() {
 
 function initAuthListeners() {
     bindSmartCredentialPaste();
+    document.getElementById('loginPasswordToggle')?.addEventListener('click', event => {
+        const password = document.getElementById('password');
+        if (!password) return;
+        const visible = password.type === 'password';
+        password.type = visible ? 'text' : 'password';
+        event.currentTarget.setAttribute('aria-pressed', String(visible));
+    });
     let loginSubmitInFlight = false;
     document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
         e.preventDefault();

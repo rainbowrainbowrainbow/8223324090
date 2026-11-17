@@ -166,6 +166,7 @@ test('recovered receipt distinguishes unavailable details from empty data and pr
     const created = renderReceiptFixture({ receipt: { ...receipt, staff: { id: 31, created: true }, professions: [], conditions: [], access: { role: 'animator' } } });
     assert.match(created.html, /Співробітника й CRM-акаунт створено/);
     assert.match(created.html, /Професії не призначено/);
+    assert.doesNotMatch(created.html, /data-account-onboarding-open-(?:staff|documents|resources|checklist)/);
     assert.match(created.html, /Не змінювалися/);
     assert.match(created.html, /Аніматор/);
 });

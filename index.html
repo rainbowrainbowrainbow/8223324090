@@ -66,7 +66,10 @@
                 </div>
                 <div class="form-group">
                     <label for="password">Пароль</label>
-                    <input type="password" id="password" placeholder="Введіть пароль" required>
+                    <div class="password-visibility-field">
+                        <input type="password" id="password" autocomplete="current-password" placeholder="Введіть пароль" required>
+                        <button type="button" id="loginPasswordToggle" class="password-visibility-toggle" aria-label="Показати пароль" aria-pressed="false" aria-controls="password"><svg class="password-eye-open" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6Z"/><circle cx="12" cy="12" r="2.5"/></svg><svg class="password-eye-closed" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18M10 6.2a13 13 0 0 1 2-.2c6.4 0 10 6 10 6a16 16 0 0 1-2.2 2.7M6.5 7.5A16 16 0 0 0 2 12s3.6 6 10 6c1.7 0 3.2-.4 4.5-1"/></svg></button>
+                    </div>
                 </div>
                 <button type="submit" class="btn-login">Увійти →</button>
                 <p id="loginError" class="error-message"></p>

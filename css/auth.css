@@ -292,6 +292,10 @@
     color: #666;
 }
 
+.login-form .password-visibility-toggle {
+    color: #b5b5c3;
+}
+
 .login-form input:hover {
     border-color: #555;
 }

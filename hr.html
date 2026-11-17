@@ -423,12 +423,12 @@
                                 <div id="accountOnboardingPersonalFields" class="hr-account-form-grid is-wide"></div>
                                 <label for="accountOnboardingUsername"><span>Логін для входу *</span><input id="accountOnboardingUsername" name="username" maxlength="50" pattern="[a-zA-Z0-9._-]{3,50}" autocomplete="off" required><small>Після створення логін не змінюється.</small></label>
                                 <div class="is-wide">
-                                    <label for="accountOnboardingPassword"><span>Початковий пароль *</span><input id="accountOnboardingPassword" type="password" autocomplete="new-password" minlength="12" maxlength="72" aria-describedby="accountOnboardingPasswordHint" required></label>
-                                    <small id="accountOnboardingPasswordHint">Можна відредагувати. Від 12 символів, без крайніх пробілів, крапки з комою та переносів рядка.</small>
-                                    <div class="hr-account-choice-row">
-                                        <button type="button" id="accountOnboardingPasswordToggle" class="hr-account-toggle" aria-controls="accountOnboardingPassword" aria-pressed="false">Показати пароль</button>
-                                        <button type="button" id="accountOnboardingPasswordGenerate" class="hr-account-toggle">Згенерувати інший</button>
+                                    <label for="accountOnboardingPassword"><span>Початковий пароль *</span></label>
+                                    <div class="password-visibility-field">
+                                        <input id="accountOnboardingPassword" type="password" autocomplete="new-password" minlength="12" maxlength="72" aria-describedby="accountOnboardingPasswordHint" required>
+                                        <button type="button" id="accountOnboardingPasswordToggle" class="password-visibility-toggle" aria-label="Показати пароль" aria-controls="accountOnboardingPassword" aria-pressed="false"><svg class="password-eye-open" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6Z"/><circle cx="12" cy="12" r="2.5"/></svg><svg class="password-eye-closed" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18M10 6.2a13 13 0 0 1 2-.2c6.4 0 10 6 10 6a16 16 0 0 1-2.2 2.7M6.5 7.5A16 16 0 0 0 2 12s3.6 6 10 6c1.7 0 3.2-.4 4.5-1"/></svg></button>
                                     </div>
+                                    <small id="accountOnboardingPasswordHint">Можна відредагувати. Від 12 символів, без крайніх пробілів, крапки з комою та переносів рядка.</small>
                                 </div>
                             </div>
                         <div id="accountOnboardingExistingSetup" hidden><label class="hr-account-option"><input id="accountOnboardingEditSetup" type="checkbox"> Змінити професії та структуру цієї картки</label><div id="accountOnboardingExistingProfessionFields" hidden><div id="accountOnboardingProfessionSetup" class="hr-account-onboarding-panel">

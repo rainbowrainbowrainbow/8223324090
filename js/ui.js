@@ -2110,10 +2110,17 @@ function formModal(title, fields, options = {}) {
             }
             const inputType = f.type || 'text';
             const initialPassword = inputType === 'password' && f.initialPasswordControls === true;
-            const passwordControls = inputType === 'password' && (initialPassword || f.passwordToggle === true)
-                ? `<div class="confirm-actions"><button type="button" class="confirm-btn" data-fm-password-toggle aria-controls="${id}" aria-pressed="false">👁 Показати пароль</button>${initialPassword ? '<button type="button" class="confirm-btn" data-fm-password-regenerate>Згенерувати інший</button>' : ''}</div>`
+            const passwordControls = inputType === 'password' && f.passwordToggle === true && !initialPassword
+                ? `<div class="confirm-actions"><button type="button" class="confirm-btn" data-fm-password-toggle aria-controls="${id}" aria-pressed="false">👁 Показати пароль</button></div>`
                 : '';
-            return `<div data-fm-field-wrap="${escAttr(f.key)}" style="margin-bottom:10px;">${label}<input type="${inputType}" id="${id}" data-key="${f.key}" class="fm-field" value="${defVal}" placeholder="${ph}" style="${baseStyle}"${initialPassword ? ' autocomplete="new-password"' : ''}>${hint}${passwordControls}</div>`;
+            const inputStyle = initialPassword ? baseStyle + 'padding-inline-end:50px;' : baseStyle;
+            const input = `<input type="${inputType}" id="${id}" data-key="${f.key}" class="fm-field" value="${defVal}" placeholder="${ph}" style="${inputStyle}"${initialPassword ? ' autocomplete="new-password"' : ''}>`;
+            const field = initialPassword
+                ? `<div class="password-visibility-field">${input}<button type="button" class="password-visibility-toggle" data-fm-password-toggle aria-label="Показати пароль" aria-controls="${id}" aria-pressed="false">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6Z"/><circle cx="12" cy="12" r="2.5"/><path class="password-eye-closed" d="M3 3l18 18"/></svg>
+                </button></div>`
+                : input;
+            return `<div data-fm-field-wrap="${escAttr(f.key)}" style="margin-bottom:10px;">${label}${field}${hint}${passwordControls}</div>`;
         }).join('');
 
         const overlay = document.createElement('div');
@@ -2287,15 +2294,10 @@ function formModal(title, fields, options = {}) {
             button.addEventListener('click', () => {
                 const visible = input.type === 'password';
                 input.type = visible ? 'text' : 'password';
-                button.textContent = visible ? 'Приховати пароль' : '👁 Показати пароль';
+                if (!button.classList.contains('password-visibility-toggle')) {
+                    button.textContent = visible ? 'Приховати пароль' : '👁 Показати пароль';
+                }
                 button.setAttribute('aria-pressed', String(visible));
-            });
-        });
-        overlay.querySelectorAll('[data-fm-password-regenerate]').forEach(button => {
-            const input = button.closest('[data-fm-field-wrap]').querySelector('input.fm-field');
-            button.addEventListener('click', () => {
-                input.value = generateInitialAccountPassword();
-                input.dispatchEvent(new Event('input', { bubbles: true }));
             });
         });
 

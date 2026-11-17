@@ -47,6 +47,20 @@ const { chromium } = require(path.join(path.dirname(entry), 'playwright'));
       await page.mouse.move(width - 1, height - 1);
       await page.screenshot({ path: path.join(out, `login-${width}-idle.png`) });
       const before = report.blockedWrites;
+      if (!live) {
+        const password = page.locator('#password');
+        const toggle = page.getByRole('button', { name: 'Показати пароль' });
+        await password.fill('SyntheticToggle123!');
+        await toggle.focus();
+        await page.keyboard.press('Space');
+        assert.equal(await password.getAttribute('type'), 'text');
+        assert.equal(await toggle.getAttribute('aria-pressed'), 'true');
+        await toggle.click();
+        assert.equal(await password.getAttribute('type'), 'password');
+        assert.equal(await password.inputValue(), 'SyntheticToggle123!');
+        await password.fill('');
+        assert.equal(report.blockedWrites, before, 'password eye must not submit login');
+      }
       await egg.hover();
       await page.waitForFunction(() => getComputedStyle(document.querySelector('.login-signal-reply')).opacity === '1');
       assert.notEqual(await egg.evaluate(el => getComputedStyle(el, '::before').animationName), 'none');

@@ -10001,7 +10001,6 @@ function renderAccountOnboardingReceipt(response) {
     accountOnboardingState.receipt = receipt;
     accountOnboardingState.credential = credential;
     const staffId = Number(receipt.staff?.id || response?.staff?.id || 0);
-    const professionKey = receipt.professions?.find(item => item.isPrimary)?.key || accountOnboardingState.payload?.professions?.find(item => item.isPrimary)?.key || '';
     const warnings = Array.isArray(receipt.warnings) ? receipt.warnings : [];
     const accessState = response?.accessState || receipt.access?.accessState || 'unknown';
     const businessAccessReady = typeof response?.businessAccessReady === 'boolean'
@@ -10069,7 +10068,7 @@ function renderAccountOnboardingReceipt(response) {
         ['Ставка / типовий час', conditionsSummary],
         ['Роль у CRM', roleSummary],
         ['Вибраний бізнес', businessLabel]
-    ].map(([label, value]) => `<div class="hr-account-detail-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || 'Не задано')}</strong></div>`).join('')}</div>${credential && canShare ? `<div class="hr-account-credential"><strong>Тимчасовий пароль, показується один раз</strong><code>Логін: ${escapeHtml(credential.username || '')}</code><code>Тимчасовий пароль: ${escapeHtml(credential.password || '')}</code></div>` : ''}${warnings.length ? `<div class="hr-account-receipt-warnings"><strong>Створено з попередженнями:</strong><ul>${warnings.map(warning => `<li>${escapeHtml(warning.message || warning.code || '')}</li>`).join('')}</ul></div>` : ''}<div class="hr-account-detail-actions">${staffId ? `<button type="button" class="hr-account-toggle" data-account-onboarding-open-staff="${staffId}">Відкрити картку співробітника</button><button type="button" class="hr-account-toggle" data-account-onboarding-open-documents="${staffId}">Додати документи</button><button type="button" class="hr-account-toggle" data-account-onboarding-open-resources="${staffId}">Видати ресурси</button>` : ''}${professionKey ? `<button type="button" class="hr-account-toggle" data-account-onboarding-open-checklist="${escapeHtml(professionKey)}">Відкрити навчання</button>` : ''}<button type="button" class="hr-account-primary" data-account-onboarding-finish>Готово</button></div>`;
+    ].map(([label, value]) => `<div class="hr-account-detail-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || 'Не задано')}</strong></div>`).join('')}</div>${credential && canShare ? `<div class="hr-account-credential"><strong>Тимчасовий пароль, показується один раз</strong><code>Логін: ${escapeHtml(credential.username || '')}</code><code>Тимчасовий пароль: ${escapeHtml(credential.password || '')}</code></div>` : ''}${warnings.length ? `<div class="hr-account-receipt-warnings"><strong>Створено з попередженнями:</strong><ul>${warnings.map(warning => `<li>${escapeHtml(warning.message || warning.code || '')}</li>`).join('')}</ul></div>` : ''}<div class="hr-account-detail-actions"><button type="button" class="hr-account-primary" data-account-onboarding-finish>Готово</button></div>`;
     root.classList.remove('hidden');
     accountOnboardingEl('accountOnboardingForm')?.classList.add('hidden');
     accountOnboardingEl('accountOnboardingActions')?.classList.add('hidden');
@@ -10143,7 +10142,6 @@ function closeAccountOnboardingWizard({ force = false } = {}) {
     accountOnboardingEl('accountOnboardingPassword').type = 'password';
     const passwordToggle = accountOnboardingEl('accountOnboardingPasswordToggle');
     passwordToggle.setAttribute('aria-pressed', 'false');
-    passwordToggle.textContent = 'Показати пароль';
     if (accountOnboardingEl('accountOnboardingRateMode')) {
         delete accountOnboardingEl('accountOnboardingRateMode').dataset.userChanged;
     }
@@ -10198,11 +10196,6 @@ function bindAccountOnboardingControls() {
         const visible = password.type === 'password';
         password.type = visible ? 'text' : 'password';
         event.currentTarget.setAttribute('aria-pressed', String(visible));
-        event.currentTarget.textContent = visible ? 'Приховати пароль' : 'Показати пароль';
-    });
-    accountOnboardingEl('accountOnboardingPasswordGenerate').addEventListener('click', () => {
-        password.value = generateInitialAccountPassword();
-        password.dispatchEvent(new Event('input', { bubbles: true }));
     });
     for (const eventName of ['input', 'change']) {
         accountOnboardingEl('accountOnboardingForm').addEventListener(eventName, event => {
@@ -10302,15 +10295,6 @@ function bindAccountOnboardingControls() {
             }
             return;
         }
-        const staffButton = event.target.closest('[data-account-onboarding-open-staff]');
-        const docsButton = event.target.closest('[data-account-onboarding-open-documents]');
-        const resourcesButton = event.target.closest('[data-account-onboarding-open-resources]');
-        const checklistButton = event.target.closest('[data-account-onboarding-open-checklist]');
-        if (staffButton || docsButton || resourcesButton || checklistButton) closeAccountOnboardingWizard();
-        if (staffButton) return void openStaffEdit(Number(staffButton.dataset.accountOnboardingOpenStaff));
-        if (docsButton) return void openStaffEdit(Number(docsButton.dataset.accountOnboardingOpenDocuments), { focus: 'documents' });
-        if (resourcesButton) return void openStaffEdit(Number(resourcesButton.dataset.accountOnboardingOpenResources), { focus: 'resources' });
-        if (checklistButton) return void openProfessionWorkspace({ key: checklistButton.dataset.accountOnboardingOpenChecklist, initialTab: 'checklist', returnContext: { tab: 'accounts' } });
         if (event.target.closest('[data-account-onboarding-finish]')) closeAccountOnboardingWizard();
     });
     overlay.addEventListener('click', event => {

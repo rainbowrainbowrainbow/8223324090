@@ -20,7 +20,8 @@ async function bookingBanquetGroupId(db, bookingId) {
         [PARK, bookingId])).rows[0]?.group_id ?? null;
 }
 
-async function readBanquetScope(db, rootId, children) {
+async function readBanquetScope(db, root, children) {
+    const rootId = root.id;
     const ids = [rootId, ...children.map(row => row.id)];
     const result = await db.query(`SELECT m.booking_id, m.role, g.id, g.status, g.date, g.primary_booking_id
         FROM banquet_group_bookings m
@@ -31,15 +32,26 @@ async function readBanquetScope(db, rootId, children) {
     if (member && (result.rows.length !== 1 || member.booking_id !== rootId || member.status !== 'active'
         || !['primary', 'activity'].includes(member.role)
         || (member.role === 'primary') !== (member.primary_booking_id === rootId))) return { eligible: false };
-    const links = await db.query(`SELECT 1 FROM booking_banquet_links l
+    const links = await db.query(`SELECT l.id, l.booking_a_id, l.booking_b_id, l.relation_type FROM booking_banquet_links l
         WHERE l.business_context=$1 AND (l.booking_a_id=ANY($2::text[]) OR l.booking_b_id=ANY($2::text[]))
         AND NOT EXISTS (
             SELECT 1 FROM banquet_group_bookings a JOIN banquet_group_bookings b
               ON a.group_id=b.group_id AND a.business_context=b.business_context
             WHERE a.business_context=$1 AND a.group_id=$3
               AND a.booking_id=l.booking_a_id AND b.booking_id=l.booking_b_id
-        ) LIMIT 1`, [PARK, ids, member?.id ?? null]);
-    return { eligible: links.rowCount === 0, member: member || null };
+        ) ORDER BY l.id LIMIT 2`, [PARK, ids, member?.id ?? null]);
+    if (!links.rows.length) return { eligible: true, member: member || null };
+    const [link] = links.rows;
+    const [child] = children;
+    const identity = child && bookingIdentity(child);
+    // The adapter still uses the canonical linked_to child. The old edge can only corroborate that exact pair.
+    const legacyPair = !member && links.rows.length === 1 && children.length === 1 && link.relation_type === 'banquet_activity'
+        && [link.booking_a_id, link.booking_b_id].includes(rootId) && [link.booking_a_id, link.booking_b_id].includes(child.id)
+        && (root.program_id != null || String(root.program_code || '').trim())
+        && root.extra_data?.bookingWorkspace?.secondAnimatorLineId === child.line_id
+        && identity?.lineId === child.line_id && identity?.resourceType === 'animator'
+        && (identity.resourceId == null || identity.resourceId === child.line_id);
+    return legacyPair ? { eligible: true, legacyLink: link } : { eligible: false };
 }
 
 function requireParkBookingEdit(actor) {
@@ -83,10 +95,11 @@ async function readBooking(db, actor, input) {
     const children = (await db.query(`SELECT * FROM bookings WHERE linked_to=$1 AND ${parkRow} AND ${activeRow} ORDER BY id`,
         [root.id])).rows;
     const target = slotFor(root, children, input.slotKey);
-    const banquet = await readBanquetScope(db, root.id, children);
+    const banquet = await readBanquetScope(db, root, children);
     const group = banquet.member ?? null;
     const valid = banquet.eligible && (!group || group.date === root.date);
-    return { root, children, banquet: group, target: valid && target && canEditBooking(actor, target) ? target : null };
+    return { root, children, banquet: group, legacyLink: banquet.legacyLink ?? null,
+        target: valid && target && canEditBooking(actor, target) ? target : null };
 }
 
 function scopedFacts(row) {
@@ -104,7 +117,7 @@ function slotExtras(root, target) {
 }
 
 async function loadBookingScope(db, actor, input, current) {
-    const { root, children, target, banquet } = await readBooking(db, actor, input);
+    const { root, children, target, banquet, legacyLink } = await readBooking(db, actor, input);
     if (!target) return { type: 'booking', blockers: [unsupported] };
     const facts = [scopedFacts(root), ...children.map(scopedFacts)];
     const roster = await getAnimatorTimelineLines(input.workDate, db);
@@ -114,7 +127,8 @@ async function loadBookingScope(db, actor, input, current) {
     const observedLine = current ? current.source_snapshot.replacementLineId : originalLineId;
     if (target.date !== input.workDate || !observedLine || target.line_id !== observedLine
         || current && (contract.fingerprint(facts) !== contract.fingerprint(current.source_snapshot.facts)
-            || contract.fingerprint(banquet) !== contract.fingerprint(current.source_snapshot.banquet ?? null))) {
+            || contract.fingerprint(banquet) !== contract.fingerprint(current.source_snapshot.banquet ?? null)
+            || contract.fingerprint(legacyLink) !== contract.fingerprint(current.source_snapshot.legacyLink ?? null))) {
         contract.fail('SUBSTITUTION_SOURCE_STALE', 'Бронювання або його аніматор уже змінилися.', 409);
     }
     const blockers = [];
@@ -142,7 +156,8 @@ async function loadBookingScope(db, actor, input, current) {
                OR (t.source_entity_type='booking' AND t.source_entity_id=ANY($2::text[]))) LIMIT 1`,
     [PARK, facts.map(row => row.id)]);
     if (alias.rows.length) blockers.push({ code: 'SUBSTITUTION_BOOKING_TASK_CLAIMED', message: 'Пов’язана задача вже має погоджену підміну.' });
-    return { type: 'booking', facts, ...(banquet && { banquet }), targetId: target.id, ownedBookingId: current ? target.id : null,
+    return { type: 'booking', facts, ...(banquet && { banquet }), ...(legacyLink && { legacyLink }),
+        targetId: target.id, ownedBookingId: current ? target.id : null,
         originalLineId, replacementLineId: current ? observedLine : replacement?.id,
         originalSecondName: current ? current.source_snapshot.originalSecondName : root.second_animator,
         originalExtras: current ? current.source_snapshot.originalExtras : slotExtras(root, target),

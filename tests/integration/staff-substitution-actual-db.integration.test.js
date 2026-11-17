@@ -916,6 +916,26 @@ test('default services use the migrated schema for an unrelated permanent occupa
         assert.deepEqual((await booked(childId)).extra_data.timelineIdentity, {
             lineId: String(animators[2]), resourceId: String(animators[2]), resourceType: 'animator'
         });
+        const legacyLink = (await db.query(`INSERT INTO booking_banquet_links(business_context,booking_a_id,booking_b_id)
+            VALUES('event_genix',$1,$2) RETURNING id`, [rootId,childId])).rows[0].id;
+        assert.ok((await service.preview('event_genix',actor,bookingInput)).blockers
+            .some(item => item.code === 'SUBSTITUTION_BOOKING_LINK_UNSUPPORTED'));
+        await db.query("UPDATE bookings SET program_code='SYNTHETIC_LEGACY' WHERE id=ANY($1::text[])", [[rootId,childId]]);
+        const legacyQuote = await service.preview('event_genix',actor,bookingInput);
+        assert.deepEqual(legacyQuote.blockers, []);
+        assert.equal(legacyQuote.evidence.source.legacyLink.id, legacyLink);
+        const createLegacy = quote => service.mutate('event_genix',actor,'create', { input:bookingInput,
+            requestKey:randomUUID(), previewFingerprint:quote.fingerprint, effectsAcknowledged:true });
+        await db.query("UPDATE booking_banquet_links SET relation_type='unreviewed' WHERE id=$1", [legacyLink]);
+        await assert.rejects(createLegacy(legacyQuote), { code:'SUBSTITUTION_PREVIEW_STALE' });
+        await db.query("UPDATE booking_banquet_links SET relation_type='banquet_activity' WHERE id=$1", [legacyLink]);
+        const historicalClaim = await createLegacy(await service.preview('event_genix',actor,bookingInput));
+        assert.equal((await booked(childId)).line_id, String(animators[1]));
+        await assert.rejects(db.query('DELETE FROM booking_banquet_links WHERE id=$1', [legacyLink]), { code:'23514' });
+        await service.mutate('event_genix',actor,'cancel', { expectedVersion:1, reason:'Synthetic legacy pair restoration',
+            requestKey:randomUUID() }, historicalClaim.id);
+        assert.equal((await booked(childId)).line_id, String(animators[2]));
+        await db.query('DELETE FROM booking_banquet_links WHERE id=$1', [legacyLink]);
         const banquetId = `QAB-${randomUUID()}`;
         const banquetPrimary = `SUB-${randomUUID()}`;
         await db.query(`INSERT INTO bookings(id,date,time,duration,line_id,status,price,hosts,label,room,room_resource_id,business_context)

@@ -76,10 +76,11 @@ both schedules, transferred minutes and planned ordinary amounts when calculable
 Version 0.83.93 creates a separately dated remainder for a bounded
 reception shift. Version 0.83.95 supports partial transfers of a same-day
 segment with one confirmed break. Version 0.83.96 adds the simultaneous-role
-allocation described below. Daytime animator
-transfers use the dated roster and reject any existing booking or Afisha slot
-outside the resulting coverage. Overnight animator shift transfers and
-ambiguous historical banquet links remain unsupported. Completed agreements
+allocation described below. Animator transfers use the dated roster and reject
+existing bookings or Afisha slots outside the resulting coverage on either date.
+A historical banquet activity edge can corroborate an existing canonical child
+only when the stored slot, program, and timeline identity agree. Ambiguous
+historical relationships require manual reconciliation. Completed agreements
 use the amount correction path described below. The Park staff
 schedule and workbook show both participants in agreed HR shift substitutions.
 The employee's personal results show their own Park substitutions for the

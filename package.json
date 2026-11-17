@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.83.111",
+  "version": "0.83.112",
   "eventGenix": {
-    "releaseLabel": "Картка персоналу Park без навчальних призначень"
+    "releaseLabel": "Зміст задачі у сповіщенні Telegram"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

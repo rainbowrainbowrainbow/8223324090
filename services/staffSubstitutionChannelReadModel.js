@@ -22,6 +22,7 @@ async function listChannelSubstitutions(db, actor, channelId) {
             JOIN chat_tasks ct ON ct.channel_id=ch.id
             JOIN staff_substitutions ss ON ss.source_type='chat_task' AND ss.source_id=ct.id::text
                 AND ss.source_snapshot->'record'->>'booking_id'=ch.booking_id AND ss.business_context=$3
+                AND ss.source_snapshot->'record'->>'channel_id'=ch.id::text
             WHERE ct.message_id IS NULL AND (ct.assigned_to=$2 OR ct.assigned_by=$2)
             UNION ALL
             SELECT 'meeting_action', a.id, a.description, NULL, ss.id, ss.state
@@ -30,6 +31,8 @@ async function listChannelSubstitutions(db, actor, channelId) {
             JOIN meeting_action_items a ON a.meeting_id=n.id
             JOIN staff_substitutions ss ON ss.source_type='meeting_action' AND ss.source_id=a.id::text
                 AND ss.source_snapshot->'record'->>'booking_id'=ch.booking_id AND ss.business_context=$3
+                AND ss.source_snapshot->'record'->>'channel_id'=ch.id::text
+                AND ss.source_snapshot->'record'->>'meeting_id'=n.id::text
             WHERE a.task_id IS NULL AND NOT EXISTS (
                 SELECT 1 FROM tasks t WHERE t.source_type='meeting_action' AND t.source_id=a.id::text
             )

@@ -140,8 +140,8 @@ check('canonical task writer, actual membership checks and concurrent confirms s
 });
 
 check('four confirmed participants can create for every peer with current business and identity checks', async () => {
-    const participants = [{ user: owner, telegram }, { user: peer, telegram: peerTelegram }];
-    for (let index = 0; index < 2; index++) {
+    const participants = [];
+    for (let index = 0; index < 4; index++) {
         const username = 'tg.fixture.' + randomUUID();
         const password = 'isolated-assignment-fixture-password';
         const user = (await pool.query(`INSERT INTO users(username,name,role,password_hash,business_contexts,default_business_context)
@@ -167,7 +167,7 @@ check('four confirmed participants can create for every peer with current busine
     await pool.query("UPDATE business_memberships SET action_allowlist=ARRAY['tasks.create'] WHERE business_id=$1 AND user_id=$2",
         [business.id,peer.id]);
     try {
-        const expected = participants.map(person => person.user.id).sort((a,b) => a-b);
+        const expected = [...participants.map(person => person.user.id), owner.id, peer.id].sort((a,b) => a-b);
         for (const sender of participants) {
             const me = await bot('/me',undefined,sender.telegram);
             assert.equal(me.data.canCreateTasks,true);
@@ -198,19 +198,19 @@ check('four confirmed participants can create for every peer with current busine
         assert.deepEqual((await listTaskOwnerCandidates({pool,actor,businessScope:scope})).map(person=>person.id),[peer.id]);
         const outsider = participants[2];
         await pool.query('UPDATE business_memberships SET is_active=false WHERE business_id=$1 AND user_id=$2',[business.id,outsider.user.id]);
-        const list = await bot('/owners?businessContext=event_genix',undefined,peerTelegram);
+        const list = await bot('/owners?businessContext=event_genix',undefined,participants[0].telegram);
         assert.equal(list.data.owners.some(person=>person.id===outsider.user.id),false);
         const forbidden = await bot('/tasks/preview',{
             title:'Disposable unavailable peer',ownerUserId:outsider.user.id,businessContext:'event_genix',sourceUpdateId:String(nextUpdate++)
-        },peerTelegram);
+        },participants[0].telegram);
         assert.equal(forbidden.status,400,JSON.stringify(forbidden.data));
         await pool.query('UPDATE business_memberships SET is_active=true WHERE business_id=$1 AND user_id=$2',[business.id,outsider.user.id]);
         await pool.query('UPDATE telegram_crm_bindings SET verified_at=NULL,telegram_user_id=NULL,version=version+1 WHERE user_id=$1',[outsider.user.id]);
-        const revoked = await bot('/owners?businessContext=event_genix',undefined,peerTelegram);
+        const revoked = await bot('/owners?businessContext=event_genix',undefined,participants[0].telegram);
         assert.equal(revoked.data.owners.some(person=>person.id===outsider.user.id),false);
         const stale = await bot('/tasks/preview',{
             title:'Disposable revoked peer',ownerUserId:outsider.user.id,businessContext:'event_genix',sourceUpdateId:String(nextUpdate++)
-        },peerTelegram);
+        },participants[0].telegram);
         assert.equal(stale.status,400,JSON.stringify(stale.data));
     } finally {
         await pool.query('UPDATE business_memberships SET action_allowlist=$3::text[] WHERE business_id=$1 AND user_id=$2',

@@ -188,6 +188,16 @@ test('global write guard blocks aggregate business scope mutations before routes
   assert.equal(allResult.statusCode, 403);
   assert.equal(allResult.body.code, 'business_scope_read_only');
 
+  const completionRead = await runBusinessScopeWriteGuard({
+    method: 'POST',
+    path: '/tasks/control-completions/read',
+    user,
+    headers: { 'x-business-scope': BUSINESS_SCOPE_ALL },
+    query: {},
+    body: { all: true }
+  });
+  assert.equal(completionRead.next, true);
+
   const multiResult = await runBusinessScopeWriteGuard({
     method: 'PATCH',
     path: '/leads/42',

@@ -9,6 +9,7 @@ const { authenticateToken, canUseAction, ROLE_LEVEL } = require('../middleware/a
 const { getDefaultWidgets, canAccessDashboardWidget } = require('../config/roles');
 const { createLogger } = require('../utils/logger');
 const { getKyivDateStr } = require('../services/booking');
+const { listControlCompletions } = require('../services/taskControlCompletionInbox');
 const { buildTaskVisibilityScope, normalizeUserId, taskOwnerState, userNameTokens } = require('../services/taskPolicy');
 const { TASK_SUBSTITUTION_SELECT } = require('../services/taskSubstitutionReadModel');
 const { buildTaskOperationsSummary, deriveTaskIntelligence } = require('../services/taskIntelligence');
@@ -2464,7 +2465,7 @@ router.get('/alerts', async (req, res) => {
         const shiftVisibility = getVisibleBookingScope(req.user, shiftParams, 'b');
         const openShiftBusinessCondition = appendDashboardBusinessScope(shiftParams, businessScope, 'cs');
         const shiftBookingBusinessCondition = appendDashboardBusinessScope(shiftParams, businessScope, 'b');
-        const [urgentAlerts, overdue, unconfirmed, lowStock, coldLeads, shiftCheck] = await Promise.all([
+        const [urgentAlerts, overdue, unconfirmed, lowStock, coldLeads, shiftCheck, controlCompletions] = await Promise.all([
             buildUrgentTaskAlerts(req.user, businessScope, 5),
             pool.query(`SELECT t.id, t.title, t.deadline, t.priority, t.status, t.owner_user_id,
                                t.assigned_to, t.owner, t.updated_at, t.created_at,
@@ -2481,10 +2482,14 @@ router.get('/alerts', async (req, res) => {
             pool.query(`SELECT ws.name, ws.quantity, ws.min_quantity, ws.unit FROM warehouse_stock ws WHERE ws.quantity <= ws.min_quantity AND ws.is_active = true ${lowStockBusinessCondition} LIMIT 3`, lowStockParams),
             pool.query(`SELECT COUNT(*) as c FROM leads l WHERE COALESCE(l.pipeline_stage, 'new') = 'new' AND ${SALES_LEAD_TYPE_FILTER} AND l.created_at < NOW() - INTERVAL '48 hours' ${coldLeadBusinessCondition}`, coldLeadParams),
             pool.query(`SELECT (SELECT COUNT(*) FROM cash_register_shifts cs WHERE cs.finance_qa_run_id IS NULL AND cs.status='open' ${openShiftBusinessCondition}) AS open_shifts,
-                               (SELECT COUNT(*) FROM bookings b WHERE ${businessBookingSql('b')} AND b.date=$1 AND b.status='confirmed' ${shiftVisibility.sql} ${shiftBookingBusinessCondition}) AS today_bk`, shiftParams)
+                               (SELECT COUNT(*) FROM bookings b WHERE ${businessBookingSql('b')} AND b.date=$1 AND b.status='confirmed' ${shiftVisibility.sql} ${shiftBookingBusinessCondition}) AS today_bk`, shiftParams),
+            listControlCompletions(pool, req.user, businessScope).catch(error => {
+                log.warn('Alert center control completions unavailable', { code: error.code });
+                return { alerts: [], unread: null, nextCursor: null };
+            })
         ]);
         const alerts = [];
-        alerts.push(...hrReminders, ...urgentAlerts);
+        alerts.push(...hrReminders, ...urgentAlerts, ...controlCompletions.alerts);
         overdue.rows.forEach(t => {
             const task = taskWidgetPayload([t])[0] || t;
             alerts.push({ id: `overdue_${t.id}`, level: 'warning', icon: '⚠️',
@@ -2530,9 +2535,10 @@ router.get('/alerts', async (req, res) => {
             success: true,
             alerts,
             count: alerts.length,
+            controlCompletions: { unread: controlCompletions.unread, nextCursor: controlCompletions.nextCursor },
             meta: {
                 businessScope: dashboardBusinessScopeMeta(businessScope),
-                scopedSignals: ['urgent_tasks', 'overdue_tasks', 'unconfirmed_bookings', 'low_stock', 'cold_leads', 'cash_shift'],
+                scopedSignals: ['urgent_tasks', 'overdue_tasks', 'unconfirmed_bookings', 'low_stock', 'cold_leads', 'cash_shift', 'control_completions'],
                 globalSignals: ['omni_account_alerts']
             }
         });

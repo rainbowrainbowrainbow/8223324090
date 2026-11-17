@@ -52,12 +52,13 @@ function normalizeTaskPayload(row = {}, options = {}) {
     const permissions = user ? getPermissions(user.role) : null;
     const canUseTaskWriteRoutes = Boolean(permissions?.canCreateTasks)
         || ['senior_instructor', 'instructor'].includes(String(user?.role || ''));
-    const canMutate = user ? canMutateTask(user, row) : false;
+    const authorReadOnly = row.task_standard_visibility === false || row.task_standard_visibility === null;
+    const canMutate = user && !authorReadOnly ? canMutateTask(user, row) : false;
     const actionPermissions = user ? {
         canMutate,
         canSplit: canUseTaskWriteRoutes && canMutate,
-        canReassign: canReassignTask(user, row),
-        canReschedule: canRescheduleTask(user, row),
+        canReassign: !authorReadOnly && canReassignTask(user, row),
+        canReschedule: !authorReadOnly && canRescheduleTask(user, row),
         canArchive: canUseTaskWriteRoutes && canMutate
     } : null;
     const canReschedule = actionPermissions ? actionPermissions.canReschedule : fallbackCanReschedule;

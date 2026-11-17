@@ -9,6 +9,7 @@
 .profile-park-nav .profile-secondary-tabs { overflow: visible; }
 .profile-park-nav .profile-primary-tab { color: #34455b; }
 .profile-park-nav a.profile-primary-tab { display: inline-flex; align-items: center; gap: .35rem; text-decoration: none; }
+.profile-park-nav [data-profile-control-link] { flex-wrap: wrap; justify-content: center; }
 .profile-park-nav [data-profile-control-count] { font-variant-numeric: tabular-nums; }
 .profile-park-nav .profile-primary-tab[aria-current="page"] { color: #0f624d; }
 :is(.dark-mode, [data-theme="dark"]) .profile-park-nav .profile-primary-tab { color: #d3dfec; }
@@ -243,6 +244,47 @@
     font-weight: 650;
 }
 .park-my-day .park-task-move-today:disabled { opacity: .55; }
+.profile-control-tabs {
+    display: grid;
+    grid-template-columns: minmax(max-content, 7rem) minmax(0, 12rem);
+    gap: .25rem .75rem;
+    margin-block-end: .75rem;
+    border-block-end: 1px solid var(--border-color, var(--gray-200));
+}
+.profile-control-tabs button {
+    position: relative;
+    min-block-size: 44px;
+    min-inline-size: 44px;
+    max-inline-size: 100%;
+    padding: .35rem .55rem;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-weight: 650;
+    cursor: pointer;
+}
+.profile-control-tabs button[aria-selected="true"]::after {
+    position: absolute;
+    inset: auto 0 0;
+    border-block-end: 3px solid currentColor;
+    content: "";
+}
+.profile-control-tabs button:focus-visible,
+.profile-control-tasks [role="tabpanel"]:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+}
+.profile-control-new [data-profile-control-new]:not([hidden]) {
+    display: inline-block;
+    padding: .1rem .45rem;
+    border: 1px solid currentColor;
+    border-radius: 999px;
+    font-size: .75rem;
+    line-height: 1.3;
+    white-space: nowrap;
+}
+
 .profile-control-tasks { min-inline-size: 0; overflow-wrap: anywhere; }
 .profile-control-tasks ul { list-style: none; padding: 0; margin: 0; }
 .profile-control-tasks li {

@@ -8,6 +8,38 @@ let _alertsData = [];
 let _alertRuntimeStarted = false;
 let _alertInterval = null;
 let _alertScopeVersion = 0;
+let _controlCompletionUnread = 0;
+
+function _alertFetch(path, options = {}) {
+    const request = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
+    return request(path, { cache: 'no-store', ...options });
+}
+
+async function _loadAlertResponse() {
+    const response = await _alertFetch('/api/dashboard/alerts');
+    if (response?.ok) return response.json();
+    if (response?.status !== 403) throw new Error('Alerts unavailable');
+    const personal = await _alertFetch('/api/tasks/control-completions');
+    if (!personal?.ok) throw new Error('Completion alerts unavailable');
+    const { alerts, unread, nextCursor } = await personal.json();
+    return { alerts, controlCompletions: { unread, nextCursor } };
+}
+
+function _applyAlertResponse(data) {
+    const dismissed = _getDismissed();
+    if (Number.isInteger(data.controlCompletions?.unread)) _controlCompletionUnread = data.controlCompletions.unread;
+    _replaceAlertsData((data.alerts || []).filter(alert => alert.type === 'control_completion' || !dismissed.has(alert.id)));
+    _syncAlertBadge();
+    _emitAlertsUpdated();
+}
+
+function _syncAlertBadge() {
+    const badge = document.getElementById('alertBadge');
+    if (!badge) return;
+    const read = _getRead();
+    const other = _alertsData.filter(alert => alert.type !== 'control_completion' && !read.has(alert.id));
+    _updateBadge(badge, other, other.length + _controlCompletionUnread);
+}
 
 // ─── Self-inject bell + panel ───────────────────
 function _ensureAlertElements() {
@@ -67,32 +99,25 @@ function _replaceAlertsData(alerts) {
 // ─── Badge update ───────────────────────────────
 async function loadAlertBell() {
     if (typeof window.isAuthenticatedRuntimeReady !== 'function' || !window.isAuthenticatedRuntimeReady()) return;
-    const badge = document.getElementById('alertBadge');
     const scopeVersion = _alertScopeVersion;
     try {
-        const fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
-        const res = await fetchWithAuth('/api/dashboard/alerts', { headers: {} });
-        if (!res) return;
-        if (!res.ok) return;
-        const data = await res.json();
+        const data = await _loadAlertResponse();
         if (scopeVersion !== _alertScopeVersion) return;
-        const alerts = data.alerts || [];
-        const dismissed = _getDismissed();
-        _replaceAlertsData(alerts.filter(a => !dismissed.has(a.id)));
-        const read = _getRead();
-        const unread = _alertsData.filter(a => !read.has(a.id));
-        if (badge) _updateBadge(badge, unread);
-        _emitAlertsUpdated();
+        _applyAlertResponse(data);
     } catch { /* silent */ }
 }
 
-function _updateBadge(badge, unread) {
-    if (!unread.length) { badge.style.display = 'none'; return; }
+function _updateBadge(badge, unread, count = unread.length) {
+    if (!count) { badge.style.display = 'none'; return; }
     badge.style.display = 'flex';
-    badge.textContent = unread.length > 99 ? '99+' : unread.length;
+    badge.textContent = count > 99 ? '99+' : count;
     const hasCritical = unread.some(a => a.level === 'critical');
     badge.classList.toggle('critical', hasCritical);
     badge.classList.toggle('pulse', hasCritical);
+}
+
+function getUnreadControlCompletionCount() {
+    return _controlCompletionUnread;
 }
 
 function _emitAlertsUpdated() {
@@ -136,16 +161,9 @@ async function _renderPanel() {
     if (!p) return;
     const scopeVersion = _alertScopeVersion;
     try {
-        const fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
-        const res = await fetchWithAuth('/api/dashboard/alerts', { headers: {} });
-        if (!res) return;
-        if (!res.ok) throw new Error('API error');
-        const data = await res.json();
+        const data = await _loadAlertResponse();
         if (scopeVersion !== _alertScopeVersion) return;
-        const alerts = data.alerts || [];
-        const dismissed = _getDismissed();
-        _replaceAlertsData(alerts.filter(a => !dismissed.has(a.id)));
-        _emitAlertsUpdated();
+        _applyAlertResponse(data);
 
         if (!_alertsData.length) {
             p.innerHTML = `<div class="ap-header">
@@ -161,7 +179,7 @@ async function _renderPanel() {
         }
 
         const read = _getRead();
-        const unreadCount = _alertsData.filter(a => !read.has(a.id)).length;
+        const unreadCount = _controlCompletionUnread + _alertsData.filter(a => a.type !== 'control_completion' && !read.has(a.id)).length;
 
         // Group by level
         const critical = _alertsData.filter(a => a.level === 'critical');
@@ -175,7 +193,7 @@ async function _renderPanel() {
                 <span class="ap-subtitle">Працюй зі сповіщеннями тут, без прив'язки до верхнього дзвіночка</span>
             </div>
             <span class="ap-count">${unreadCount ? unreadCount + ' нових' : 'Все прочитано'}</span>
-            ${_alertsData.length > 0 ? `<button class="ap-mark-all" onclick="_markAllRead()" title="Позначити все як прочитане">✓</button>` : ''}
+            ${_alertsData.length > 0 ? `<button type="button" class="ap-mark-all" onclick="_markAllRead()" aria-label="Позначити все як прочитане" title="Позначити все як прочитане">✓</button>` : ''}
             <button class="ap-close" type="button" onclick="_closeAlertsPanel()" aria-label="Закрити">×</button>
         </div>`;
 
@@ -184,7 +202,12 @@ async function _renderPanel() {
         if (warnings.length) body += _renderGroup('⚠️ Увага', warnings, read);
         if (info.length) body += _renderGroup('ℹ️ Інформація', info, read);
 
-        p.innerHTML = header + `<div class="ap-body">${body}</div>`;
+        const cursor = data.controlCompletions?.nextCursor;
+        const more = cursor ? `<button type="button" class="ap-act ap-act-secondary" data-control-alert-more>Показати попередні завершення</button>` : '';
+        p.innerHTML = header + `<div class="ap-body">${body}<div data-control-alert-history></div>${more}<div data-control-alert-status role="status"></div></div>`;
+        p.querySelector('[data-control-alert-more]')?.addEventListener('click', event => {
+            void _loadMoreControlAlerts(event.currentTarget, cursor, scopeVersion);
+        }, { once: true });
     } catch {
         p.innerHTML = `<div class="ap-header">
             <div class="ap-header-main">
@@ -196,8 +219,69 @@ async function _renderPanel() {
     }
 }
 
+async function _loadMoreControlAlerts(button, cursor, scopeVersion) {
+    button.disabled = true;
+    const panel = document.getElementById('alertsPanel');
+    const history = panel.querySelector('[data-control-alert-history]');
+    const status = panel.querySelector('[data-control-alert-status]');
+    const before = history.children.length;
+    try {
+        const response = await _alertFetch(`/api/tasks/control-completions?cursor=${encodeURIComponent(cursor)}`);
+        if (!response?.ok) throw new Error('Completion history unavailable');
+        const page = await response.json();
+        if (scopeVersion !== _alertScopeVersion || !history.isConnected) return;
+        history.insertAdjacentHTML('beforeend', page.alerts.map(alert => _renderAlertItem(alert, alert.read)).join(''));
+        status.textContent = page.alerts.length ? `Додано сповіщень: ${page.alerts.length}` : 'Усі завершення показано.';
+        history.children[before]?.querySelector('a')?.focus();
+        if (!page.nextCursor) {
+            button.remove();
+            return;
+        }
+        cursor = page.nextCursor;
+    } catch {
+        status.textContent = 'Не вдалося завантажити попередні завершення. Спробуйте ще раз.';
+    }
+    button.disabled = false;
+    button.addEventListener('click', () => { void _loadMoreControlAlerts(button, cursor, scopeVersion); }, { once: true });
+}
+
+async function _saveControlRead(body) {
+    try {
+        const response = await _alertFetch('/api/tasks/control-completions/read', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+        });
+        if (!response?.ok) throw new Error('Completion acknowledgement failed');
+        return true;
+    } catch {
+        const status = document.querySelector('[data-control-alert-status]');
+        if (status) status.textContent = 'Не вдалося позначити сповіщення як прочитане.';
+        return false;
+    }
+}
+
+async function _readControlAlert(eventKey, button) {
+    const scopeVersion = _alertScopeVersion;
+    button.disabled = true;
+    if (!await _saveControlRead({ eventKey })) {
+        button.disabled = false;
+        return;
+    }
+    if (scopeVersion !== _alertScopeVersion || !button.isConnected) return;
+    const card = button.closest('.ap-item');
+    card.classList.add('read');
+    card.querySelector('a')?.focus();
+    button.remove();
+    void loadAlertBell();
+}
+
+async function _openControlAlert(link, eventKey) {
+    const scopeVersion = _alertScopeVersion;
+    await _saveControlRead({ eventKey });
+    if (scopeVersion === _alertScopeVersion) _goAlert(link);
+}
+
 function _renderGroup(title, alerts, read) {
-    const items = alerts.map(a => _renderAlertItem(a, read.has(a.id))).join('');
+    const items = alerts.map(a => _renderAlertItem(a, a.type === 'control_completion' ? a.read : read.has(a.id))).join('');
     return `<div class="ap-group"><div class="ap-group-title">${title} <span class="ap-group-count">${alerts.length}</span></div>${items}</div>`;
 }
 
@@ -205,6 +289,19 @@ function _renderAlertItem(a, isRead) {
     const id = _esc(a.id || '');
     const link = _esc(a.link || '');
     const levelClass = a.level || 'info';
+
+    if (a.type === 'control_completion') {
+        return `<div class="ap-item info${isRead ? ' read' : ''}" data-alert-id="${id}">
+            <div class="ap-item-main">
+                <span class="ap-icon" aria-hidden="true">✓</span>
+                <div class="ap-content">
+                    <a class="ap-item-title" href="${link}" onclick="if (!event.metaKey &amp;&amp; !event.ctrlKey &amp;&amp; !event.shiftKey &amp;&amp; !event.altKey) { event.preventDefault(); _openControlAlert('${link}', '${a.eventKey}'); }">${escapeHtml(a.title || '')}</a>
+                    <div class="ap-item-desc">${escapeHtml(a.message || '')}</div>
+                </div>
+                ${isRead ? '' : `<button type="button" class="ap-act ap-act-secondary" onclick="_readControlAlert('${a.eventKey}', this)" aria-label="Позначити сповіщення як прочитане">✓</button>`}
+            </div>
+        </div>`;
+    }
 
     // Determine quick actions based on alert type
     let actionsHtml = '';
@@ -377,25 +474,27 @@ function _dismissAlert(alertId) {
     const el = document.querySelector(`[data-alert-id="${alertId}"]`);
     if (el) { el.style.transition = 'all 0.3s'; el.style.opacity = '0'; el.style.maxHeight = '0'; el.style.margin = '0'; el.style.padding = '0'; setTimeout(() => el.remove(), 300); }
     _alertsData = _alertsData.filter(a => a.id !== alertId);
-    const badge = document.getElementById('alertBadge');
-    if (badge) { const read = _getRead(); _updateBadge(badge, _alertsData.filter(a => !read.has(a.id))); }
+    _syncAlertBadge();
     _emitAlertsUpdated();
     if (!_alertsData.length) setTimeout(_renderPanel, 350);
 }
 
-function _markAllRead() {
+async function _markAllRead() {
+    const scopeVersion = _alertScopeVersion;
+    if (_controlCompletionUnread && !await _saveControlRead({ all: true })) return;
+    if (scopeVersion !== _alertScopeVersion) return;
     const r = _getRead();
-    _alertsData.forEach(a => r.add(a.id));
+    _alertsData.filter(a => a.type !== 'control_completion').forEach(a => r.add(a.id));
     _saveRead(r);
     _emitAlertsUpdated();
-    loadAlertBell();
-    _renderPanel();
+    void _renderPanel();
 }
 
 // ─── Navigate ───────────────────────────────────
 function _goAlert(link, id) {
-    const r = _getRead(); r.add(id); _saveRead(r);
+    if (id) { const r = _getRead(); r.add(id); _saveRead(r); }
     _closeAlertsPanel();
+    _emitAlertsUpdated();
     loadAlertBell();
     if (!link) return;
     let targetUrl;
@@ -512,20 +611,36 @@ function startAlertRuntime() {
     _alertRuntimeStarted = true;
     _ensureAlertElements();
     void loadAlertBell();
-    _alertInterval = setInterval(loadAlertBell, 1800000);
-    window.addEventListener('beforeunload', () => clearInterval(_alertInterval));
+    const refreshVisibleAlerts = () => {
+        if (document.hidden) return;
+        if (document.getElementById('alertsPanel')?.classList.contains('open')) void _renderPanel();
+        else void loadAlertBell();
+    };
+    _alertInterval = setInterval(refreshVisibleAlerts, 60000);
+    document.addEventListener('visibilitychange', refreshVisibleAlerts);
+    window.addEventListener('online', refreshVisibleAlerts);
+    window.addEventListener('beforeunload', () => {
+        clearInterval(_alertInterval);
+        document.removeEventListener('visibilitychange', refreshVisibleAlerts);
+        window.removeEventListener('online', refreshVisibleAlerts);
+    });
     window.addEventListener('ws:alert', (e) => {
+        if (document.hidden) return;
         const { payload } = e.detail || {};
-        if (payload?.alerts) {
+        // Empty broadcasts carry no business data; refresh through the scoped HTTP API.
+        if (payload?.alerts?.length) {
             const dismissed = _getDismissed();
-            const personal = _alertsData.filter(a => a.type === 'hr_deadline');
+            const personal = _alertsData.filter(a => a.type === 'hr_deadline' || a.type === 'control_completion');
             const changed = _replaceAlertsData([...personal, ...payload.alerts].filter(a => !dismissed.has(a.id)));
-            const badge = document.getElementById('alertBadge');
-            if (badge) { const read = _getRead(); _updateBadge(badge, _alertsData.filter(a => !read.has(a.id))); }
+            _syncAlertBadge();
             _emitAlertsUpdated();
             const p = document.getElementById('alertsPanel');
             if (p?.classList.contains('open') && changed) _renderPanel();
-        } else { loadAlertBell(); }
+        } else if (document.getElementById('alertsPanel')?.classList.contains('open')) {
+            void _renderPanel();
+        } else {
+            void loadAlertBell();
+        }
     });
     // Clear old dismissed (>24h)
     try { const d = _getDismissed(); if (d.size > 50) { localStorage.removeItem(_ALERTS_DISMISSED_KEY); } } catch {}
@@ -539,6 +654,7 @@ document.addEventListener('DOMContentLoaded', () => {
 window.addEventListener('crm:authenticated-runtime-ready', startAlertRuntime);
 window.addEventListener('crmBusinessScopeChanged', () => {
     _alertScopeVersion++;
+    _controlCompletionUnread = 0;
     _replaceAlertsData([]);
     _closeAlertsPanel();
     const badge = document.getElementById('alertBadge');

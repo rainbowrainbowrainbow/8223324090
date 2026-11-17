@@ -11,7 +11,7 @@ const {
 } = require('../services/revenueAccessPolicy');
 const { buildTaskPaginationMetadata } = require('../services/taskPagination');
 const { taskKpiCanonicalOverdueSql } = require('../services/taskPerformancePolicy');
-const { buildTaskPersonalQuery } = require('../services/taskPersonalScope');
+const { buildAuthoredTeamTaskMatch, buildTaskPersonalQuery } = require('../services/taskPersonalScope');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
 
 // v39.8: Security — require authentication for all task endpoints
@@ -44,6 +44,7 @@ const { listTaskActionHistory, logTaskActionEvent, TASK_ACTION_TYPES } = require
 const { historicalTaskWorkSql, isTerminalStatus } = require('../services/taskAutomationPolicy');
 const { normalizeTaskPayload: normalizeTaskContractPayload } = require('../services/taskContract');
 const { withTaskDrawerContract } = require('../services/taskDetailContract');
+const { completionEventKey, listControlCompletions, markControlCompletionsRead } = require('../services/taskControlCompletionInbox');
 const { TASK_SUBSTITUTION_SELECT } = require('../services/taskSubstitutionReadModel');
 const { buildTaskOverview } = require('../services/taskOverviewProjection');
 const { buildTaskTeamControlProjection } = require('../services/taskTeamControlProjection');
@@ -105,7 +106,8 @@ const {
     taskBusinessScopeMeta
 } = require('../services/taskBusinessScope');
 const {
-    emitTaskAssignedToOwner: emitCanonicalTaskAssignedToOwner
+    emitTaskAssignedToOwner: emitCanonicalTaskAssignedToOwner,
+    refreshTaskAuthorAlerts
 } = require('../services/taskNotifications');
 const {
     buildTaskCabinetBucketPage,
@@ -2402,6 +2404,34 @@ router.get('/schedule/availability', async (req, res) => {
     }
 });
 
+router.get('/control-completions', async (req, res) => {
+    const scope = requireTaskReadScope(req, res);
+    if (!scope) return;
+    const { cursor } = req.query;
+    if (cursor && !completionEventKey(cursor)) return res.status(400).json({ error: 'Invalid completion cursor' });
+    try {
+        res.set('Cache-Control', 'private, no-store');
+        res.json(await listControlCompletions(pool, req.user, scope, { cursor, summary: req.query.summary === '1' }));
+    } catch (error) {
+        log.warn('Alert center control completions unavailable', { code: error.code });
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.post('/control-completions/read', async (req, res) => {
+    const scope = requireTaskReadScope(req, res);
+    if (!scope) return;
+    const { eventKey, all } = req.body || {};
+    if (all !== true && !completionEventKey(eventKey)) return res.status(400).json({ error: 'Invalid completion event' });
+    try {
+        await markControlCompletionsRead(pool, req.user, scope, { eventKey, all: all === true });
+        res.json({ success: true });
+    } catch (error) {
+        log.warn('Alert center completion acknowledgement failed', { code: error.code });
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 router.get('/:id', async (req, res) => {
     try {
         const businessScope = requireTaskReadScope(req, res);
@@ -2410,11 +2440,14 @@ router.get('/:id', async (req, res) => {
         if (id === 'logs') return res.status(400).json({ error: 'Use /api/tasks/:id/logs' });
         const params = [id];
         const visibility = buildTaskVisibilityScope(req.user, params, 't');
+        const authoredTeam = buildAuthoredTeamTaskMatch(req.user, params, 't');
+        const standardVisibility = visibility.replace(/^AND\s+/, '');
         const businessCondition = appendTaskBusinessScopeSql(params, businessScope, 't');
         const viewerUserIdParam = params.length + 1;
         params.push(normalizeUserId(req.user) || 0);
         const result = await pool.query(
             `SELECT t.*, u.name AS owner_name, u.username AS owner_username,
+                    ${standardVisibility} AS task_standard_visibility,
                     COALESCE((SELECT COUNT(*) FROM task_observers tob WHERE tob.task_id = t.id), 0)::int AS observer_count,
                     EXISTS (
                         SELECT 1
@@ -2471,12 +2504,22 @@ router.get('/:id', async (req, res) => {
                 JOIN users ou ON ou.id = tob.user_id
                 GROUP BY tob.task_id
              ) observer_rows ON observer_rows.task_id = t.id
-             WHERE t.id = $1 ${visibility} ${businessCondition}
+             WHERE t.id = $1 AND ((${standardVisibility}) OR ${authoredTeam}) ${businessCondition}
              LIMIT 1`,
             params
         );
         if (result.rows.length === 0) return res.status(404).json({ error: 'Task not found' });
-        res.json(withTaskDrawerContract(normalizeTaskPayload(result.rows[0], { user: req.user }), req.user));
+        const row = result.rows[0];
+        if (!row.task_standard_visibility) {
+            row.observers = [];
+            row.observer_count = 0;
+            row.dependencies = [];
+            row.dependency_count = 0;
+            row.open_dependency_count = 0;
+            row.blocked_by_titles = null;
+        }
+        res.json(withTaskDrawerContract(normalizeTaskPayload(row, { user: req.user }), req.user,
+            { authorReadOnly: !row.task_standard_visibility }));
     } catch (err) {
         log.error('Get by id error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -2888,6 +2931,7 @@ router.post('/:id/complete', async (req, res) => {
                 canonicalField: 'tasks.status'
             }
         });
+        void refreshTaskAuthorAlerts(result.task);
         _alertPush();
     } catch (err) {
         sendTaskActionError(res, err);
@@ -3516,7 +3560,7 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
             }
         }
         const setClauses = ['title=$1', 'description=$2', 'date=$3', 'status=$4', 'priority=$5',
-            'assigned_to=$6', 'owner=$7', 'owner_user_id=$8', `updated_at=NOW()`, `completed_at=CASE WHEN $9='done' THEN NOW() AT TIME ZONE 'UTC' ELSE NULL END`,
+            'assigned_to=$6', 'owner=$7', 'owner_user_id=$8', `updated_at=NOW()`, `completed_at=CASE WHEN $9<>'done' THEN NULL WHEN status='done' AND completed_at IS NOT NULL THEN completed_at ELSE NOW() AT TIME ZONE 'UTC' END`,
             'version=COALESCE(version,1)+1'];
         const values = [title.trim(), description || null, old.date || null, taskStatus, taskPriority,
                         assigned_to || null, owner || null, owner_user_id || null, taskStatus];
@@ -3626,6 +3670,8 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
             updatedTask.observer_count = updatedTask.observers.length;
         }
 
+        if (old.status !== 'done' && updatedTask.status === 'done') void refreshTaskAuthorAlerts(updatedTask);
+
         // v19.10/v0.48.12: Notify only when assignment actually changes.
         if (taskAssigneeChanged(old, updatedTask) && (updatedTask.owner_user_id || updatedTask.assigned_to)) {
             notifyTaskAssignment(updatedTask, actor).catch(() => {});
@@ -3672,6 +3718,7 @@ router.patch('/:id/status', requireRole('admin', 'user'), async (req, res) => {
                 reportId: req.body?.reportId || req.body?.report_id,
                 businessScope
             });
+            void refreshTaskAuthorAlerts(result.task);
             _alertPush();
             return res.json({
                 success: true,

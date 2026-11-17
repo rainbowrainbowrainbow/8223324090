@@ -45,3 +45,78 @@ for (const kind of ['status', 'agents']) {
         } finally { w.close(); }
     });
 }
+
+test('completion alerts refresh on visible polling and return, preserve read state, and stop on unload', async () => {
+    const dom = new JSDOM('<body><span id="alertBadge"></span></body>', {
+        url: 'https://fixture.local/profile?tab=control', runScripts: 'outside-only'
+    });
+    const win = dom.window;
+    let hidden = false;
+    let reads = 0;
+    let cleared = false;
+    let poll;
+    Object.defineProperty(win.document, 'hidden', { get: () => hidden });
+    win.setInterval = (callback, ms) => {
+        assert.equal(ms, 60000);
+        poll = callback;
+        return 1;
+    };
+    win.clearInterval = () => { cleared = true; };
+    win.isAuthenticatedRuntimeReady = () => true;
+    const completion = {
+        id: 'control_completed_123_456_789', type: 'control_completion', level: 'info',
+        title: '<img src=x onerror=alert(1)>', message: 'Для ознайомлення', link: '/tasks?open=456'
+    };
+    let serverRead = false;
+    completion.eventKey = '456:789';
+    win.fetch = async (url, options) => {
+        reads++;
+        if (options.method === 'POST') {
+            assert.equal(url, '/api/tasks/control-completions/read');
+            assert.deepEqual(JSON.parse(options.body), { eventKey: completion.eventKey });
+            serverRead = true;
+        }
+        return { ok: true, json: async () => ({ alerts: [{ ...completion, read: serverRead }],
+            controlCompletions: { unread: serverRead ? 0 : 1 } }) };
+    };
+    win.escapeHtml = value => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+    const flush = () => new Promise(resolve => setImmediate(resolve));
+    try {
+        win.eval(fs.readFileSync(path.join(__dirname, '../js/alerts.js'), 'utf8'));
+        win.startAlertRuntime();
+        await flush();
+        const initialReads = reads;
+        assert.equal(win.getUnreadControlCompletionCount(), 1);
+        hidden = true;
+        poll();
+        await flush();
+        assert.equal(reads, initialReads);
+        hidden = false;
+        win.document.dispatchEvent(new win.Event('visibilitychange'));
+        await flush();
+        assert.equal(reads, initialReads + 1);
+        poll();
+        await flush();
+        assert.equal(reads, initialReads + 2);
+        win.localStorage.setItem('crm_alerts_read_v2', JSON.stringify([completion.id]));
+        assert.equal(win.getUnreadControlCompletionCount(), 1);
+        assert.equal(await win._saveControlRead({ eventKey: completion.eventKey }), true);
+        win.dispatchEvent(new win.Event('online'));
+        await flush();
+        assert.equal(win.getUnreadControlCompletionCount(), 0);
+
+        win.document.body.insertAdjacentHTML('beforeend', win._renderAlertItem(completion, false));
+        assert.equal(win.document.querySelector('.ap-item img'), null);
+        assert.equal(win.document.querySelector('.ap-item a').textContent, completion.title);
+        assert.equal(win.document.querySelectorAll('.ap-item .ap-actions').length, 0);
+
+        win.dispatchEvent(new win.Event('beforeunload'));
+        assert.equal(cleared, true);
+        const readsBeforeUnload = reads;
+        win.document.dispatchEvent(new win.Event('visibilitychange'));
+        await flush();
+        assert.equal(reads, readsBeforeUnload);
+    } finally {
+        win.close();
+    }
+});

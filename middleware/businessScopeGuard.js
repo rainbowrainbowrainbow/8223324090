@@ -22,7 +22,10 @@ function businessScopeWriteGuard(req, res, next) {
   const method = String(req.method || 'GET').toUpperCase();
   if (!MUTATING_METHODS.has(method)) return next();
   if (!req.user) return next();
-  if (EXEMPT_PATHS.has(normalizedApiPath(req))) return next();
+  const path = normalizedApiPath(req);
+  if (EXEMPT_PATHS.has(path)) return next();
+  // This changes only the authenticated recipient's read state; the route still checks the selected businesses.
+  if (method === 'POST' && ['/tasks/control-completions/read', '/api/tasks/control-completions/read'].includes(path)) return next();
 
   const requestedMode = businessScopeModeFromRequest(req);
   if (requestedMode === BUSINESS_SCOPE_SINGLE) return next();

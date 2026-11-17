@@ -1965,6 +1965,7 @@ function assertCrmBusinessWritableRequest(url, method = 'GET') {
     if (!isCrmBusinessScopeReadOnly()) return;
     const path = crmBusinessRequestPath(url);
     if (CRM_BUSINESS_SCOPE_WRITE_EXEMPT_PATHS.has(path)) return;
+    if (normalizedMethod === 'POST' && path === '/api/tasks/control-completions/read') return;
     if ((normalizedMethod === 'POST' && (path === '/api/organizations/bootstrap' || /^\/api\/organizations\/\d+\/businesses$/.test(path)))
         || (normalizedMethod === 'PATCH' && /^\/api\/organizations\/businesses\/\d+(?:\/configuration)?$/.test(path))
         || (normalizedMethod === 'POST' && /^\/api\/organizations\/businesses\/\d+\/initialize-resources$/.test(path))

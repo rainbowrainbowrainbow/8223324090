@@ -3,25 +3,40 @@
 const { buildTaskOwnerMatch, buildTaskObserverMatch, buildTaskVisibilityScope,
     normalizeUserId, ownsTask, observesTask } = require('./taskPolicy');
 
-// Personal membership narrows existing visibility. Authorship never bypasses
-// private-task, department or business restrictions, and never grants write access.
-function buildTaskPersonalQuery(user, params, alias = 't') {
+function buildTaskAuthorMatch(user, params, alias = 't') {
     if (!/^[a-z_][a-z0-9_]*$/i.test(alias)) throw new Error('Invalid task SQL alias');
-    const owner = buildTaskOwnerMatch(user, params, alias);
     const id = normalizeUserId(user);
-    let author = 'FALSE';
-    if (id) {
-        params.push(id);
-        const idRef = `$${params.length}`;
-        params.push(String(user.username || ''));
-        const nameRef = `$${params.length}`;
-        author = `(${alias}.created_by_user_id = ${idRef} OR (${alias}.created_by_user_id IS NULL AND ${nameRef} <> '' AND ${alias}.created_by = ${nameRef}))`;
-    }
+    if (!id || user?.is_active === false || user?.isActive === false || user?.role === 'guest') return 'FALSE';
+    const idRef = params.push(id);
+    const nameRef = params.push(String(user.username || ''));
+    return `(${alias}.created_by_user_id = $${idRef}
+        OR (${alias}.created_by_user_id IS NULL AND $${nameRef} <> '' AND ${alias}.created_by = $${nameRef}))`;
+}
+
+function buildAuthoredTeamTaskMatch(user, params, alias = 't') {
+    return authoredTeamTaskSql(buildTaskAuthorMatch(user, params, alias), alias);
+}
+
+function buildTaskControlPredicates(user, params, alias = 't') {
+    const author = buildTaskAuthorMatch(user, params, alias);
+    const owner = buildTaskOwnerMatch(user, params, alias);
+    return { author, owner, control: `((${author}) IS TRUE AND (${owner}) IS NOT TRUE)` };
+}
+
+function authoredTeamTaskSql(author, alias) {
+    return `(COALESCE(${alias}.visibility, 'team') = 'team'
+        AND COALESCE(${alias}.task_mode, 'work') NOT IN ('personal', 'private') AND (${author}) IS TRUE)`;
+}
+
+// Callers must apply the business scope separately. Keep the existing
+// visibility predicate for workflows that mutate the selected task.
+function buildTaskPersonalQuery(user, params, alias = 't', { authorRead = true } = {}) {
+    const { author, owner, control } = buildTaskControlPredicates(user, params, alias);
     const participant = buildTaskObserverMatch(user, params, alias);
     const visibility = buildTaskVisibilityScope(user, params, alias);
     return {
-        match: `((${owner} OR ${author} OR ${participant}) ${visibility})`,
-        control: `((${author}) IS TRUE AND (${owner}) IS NOT TRUE)`,
+        match: `(((${owner} OR ${author} OR ${participant}) ${visibility}) OR ${authorRead ? authoredTeamTaskSql(author, alias) : 'FALSE'})`,
+        control,
         roles: `array_remove(ARRAY[CASE WHEN ${owner} THEN 'executor' END, CASE WHEN ${author} THEN 'author' END, CASE WHEN ${participant} THEN 'participant' END], NULL)`
     };
 }
@@ -35,4 +50,4 @@ function taskViewerRoles(user, row) {
     return [ownsTask(user, row) && 'executor', author && 'author', observesTask(user, row) && 'participant'].filter(Boolean);
 }
 
-module.exports = { buildTaskPersonalQuery, taskViewerRoles };
+module.exports = { buildAuthoredTeamTaskMatch, buildTaskControlPredicates, buildTaskPersonalQuery, taskViewerRoles };

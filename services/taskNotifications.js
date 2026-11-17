@@ -90,7 +90,20 @@ function emitTaskAssignedToOwner(task = {}, actor = {}, options = {}) {
     }
 }
 
+async function refreshTaskAuthorAlerts(task = {}) {
+    const authorId = normalizeNotificationUserId(task.created_by_user_id);
+    if (!authorId || authorId === taskOwnerUserId(task) || task.visibility !== 'team') return;
+    try {
+        const { sendToUser } = require('./websocket');
+        // The client must read the notification through its own scoped API session.
+        await sendToUser(String(authorId), 'alert:updated', { alerts: [], count: 0 });
+    } catch (err) {
+        log.warn(`Task completion alert refresh failed: ${err.message}`);
+    }
+}
+
 module.exports = {
+    refreshTaskAuthorAlerts,
     emitTaskAssignedToOwner,
     taskOwnerUserId,
     taskNotificationId

@@ -8,6 +8,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { loadEmployeeResults, employeeMonthRange } = require('../../services/profileEmployeeMonths');
 const { request, getToken } = require('../helpers');
+const { ROLE_PERMISSIONS } = require('../../config/roles');
+const { listControlCompletions } = require('../../services/taskControlCompletionInbox');
 const { assertSafeIsolatedTestUrl } = require('../../scripts/test-db-safety');
 const { inventory } = require('../../scripts/my-day-legacy-task-inventory');
 const { cancelledBookingAutoArchivePredicateSql } = require('../../services/taskLifecycle');
@@ -63,11 +65,11 @@ test('park edition paginates all periods and disables legacy module writes', {
             assert.equal(found.size, bucketMeta.total);
             for (const row of rows) assert.ok(found.has(row.id), `${bucket}:${row.id} missing`);
         }
-        async function testActor(label, business = 'event_genix') {
+        async function testActor(label, business = 'event_genix', role = 'director') {
             const username = `park_${label}_${randomBytes(4).toString('hex')}`;
             const password = `Local-${randomBytes(12).toString('hex')}-Aa9`;
             const created = await request('POST', '/api/users', {
-                username, password, name: `Local park ${label}`, role: 'director',
+                username, password, name: `Local park ${label}`, role,
                 actionAllowlist: [], actionDenylist: [],
                 businessContexts: [business], defaultBusinessContext: business
             }, token);
@@ -116,6 +118,122 @@ test('park edition paginates all periods and disables legacy module writes', {
             assert.ok(tasks.some(task => task.id === own.id));
             assert.ok(!tasks.some(task => task.id === assigned.id));
         }
+
+        const complete = await request('POST', `/api/tasks/${assigned.id}/complete`, {}, peer.token);
+        assert.equal(complete.status, 200);
+        const activeControl = await request('GET', '/api/tasks/my-cabinet?bucket=control', undefined, token);
+        assert.deepEqual(activeControl.data.tasks.map(task => task.id), [farFuture.id]);
+
+        await pool.query(`UPDATE tasks SET status = 'done', completed_at = NOW() AT TIME ZONE 'UTC' - INTERVAL '1 day'
+            WHERE id = ANY($1::int[])`, [[own.id, otherBusiness.id]]);
+        const archived = await pool.query(`INSERT INTO tasks
+            (title, status, visibility, task_mode, owner_user_id, created_by_user_id, business_context, completed_at)
+            VALUES ('Archived delegated fixture', 'archived', 'team', 'work', $2, $1, 'event_genix', NOW() AT TIME ZONE 'UTC'),
+                   ('Private delegated fixture', 'done', 'me_only', 'work', $2, $1, 'event_genix', NOW() AT TIME ZONE 'UTC'),
+                   ('Older completed fixture', 'done', 'team', 'work', $2, $1, 'event_genix', '2023-01-01 00:00:00')
+            RETURNING id`, [owner, peer.id]);
+        const older = archived.rows[2].id;
+        // Simulate a completed task that predates installation of the inbox trigger.
+        await pool.query('DELETE FROM task_control_completion_inbox WHERE task_id = $1', [older]);
+        for (const [offset, expectedId] of [[0, assigned.id], [1, older]]) {
+            const completed = await request('GET', `/api/tasks/my-cabinet?bucket=controlCompleted&offset=${offset}&limit=1`, undefined, token);
+            assert.equal(completed.status, 200);
+            assert.equal(completed.data.meta.bucketPage.total, 2);
+            assert.deepEqual(completed.data.tasks.map(task => task.id), [expectedId]);
+            assert.ok(completed.data.tasks[0].completedAt);
+        }
+
+        const authorAlerts = await request('GET', '/api/dashboard/alerts', undefined, token);
+        assert.equal(authorAlerts.status, 200);
+        const info = authorAlerts.data.alerts.filter(alert => alert.type === 'control_completion');
+        assert.equal(info.length, 2);
+        assert.equal(authorAlerts.data.controlCompletions.unread, 2);
+        assert.equal(info[0].level, 'info');
+        assert.equal(info[0].action, undefined);
+        assert.equal(info[0].link, `/tasks?view=my&open=${assigned.id}&businessContext=event_genix`);
+        for (const role of Object.keys(ROLE_PERMISSIONS).filter(role => role !== 'guest')) {
+            const actor = { id: owner, username: profile.data.user.username, role };
+            const inbox = await listControlCompletions(pool, actor, 'event_genix');
+            assert.equal(inbox.unread, 2, `Missing completions for ${role}`);
+        }
+        for (const actor of [{ id: owner, role: 'guest' }, { id: owner, is_active: false }]) {
+            assert.equal((await listControlCompletions(pool, actor, 'event_genix')).unread, 0);
+        }
+        for (const actor of [peer, observer, foreign]) {
+            const alerts = await request('GET', '/api/dashboard/alerts', undefined, actor.token);
+            assert.equal(alerts.status, 200);
+            assert.ok(!alerts.data.alerts.some(alert => alert.type === 'control_completion'));
+        }
+
+        // Reverse the author/executor pair and cover legacy author/owner names.
+        const peerProfile = await request('GET', '/api/auth/profile', undefined, peer.token);
+        const legacy = await pool.query(`INSERT INTO tasks
+            (title, status, visibility, task_mode, assigned_to, created_by, business_context, completed_at)
+            VALUES ('Legacy delegated completion', 'done', 'team', 'work', $1, $2, 'event_genix', NOW() AT TIME ZONE 'UTC')
+            RETURNING id`, [profile.data.user.username, peerProfile.data.user.username]);
+        const peerCompleted = await request('GET', '/api/tasks/my-cabinet?bucket=controlCompleted', undefined, peer.token);
+        assert.deepEqual(peerCompleted.data.tasks.map(task => task.id), [legacy.rows[0].id]);
+        const reverseAlerts = await request('GET', '/api/dashboard/alerts', undefined, peer.token);
+        assert.equal(reverseAlerts.data.alerts.filter(alert => alert.type === 'control_completion').length, 1);
+
+        // Reopening returns the task to active while retaining the prior completion event.
+        const reopen = await request('PATCH', `/api/tasks/${assigned.id}/status`, { status: 'todo' }, peer.token);
+        assert.equal(reopen.status, 200);
+        const reopenedAlerts = await request('GET', '/api/dashboard/alerts', undefined, token);
+        assert.ok(reopenedAlerts.data.alerts.some(alert => alert.id === info[0].id));
+        const allowedInbox = '/api/tasks/control-completions';
+        const deniedRead = await request('POST', `${allowedInbox}/read`, { eventKey: info[0].eventKey }, observer.token);
+        assert.equal(deniedRead.status, 200);
+        assert.equal((await request('GET', allowedInbox, undefined, token)).data.unread, 2);
+        for (let retry = 0; retry < 2; retry++) {
+            assert.equal((await request('POST', `${allowedInbox}/read`, { eventKey: info[0].eventKey }, token)).status, 200);
+        }
+        assert.equal((await request('GET', allowedInbox, undefined, token)).data.unread, 1);
+        const concurrent = await Promise.all([1, 2].map(() => request('POST', `/api/tasks/${assigned.id}/complete`, {}, peer.token)));
+        assert.deepEqual(concurrent.map(res => res.status).sort(), [200, 409]);
+        const recompletedAlerts = await request('GET', '/api/dashboard/alerts', undefined, token);
+        const renewed = recompletedAlerts.data.alerts.find(alert => alert.type === 'control_completion');
+        assert.ok(renewed);
+        assert.equal(recompletedAlerts.data.alerts.filter(alert => alert.type === 'control_completion').length, 3);
+        assert.notEqual(renewed.id, info[0].id);
+        assert.equal((await request('POST', `/api/tasks/${assigned.id}/complete`, {}, peer.token)).status, 409);
+
+        for (const role of ['manager', 'instructor', 'animator']) {
+            const roleActor = await testActor(role, 'event_genix', role);
+            const { rows: [roleTask] } = await pool.query(`INSERT INTO tasks
+                (title, status, visibility, task_mode, owner_user_id, created_by_user_id, business_context, completed_at)
+                VALUES ($1, 'done', 'team', 'work', $2, $3, 'event_genix', NOW() AT TIME ZONE 'UTC') RETURNING id`,
+                [`Delegated completion by ${role}`, peer.id, roleActor.id]);
+            const card = await request('GET', `/api/tasks/${roleTask.id}`, undefined, roleActor.token);
+            assert.equal(card.status, 200);
+            assert.equal(card.data.drawer.actions.edit, false);
+            assert.equal(card.data.drawer.actions.reschedule, false);
+            const forbidden = await request('POST', `/api/tasks/${roleTask.id}/complete`, {}, roleActor.token);
+            assert.ok([403, 404].includes(forbidden.status));
+            const visible = await request('GET', '/api/tasks/my-cabinet?bucket=controlCompleted', undefined, roleActor.token);
+            assert.equal(visible.status, 200);
+            assert.deepEqual(visible.data.tasks.map(task => task.id), [roleTask.id]);
+            const roleAlerts = await request('GET', '/api/dashboard/alerts', undefined, roleActor.token);
+            assert.equal(roleAlerts.status, 200);
+            assert.equal(roleAlerts.data.alerts.filter(alert => alert.type === 'control_completion').length, 1);
+        }
+
+        await pool.query(`INSERT INTO tasks (title, status, visibility, task_mode, owner_user_id,
+            created_by_user_id, business_context, completed_at)
+            SELECT 'Paged completion ' || n, 'done', 'team', 'work', $1, $2, 'event_genix',
+                '2020-01-01'::timestamp + n * INTERVAL '1 day' FROM generate_series(1, 30) n`, [peer.id, observer.id]);
+        const first = await request('GET', allowedInbox, undefined, observer.token);
+        assert.equal(first.data.unread, 30);
+        assert.equal(first.data.alerts.length, 25);
+        const second = await request('GET', `${allowedInbox}?cursor=${encodeURIComponent(first.data.nextCursor)}`, undefined, observer.token);
+        assert.equal(second.data.alerts.length, 5);
+        assert.equal(second.data.nextCursor, null);
+        assert.equal(new Set([...first.data.alerts, ...second.data.alerts].map(alert => alert.id)).size, 30);
+        assert.equal((await request('POST', `${allowedInbox}/read`, { all: true }, observer.token)).status, 200);
+        assert.equal((await request('GET', allowedInbox, undefined, observer.token)).data.unread, 0);
+
+        // Keep the existing reschedule fixture open for the rest of the scenario.
+        await pool.query("UPDATE tasks SET status = 'todo', completed_at = NULL WHERE id = $1", [own.id]);
 
         const reschedulePath = `/api/tasks/${own.id}/reschedule`;
         const moveBody = { deadline: `${today}T18:00:00`, sourceSurface: 'profile_my_cabinet_overdue_to_today_button' };

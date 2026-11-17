@@ -230,7 +230,7 @@ function createTelegramCrmTasks(options) {
             throw failure(403, 'TELEGRAM_BUSINESS_READ_ONLY', 'Цей бізнес доступний лише для перегляду.');
         }
         const params = [payload.taskId];
-        const personal = buildTaskPersonalQuery(actor, params);
+        const personal = buildTaskPersonalQuery(actor, params, 't', { authorRead: false });
         const business = pushTaskBusinessScopeCondition(params, scope, 't');
         const task = (await client.query(
             `SELECT t.* FROM tasks t WHERE t.id=$1 AND ${personal.match} AND ${business}${lock ? ' FOR UPDATE' : ''}`,

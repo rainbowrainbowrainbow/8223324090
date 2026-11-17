@@ -57,6 +57,7 @@ const TASK_CABINET_PLANNING_BUCKETS = Object.freeze([
 const TASK_CABINET_PAGE_BUCKETS = Object.freeze([
     ...TASK_CABINET_PLANNING_BUCKETS,
     'control',
+    'controlCompleted',
     'completedToday',
     'completedHistory'
 ]);
@@ -443,6 +444,9 @@ async function buildTaskCabinetBucketPage(options = {}) {
     if (bucket === 'control') {
         whereSql = `COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived') AND ${personalQuery.control}`;
         orderSql = `${dateSql} ASC NULLS LAST, ${taskPriorityOrderSql('t')}, t.id DESC`;
+    } else if (bucket === 'controlCompleted') {
+        whereSql = `t.status = 'done' AND ${personalQuery.control}`;
+        orderSql = `t.completed_at DESC NULLS LAST, t.id DESC`;
     } else if (TASK_CABINET_PLANNING_BUCKETS.includes(bucket)) {
         const planningBucketCondition = bucket === 'monthEnd'
             ? `${dateSql} = $${monthEndParam}::date`
@@ -483,7 +487,8 @@ async function buildTaskCabinetBucketPage(options = {}) {
         countParams
     );
     const result = await queryable.query(
-        `SELECT t.*, u.name AS owner_name, u.username AS owner_username, ${personalQuery.roles} AS viewer_roles,
+        `SELECT t.*, t.completed_at AT TIME ZONE 'UTC' AS completed_at,
+                u.name AS owner_name, u.username AS owner_username, ${personalQuery.roles} AS viewer_roles,
                 ${TASK_SUBSTITUTION_SELECT}
          FROM tasks t
          LEFT JOIN users u ON u.id = t.owner_user_id

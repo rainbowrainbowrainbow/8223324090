@@ -140,6 +140,14 @@ check('canonical task writer, actual membership checks and concurrent confirms s
     assert.deepEqual(peers.data.tasks.find(row=>row.id===task.id).viewerRoles,['executor']);
     const recovered = await bot(`/operations/${id}`);
     assert.equal(recovered.data.receipt.task.id,task.id);
+    const completion = await bot('/tasks/preview', { taskId: task.id, action: 'complete',
+        businessContext: 'event_genix', sourceUpdateId: String(nextUpdate++) }, peerTelegram);
+    assert.equal(completion.status, 201, JSON.stringify(completion.data));
+    const done = await bot(`/operations/${completion.data.operationId}/confirm`, { confirmed: true }, peerTelegram);
+    assert.equal(done.status, 200, JSON.stringify(done.data));
+    const inbox = await request('GET', '/api/tasks/control-completions?businessContext=event_genix', undefined, jwt);
+    assert.equal(inbox.status, 200);
+    assert.equal(inbox.data.alerts.filter(alert => alert.eventKey.startsWith(`${task.id}:`)).length, 1);
 });
 
 check('four confirmed participants can create for every peer with current business and identity checks', async () => {

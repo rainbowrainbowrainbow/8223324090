@@ -109,10 +109,17 @@ function taskControlMeta(task = {}) {
     }
 }
 
-function withTaskDrawerContract(task = {}, user = {}) {
+function withTaskDrawerContract(task = {}, user = {}, { authorReadOnly = false } = {}) {
     const source = taskSourceSummary(task);
     const controlMeta = taskControlMeta(task);
     const actionContract = taskDrawerActionContract(task, user);
+    if (authorReadOnly) {
+        for (const action of Object.keys(actionContract.actions)) {
+            if (action === 'view') continue;
+            actionContract.actions[action] = false;
+            actionContract.reasons[action] = 'TASK_MUTATION_FORBIDDEN';
+        }
+    }
     return {
         ...task,
         drawer: {

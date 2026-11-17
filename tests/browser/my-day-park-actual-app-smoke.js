@@ -495,6 +495,79 @@ async function run() {
         assert.equal(await page.getByText(assignedTitle, { exact: true }).count(), 0);
         await page.goBack();
         await authoredTask.waitFor();
+        const completedFixtures = new Pool({ connectionString: process.env.DATABASE_URL, ssl: false });
+        try {
+            await completedFixtures.query(`UPDATE tasks
+                SET status = 'done', workflow_state = 'done', completed_at = NOW() AT TIME ZONE 'UTC'
+                WHERE title = $1 AND created_by_user_id = $2`, [assignedTitle, session.user.id]);
+        } finally {
+            await completedFixtures.end();
+        }
+        await page.setViewportSize({ width: 320, height: 760 });
+        // Simulate returning to the existing profile after the executor completes elsewhere.
+        await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+        const activeTab = controlPanel.getByRole('tab', { name: 'Активні' });
+        const completedTab = controlPanel.getByRole('tab', { name: /Завершені/ });
+        await controlPanel.getByText('Зараз немає відкритих задач на контролі.').waitFor();
+        await completedTab.getByText('Нових: 1').waitFor();
+        await activeTab.focus();
+        await page.keyboard.press('ArrowRight');
+        assert.equal(await completedTab.evaluate(tab => tab === document.activeElement), true);
+        assert.equal(await activeTab.getAttribute('aria-selected'), 'true');
+        await page.keyboard.press('Enter');
+        await authoredTask.waitFor();
+        assert.equal(await completedTab.getAttribute('aria-selected'), 'true');
+        await controlPanel.getByText(/Завершено ·/).waitFor();
+        await activeTab.click();
+        assert.equal(await authoredTask.isVisible(), false);
+        await completedTab.click();
+        await authoredTask.waitFor();
+        await page.waitForFunction(() => document.documentElement.scrollWidth <= innerWidth);
+        const [activeBox, completedBox] = await Promise.all([activeTab.boundingBox(), completedTab.boundingBox()]);
+        assert.equal(activeBox.y, completedBox.y);
+        assert.ok(activeBox.x >= 0 && completedBox.x + completedBox.width <= 320);
+        assert.ok(completedBox.height >= 44);
+        await controlPanel.screenshot({ path: path.join(evidence, 'profile-control-completed-320.png'), animations: 'disabled' });
+        await page.setViewportSize({ width: 1440, height: 1000 });
+        await page.evaluate(() => document.body.classList.remove('dark-mode'));
+        await controlPanel.screenshot({ path: path.join(evidence, 'profile-control-completed-1440-light.png'), animations: 'disabled' });
+        await page.setViewportSize({ width: 320, height: 760 });
+
+        await page.evaluate(() => toggleAlertsPanel());
+        const completionAlert = page.locator('#alertsPanel').getByRole('link', { name: `Завершено: ${assignedTitle}` });
+        await completionAlert.waitFor();
+        const infoAlert = completionAlert.locator('xpath=ancestor::*[@data-alert-id][1]');
+        await infoAlert.getByText('На контролі · Для ознайомлення').waitFor();
+        assert.equal(await infoAlert.getByRole('button', { name: /Підтвердити|Створити/ }).count(), 0);
+        await infoAlert.screenshot({ path: path.join(evidence, 'profile-control-completion-notification-320.png'), animations: 'disabled' });
+        const secondDevice = await browser.newContext({ serviceWorkers: 'block' });
+        try {
+            await secondDevice.route('https://**/*', route => route.abort());
+            await secondDevice.addInitScript(session => {
+                for (const [key, value] of Object.entries({
+                    pzp_token: session.token,
+                    pzp_access_token: session.token,
+                    pzp_current_user: JSON.stringify(session.user),
+                    pzp_crm_business_context: 'event_genix'
+                })) localStorage.setItem(key, value);
+            }, session);
+            const secondPage = await secondDevice.newPage();
+            await secondPage.goto(origin + '/profile?tab=control');
+            await secondPage.locator('[data-profile-control-new]:visible').first().waitFor();
+            await page.bringToFront();
+            await infoAlert.getByRole('button', { name: 'Позначити сповіщення як прочитане' }).click();
+            await completedTab.getByText('Нових: 1').waitFor({ state: 'hidden' });
+            await secondPage.bringToFront();
+            await secondPage.evaluate(() => window.dispatchEvent(new Event('online')));
+            await secondPage.locator('[data-profile-control-new]:visible').first().waitFor({ state: 'hidden' });
+        } finally {
+            await secondDevice.close();
+        }
+        await page.reload();
+        await page.getByRole('tab', { name: /Завершені/ }).click();
+        await authoredTask.waitFor();
+        assert.equal(await page.locator('[data-profile-control-new]:visible').count(), 0);
+
         assert.deepEqual(pageErrors, []);
         assert.deepEqual(gameRequests, []);
         assert.deepEqual(hermesRequests, []);

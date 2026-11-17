@@ -38,6 +38,7 @@ let myCabinetData = null;
 let myCabinetLoadError = '';
 let myCabinetLoadState = 'idle';
 let profileControlTasks = null;
+let profileControlView = 'control';
 let myTasksSegment = 'all';
 let cabinetProjectionRequestSequence = 0;
 const cabinetProjectionInFlightByPath = new Map();
@@ -1454,6 +1455,13 @@ async function initProfilePage() {
     applyProfilePeriodFromUrl();
     if (typeof window !== 'undefined' && window.addEventListener && !window.__profileTabPopstateBound) {
         window.__profileTabPopstateBound = true;
+        window.addEventListener('crm:alerts-updated', syncProfileControlNewBadge);
+        const refreshVisibleControl = () => {
+            if (!document.hidden && activeTab === 'control') void loadProfileControlTasks();
+        };
+        document.addEventListener('visibilitychange', refreshVisibleControl);
+        window.addEventListener('online', refreshVisibleControl);
+        window.addEventListener('ws:alert', refreshVisibleControl);
         window.addEventListener('popstate', async () => {
             const nextTab = normalizeProfileTab(new URLSearchParams(window.location.search || '').get('tab')) || (isOwnProfile ? 'myday' : 'professions');
             if (nextTab !== activeTab || ['myday', 'workbase'].includes(nextTab) || Object.hasOwn(PROFILE_EMPLOYEE_TABS, nextTab)) {
@@ -1465,6 +1473,9 @@ async function initProfilePage() {
             window.addEventListener(event, () => {
                 document.querySelector('.park-task-dialog[open]')?.close();
                 profileControlTasks = null;
+                document.querySelectorAll('[data-profile-control-list]').forEach(list => {
+                    list.innerHTML = renderProfileControlList(list.dataset.profileControlList);
+                });
                 syncProfileControlCount();
                 if (isOwnProfile && activeTab === 'control') void loadProfileControlTasks();
                 for (const tab of Object.keys(PROFILE_EMPLOYEE_TABS)) delete profileEmployeeMonthState[tab];
@@ -1842,7 +1853,7 @@ function renderProfileSecondaryTabs() {
         <nav class="profile-secondary-work-menu profile-park-nav" aria-label="Розділи профілю">
             <div class="profile-secondary-tabs">
                 ${tabs.map(([id, label]) => id === 'control'
-                    ? `<a class="profile-primary-tab${activeTab === id ? ' active' : ''}" data-profile-tab="control" data-profile-control-link href="/profile?tab=control"${activeTab === id ? ' aria-current="page"' : ''}>На контролі <span data-profile-control-count${controlCount == null ? ' hidden' : ''}>${escapeHtml(controlCount ?? '')}</span></a>`
+                    ? `<a class="profile-primary-tab${activeTab === id ? ' active' : ''}" data-profile-tab="control" data-profile-control-link href="/profile?tab=control"${activeTab === id ? ' aria-current="page"' : ''}>На контролі <span data-profile-control-count${controlCount == null ? ' hidden' : ''}>${escapeHtml(controlCount ?? '')}</span> ${renderProfileControlNewBadge({ announce: true })}</a>`
                     : renderProfilePrimaryTab(id, label)).join('')}
             </div>
         </nav>`;
@@ -2020,7 +2031,10 @@ async function switchTab(tab, options = {}) {
         focusProfileWorkBaseSection();
     }
     if (Object.hasOwn(PROFILE_EMPLOYEE_TABS, tab)) void loadProfileEmployeeMonth(tab);
-    if (tab === 'control') void loadProfileControlTasks();
+    if (tab === 'control') {
+        void loadProfileControlTasks();
+        void window.loadAlertBell?.();
+    }
     return true;
 }
 
@@ -5917,10 +5931,41 @@ function cabinetHrReminderScope() {
     return JSON.stringify([scope?.mode, scope?.activeContext, scope?.selectedContexts || []]);
 }
 
+function renderProfileControlNewBadge({ announce = false } = {}) {
+    const count = window.getUnreadControlCompletionCount?.() || 0;
+    return `<span class="profile-control-new"${announce ? ' role="status"' : ''}><span data-profile-control-new${count ? '' : ' hidden'}>${count ? `Нових: ${count}` : ''}</span></span>`;
+}
+
+let profileControlCompletionSignature = '';
+
+function syncProfileControlNewBadge(event) {
+    const completions = event?.detail?.alerts?.filter(alert => alert.type === 'control_completion');
+    if (completions) {
+        const signature = completions.map(alert => alert.id).sort().join('|');
+        if (signature !== profileControlCompletionSignature) {
+            profileControlCompletionSignature = signature;
+            if (!document.hidden && activeTab === 'control') void loadProfileControlTasks();
+        }
+    }
+    const count = window.getUnreadControlCompletionCount?.() || 0;
+    const label = count ? `Нових: ${count}` : '';
+    document.querySelectorAll('[data-profile-control-new]').forEach(badge => {
+        if (badge.textContent === label) return;
+        badge.hidden = !count;
+        badge.textContent = label;
+    });
+}
+
+const PROFILE_CONTROL_VIEWS = ['control', 'controlCompleted'];
+
+function profileControlState(view) {
+    const state = profileControlTasks?.[view];
+    return state?.scope === cabinetHrReminderScope() ? state : null;
+}
+
 function profileControlCount() {
-    const scope = cabinetHrReminderScope();
-    if (profileControlTasks?.scope === scope && profileControlTasks.meta) return profileControlTasks.meta.total;
-    return myCabinetData?.hrReminderScope === scope ? myCabinetData.stats?.controlCount : null;
+    return profileControlState('control')?.meta?.total
+        ?? (myCabinetData?.hrReminderScope === cabinetHrReminderScope() ? myCabinetData.stats?.controlCount : null);
 }
 
 function syncProfileControlCount() {
@@ -5931,51 +5976,109 @@ function syncProfileControlCount() {
     badge.textContent = count ?? '';
 }
 
-function renderProfileControlTasks() {
-    const state = profileControlTasks?.scope === cabinetHrReminderScope() ? profileControlTasks : null;
+function renderProfileControlList(view) {
+    const completed = view === 'controlCompleted';
+    const state = profileControlState(view);
     const tasks = state?.tasks || [];
     const meta = state?.meta;
-    return `<section class="profile-work-panel profile-control-tasks" aria-labelledby="profileControlHeading" data-profile-control-panel>
-        <h2 id="profileControlHeading" tabindex="-1">На контролі${meta ? ` · ${escapeHtml(meta.total)}` : ''}</h2>
-        ${tasks.length ? `<ul>${tasks.map(task => {
+    return `${tasks.length ? `<ul>${tasks.map(task => {
             const id = cabinetProjectionTaskId(task);
-            const date = cabinetTaskFocusDateKey(task);
-            const overdue = date && date < cabinetDateKeyOffset();
+            const date = completed
+                ? cabinetTaskDateKeyFromValue(task.completedAt || task.completed_at)
+                : cabinetTaskFocusDateKey(task);
+            const overdue = !completed && date && date < cabinetDateKeyOffset();
+            const datePrefix = completed ? 'Завершено · ' : (overdue ? 'Прострочено · ' : '');
             return `<li>
                 <a href="/tasks?view=my&amp;open=${id}">${escapeHtml(task.title || 'Без назви')}</a>
-                <span>${task.ownerLabel ? `Виконує ${escapeHtml(task.ownerLabel)}` : 'Виконавця не призначено'}</span>
-                ${date ? `<span${overdue ? ' class="is-overdue"' : ''}>${overdue ? 'Прострочено · ' : ''}<time datetime="${escapeHtml(date)}">${escapeHtml(profileEmployeeDateText(date))}</time></span>` : '<span>Без дати</span>'}
+                <span>${task.ownerLabel ? `${completed ? 'Виконавець:' : 'Виконує'} ${escapeHtml(task.ownerLabel)}` : 'Виконавця не призначено'}</span>
+                ${date ? `<span${overdue ? ' class="is-overdue"' : ''}>${datePrefix}<time datetime="${escapeHtml(date)}">${escapeHtml(profileEmployeeDateText(date))}</time></span>` : '<span>Без дати</span>'}
             </li>`;
         }).join('')}</ul>` : ''}
-        ${!state || state.loading ? '<p role="status">Завантажуємо задачі…</p>' : ''}
+        ${!state || (state.loading && !tasks.length) ? '<p>Завантажуємо задачі…</p>' : ''}
         ${state?.error ? `<p role="alert">${escapeHtml(state.error)}</p>` : ''}
-        ${meta && !tasks.length && !state.loading && !state.error ? '<p>Зараз немає відкритих задач на контролі.</p>' : ''}
-        ${!state?.loading && (state?.error || meta?.nextCursor) ? `<button type="button" class="cabinet-bucket-more" onclick="loadProfileControlTasks(${Number(meta?.nextCursor?.offset || 0)})">${state.error ? 'Повторити' : 'Показати ще'}</button>` : ''}
+        ${meta && !tasks.length && !state.loading && !state.error ? `<p>${completed ? 'Ще немає завершених задач на контролі.' : 'Зараз немає відкритих задач на контролі.'}</p>` : ''}
+        ${state?.error || meta?.nextCursor ? `<button type="button" class="cabinet-bucket-more" data-profile-control-offset="${state.error ? state.offset : Number(meta.nextCursor.offset)}"${state.loading ? ' disabled' : ''}>${state.error ? 'Повторити' : 'Показати ще'}</button>` : ''}`;
+}
+
+function renderProfileControlTasks() {
+    const active = profileControlView;
+    return `<section class="profile-work-panel profile-control-tasks" aria-labelledby="profileControlHeading" data-profile-control-panel>
+        <h2 id="profileControlHeading" tabindex="-1">На контролі</h2>
+        <div class="profile-control-tabs" role="tablist" aria-labelledby="profileControlHeading">
+            <button id="profile-control-active" type="button" role="tab" aria-controls="profile-control-panel-control" aria-selected="${active === 'control'}" tabindex="${active === 'control' ? 0 : -1}" data-profile-control-view="control">Активні</button>
+            <button id="profile-control-completed" type="button" role="tab" aria-controls="profile-control-panel-controlCompleted" aria-selected="${active === 'controlCompleted'}" tabindex="${active === 'controlCompleted' ? 0 : -1}" data-profile-control-view="controlCompleted">Завершені ${renderProfileControlNewBadge()}</button>
+        </div>
+        ${PROFILE_CONTROL_VIEWS.map(view => `<div id="profile-control-panel-${view}" role="tabpanel" aria-labelledby="profile-control-${view === 'control' ? 'active' : 'completed'}" data-profile-control-list="${view}"${view === active ? ' tabindex="0"' : ' hidden'}>${renderProfileControlList(view)}</div>`).join('')}
     </section>`;
+}
+
+function bindProfileControlTabs() {
+    const panel = document.querySelector('[data-profile-control-panel]');
+    if (!panel || panel.dataset.bound) return;
+    panel.dataset.bound = 'true';
+    const tabs = [...panel.querySelectorAll('[data-profile-control-view]')];
+    panel.addEventListener('click', event => {
+        const tab = event.target.closest('[data-profile-control-view]');
+        if (tab && profileControlView !== tab.dataset.profileControlView) {
+            profileControlView = tab.dataset.profileControlView;
+            for (const button of tabs) {
+                const selected = button === tab;
+                const list = document.getElementById(button.getAttribute('aria-controls'));
+                button.setAttribute('aria-selected', String(selected));
+                button.tabIndex = selected ? 0 : -1;
+                list.hidden = !selected;
+                if (selected) list.tabIndex = 0;
+                else list.removeAttribute('tabindex');
+            }
+            void loadProfileControlTasks();
+        }
+        const more = event.target.closest('[data-profile-control-offset]');
+        if (more) void loadProfileControlTasks(Number(more.dataset.profileControlOffset));
+    });
+    panel.addEventListener('keydown', event => {
+        const tab = event.target.closest('[data-profile-control-view]');
+        const index = tabs.indexOf(tab);
+        if (index < 0) return;
+        const next = { ArrowLeft: (index + tabs.length - 1) % tabs.length,
+            ArrowRight: (index + 1) % tabs.length, Home: 0, End: tabs.length - 1 }[event.key];
+        if (!Number.isInteger(next)) return;
+        event.preventDefault();
+        tabs.forEach((button, i) => { button.tabIndex = i === next ? 0 : -1; });
+        tabs[next].focus();
+    });
+    panel.addEventListener('focusout', event => {
+        if (!event.target.closest('[data-profile-control-view]') || event.relatedTarget?.closest?.('[data-profile-control-view]')) return;
+        tabs.forEach(button => { button.tabIndex = button.dataset.profileControlView === profileControlView ? 0 : -1; });
+    });
 }
 
 async function loadProfileControlTasks(offset = 0) {
     if (!isOwnProfile || activeTab !== 'control') return;
+    const view = profileControlView;
     const scope = cabinetHrReminderScope();
-    const previous = profileControlTasks?.scope === scope ? profileControlTasks : null;
+    const previous = profileControlState(view);
     if (previous?.loading) return;
-    const state = { scope, tasks: offset ? previous?.tasks || [] : [], meta: offset ? previous?.meta : null, loading: true };
-    profileControlTasks = state;
+    profileControlTasks ||= {};
+    const state = { scope, offset, tasks: previous?.tasks || [], meta: previous?.meta || null, loading: true };
+    profileControlTasks[view] = state;
     const repaint = () => {
-        if (state !== profileControlTasks || scope !== cabinetHrReminderScope() || activeTab !== 'control') return;
-        const panel = document.querySelector('[data-profile-control-panel]');
-        const focused = panel?.contains(document.activeElement);
-        if (panel) panel.outerHTML = renderProfileControlTasks();
-        if (focused) document.getElementById('profileControlHeading')?.focus({ preventScroll: true });
+        if (state !== profileControlState(view) || activeTab !== 'control') return;
+        const list = document.getElementById(`profile-control-panel-${view}`);
+        if (!list) return;
+        const focused = list.contains(document.activeElement);
+        if (focused) list.focus({ preventScroll: true });
+        list.setAttribute('aria-busy', String(state.loading));
+        list.innerHTML = renderProfileControlList(view);
     };
     repaint();
     try {
-        const payload = await apiGetScopedJson(`/tasks/my-cabinet?bucket=control&offset=${offset}&limit=${CABINET_BUCKET_PAGE_LIMIT}`);
+        const payload = await apiGetScopedJson(`/tasks/my-cabinet?bucket=${view}&offset=${offset}&limit=${CABINET_BUCKET_PAGE_LIMIT}`);
         if (!Array.isArray(payload?.tasks) || !payload.meta?.bucketPage) throw new Error('Missing task control projection');
-        const seen = new Set(state.tasks.map(cabinetProjectionTaskId));
-        state.tasks = [...state.tasks, ...payload.tasks.filter(task => !seen.has(cabinetProjectionTaskId(task)))];
+        const existing = offset ? state.tasks : [];
+        const seen = new Set(existing.map(cabinetProjectionTaskId));
+        state.tasks = [...existing, ...payload.tasks.filter(task => !seen.has(cabinetProjectionTaskId(task)))];
         state.meta = payload.meta.bucketPage;
-        if (state === profileControlTasks) syncProfileControlCount();
+        if (view === 'control' && state === profileControlState(view)) syncProfileControlCount();
     } catch (error) {
         state.error = 'Не вдалося завантажити задачі на контролі.';
     } finally {
@@ -7366,6 +7469,7 @@ function bindCabinetRefreshButton(root = document) {
 }
 
 function attachProfileListeners() {
+    bindProfileControlTabs();
     if (isOwnProfile) void window.TelegramCrmProfile?.mount(document.querySelector('[data-telegram-crm-profile]'));
     const controlLink = document.querySelector('[data-profile-control-link]');
     if (controlLink && !controlLink.dataset.bound) {

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.83.105",
+  "version": "0.83.106",
   "eventGenix": {
-    "releaseLabel": "Сповіщення про задачі в Telegram"
+    "releaseLabel": "Нічні зміни та фактичні перерви"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

@@ -23,8 +23,9 @@ const {
     assertPerformanceCiRecovery,
     assertProfileEmployeeAuthBlob,
     MY_DAY_PROFILE_RELEASE,
-    FREELANCE_SCHEDULE_RELEASE,
+    freelanceScheduleReleaseFor,
     assertFreelanceSchedulePayload,
+    assertFreelanceScheduleFailedCi,
     assertMyDayProfilePayload,
     isPreparedProtectedRelease,
     migrationSqlHash,
@@ -368,6 +369,14 @@ function assertPreparedProductionBase(manifest, live, remoteSha) {
             'Freelance remote differs from the reviewed predecessor or corrected SHA', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
         return;
     }
+
+    const freelancePredecessor = freelanceScheduleReleaseFor(manifest.allowedProtectedWorkflow?.kind)?.failedPredecessorSha;
+    if (freelancePredecessor) {
+        fail(remoteSha === freelancePredecessor || remoteSha === manifest.initialHeadSha,
+            'Freelance schedule remote differs from its reviewed predecessor or corrected SHA',
+            'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
+        return;
+    }
     if (manifest.renewalFrom) {
         fail(remoteSha === manifest.renewalFrom.headSha || remoteSha === manifest.initialHeadSha,
             'Renewed production branch differs from its exact failed or corrected candidate', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
@@ -495,9 +504,29 @@ function reviewedReleasePayloadSha(head, { payloadSha, controllerPaths }) {
     return payloadSha;
 }
 
+function readFreelanceScheduleFailedCi(reviewed) {
+    if (!reviewed.failedCiRunId) return undefined;
+    return JSON.parse(commandResult('gh', ['run', 'view', reviewed.failedCiRunId, '--json',
+        'databaseId,headSha,headBranch,workflowName,event,status,conclusion,jobs']));
+}
+
+function freelanceScheduleFacts(head, reviewed) {
+    if (!reviewed) return {};
+    if (reviewed.failedPredecessorSha) {
+        fail(gitIsAncestor(reviewed.failedPredecessorSha, reviewed.payloadSha)
+            && git(['rev-list', '--parents', '-n', '1', head]) === `${head} ${reviewed.payloadSha}`,
+        'Freelance recovery requires one controller commit on the reviewed corrected payload',
+        'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
+    }
+    return {
+        freelanceSchedulePayloadSha: reviewedReleasePayloadSha(head, reviewed),
+        freelanceScheduleFailedCi: readFreelanceScheduleFailedCi(reviewed)
+    };
+}
+
 function usesStandardProtectedReleaseFlow(kind) {
-    return [PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE, PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE,
-        PROTECTED_WORKFLOWS.FREELANCE_SCHEDULE_RELEASE].includes(kind);
+    return [PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE, PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE].includes(kind)
+        || Boolean(freelanceScheduleReleaseFor(kind));
 }
 
 function defaultRuntime() {
@@ -528,8 +557,7 @@ function defaultRuntime() {
                     profileEmployeeAuthBlob: git(['rev-parse', `${head}:routes/auth.js`])
                 } : {}),
                 ...(myDayProfile ? { myDayProfilePayloadSha: reviewedReleasePayloadSha(head, MY_DAY_PROFILE_RELEASE) } : {}),
-                ...(options.protectedWorkflow === PROTECTED_WORKFLOWS.FREELANCE_SCHEDULE_RELEASE
-                    ? { freelanceSchedulePayloadSha: reviewedReleasePayloadSha(head, FREELANCE_SCHEDULE_RELEASE) } : {}),
+                ...freelanceScheduleFacts(head, freelanceScheduleReleaseFor(options.protectedWorkflow)),
                 workflowHashes: performanceCi ? performanceCiWorkflowHashes(paths)
                     : options.protectedWorkflow === PROTECTED_WORKFLOWS.STAFF_DELETION_CI ? staffDeletionWorkflowHashes() : undefined,
                 staffDeletionGate: options.protectedWorkflow === PROTECTED_WORKFLOWS.STAFF_DELETION_CI
@@ -557,8 +585,7 @@ function defaultRuntime() {
                     ? { profileEmployeeAuthBlob: git(['rev-parse', `${head}:routes/auth.js`]) } : {}),
                 ...(manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE
                     ? { myDayProfilePayloadSha: reviewedReleasePayloadSha(head, MY_DAY_PROFILE_RELEASE) } : {}),
-                ...(manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.FREELANCE_SCHEDULE_RELEASE
-                    ? { freelanceSchedulePayloadSha: reviewedReleasePayloadSha(head, FREELANCE_SCHEDULE_RELEASE) } : {}),
+                ...freelanceScheduleFacts(head, freelanceScheduleReleaseFor(manifest.allowedProtectedWorkflow?.kind)),
                 workflowHashes: performanceCi ? performanceCiWorkflowHashes(paths)
                     : manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.STAFF_DELETION_CI ? staffDeletionWorkflowHashes() : undefined,
                 performanceCiRecovery: performanceCi ? performanceCiRecoveryFacts(head) : undefined,
@@ -660,7 +687,11 @@ function defaultRuntime() {
                 assertPreparedProductionBase(manifest, await liveVersion(), remoteSha);
                 assertPerformanceCiRecoveryBase();
             }
-            if (standardProtectedRelease) await assertStandardProductionBase(manifest, manifest.baseLiveSha);
+            if (standardProtectedRelease) {
+                const reviewed = freelanceScheduleReleaseFor(workflow);
+                if (reviewed?.failedPredecessorSha) assertFreelanceScheduleFailedCi(readFreelanceScheduleFailedCi(reviewed), reviewed);
+                await assertStandardProductionBase(manifest, reviewed?.failedPredecessorSha || manifest.baseLiveSha);
+            }
             if (needsRuntimeArtifactRun(manifest)) assertRuntimeArtifactPushPaths(remoteSha, releaseSha);
             fail(remoteProductionSha() === remoteSha,
                 'Remote production changed while verifying push checks', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
@@ -1199,8 +1230,10 @@ async function assertExecuteDrift(manifest, runtime) {
     if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE) {
         assertMyDayProfilePayload(drift.myDayProfilePayloadSha);
     }
-    if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.FREELANCE_SCHEDULE_RELEASE) {
-        assertFreelanceSchedulePayload(drift.freelanceSchedulePayloadSha);
+    const freelanceSchedule = freelanceScheduleReleaseFor(manifest.allowedProtectedWorkflow?.kind);
+    if (freelanceSchedule) {
+        assertFreelanceSchedulePayload(drift.freelanceSchedulePayloadSha, freelanceSchedule);
+        assertFreelanceScheduleFailedCi(drift.freelanceScheduleFailedCi, freelanceSchedule);
     }
     if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE) {
         assertPerformanceCiWorkflowHashes(drift.workflowHashes);

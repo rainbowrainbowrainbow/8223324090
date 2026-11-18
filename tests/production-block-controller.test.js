@@ -21,6 +21,7 @@ const {
     PROFILE_EMPLOYEE_AUTH_BLOB,
     MY_DAY_PROFILE_RELEASE,
     FREELANCE_SCHEDULE_RELEASE,
+    FREELANCE_SCHEDULE_CI_RECOVERY,
     STAFF_DELETION_PATHS,
     STAFF_DELETION_CI_HASH,
     PERFORMANCE_CI_CHANGED_PATHS,
@@ -188,6 +189,45 @@ test('freelance schedule release admits only its reviewed payload with read-only
         { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID' });
     assert.throws(() => manifest(options, { ...candidate, migrations: [{ file: 'db/migrations/999_test.sql', sql: 'SELECT 1' }] }),
         { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID' });
+});
+
+test('freelance schedule recovery requires the reviewed remote predecessor and its failed CI', async t => {
+    const { baseSha, baseVersion, version, payloadSha, failedPredecessorSha, failedCiRunId,
+        controllerPaths } = FREELANCE_SCHEDULE_CI_RECOVERY;
+    const options = { protectedWorkflow: 'freelance-schedule-ci-recovery-083118', maxReleaseAttempts: 1 };
+    const failedCi = {
+        databaseId: Number(failedCiRunId), headSha: failedPredecessorSha, headBranch: 'codex/eventgenix-production',
+        workflowName: 'CI', event: 'push', status: 'completed', conclusion: 'failure',
+        jobs: [{ name: 'HR Team browser smoke', conclusion: 'failure' }]
+    };
+    const candidate = {
+        live: { commitSha: baseSha, version: baseVersion, deploymentMetadata: { complete: true } },
+        remoteSha: failedPredecessorSha, releaseVersion: version, freelanceSchedulePayloadSha: payloadSha,
+        freelanceScheduleFailedCi: failedCi, changedPaths: ['routes/payroll.js', ...controllerPaths]
+    };
+    const value = manifest(options, candidate);
+
+    const live = { ...candidate.live, sourceBranch: 'codex/eventgenix-production' };
+    assert.doesNotThrow(() => assertPreparedProductionBase(value, live, failedPredecessorSha));
+    assert.doesNotThrow(() => assertPreparedProductionBase(value, live, value.initialHeadSha));
+    assert.throws(() => assertPreparedProductionBase(value, live, baseSha),
+        { code: 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT' });
+    assert.equal(value.preparedRelease.failedPredecessorSha, failedPredecessorSha);
+    assert.equal(value.preparedRelease.failedCiRunId, failedCiRunId);
+    assert.throws(() => manifest(options, { ...candidate, remoteSha: baseSha }),
+        { code: 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT' });
+    for (const overrides of [{ headSha: RELEASE_SHA }, { conclusion: 'success' }, { jobs: [] }]) {
+        assert.throws(() => manifest(options, { ...candidate, freelanceScheduleFailedCi: { ...failedCi, ...overrides } }),
+            { code: 'PRODUCTION_BLOCK_CI_IDENTITY_INVALID' });
+    }
+    const file = blockFile(t, value);
+    const exactDrift = await dryRuntime().drift(value);
+    const dryRun = evidence => executeAction({ blockFile: file, confirmation: confirmationValue(value), dryRun: true },
+        dryRuntime({ async drift() {
+            return { ...exactDrift, freelanceSchedulePayloadSha: payloadSha, freelanceScheduleFailedCi: evidence };
+        } }));
+    await assert.doesNotReject(dryRun(failedCi));
+    await assert.rejects(dryRun(undefined), { code: 'PRODUCTION_BLOCK_CI_IDENTITY_INVALID' });
 });
 
 function facts(overrides = {}) {

@@ -896,8 +896,10 @@ async function registerQaEntity(queryable, qaContext, entityType, entityId, payl
     const entity = cleanId(entityId);
     const normalizedType = cleanText(entityType, 80);
     const hrQa = require('./hrFixtureQa');
+    const baselineQa = require('./baselineAccessQa');
     const supported = qaContext.run.source === hrQa.SOURCE
-        ? hrQa.TYPES.has(normalizedType) : TRUSTED_QA_ENTITY_TYPES.has(normalizedType);
+        ? hrQa.TYPES.has(normalizedType) : qaContext.run.source === baselineQa.SOURCE
+            ? baselineQa.TYPES.has(normalizedType) : TRUSTED_QA_ENTITY_TYPES.has(normalizedType);
     if (!supported) {
         throw new TrustedQaRunError(
             'Unsupported trusted QA entity type',
@@ -1423,6 +1425,11 @@ async function cleanupTrustedQaRun(queryable, runId, options = {}) {
     const inventory = await loadTrustedQaCleanupInventory(queryable, runId, { forUpdate: options.forUpdate === true });
     const classified = classifyCleanupInventory(inventory);
     if (!inventory) return classified;
+    const baselineQa = require('./baselineAccessQa');
+    if (inventory.run.source === baselineQa.SOURCE) {
+        if (options.forUpdate !== true) throw new TrustedQaRunError('Baseline QA cleanup requires a locked transaction', 'BASELINE_QA_CLEANUP_LOCK_REQUIRED');
+        return baselineQa.cleanupBaselineQa(queryable, inventory);
+    }
     const hrQa = require('./hrFixtureQa');
     if (inventory.run.source === hrQa.SOURCE) {
         if (options.forUpdate !== true) {

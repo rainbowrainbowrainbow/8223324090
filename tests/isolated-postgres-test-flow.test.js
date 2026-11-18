@@ -370,7 +370,11 @@ describe('isolated PostgreSQL test flow safety', () => {
         assert.match(runner, /PostgreSQL startup errors detected/);
         assert.match(runner, /--test-concurrency=1/);
         assert.match(runner, /ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER: 'true'/);
-        assert.match(runner, /permissions:\s*\[\s*'tests\/integration\/permission-capabilities\.integration\.test\.js',\s*'tests\/integration\/timeline-membership-postgres\.test\.js',\s*'tests\/integration\/park-training-workflow\.test\.js',\s*'tests\/integration\/park-chat-workflow\.test\.js',\s*'tests\/integration\/work-readiness-workflow\.test\.js'\s*\]/);
+        const permissionMode = runner.match(/permissions:\s*\[([\s\S]*?)\]/)?.[1] || '';
+        for (const file of ['permission-capabilities.integration', 'timeline-membership-postgres',
+            'park-training-workflow', 'park-chat-workflow', 'work-readiness-workflow', 'baseline-access-qa-lifecycle']) {
+            assert.ok(permissionMode.includes(`'tests/integration/${file}.test.js'`), `Permission gate includes ${file}`);
+        }
         assert.match(runner, /BUSINESS_MEMBERSHIP_TEST_DATABASE_URL:[\s\S]*testFile\.includes\('timeline-membership-postgres\.test'\)/);
         assert.match(runner, /RUN_PERMISSION_CAPABILITIES_INTEGRATION/);
         assert.match(permissionSuite, /RUN_PERMISSION_CAPABILITIES_INTEGRATION/);

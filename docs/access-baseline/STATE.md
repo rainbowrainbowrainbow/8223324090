@@ -4,7 +4,7 @@
 - Branch: codex/baseline-access-20261118; isolated worktree D:/Codex/EventGenix/baseline-access-20261118. Original dirty checkout remains untouched.
 - Original base: 571a57acb80118cc6cc0e5a923c5a5bba9c09d86 (0.83.120).
 - Integrated production base: b0f6077df31ae1eb5dbd6e5753dcb24619253a79 (0.84.6). Own20unpublished commits rebased; only Chat script-version conflict resolved, retaining upstream0.84.6 and defer. Latest freelance schedule and Telegram-unlinked task assignment preserved; canonical team guards retained. No shared-history changes.
-- Last committed Chat SHA27341f3c2; Training29d8a9b19. Readiness implementation is the commit containing this state; resolve HEAD for its SHA. No feature version reserved; inherited0.84.6 is upstream's version. Recheck live/remote before final RC.
+- Chat SHA27341f3c2; Training29d8a9b19; readiness9149bc3c7; integrated fixture/evidence checkpointfe7e36ed5. Dedicated QA identity/API lifecycle is the commit containing this state; resolve HEAD for its SHA. No feature version reserved; inherited0.84.6 is upstream's version. Recheck live/remote before final RC.
 - Authorized: baseline role/authorization code, regressions and local feature commits; protected local zone block EG-BASE-ZONES-20261118 explicitly approved. No production classification, real-person repairs, login/session mechanism changes, secret/settings changes, push or deploy performed/authorized by that local block.
 
 ## Implemented locally
@@ -47,7 +47,7 @@
 
 ## Remaining gates / next action
 
-1. Implement and prove the dedicated bounded registered live-QA workflow described in LIVE_QA_DESIGN.md. Readiness functional SHA9149bc3c7; subsequent changes only repair MyDay/legacy test fixtures and persist evidence/design. All current verification and post-verification stages pass separately; fresh one-command npm test is still required on the final candidate.
+1. Complete the dedicated live-QA browser/canonical-booking scenario in LIVE_QA_DESIGN.md. Identity/API lifecycle is now implemented and locally verified (BASELINE_QA_PROTOCOL.md), without production execution. Bind the exact booking/date/resource plan and browser write guard; do not count the identity-only tool as full instructor modal/HR UI proof. Fresh one-command npm test remains required on the final candidate.
 2. Refresh latest remote/live and parallel release markers. Further drift requires semantic integration and proportionate affected checks before RC.
 3. Recheck remote/live/parallel releases and prepare final RC/version/manifest. Exact15resource metadata action and production delivery require concrete separate authorizations under the runbook; do not ask again for the already recorded policy decisions.
 4. After valid release envelope: exact-SHA CI, documented manual Railway helper, bounded disposable live QA/cleanup. Goal complete only after behavior/release/live proof.
@@ -62,14 +62,44 @@ passwords and tokens were not printed or persisted. Existing HR fixture QA
 requires two preconfigured isolated owner/delegate accounts and permits animator
 fixtures only; these credentials cannot satisfy that protocol. Do not bypass its
 guards, use a real employee session for the scenario, or silently grant owner
-rights. Prepare a dedicated bounded registered instructor/admin fixture workflow
-and its cleanup/TTL proof (or use genuinely available preconfigured isolated test
-credentials) before the final production approval question. Creating production
+rights. The dedicated bounded registered instructor/admin identity workflow and
+cleanup/TTL proof now pass locally. CLI-only creation leaves operator48 unchanged,
+uses existing login and never exports its generated passwords/tokens. Finish the
+browser/booking scope before the final production approval question. Creating production
 test identities/roles still needs the exact envelope; no production action is
 authorized here. Existing sys-mb-auth-cutover controller mode already covers the
 candidate's reviewed policy paths and sole Red path routes/auth.js; no controller
 policy exception is needed. Its only auth-route change skips incidental profile
 achievement grants during the read-only work check.
+
+New QA evidence: final focused64/64 (output/baseline-qa-final-unit.log); expanded
+actual PostgreSQL/API/CLI10/10, no skips (output/baseline-qa-operator-expanded.log),
+including atomic rollback, actual profession save with zero financial rows,
+drift rejection, expiry watchdog/session retirement, repeated cleanup and API
+interruption finally cleanup. Existing HR fixture actual browser/API1/1
+(output/baseline-qa-hr-compatibility.log). Full permissions integration gate passed
+54/54 across six suites, no skips, exit0 (output/baseline-qa-permission-gate.log).
+Final contact-drift assertion and cleanup guard pass10/10, exit0 in
+output/baseline-qa-operator-complete.log. Shift-preference rows are also an explicit
+unexpected dependency for this identity-only protocol; final rerun passes10/10,
+exit0 in output/baseline-qa-identity-final.log. Maximum lifetime retains millisecond
+precision and has a dedicated pre-lock rejection regression.
+Runtime and all8protected timeline blocks pass. No production writes.
+
+Next implementation details: extend the CLI one-shot flow to exercise the browser
+while its generated credentials still exist in memory, before finally cleanup.
+The current API helper returns sanitized outcomes, not reusable sessions. Bind a
+separate canonical booking fixture (existing product/line/room, exact free date and
+time, no real customer) into the approved hash and generic booking QA registry;
+retire that booking before the identity run. Prefer normal browser login, block
+cross-origin/socket/notification/unexpected writes and crop only synthetic modal
+content. Preserve both profession save paths. The HR work footer can legitimately
+send a companion shift-preferences PUT when profession changes dirty that scope;
+do not fake a success or silently leave those rows. If the real browser scenario
+needs it, add exact registered/bounded preference ownership and cleanup proof,
+then include that dependency in the final QA envelope. Current five-field plan
+authorizes no booking/shift writes. No UI or booking QA was executed by the new
+identity-only CLI, so neither is a completed live proof.
 
 Owned local PostgreSQL17 cluster remains running for tests at output/staff-professions-pg-final/data, port55442, baseline_access_disposable_test. Never use production credentials in this runner. Stop the exact owned cluster after tests with pg_ctl fast and verify completion; do not stop during running suites.
 

@@ -1,10 +1,17 @@
-# Dedicated baseline live QA design — implementation pending
+# Dedicated baseline live QA design — identity/API stage implemented
 
 This is a preparation dependency, not permission to execute production writes.
 Do not reuse the animator-only HR fixture protocol or relax its existing guards.
 Approved credential aliases currently identify real owner4 and isolated test48;
 neither is a preconfigured isolated HR QA owner/delegate pair. No real employee
 session may stand in for the instructor/admin acceptance actors.
+
+The dedicated identity bootstrap, exact retirement/watchdog and one-shot API
+operator are now implemented and verified on disposable PostgreSQL; see
+BASELINE_QA_PROTOCOL.md. This resolves the missing isolated-role actors without
+changing either existing account. Canonical booking fixture binding, full browser
+guard/scenarios and final production plan/preflight remain unimplemented. The
+current five-field identity plan does not authorize a booking or shift write.
 
 ## Proposed bounded protocol
 

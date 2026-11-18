@@ -4621,7 +4621,11 @@ router.get('/role-assignments/report', async (req, res) => {
 });
 
 router.put('/staff/:id/role-assignments', requireHrManage, async (req, res) => {
-    if (isProfessionOnlyRoleAssignmentBody(req.body)
+    const professionOnly = isProfessionOnlyRoleAssignmentBody(req.body);
+    if (!professionOnly && !canManageStaffPayrollRules(req.user)) {
+        return res.status(403).json({ success: false, code: 'PARK_HR_PAYROLL_ACCESS_DENIED', error: 'Немає доступу до зміни умов оплати.' });
+    }
+    if (professionOnly
         && resolveStaffOperation(req.user, 'hr.staff.profile.edit') !== 'hr.staff.manage') {
         return res.status(403).json({ success: false, error: 'Немає доступу до редагування професій.' });
     }
@@ -4659,7 +4663,6 @@ router.put('/staff/:id/role-assignments', requireHrManage, async (req, res) => {
             await client.query('ROLLBACK');
             return res.status(400).json({ success: false, error: validation.error });
         }
-        const professionOnly = isProfessionOnlyRoleAssignmentBody(req.body);
         const saved = professionOnly
             ? await saveStaffProfessionAssignments(client, req.params.id, rows, req.user?.username || null)
             : await replaceStaffRoleAssignments(client, req.params.id, rows, req.user?.username || null);

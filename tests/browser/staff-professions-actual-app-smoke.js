@@ -30,16 +30,16 @@ async function run() {
         for (const role of ['admin', 'creator']) {
             let session = { token, user: rootUser };
             if (role === 'admin') {
-            const username = 'profession.qa.' + crypto.randomBytes(6).toString('hex');
-            const password = crypto.randomBytes(24).toString('base64url');
-            const linked = await request('POST', '/api/staff', { name: 'Synthetic HR actor ' + role, department: 'admin', position: 'QA', role_type: 'admin' }, token);
-            assert.equal(linked.status, 200);
-            const created = await request('POST', '/api/users', { username, password, role, name: 'Synthetic HR actor', staffId: linked.data.data.id,
-                businessContexts: ['event_genix'], defaultBusinessContext: 'event_genix', activateMembership: true }, token);
-            assert.equal(created.status, 200, JSON.stringify(created.data));
-            const login = await request('POST', '/api/auth/login', { username, password });
-            assert.equal(login.status, 200);
-            session = login.data;
+                const username = 'profession.qa.' + crypto.randomBytes(6).toString('hex');
+                const password = crypto.randomBytes(24).toString('base64url');
+                const linked = await request('POST', '/api/staff', { name: 'Synthetic HR actor ' + role, department: 'admin', position: 'QA', role_type: 'admin' }, token);
+                assert.equal(linked.status, 200);
+                const created = await request('POST', '/api/users', { username, password, role, name: 'Synthetic HR actor', staffId: linked.data.data.id,
+                    businessContexts: ['event_genix'], defaultBusinessContext: 'event_genix', activateMembership: true }, token);
+                assert.equal(created.status, 200, JSON.stringify(created.data));
+                const login = await request('POST', '/api/auth/login', { username, password });
+                assert.equal(login.status, 200);
+                session = login.data;
             }
             for (const width of [1280, 390]) {
                 const { rows: [person] } = await db.query(`INSERT INTO staff (name, department, position, role_type, hourly_rate)

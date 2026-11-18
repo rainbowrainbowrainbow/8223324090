@@ -399,7 +399,7 @@ test('timeline view switch isolation keeps room rows out of animator render and 
     const api = readProjectFile('js/api.js');
     const linesRoute = readProjectFile('routes/lines.js');
 
-    assert.match(linesRoute, /timelineView === 'rooms' && businessContext === DEFAULT_TIMELINE_CONTEXT[\s\S]*roomTimelineLinesForContext\(businessContext\)/);
+    assert.match(linesRoute, /timelineView === 'rooms' && businessContext === DEFAULT_TIMELINE_CONTEXT[\s\S]*roomTimelineLinesForContext\(businessContext, req\.user\)/);
     assert.match(linesRoute, /res\.set\('X-Timeline-View', 'rooms'\)/);
     assert.match(linesRoute, /businessContext === DEFAULT_TIMELINE_CONTEXT && display\.mode === 'park' && lines\.some\(isRoomTimelineLinePayload\)/);
     assert.match(linesRoute, /const quarantinedRoomRows = result\.rows\.filter\(isLegacyRoomTimelineLineRow\)/);

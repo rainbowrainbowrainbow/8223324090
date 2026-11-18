@@ -38,6 +38,26 @@ function loadFrontendResolver() {
 
 const frontendResolveCapability = loadFrontendResolver();
 
+test('legacy booking viewer controls follow effective capability for every role, extra role and override', () => {
+    const source = fs.readFileSync(path.join(ROOT, 'js/auth.js'), 'utf8');
+    const start = source.indexOf('function isViewer()');
+    const end = source.indexOf('function canManageProducts()', start);
+    let effectiveUser;
+    const sandbox = { canAccess: action => frontendResolveCapability(effectiveUser, action, { type: 'action', ignoreServer: true }).allowed,
+        viewerResult: null };
+    vm.runInNewContext(source.slice(start, end) + '\nviewerResult = isViewer;', sandbox);
+    for (const user of [
+        ...registry.ROLE_HIERARCHY.map(role => ({ role })),
+        { role: 'instructor', extra_roles: ['reception'] },
+        { role: 'instructor', action_allowlist: ['edit_booking'] },
+        { role: 'director', action_denylist: ['edit_booking'] },
+        { role: 'senior_instructor', businessMembershipAccess: { invalid: true } }
+    ]) {
+        effectiveUser = user;
+        assert.equal(sandbox.viewerResult(), !policy.resolveCapability(user, 'edit_booking').allowed, JSON.stringify(user));
+    }
+});
+
 function comparable(decision) {
     return {
         allowed: decision.allowed,

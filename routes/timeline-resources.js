@@ -22,10 +22,12 @@ const {
 const { validateDate, validateTime } = require('../services/booking');
 const { listPromotions, savePromotion } = require('../services/timelinePromotions');
 const { businessScopeWriteGuard } = require('../middleware/businessScopeGuard');
+const { filterGameZoneResources, loadGameZoneAccess } = require('../services/gameZoneAccess');
 
 const log = createLogger('TimelineResources');
 
 router.use(authenticateToken);
+router.use(loadGameZoneAccess);
 
 router.get('/promotions', async (req, res) => {
     const context = timelineContextFromRequest(req);
@@ -65,7 +67,7 @@ router.get('/resources', async (req, res) => {
             type,
             includeInactive
         });
-        res.json({ context, type, resources });
+        res.json({ context, type, resources: filterGameZoneResources(req.user, context, resources) });
     } catch (err) {
         log.error('GET /timeline/resources error', err);
         res.status(500).json({ error: 'Internal server error' });

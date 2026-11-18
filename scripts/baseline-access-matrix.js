@@ -17,7 +17,8 @@ const matrix = ROLE_HIERARCHY.map(role => ({ role,
         tasks: { before: oldAllTasks.has(role) ? 'all' : oldTeamTasks.has(role) ? 'department_label' : 'own',
             after: getPermissions({ role }).taskVisibility === 'department' ? 'staff_structure_node' : getPermissions({ role }).taskVisibility },
         booking: { before: (baseline.actions.view_all || []).includes(role) ? 'business' : 'assignment_or_legacy_match',
-            after: resolveCapability({ role }, 'view_all').allowed ? 'business' : 'assignment_or_legacy_match' },
+            after: resolveCapability({ role }, 'view_all').allowed ? 'business'
+                : resolveCapability({ role }, 'timeline.game_zones.view').allowed ? 'classified_game_zones_or_assignment' : 'assignment_or_legacy_match' },
         scheduleWrite: { before: (baseline.actions['hr.schedule.manage'] || []).includes(role) ? 'business' : 'none',
             after: resolveCapability({ role }, 'hr.schedule.manage').allowed
             ? resolveCapability({ role }, 'hr.schedule.scope.business').allowed ? 'business' : 'staff_structure_node'
@@ -44,8 +45,10 @@ Membership-required businesses fail closed without an active membership.
 
 Columns describe presets. They do not bypass API record scopes or grant membership.
 Booking read scope remains business + durable staff assignment/explicit operational scope;
-the existing shared animator timeline is a read surface. Instructor game-zone and team
-responsibility mappings are dependencies tracked in STATE.md and are not implemented by a page grant.
+the existing shared animator timeline is a read surface. Instructor game-zone reads
+use active classified Park room resources and canonical room_resource_id, under the
+approved EG-BASE-ZONES-20261118 source contract. Missing classification and team
+responsibility links are dependencies tracked in STATE.md; a page grant cannot replace them.
 Schedule coordination excludes absence reasons, notes, audit history and compensation;
 personnel and payroll capabilities remain separate.
 

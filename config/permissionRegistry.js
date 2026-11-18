@@ -501,6 +501,12 @@ const PAGE_PERMISSIONS = Object.freeze([
 
 const ACTION_PERMISSIONS = Object.freeze([
     action({
+        key: 'timeline.game_zones.view', label: 'Перегляд таймлайна ігрових зон', group: 'bookings',
+        defaultRoles: ['instructor', 'senior_instructor'], risk: 'high',
+        backendConsumers: [source('services/bookingVisibility.js', 'canReadGameZoneBooking', { enforces: true })],
+        apiConsumers: [api('routes/bookings.js', 'GET /api/bookings', null, 'Active classified game-zone resources only.')]
+    }),
+    action({
         key: 'hr.attendance.view', label: 'Перегляд фактичної відвідуваності', group: 'hr',
         defaultRoles: [...MANAGER_UP, 'hr', 'admin', 'accountant'], risk: 'high',
         apiConsumers: [api('routes/staff.js', 'GET /api/staff/attendance', 'hr.attendance.view')]

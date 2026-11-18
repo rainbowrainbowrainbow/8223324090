@@ -64,6 +64,20 @@ Do not update the hash just to make CI green.
 
 ## Approval Log
 
+- 2026-11-18, `EG-BASE-ZONES-20261118`: owner explicitly approved the local
+  game-zone read projection proposed in `docs/access-baseline/game-zone-scope.proposed.patch`
+  (SHA256 `ADC3BEC1A3EE6EFEBA57C87FFA84CE0B425DCFF7AFB69ECB07BF707C9E23FC43`).
+  Active Park room resources with persisted `metadata.workArea = game_zone` and
+  canonical `bookings.room_resource_id` authorize instructor/senior-instructor
+  reads; active membership, module/page/capability checks and explicit denials
+  still apply. Resource catalogs/room rows use the same classification. Existing
+  assignment and independent broad scopes remain additive. Contact/revenue/write
+  permissions stay separate. Mapper/detail source/modal ownership and all eight
+  protected hashes remain unchanged. This authorizes no production resource
+  classification or deployment. Regression proof: `tests/game-zone-access.test.js`,
+  `tests/integration/timeline-membership-postgres.test.js` and
+  `tests/browser/game-zone-actual-app-smoke.js`.
+
 - 2026-11-14, `RED-SUBSTITUTION-AFISHA-LOCAL-05`: the owner approved local Park
   occurrence-level greeting assignment in the timeline projection and booking
   availability checks. The approved flow follows the automatic slot only when

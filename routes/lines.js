@@ -11,6 +11,7 @@ const {
 const { broadcastLineEvent } = require('../services/websocket');
 const { createLogger } = require('../utils/logger');
 const { authenticateToken } = require('../middleware/auth');
+const { usesGameZoneResourceView, filterGameZoneResources } = require('../services/gameZoneAccess');
 const { DIRECT_MANUAL_LINE_ID_PATTERN } = require('../services/manualAnimatorLine');
 const {
     DEFAULT_TIMELINE_CONTEXT,
@@ -162,12 +163,15 @@ function fallbackRoomLines(businessContext) {
     return withTakeawayRoomLine([], businessContext);
 }
 
-async function roomTimelineLinesForContext(businessContext) {
+async function roomTimelineLinesForContext(businessContext, user) {
     const resources = await listTimelineResources(pool, {
         context: businessContext,
         type: 'room',
         includeInactive: false
     });
+    if (usesGameZoneResourceView(user, businessContext)) {
+        return filterGameZoneResources(user, businessContext, resources).map(resourceToLine);
+    }
     if (resources.length) return withTakeawayRoomLine(resources.map(resourceToLine), businessContext);
     return fallbackRoomLines(businessContext);
 }
@@ -194,7 +198,7 @@ router.get('/:date', async (req, res) => {
         if (!requireTimelineView(req, res, businessContext)) return;
         const timelineView = normalizeTimelineView(req.query.timelineView);
         if (timelineView === 'rooms' && businessContext === DEFAULT_TIMELINE_CONTEXT) {
-            const lines = await roomTimelineLinesForContext(businessContext);
+            const lines = await roomTimelineLinesForContext(businessContext, req.user);
             res.set('X-Timeline-Lines-Source', lines.some(line => line.source === 'timeline_resource') ? 'timeline_resources' : 'rooms_fallback');
             res.set('X-Timeline-Resource-Type', 'room');
             res.set('X-Timeline-View', 'rooms');

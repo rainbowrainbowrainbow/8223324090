@@ -27,6 +27,8 @@ const MODES = {
     'payroll-configurable-rules-browser': ['tests/browser/payroll-profiles-configurable-rules-actual-browser.js'],
     'payroll-compensation-browser': ['tests/browser/hr-pay-actual-app-browser-smoke.js', 'tests/browser/payroll-profiles-configurable-rules-actual-browser.js'],
     'baseline-access-browser': ['tests/browser/baseline-access-actual-app-smoke.js'],
+    'game-zone-browser': ['tests/browser/game-zone-actual-app-smoke.js'],
+    'game-zone-api': ['tests/integration/timeline-membership-postgres.test.js'],
     'telegram-crm': ['tests/integration/telegram-crm-fullstack.integration.test.js'],
     'hr-hiring': ['tests/integration/park-hr-hiring.integration.test.js'],
     substitutions: ['tests/integration/staff-substitution-actual-db.integration.test.js'],

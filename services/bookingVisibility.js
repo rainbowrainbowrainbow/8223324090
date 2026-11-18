@@ -401,7 +401,23 @@ function canReadSharedAnimatorTimeline(user, businessContext) {
         && resolveCapability(user, 'view_all', { type: 'action' }).source !== 'explicit_deny';
 }
 
+function gameZoneIds(user, context) {
+    return require('./gameZoneAccess').hasGameZoneTimelineScope(user, context)
+        && Array.isArray(user?.gameZoneResourceIds) ? user.gameZoneResourceIds : [];
+}
+function canReadGameZoneBooking(user, booking) {
+    const context = booking?.business_context ?? booking?.businessContext;
+    return gameZoneIds(user, context).includes(booking?.room_resource_id ?? booking?.roomResourceId);
+}
 function buildTimelineBookingVisibilityScope(user, params = [], alias = 'b', businessContext) {
+    if (canReadSharedAnimatorTimeline(user, businessContext)) return '';
+    const zones = gameZoneIds(user, businessContext);
+    if (zones.length) {
+        params.push(zones);
+        const zoneCondition = `${alias}.room_resource_id = ANY($${params.length}::text[])`;
+        const ownCondition = buildBookingVisibilityCondition(user, params, alias);
+        return `AND (${zoneCondition} OR ${ownCondition})`;
+    }
     return canReadSharedAnimatorTimeline(user, businessContext)
         ? ''
         : buildBookingVisibilityScope(user, params, alias);
@@ -409,6 +425,7 @@ function buildTimelineBookingVisibilityScope(user, params = [], alias = 'b', bus
 
 function canViewTimelineBooking(user, booking) {
     if (!booking) return false;
+    if (canReadGameZoneBooking(user, booking)) return true;
     const businessContext = booking.business_context ?? booking.businessContext ?? 'event_genix';
     return canReadSharedAnimatorTimeline(user, businessContext) || canViewBooking(user, booking);
 }

@@ -3550,9 +3550,8 @@ function setTimelinePermissionHidden(elementOrId, hidden) {
 }
 
 function isViewer() {
-    const role = getUserRole();
-    const viewerRoles = ['waiter', 'dishwasher', 'maintenance', 'cleaning', 'wardrobe', 'barista', 'reception', 'animator', 'pastry_chef', 'cook', 'instructor'];
-    return viewerRoles.includes(role);
+    // Legacy timeline/detail controls consume the canonical effective capability.
+    return !canAccess('edit_booking');
 }
 
 function canManageProducts() {

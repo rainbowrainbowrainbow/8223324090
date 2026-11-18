@@ -242,6 +242,11 @@
       ],
       "actions": [
         {
+          "action": "timeline.game_zones.view",
+          "before": false,
+          "after": false
+        },
+        {
           "action": "hr.attendance.view",
           "before": false,
           "after": false
@@ -796,6 +801,11 @@
       ],
       "actions": [
         {
+          "action": "timeline.game_zones.view",
+          "before": false,
+          "after": false
+        },
+        {
           "action": "hr.attendance.view",
           "before": false,
           "after": false
@@ -1329,6 +1339,11 @@
         }
       ],
       "actions": [
+        {
+          "action": "timeline.game_zones.view",
+          "before": false,
+          "after": false
+        },
         {
           "action": "hr.attendance.view",
           "before": false,
@@ -1864,6 +1879,11 @@
       ],
       "actions": [
         {
+          "action": "timeline.game_zones.view",
+          "before": false,
+          "after": false
+        },
+        {
           "action": "hr.attendance.view",
           "before": false,
           "after": false
@@ -2397,6 +2417,11 @@
         }
       ],
       "actions": [
+        {
+          "action": "timeline.game_zones.view",
+          "before": false,
+          "after": false
+        },
         {
           "action": "hr.attendance.view",
           "before": false,
@@ -2932,6 +2957,11 @@
       ],
       "actions": [
         {
+          "action": "timeline.game_zones.view",
+          "before": false,
+          "after": false
+        },
+        {
           "action": "hr.attendance.view",
           "before": false,
           "after": false
@@ -3465,6 +3495,11 @@
         }
       ],
       "actions": [
+        {
+          "action": "timeline.game_zones.view",
+          "before": false,
+          "after": false
+        },
         {
           "action": "hr.attendance.view",
           "before": false,
@@ -4009,6 +4044,11 @@
         }
       ],
       "actions": [
+        {
+          "action": "timeline.game_zones.view",
+          "before": false,
+          "after": false
+        },
         {
           "action": "hr.attendance.view",
           "before": false,
@@ -4559,6 +4599,11 @@
       ],
       "actions": [
         {
+          "action": "timeline.game_zones.view",
+          "before": false,
+          "after": false
+        },
+        {
           "action": "hr.attendance.view",
           "before": false,
           "after": false
@@ -5098,6 +5143,11 @@
       ],
       "actions": [
         {
+          "action": "timeline.game_zones.view",
+          "before": false,
+          "after": false
+        },
+        {
           "action": "hr.attendance.view",
           "before": false,
           "after": false
@@ -5631,6 +5681,11 @@
         }
       ],
       "actions": [
+        {
+          "action": "timeline.game_zones.view",
+          "before": false,
+          "after": false
+        },
         {
           "action": "hr.attendance.view",
           "before": false,
@@ -6181,6 +6236,11 @@
       ],
       "actions": [
         {
+          "action": "timeline.game_zones.view",
+          "before": false,
+          "after": false
+        },
+        {
           "action": "hr.attendance.view",
           "before": false,
           "after": false
@@ -6715,6 +6775,11 @@
       ],
       "actions": [
         {
+          "action": "timeline.game_zones.view",
+          "before": false,
+          "after": false
+        },
+        {
           "action": "hr.attendance.view",
           "before": false,
           "after": false
@@ -7033,7 +7098,7 @@
         },
         "booking": {
           "before": "assignment_or_legacy_match",
-          "after": "assignment_or_legacy_match"
+          "after": "classified_game_zones_or_assignment"
         },
         "scheduleWrite": {
           "before": "none",
@@ -7264,6 +7329,11 @@
       ],
       "actions": [
         {
+          "action": "timeline.game_zones.view",
+          "before": false,
+          "after": true
+        },
+        {
           "action": "hr.attendance.view",
           "before": false,
           "after": false
@@ -7556,6 +7626,11 @@
           "after": true
         },
         {
+          "capability": "action:timeline.game_zones.view",
+          "before": false,
+          "after": true
+        },
+        {
           "capability": "action:bookings.details.view",
           "before": false,
           "after": true
@@ -7572,7 +7647,7 @@
         },
         "booking": {
           "before": "assignment_or_legacy_match",
-          "after": "assignment_or_legacy_match"
+          "after": "classified_game_zones_or_assignment"
         },
         "scheduleWrite": {
           "before": "none",
@@ -7803,6 +7878,11 @@
       ],
       "actions": [
         {
+          "action": "timeline.game_zones.view",
+          "before": false,
+          "after": true
+        },
+        {
           "action": "hr.attendance.view",
           "before": false,
           "after": false
@@ -8091,6 +8171,11 @@
       "changes": [
         {
           "capability": "page:/",
+          "before": false,
+          "after": true
+        },
+        {
+          "capability": "action:timeline.game_zones.view",
           "before": false,
           "after": true
         },
@@ -8351,6 +8436,11 @@
         }
       ],
       "actions": [
+        {
+          "action": "timeline.game_zones.view",
+          "before": false,
+          "after": false
+        },
         {
           "action": "hr.attendance.view",
           "before": false,
@@ -8910,6 +9000,11 @@
         }
       ],
       "actions": [
+        {
+          "action": "timeline.game_zones.view",
+          "before": false,
+          "after": false
+        },
         {
           "action": "hr.attendance.view",
           "before": false,
@@ -9490,6 +9585,11 @@
       ],
       "actions": [
         {
+          "action": "timeline.game_zones.view",
+          "before": false,
+          "after": false
+        },
+        {
           "action": "hr.attendance.view",
           "before": false,
           "after": false
@@ -10048,6 +10148,11 @@
         }
       ],
       "actions": [
+        {
+          "action": "timeline.game_zones.view",
+          "before": false,
+          "after": false
+        },
         {
           "action": "hr.attendance.view",
           "before": false,
@@ -10612,6 +10717,11 @@
         }
       ],
       "actions": [
+        {
+          "action": "timeline.game_zones.view",
+          "before": false,
+          "after": false
+        },
         {
           "action": "hr.attendance.view",
           "before": false,
@@ -11186,6 +11296,11 @@
         }
       ],
       "actions": [
+        {
+          "action": "timeline.game_zones.view",
+          "before": false,
+          "after": false
+        },
         {
           "action": "hr.attendance.view",
           "before": false,
@@ -11831,6 +11946,11 @@
       ],
       "actions": [
         {
+          "action": "timeline.game_zones.view",
+          "before": false,
+          "after": false
+        },
+        {
           "action": "hr.attendance.view",
           "before": false,
           "after": true
@@ -12385,6 +12505,11 @@
       ],
       "actions": [
         {
+          "action": "timeline.game_zones.view",
+          "before": false,
+          "after": false
+        },
+        {
           "action": "hr.attendance.view",
           "before": false,
           "after": true
@@ -12938,6 +13063,11 @@
         }
       ],
       "actions": [
+        {
+          "action": "timeline.game_zones.view",
+          "before": false,
+          "after": false
+        },
         {
           "action": "hr.attendance.view",
           "before": false,
@@ -13503,6 +13633,11 @@
       ],
       "actions": [
         {
+          "action": "timeline.game_zones.view",
+          "before": false,
+          "after": false
+        },
+        {
           "action": "hr.attendance.view",
           "before": false,
           "after": true
@@ -14056,6 +14191,11 @@
         }
       ],
       "actions": [
+        {
+          "action": "timeline.game_zones.view",
+          "before": false,
+          "after": false
+        },
         {
           "action": "hr.attendance.view",
           "before": false,

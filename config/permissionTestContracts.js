@@ -99,6 +99,9 @@ const PAGE_PERMISSION_TEST_CONTRACTS = Object.freeze({
 });
 
 const ACTION_PERMISSION_TEST_CONTRACTS = Object.freeze({
+    'timeline.game_zones.view': actionContract('timeline.game_zones.view', { sensitive: true,
+        testFiles: ['tests/game-zone-access.test.js', 'tests/integration/timeline-membership-postgres.test.js'],
+        notes: 'EG-BASE-ZONES-20261118: active classified resources and canonical room_resource_id only; no mutation/contact/revenue grant.' }),
     'hr.attendance.view': actionContract('hr.attendance.view', { sensitive: true,
         testFiles: ['tests/baseline-access.test.js'], notes: 'Actual attendance is independent from team schedule coordination and payroll fields.' }),
     'hr.schedule.scope.business': actionContract('hr.schedule.scope.business', { sensitive: true,

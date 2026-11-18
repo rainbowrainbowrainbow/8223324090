@@ -1,4 +1,13 @@
-# Proposed protected game-zone access change — not applied
+# Approved local game-zone access change
+
+Owner approval: `Дозволяю блок EG-BASE-ZONES-20261118` on 2026-11-18.
+The original proposal artifact retains SHA256
+`ADC3BEC1A3EE6EFEBA57C87FFA84CE0B425DCFF7AFB69ECB07BF707C9E23FC43`.
+It has been applied locally and completed with membership/module/page checks,
+correct bound SQL parameters, additive independent scopes, consistent resource
+catalog/room-row/availability filtering and separate contact field checks.
+The original patch remains review history, not a patch to apply again.
+No production classification, migration or deployment is authorized by this block.
 
 ## Why approval is needed
 
@@ -16,10 +25,11 @@ Use only the existing canonical `bookings.room_resource_id` link. Do not infer a
 zone from labels, room text, usernames, profession titles or browser input. The
 canonical mapper, modal, detail endpoint and identity priorities stay unchanged.
 
-The companion `game-zone-scope.proposed.patch` contains the proposed server read
-scope and capability wiring for review. It is documentation, not an applied code
-change. UI resource filtering, fixtures and regression coverage must be completed
-under the same exact approved source contract before release.
+The companion `game-zone-scope.proposed.patch` records the reviewed server source
+and capability wiring. The implementation uses that source contract; it also
+filters existing UI resource responses on the server. No alternate frontend
+booking renderer or new modal is added. Canonical date-cache/detail endpoint
+priorities, mapper identity and eight protected hashes remain unchanged.
 
 ## Boundaries
 
@@ -41,6 +51,15 @@ revoked membership, cross-business resource IDs, unclassified rooms and inactive
 zones. Assert the canonical detail modal opens only allowed zone bookings; inspect
 desktop/mobile screenshots and direct API field restrictions. Run protected-surface
 guard and full baseline. Never update a protected hash merely to pass the guard.
+
+Local evidence is tracked in STATE.md. Tests first failed before implementation.
+Direct PostgreSQL-backed APIs cover both instructor presets, extra roles, explicit
+grants/denials, disabled module, revoked membership, inactive/unclassified/foreign
+resources and room-text aliases. Actual-app browser tests use both presets at
+1280/390, independently call detail API and open the canonical modal using Enter
+and click, close with Escape/button and verify trigger focus return. The modal may
+correctly use the current-date cache; tests do not change that priority to force
+an HTTP request from the opener.
 
 ## Existing-data dependency
 

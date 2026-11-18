@@ -1179,7 +1179,7 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     const migration = read('db/migrations/263_event_genix_room_timeline_resources.sql');
 
     assert.match(linesRoute, /normalizeTimelineView\(req\.query\.timelineView\)/);
-    assert.match(linesRoute, /roomTimelineLinesForContext\(businessContext\)/);
+    assert.match(linesRoute, /roomTimelineLinesForContext\(businessContext, req\.user\)/);
     assert.match(linesRoute, /fallbackRoomLines\(businessContext\)/);
     assert.match(linesRoute, /ROOM_TIMELINE_TAKEAWAY_LINE/);
     assert.match(linesRoute, /withTakeawayRoomLine\(resources\.map\(resourceToLine\), businessContext\)/);

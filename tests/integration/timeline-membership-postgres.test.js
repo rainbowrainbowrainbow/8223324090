@@ -70,6 +70,9 @@ test('actual booking and timeline HTTP routes preserve membership context with P
             CREATE TABLE hr_shift_segment_roles (segment_id INT, profession_key TEXT);
             CREATE TABLE afisha (id SERIAL PRIMARY KEY, date TEXT, line_id TEXT);
             CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
+            CREATE TABLE customers (id INT PRIMARY KEY, business_context TEXT, name TEXT);
+            CREATE TABLE banquet_groups (id INT PRIMARY KEY, business_context TEXT, primary_booking_id TEXT, customer_id INT, status TEXT);
+            CREATE TABLE banquet_group_bookings (booking_id TEXT, business_context TEXT, group_id INT, role TEXT);
             CREATE TABLE bookings (
                 id VARCHAR(50) PRIMARY KEY, business_context TEXT NOT NULL, date TEXT, time TEXT, line_id TEXT,
                 program_id TEXT, program_code TEXT, label TEXT, program_name TEXT, category TEXT,
@@ -117,7 +120,7 @@ test('actual booking and timeline HTTP routes preserve membership context with P
             return { status: response.status, body: await response.json() };
         }
         async function reset({ parkRole = 'animator', darRole = 'director', darOnly = false } = {}) {
-            await pool.query(`TRUNCATE bookings, products, booking_banquet_links, timeline_resources,
+            await pool.query(`TRUNCATE customers, banquet_groups, banquet_group_bookings, bookings, products, booking_banquet_links, timeline_resources,
                 lines_by_date, admin_audit_log, employee_profiles, staff, business_memberships,
                 organization_memberships, businesses, organizations, users RESTART IDENTITY CASCADE;
                 INSERT INTO organizations (id, slug, name) VALUES (1, 'timeline-a', 'Timeline A'), (2, 'timeline-b', 'Timeline B');
@@ -211,6 +214,86 @@ test('actual booking and timeline HTTP routes preserve membership context with P
                     ]) assert.equal((await request(actor, method, route + '?businessContext=event_genix', body)).status, 403, `${role} ${method}`);
                 }
             }
+        });
+
+        await t.test('classified zones expose canonical room reads to both instructor presets with independent field boundaries', async () => {
+            for (const role of ['instructor', 'senior_instructor']) {
+                const actor = await reset({ parkRole: role, darRole: 'instructor' });
+                await pool.query(`INSERT INTO timeline_resources (business_context, resource_id, type, name, metadata, is_active) VALUES
+                    ('event_genix', 'zone-active', 'room', 'Synthetic active zone', '{"workArea":"game_zone"}', true),
+                    ('event_genix', 'zone-inactive', 'room', 'Synthetic inactive zone', '{"workArea":"game_zone"}', false),
+                    ('event_genix', 'room-plain', 'room', 'Game zone label is not authority', '{}', true),
+                    ('dar', 'foreign-zone', 'room', 'Synthetic foreign zone', '{"workArea":"game_zone"}', true),
+                    ('event_genix', 'not-room', 'animator', 'Synthetic non-room zone', '{"workArea":"game_zone"}', true);
+                    INSERT INTO customers VALUES (901, 'event_genix', 'Synthetic private contact');
+                    INSERT INTO bookings (id, business_context, date, time, line_id, room_resource_id, room, label,
+                        created_by, duration, price, hosts, notes, customer_id) VALUES
+                    ('zone-booking', 'event_genix', '2026-09-12', '13:00', '999', 'zone-active', 'Synthetic active zone', 'Synthetic zone event', 'other', 60, 1500, 1, 'private note', 901),
+                    ('inactive-booking', 'event_genix', '2026-09-12', '13:00', '999', 'zone-inactive', 'Synthetic inactive zone', 'Inactive', 'other', 60, 0, 1, NULL, NULL),
+                    ('plain-booking', 'event_genix', '2026-09-12', '13:00', '999', 'room-plain', 'Game zone label is not authority', 'Plain', 'other', 60, 0, 1, NULL, NULL),
+                    ('foreign-booking', 'event_genix', '2026-09-12', '13:00', '999', 'foreign-zone', 'Synthetic foreign zone', 'Foreign', 'other', 60, 0, 1, NULL, NULL),
+                    ('non-room-booking', 'event_genix', '2026-09-12', '13:00', '999', 'not-room', 'Synthetic non-room zone', 'Non-room', 'other', 60, 0, 1, NULL, NULL),
+                    ('alias-zone-booking', 'event_genix', '2026-09-12', '14:00', '999', NULL, 'Synthetic active zone', 'Alias is not authority', 'other', 60, 0, 1, NULL, NULL);`);
+                const before = await dataSnapshot();
+                const query = '?businessContext=event_genix';
+                const day = await request(actor, 'GET', '/api/bookings/2026-09-12' + query);
+                assert.equal(day.status, 200, role);
+                assert.deepEqual(day.body.map(row => row.id), ['zone-booking']);
+                const detail = await request(actor, 'GET', '/api/bookings/detail/zone-booking' + query);
+                assert.equal(detail.status, 200);
+                assert.equal(detail.body.booking.roomResourceId, 'zone-active');
+                for (const key of ['price', 'notes', 'customerId', 'customerName', 'extraData']) assert.equal(detail.body.booking[key], undefined, key);
+                for (const id of ['inactive-booking', 'plain-booking', 'foreign-booking', 'non-room-booking', 'alias-zone-booking']) {
+                    assert.equal((await request(actor, 'GET', '/api/bookings/detail/' + id + query)).status, 404, id);
+                }
+                const rooms = await request(actor, 'GET', '/api/lines/2026-09-12' + query + '&timelineView=rooms');
+                assert.equal(rooms.status, 200);
+                assert.deepEqual(rooms.body.map(row => row.id), ['zone-active'], 'no unclassified/fallback/quarantine resources');
+                const catalog = await request(actor, 'GET', '/api/timeline/resources' + query + '&includeInactive=true');
+                assert.equal(catalog.status, 200);
+                assert.deepEqual(catalog.body.resources.map(row => row.resourceId), ['zone-active']);
+                const availability = await request(actor, 'GET', '/api/timeline/resources/availability' + query + '&type=room&date=2026-09-12&time=13:00');
+                assert.equal(availability.status, 200);
+                assert.deepEqual(availability.body.resources.map(row => row.resourceId), ['zone-active']);
+                assert.equal(availability.body.resources[0].dayBookings[0].id, 'zone-booking');
+                assert.equal(availability.body.resources[0].dayBookings.length, 1, 'room text aliases cannot grant zone availability reads');
+                assert.equal(availability.body.resources[0].dayBookings[0].customerName, undefined);
+                assert.equal(availability.body.resources[0].dayBookings[0].customerId, undefined);
+                for (const [method, route, body] of [
+                    ['POST', '/api/bookings', {}], ['PUT', '/api/bookings/zone-booking', { notes: 'forbidden' }],
+                    ['DELETE', '/api/bookings/zone-booking', undefined], ['POST', '/api/timeline/resources', { type: 'room', name: 'Forbidden' }]
+                ]) assert.equal((await request(actor, method, route + query, body)).status, 403);
+                assert.deepEqual(await dataSnapshot(), before);
+                await pool.query("UPDATE business_memberships SET action_denylist = ARRAY['timeline.game_zones.view'] WHERE user_id = $1 AND business_id = 1", [actor.id]);
+                assert.deepEqual((await request(actor, 'GET', '/api/bookings/2026-09-12' + query)).body, []);
+                assert.equal((await request(actor, 'GET', '/api/bookings/detail/zone-booking' + query)).status, 404);
+                assert.deepEqual((await request(actor, 'GET', '/api/lines/2026-09-12' + query + '&timelineView=rooms')).body, []);
+            }
+        });
+
+        await t.test('zone reads honor membership extra roles, explicit grants/denials, disabled modules and revocation', async () => {
+            const actor = await reset({ parkRole: 'cook' });
+            await pool.query(`INSERT INTO timeline_resources (business_context, resource_id, type, name, metadata)
+                VALUES ('event_genix', 'extra-zone', 'room', 'Synthetic extra-role zone', '{"workArea":"game_zone"}');
+                INSERT INTO bookings (id, business_context, date, time, line_id, room_resource_id, label, duration, hosts)
+                VALUES ('extra-zone-event', 'event_genix', '2026-09-12', '13:00', '999', 'extra-zone', 'Synthetic', 60, 1);`);
+            const dayPath = '/api/bookings/2026-09-12?businessContext=event_genix';
+            await pool.query("UPDATE business_memberships SET extra_roles = ARRAY['instructor'] WHERE user_id = $1 AND business_id = 1", [actor.id]);
+            assert.deepEqual((await request(actor, 'GET', dayPath)).body.map(row => row.id), ['extra-zone-event']);
+            await pool.query("UPDATE business_memberships SET extra_roles = '{}' WHERE user_id = $1 AND business_id = 1", [actor.id]);
+            assert.equal((await request(actor, 'GET', dayPath)).status, 403, 'global creator role cannot lend the zone page');
+            await pool.query("UPDATE business_memberships SET role = 'security', action_allowlist = ARRAY['timeline.game_zones.view'] WHERE user_id = $1 AND business_id = 1", [actor.id]);
+            const explicitlyGranted = await request(actor, 'GET', dayPath);
+            assert.equal(explicitlyGranted.status, 200, 'separate timeline page preset is required; root page cannot be explicitly granted');
+            assert.deepEqual(explicitlyGranted.body.map(row => row.id), ['extra-zone-event']);
+            await pool.query("UPDATE business_memberships SET action_denylist = ARRAY['timeline.game_zones.view'] WHERE user_id = $1 AND business_id = 1", [actor.id]);
+            assert.deepEqual((await request(actor, 'GET', dayPath)).body, []);
+            await pool.query("UPDATE business_memberships SET action_denylist = '{}' WHERE user_id = $1 AND business_id = 1", [actor.id]);
+            await pool.query("UPDATE businesses SET modules = '[]' WHERE id = 1");
+            assert.equal((await request(actor, 'GET', dayPath)).status, 403);
+            await pool.query("UPDATE businesses SET modules = '[\"timeline\"]' WHERE id = 1");
+            await pool.query('UPDATE business_memberships SET is_active = false WHERE user_id = $1 AND business_id = 1', [actor.id]);
+            assert.equal((await request(actor, 'GET', dayPath)).status, 403);
         });
 
         await t.test('instructor preset opens the page but cannot borrow broad scopes without durable zone assignments', async () => {

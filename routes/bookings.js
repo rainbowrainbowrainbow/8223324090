@@ -146,6 +146,7 @@ const { readLesson, overlapsBookingTime, findTeacherConflict } = require('../ser
 
 // v39.8: Security — require authentication for all booking endpoints
 router.use(authenticateToken);
+router.use(require('../services/gameZoneAccess').loadGameZoneAccess);
 router.use(require('../services/bookingFieldAccess').installBookingFieldAccess);
 
 function ticketBusinessContextFromAuthenticatedRequest(req) {

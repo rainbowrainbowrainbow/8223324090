@@ -6,7 +6,9 @@ const {
     normalizeTimelineContext
 } = require('./timelineContext');
 const { timeToMinutes } = require('./booking');
-const { getVisibleBookingScope } = require('./bookingVisibility');
+const { getVisibleBookingScope, buildTimelineBookingVisibilityScope } = require('./bookingVisibility');
+const { resolveCapability } = require('./accountAccessPolicy');
+const { filterGameZoneResources, hasGameZoneTimelineScope, usesGameZoneResourceView } = require('./gameZoneAccess');
 const { canAccessBusinessContext } = require('./businessContext');
 
 const TIMELINE_DISPLAY_MODES = new Set(['disabled', 'simple', 'specialist', 'park', 'education']);
@@ -971,17 +973,18 @@ async function timelineResourceAvailability(db = defaultPool, options = {}) {
     const time = String(options.time || '').trim();
     const duration = Math.max(1, Math.min(parseInt(options.duration, 10) || 60, 1440));
     const requestedCapacity = normalizeCapacity(options.capacity ?? options.attendees ?? options.kidsCount);
-    const resources = await listTimelineResources(db, {
+    const resources = filterGameZoneResources(options.actor, context, await listTimelineResources(db, {
         context,
         type,
         includeInactive: false
-    });
+    }));
     const resourceIds = resources.map(resource => resource.resourceId);
     const resourceNames = [...new Set(resources.flatMap(timelineResourceRoomMatchValues))];
     if (!resourceIds.length) {
         return { context, type, date, time, duration, requestedCapacity, total: 0, free: [], occupied: [], overCapacity: [], resources: [] };
     }
-    const roomIdentitySql = type === 'room'
+    const canonicalZoneView = type === 'room' && usesGameZoneResourceView(options.actor, context);
+    const roomIdentitySql = canonicalZoneView ? 'b.room_resource_id = ANY($3::text[])' : type === 'room'
         ? `(b.room_resource_id = ANY($3::text[])
             OR (
                 b.room_resource_id IS NULL
@@ -994,8 +997,13 @@ async function timelineResourceAvailability(db = defaultPool, options = {}) {
         && canAccessBusinessContext(actor, context)
         && (!access?.membershipEnabled || actor.activeBusinessMembership?.businessContext === context));
     const params = [date, context, resourceIds];
-    if (type === 'room') params.push(resourceNames);
-    const visibility = getVisibleBookingScope(actorMatchesContext ? actor : null, params, 'b');
+    if (type === 'room' && !canonicalZoneView) params.push(resourceNames);
+    const zoneScope = actorMatchesContext && hasGameZoneTimelineScope(actor, context)
+        ? buildTimelineBookingVisibilityScope(actor, params, 'b', context) : null;
+    const visibilityCondition = zoneScope === null
+        ? getVisibleBookingScope(actorMatchesContext ? actor : null, params, 'b').condition
+        : zoneScope.replace(/^AND\s+/, '') || 'TRUE';
+    const canViewContacts = actorMatchesContext && resolveCapability(actor, 'bookings.contacts.view').allowed;
     const bookings = await db.query(
         `SELECT b.id, b.line_id, b.room, b.room_resource_id, b.time, b.duration, b.label, b.program_code, b.program_name,
                 b.status, b.kids_count, b.group_name, b.linked_to, b.extra_data, b.customer_id, b.business_context,
@@ -1004,7 +1012,7 @@ async function timelineResourceAvailability(db = defaultPool, options = {}) {
                 CASE WHEN bg.id IS NOT NULL THEN bgb.role ELSE NULL END AS banquet_group_role,
                 bg.primary_booking_id AS banquet_group_primary_booking_id,
                 bg.customer_id AS banquet_group_customer_id,
-                (${visibility.condition}) AS actor_can_view
+                (${visibilityCondition}) AS actor_can_view
            FROM bookings b
            LEFT JOIN customers c
              ON c.id = b.customer_id
@@ -1042,16 +1050,15 @@ async function timelineResourceAvailability(db = defaultPool, options = {}) {
                 id: booking.id,
                 time: booking.time,
                 duration: booking.duration || 0,
-                customerName,
+                ...(canViewContacts ? { customerName, customerId: booking.customer_id ?? null,
+                    banquetGroupCustomerId: booking.banquet_group_customer_id ?? null } : {}),
                 label: booking.label || null,
                 programName: booking.program_name || null,
-                customerId: booking.customer_id ?? null,
                 room: booking.room || null,
                 businessContext: booking.business_context || context || DEFAULT_TIMELINE_CONTEXT,
                 banquetGroupId: booking.banquet_group_id || null,
                 banquetGroupRole: booking.banquet_group_role || null,
                 banquetGroupPrimaryBookingId: booking.banquet_group_primary_booking_id || null,
-                banquetGroupCustomerId: booking.banquet_group_customer_id ?? null,
                 isBanquetGroupMember: Boolean(booking.banquet_group_id),
                 isBanquetPrimary: Boolean(
                     booking.banquet_group_primary_booking_id

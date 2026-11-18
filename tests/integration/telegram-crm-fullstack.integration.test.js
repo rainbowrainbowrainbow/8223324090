@@ -184,7 +184,7 @@ check('four confirmed participants can create for every peer with current busine
         const start = new URL(link.data.url).searchParams.get('start').slice(4);
         assert.equal((await bot('/link/claim',{token:start},sender)).status,200);
         assert.equal((await request('POST','/api/auth/telegram-crm/link/confirm',link.data,session.data.token)).status,200);
-        participants.push({ user, telegram:sender });
+        participants.push({ user, telegram:sender, token:session.data.token, password });
     }
     const original = (await pool.query('SELECT action_allowlist FROM business_memberships WHERE business_id=$1 AND user_id=$2',
         [business.id,peer.id])).rows[0].action_allowlist;
@@ -229,13 +229,64 @@ check('four confirmed participants can create for every peer with current busine
         },participants[0].telegram);
         assert.equal(forbidden.status,400,JSON.stringify(forbidden.data));
         await pool.query('UPDATE business_memberships SET is_active=true WHERE business_id=$1 AND user_id=$2',[business.id,outsider.user.id]);
-        await pool.query('UPDATE telegram_crm_bindings SET verified_at=NULL,telegram_user_id=NULL,version=version+1 WHERE user_id=$1',[outsider.user.id]);
+        const disconnected = await request('POST', '/api/auth/telegram-crm/disconnect',
+            { password: outsider.password }, outsider.token);
+        assert.equal(disconnected.status, 200, JSON.stringify(disconnected.data));
+        assert.equal((await bot('/me', undefined, outsider.telegram)).status, 403);
+        assert.equal((await notifications('/recipients')).data.recipients.some(person => person.userId === outsider.user.id), false);
         const revoked = await bot('/owners?businessContext=event_genix',undefined,participants[0].telegram);
-        assert.equal(revoked.data.owners.some(person=>person.id===outsider.user.id),false);
+        assert.equal(revoked.data.owners.some(person=>person.id===outsider.user.id),true);
+        const assignToPeer = title => bot('/tasks/preview', {
+            title, ownerUserId: outsider.user.id, businessContext: 'event_genix', sourceUpdateId: String(nextUpdate++)
+        }, participants[0].telegram);
+        const confirmPeer = draft => bot(`/operations/${draft.data.operationId}/confirm`,
+            { confirmed: true }, participants[0].telegram);
+        const withoutTelegram = await assignToPeer('Disposable assignment without Telegram');
+        assert.equal(withoutTelegram.status, 201, JSON.stringify(withoutTelegram.data));
+        const assigned = await confirmPeer(withoutTelegram);
+        assert.equal(assigned.status, 200, JSON.stringify(assigned.data));
+        const unlinkedTask = assigned.data.receipt.task.id;
+        assert.equal(assigned.data.receipt.task.ownerUserId, outsider.user.id);
+        assert.equal((await request('GET', `/api/tasks/${unlinkedTask}?businessContext=event_genix`,
+            undefined, outsider.token)).status, 200);
+        assert.equal((await bot(`/tasks?notificationTaskId=${unlinkedTask}&businessContext=event_genix`,
+            undefined, participants[0].telegram)).data.status, 'binding_unavailable');
+        const expectNoHistoricalEvent = async () => {
+            const { rowCount } = await pool.query('SELECT 1 FROM telegram_crm_assignment_outbox WHERE task_id=$1', [unlinkedTask]);
+            assert.equal(rowCount, 0);
+        };
+        await expectNoHistoricalEvent();
+
+        const pending = await assignToPeer('Disposable draft before pilot access removal');
+        assert.equal(pending.status, 201, JSON.stringify(pending.data));
+        await pool.query('UPDATE telegram_crm_bindings SET pilot_enabled=false WHERE user_id=$1', [outsider.user.id]);
+        assert.equal((await confirmPeer(pending)).data.code, 'TELEGRAM_OWNER_OUTSIDE_PILOT');
+        const excluded = await bot('/owners?businessContext=event_genix', undefined, participants[0].telegram);
+        assert.equal(excluded.data.owners.some(person => person.id === outsider.user.id), false);
         const stale = await bot('/tasks/preview',{
-            title:'Disposable revoked peer',ownerUserId:outsider.user.id,businessContext:'event_genix',sourceUpdateId:String(nextUpdate++)
+            title:'Disposable excluded pilot peer',ownerUserId:outsider.user.id,businessContext:'event_genix',sourceUpdateId:String(nextUpdate++)
         },participants[0].telegram);
-        assert.equal(stale.status,400,JSON.stringify(stale.data));
+        assert.equal(stale.data.code, 'TELEGRAM_OWNER_OUTSIDE_PILOT');
+        await pool.query('UPDATE telegram_crm_bindings SET pilot_enabled=true WHERE user_id=$1', [outsider.user.id]);
+
+        const newTelegram = String(randomInt(960000000000, 970000000000));
+        const relink = await request('POST', '/api/auth/telegram-crm/link',
+            { password: outsider.password }, outsider.token);
+        assert.equal(relink.status, 201, JSON.stringify(relink.data));
+        const token = new URL(relink.data.url).searchParams.get('start').slice(4);
+        assert.equal((await bot('/link/claim', { token }, newTelegram)).status, 200);
+        assert.equal((await request('POST', '/api/auth/telegram-crm/link/confirm', relink.data, outsider.token)).status, 200);
+        await expectNoHistoricalEvent();
+        const next = await assignToPeer('Disposable assignment after Telegram confirmation');
+        assert.equal(next.status, 201, JSON.stringify(next.data));
+        const afterRelink = await confirmPeer(next);
+        assert.equal(afterRelink.status, 200, JSON.stringify(afterRelink.data));
+        const event = (await notifications('/claim', { leaseId: randomUUID() })).data.event;
+        assert.equal(event.taskId, afterRelink.data.receipt.task.id);
+        assert.equal(event.telegramId, newTelegram);
+        assert.equal((await notifications(`/${event.id}/result`, {
+            leaseId: event.leaseId, status: 'sent', messageId: 100000 + nextUpdate
+        })).data.status, 'sent');
     } finally {
         await pool.query('UPDATE business_memberships SET action_allowlist=$3::text[] WHERE business_id=$1 AND user_id=$2',
             [business.id,peer.id,original]);

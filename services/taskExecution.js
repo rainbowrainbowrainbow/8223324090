@@ -188,7 +188,7 @@ function ownerCandidateScopeSql(actor, params, options = {}) {
             WHERE sender.user_id=$${params.length}
               AND sender.pilot_enabled AND sender.verified_at IS NOT NULL
               AND sender_user.is_active IS DISTINCT FROM FALSE
-              AND recipient.pilot_enabled AND recipient.verified_at IS NOT NULL
+              AND recipient.pilot_enabled
         )`;
     }
     const perms = getPermissions(actor?.role);

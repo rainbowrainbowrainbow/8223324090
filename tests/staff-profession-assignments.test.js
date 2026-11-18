@@ -28,10 +28,12 @@ test('roles save sends only metadata, updates revision, and preserves dirty work
     const context = { staffProfileRevision: '1',
         document: { getElementById: id => id === 'staffEditModal' ? { dataset: { catalogState: 'ready' } } : { value: 'host' } },
         runStaffProfileAction: (_button, _labels, fn) => fn(), activeEditStaffId: () => 9701,
+        staffProfileSaveIsCurrent: () => () => true,
         readStaffRoleAssignmentRows: () => [{ profession_key: 'host', is_primary: true, hourly_rate: 999 }],
         captureStaffProfileScopeFields: () => submitted,
         hrFetch: async (_url, options) => { writes.push(options.body); return { success: true, profile_revision: '2' }; },
         loadStaffRoleAssignments: async () => {}, markStaffProfileScopeFieldsClean: (scope, fields) => cleaned.push([scope, fields]),
+        mergeFreshStaffProfile: value => value, syncStaffProfileHeaderName: () => {},
         markStaffProfileScopesClean: () => {}, showNotification: () => {}
     };
     vm.createContext(context);
@@ -40,4 +42,13 @@ test('roles save sends only metadata, updates revision, and preserves dirty work
     assert.equal(isProfessionOnlyRoleAssignmentBody(writes[0]), true);
     assert.equal(context.staffProfileRevision, '2');
     assert.equal(cleaned[0][1], submitted);
+    context.hrFetch = async () => ({ success: false, error: 'Synthetic access denied' });
+    assert.equal((await context.saveStaffRoleAssignments()).success, false);
+    assert.equal(cleaned.length, 1);
+    assert.equal(context.staffProfileRevision, '2');
+    context.hrFetch = async () => ({ success: true, profile_revision: '3' });
+    context.staffProfileSaveIsCurrent = () => () => false;
+    assert.equal((await context.saveStaffRoleAssignments()).stale, true);
+    assert.equal(cleaned.length, 1);
+    assert.equal(context.staffProfileRevision, '2');
 });

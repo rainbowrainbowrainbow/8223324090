@@ -18,7 +18,8 @@ async function run() {
     const results = [];
     try {
         const token = await getToken();
-        const rootId = (await request('GET', '/api/auth/verify', null, token)).data.user.id;
+        const rootUser = (await request('GET', '/api/auth/verify', null, token)).data.user;
+        const rootId = rootUser.id;
         const { rows: [org] } = await db.query("INSERT INTO organizations (slug, name) VALUES ($1, 'Synthetic HR QA') RETURNING id", ['profession-qa-' + crypto.randomUUID()]);
         const { rows: [business] } = await db.query(`INSERT INTO businesses
             (organization_id, context_key, label, short_label, access_mode, modules)
@@ -27,16 +28,19 @@ async function run() {
         await db.query(`INSERT INTO business_memberships (organization_id, business_id, user_id, role, is_default)
             VALUES ($1, $2, $3, 'creator', true)`, [org.id, business.id, rootId]);
         for (const role of ['admin', 'creator']) {
+            let session = { token, user: rootUser };
+            if (role === 'admin') {
             const username = 'profession.qa.' + crypto.randomBytes(6).toString('hex');
             const password = crypto.randomBytes(24).toString('base64url');
-            const linked = await request('POST', '/api/staff', { name: 'Synthetic HR actor', department: 'admin', position: 'QA', role_type: 'admin' }, token);
+            const linked = await request('POST', '/api/staff', { name: 'Synthetic HR actor ' + role, department: 'admin', position: 'QA', role_type: 'admin' }, token);
             assert.equal(linked.status, 200);
             const created = await request('POST', '/api/users', { username, password, role, name: 'Synthetic HR actor', staffId: linked.data.data.id,
                 businessContexts: ['event_genix'], defaultBusinessContext: 'event_genix', activateMembership: true }, token);
-            assert.equal(created.status, 200);
+            assert.equal(created.status, 200, JSON.stringify(created.data));
             const login = await request('POST', '/api/auth/login', { username, password });
             assert.equal(login.status, 200);
-            const session = login.data;
+            session = login.data;
+            }
             for (const width of [1280, 390]) {
                 const { rows: [person] } = await db.query(`INSERT INTO staff (name, department, position, role_type, hourly_rate)
                     VALUES ('Synthetic profession UI', 'admin', 'QA', 'animator', 321) RETURNING id`);

@@ -11572,6 +11572,7 @@ async function saveStaffRoleAssignments(button = null) {
         if (!staffId) return { success: false, error: 'missing_staff_id' };
         const assignments = readStaffRoleAssignmentRows().map(({ hourly_rate, ...assignment }) => assignment);
         const submittedWorkFields = captureStaffProfileScopeFields('work', ['editRoleType', 'editSecondaryProfessions']);
+        const isCurrent = staffProfileSaveIsCurrent(staffId);
         if (!assignments.length) {
             showNotification('Немає ролей для збереження', 'error');
             return { success: false, error: 'empty_role_assignments' };
@@ -11583,11 +11584,19 @@ async function saveStaffRoleAssignments(button = null) {
                 assignments
             }
         });
+        if (!isCurrent()) return { success: false, stale: true };
         if (!data?.success) {
             showNotification(data?.error || 'Не вдалося оновити ролі', 'error');
             return data || { success: false };
         }
+        const savedRoles = data.data || assignments;
+        const fresh = mergeFreshStaffProfile({ id: Number(staffId),
+            role_type: savedRoles.find(row => row.is_primary)?.profession_key,
+            secondary_professions: savedRoles.filter(row => !row.is_primary).map(row => row.profession_key)
+        });
+        syncStaffProfileHeaderName(document.getElementById('editStaffName')?.value ?? fresh?.name ?? '', fresh);
         await loadStaffRoleAssignments(staffId);
+        if (!isCurrent()) return { success: false, stale: true };
         staffProfileRevision = data.profile_revision ?? staffProfileRevision;
         markStaffProfileScopeFieldsClean('work', submittedWorkFields);
         markStaffProfileScopesClean(['roles']);

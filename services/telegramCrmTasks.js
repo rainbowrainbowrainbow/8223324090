@@ -146,10 +146,14 @@ function createTelegramCrmTasks(options) {
         const { actor, binding, scope } = await context(pool, senderId, businessContext, false, null, eventAt);
         return { user: { id: actor.id, name: actor.name || actor.username }, bindingVersion: String(binding.version),
             businessContext: scope.activeContext, businessContexts: actor.businessContexts || actor.business_contexts || [],
-            canCreateTasks: canUseTaskRouteCapability(actor, 'create') };
+            canCreateTasks: canUseTaskRouteCapability(actor, 'create'),
+            taskViews: { undated: true, notificationStatus: true } };
     }
 
     async function list(senderId, query = {}) {
+        if (query.notificationTaskId !== undefined) {
+            return notificationStatus(senderId, query.notificationTaskId, query.businessContext, query.eventAt);
+        }
         const { actor, scope } = await context(pool, senderId, query.businessContext, false, null, query.eventAt ?? null);
         const params = [];
         const personal = buildTaskPersonalQuery(actor, params);
@@ -162,7 +166,13 @@ function createTelegramCrmTasks(options) {
         if (from && to && from > to) throw failure(400, 'TELEGRAM_TASK_DATE_INVALID', 'Початок періоду пізніше завершення.');
         const due = taskKpiWorkloadDateSql('t');
         // Match the date-focused My Day view: deferred work is not actionable yet.
-        if (query.view === 'day') where.push('(t.snoozed_until IS NULL OR t.snoozed_until <= NOW())');
+        if (query.view === 'day' || query.view === 'undated') {
+            where.push('(t.snoozed_until IS NULL OR t.snoozed_until <= NOW())');
+        }
+        if (query.view === 'undated') {
+            where.push(`${due} IS NULL`);
+            where.push(`(${personal.roles}) && ARRAY['executor','author']::text[]`);
+        }
         if (from) { params.push(from); where.push(`${due} >= $${params.length}::date`); }
         if (to) { params.push(to); where.push(`${due} <= $${params.length}::date`); }
         const limit = Number(query.limit || 10), offset = Number(query.offset || 0);
@@ -177,6 +187,38 @@ function createTelegramCrmTasks(options) {
             ORDER BY ${due} ASC NULLS LAST,t.id DESC LIMIT $${params.length-1} OFFSET $${params.length}`, params)).rows;
         return { tasks: rows.slice(0,limit).map(row => taskReceipt(row, actor, scope)), businessContext: scope.activeContext,
             pagination: { limit, offset, hasMore: rows.length > limit, nextOffset: rows.length > limit ? offset + limit : null } };
+    }
+
+    async function notificationStatus(senderId, rawId, businessContext, eventAt = null) {
+        const taskId = Number(rawId);
+        if (!/^[1-9][0-9]*$/.test(String(rawId)) || !Number.isSafeInteger(taskId)) {
+            throw failure(400, 'TELEGRAM_TASK_INVALID', 'Некоректний номер задачі.');
+        }
+        const { actor, scope } = await context(pool, senderId, businessContext, false, null, eventAt);
+        const params = [taskId];
+        const personal = buildTaskPersonalQuery(actor, params);
+        const business = pushTaskBusinessScopeCondition(params, scope, 't');
+        const { rows: [row] } = await pool.query(`SELECT
+            CASE
+                WHEN t.owner_user_id IS NULL THEN 'no_assignee'
+                WHEN NOT COALESCE(s.mode IN ('read','write'), false) THEN 'disabled'
+                WHEN b.verified_at IS NULL OR u.is_active IS FALSE THEN 'binding_unavailable'
+                ELSE COALESCE(delivery.status, 'not_recorded')
+            END AS status
+            FROM tasks t
+            LEFT JOIN users u ON u.id=t.owner_user_id
+            LEFT JOIN telegram_crm_bindings b ON b.user_id=t.owner_user_id AND b.pilot_enabled
+            LEFT JOIN telegram_crm_settings s ON s.singleton
+            LEFT JOIN LATERAL (
+                SELECT status FROM telegram_crm_assignment_outbox o
+                WHERE o.task_id=t.id AND o.owner_user_id=t.owner_user_id
+                    AND o.binding_version=b.version
+                ORDER BY o.id DESC LIMIT 1
+            ) delivery ON true
+            WHERE t.id=$1 AND ${personal.match} AND ${business}`, params);
+        if (!row) throw failure(404, 'TASK_NOT_VISIBLE', 'Ця задача більше недоступна.');
+        // This API shares task visibility and keeps transport details private.
+        return { taskId, status: row.status };
     }
 
     async function owners(senderId, businessContext, eventAt = null, query = {}) {

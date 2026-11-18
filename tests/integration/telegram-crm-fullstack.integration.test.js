@@ -141,6 +141,10 @@ check('canonical task writer, actual membership checks and concurrent confirms s
     }
     const delivery = (await pool.query('SELECT status, telegram_message_id FROM telegram_crm_assignment_outbox WHERE id=$1', [event.id])).rows[0];
     assert.deepEqual(delivery, { status: 'sent', telegram_message_id: '123456' });
+    const diagnostic = await bot(`/tasks?notificationTaskId=${task.id}&businessContext=event_genix`, undefined, peerTelegram);
+    assert.equal(diagnostic.status, 200, JSON.stringify(diagnostic.data));
+    assert.deepEqual(diagnostic.data, { success: true, taskId: task.id, status: 'sent' });
+    assert.equal((await bot(`/tasks?notificationTaskId=${task.id}`, undefined, '917000000000')).status, 403);
     const mine = await bot('/tasks?businessContext=event_genix');
     assert.equal(mine.status,200,JSON.stringify(mine.data));
     assert.deepEqual(mine.data.tasks.find(row=>row.id===task.id).viewerRoles,['author']);
@@ -391,6 +395,28 @@ check('date-focused bot list matches My Day dates, snoozing and paginated person
     assert.equal(cabinet.status,200,JSON.stringify(cabinet.data));
     assert.deepEqual(cabinet.data.planning.today.map(t=>t.id).sort((a,b)=>a-b),listed.map(t=>t.id).sort((a,b)=>a-b));
     assert.equal((await bot(path,undefined,peerTelegram)).data.tasks.length,0);
+});
+
+check('undated My Day is additive and scoped to active visible executor and author tasks', async () => {
+    const add = async (assignee, author, date, status, visibility, snoozedUntil = null) =>
+        (await pool.query(`INSERT INTO tasks(title,owner_user_id,created_by_user_id,business_context,
+            date,status,visibility,snoozed_until,suppress_initial_telegram_assignment)
+            VALUES('Disposable undated My Day', $1,$2,'event_genix',$3,$4,$5,$6,true) RETURNING id`,
+        [assignee, author, date, status, visibility, snoozedUntil])).rows[0].id;
+    const execute = await add(peer.id, peer.id, null, 'todo', 'team');
+    const control = await add(owner.id, peer.id, null, 'todo', 'team');
+    const dated = await add(peer.id, peer.id, '2099-11-05', 'todo', 'team');
+    const done = await add(peer.id, peer.id, null, 'done', 'team');
+    const hidden = await add(owner.id, owner.id, null, 'todo', 'me_only');
+    const snoozed = await add(peer.id, peer.id, null, 'todo', 'team', '2099-11-05T12:00:00Z');
+    assert.equal((await bot('/me', undefined, peerTelegram)).data.taskViews.undated, true);
+    const view = await bot('/tasks?businessContext=event_genix&view=undated&limit=20', undefined, peerTelegram);
+    assert.equal(view.status, 200, JSON.stringify(view.data));
+    const tasks = new Map(view.data.tasks.map(task => [task.id, task]));
+    assert.deepEqual(tasks.get(execute).viewerRoles, ['executor', 'author']);
+    assert.deepEqual(tasks.get(control).viewerRoles, ['author']);
+    for (const id of [dated, done, hidden, snoozed]) assert.equal(tasks.has(id), false);
+    assert.equal((await bot(`/tasks?notificationTaskId=${hidden}&businessContext=event_genix`, undefined, peerTelegram)).status, 404);
 });
 
 check('Telegram changes use canonical task history and reject stale, foreign or repeated writes', async () => {

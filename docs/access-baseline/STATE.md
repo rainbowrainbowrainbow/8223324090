@@ -3,8 +3,7 @@
 - Date: 2026-11-18, Europe/Kyiv. Goal active and unfinished.
 - Branch: codex/baseline-access-20261118; isolated worktree D:/Codex/EventGenix/baseline-access-20261118. Original dirty checkout remains untouched.
 - Original base: 571a57acb80118cc6cc0e5a923c5a5bba9c09d86 (0.83.120).
-- Integrated production base:859196fedb107b443719cbfc576fa9352cbee15a (0.84.8). Own24unpublished commits rebased; only Chat script-version/defer conflicts resolved, retaining upstream0.84.8 and ordered deferred private-upload/page scripts. Park account issuance recovery, freelance schedule and Telegram-unlinked task assignment preserved. No shared-history changes.
-- Rebased QA/browser checkpoint378e2ad47815dfd2360894fe1a1023c622f24cf7; bounded classification/recovery implementation71758dfc2b4e108b19e03f5b4e5985e6cbc95d91. Historical SHAs in older evidence are superseded by this rebase. No feature version reserved; inherited0.84.8 is upstream's version. Recheck live/remote before final RC.
+- Integrated production base: 9625ea1d5c12152c59b41e2f2a405cdaab77f00f (0.84.9). Own27 unpublished commits rebased, preserving reserve freelance/HR navigation. Only Chat script version/defer conflicts resolved. Older checkpoint SHAs below are historical; the final review binds the current candidate.
 - Authorized: baseline role/authorization code, regressions and local feature commits; protected local zone block EG-BASE-ZONES-20261118 explicitly approved. No production classification, real-person repairs, login/session mechanism changes, secret/settings changes, push or deploy performed/authorized by that local block.
 
 ## Implemented locally
@@ -161,3 +160,29 @@ future reuse may perform normal crash recovery; all test assertions and cleanup
 finished before shutdown. No production database was involved.
 
 Chat verification: actual authenticated PostgreSQL/HTTP8/8, socket/task/namespace parity70/70, focused perimeter38/38, final file/record11/11, actual-app private file browser1280/3902/2 with final screenshots reviewed. See CHAT_SCOPE.md. Integrated six-role common-work/readiness12/12 passes. Fresh one-command npm test now passes on the integrated0.84.8 code as recorded above. Modern Web Guidance security/performance guides were applied to private attachments and accessibility to readiness; all three guides read in full, final mobile/desktop screenshots reviewed. Forms/accessibility guidance was rechecked for upstream integration; existing native controls, pending-form blocking and canonical keyboard/focus behavior retained. Local rollback is reverting own unpublished feature commits; this task has not changed production.
+
+## Current integration: production 0.84.9
+
+The candidate is rebased onto 9625ea1d5c12152c59b41e2f2a405cdaab77f00f.
+Reserve freelance scheduling and HR navigation from that release are preserved.
+Incoming functional changes are UI-only; backend/schema behavior is unchanged
+from the preceding 0.84.8 integration. The registered actual-app browser test
+passes again: output/baseline-0849-final-browser.log, exit0, four desktop/mobile
+role scenarios plus interruption/expiry/ownership recovery. All four cropped and
+masked screenshots were reviewed. This repeat used a fresh disposable local
+PostgreSQL17 cluster with fsync=off for UI regression speed; it is not a durability
+proof. Earlier default-durability backend/lifecycle/classification evidence
+remains historical evidence. No production writes or logins occurred.
+Production 0.84.9 and remote SHA converge; successful reusable Railway build is
+08cf6603-0bf4-4d4b-a6aa-9c4ee42322c5. Proposed next patch is 0.84.10, subject to
+final controller checks. All earlier RC/controller/review bundles are superseded
+and unapproved. See the final candidate-bound review for current hashes.
+
+Fresh one-command npm test on this integrated0.84.9 candidate completed exit0:
+output/baseline-0849-final-npm-test.log. Unit4038/4038, MyDay338, automation54,
+UI1324, syntax1819 files; post-verify packs79/93/20/25/138/20/47/12 all pass.
+The UI-only disposable PostgreSQL cluster output/baseline-0849-pg/data on58043
+was stopped normally after the browser run; pg_ctl status reports no server.
+Railway read-only staged-change check reports no pending patch, resources,
+shared variables or networking changes. The reviewed protected proposal raw
+HEAD/worktree SHA256 still equals ADC3BEC1A3EE6EFEBA57C87FFA84CE0B425DCFF7AFB69ECB07BF707C9E23FC43.

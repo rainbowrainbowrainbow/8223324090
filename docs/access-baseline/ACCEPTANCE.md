@@ -1,6 +1,6 @@
 # Baseline access acceptance ledger
 
-Status: local candidate integrated with upstream/live0.84.8 (859196fe). Final registered instructor/admin browser4scenarios, identity lifecycle10/10 and fresh full npm test pass, exit0; see STATE.md. No deployment or production write by this task has occurred.
+Status: local candidate integrated with upstream/live0.84.9 (9625ea1d). Current and historical verification are distinguished in the integration note below and STATE.md. No deployment or production write by this task has occurred.
 
 | Requirement | Evidence | Remaining gate |
 |---|---|---|
@@ -19,3 +19,20 @@ Status: local candidate integrated with upstream/live0.84.8 (859196fe). Final re
 | Goal completion | Active; local implementation and final checks complete; owner decisions and credential availability resolved | Final RC/controller preflight, authorized exact-SHA CI/release/live QA; do not mark complete early |
 
 Owner decisions are recorded in MODULE_SCOPE_DEPENDENCIES.md and hash-bound ignored review artifacts. Policy selection does not execute production changes. EG-BASE-ZONES-20261118 authorizes the reviewed local protected scope; it does not authorize production metadata, membership repairs, secrets/settings or deployment.
+
+## Current integration: production 0.84.9
+
+The candidate is rebased onto 9625ea1d5c12152c59b41e2f2a405cdaab77f00f.
+Reserve freelance scheduling and HR navigation from that release are preserved.
+Incoming functional changes are UI-only; backend/schema behavior is unchanged
+from the preceding 0.84.8 integration. The registered actual-app browser test
+passes again: output/baseline-0849-final-browser.log, exit0, four desktop/mobile
+role scenarios plus interruption/expiry/ownership recovery. All four cropped and
+masked screenshots were reviewed. This repeat used a fresh disposable local
+PostgreSQL17 cluster with fsync=off for UI regression speed; it is not a durability
+proof. Earlier default-durability backend/lifecycle/classification evidence
+remains historical evidence. No production writes or logins occurred.
+Production 0.84.9 and remote SHA converge; successful reusable Railway build is
+08cf6603-0bf4-4d4b-a6aa-9c4ee42322c5. Proposed next patch is 0.84.10, subject to
+final controller checks. All earlier RC/controller/review bundles are superseded
+and unapproved. See the final candidate-bound review for current hashes.

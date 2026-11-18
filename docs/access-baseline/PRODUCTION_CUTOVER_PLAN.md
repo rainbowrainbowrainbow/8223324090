@@ -8,8 +8,8 @@
 - Environment: production, d9f9b984-d54d-4620-a8bf-c48882ad5158.
 - Service name:8223324090; actual Railway service UUID:
   3fb62d4c-2dc2-4701-8e2b-09ce16e188ee.
-- Last verified live/remote version0.84.8, base
-  859196fedb107b443719cbfc576fa9352cbee15a. Revalidate before authorization,
+- Last verified live/remote version0.84.9, base
+  9625ea1d5c12152c59b41e2f2a405cdaab77f00f. Revalidate before authorization,
   push and upload. A different live/remote release requires reconciliation.
 
 ## Separate real-data action requiring exact Red approval
@@ -101,9 +101,9 @@ create invoices/payments or change real compensation. Cleanup may target only
 that approved run's registry-owned IDs.
 
 The ordinary upload helper refuses an older version over a newer live version;
-do not promise that it can upload0.84.8 over0.84.9. The proposed explicit Red
+do not promise that it can upload0.84.9 over0.84.10. The proposed explicit Red
 rollback-only exception reuses the existing successful Railway build:
-deployment0442008d-5cca-487b-bf14-e5086108bd9b, SHA859196fedb107b443719cbfc576fa9352cbee15a,
+deployment08cf6603-0bf4-4d4b-a6aa-9c4ee42322c5, SHA9625ea1d5c12152c59b41e2f2a405cdaab77f00f,
 via Railway redeploy with that exact deploymentId and the fixed project,
 environment and service UUIDs above. The provider's read-only deployment list
 confirms that this build is reusable. No rollback is currently authorized.
@@ -114,7 +114,7 @@ metadata keys under the original snapshot guard while the candidate SHA is still
 live. On cleanup/ownership/metadata drift, stop for review; never drop guards to
 make rollback appear complete. This exception is only for that prior build,
 without arbitrary uploads, settings/secret changes, force-push or shared-history
-rewrite. Verify live0.84.8/exact prior SHA/production branch afterward. The remote
+rewrite. Verify live0.84.9/exact prior SHA/production branch afterward. The remote
 production ref can then differ from live; record that state and reconcile under
 a later release envelope rather than rewriting history. New releases still use
 the canonical controller/upload helper. The final owner block must explicitly
@@ -123,10 +123,10 @@ plans; permission is never inferred from the prepared controller manifest.
 
 ## Read-only Railway preflight
 
-Latest after upstream0.84.8: project/environment/service identities match the
-fixed target; deployment0442008d-5cca-487b-bf14-e5086108bd9b isSUCCESS. Staged
-resources0, shared variables0, destructive=false and no staged network delta.
-GitHub and live both resolve to859196fedb107b443719cbfc576fa9352cbee15a.
+Latest after upstream0.84.9: project/environment/service identities match the
+fixed target; deployment08cf6603-0bf4-4d4b-a6aa-9c4ee42322c5 isSUCCESS and reusable.
+Final controller preparation must revalidate staged resources and network state.
+GitHub and live both resolve to9625ea1d5c12152c59b41e2f2a405cdaab77f00f.
 The following earlier snapshot is retained as history.
 
 2026-11-18: all three production services online, zero warnings/criticals and

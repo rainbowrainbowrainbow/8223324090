@@ -77,3 +77,20 @@ actual login/API/browser actions, interruption/expiry/idempotent cleanup, forged
 plan/target/role, unregistered/foreign IDs and dependency-drift rejection. Only
 then produce the concrete plan hash, candidate SHA and combined bounded review
 package for the separate Red data/role scope and Yellow release/QA envelope.
+
+## Current integration: production 0.84.9
+
+The candidate is rebased onto 9625ea1d5c12152c59b41e2f2a405cdaab77f00f.
+Reserve freelance scheduling and HR navigation from that release are preserved.
+Incoming functional changes are UI-only; backend/schema behavior is unchanged
+from the preceding 0.84.8 integration. The registered actual-app browser test
+passes again: output/baseline-0849-final-browser.log, exit0, four desktop/mobile
+role scenarios plus interruption/expiry/ownership recovery. All four cropped and
+masked screenshots were reviewed. This repeat used a fresh disposable local
+PostgreSQL17 cluster with fsync=off for UI regression speed; it is not a durability
+proof. Earlier default-durability backend/lifecycle/classification evidence
+remains historical evidence. No production writes or logins occurred.
+Production 0.84.9 and remote SHA converge; successful reusable Railway build is
+08cf6603-0bf4-4d4b-a6aa-9c4ee42322c5. Proposed next patch is 0.84.10, subject to
+final controller checks. All earlier RC/controller/review bundles are superseded
+and unapproved. See the final candidate-bound review for current hashes.

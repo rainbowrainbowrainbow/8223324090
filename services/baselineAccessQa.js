@@ -204,8 +204,9 @@ async function cleanupBaselineQa(db, { run, entities }) {
         OR EXISTS(SELECT 1 FROM staff_documents WHERE staff_id=ANY($2::int[]))
         OR EXISTS(SELECT 1 FROM staff_resource_assignments WHERE staff_id=ANY($2::int[]))
         OR EXISTS(SELECT 1 FROM tasks WHERE owner_user_id=ANY($1::int[]) OR created_by_user_id=ANY($1::int[]))
-        OR EXISTS(SELECT 1 FROM bookings WHERE created_by=ANY($3::text[]) AND COALESCE(status,'confirmed')<>'cancelled') AS found`,
-    [ids(accounts), ids(staff), userRows.rows.map(row => row.username)]);
+        OR EXISTS(SELECT 1 FROM bookings WHERE created_by=ANY($3::text[]) AND COALESCE(status,'confirmed')<>'cancelled')
+        OR EXISTS(SELECT 1 FROM trusted_qa_runs WHERE run_id=$4 AND state<>'cleaned') AS found`,
+    [ids(accounts), ids(staff), userRows.rows.map(row => row.username), `${run.run_id}-booking`]);
     guard(unexpected.rows[0]?.found === false);
     // The work-section footer saves default times, never actual shifts. These
     // dependent rows are owned by the registered synthetic staff and actor.

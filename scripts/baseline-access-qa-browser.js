@@ -75,7 +75,9 @@ async function exerciseInstructor(page, actor, plan, bookingId, api, screenshot)
     assert.equal(await page.evaluate(() => Boolean(document.activeElement.closest('#bookingModal'))), true);
     assert.equal(await modal.locator('.btn-edit-booking,.booking-detail-advanced-actions').count(), 0);
     assert.ok((await modal.innerText()).includes(plan.booking.programName));
-    if (screenshot) await modal.locator('.booking-detail-modal-content').screenshot({ path: screenshot });
+    const animatorRow = modal.getByText(/^Аніматор(?:и)?:$/).locator('..');
+    assert.equal(await animatorRow.count(), 1);
+    if (screenshot) await modal.locator('.booking-detail-modal-content').screenshot({ path: screenshot, mask: [animatorRow] });
     await page.keyboard.press('Escape');
     await modal.waitFor({ state: 'hidden' });
     assert.equal(await block.evaluate(element => element === document.activeElement), true);
@@ -110,7 +112,9 @@ async function exerciseAdmin(page, actor, screenshot) {
     const shiftWrite = page.waitForResponse(response => response.request().method() === 'PUT'
         && new URL(response.url()).pathname === `/api/staff/${actor.staffId}/shift-preferences`);
     await page.locator('#editSaveWork').click();
-    assert.equal((await workWrite).status(), 200);
+    const workSaved = await workWrite;
+    assert.equal(workSaved.status(), 200);
+    assert.equal(Object.hasOwn(workSaved.request().postDataJSON(), 'hourly_rate'), false);
     assert.equal((await shiftWrite).status(), 200);
     await page.waitForFunction(() => !document.getElementById('editSaveWork').disabled);
     assert.equal(await page.locator('#editRoleType').inputValue(), 'animator');

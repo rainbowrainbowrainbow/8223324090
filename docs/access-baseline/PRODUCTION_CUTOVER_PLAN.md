@@ -48,6 +48,22 @@ locks and only while its value remains game_zone. Abort on ownership, active-sta
 or classification drift; do not overwrite later operator decisions. No original
 workArea value needs restoration because every audited before-state lacks the key.
 
+The bounded operator is scripts/game-zone-classification.js. Default mode opens
+a repeatable-read/read-only transaction and emits only exact resource pairs,
+candidate SHA, a sorted metadata snapshot hash and the plan hash. The production
+database target fingerprint is shared with the QA operator. No credential is
+printed or written. Prepare with --release-sha <candidate>; save only its plan
+object to an absolute reviewed JSON path.
+
+Apply requires --mode apply --plan-file <absolute-plan> --approved-hash <hash>
+--confirm APPLY_EXACT_GAME_ZONE_CLASSIFICATION. Rollback uses --mode rollback and
+ROLLBACK_EXACT_GAME_ZONE_CLASSIFICATION. Both require the plan's exact deployed
+SHA/production branch and complete metadata before opening their transaction.
+They lock all15stable pairs, verify the full original metadata snapshot, update
+only workArea, assert exactly15post-values and preserve all other metadata.
+Rollback also rejects unrelated metadata drift; perform it before an application
+rollback changes the live SHA. Neither mode is currently authorized for production.
+
 This is an explicit operator data-fix, not an automatic startup migration. No
 booking backfill, channel/course row mutation, module toggle or other business
 status change is proposed. Chat and Training already belong to the owner-approved

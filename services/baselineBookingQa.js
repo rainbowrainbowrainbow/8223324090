@@ -31,8 +31,9 @@ async function preflightBaselineBooking(db, fixture, { allowPendingClassificatio
         AND LEFT(date::text,10)=$1 AND line_id=$2 AND (from_sheet IS DISTINCT FROM true OR EXISTS(
             SELECT 1 FROM staff_schedule ss JOIN staff s ON s.id=ss.staff_id
             WHERE ss.staff_id::text=l.line_id AND LEFT(ss.date::text,10)=$1
-              AND ss.status IN ('working','remote') AND s.is_active IS TRUE))`, [fixture.date, fixture.lineId]);
-    requireQa(line.rowCount === 1 && /^Аніматор\s*[1-5]$/.test(line.rows[0].name), 'BASELINE_QA_LINE_UNAVAILABLE');
+              AND ss.status IN ('working','remote') AND s.is_active IS TRUE
+              AND COALESCE(ss.business_context,'event_genix')='event_genix'))`, [fixture.date, fixture.lineId]);
+    requireQa(line.rowCount === 1, 'BASELINE_QA_LINE_UNAVAILABLE');
     const product = await db.query(`SELECT p.id,p.name,p.code,p.timeline_code,p.category,p.domain,
         EXISTS(SELECT 1 FROM product_stock_requirements psr WHERE psr.product_id::text=p.id::text) AS has_stock
         FROM products p WHERE p.id=$1 AND p.is_active IS TRUE AND COALESCE(p.business_context,'event_genix')='event_genix'`,

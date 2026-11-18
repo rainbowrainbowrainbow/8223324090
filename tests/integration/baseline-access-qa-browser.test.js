@@ -20,7 +20,7 @@ test('the bounded operator CLI exercises normal UI login, canonical room details
             '{"mode":"park","roomTimelineEnabled":true,"defaultTimelineView":"animators"}')
             ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value;
             INSERT INTO lines_by_date(date,line_id,name,color,from_sheet,business_context)
-            VALUES('2099-06-15','baseline-qa-line','Аніматор 1','#64748b',false,'event_genix')`);
+            VALUES('2099-06-15','baseline-qa-line','SYNTHETIC_PERSON_NAME','#64748b',false,'event_genix')`);
         const { rows: [product] } = await f.db.query(`INSERT INTO products(id,code,timeline_code,name,label,category,duration,price,hosts,domain,business_context,is_active)
             VALUES('baseline-qa-program','BQA','BQA','Synthetic QA program','Synthetic QA program','quest',60,100,1,'program','event_genix',true) RETURNING id`);
         const plan = { runId, operatorId: f.root.id, businessId: Number(f.park.id), releaseSha: 'a'.repeat(40), ttlMinutes: 20,
@@ -72,6 +72,15 @@ test('the bounded operator CLI exercises normal UI login, canonical room details
                             VALUES($1,'animator','weekday','10:00','20:00','synthetic-foreign','synthetic-foreign') RETURNING id`, [admin.staffId])).rows[0].id;
                         throw Object.assign(new Error('Synthetic interruption'), { code: 'SYNTHETIC_BROWSER_INTERRUPTION' });
                     }
+                    // Identity retirement cannot precede its child, even when
+                    // the canonical booking has no created_by client field.
+                    const { finishBaselineQaRun } = require('../../services/baselineAccessQa');
+                    const lock = await f.db.connect();
+                    try {
+                        await lock.query('BEGIN');
+                        await assert.rejects(finishBaselineQaRun(lock,recoveryPlan,describeBaselineQaPlan(recoveryPlan).planHash),
+                            {code:'BASELINE_QA_CLEANUP_DRIFT'});
+                    } finally { await lock.query('ROLLBACK'); lock.release(); }
                     await f.db.query(`UPDATE trusted_qa_runs SET created_at=NOW()-INTERVAL '21 minutes',
                         expires_at=NOW()-INTERVAL '1 minute' WHERE run_id=ANY($1::text[])`, [[recoveryId,recoveryId+'-booking']]);
                     const { rows } = await f.db.query('SELECT id,run_id FROM trusted_qa_runs WHERE run_id=ANY($1::text[])', [[recoveryId,recoveryId+'-booking']]);

@@ -3,8 +3,8 @@
 - Date: 2026-11-18, Europe/Kyiv. Goal active and unfinished.
 - Branch: codex/baseline-access-20261118; isolated worktree D:/Codex/EventGenix/baseline-access-20261118. Original dirty checkout remains untouched.
 - Original base: 571a57acb80118cc6cc0e5a923c5a5bba9c09d86 (0.83.120).
-- Integrated production base: b0f6077df31ae1eb5dbd6e5753dcb24619253a79 (0.84.6). Own20unpublished commits rebased; only Chat script-version conflict resolved, retaining upstream0.84.6 and defer. Latest freelance schedule and Telegram-unlinked task assignment preserved; canonical team guards retained. No shared-history changes.
-- Chat SHA27341f3c2; Training29d8a9b19; readiness9149bc3c7; integrated fixture/evidence checkpointfe7e36ed5. Dedicated QA identity/API lifecycle is the commit containing this state; resolve HEAD for its SHA. No feature version reserved; inherited0.84.6 is upstream's version. Recheck live/remote before final RC.
+- Integrated production base:859196fedb107b443719cbfc576fa9352cbee15a (0.84.8). Own24unpublished commits rebased; only Chat script-version/defer conflicts resolved, retaining upstream0.84.8 and ordered deferred private-upload/page scripts. Park account issuance recovery, freelance schedule and Telegram-unlinked task assignment preserved. No shared-history changes.
+- Rebased QA/browser checkpoint378e2ad47815dfd2360894fe1a1023c622f24cf7. Historical SHAs in older evidence are superseded by this rebase. No feature version reserved; inherited0.84.8 is upstream's version. Recheck live/remote before final RC.
 - Authorized: baseline role/authorization code, regressions and local feature commits; protected local zone block EG-BASE-ZONES-20261118 explicitly approved. No production classification, real-person repairs, login/session mechanism changes, secret/settings changes, push or deploy performed/authorized by that local block.
 
 ## Implemented locally
@@ -20,10 +20,22 @@ six exact dependent default-time rows only under booking-bound plans; five-field
 plans still reject them. A DATE projection fixes existing QA execution-window
 comparison on hosts east of UTC without changing booking contracts or parsers.
 
-Parallel release detected: remote production859196fedb107b443719cbfc576fa9352cbee15a
-(0.84.8, Park account issuance recovery), while live remains0.84.6/b0f6077d at the
-read-only check. Integration is the next step after this local checkpoint;
-revalidate convergence and choose the next free patch only at final RC.
+Parallel release859196fedb107b443719cbfc576fa9352cbee15a (0.84.8) integrated.
+At the last read-only check live remained0.84.6/b0f6077d; the other release was
+waiting for its last CI browser job. Revalidate convergence before final RC.
+
+On the integrated0.84.8 code: focused53/53 (output/baseline-0848-final-focused.log),
+runtime22.23.4/npm10.9.9 and8protected blocks pass. Classification helper actual
+PostgreSQL1/1 passes (output/baseline-classification-pg.log): all15metadata keys,
+full rollback, unrelated metadata preservation, complete rollback on one-row
+drift and repeated-apply refusal. New CLI defaults to read-only and binds fixed
+target, deployed SHA, exact15pairs and original metadata hash. Production preflight
+read-only confirms all15rows; snapshot hash1b8e19adb248168c5be70b436db5cd3583577cface19371ff52fa41096578dd0.
+No classification execution occurred. Final integrated browser/recovery and
+identity reruns, one-command npm test, RC/preflight and approval remain pending.
+The reviewed protected proposal was restored from checkout CRLF to the exact
+approved LF bytes only after verifying normalized SHA256 equals
+ADC3BEC1A3EE6EFEBA57C87FFA84CE0B425DCFF7AFB69ECB07BF707C9E23FC43.
 
 - Full 26-role before/after matrix; common working pages, required navigation independent of old favorites, canonical capability consumers, active membership and explicit-denial precedence.
 - Booking operations narrowed to operational roles; independent event-detail/contact/revenue fields and exports. Payroll approval/payment confirmation require explicit grants. HR/IT broad booking scope removed.

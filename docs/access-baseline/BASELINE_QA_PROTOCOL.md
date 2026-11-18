@@ -17,7 +17,7 @@ payroll/finance row or external notification recipient is created.
 The plan contains exactly runId (baqa- followed by12lowercase hex characters),
 operatorId, businessId, releaseSha (40lowercase hex) and ttlMinutes (1–30).
 An optional sixth field, booking, binds one exact canonical fixture (existing
-product, anonymous animator line, room, date/time, synthetic label). No contact,
+product, existing canonical animator line, room, date/time, synthetic label). No contact,
 price override, extra animator, pinata or operational child entity is allowed.
 The window is10:00–20:00 and duration at most120minutes. Read-only planning may
 report pending game-zone classification; execution requires it already applied.
@@ -71,7 +71,11 @@ and synthetic admin identity. The existing product/room/line are references,
 never registered as disposable products/resources. The server attaches its
 canonical marker and suppresses business side effects. The child is cancelled
 before parent retirement, including on browser failure. Optional absolute
---output-dir receives only cropped synthetic modals and sanitized outcomes.
+--output-dir receives only cropped synthetic modals and sanitized outcomes. The
+canonical animator row is masked in booking screenshots, allowing an existing
+roster line without storing a real staff name. Referenced staff/schedule rows are
+never modified. Parent retirement also rejects any non-cleaned child run, even
+when the booking has no created_by client field.
 
 The browser performs normal UI login for instructor/admin at1280/390px, existing
 rooms navigation (production defaults to animators), canonical detail/field and

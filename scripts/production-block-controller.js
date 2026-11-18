@@ -23,6 +23,8 @@ const {
     assertPerformanceCiRecovery,
     assertProfileEmployeeAuthBlob,
     MY_DAY_PROFILE_RELEASE,
+    FREELANCE_SCHEDULE_RELEASE,
+    assertFreelanceSchedulePayload,
     assertMyDayProfilePayload,
     isPreparedProtectedRelease,
     migrationSqlHash,
@@ -486,16 +488,16 @@ async function finishReleaseUpload(manifest, blockFile, runtime, mode) {
     writeBlockFile(blockFile, manifest);
 }
 
-function myDayProfilePayloadSha(head) {
-    const { payloadSha, controllerPaths } = MY_DAY_PROFILE_RELEASE;
+function reviewedReleasePayloadSha(head, { payloadSha, controllerPaths }) {
     fail(gitIsAncestor(payloadSha, head)
         && stableJson(changedPaths(payloadSha, head).sort()) === stableJson(controllerPaths),
-    'My Day release differs from its reviewed payload', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
+    'Release differs from its reviewed payload', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
     return payloadSha;
 }
 
 function usesStandardProtectedReleaseFlow(kind) {
-    return [PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE, PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE].includes(kind);
+    return [PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE, PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE,
+        PROTECTED_WORKFLOWS.FREELANCE_SCHEDULE_RELEASE].includes(kind);
 }
 
 function defaultRuntime() {
@@ -525,7 +527,9 @@ function defaultRuntime() {
                 ...(profileEmployee ? {
                     profileEmployeeAuthBlob: git(['rev-parse', `${head}:routes/auth.js`])
                 } : {}),
-                ...(myDayProfile ? { myDayProfilePayloadSha: myDayProfilePayloadSha(head) } : {}),
+                ...(myDayProfile ? { myDayProfilePayloadSha: reviewedReleasePayloadSha(head, MY_DAY_PROFILE_RELEASE) } : {}),
+                ...(options.protectedWorkflow === PROTECTED_WORKFLOWS.FREELANCE_SCHEDULE_RELEASE
+                    ? { freelanceSchedulePayloadSha: reviewedReleasePayloadSha(head, FREELANCE_SCHEDULE_RELEASE) } : {}),
                 workflowHashes: performanceCi ? performanceCiWorkflowHashes(paths)
                     : options.protectedWorkflow === PROTECTED_WORKFLOWS.STAFF_DELETION_CI ? staffDeletionWorkflowHashes() : undefined,
                 staffDeletionGate: options.protectedWorkflow === PROTECTED_WORKFLOWS.STAFF_DELETION_CI
@@ -552,7 +556,9 @@ function defaultRuntime() {
                 ...(manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE
                     ? { profileEmployeeAuthBlob: git(['rev-parse', `${head}:routes/auth.js`]) } : {}),
                 ...(manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE
-                    ? { myDayProfilePayloadSha: myDayProfilePayloadSha(head) } : {}),
+                    ? { myDayProfilePayloadSha: reviewedReleasePayloadSha(head, MY_DAY_PROFILE_RELEASE) } : {}),
+                ...(manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.FREELANCE_SCHEDULE_RELEASE
+                    ? { freelanceSchedulePayloadSha: reviewedReleasePayloadSha(head, FREELANCE_SCHEDULE_RELEASE) } : {}),
                 workflowHashes: performanceCi ? performanceCiWorkflowHashes(paths)
                     : manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.STAFF_DELETION_CI ? staffDeletionWorkflowHashes() : undefined,
                 performanceCiRecovery: performanceCi ? performanceCiRecoveryFacts(head) : undefined,
@@ -1192,6 +1198,9 @@ async function assertExecuteDrift(manifest, runtime) {
     }
     if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE) {
         assertMyDayProfilePayload(drift.myDayProfilePayloadSha);
+    }
+    if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.FREELANCE_SCHEDULE_RELEASE) {
+        assertFreelanceSchedulePayload(drift.freelanceSchedulePayloadSha);
     }
     if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE) {
         assertPerformanceCiWorkflowHashes(drift.workflowHashes);

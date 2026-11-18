@@ -27,7 +27,19 @@ const PROTECTED_WORKFLOWS = Object.freeze({
     STAFF_DELETION_CI: 'staff-deletion-ci',
     HR_PAYROLL: 'hr-payroll',
     FREELANCE_SHIFT_BLOCKS: 'freelance-shift-blocks',
+    FREELANCE_SCHEDULE_RELEASE: 'freelance-schedule-release-083117',
     FINANCE_MANUAL_QA: 'finance-manual-qa'
+});
+const FREELANCE_SCHEDULE_RELEASE = Object.freeze({
+    baseSha: '566c4efedef069d595fbd43071b6eb3adf68c0bf',
+    baseVersion: '0.83.116',
+    version: '0.83.117',
+    payloadSha: 'b26ef8cc898b9386228601cffeff9d137ad515cc',
+    controllerPaths: Object.freeze([
+        'scripts/production-block-controller.js',
+        'scripts/production-block-policy.js',
+        'tests/production-block-controller.test.js'
+    ])
 });
 const MY_DAY_PROFILE_RELEASE = Object.freeze({
     baseSha: '125b01b21d1b62ec8d82449115044933d855503c',
@@ -684,7 +696,7 @@ function isPreparedProtectedWorkflow(kind) {
     return [PROTECTED_WORKFLOWS.HR_PAYROLL, PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA,
         PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE, PROTECTED_WORKFLOWS.STAFF_DELETION_CI,
         PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE, PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE,
-        PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS].includes(kind);
+        PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS, PROTECTED_WORKFLOWS.FREELANCE_SCHEDULE_RELEASE].includes(kind);
 }
 
 function isPreparedProtectedRelease(manifest) {
@@ -824,6 +836,13 @@ function validateProtectedWorkflow(workflow, changedPaths = [], redPaths = []) {
             'HR/payroll requires its exact implementation, isolated regressions and additive migration',
             'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
         return { enabled: true, kind: workflow, protectedChangedPaths: [...redPaths] };
+    }
+    if (workflow === PROTECTED_WORKFLOWS.FREELANCE_SCHEDULE_RELEASE) {
+        fail(stableJson(redPaths) === stableJson(['routes/payroll.js'])
+            && FREELANCE_SCHEDULE_RELEASE.controllerPaths.every(file => changedPaths.includes(file)),
+        'Freelance schedule requires its exact payroll route and controller scope',
+        'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+        return { enabled: true, kind: workflow, protectedChangedPaths: ['routes/payroll.js'] };
     }
     if (workflow === PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS) {
         fail(stableJson(normalizePathList(redPaths)) === stableJson(FREELANCE_RED_PATHS)
@@ -992,6 +1011,19 @@ function assertMyDayProfileReleaseScope(base, baseVersion, version, qa, migratio
     'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
 }
 
+function assertFreelanceSchedulePayload(payloadSha) {
+    fail(payloadSha === FREELANCE_SCHEDULE_RELEASE.payloadSha,
+        'Freelance schedule release differs from the reviewed payload', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
+}
+
+function assertFreelanceScheduleScope(base, baseVersion, version, qa, migrations, attempts) {
+    const reviewed = FREELANCE_SCHEDULE_RELEASE;
+    fail(base === reviewed.baseSha && baseVersion === reviewed.baseVersion && version === reviewed.version
+        && qa.enabled === false && migrations.length === 0 && attempts === 1,
+    'Freelance schedule release requires its exact base and version, one attempt, no migrations and read-only QA',
+    'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+}
+
 function buildManifest(facts, options = {}) {
     const now = options.now instanceof Date ? options.now : new Date(options.now || Date.now());
     const validityMinutes = Number(options.validityMinutes || 360);
@@ -1013,6 +1045,13 @@ function buildManifest(facts, options = {}) {
         assertProfileEmployeeAuthBlob(facts.profileEmployeeAuthBlob);
         fail(facts.remoteSha === baseLiveSha && facts.live?.deploymentMetadata?.complete === true,
             'Employee profile preparation requires matching and verified live and remote production',
+            'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
+    }
+    if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.FREELANCE_SCHEDULE_RELEASE) {
+        assertFreelanceScheduleScope(baseLiveSha, facts.live?.version, facts.releaseVersion, qaScope, migrations, maxReleaseAttempts);
+        assertFreelanceSchedulePayload(facts.freelanceSchedulePayloadSha);
+        fail(facts.remoteSha === baseLiveSha && facts.live?.deploymentMetadata?.complete === true,
+            'Freelance schedule preparation requires matching and verified live and remote production',
             'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
     }
     if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE) {
@@ -1113,6 +1152,8 @@ function buildManifest(facts, options = {}) {
                     ? { profileEmployeeAuthBlob: facts.profileEmployeeAuthBlob } : {}),
                 ...(protectedWorkflow.kind === PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE
                     ? { myDayProfilePayloadSha: facts.myDayProfilePayloadSha } : {}),
+                ...(protectedWorkflow.kind === PROTECTED_WORKFLOWS.FREELANCE_SCHEDULE_RELEASE
+                    ? { freelanceSchedulePayloadSha: facts.freelanceSchedulePayloadSha } : {}),
                 ...(protectedWorkflow.kind === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE
                     ? { failedPredecessorSha: PERFORMANCE_CI_FAILED_SHA, failedArtifactRun: PERFORMANCE_CI_FAILED_RUN } : {})
             }
@@ -1178,6 +1219,15 @@ function validateManifest(manifest, options = {}) {
         fail(manifest.preparedRelease?.sha === manifest.initialHeadSha && manifest.allowedMigrationFiles.length === 0
             && !manifest.retryFrom && !manifest.renewalFrom,
         'Employee profile release requires one exact prepared SHA without migrations or retries',
+        'PRODUCTION_BLOCK_RELEASE_NOT_PREPARED');
+    }
+    if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.FREELANCE_SCHEDULE_RELEASE) {
+        assertFreelanceScheduleScope(manifest.baseLiveSha, manifest.preparedRelease?.baseVersion,
+            manifest.preparedRelease?.version, qaScope, manifest.migrationClassifications, manifest.maxReleaseAttempts);
+        assertFreelanceSchedulePayload(manifest.preparedRelease?.freelanceSchedulePayloadSha);
+        fail(manifest.preparedRelease?.sha === manifest.initialHeadSha && manifest.allowedMigrationFiles.length === 0
+            && !manifest.retryFrom && !manifest.renewalFrom,
+        'Freelance schedule release requires one exact prepared SHA without migrations',
         'PRODUCTION_BLOCK_RELEASE_NOT_PREPARED');
     }
     if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE) {
@@ -1350,6 +1400,8 @@ function warningText(manifest) {
 module.exports = {
     MY_DAY_PROFILE_RELEASE,
     assertMyDayProfilePayload,
+    FREELANCE_SCHEDULE_RELEASE,
+    assertFreelanceSchedulePayload,
     PROFILE_EMPLOYEE_RELEASE_PATHS,
     PROFILE_EMPLOYEE_AUTH_BLOB,
     assertProfileEmployeeAuthBlob,

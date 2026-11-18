@@ -20,6 +20,7 @@ const {
     PROFILE_EMPLOYEE_RELEASE_PATHS,
     PROFILE_EMPLOYEE_AUTH_BLOB,
     MY_DAY_PROFILE_RELEASE,
+    FREELANCE_SCHEDULE_RELEASE,
     STAFF_DELETION_PATHS,
     STAFF_DELETION_CI_HASH,
     PERFORMANCE_CI_CHANGED_PATHS,
@@ -156,6 +157,36 @@ test('My Day profile release pins the reviewed payload and exact SHA with both C
         { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID' });
     assert.throws(() => manifest(options, { ...candidate, remoteSha: RELEASE_SHA }), { code: 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT' });
     assert.throws(() => manifest(options, { ...candidate, releaseVersion: '0.83.101' }),
+        { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID' });
+});
+
+test('freelance schedule release admits only its reviewed payload with read-only QA', async t => {
+    const { baseSha, baseVersion, version, payloadSha, controllerPaths } = FREELANCE_SCHEDULE_RELEASE;
+    const options = { protectedWorkflow: 'freelance-schedule-release-083117', maxReleaseAttempts: 1 };
+    const candidate = {
+        live: { commitSha: baseSha, version: baseVersion, deploymentMetadata: { complete: true } },
+        remoteSha: baseSha,
+        releaseVersion: version,
+        freelanceSchedulePayloadSha: payloadSha,
+        changedPaths: ['routes/payroll.js', ...controllerPaths]
+    };
+    const value = manifest(options, candidate);
+    const file = blockFile(t, value);
+    const exactDrift = await dryRuntime().drift(value);
+    const dryRun = drift => executeAction({ blockFile: file, confirmation: confirmationValue(value), dryRun: true },
+        dryRuntime({ async drift() { return { ...exactDrift, freelanceSchedulePayloadSha: payloadSha, ...drift }; } }));
+    await assert.doesNotReject(dryRun({}));
+    assert.ok(releaseCommandPlan(value).some(step => step.includes('exact-sha-runtime-artifact-run')));
+    await assert.rejects(dryRun({ head: RELEASE_SHA }), { code: 'PRODUCTION_BLOCK_SHA_DRIFT' });
+    await assert.rejects(dryRun({ freelanceSchedulePayloadSha: RELEASE_SHA }), { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT' });
+    assert.throws(() => manifest(options, { ...candidate, freelanceSchedulePayloadSha: RELEASE_SHA }),
+        { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT' });
+    assert.throws(() => manifest(options, { ...candidate, changedPaths: [...candidate.changedPaths, 'middleware/auth.js'] }),
+        { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID' });
+    assert.throws(() => manifest(options, { ...candidate, remoteSha: RELEASE_SHA }), { code: 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT' });
+    assert.throws(() => manifest({ ...options, maxReleaseAttempts: 2 }, candidate),
+        { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID' });
+    assert.throws(() => manifest(options, { ...candidate, migrations: [{ file: 'db/migrations/999_test.sql', sql: 'SELECT 1' }] }),
         { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID' });
 });
 

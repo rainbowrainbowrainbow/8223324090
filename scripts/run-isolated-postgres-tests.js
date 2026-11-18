@@ -61,7 +61,6 @@ const MODES = {
         'tests/integration/timeline-membership-postgres.test.js'
     ],
     payroll: [
-        'tests/integration/payroll-profiles-configurable-rules.integration.test.js',
         'tests/integration/payroll-profiles.integration.test.js',
         'tests/integration/payroll-profiles-conditions.integration.test.js',
         'tests/integration/payroll-simultaneous-additional.integration.test.js',
@@ -74,7 +73,8 @@ const MODES = {
         'tests/integration/finance-money-movements.integration.test.js',
         'tests/integration/finance-money-qa.integration.test.js',
         'tests/finance-qa-report-scope.test.js',
-        'tests/integration/costing-management-postgres.test.js'
+        'tests/integration/costing-management-postgres.test.js',
+        'tests/integration/payroll-profiles-configurable-rules.integration.test.js'
     ],
     'payroll-fullstack': [
         'tests/integration/payroll-fullstack-settlement.integration.test.js'

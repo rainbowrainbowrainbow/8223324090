@@ -1558,7 +1558,6 @@ function simulateProfileAmount(profile, payload = {}) {
     const days = buildSimulationDays(payload, period);
     if (context.profilesById.get(Number(profile.id))?.versions?.some(version => version.payRules)) {
         const { CONDITION_RULE_VERSION } = require('./hrPayrollConditions');
-        const { calculateConditionSnapshots } = require('./payrollConditionCalculation');
         const byDate = new Map(days.map(day => [day.date, day]));
         const breakdown = [];
         const blockingIssues = [];
@@ -1573,8 +1572,8 @@ function simulateProfileAmount(profile, payload = {}) {
                         plannedMinutes: source?.minutes || 0, overtimeMinutes: source?.overtimeMinutes || 0,
                         conditions: { ...resolution, ruleVersion: CONDITION_RULE_VERSION } }] } };
             });
-            const result = calculateConditionSnapshots({ periodFrom: selectedDates[0], periodTo: selectedDates.at(-1), conditionDays,
-                componentInputs: payload.componentInputsByMonth?.[month] || payload.componentInputs }, OVERTIME_MULTIPLIER);
+            const result = calculateProfessionPay(staff, null, { periodFrom: selectedDates[0], periodTo: selectedDates.at(-1), conditionDays,
+                componentInputs: payload.componentInputsByMonth?.[month] || payload.componentInputs }, new Map(), context);
             blockingIssues.push(...result.blockingIssues);
             breakdown.push(...[...result.baseLines, ...result.additionalLines, ...result.overtimeLines].map(item => ({
                 date: item.workDate || item.meta?.workDate || selectedDates[0], hours: item.minutes ? item.minutes / 60 : 0,

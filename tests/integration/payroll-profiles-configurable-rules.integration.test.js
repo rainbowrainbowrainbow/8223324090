@@ -55,6 +55,41 @@ describe('configurable compensation on disposable PostgreSQL', { skip: !enabled,
         assert.deepEqual(settlement.blockers, []);
     });
 
+    test('database-loaded installment ranges preserve base continuity across independent component versions', async () => {
+        const key = 'continuity_' + process.pid;
+        await db.query('INSERT INTO hr_professions(key,title,department) VALUES($1,$2,$3)', [key, 'Synthetic continuity', 'qa']);
+        const id = Number((await db.query(`INSERT INTO staff(name,department,position,role_type,hourly_rate,rate_unit,is_active,hire_date)
+            VALUES('Synthetic continuity worker','qa','Synthetic',$1,19000,'month',true,'2198-01-01') RETURNING id`, [key])).rows[0].id);
+        const policy = amount => ({ schemaVersion: 1, monthly: { mode: 'fixed' }, note: 'Synthetic note ' + amount,
+            components: [{ id: 'ads', title: 'Advertising', kind: 'monthly', amount,
+                monthly: { mode: 'fixed', partialMonth: 'calendar_days' } }] });
+        const profile = await profiles.createPayrollProfile({ title: 'Synthetic continuity', professionKey: key, profileKind: 'shared',
+            isDefaultForProfession: true, status: 'active', rateUnit: 'month', defaultRate: 19000,
+            effectiveFrom: '2198-01-01', payRules: policy(6000) }, actor, { db });
+        await profiles.createPayrollProfileVersion(profile.id, { rateUnit: 'month', defaultRate: 19000,
+            effectiveFrom: '2198-11-16', changeReason: 'Synthetic independent component change', payRules: policy(8000) }, actor, { db });
+        const staff = { id, role_type: key, hire_date: '2198-01-01' };
+        for (const [from, to, expected] of [['2198-11-01', '2198-11-15', 12500], ['2198-11-16', '2198-11-30', 13500]]) {
+            const loaded = await loadPayrollProfileContext([id], { from, to }, db);
+            assert.equal(loaded.from, from);
+            assert.equal(loaded.to, to);
+            assert.equal(loaded.profilesById.get(profile.id).versions.length, 2);
+            const pay = calculateProfessionPay(staff, null, {}, new Map(), loaded);
+            assert.equal(pay.baseAmount, 9500);
+            assert.equal(pay.totalAmount, expected);
+            assert.deepEqual(pay.blockingIssues, []);
+        }
+        const forecast = await profiles.forecastPayrollProfiles({ month: '2198-11', staffIds: [id], includeActual: true }, { db });
+        assert.equal(forecast.rows[0].total_salary, 26000);
+        assert.deepEqual(forecast.rows[0].blocking_issues, []);
+        const settlement = await buildCanonicalPayrollInstallmentPreview({ month: '2198-11', staffId: id }, db);
+        assert.equal(settlement.monthlyNetAmount, 26000);
+        assert.equal(settlement.advanceAmount, 12500);
+        assert.equal(settlement.finalAmount, 13500);
+        assert.equal(settlement.combinedAmount, 26000);
+        assert.deepEqual(settlement.blockers, []);
+    });
+
     test('forecast uses planned net minutes, merges same-date blocks and loads separate manual commission bases', async () => {
         const key = 'plan_' + process.pid;
         await db.query('INSERT INTO hr_professions(key,title,department) VALUES($1,$2,$3)', [key, 'Synthetic daily forecast', 'qa']);

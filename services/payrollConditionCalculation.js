@@ -8,7 +8,15 @@ function calculateConditionSnapshots(metrics, overtimeMultiplier) {
     const baseLines = [], additionalLines = [], overtimeLines = [], professionRateSummary = [];
     const blockingIssues = [...(metrics.payrollBlockingIssues || [])];
     const groups = new Map(), componentGroups = new Map();
+    const overlapsRequestedRange = group => [...group.dates].some(date =>
+        (!metrics.periodFrom || date >= metrics.periodFrom) && (!metrics.periodTo || date <= metrics.periodTo));
     const problem = (code, message, details = {}) => blockingIssues.push({ code, message, severity: 'error', ...details });
+    function monthPeriod(group) {
+        const month = group.date.slice(0, 7), first = month + '-01';
+        const last = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).toISOString().slice(0, 10);
+        return { month, periodFrom: [metrics.periodFrom || first, first].sort().at(-1),
+            periodTo: [metrics.periodTo || last, last].sort()[0] };
+    }
     function captureBounds(group, terms) {
         const key = `${terms.profileId || ''}:${terms.profileVersionId || ''}:${terms.assignmentId || ''}`;
         const before = group.versionBounds.get(key);
@@ -56,7 +64,11 @@ function calculateConditionSnapshots(metrics, overtimeMultiplier) {
                     { date: day.date, professionKey: allocation.professionKey });
                 continue;
             }
-            const signature = JSON.stringify([terms.rateUnit, terms.rate, terms.rateUnit === 'month' && !terms.payRules ? terms.monthlyNorm : null, terms.payRules || null]);
+            // Notes and independently calculated components cannot split the
+            // base contract into artificial partial-month contracts.
+            const baseRules = terms.payRules ? { schemaVersion: terms.payRules.schemaVersion,
+                policy: terms.rateUnit === 'month' ? terms.payRules.monthly : terms.rateUnit === 'day' ? terms.payRules.daily : null } : null;
+            const signature = JSON.stringify([terms.rateUnit, terms.rate, terms.rateUnit === 'month' && !terms.payRules ? terms.monthlyNorm : null, baseRules]);
             const key = `${additional ? 'additional' : 'base'}:${allocation.professionKey}:${terms.rateUnit === 'month' ? day.date.slice(0, 7) : day.date}${terms.rateUnit === 'month' && terms.payRules ? ':' + signature : ''}`;
             if (!groups.has(key)) groups.set(key, { terms, additional, professionKey: allocation.professionKey,
                 date: day.date, minutes: 0, minutesByShare: new Map(), overtime: 0,
@@ -77,10 +89,16 @@ function calculateConditionSnapshots(metrics, overtimeMultiplier) {
             // Newer captures can carry a closed effective range while older captures
             // of the same immutable version still carry its former open end.
             if (terms.payRules) captureBounds(group, terms);
-            group.refs.push({ attendanceRef: day.attendanceRef, segmentRef: allocation.segmentId, roleRef: allocation.roleId, exceptionId: terms.exception?.id || null });
+            group.refs.push({ attendanceRef: day.attendanceRef, segmentRef: allocation.segmentId, roleRef: allocation.roleId,
+                exceptionId: terms.exception?.id || null, profileId: terms.profileId || null,
+                profileVersionId: terms.profileVersionId || null, assignmentId: terms.assignmentId || null, workDate: day.date });
             for (const component of terms.payRules?.components || []) {
-                const componentKey = `${additional}:${allocation.professionKey}:${day.date.slice(0, 7)}:${component.id}:${JSON.stringify(component)}`;
+                const componentRules = { ...component };
+                delete componentRules.title;
+                const componentSignature = JSON.stringify(componentRules);
+                const componentKey = `${additional}:${allocation.professionKey}:${day.date.slice(0, 7)}:${component.id}:${componentSignature}`;
                 if (!componentGroups.has(componentKey)) componentGroups.set(componentKey, { ...group,
+                    componentId: component.id, signature: componentSignature,
                     terms: { ...terms, payRules: { ...terms.payRules, components: [component] } },
                     plannedByDate: new Map(), paidDays: new Map(), dates: new Set(), versionBounds: new Map(), refs: [], profileVersions: new Set() });
                 const componentGroup = componentGroups.get(componentKey);
@@ -99,23 +117,33 @@ function calculateConditionSnapshots(metrics, overtimeMultiplier) {
     // A profession cannot change unit silently inside a month, even across different day keys.
     const units = new Map();
     for (const group of groups.values()) {
+        if (!overlapsRequestedRange(group)) continue;
         const key = `${group.additional}:${group.professionKey}:${group.date.slice(0, 7)}`;
         if (!units.has(key)) units.set(key, new Set());
         units.get(key).add(group.terms.rateUnit);
     }
     for (const [key, values] of units) if (values.size > 1) problem('PAYROLL_UNIT_CHANGE_IN_MONTH_UNSUPPORTED',
         'Зміна одиниці оплати всередині місяця потребує погодженого правила', { key });
-    function boundedTerms(group) {
+    function boundedTerms(group, component = false) {
         const dates = [...group.dates].sort();
-        if (metrics.configuredEntitlementCoverage && group.terms.rateUnit === 'month') {
+        if (metrics.configuredEntitlementCoverage && (component || group.terms.rateUnit === 'month')) {
             for (let index = 1; index < dates.length; index++) {
                 if ((Date.parse(dates[index]) - Date.parse(dates[index - 1])) / 86400000 !== 1) {
                     throw Object.assign(new Error('Неперервність місячних умов не підтверджена. Потрібна окрема перевірка інтервалів.'), { code: 'PAYROLL_RULES_PERIOD_GAP_REVIEW' });
                 }
             }
         }
-        const peers = [...groups.values()].filter(peer => peer.additional === group.additional
-            && peer.professionKey === group.professionKey && peer.date.slice(0, 7) === group.date.slice(0, 7) && peer.terms.payRules);
+        if (component && metrics.configuredEntitlementCoverage) {
+            const period = monthPeriod(group);
+            return { ...group.terms,
+                effectiveFrom: dates[0] > period.periodFrom
+                    ? [group.terms.effectiveFrom, dates[0]].filter(Boolean).sort().at(-1) : group.terms.effectiveFrom,
+                effectiveTo: dates.at(-1) < period.periodTo
+                    ? [group.terms.effectiveTo, dates.at(-1)].filter(Boolean).sort()[0] : group.terms.effectiveTo };
+        }
+        const peers = [...(component ? componentGroups : groups).values()].filter(peer => peer.additional === group.additional
+            && peer.professionKey === group.professionKey && peer.date.slice(0, 7) === group.date.slice(0, 7) && peer.terms.payRules
+            && (!component || peer.componentId === group.componentId));
         if (new Set(peers.map(peer => peer.signature)).size <= 1) return group.terms;
         return { ...group.terms,
             effectiveFrom: [group.terms.effectiveFrom, dates[0]].filter(Boolean).sort().at(-1),
@@ -149,11 +177,11 @@ function calculateConditionSnapshots(metrics, overtimeMultiplier) {
             allocation_source: 'attendance_compensation_snapshot', allocation_sources: ['attendance_compensation_snapshot'] });
     }
     for (const group of groups.values()) {
-        if (group.conflict) continue;
+        if (group.conflict || !overlapsRequestedRange(group)) continue;
         const terms = group.terms;
         if (terms.payRules) {
             try {
-                const context = { month: group.date.slice(0, 7), periodFrom: metrics.periodFrom, periodTo: metrics.periodTo,
+                const context = { ...monthPeriod(group),
                     actualMinutes: group.minutes, overtimeMinutes: group.overtime,
                     paidPlannedMinutes: [...group.plannedByDate.values()].reduce((sum, value) => sum + value, 0),
                     paidDays: [...group.paidDays.values()].reduce((sum, value) => sum + value, 0),
@@ -198,9 +226,10 @@ function calculateConditionSnapshots(metrics, overtimeMultiplier) {
         }
     }
     for (const group of componentGroups.values()) {
+        if (!overlapsRequestedRange(group)) continue;
         try {
-            const result = calculateConfiguredComponents(boundedTerms(group), {
-                month: group.date.slice(0, 7), periodFrom: metrics.periodFrom, periodTo: metrics.periodTo,
+            const result = calculateConfiguredComponents(boundedTerms(group, true), {
+                ...monthPeriod(group),
                 paidPlannedMinutes: [...group.plannedByDate.values()].reduce((sum, value) => sum + value, 0),
                 paidDays: [...group.paidDays.values()].reduce((sum, value) => sum + value, 0),
                 hireDate: metrics.hireDate, terminationDate: metrics.terminationDate,

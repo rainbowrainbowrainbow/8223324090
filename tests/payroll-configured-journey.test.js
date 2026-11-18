@@ -18,6 +18,51 @@ function fixture(unit = 'month', rate = 19000, rules = { schemaVersion: 1, month
     return { staff, version, profile, context, scheme };
 }
 
+test('installment ranges retain monthly base continuity when an independent component changes', () => {
+    const f = fixture('month', 19000, { schemaVersion: 1, monthly: { mode: 'fixed' }, components: [
+        { id: 'ads', title: 'Advertising', kind: 'monthly', amount: 6000, monthly: { mode: 'fixed', partialMonth: 'calendar_days' } }
+    ] });
+    f.version.effectiveTo = '2026-11-15';
+    f.profile.versions.push({ ...f.version, id: 12, effectiveFrom: '2026-11-16', effectiveTo: null,
+        payRules: { ...structuredClone(f.version.payRules), note: 'Administrative change', components: [
+            { ...f.version.payRules.components[0], amount: 8000 }
+        ] } });
+    for (const [from, to, expected] of [['2026-11-01', '2026-11-15', 12500], ['2026-11-16', '2026-11-30', 13500]]) {
+        const pay = calculateProfessionPay(f.staff, f.scheme, { periodFrom: from, periodTo: to }, new Map(), f.context);
+        assert.equal(pay.baseAmount, 9500);
+        assert.equal(pay.totalAmount, expected);
+        assert.deepEqual(pay.blockingIssues, []);
+        const simulation = simulateProfileAmount(f.profile, { from, to, days: [] });
+        assert.equal(simulation.total, expected);
+        assert.deepEqual(simulation.blockingIssues, []);
+    }
+});
+
+test('future configured terms do not replace a legacy-only requested range', () => {
+    const f = fixture();
+    f.version.payRules = null;
+    f.version.effectiveTo = '2026-11-15';
+    f.profile.versions.push({ ...f.version, id: 12, effectiveFrom: '2026-11-16', effectiveTo: null,
+        payRules: { schemaVersion: 1, monthly: { mode: 'fixed' } } });
+    const pay = calculateProfessionPay(f.staff, f.scheme, { periodFrom: '2026-11-01', periodTo: '2026-11-15' }, new Map(), f.context);
+    assert.ok(pay.blockingIssues.some(issue => issue.code === 'PAYROLL_MONTHLY_NORM_REQUIRED'));
+    assert.notEqual(pay.configuredRules, true);
+});
+
+test('components active outside an installment neither accrue money nor request unrelated commission bases', () => {
+    const f = fixture('month', 19000, { schemaVersion: 1, monthly: { mode: 'fixed' }, components: [
+        { id: 'own', title: 'Own bookings', kind: 'percent', percent: 4, basisKey: 'own_bookings' },
+        { id: 'ads', title: 'Advertising', kind: 'monthly', amount: 6000, monthly: { mode: 'fixed', partialMonth: 'calendar_days' } }
+    ] });
+    f.version.effectiveTo = '2026-11-15';
+    f.profile.versions.push({ ...f.version, id: 12, effectiveFrom: '2026-11-16', effectiveTo: null,
+        payRules: { schemaVersion: 1, monthly: { mode: 'fixed' }, components: [] } });
+    const pay = calculateProfessionPay(f.staff, f.scheme, { periodFrom: '2026-11-16', periodTo: '2026-11-30' }, new Map(), f.context);
+    assert.equal(pay.totalAmount, 9500);
+    assert.equal(pay.additionalAmount, 0);
+    assert.deepEqual(pay.blockingIssues, []);
+});
+
 test('canonical payroll accrues a fixed salary without attendance and removes obsolete norm blockers', () => {
     const f = fixture();
     const metrics = { periodFrom: f.context.from, periodTo: f.context.to };
@@ -134,5 +179,77 @@ test('a new version with identical fixed pay rules does not halve the salary at 
     f.profile.versions.push({ ...f.version, id: 12, versionNumber: 2, effectiveFrom: '2026-11-16', effectiveTo: null });
     const pay = calculateProfessionPay(f.staff, f.scheme, {}, new Map(), f.context);
     assert.equal(pay.baseAmount, 30000);
+    assert.deepEqual(pay.blockingIssues, []);
+});
+
+test('changing a non-monetary note mid-month preserves fixed salary and dated version evidence', () => {
+    const f = fixture('month', 19000, { schemaVersion: 1, monthly: { mode: 'fixed' }, note: 'Original note' });
+    f.version.effectiveTo = '2026-11-15';
+    f.profile.versions.push({ ...f.version, id: 12, versionNumber: 2, effectiveFrom: '2026-11-16', effectiveTo: null,
+        payRules: { ...structuredClone(f.version.payRules), note: 'Tips remain outside payroll' } });
+    const pay = calculateProfessionPay(f.staff, f.scheme, {}, new Map(), f.context);
+    assert.equal(pay.baseAmount, 19000);
+    assert.deepEqual(pay.blockingIssues, []);
+    assert.deepEqual([...new Set(pay.baseLines.flatMap(line => line.meta.refs.map(ref => ref.profileVersionId)))].sort(), [11, 12]);
+});
+
+test('a dated component amount change does not turn an unchanged fixed base into a partial contract', () => {
+    const f = fixture('month', 19000, { schemaVersion: 1, monthly: { mode: 'fixed' }, components: [
+        { id: 'advertising', title: 'Advertising', kind: 'monthly', amount: 6000, monthly: { mode: 'fixed', partialMonth: 'calendar_days' } }
+    ] });
+    f.version.effectiveTo = '2026-11-15';
+    const next = structuredClone(f.version.payRules);
+    next.components[0].amount = 8000;
+    f.profile.versions.push({ ...f.version, id: 12, versionNumber: 2, effectiveFrom: '2026-11-16', effectiveTo: null, payRules: next });
+    const pay = calculateProfessionPay(f.staff, f.scheme, {}, new Map(), f.context);
+    assert.equal(pay.baseAmount, 19000);
+    assert.equal(pay.additionalAmount, 7000);
+    assert.deepEqual(pay.blockingIssues, []);
+});
+
+test('renaming a recurring component preserves its amount and does not require a partial-month pay decision', () => {
+    const f = fixture('month', 19000, { schemaVersion: 1, monthly: { mode: 'fixed' }, components: [
+        { id: 'advertising', title: 'Old advertising label', kind: 'monthly', amount: 3500, monthly: { mode: 'fixed' } }
+    ] });
+    f.version.effectiveTo = '2026-11-15';
+    const next = structuredClone(f.version.payRules);
+    next.components[0].title = 'Updated advertising label';
+    f.profile.versions.push({ ...f.version, id: 12, versionNumber: 2, effectiveFrom: '2026-11-16', effectiveTo: null, payRules: next });
+    const pay = calculateProfessionPay(f.staff, f.scheme, {}, new Map(), f.context);
+    assert.equal(pay.baseAmount, 19000);
+    assert.equal(pay.additionalAmount, 3500);
+    assert.deepEqual(pay.blockingIssues, []);
+});
+
+test('removing a component respects dated coverage even when older frozen captures still have an open end', () => {
+    const f = fixture('month', 19000, { schemaVersion: 1, monthly: { mode: 'fixed' }, components: [
+        { id: 'advertising', title: 'Advertising', kind: 'monthly', amount: 6000, monthly: { mode: 'fixed', partialMonth: 'calendar_days' } }
+    ] });
+    f.version.effectiveTo = '2026-11-15';
+    f.profile.versions.push({ ...f.version, id: 12, versionNumber: 2, effectiveFrom: '2026-11-16', effectiveTo: null,
+        payRules: { schemaVersion: 1, monthly: { mode: 'fixed' }, components: [] } });
+    const conditionDays = Array.from({ length: 15 }, (_, index) => {
+        const date = `2026-11-${String(index + 1).padStart(2, '0')}`;
+        const terms = resolveEffectivePayrollProfile(f.staff, 'animator', date, { payrollProfileContext: f.context });
+        return { date, worked: false, snapshot: { schemaVersion: 2, state: 'final', compensationAllocations: [
+            { allocationType: 'base', professionKey: 'animator', actualMinutes: 0, plannedMinutes: 0,
+                conditions: { ...terms, effectiveTo: null, ruleVersion: CONDITION_RULE_VERSION } }
+        ] } };
+    });
+    const pay = calculateProfessionPay(f.staff, f.scheme, { conditionDays }, new Map(), f.context);
+    assert.equal(pay.baseAmount, 19000);
+    assert.equal(pay.additionalAmount, 3000);
+    assert.deepEqual(pay.blockingIssues, []);
+});
+
+test('a forecast range crossing month-end allocates each monthly contract within its own earning month', () => {
+    const f = fixture('month', 19000, { schemaVersion: 1, monthly: { mode: 'fixed' }, components: [
+        { id: 'advertising', title: 'Advertising', kind: 'monthly', amount: 3500, monthly: { mode: 'fixed' } }
+    ] });
+    f.context.from = '2026-11-16'; f.context.to = '2026-12-15';
+    const pay = calculateProfessionPay(f.staff, f.scheme, {}, new Map(), f.context);
+    assert.equal(pay.baseAmount, 18694);
+    assert.equal(pay.additionalAmount, 3444);
+    assert.equal(pay.totalAmount, 22138);
     assert.deepEqual(pay.blockingIssues, []);
 });

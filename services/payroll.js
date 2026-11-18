@@ -1864,6 +1864,10 @@ async function loadPayrollProfileContext(staffIds = [], period = {}, db = pool) 
     const ids = [...new Set((staffIds || []).map(Number).filter(Number.isInteger))];
     const range = normalizePayrollProfileRange(period);
     const context = emptyPayrollProfileContext(range, true);
+    // Resolve contract continuity over earning months while keeping the requested
+    // payment range unchanged (for example, an advance or a final installment).
+    const coverageFrom = range.from.slice(0, 7) + '-01';
+    const coverageTo = new Date(Date.UTC(Number(range.to.slice(0, 4)), Number(range.to.slice(5, 7)), 0)).toISOString().slice(0, 10);
     if (!ids.length) return context;
 
     try {
@@ -1895,7 +1899,7 @@ async function loadPayrollProfileContext(staffIds = [], period = {}, db = pool) 
                       assignment.assignment_kind DESC,
                       assignment.effective_from DESC,
                       assignment.id DESC`,
-            [ids, range.from, range.to]
+            [ids, coverageFrom, coverageTo]
         );
         const defaultResult = await db.query(
             `SELECT profile.id AS profile_id,
@@ -1950,7 +1954,7 @@ async function loadPayrollProfileContext(staffIds = [], period = {}, db = pool) 
                AND effective_from <= $3::date
                AND (effective_to IS NULL OR effective_to >= $2::date)
              ORDER BY profile_id, effective_from ASC, version_number ASC, id ASC`,
-            [profileIds, range.from, range.to]
+            [profileIds, coverageFrom, coverageTo]
         );
         const versionIds = (versionResult.rows || []).map(row => Number(row.id)).filter(Number.isInteger);
         const dayRateMap = new Map();
@@ -3189,7 +3193,10 @@ function configuredConditionDays(staff, scheme, metrics, rates, profiles) {
         if (key.startsWith(Number(staff.id) + ':')) professions.add(key.slice(key.indexOf(':') + 1));
     }
     let hasConfigured = false;
-    for (let workDate = from; workDate <= to;) {
+    const coverageFrom = from.slice(0, 7) + '-01';
+    const coverageTo = new Date(Date.UTC(Number(to.slice(0, 4)), Number(to.slice(5, 7)), 0)).toISOString().slice(0, 10);
+    for (let workDate = coverageFrom; workDate <= coverageTo;) {
+        const inRequestedRange = workDate >= from && workDate <= to;
         const existing = days.get(workDate);
         // A recorded legacy, missing or reviewed capture cannot be repaired by
         // consulting a current profile. Only dates without attendance get terms.
@@ -3207,17 +3214,17 @@ function configuredConditionDays(staff, scheme, metrics, rates, profiles) {
                     plannedMinutes: 0, actualMinutes: 0, overtimeMinutes: 0, conditions: terms });
             }
             if (allocations.length) {
-                hasConfigured = true;
+                hasConfigured ||= inRequestedRange;
                 days.set(workDate, { date: workDate, worked: false, paidPlannedFactor: 0,
                     snapshot: { schemaVersion: 2, state: 'final', compensationAllocations: allocations }, entitlementOnly: true });
             }
-        } else if (existing.snapshot?.compensationAllocations?.some(item => item.conditions?.payRules)) hasConfigured = true;
+        } else if (existing.snapshot?.compensationAllocations?.some(item => item.conditions?.payRules)) hasConfigured ||= inRequestedRange;
         else {
             const current = resolveEffectivePayrollProfile(staff, primary, workDate, {
                 payrollProfileContext: profiles, professionRateMap: rates, scheme
             });
             if (current.payRules) {
-                hasConfigured = true;
+                hasConfigured ||= inRequestedRange;
                 days.set(workDate, { ...existing, configurationConflict: true });
             }
         }

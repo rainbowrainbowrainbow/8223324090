@@ -61,6 +61,7 @@ const MODES = {
         'tests/integration/timeline-membership-postgres.test.js'
     ],
     payroll: [
+        'tests/integration/payroll-profiles-configurable-rules.integration.test.js',
         'tests/integration/payroll-profiles.integration.test.js',
         'tests/integration/payroll-profiles-conditions.integration.test.js',
         'tests/integration/payroll-simultaneous-additional.integration.test.js',
@@ -186,6 +187,7 @@ const MODES = {
         'tests/integration/freelance-shift-blocks.integration.test.js',
         'tests/browser/hr-staff-creation-browser-smoke.js',
         'tests/browser/hr-onboarding-fullstack-browser-smoke.js', 'tests/browser/hr-pay-actual-app-browser-smoke.js',
+        'tests/browser/payroll-profiles-configurable-rules-actual-browser.js',
         'tests/browser/hr-attendance-ocr-actual-app-browser-smoke.js', 'tests/browser/finance-money-actual-app-browser-smoke.js',
         'tests/browser/freelance-shift-actual-app.js'],
     qa: [
@@ -817,6 +819,8 @@ async function runSuite(testDb, testFile, suiteMode) {
         RUN_HR_LEGACY_BACKFILL_INTEGRATION: testFile.includes('hr-legacy-hire-backfill') ? 'true' : 'false',
         RUN_LEGACY_UPLOAD_BACKFILL_INTEGRATION: testFile.includes('legacy-upload-backfill.integration') ? 'true' : 'false',
         RUN_HR_PAY_ACTUAL_APP_BROWSER: testFile.includes('hr-pay-actual-app-browser-smoke') ? 'true' : 'false',
+        ...(suiteMode === 'fullstack' && testFile.includes('payroll-profiles-configurable-rules-actual-browser')
+            ? { PAY_RULES_BROWSER_OUTPUT: path.join(ROOT, 'output/playwright/hr-pay-actual-app/configurable-rules') } : {}),
         RUN_HR_ONBOARDING_FULLSTACK_BROWSER: testFile.includes('hr-onboarding-fullstack-browser-smoke') ? 'true' : 'false',
         RUN_FREELANCE_SHIFT_INTEGRATION: freelanceIntegration ? 'true' : 'false',
         ...(freelanceBrowser ? { RUN_FREELANCE_SHIFT_BROWSER: 'true', FREELANCE_BROWSER_MEMBERSHIP: 'true' } : {}),

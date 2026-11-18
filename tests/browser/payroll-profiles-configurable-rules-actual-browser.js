@@ -15,7 +15,9 @@ async function run() {
     assert.equal(target.isLocal, true);
     const base = assertSafeIsolatedTestUrl(process.env.TEST_URL);
     const db = new Pool({ connectionString: target.url.toString(), ssl: false });
-    const out = path.resolve(__dirname, '../../output/playwright/payroll-configurable-rules');
+    const out = process.env.PAY_RULES_BROWSER_OUTPUT
+        ? path.resolve(process.env.PAY_RULES_BROWSER_OUTPUT)
+        : path.resolve(__dirname, '../../output/playwright/payroll-configurable-rules');
     fs.mkdirSync(out, { recursive: true });
     const date = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' }).format(new Date());
     const month = date.slice(0, 7);

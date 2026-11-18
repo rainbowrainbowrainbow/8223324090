@@ -4,7 +4,7 @@
 - Branch: `codex/baseline-access-20261118`; worktree `D:/Codex/EventGenix/baseline-access-20261118`.
 - Original base: `571a57acb80118cc6cc0e5a923c5a5bba9c09d86`, production 0.83.120.
 - Integrated upstream and latest observed live/remote: `9d2074466478a5e0a053517906527a0ffecdeedf`, production 0.84.0. The compensation retry changed package/runner/browser harness contracts, with no runtime permission changes. One runner-mode conflict retained both modes; protected patch remains unapplied with its original hash.
-- Own code/test tip: `c9e539ac5`; earlier feature commits after rebase: `c00bdf369`, `8aa8a5906`, `dd5cea0d3`, `52ae36d79`. No version reserved; local package inherits upstream 0.84.0, not a baseline-access release.
+- Own code/test tip: `62087c22c`, following chat inventory `c9e539ac5`; earlier feature commits after rebase: `c00bdf369`, `8aa8a5906`, `dd5cea0d3`, `52ae36d79`. No version reserved; local package inherits upstream 0.84.0, not a baseline-access release.
 - Candidate: local implementation, not release-ready. Goal remains active.
 - Authorization: user permits baseline authorization/preset code, regressions and local feature commits. No production writes, login/session changes, secrets or protected booking source changes are authorized.
 
@@ -18,14 +18,14 @@
 - Tasks use canonical capabilities. Team SQL uses active staff structure nodes and business/organization memberships; ambiguous actor links fail closed.
 - Schedule coordination hides absence reasons, notes, personnel/account metadata and compensation. Attendance is separate. Team edits need structure links; full XLSX export requires business scope.
 - Mandatory work links survive old favorites. Unavailable modules remain findable with accessible disabled states, visible reasons and prevented activation.
-- Account creation/link/replay/workspace reports profile, active state, membership, role, pages, modules and data checks. Database probes return no rows and are explicitly distinct from HTTP/browser QA.
+- Account creation/link/replay/workspace reports profile, active state, membership, role, pages, modules and data checks. Database probes return no rows and expose only storeReadPassed; data remains api_not_verified until authenticated_api evidence exists. A successful SELECT 1 cannot mark work access ready.
 - Read-only audit CLI uses a read-only transaction and reports account-ID-only preset impact/exceptions; no automatic record fixes.
 - Added a separate executable chat ownership inventory. It reports channel/business IDs and counts only, includes historical authors/creators/DM recipients, never infers ownership, uses bounded repeatable-read read-only SQL and always rolls back. Production inventory has not run.
 
 ## Verification
 
 - Node 22.23.4/npm 10.9.9; npm ci passed, no own dependency/lockfile changes.
-- Last full `npm test` on upstream 83cd4796: PASSED, exit 0, Node 22.23.4/npm 10.9.9. Evidence: `output/baseline-final-npm-test.log`. Includes verify, sys-mb, timeline-marketing and telegram-crm. Unit stage: 4034/4034; My Day 338/338; CRM automation 54/54; UI smoke 1324/1324. Previously obsolete department-SQL and waiter-denial expectations were corrected to authoritative structure/membership scope and waiter access plus explicit-deny containment. Full baseline has not been repeated after the later tooling-only upstream integration/new audit script; repeat before a final release candidate.
+- Full `npm test` on current upstream 9d207446: PASSED, exit 0, Node 22.23.4/npm 10.9.9. Evidence: `output/baseline-latest-upstream-npm-test.log`. Includes verify, sys-mb, timeline-marketing and telegram-crm. Unit stage: 4034/4034; My Day 338/338; CRM automation 54/54; UI smoke 1324/1324. Previously obsolete department-SQL and waiter-denial expectations were corrected to authoritative structure/membership scope and waiter access plus explicit-deny containment. The latest readiness correction also passed 73/73 targeted baseline/onboarding/link/security tests (`output/baseline-readiness-proof-separation.log`). No unresolved baseline failure is recorded; final future RC still needs exact-SHA CI.
 - Latest-base focused checks: baseline/isolated-runner/inventory 52 passed, 1 database test skipped without its dedicated variable; permission contracts 111 passed, 1 skipped. Dedicated disposable PostgreSQL inventory run: 2/2, no skips, verifying revoked/inactive/multi-business/historical principals and rejected writes. Evidence: `output/baseline-continuation-focused.log`, `output/baseline-continuation-permission-contracts.log`, `output/baseline-chat-inventory-postgres.log`.
 - Focused baseline/task tests: 42/42. Latest coordination/Express-route/static checks: 96/96, including failed store probes, scoped GET export denial and legacy availability absence-category masking.
 - Real sidebar fixture: six roles at 1280/390, 12/12, keyboard/clicks and old favorites. Disabled-link screenshot reviewed after drawer animation completed.
@@ -43,6 +43,9 @@
 4. Missing/ambiguous real structure links fail closed. No department/profession text used as authority.
 5. Allowed credentials file C:/Users/Plotva/.eventgenix/codex-crm-secrets.ps1 unavailable. No substitute credentials sought. Nazar's unique staff/account pair not established; no real-person changes.
 6. Compensation upstream overlaps HR UI/package scripts/isolated runner. Integrate only own commits and repeat checks. Parallel Tasks/My Day/Telegram overlaps task policy/contracts; refresh remote before release.
+7. Authenticated API readiness is not automated by a store probe. Creation/link responses explicitly report api_not_verified. Complete target-account API verification after module/source boundaries are resolved; do not manufacture an impersonation session or infer success from a policy snapshot.
+
+See ACCEPTANCE.md for the requirement-by-requirement gap ledger. Six-role schedule UI proof is not full workflow acceptance. The previous Goal turn made implementation/verification progress; this continuation integrated the now-live upstream, added a tested executable inventory and removed a potential readiness false positive. External approval/credentials/ownership blockers remain unresolved; Goal is active.
 
 ## Web guidance
 

@@ -30,6 +30,8 @@ const { buildProfileAvatarBlobFallbackHandler } = require('./services/profileAva
 const { buildCatalogImageBlobFallbackHandler } = require('./services/imageStorage');
 const { buildCatalogImageThumbnailHandler } = require('./services/catalogImageThumbnails');
 const { buildChatUploadBlobFallbackHandler } = require('./services/chatUploadStorage');
+const { requireParkChatUpload, rejectNoncanonicalChatUploadPaths, privateChatUploadHeaders } = require('./services/parkChatAccess');
+const { requireParkWorkModule } = require('./services/parkWorkModuleAccess');
 const { buildSoundUploadBlobFallbackHandler } = require('./services/audioStorage');
 const { recordCompatibilityTelemetrySafe } = require('./services/businessCutover');
 const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkReplyAutoEscalations, checkWorkDayTriggers, checkMonthlyPointsReset, checkStreakUpdates, checkBirthdayGreetings, checkBirthdayReminders, checkDormantCustomers, checkUpcomingBookings, checkEventQueue, checkSLABreach, checkScheduledAnnouncements, checkTaskOverdue, checkCustomerRetention, checkAutoReport, checkHotLeads, checkScheduledChatMessages, checkExpiredChatMessages, checkAutoReviewRequests, checkTeamPulseReminder, checkAutoOrdering, checkBookingPushReminders, checkCertExpiryReminders, checkChatDailyDigest, checkRecurringAnnouncements, checkEventPipeline, checkNpsFollowUp, checkCleaningTasks, checkGraduationOpsAutomation, checkAttendanceReviewTasks, checkBirthdayTagSync } = require('./services/scheduler');
@@ -173,6 +175,7 @@ app.use(requestIdMiddleware);
 app.use(errorResponseMetadata);
 app.use(securityHeaders);
 app.use(cacheControl);
+app.use(privateChatUploadHeaders);
 // v19.10: API versioning — /api/v1/* → /api/*
 app.use(apiVersionRewrite);
 app.use(staticDocGuard);
@@ -200,8 +203,12 @@ app.use('/uploads/profile-avatars', (req, res, next) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') return next();
     return res.status(404).json({ error: 'profile_avatar_not_found' });
 });
+app.use(rejectNoncanonicalChatUploadPaths);
+app.use('/uploads/chat', authenticateToken, requireParkWorkModule('chat'), requireParkChatUpload(pool, log));
 app.get('/uploads/chat/*', buildChatUploadBlobFallbackHandler(pool, log));
-app.use('/uploads/chat', express.static(path.join(__dirname, 'uploads', 'chat')));
+app.use('/uploads/chat', express.static(path.join(__dirname, 'uploads', 'chat'), {
+    setHeaders(res) { res.setHeader('Cache-Control', 'private, no-store'); }
+}));
 app.use('/uploads/chat', (req, res, next) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') return next();
     return res.status(404).json({ error: 'chat_upload_not_found' });

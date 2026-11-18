@@ -11,15 +11,15 @@ Page presets do not establish ownership of global rows. On2026-11-18 the owner a
 
 Use the existing exclusive-Park legacy namespace pattern with fresh active membership, configured module/page checks and independent record/privacy guards. Per-row owner columns/backfills are unnecessary for this approved single owner. A future additional business requires its own ownership migration; a module toggle must never expose these global tables there.
 
-## Chat: implementation remaining
+## Chat: implemented locally
 
-Current production channels have no per-row business column. Keep the module contained until all of the following agree:
+Current production channels have no per-row business column. The approved Park-only namespace now applies across the following surfaces; see CHAT_SCOPE.md for actual PostgreSQL/HTTP, socket and desktop/mobile proof:
 
 1. HTTP common reads/writes require an active Park membership, page and configured module. Preserve channel membership, DM/assistant privacy and linked-booking visibility/business checks.
 2. User/profile/presence/DM/invite targets resolve current Park eligibility. Avoid stale channel-list authorization caches, and constrain reply/thread references to their parent channel.
 3. Blob and legacy local attachments require authentication and an authoritative live message/channel relationship. A guessed filename, path channel ID or copied metadata reference cannot transfer ownership. Cover static-file fallback and encoded-path bypasses.
 4. Socket subscriptions/delivery, presence, push and background producers retain the same Park/channel/record boundaries. Booking links cannot bypass Chat ownership or expose foreign business records/independent financial fields.
-5. Complete actual PostgreSQL/authenticated HTTP, recipient/reconnect/revocation, historical-file and browser desktop/mobile regressions before enablement.
+5. Actual PostgreSQL/authenticated HTTP, recipient/reconnect/revocation, historical-file and browser desktop/mobile regressions pass locally. Final integrated baseline and approved production proof remain required.
 
 ## Training: implemented locally
 

@@ -2,6 +2,8 @@ const { describe, it, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
 const jwt = require('jsonwebtoken');
+const { parkChatFixtureQuery } = require('./helpers/park-chat-access-fixture');
+const realChatUploadStorage = require('../services/chatUploadStorage');
 const path = require('node:path');
 
 const TEST_JWT_SECRET = 'chat-upload-route-secret';
@@ -131,6 +133,7 @@ function fakeChatService() {
 
 function fakeChatUploadStorage() {
     return {
+        ...realChatUploadStorage,
         validateChatUploadFile(file) {
             const ext = path.extname(file.originalname || '').toLowerCase();
             if (ext === '.svg') {
@@ -168,6 +171,10 @@ describe('chat upload route storage and safety', () => {
 
         const pool = {
             query: async (sql, params = []) => {
+                const access = parkChatFixtureQuery(String(sql).replace(/\s+/g, ' ').trim(), params, {
+                    isMember: (channelId, userId) => state.memberships.has(`${channelId}:${userId}`)
+                });
+                if (access) return access;
                 if (/SELECT\s+is_active,\s*session_revoked_at,/i.test(String(sql))) {
                     const rows = Number(params[0]) === 1 ? [{ is_active: true, session_revoked_at: null }] : [];
                     return { rows, rowCount: rows.length };

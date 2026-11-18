@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const express = require('express');
 const jwt = require('jsonwebtoken');
+const { parkChatFixtureQuery } = require('./helpers/park-chat-access-fixture');
 
 const TEST_JWT_SECRET = 'chat-channel-provisioning-secret';
 
@@ -108,6 +109,12 @@ function createFakePool() {
     async function rootQuery(sql, params = []) {
         const text = normalizeSql(sql);
         state.queries.push({ text, params, root: true });
+        const access = parkChatFixtureQuery(text, params, {
+            isMember: (channelId, userId) => state.memberships.has(`${channelId}:${userId}`),
+            channelById: id => state.channels.find(channel => channel.id === id),
+            bookingById: id => state.bookings.get(id)
+        });
+        if (access) return access;
 
         if (/UPDATE employee_profiles SET last_activity_at/i.test(text) ||
             /UPDATE users SET last_seen_at/i.test(text)) {

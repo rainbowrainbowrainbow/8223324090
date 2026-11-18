@@ -11,6 +11,35 @@
     var _channels = [];
     var _chatUsers = [];
     var _chatActionError = 'Чат ще завантажується. Дочекайтеся завершення.';
+    var _chatContextEpoch = 0;
+    var _chatScopeReady = false;
+    function _chatScopeKey() {
+        return typeof getCrmBusinessScope === 'function' ? JSON.stringify(getCrmBusinessScope()) : '';
+    }
+    var _chatBoundScope = _chatScopeKey();
+    function _invalidateChatWorkspace(reload) {
+        _chatContextEpoch++;
+        _setChatActionError('Робочий простір змінився. Відкрийте чат знову.');
+        _currentChannel = null;
+        _channels = [];
+        _chatUsers = [];
+        ['chatMessages', 'chatChannelsList', 'chatChannelName', 'chatChannelDescription'].forEach(function (id) {
+            var element = document.getElementById(id);
+            if (element) element.replaceChildren();
+        });
+        if (typeof ChatPrivateUploads !== 'undefined') ChatPrivateUploads.clear();
+        if (typeof ParkWS !== 'undefined') ParkWS.disconnect();
+        if (reload) window.location.reload();
+    }
+    ['crmBusinessContextChanged', 'crmBusinessScopeChanged'].forEach(function (event) {
+        window.addEventListener(event, function () {
+            var key = _chatScopeKey();
+            if (key === _chatBoundScope) return;
+            _chatBoundScope = key;
+            if (_chatScopeReady) _invalidateChatWorkspace(true);
+        });
+    });
+    window.addEventListener('crm:auth-cleared', function () { _chatScopeReady = false; _invalidateChatWorkspace(false); });
     var ASSISTANT_CHAT_RETURN_URL_KEY = 'eg_assistant_chat_return_url';
     var ASSISTANT_CHAT_RETURN_LABEL_KEY = 'eg_assistant_chat_return_label';
     var ASSISTANT_CHAT_REOPEN_KEY = 'eg_assistant_chat_reopen_panel';
@@ -141,6 +170,7 @@
     // ==========================================
 
     function _headers(withContentType) {
+        if (typeof getAuthHeaders === 'function') return getAuthHeaders(withContentType !== false);
         var token = localStorage.getItem('pzp_token');
         var h = {};
         if (withContentType !== false) h['Content-Type'] = 'application/json';
@@ -186,8 +216,17 @@
             throw new Error(_chatActionError);
         }
         var opts = { method: method, headers: _headers() };
+        var epoch = _chatContextEpoch;
+        var scope = _chatScopeKey();
+        var session = typeof captureApiAuthSessionSnapshot === 'function' ? captureApiAuthSessionSnapshot() : null;
         if (body) opts.body = JSON.stringify(body);
-        var resp = await fetch(API_BASE + path, opts);
+        var resp;
+        try { resp = await (typeof safeFetch === 'function' ? safeFetch(API_BASE + path, opts) : fetch(API_BASE + path, opts)); }
+        catch (error) {
+            if (['chat_not_migrated', 'chat_park_access_required', 'business_context_unavailable'].includes(error.code)) _setChatActionError(error.message);
+            throw error;
+        }
+        if (!resp) return null;
         if (resp.status === 401) {
             localStorage.removeItem('pzp_token');
             if (typeof showLoginScreen === 'function') showLoginScreen();
@@ -205,7 +244,10 @@
             var err = await resp.json().catch(function () { return {}; });
             throw new Error(err.error || 'API error');
         }
-        return resp.json();
+        var data = await resp.json();
+        if (epoch !== _chatContextEpoch || scope !== _chatScopeKey()
+            || (session && !isApiAuthSessionSnapshotCurrent(session))) throw new Error('Робочий простір змінився.');
+        return data;
     }
 
     function _clampNumber(value, min, max) {
@@ -1352,11 +1394,13 @@
         if (typeof AppState !== 'undefined') AppState.currentUser = verified;
         var userEl = document.getElementById('currentUser');
         if (userEl) userEl.textContent = verified.name || verified.username || '';
-        _chatBootStep('auth:verified', { role: verified.role || '', username: verified.username || '' });
+        _chatBootStep('auth:verified', { role: verified.role || '' });
 
         if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
         else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
         _chatBootStep('shell:ready');
+        _chatBoundScope = _chatScopeKey();
+        _chatScopeReady = true;
         _initAssistantReturnBridge();
 
         // Connect WebSocket
@@ -4607,8 +4651,9 @@
         var f = meta.file;
         if (f.type === 'image') {
             var imageUrl = _safeUrl(f.url);
+            var privateImage = typeof ChatPrivateUploads !== 'undefined' && ChatPrivateUploads.apiPath(imageUrl);
             return '<div class="chat-file-attachment chat-image-attachment">' +
-                '<img src="' + _esc(imageUrl) + '" alt="' + _esc(f.name) + '" class="chat-attached-image" loading="lazy" style="cursor:zoom-in">' +
+                '<img ' + (privateImage ? 'data-chat-private-src' : 'src') + '="' + _esc(imageUrl) + '" alt="' + _esc(f.name) + '" class="chat-attached-image" loading="lazy" style="cursor:zoom-in">' +
             '</div>';
         }
         // Audio/voice message — Telegram-style player
@@ -4641,7 +4686,9 @@
 
         var sizeStr = f.size ? ' (' + (f.size < 1024*1024 ? (f.size/1024).toFixed(1)+' КБ' : (f.size/(1024*1024)).toFixed(1)+' МБ') + ')' : '';
         var fileUrl = _safeUrl(f.url);
-        return '<a class="chat-file-attachment" href="' + _esc(fileUrl) + '" target="_blank" rel="noopener" download>' +
+        var privateFile = typeof ChatPrivateUploads !== 'undefined' && ChatPrivateUploads.apiPath(fileUrl);
+        return '<a class="chat-file-attachment" href="' + _esc(fileUrl) + '"' +
+            (privateFile ? ' data-chat-private-url="' + _esc(fileUrl) + '" data-chat-filename="' + _esc(f.name) + '"' : ' target="_blank"') + ' rel="noopener" download>' +
             '<span class="chat-file-icon">' + icon + '</span>' +
             '<div class="chat-file-info">' +
                 '<div class="chat-file-name">' + _esc(f.name) + '</div>' +
@@ -7021,13 +7068,28 @@
 
     // ── Voice Player (v33.5) ─────────────────────────
     var _voicePlayers = {};
-    window._handleVoiceClick = function(playerEl) {
+    window._handleVoiceClick = async function(playerEl) {
         var url      = playerEl.dataset.voiceUrl;
         var msgId    = playerEl.dataset.voiceId;
         var duration = parseInt(playerEl.dataset.voiceDuration) || 0;
         var playBtn  = playerEl.querySelector('.chat-voice-play-btn');
         var bars     = playerEl.querySelectorAll('.chat-voice-bar');
         var durationEl = playerEl.querySelector('.chat-voice-duration');
+        if (playerEl.dataset.privateVoiceLoading === 'true') return;
+        if (typeof ChatPrivateUploads !== 'undefined' && ChatPrivateUploads.apiPath(url)) {
+            playerEl.dataset.privateVoiceLoading = 'true';
+            playBtn.setAttribute('aria-busy', 'true');
+            try { url = await ChatPrivateUploads.urlFor(playerEl, url); }
+            catch (error) {
+                if (error.name !== 'AbortError' && typeof showNotification === 'function') showNotification('Голосове вкладення недоступне.', 'error');
+                return;
+            } finally {
+                playerEl.dataset.privateVoiceLoading = 'false';
+                playBtn.removeAttribute('aria-busy');
+            }
+            if (!playerEl.isConnected) return;
+        }
+        playBtn.setAttribute('aria-label', 'Відтворити голосове повідомлення');
 
         // Stop all other players
         Object.keys(_voicePlayers).forEach(function(id) {
@@ -7042,8 +7104,15 @@
         });
 
         var player = _voicePlayers[msgId];
+        if (player && player.audio.src !== url) {
+            player.audio.pause();
+            clearInterval(player.interval);
+            delete _voicePlayers[msgId];
+            player = null;
+        }
         if (!player) {
             var audio = new Audio(url);
+            if (typeof ChatPrivateUploads !== 'undefined') ChatPrivateUploads.bindAudio(playerEl, audio);
             player = { audio: audio, isPlaying: false, interval: null };
             _voicePlayers[msgId] = player;
             audio.addEventListener('ended', function() {

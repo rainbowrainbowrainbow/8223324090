@@ -249,19 +249,22 @@ function buildChatUploadBlobFallbackHandler(query, logger = null) {
         try {
             const requestPath = req.params?.[0] || req.params?.filename || '';
             const row = await readChatUploadBlobByPath(query, requestPath);
-            if (!row?.data) return next();
+            if (!row) return next();
+            if (!row.data) return res.status(503).json({ error: 'chat_upload_unavailable' });
             const data = Buffer.isBuffer(row.data) ? row.data : Buffer.from(row.data);
             const inlineName = safeFilename(row.original_name || path.posix.basename(row.storage_key || 'chat-upload'));
             res.setHeader('Content-Type', row.content_type || 'application/octet-stream');
             res.setHeader('Content-Length', String(Number(row.file_size || data.length || 0)));
             res.setHeader('Content-Disposition', `inline; filename="${inlineName}"`);
-            res.setHeader('Cache-Control', 'private, max-age=300, stale-while-revalidate=86400');
+            res.setHeader('Cache-Control', 'private, no-store');
+            res.setHeader('X-Content-Type-Options', 'nosniff');
+            res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
             return res.send(data);
         } catch (err) {
             if (logger && typeof logger.warn === 'function') {
-                logger.warn(`Chat Postgres upload fallback skipped: ${err.message}`);
+                logger.warn('Chat Postgres upload read unavailable');
             }
-            return next();
+            return res.status(503).json({ error: 'chat_upload_unavailable' });
         }
     };
 }

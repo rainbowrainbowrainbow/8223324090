@@ -2,8 +2,9 @@
 
 const { BUSINESS_SCOPE_SINGLE, DEFAULT_BUSINESS_CONTEXT, resolveBusinessScope } = require('./businessContext');
 const { resolveCapability } = require('./accountAccessPolicy');
+const { userBusinessModuleState } = require('./businessModuleRegistry');
 
-const SURFACE_PAGES = Object.freeze({ certificates: ['/certificates', '/certificates/new', '/certificates/batch', '/certificates/check'], art: ['/art'] });
+const SURFACE_PAGES = Object.freeze({ certificates: ['/certificates', '/certificates/new', '/certificates/batch', '/certificates/check'], art: ['/art'], chat: ['/chat'] });
 
 // The authorized recovery keeps these existing namespaces exclusive to Park.
 // Fresh server-resolved membership identity remains mandatory; it never enables
@@ -26,7 +27,8 @@ function hasCurrentParkMembership(user, context) {
 function parkLegacySurfaceAvailability(user, context) {
     const member = hasCurrentParkMembership(user, context);
     const surfaces = Object.fromEntries(Object.entries(SURFACE_PAGES).map(([surface, pages]) => {
-        const available = member && pages.some(page => resolveCapability(user, page, { type: 'page' }).allowed);
+        const available = member && (surface !== 'chat' || userBusinessModuleState(user, context, 'chat').available)
+            && pages.some(page => resolveCapability(user, page, { type: 'page' }).allowed);
         return [surface, { available, code: available ? null : `${surface}_not_migrated` }];
     }));
     // Advertise the already-authorized schedule read lane to navigation only.
@@ -43,6 +45,8 @@ function canUseParkLegacySurface(req, surface, scope = resolveBusinessScope(req)
     const method = String(req.method || 'GET').toUpperCase();
     if (!['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) return false;
     if (!['GET', 'HEAD'].includes(method) && scope.canWrite === false) return false;
+    if (surface === 'chat') return userBusinessModuleState(req.user, scope.activeContext, 'chat').available
+        && resolveCapability(req.user, '/chat', { type: 'page' }).allowed;
     const path = String(req.path || '/').toLowerCase().replace(/\/$/, '') || '/';
     const page = surface === 'art' ? '/art'
         : method === 'POST' && path === '/' ? '/certificates/new'

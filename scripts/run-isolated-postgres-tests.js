@@ -23,6 +23,8 @@ const ISOLATED_DATABASE_LOCK_NAMESPACE = 'eventgenix-isolated-postgres-runner-v1
 const MANUAL_MONEY_MODES = new Set(['all', 'finance', 'finance-money', 'finance-money-browser', 'payroll', 'fullstack', 'freelance', 'payroll-compensation-browser']);
 const EDUCATION_SERIES_ACCEPTANCE = 'tests/integration/education-series.integration-acceptance.test.js';
 const MODES = {
+    'park-chat-browser': ['tests/browser/park-chat-private-uploads.js'],
+    'park-chat': ['tests/integration/park-chat-workflow.test.js'],
     'park-training': ['tests/integration/park-training-workflow.test.js'],
     'training-scope-audit': ['tests/integration/training-scope-migrated.test.js'],
     'staff-professions': ['tests/integration/park-hr-staff-professions.test.js'],
@@ -66,7 +68,9 @@ const MODES = {
     'staff-deletion': ['tests/integration/park-hr-staff-deletion-migrated.test.js'],
     permissions: [
         'tests/integration/permission-capabilities.integration.test.js',
-        'tests/integration/timeline-membership-postgres.test.js'
+        'tests/integration/timeline-membership-postgres.test.js',
+        'tests/integration/park-training-workflow.test.js',
+        'tests/integration/park-chat-workflow.test.js'
     ],
     payroll: [
         'tests/integration/payroll-profiles.integration.test.js',

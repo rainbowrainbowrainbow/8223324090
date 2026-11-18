@@ -82,6 +82,8 @@ function legacyBusinessSurfaceAccess(req, surface = 'catalogs') {
         const moduleState = userBusinessModuleState(req.user, DEFAULT_BUSINESS_CONTEXT, 'catalogs');
         return moduleState.available ? available() : denied;
     }
+    if (surface === 'chat') return access.membershipEnabled === true
+        && canUseParkLegacySurface(req, surface, scope) ? available() : denied;
     if (access.membershipEnabled === true && canUseParkLegacySurface(req, surface, scope)) return available();
     if (access.membershipEnabled !== false
         || (business && (business.accessMode !== 'compatibility' || business.active !== true))) return denied;

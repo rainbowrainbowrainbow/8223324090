@@ -25,7 +25,7 @@ async function run() {
         const rootId = rootSession.data.user.id;
         const { rows: [organization] } = await db.query(`INSERT INTO organizations (slug, name)
             VALUES ($1, 'Synthetic baseline access QA') RETURNING id`, ['baseline-access-' + crypto.randomUUID()]);
-        const modules = ['timeline', 'hr', 'tasks', 'afisha', 'dashboard', 'programs', 'catalogs'];
+        const modules = ['timeline', 'hr', 'tasks', 'afisha', 'dashboard', 'programs', 'catalogs', 'chat', 'training'];
         const { rows: [business] } = await db.query(`INSERT INTO businesses
             (organization_id, context_key, label, short_label, access_mode, modules)
             VALUES ($1, 'event_genix', 'Synthetic Park QA', 'Park QA', 'membership', $2::jsonb) RETURNING id`,

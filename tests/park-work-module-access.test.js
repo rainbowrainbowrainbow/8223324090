@@ -19,7 +19,10 @@ function actor(role, patch = {}) {
 test('all 26 baseline roles can read the configured Park Training namespace without management grants', () => {
     assert.equal(ROLE_HIERARCHY.length, 26);
     for (const role of ROLE_HIERARCHY) assert.equal(canUseParkWorkModule(actor(role), 'training'), true, role);
-    assert.equal(canUseParkWorkModule(actor('instructor'), 'chat'), false, 'Chat remains contained until its perimeter is complete');
+    assert.equal(canUseParkWorkModule(actor('instructor'), 'chat'), false, 'unconfigured Chat remains disabled');
+    for (const role of ROLE_HIERARCHY) {
+        assert.equal(canUseParkWorkModule(actor(role, { business_modules: ['chat', 'training'] }), 'chat'), true, role);
+    }
     assert.equal(canUseParkWorkModule(actor('creator'), 'unregistered'), false);
 });
 

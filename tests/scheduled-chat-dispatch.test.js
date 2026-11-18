@@ -17,7 +17,10 @@ function clearModules() {
         '../services/telegram',
         '../services/booking',
         '../services/backup',
-        '../services/templates'
+        '../services/templates',
+        '../services/chatScheduledAccess',
+        '../services/parkWorkModuleAccess',
+        '../services/parkChatAccess'
     ].forEach(modulePath => {
         try { delete require.cache[require.resolve(modulePath)]; } catch {}
     });
@@ -40,7 +43,9 @@ function resetState() {
         broadcasts: [],
         releases: 0,
         failClaim: false,
-        failBroadcast: false
+        failBroadcast: false,
+        senderAllowed: true,
+        channelAllowed: true
     };
 }
 
@@ -66,13 +71,18 @@ function createFakePool() {
             state.tx.push(text);
             return { rows: [], rowCount: 0 };
         }
+        if (text.startsWith('SELECT DISTINCT user_id FROM chat_messages')) {
+            return { rows: state.senderAllowed ? [{ user_id: 7 }] : [] };
+        }
 
-        if (/WITH due AS/i.test(text) && /FOR UPDATE SKIP LOCKED/i.test(text) && /UPDATE chat_messages cm SET is_scheduled = false/i.test(text)) {
+        if (/WITH due AS/i.test(text) && /FOR UPDATE OF cm SKIP LOCKED/i.test(text) && /UPDATE chat_messages cm SET is_scheduled = false/i.test(text)) {
             state.claimQueries.push({ text, params });
             if (state.failClaim) throw new Error('simulated claim failure');
             const [now, limit] = params;
+            const permitted = JSON.parse(params[2]);
             const rows = state.messages
-                .filter(row => row.is_scheduled === true && row.scheduled_at <= now && row.deleted_at === null)
+                .filter(row => row.is_scheduled === true && row.scheduled_at <= now && row.deleted_at === null
+                    && permitted.some(actor => actor.user_id === row.user_id && actor.channel_ids.includes(row.channel_id)))
                 .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at) || a.id - b.id)
                 .slice(0, limit)
                 .map(row => {
@@ -99,6 +109,10 @@ function createFakePool() {
 function loadScheduler() {
     clearModules();
     installMock('../db', { pool: createFakePool() });
+    installMock('../services/parkWorkModuleAccess', { loadParkWorkParticipants: async () =>
+        state.senderAllowed ? new Map([[7, { id: 7 }]]) : new Map() });
+    installMock('../services/parkChatAccess', { loadReadableParkChatChannelIds: async () =>
+        state.channelAllowed ? new Set([10]) : new Set() });
     installMock('../services/websocket', {
         broadcastToChannel: (channelId, eventType, payload) => {
             if (state.failBroadcast) throw new Error('simulated broadcast failure');
@@ -147,7 +161,7 @@ describe('scheduled chat message dispatch atomic claim', () => {
         await scheduler.checkScheduledChatMessages();
 
         assert.equal(state.claimQueries.length, 1);
-        assert.match(state.claimQueries[0].text, /FOR UPDATE SKIP LOCKED/i);
+        assert.match(state.claimQueries[0].text, /FOR UPDATE OF cm SKIP LOCKED/i);
         assert.match(state.claimQueries[0].text, /UPDATE chat_messages cm SET is_scheduled = false/i);
         assert.deepEqual(state.tx, ['BEGIN', 'COMMIT']);
         assert.equal(state.releases, 1);
@@ -170,6 +184,23 @@ describe('scheduled chat message dispatch atomic claim', () => {
         assert.equal(state.releases, 1);
         assert.equal(state.broadcasts.length, 0);
         assert.deepEqual(state.messages.map(row => row.is_scheduled), [true, true]);
+    });
+
+    it('leaves queued messages unpublished when sender or channel access is revoked', async () => {
+        const scheduler = loadScheduler();
+        state.senderAllowed = false;
+        await scheduler.checkScheduledChatMessages();
+        assert.deepEqual(state.messages.map(row => row.is_scheduled), [true, true]);
+        assert.equal(state.broadcasts.length, 0);
+        state.senderAllowed = true;
+        state.channelAllowed = false;
+        await scheduler.checkScheduledChatMessages();
+        assert.deepEqual(state.messages.map(row => row.is_scheduled), [true, true]);
+        assert.equal(state.broadcasts.length, 0);
+        state.channelAllowed = true;
+        await scheduler.checkScheduledChatMessages();
+        assert.deepEqual(state.messages.map(row => row.is_scheduled), [false, false]);
+        assert.equal(state.broadcasts.length, 2);
     });
 
     it('does not retry already claimed messages after websocket broadcast failure', async () => {

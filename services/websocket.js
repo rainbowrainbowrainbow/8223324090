@@ -21,6 +21,7 @@ const { JWT_SECRET, loadAuthenticatedUserAccess } = require('../middleware/auth'
 const { canViewTimelinePage } = require('./timelineContext');
 const { canViewTimelineBooking } = require('./bookingVisibility');
 const { loadBusinessEventUser, canReceiveEvent } = require('./websocketEventAccess');
+const { shapeChatBookingPreviews } = require('./parkChatAccess');
 
 const log = createLogger('WebSocket');
 
@@ -462,7 +463,7 @@ async function _dispatch(message, options = {}) {
         // dispatch path so no raw compensation or device fields reach the wire.
         const wireMessage = snapshot.type === 'hr:attendance-updated'
             ? { type: snapshot.type, payload: { date: (snapshot.payload || snapshot.data)?.date }, meta: snapshot.meta }
-            : snapshot;
+            : (snapshot.type.startsWith('chat:') ? shapeChatBookingPreviews(snapshot) : snapshot);
         const serialized = JSON.stringify(wireMessage);
         const deliveries = [];
         for (const [userId, connections] of _clients) {

@@ -16,7 +16,8 @@
 - Approved zone reads use active Park room metadata.workArea=game_zone and canonical room_resource_id. No room-label inference, booking mapper/modal/source changes or protected-manifest updates. Viewer consumes effective edit_booking; legacy revenue reads consume view_revenue.
 - Administrator profession/admission save fixed without payroll capability grants; strict metadata-only payload/route lane preserves retained rates/schemes/notes. Both save buttons and subsequent revision-dependent actions verified. See STAFF_PROFESSION_SAVE.md.
 - Bounded read-only account/Chat/Training inventory CLIs; safe registered-key projections, explicit truncation, repeatable read/read-only transactions and rollback. Real production audits completed. See PRODUCTION_AUDIT_20261118.md.
-- Park Training API/module policy now agrees: fresh Park membership, configured module and page permission; management uses training.manage. Staff-FK progress uses the canonical active bridge; homework retains its documented account-ID contract with own-assignment/submission/privacy checks. Recipients and Telegram delivery are scoped. See TRAINING_SCOPE.md. Chat remains contained pending its complete perimeter.
+- Park Training API/module policy now agrees: fresh Park membership, configured module and page permission; management uses training.manage. Staff-FK progress uses the canonical active bridge; homework retains its documented account-ID contract with own-assignment/submission/privacy checks. Recipients and Telegram delivery are scoped. See TRAINING_SCOPE.md.
+- Park Chat perimeter now includes HTTP, DM/assistant identity, current recipients, linked bookings, WebSocket/presence, scheduled delivery and authenticated blob/legacy attachments. Future messages stay hidden; delivery rechecks sender access and allocates fresh sequence numbers. Browser file leases use existing sessions and are revoked on context changes. See CHAT_SCOPE.md.
 
 ## Production findings and owner decisions
 
@@ -43,11 +44,11 @@
 
 ## Remaining gates / next action
 
-1. Finish Chat Park perimeter before module enablement: channel/private/DM target rules, uncached fresh recipients, linked-booking context, socket subscriptions/events/presence, notifications and authenticated attachment access including legacy static files. Current attachment route is public; do not expose real contents during QA.
+1. Commit the locally verified Chat perimeter, then integrate latest upstream before final validation. Last refreshed live is0.84.5/7a3c4ed4; remote production advanced to b0f6077d. Current integrated base remains0.84.4; never report the candidate as up to date until integration and affected checks pass.
 2. Complete authenticated API-readiness reporting without impersonation; rerun six-role actual UI/common-data acceptance and relevant final checks.
 3. Recheck remote/live/parallel releases and prepare final RC/version/manifest. Exact15resource metadata action and production delivery require concrete separate authorizations under the runbook; do not ask again for the already recorded policy decisions.
 4. After valid release envelope: exact-SHA CI, documented manual Railway helper, bounded disposable live QA/cleanup. Goal complete only after behavior/release/live proof.
 
 Owned local PostgreSQL17 cluster remains running for tests at output/staff-professions-pg-final/data, port55442, baseline_access_disposable_test. Never use production credentials in this runner. Stop the exact owned cluster after tests with pg_ctl fast and verify completion; do not stop during running suites.
 
-Modern Web Guidance was applied to prior navigation/forms work. No product browser code changed in the Training API step. For upcoming Chat attachments, searched authenticated image fetch and retrieved/read security in full (temporary mwg-guide-17564-1795017985027.md); no product browser changes applied yet. Unwired Chat record/upload ACL groundwork and five passing unit regressions are local work in progress, separate from the Training stage. Local rollback is reverting own unpublished feature commits; production remains unchanged.
+Chat verification: actual authenticated PostgreSQL/HTTP8/8, socket/task/namespace parity70/70, focused perimeter38/38, final file/record11/11, actual-app private file browser1280/3902/2 with final screenshots reviewed. See CHAT_SCOPE.md for evidence and guidance. Final integrated full baseline and six-role common-work acceptance remain pending. Modern Web Guidance security/performance guides were retrieved and applied to private attachments; no product browser code changed in the Training API step. Local rollback is reverting own unpublished feature commits; production remains unchanged.

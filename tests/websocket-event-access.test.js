@@ -7,10 +7,17 @@ function membership(context, role = 'director') {
     return {
         organization_id: 7, organization_slug: 'fixture', organization_name: 'Fixture', organization_role: 'member',
         business_id: context === 'event_genix' ? 11 : 12, context_key: context,
-        business_label: context, business_short_label: context, business_modules: [], access_mode: 'membership',
+        business_label: context, business_short_label: context, business_modules: ['chat', 'timeline'], access_mode: 'membership',
         role, extra_roles: [], page_allowlist: [], page_denylist: [], action_allowlist: [], action_denylist: [],
         is_default: context === 'event_genix'
     };
+}
+
+function channelFixture(type, userId = 42) {
+    return { id: 4, type, is_archived: false, created_by: userId,
+        is_dm: type === 'dm', dm_user_ids: type === 'dm' ? [userId, 81] : null,
+        linked_entity_type: type === 'assistant' ? 'assistant_dialog' : null,
+        linked_entity_id: type === 'assistant' ? userId : null };
 }
 
 function fixture(t) {
@@ -23,7 +30,7 @@ function fixture(t) {
             organization_id: 7, context_key: context, access_mode: 'membership', business_status: 'active', organization_status: 'active' })),
         tasks: [{ id: 51, business_context: 'event_genix' }], taskVisible: true,
         channels: [{ id: 4, type: 'general', is_archived: false }], channelMember: true,
-        bookings: [{ id: 'BK-TEST-1', business_context: 'event_genix', created_by: 'other_fixture' }],
+        bookings: [{ id: 'BK-TEST-1', business_context: 'event_genix', created_by: 'other_fixture' }], bookingVisible: true,
         sharedOrganization: true, organizations: [{ id: 7 }], attendance: [{ id: 61, business_context: 'event_genix' }],
         fail: null, membershipFail: null
     };
@@ -48,7 +55,16 @@ function fixture(t) {
             assert.match(text, /COALESCE\(c.is_archived, false\) = false/);
             return { rows: state.channelMember ? state.channels.filter(row => row.id === params[0] && !row.is_archived) : [] };
         }
-        if (text.startsWith('SELECT b.* FROM bookings b')) return { rows: state.bookings.filter(row => row.id === params[0]) };
+        if (text.startsWith('SELECT b.id FROM bookings b')) {
+            assert.match(text, /b\.business_context = 'event_genix'/);
+            return { rows: state.bookingVisible ? state.bookings.filter(row => row.id === params[0] && row.business_context === 'event_genix') : [] };
+        }
+        if (text.includes('FROM users u') && text.includes('JOIN business_memberships bm')) {
+            const park = state.memberships.find(row => row.context_key === 'event_genix');
+            const ids = params[1] || [user.id, 81];
+            return { rows: park && state.accountExists ? ids.filter(id => id === user.id || state.sharedOrganization)
+                .map(id => ({ ...park, user_id: id, platform_role: user.role })) : [] };
+        }
         if (text.includes('FROM organization_memberships recipient')) {
             assert.match(text, /recipient.is_active IS TRUE AND subject.is_active IS TRUE/);
             assert.match(text, /o.status = 'active'/);
@@ -158,18 +174,25 @@ test('task query retains authoritative team and private/observer guards under th
     assert.equal(await f.canReceiveEvent(f.user, 'task:assigned', { task: { id: 51 } }), false);
 });
 
-test('general/room/DM channels preserve pre-cutover Park membership compatibility and recheck channel revocation', async t => {
+test('approved Park channels require active membership/module/page access and recheck channel revocation', async t => {
     const f = fixture(t);
-    preCutoverPark(f);
     for (const type of ['general', 'room', 'assistant', 'dm']) {
-        f.state.channels[0].type = type;
+        f.state.channels[0] = channelFixture(type);
         assert.equal(await f.canReceiveEvent(f.user, 'chat:message', { channelId: 4, message: { content: 'Fixture' } }), true, type);
     }
-    assert.equal(f.state.calls.some(row => /FROM businesses/.test(row.sql)), true, 'Recipient compatibility is refreshed; channel ownership is not assigned');
+    assert.equal(f.state.calls.some(row => /FROM businesses/.test(row.sql)), true, 'Park membership is refreshed independently of account defaults');
     assert.equal(await f.canReceiveEvent(f.user, 'chat:joined', {}, { channelId: 4, delivery: 'user' }), true);
     f.state.channelMember = false;
     assert.equal(await f.canReceiveEvent(f.user, 'chat:message', { channelId: 4 }), false);
     assert.equal(await f.canReceiveEvent(f.user, 'chat:mention', { channelId: 4 }, { delivery: 'user' }), false);
+    f.state.channelMember = true;
+    f.state.memberships[0].page_denylist = ['/chat'];
+    assert.equal(await f.canReceiveEvent(f.user, 'chat:message', { channelId: 4 }), false);
+    f.state.memberships[0].page_denylist = [];
+    f.state.memberships[0].business_modules = [];
+    assert.equal(await f.canReceiveEvent(f.user, 'chat:message', { channelId: 4 }), false);
+    preCutoverPark(f);
+    assert.equal(await f.canReceiveEvent(f.user, 'chat:message', { channelId: 4 }), false, 'compatibility cannot reopen the owned namespace');
 });
 
 test('channel IDs and archived channels fail closed for messages, mentions and invitations', async t => {
@@ -189,8 +212,10 @@ test('booking-linked chat requires membership and booking visibility with both d
     f.state.channels[0] = { id: 4, type: 'booking', linked_booking_id: 'BK-TEST-1' };
     assert.equal(await f.canReceiveEvent(f.user, 'chat:message', { channelId: 4 }), true);
     f.state.memberships[0].role = 'animator';
+    f.state.bookingVisible = false;
     assert.equal(await f.canReceiveEvent(f.user, 'chat:message', { channelId: 4 }), false);
     f.state.memberships[0].role = 'director';
+    f.state.bookingVisible = true;
     f.state.channels[0] = { id: 4, type: 'booking', linked_entity_type: 'booking', linked_entity_id: 101 };
     f.state.bookings = [{ id: '101', business_context: 'event_genix' }];
     assert.equal(await f.canReceiveEvent(f.user, 'chat:message', { channelId: 4 }), true);
@@ -200,9 +225,8 @@ test('booking-linked chat requires membership and booking visibility with both d
     assert.equal(await f.canReceiveEvent(f.user, 'chat:message', { channelId: 4 }), false);
 });
 
-test('direct and embedded booking previews cannot expose another business through a legacy channel', async t => {
+test('direct and embedded booking previews require current Park record visibility', async t => {
     const f = fixture(t);
-    preCutoverPark(f);
     const preview = { id: 'BK-TEST-1', price: 100 };
     const payloads = [
         ['chat:booking-preview', { channelId: 4, bookingPreview: preview }],
@@ -210,25 +234,26 @@ test('direct and embedded booking previews cannot expose another business throug
         ['chat:edit', { channelId: 4, message: { metadata: JSON.stringify({ bookingPreview: preview }) } }]
     ];
     for (const [event, data] of payloads) assert.equal(await f.canReceiveEvent(f.user, event, data), true);
-    f.state.registry[0].access_mode = 'membership';
+    f.state.bookings[0].business_context = 'dar';
     for (const [event, data] of payloads) assert.equal(await f.canReceiveEvent(f.user, event, data), false);
     assert.equal(await f.canReceiveEvent(f.user, 'chat:message', { channelId: 4, message: { metadata: '{' } }), false);
 });
 
 test('chat task IDs are channel-local and must not be looked up in canonical tasks', async t => {
     const f = fixture(t);
-    preCutoverPark(f);
     assert.equal(await f.canReceiveEvent(f.user, 'chat:task', { channelId: 4, task: { id: 999, title: 'Chat fixture' } }), true);
     assert.equal(f.state.calls.some(row => /FROM tasks/.test(row.sql)), false);
 });
 
-test('presence requires shared active organization after bootstrap and permits only empty-registry compatibility', async t => {
+test('presence requires both subjects current Park work access without empty-registry fallback', async t => {
     const f = fixture(t);
     for (const event of ['user:online', 'user:offline', 'user:status']) assert.equal(await f.canReceiveEvent(f.user, event, { userId: 81 }), true);
     f.state.sharedOrganization = false;
     assert.equal(await f.canReceiveEvent(f.user, 'user:online', { userId: 81 }), false);
     f.state.organizations = [];
-    assert.equal(await f.canReceiveEvent(f.user, 'user:offline', { userId: 81 }), true);
+    f.state.registry = [];
+    f.state.sharedOrganization = true;
+    assert.equal(await f.canReceiveEvent(f.user, 'user:offline', { userId: 81 }), false);
     assert.equal(await f.canReceiveEvent(f.user, 'user:online', {}), false);
 });
 
@@ -240,7 +265,6 @@ test('only inert guardian mood and empty alert shapes are allowed without busine
     assert.equal(await f.canReceiveEvent(f.user, 'alert:updated', { alerts: [{ title: 'Private fixture' }], count: 1 }), false);
     assert.equal(await f.canReceiveEvent(f.user, 'alert:updated', { alerts: [], count: 0, privateData: true }), false);
     assert.equal(f.state.calls.length, 0);
-    preCutoverPark(f);
     assert.equal(await f.canReceiveEvent(f.user, 'guardian:event', { channelId: null, details: 'Fixture' }), false);
     assert.equal(await f.canReceiveEvent(f.user, 'guardian:health', { channelId: 4, score: 50 }), true);
     f.state.channelMember = false;
@@ -271,7 +295,7 @@ test('Kleshnya transcripts require pre-cutover Park and username-addressed deliv
     assert.equal(await f.canReceiveEvent({ ...f.user, is_active: false }, 'guardian:mood', {}), false);
 });
 
-test('D05 unowned channel join, typing, broadcast and direct notification deny all membership roles and organizations', async t => {
+test('Park channel delivery uses active ownership membership independently of defaults and rejects foreign declarations', async t => {
     const f = fixture(t);
     f.state.registry.push({ ...f.state.registry[1], business_id: 13, organization_id: 8, context_key: 'fixture_custom' });
     f.state.memberships.push({ ...membership('fixture_custom', 'manager'), business_id: 13, organization_id: 8 });
@@ -280,17 +304,21 @@ test('D05 unowned channel join, typing, broadcast and direct notification deny a
         for (const role of ['creator', 'director', 'animator']) {
             f.user.role = role;
             for (const type of ['general', 'room', 'assistant', 'dm']) {
-                f.state.channels[0].type = type;
+                f.state.channels[0] = channelFixture(type);
                 for (const event of ['chat:joined', 'chat:typing', 'chat:message', 'chat:mention']) {
                     assert.equal(await f.canReceiveEvent(f.user, event, { channelId: 4, businessContext: 'event_genix' },
-                        { channelId: 4, delivery: event === 'chat:message' ? 'channel' : 'user' }), false, `${context}/${role}/${type}/${event}`);
+                        { channelId: 4, delivery: event === 'chat:message' ? 'channel' : 'user' }), true, `${context}/${role}/${type}/${event}`);
+                    assert.equal(await f.canReceiveEvent(f.user, event, { channelId: 4, businessContext: 'dar' },
+                        { channelId: 4, delivery: 'user' }), false);
                 }
             }
         }
     }
+    f.state.memberships = f.state.memberships.filter(row => row.context_key !== 'event_genix');
+    assert.equal(await f.canReceiveEvent(f.user, 'chat:message', { channelId: 4, businessContext: 'event_genix' }), false);
 });
 
-test('D05 unowned delivery uses the stored default and never payload context or normalized account fallbacks', async t => {
+test('Chat rejects compatibility defaults while Kleshnya retains its separate stored-default containment', async t => {
     const f = fixture(t);
     preCutoverPark(f);
     for (const context of [undefined, null, '', 'all', 'crm', 'maysternya_doli', 'dar', 'unknown_fixture']) {
@@ -300,8 +328,8 @@ test('D05 unowned delivery uses the stored default and never payload context or 
         assert.equal(await f.canReceiveEvent(normalizedUser, 'kleshnya:reply', { businessContext: 'event_genix' }, { delivery: 'username' }), false);
     }
     f.state.storedDefault = 'event_genix';
-    assert.equal(await f.canReceiveEvent({ ...f.user, defaultBusinessContext: 'dar' }, 'chat:message', { channelId: 4 }), true,
-        'Explicit DB default, not stale profile aliases, chooses the compatibility request scope');
+    assert.equal(await f.canReceiveEvent({ ...f.user, defaultBusinessContext: 'dar' }, 'chat:message', { channelId: 4 }), false);
+    assert.equal(await f.canReceiveEvent(f.user, 'kleshnya:reply', {}, { delivery: 'username' }), true);
     f.state.accountExists = false;
     assert.equal(await f.canReceiveEvent(f.user, 'chat:message', { channelId: 4 }), false);
 });
@@ -309,24 +337,24 @@ test('D05 unowned delivery uses the stored default and never payload context or 
 test('D05 transcript and channel recipients recheck cutover, membership revocation and inactive registry on every event', async t => {
     const f = fixture(t);
     preCutoverPark(f);
-    async function delivery(expected) {
-        assert.equal(await f.canReceiveEvent(f.user, 'chat:message', { channelId: 4 }), expected);
+    async function delivery(chatExpected, transcriptExpected) {
+        assert.equal(await f.canReceiveEvent(f.user, 'chat:message', { channelId: 4 }), chatExpected);
         for (const event of ['kleshnya:thinking', 'kleshnya:reply', 'kleshnya:media']) {
-            assert.equal(await f.canReceiveEvent(f.user, event, {}, { delivery: 'username' }), expected);
+            assert.equal(await f.canReceiveEvent(f.user, event, {}, { delivery: 'username' }), transcriptExpected);
         }
     }
-    await delivery(true);
+    await delivery(false, true);
     f.state.registry[0].access_mode = 'membership';
     f.state.memberships = [membership('event_genix')];
-    await delivery(false);
+    await delivery(true, false);
     f.state.memberships = [];
-    await delivery(false);
+    await delivery(false, false);
     f.state.registry[0].access_mode = 'compatibility';
     f.state.registry[0].organization_status = 'inactive';
-    await delivery(false);
+    await delivery(false, false);
     f.state.registry[0].organization_status = 'active';
     f.state.registry[0].business_status = 'inactive';
-    await delivery(false);
+    await delivery(false, false);
 });
 
 test('D05 unavailable membership storage cannot recover unowned events using stale account fields', async t => {

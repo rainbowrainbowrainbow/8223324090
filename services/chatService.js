@@ -12,16 +12,8 @@ const {
 
 const log = createLogger('Chat');
 
-// Channel list cache: Map<userId, { data, expiresAt }>
-const _channelsCache = new Map();
-const CHANNELS_CACHE_TTL = 8000; // 8 seconds
-
-function invalidateChannelsCache(userId) {
-    if (userId) {
-        _channelsCache.delete(userId);
-    } else {
-        _channelsCache.clear();
-    }
+function invalidateChannelsCache() {
+    // Preserve the producer hook; channel lists no longer cache authorization or content.
 }
 
 // snake_case → camelCase for API responses
@@ -70,23 +62,20 @@ function mapChannelRow(row) {
 /**
  * Get all channels the user is a member of, with unread counts.
  */
-async function getChannels(userId) {
-    // Check cache
-    const cached = _channelsCache.get(userId);
-    if (cached && Date.now() < cached.expiresAt) {
-        return cached.data;
-    }
+async function getChannels(userId, allowedChannelIds = null) {
+    // Channel membership is checked on every read; revoked ACLs cannot use a cached list.
 
     const result = await pool.query(`
         SELECT c.*, m.last_read_seq, m.muted,
-            COALESCE((SELECT MAX(seq) FROM chat_messages WHERE channel_id = c.id), 0) - COALESCE(m.last_read_seq, 0) AS unread_count,
-            (SELECT created_at FROM chat_messages WHERE channel_id = c.id ORDER BY seq DESC LIMIT 1) AS last_message_at,
-            (SELECT content FROM chat_messages WHERE channel_id = c.id AND deleted_at IS NULL ORDER BY seq DESC LIMIT 1) AS last_message_content,
-            (SELECT u.username FROM chat_messages cm2 JOIN users u ON u.id = cm2.user_id WHERE cm2.channel_id = c.id AND cm2.deleted_at IS NULL ORDER BY cm2.seq DESC LIMIT 1) AS last_message_username
+            COALESCE((SELECT MAX(seq) FROM chat_messages WHERE channel_id = c.id AND is_scheduled IS DISTINCT FROM TRUE), 0) - COALESCE(m.last_read_seq, 0) AS unread_count,
+            (SELECT created_at FROM chat_messages WHERE channel_id = c.id AND is_scheduled IS DISTINCT FROM TRUE ORDER BY seq DESC LIMIT 1) AS last_message_at,
+            (SELECT content FROM chat_messages WHERE channel_id = c.id AND is_scheduled IS DISTINCT FROM TRUE AND deleted_at IS NULL ORDER BY seq DESC LIMIT 1) AS last_message_content,
+            (SELECT u.username FROM chat_messages cm2 JOIN users u ON u.id = cm2.user_id WHERE cm2.channel_id = c.id AND cm2.deleted_at IS NULL AND cm2.is_scheduled IS DISTINCT FROM TRUE ORDER BY cm2.seq DESC LIMIT 1) AS last_message_username
         FROM chat_channels c
         JOIN chat_channel_members m ON m.channel_id = c.id AND m.user_id = $1
+        WHERE ($2::integer[] IS NULL OR c.id = ANY($2::integer[])) AND COALESCE(c.is_archived, false) = false
         ORDER BY last_message_at DESC NULLS LAST, c.name
-    `, [userId]);
+    `, [userId, allowedChannelIds]);
 
     // For DM channels, resolve the other user's name (batched — no N+1)
     const channels = result.rows.map(mapChannelRow);
@@ -124,8 +113,6 @@ async function getChannels(userId) {
         }
     }
 
-    // Cache result
-    _channelsCache.set(userId, { data: channels, expiresAt: Date.now() + CHANNELS_CACHE_TTL });
     return channels;
 }
 
@@ -134,7 +121,7 @@ async function getChannels(userId) {
  */
 async function getChannelMessages(channelId, userId, { before, limit = 50 } = {}) {
     const params = [channelId, Math.min(limit, 100)];
-    let whereClause = 'cm.channel_id = $1';
+    let whereClause = 'cm.channel_id = $1 AND cm.is_scheduled IS DISTINCT FROM TRUE';
     if (before) {
         whereClause += ' AND cm.seq < $3';
         params.push(before);
@@ -145,7 +132,7 @@ async function getChannelMessages(channelId, userId, { before, limit = 50 } = {}
             rm.content AS reply_content, ru.username AS reply_username
         FROM chat_messages cm
         JOIN users u ON u.id = cm.user_id
-        LEFT JOIN chat_messages rm ON rm.id = cm.reply_to
+        LEFT JOIN chat_messages rm ON rm.id = cm.reply_to AND rm.channel_id = cm.channel_id AND rm.deleted_at IS NULL AND rm.is_scheduled IS DISTINCT FROM TRUE
         LEFT JOIN users ru ON ru.id = rm.user_id
         WHERE ${whereClause}
         ORDER BY cm.seq DESC
@@ -184,6 +171,13 @@ async function sendMessage(channelId, userId, { content, replyTo, clientMessageI
     try {
         await client.query('BEGIN');
 
+        if (replyTo != null) {
+            const parent = await client.query(`SELECT id FROM chat_messages
+                WHERE id = $1 AND channel_id = $2 AND deleted_at IS NULL
+                  AND (expires_at IS NULL OR expires_at > NOW())`, [replyTo, channelId]);
+            if (parent.rows.length !== 1) throw Object.assign(new Error('Invalid channel reply'), { statusCode: 400 });
+        }
+
         // Deduplication: check client_message_id
         if (clientMessageId) {
             const dup = await client.query(
@@ -197,7 +191,7 @@ async function sendMessage(channelId, userId, { content, replyTo, clientMessageI
                         rm.content AS reply_content, ru.username AS reply_username
                     FROM chat_messages cm
                     JOIN users u ON u.id = cm.user_id
-                    LEFT JOIN chat_messages rm ON rm.id = cm.reply_to
+                    LEFT JOIN chat_messages rm ON rm.id = cm.reply_to AND rm.channel_id = cm.channel_id AND rm.deleted_at IS NULL AND rm.is_scheduled IS DISTINCT FROM TRUE
                     LEFT JOIN users ru ON ru.id = rm.user_id
                     WHERE cm.id = $1
                 `, [dup.rows[0].id]);
@@ -225,8 +219,9 @@ async function sendMessage(channelId, userId, { content, replyTo, clientMessageI
         if (mentionMatches) {
             const usernames = mentionMatches.map(m => m.slice(1));
             const usersResult = await client.query(
-                'SELECT id, username FROM users WHERE username = ANY($1)',
-                [usernames]
+                `SELECT u.id, u.username FROM users u JOIN chat_channel_members member ON member.user_id = u.id
+                 WHERE u.username = ANY($1) AND member.channel_id = $2 AND u.is_active IS TRUE`,
+                [usernames, channelId]
             );
             for (const u of usersResult.rows) {
                 if (u.id !== userId) { // Don't mention yourself
@@ -253,13 +248,13 @@ async function sendMessage(channelId, userId, { content, replyTo, clientMessageI
                 rm.content AS reply_content, ru.username AS reply_username
             FROM chat_messages cm
             JOIN users u ON u.id = cm.user_id
-            LEFT JOIN chat_messages rm ON rm.id = cm.reply_to
+            LEFT JOIN chat_messages rm ON rm.id = cm.reply_to AND rm.channel_id = cm.channel_id AND rm.deleted_at IS NULL AND rm.is_scheduled IS DISTINCT FROM TRUE
             LEFT JOIN users ru ON ru.id = rm.user_id
             WHERE cm.id = $1
         `, [msg.id]);
 
         // Invalidate channel cache for all members
-        _channelsCache.clear();
+        invalidateChannelsCache();
 
         return {
             message: mapMessageRow(fullMsg.rows[0]),
@@ -384,7 +379,7 @@ async function sendFileMessageWithUpload(channelId, userId, content, contentType
             WHERE cm.id = $1
         `, [msg.id]);
 
-        _channelsCache.clear();
+        invalidateChannelsCache();
         return {
             message: mapMessageRow(fullMsg.rows[0]),
             mentionedUserIds: [],
@@ -468,13 +463,14 @@ async function getMessageReactions(messageId) {
 /**
  * Get unread counts across all channels for a user.
  */
-async function getUnreadCounts(userId) {
+async function getUnreadCounts(userId, allowedChannelIds = null) {
     const result = await pool.query(`
         SELECT m.channel_id,
-            GREATEST(COALESCE((SELECT MAX(seq) FROM chat_messages WHERE channel_id = m.channel_id), 0) - COALESCE(m.last_read_seq, 0), 0) AS unread_count
+            GREATEST(COALESCE((SELECT MAX(seq) FROM chat_messages WHERE channel_id = m.channel_id AND is_scheduled IS DISTINCT FROM TRUE), 0) - COALESCE(m.last_read_seq, 0), 0) AS unread_count
         FROM chat_channel_members m
         WHERE m.user_id = $1
-    `, [userId]);
+          AND ($2::integer[] IS NULL OR m.channel_id = ANY($2::integer[]))
+    `, [userId, allowedChannelIds]);
     const counts = {};
     let total = 0;
     for (const r of result.rows) {
@@ -492,6 +488,9 @@ async function ensureDefaultMemberships(userId) {
     await pool.query(`
         INSERT INTO chat_channel_members (channel_id, user_id)
         SELECT c.id, $1 FROM chat_channels c WHERE c.is_default = true
+          AND COALESCE(c.is_archived, false) = false AND COALESCE(c.is_dm, false) = false
+          AND c.type IS DISTINCT FROM 'assistant' AND c.type IS DISTINCT FROM 'booking'
+          AND c.linked_booking_id IS NULL AND c.linked_entity_id IS NULL
         ON CONFLICT (channel_id, user_id) DO NOTHING
     `, [userId]);
 }
@@ -719,7 +718,7 @@ async function editMessage(messageId, userId, newContent) {
             rm.content AS reply_content, ru.username AS reply_username
         FROM chat_messages cm
         JOIN users u ON u.id = cm.user_id
-        LEFT JOIN chat_messages rm ON rm.id = cm.reply_to
+        LEFT JOIN chat_messages rm ON rm.id = cm.reply_to AND rm.channel_id = cm.channel_id AND rm.deleted_at IS NULL AND rm.is_scheduled IS DISTINCT FROM TRUE
         LEFT JOIN users ru ON ru.id = rm.user_id
         WHERE cm.id = $1
     `, [msg.id]);
@@ -782,7 +781,8 @@ async function getPinnedMessages(channelId) {
         JOIN chat_messages cm ON cm.id = cp.message_id
         JOIN users u ON u.id = cm.user_id
         JOIN users pu ON pu.id = cp.pinned_by
-        WHERE cp.channel_id = $1 AND cm.deleted_at IS NULL
+        WHERE cp.channel_id = $1 AND cm.channel_id = cp.channel_id AND cm.deleted_at IS NULL
+          AND cm.is_scheduled IS DISTINCT FROM TRUE
         ORDER BY cp.pinned_at DESC
     `, [channelId]);
     return result.rows.map(row => ({
@@ -906,10 +906,11 @@ async function getUserProfile(userId) {
             u.avatar_emoji, u.avatar_color, u.last_seen_at,
             s.department, s.position, s.phone, s.telegram_username
         FROM users u
-        LEFT JOIN staff s ON lower(s.name) = lower(u.name) AND s.is_active = true
+        LEFT JOIN employee_profiles profile ON profile.user_id = u.id AND profile.is_active IS TRUE
+        LEFT JOIN staff s ON s.id = profile.staff_id AND s.is_active IS TRUE
         WHERE u.id = $1
     `, [userId]);
-    if (result.rows.length === 0) return null;
+    if (result.rows.length !== 1) return null;
     const r = result.rows[0];
     return {
         id: r.id,
@@ -964,6 +965,12 @@ async function searchMessages(userId, query, channelId, filters = {}) {
     let extraFilters = '';
     let paramIdx = 3;
 
+    if (Array.isArray(filters.allowedChannelIds)) {
+        extraFilters += ' AND cm.channel_id = ANY($' + paramIdx + '::integer[])';
+        params.push(filters.allowedChannelIds);
+        paramIdx++;
+    }
+
     if (channelId) {
         extraFilters += ' AND cm.channel_id = $' + paramIdx;
         params.push(channelId);
@@ -998,7 +1005,7 @@ async function searchMessages(userId, query, channelId, filters = {}) {
         JOIN users u ON u.id = cm.user_id
         JOIN chat_channels c ON c.id = cm.channel_id
         JOIN chat_channel_members ccm ON ccm.channel_id = cm.channel_id AND ccm.user_id = $1
-        WHERE cm.deleted_at IS NULL AND cm.content ILIKE $2${extraFilters}
+        WHERE cm.deleted_at IS NULL AND cm.is_scheduled IS DISTINCT FROM TRUE AND cm.content ILIKE $2${extraFilters}
         ORDER BY cm.created_at DESC
         LIMIT 50
     `, params);
@@ -1144,7 +1151,7 @@ async function getTasks(userId) {
 /**
  * Update task status.
  */
-async function updateTask(taskId, userId, { status, role } = {}) {
+async function updateTask(taskId, userId, { status, canManage = false } = {}) {
     const updates = ['status = $2'];
     const params = [taskId, status];
     if (status === 'done') {
@@ -1152,7 +1159,7 @@ async function updateTask(taskId, userId, { status, role } = {}) {
     }
 
     let authClause = '';
-    if (!canManageAllChatTasks(role)) {
+    if (!canManage) {
         params.push(userId);
         authClause = ` AND (assigned_to = $${params.length} OR assigned_by = $${params.length})`;
     }

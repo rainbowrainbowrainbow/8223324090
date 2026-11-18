@@ -132,6 +132,7 @@ describe('WebSocket chat membership authorization', () => {
         clearModules();
         state = {
             memberships: new Set(),
+            parkMembershipEnabled: false,
             failSessionRead: false,
             users: new Map([
                 [1, { id: 1, username: 'creator-event', name: 'Creator Event', role: 'creator', business_contexts: ['event_genix'], default_business_context: 'event_genix', is_active: true }],
@@ -145,6 +146,15 @@ describe('WebSocket chat membership authorization', () => {
         const pool = {
             query: async (sql, params = []) => {
                 const userId = Number(params[0]);
+                const registry = { organization_id: 1, business_id: 2, context_key: 'event_genix',
+                    business_status: 'active', organization_status: 'active',
+                    access_mode: state.parkMembershipEnabled ? 'membership' : 'compatibility' };
+                if (/FROM organization_memberships om/i.test(sql)) {
+                    const user = state.users.get(userId);
+                    return { rows: state.parkMembershipEnabled && user?.business_contexts?.includes('event_genix')
+                        ? [{ ...registry, role: user.role, business_modules: ['chat', 'timeline'], is_default: true }] : [] };
+                }
+                if (/FROM businesses b JOIN organizations/i.test(sql)) return { rows: [registry] };
                 if (/SELECT is_active, session_revoked_at,/i.test(sql)) {
                     if (state.failSessionRead) throw Object.assign(new Error('Fixture database unavailable'), { code: '08006' });
                     const user = state.users.get(userId);
@@ -182,6 +192,7 @@ describe('WebSocket chat membership authorization', () => {
 
     afterEach(async () => {
         if (wsService?.getWSS()) {
+            for (const socket of wsService.getWSS().clients) socket.terminate();
             await new Promise(resolve => wsService.getWSS().close(resolve));
         }
         if (httpServer?.listening) {
@@ -193,6 +204,7 @@ describe('WebSocket chat membership authorization', () => {
     });
 
     it('stops an existing channel subscription immediately after its membership is removed', async () => {
+        state.parkMembershipEnabled = true;
         state.memberships.add('42:1');
         const client = await openAuthedClient(1);
         await withClients([client], async () => {
@@ -336,6 +348,7 @@ describe('WebSocket chat membership authorization', () => {
     });
 
     it('allows authorized CHAT_JOIN and receives channel broadcasts', async () => {
+        state.parkMembershipEnabled = true;
         state.memberships.add('42:1');
         const client = await openAuthedClient(1);
 
@@ -351,6 +364,7 @@ describe('WebSocket chat membership authorization', () => {
     });
 
     it('blocks unauthorized CHAT_TYPING from reaching subscribed members', async () => {
+        state.parkMembershipEnabled = true;
         state.memberships.add('77:2');
         const sender = await openAuthedClient(1);
         const receiver = await openAuthedClient(2);
@@ -374,6 +388,7 @@ describe('WebSocket chat membership authorization', () => {
     });
 
     it('allows authorized CHAT_TYPING to subscribed channel members', async () => {
+        state.parkMembershipEnabled = true;
         state.memberships.add('77:1');
         state.memberships.add('77:2');
         const sender = await openAuthedClient(1);

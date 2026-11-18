@@ -4,11 +4,12 @@ const { pool } = require('../db');
 const { applyMembershipAccess, loadMembershipAccess } = require('./businessMembership');
 const { canAccessBusinessContext, normalizeBusinessContext, normalizeKnownBusinessContext, normalizeBusinessScopeMode, BUSINESS_SCOPE_SINGLE } = require('./businessContext');
 const { resolveCapability } = require('./accountAccessPolicy');
-const { canViewBooking } = require('./bookingVisibility');
 const { buildTaskVisibilityScope } = require('./taskPolicy');
 const { legacyBusinessSurfaceAccess } = require('./legacyBusinessSurface');
 const { recordCompatibilityTelemetrySafe } = require('./businessCutover');
 const { createLogger } = require('../utils/logger');
+const { canUseParkWorkModule, loadParkWorkParticipantIds } = require('./parkWorkModuleAccess');
+const { canReadParkChatBooking, hasParkChatPrivateIdentity } = require('./parkChatAccess');
 
 const TASK_EVENTS = new Set(['task:assigned', 'task:schedule_changed', 'task:slot_missed']);
 const CHAT_EVENTS = new Set([
@@ -103,15 +104,15 @@ async function canReceiveTask(freshUser, data) {
 }
 
 async function canReceiveBooking(freshUser, bookingId) {
-    if (!['string', 'number'].includes(typeof bookingId) || String(bookingId).trim() === '') return false;
-    const result = await pool.query('SELECT b.* FROM bookings b WHERE b.id = $1', [String(bookingId)]);
-    const booking = result.rows[0];
-    if (!booking) return false;
-    const user = await loadBusinessEventUser(freshUser, booking.business_context);
-    return Boolean(user && canViewBooking(user, booking));
+    const user = await loadBusinessEventUser(freshUser, 'event_genix');
+    return Boolean(user && await canReadParkChatBooking(pool, user, bookingId));
 }
 
 async function canReceiveChannel(freshUser, data, options) {
+    const declared = [options.businessContext, options.business_context, data.businessContext, data.business_context].filter(value => value != null);
+    if (declared.some(value => explicitContext(value) !== 'event_genix')) return false;
+    const parkUser = await loadBusinessEventUser(freshUser, 'event_genix');
+    if (!parkUser || !canUseParkWorkModule(parkUser, 'chat')) return false;
     const channelId = positiveId(options.channelId ?? data.channelId);
     if (!channelId || (data.channelId !== undefined && positiveId(data.channelId) !== channelId)) return false;
     const result = await pool.query(
@@ -120,7 +121,7 @@ async function canReceiveChannel(freshUser, data, options) {
         [channelId, freshUser.id]
     );
     const channel = result.rows[0];
-    if (!channel) return false;
+    if (!channel || !hasParkChatPrivateIdentity(channel, freshUser.id)) return false;
     const bookingLinks = [channel.linked_booking_id,
         channel.linked_entity_type === 'booking' ? channel.linked_entity_id : null]
         .filter(value => value !== undefined && value !== null && String(value).trim() !== '')
@@ -137,25 +138,14 @@ async function canReceiveChannel(freshUser, data, options) {
     for (const preview of previews) {
         if (!await canReceiveBooking(freshUser, preview?.id)) return false;
     }
-    // Unowned channels share the REST containment policy. A validated booking
-    // link keeps its existing business/visibility contract above.
-    return bookingLinks.length > 0 || canReceiveLegacyAccountSurface(freshUser, 'chat');
+    return true;
 }
 
 async function canReceivePresence(freshUser, data) {
     const targetId = positiveId(data.userId);
     if (!targetId) return false;
-    const shared = await pool.query(
-        `SELECT 1 FROM organization_memberships recipient
-         JOIN organization_memberships subject ON subject.organization_id = recipient.organization_id
-         JOIN organizations o ON o.id = recipient.organization_id AND o.status = 'active'
-         WHERE recipient.user_id = $1 AND subject.user_id = $2
-           AND recipient.is_active IS TRUE AND subject.is_active IS TRUE LIMIT 1`,
-        [freshUser.id, targetId]
-    );
-    if (shared.rows.length) return true;
-    const registry = await pool.query('SELECT id FROM organizations LIMIT 1');
-    return registry.rows.length === 0;
+    const eligible = await loadParkWorkParticipantIds(pool, 'chat', [...new Set([Number(freshUser.id), targetId])]);
+    return eligible.has(Number(freshUser.id)) && eligible.has(targetId);
 }
 
 async function canReceiveAttendance(freshUser, data, options) {

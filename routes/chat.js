@@ -3,12 +3,14 @@
  */
 const router = require('express').Router();
 const crypto = require('crypto');
+const path = require('node:path');
 const multer = require('multer');
 const chat = require('../services/chatService');
 const { broadcastToChannel, sendToUser } = require('../services/websocket');
 const {
     prepareChatUploadBlob,
-    validateChatUploadFile
+    validateChatUploadFile,
+    buildChatUploadBlobFallbackHandler
 } = require('../services/chatUploadStorage');
 const { processMessage: processBotMessage } = require('../services/chat-bot');
 const guardian = require('../services/guardian');
@@ -18,10 +20,17 @@ const { getVisibleBookingScope } = require('../services/bookingVisibility');
 const dashboardAssistant = require('../services/dashboardAssistant');
 const { callUnifiedChatCompletion } = require('../services/ai-config');
 const { emitTaskCreatedNotificationOutboxEvent } = require('../services/notificationOutbox');
+const { buildTaskVisibilityScope, canUseTaskRouteCapability } = require('../services/taskPolicy');
+const { canViewTimelinePage } = require('../services/timelineContext');
+const { loadGameZoneAccess } = require('../services/gameZoneAccess');
+const { userBusinessModuleState } = require('../services/businessModuleRegistry');
+const { resolveCapability } = require('../services/accountAccessPolicy');
 
 const { authenticateToken, requireRole, ROLE_HIERARCHY } = require('../middleware/auth');
 const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
 const { listChannelSubstitutions } = require('../services/staffSubstitutionChannelReadModel');
+const { positiveId, canReadParkChatBooking, canReadParkChatChannel, loadReadableParkChatChannelIds, requireParkChatUpload, projectParkChatResponse } = require('../services/parkChatAccess');
+const { requireParkWorkModule, loadParkWorkParticipantIds, loadParkWorkParticipants } = require('../services/parkWorkModuleAccess');
 
 const log = createLogger('ChatAPI');
 
@@ -35,6 +44,36 @@ router.use((req, res, next) => {
     return res.status(403).json({ error: 'Insufficient permissions' });
 });
 router.use(requireLegacyBusinessSurface('chat'));
+router.use(requireParkWorkModule('chat'));
+router.use(loadGameZoneAccess);
+router.use((req, res, next) => { res.locals.parkChatActor = req.user; next(); });
+router.use((req, res, next) => {
+    const json = res.json.bind(res);
+    res.json = value => {
+        projectParkChatResponse(require('../db').pool, req.user, value).then(projected => {
+            if (!res.headersSent) json(projected);
+        }).catch(() => {
+            if (!res.headersSent) { res.status(503); json({ error: 'chat_projection_unavailable' }); }
+        });
+        return res;
+    };
+    next();
+});
+
+// Browser fetches use the existing API bearer/refresh path; no token in URLs or new cookie/session.
+const privateUploads = require('express').Router();
+privateUploads.use(requireParkChatUpload(require('../db').pool, log));
+privateUploads.get('/*', buildChatUploadBlobFallbackHandler(require('../db').pool, log));
+privateUploads.use(require('express').static(path.join(__dirname, '..', 'uploads', 'chat'), {
+    setHeaders(res) { res.setHeader('Cache-Control', 'private, no-store'); }
+}));
+privateUploads.use((_req, res) => res.status(404).json({ error: 'chat_upload_not_found' }));
+router.use('/uploads', privateUploads);
+
+async function hasParkChatTarget(value) {
+    const id = positiveId(value);
+    return id !== null && (await loadParkWorkParticipantIds(require('../db').pool, 'chat', [id])).has(id);
+}
 
 // Chat message rate limiter: max 1 msg per 500ms per user, 60 msgs/min per channel
 const _chatRateLimits = new Map(); // userId → { lastSent, channelCounts: Map<channelId, {count, resetAt}> }
@@ -111,6 +150,7 @@ async function sendPushToChannel(channelId, senderUserId, title, body) {
             JOIN chat_channel_members ccm ON ccm.user_id = ps.user_id
             WHERE ccm.channel_id = $1 AND ps.user_id != $2
         `, [channelId, senderUserId]);
+        const recipients = await loadParkWorkParticipants(pool, 'chat');
 
         const payload = JSON.stringify({
             title: title,
@@ -121,6 +161,8 @@ async function sendPushToChannel(channelId, senderUserId, title, body) {
         });
 
         for (const sub of subs.rows) {
+            const recipient = recipients.get(Number(sub.user_id));
+            if (!recipient || !await canReadParkChatChannel(pool, recipient, channelId)) continue;
             webpush.sendNotification({
                 endpoint: sub.endpoint,
                 keys: { p256dh: sub.p256dh, auth: sub.auth }
@@ -253,7 +295,9 @@ async function createChatReminderTask({ pool, message, user, remindAtIso }) {
 }
 
 async function requireChannelMemberOrRespond(channelId, userId, res) {
-    if (!await chat.isMember(channelId, userId)) {
+    const actor = res.locals?.parkChatActor;
+    if (Number(actor?.id) !== Number(userId)
+        || !await canReadParkChatChannel(require('../db').pool, actor, channelId)) {
         res.status(403).json({ error: 'Not a member of this channel' });
         return false;
     }
@@ -276,13 +320,14 @@ async function requireChannelMember(req, res, next) {
     }
 }
 
-async function getMessageForChannelMember(messageId, userId, res) {
+async function getMessageForChannelMember(messageId, userId, res, { allowOwnScheduled = false } = {}) {
     if (!messageId) {
         res.status(400).json({ error: 'Invalid message ID' });
         return null;
     }
     const msg = await chat.getMessageById(messageId);
-    if (!msg) {
+    if (!msg || (msg.is_scheduled === true && !(allowOwnScheduled && Number(msg.user_id) === Number(userId))) || msg.deleted_at
+        || (msg.expires_at && new Date(msg.expires_at).getTime() <= Date.now())) {
         res.status(404).json({ error: 'Message not found' });
         return null;
     }
@@ -349,7 +394,7 @@ async function provisionBookingChatChannel({ pool, bookingId, userId, actor }) {
         const booking = await client.query(
             `SELECT b.id, b.date, b.program_name, b.label
              FROM bookings b
-             WHERE b.id = $1
+             WHERE b.id = $1 AND b.business_context = 'event_genix'
              ${bookingScope.sql}`,
             bookingParams
         );
@@ -443,8 +488,9 @@ router.get('/channels', async (req, res) => {
     try {
         const userId = getCurrentUserId(req);
         await chat.ensureDefaultMemberships(userId);
-        const channels = await chat.getChannels(userId);
-        res.json(channels);
+        const allowed = await loadReadableParkChatChannelIds(require('../db').pool, req.user);
+        const channels = await chat.getChannels(userId, [...allowed]);
+        res.json(channels.filter(channel => allowed.has(Number(channel.id))));
     } catch (err) {
         log.error('Error fetching channels', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -458,7 +504,7 @@ router.get('/channels/:id/messages', async (req, res) => {
         const channelId = parseInt(req.params.id, 10);
         if (isNaN(channelId)) return res.status(400).json({ error: 'Invalid channel ID' });
 
-        if (!await chat.isMember(channelId, userId)) {
+        if (!await canReadParkChatChannel(require('../db').pool, req.user, channelId)) {
             return res.status(403).json({ error: 'Not a member of this channel' });
         }
 
@@ -481,6 +527,10 @@ router.post('/channels/:id/messages', async (req, res) => {
         if (isNaN(channelId)) return res.status(400).json({ error: 'Invalid channel ID' });
 
         const { content, replyTo, clientMessageId, metadata } = req.body;
+        if (metadata !== undefined && metadata !== null && (typeof metadata !== 'object' || Array.isArray(metadata)
+            || Object.hasOwn(metadata, 'file') || Object.hasOwn(metadata, 'bookingPreview'))) {
+            return res.status(400).json({ error: 'Attachment and booking metadata are server-owned' });
+        }
         if (!content || !content.trim()) {
             return res.status(400).json({ error: 'Message content is required' });
         }
@@ -494,8 +544,16 @@ router.post('/channels/:id/messages', async (req, res) => {
             return res.status(429).json({ error: rateLimitMsg });
         }
 
-        if (!await chat.isMember(channelId, userId)) {
+        if (!await canReadParkChatChannel(require('../db').pool, req.user, channelId)) {
             return res.status(403).json({ error: 'Not a member of this channel' });
+        }
+
+        if (replyTo != null) {
+            const replyId = positiveId(replyTo);
+            const parent = replyId && await chat.getMessageById(replyId);
+            if (!parent || Number(parent.channel_id) !== channelId || parent.deleted_at) {
+                return res.status(400).json({ error: 'Reply must reference a live message in this channel' });
+            }
         }
 
         // v33.7.0: Announce mode — only admins can write
@@ -548,9 +606,9 @@ router.post('/channels/:id/messages', async (req, res) => {
                     const bkParams = [_bkId];
                     const bkScope = getVisibleBookingScope(req.user, bkParams, 'b');
                     const bkData = await pool.query(
-                        `SELECT b.id, b.date, b.time, b.program_name, b.label, b.status, b.price
+                        `SELECT b.id, b.date, b.time, b.program_name, b.label, b.status
                          FROM bookings b
-                         WHERE b.id = $1
+                         WHERE b.id = $1 AND b.business_context = 'event_genix'
                          ${bkScope.sql}`,
                         bkParams
                     );
@@ -558,7 +616,7 @@ router.post('/channels/:id/messages', async (req, res) => {
                     const b = bkData.rows[0];
                     const preview = {
                         id: b.id, date: b.date, time: String(b.time).slice(0, 5),
-                        programName: b.program_name, label: b.label, status: b.status, price: b.price
+                        programName: b.program_name, label: b.label, status: b.status
                     };
                     await pool.query(
                         `UPDATE chat_messages SET metadata = COALESCE(metadata, '{}'::jsonb) || $1::jsonb WHERE id = $2`,
@@ -705,7 +763,8 @@ router.get('/channels/:id/read-receipts', requireChannelMember, async (req, res)
             return res.status(400).json({ error: 'Invalid channel ID' });
         }
         const receipts = await chat.getReadReceipts(channelId);
-        res.json(receipts);
+        const eligible = receipts.length ? await loadParkWorkParticipantIds(require('../db').pool, 'chat') : new Set();
+        res.json(receipts.filter(receipt => eligible.has(Number(receipt.userId))));
     } catch (err) {
         log.error('Error getting read receipts', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -778,8 +837,10 @@ router.get('/unread', async (req, res) => {
     try {
         const userId = req.user.id || req.user.userId;
         await chat.ensureDefaultMemberships(userId);
-        const counts = await chat.getUnreadCounts(userId);
-        res.json(counts);
+        const allowed = await loadReadableParkChatChannelIds(require('../db').pool, req.user);
+        const counts = await chat.getUnreadCounts(userId, [...allowed]);
+        const channels = Object.fromEntries(Object.entries(counts.channels).filter(([id]) => allowed.has(Number(id))));
+        res.json({ channels, total: Object.values(channels).reduce((sum, count) => sum + Number(count), 0) });
     } catch (err) {
         log.error('Error fetching unread counts', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -790,7 +851,10 @@ router.get('/unread', async (req, res) => {
 router.get('/users', async (req, res) => {
     try {
         const users = await chat.getChatUsers();
-        res.json(users);
+        const eligible = await loadParkWorkParticipants(require('../db').pool, 'chat');
+        res.json(users.filter(user => eligible.has(Number(user.id))).map(user => ({
+            ...user, role: eligible.get(Number(user.id)).role
+        })));
     } catch (err) {
         log.error('Error fetching chat users', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -861,7 +925,7 @@ router.post('/assistant/reply', async (req, res) => {
         }
 
         const assistantChannel = await chat.getOrCreateAssistantChannel(userId);
-        if (Number(assistantChannel.id) !== channelId || !await chat.isMember(channelId, userId)) {
+        if (Number(assistantChannel.id) !== channelId || !await canReadParkChatChannel(require('../db').pool, req.user, channelId)) {
             return res.status(403).json({ error: 'This channel is not your assistant dialog' });
         }
 
@@ -948,6 +1012,7 @@ router.put('/messages/:id', async (req, res) => {
         if (content.length > 4000) {
             return res.status(400).json({ error: 'Message too long (max 4000 chars)' });
         }
+        if (!await getMessageForChannelMember(messageId, userId, res)) return;
         const msg = await chat.editMessage(messageId, userId, content.trim());
         if (!msg) return res.status(403).json({ error: 'Cannot edit this message' });
 
@@ -970,6 +1035,7 @@ router.delete('/messages/:id', async (req, res) => {
         const messageId = parseInt(req.params.id, 10);
         if (isNaN(messageId)) return res.status(400).json({ error: 'Invalid message ID' });
 
+        if (!await getMessageForChannelMember(messageId, userId, res, { allowOwnScheduled: true })) return;
         const isAdmin = req.user.role === 'admin';
         const deleted = await chat.deleteMessage(messageId, userId, isAdmin);
         if (!deleted) return res.status(403).json({ error: 'Cannot delete this message' });
@@ -1079,7 +1145,10 @@ router.get('/channels/:id/members', requireChannelMember, async (req, res) => {
         const channelId = req.chatChannelId;
         if (isNaN(channelId)) return res.status(400).json({ error: 'Invalid channel ID' });
         const members = await chat.getChannelMembers(channelId);
-        res.json(members);
+        const eligible = members.length ? await loadParkWorkParticipants(require('../db').pool, 'chat') : new Map();
+        res.json(members.filter(member => eligible.has(Number(member.id))).map(member => ({
+            ...member, role: eligible.get(Number(member.id)).role
+        })));
     } catch (err) {
         log.error('Error fetching members', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -1092,6 +1161,15 @@ router.post('/channels/:id/join', async (req, res) => {
         const userId = req.user.id || req.user.userId;
         const channelId = parseInt(req.params.id, 10);
         if (isNaN(channelId)) return res.status(400).json({ error: 'Invalid channel ID' });
+        const channel = await chat.getChannelById(channelId);
+        if (!channel || channel.is_archived === true) return res.status(404).json({ error: 'Channel not found' });
+        // Only curated public/default channels allow self-join. A guessed DM,
+        // assistant or invited channel ID never creates its own membership.
+        if (!(channel.is_default === true && channel.is_dm !== true && !channel.linked_booking_id
+            && !channel.linked_entity_id && !['assistant', 'booking'].includes(channel.type))
+            && !await canReadParkChatChannel(require('../db').pool, req.user, channelId)) {
+            return res.status(403).json({ error: 'Channel invitation required' });
+        }
         await chat.joinChannel(channelId, userId);
         res.json({ success: true });
     } catch (err) {
@@ -1105,10 +1183,12 @@ router.post('/dm', async (req, res) => {
     try {
         const userId = req.user.id || req.user.userId;
         const { targetUserId } = req.body;
-        if (!targetUserId || targetUserId === userId) {
+        const targetId = positiveId(targetUserId);
+        if (!targetId || targetId === Number(userId)) {
             return res.status(400).json({ error: 'Invalid target user' });
         }
-        const channel = await chat.getOrCreateDM(userId, parseInt(targetUserId, 10));
+        if (!await hasParkChatTarget(targetId)) return res.status(403).json({ error: 'Park recipient unavailable' });
+        const channel = await chat.getOrCreateDM(userId, targetId);
         res.json(channel);
     } catch (err) {
         log.error('Error creating DM', err);
@@ -1129,7 +1209,16 @@ router.post('/channels/:id/members', requireChannelMember, async (req, res) => {
         if (isNaN(channelId) || !targetUserId) {
             return res.status(400).json({ error: 'Invalid channel or user ID' });
         }
-        await chat.addMember(channelId, parseInt(targetUserId, 10));
+        const targetId = positiveId(targetUserId);
+        const target = targetId && (await loadParkWorkParticipants(require('../db').pool, 'chat', [targetId])).get(targetId);
+        if (!target) return res.status(403).json({ error: 'Park recipient unavailable' });
+        const channel = await chat.getChannelById(channelId);
+        if (channel?.is_dm === true || channel?.type === 'assistant') return res.status(403).json({ error: 'Private conversation membership is fixed' });
+        const bookingId = channel?.linked_booking_id || (channel?.linked_entity_type === 'booking' ? channel.linked_entity_id : null);
+        if (bookingId && !await canReadParkChatBooking(require('../db').pool, target, bookingId)) {
+            return res.status(403).json({ error: 'Recipient cannot access the linked booking' });
+        }
+        await chat.addMember(channelId, targetId);
 
         broadcastToChannel(channelId, 'chat:member-added', {
             channelId,
@@ -1156,6 +1245,10 @@ router.delete('/channels/:id/members/:userId', requireChannelMember, async (req,
         if (isNaN(channelId) || isNaN(targetUserId)) {
             return res.status(400).json({ error: 'Invalid IDs' });
         }
+        const channel = await chat.getChannelById(channelId);
+        if ((channel?.is_dm === true || channel?.type === 'assistant') && Number(targetUserId) !== Number(req.user.id)) {
+            return res.status(403).json({ error: 'Private conversation membership is fixed' });
+        }
         await chat.removeMember(channelId, targetUserId);
         res.json({ success: true });
     } catch (err) {
@@ -1169,8 +1262,16 @@ router.get('/users/:id/profile', async (req, res) => {
     try {
         const userId = parseInt(req.params.id, 10);
         if (isNaN(userId)) return res.status(400).json({ error: 'Invalid user ID' });
+        const eligible = await loadParkWorkParticipants(require('../db').pool, 'chat', [userId]);
+        if (!eligible.has(userId)) return res.status(404).json({ error: 'User not found' });
         const profile = await chat.getUserProfile(userId);
         if (!profile) return res.status(404).json({ error: 'User not found' });
+        profile.role = eligible.get(userId).role;
+        if (Number(req.user.id) !== userId
+            && !require('../services/accountAccessPolicy').resolveCapability(req.user, 'hr.staff.view').allowed) {
+            delete profile.phone;
+            delete profile.telegram;
+        }
         res.json(profile);
     } catch (err) {
         log.error('Error fetching user profile', err);
@@ -1242,8 +1343,10 @@ router.get('/search', async (req, res) => {
             dateTo: req.query.date_to || null,
             type: req.query.type || null // 'files', 'links', 'mentions'
         };
+        const allowed = await loadReadableParkChatChannelIds(require('../db').pool, req.user);
+        filters.allowedChannelIds = [...allowed];
         const results = await chat.searchMessages(userId, q.trim(), filters.channelId, filters);
-        res.json(results);
+        res.json(results.filter(message => allowed.has(Number(message.channelId))));
     } catch (err) {
         log.error('Error searching messages', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -1255,7 +1358,8 @@ router.get('/tasks', async (req, res) => {
     try {
         const userId = req.user.id || req.user.userId;
         const tasks = await chat.getTasks(userId);
-        res.json(tasks);
+        const allowed = await loadReadableParkChatChannelIds(require('../db').pool, req.user);
+        res.json(tasks.filter(task => !task.channel_id || allowed.has(Number(task.channel_id))));
     } catch (err) {
         log.error('Error fetching tasks', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -1266,16 +1370,22 @@ router.get('/tasks', async (req, res) => {
 router.post('/tasks', async (req, res) => {
     try {
         const userId = getCurrentUserId(req);
+        if (!canUseTaskRouteCapability(req.user, 'create')
+            || !resolveCapability(req.user, '/tasks', { type: 'page' }).allowed
+            || !userBusinessModuleState(req.user, 'event_genix', 'tasks').available) {
+            return res.status(403).json({ error: 'Task creation access required' });
+        }
         const { channelId, messageId, assignedTo, title, deadline } = req.body;
         if (!title || !title.trim()) {
             return res.status(400).json({ error: 'Task title is required' });
         }
-        const parsedChannelId = channelId ? parseId(channelId) : null;
+        let parsedChannelId = channelId ? parseId(channelId) : null;
         const parsedMessageId = messageId ? parseId(messageId) : null;
         const parsedAssignedTo = assignedTo ? parseId(assignedTo) : null;
         if (channelId && !parsedChannelId) return res.status(400).json({ error: 'Invalid channel ID' });
         if (messageId && !parsedMessageId) return res.status(400).json({ error: 'Invalid message ID' });
         if (assignedTo && !parsedAssignedTo) return res.status(400).json({ error: 'Invalid assignee ID' });
+        if (parsedAssignedTo && !await hasParkChatTarget(parsedAssignedTo)) return res.status(403).json({ error: 'Park assignee unavailable' });
         if (channelId) {
             if (!await requireChannelMemberOrRespond(parsedChannelId, userId, res)) return;
             if (messageId) {
@@ -1288,6 +1398,20 @@ router.post('/tasks', async (req, res) => {
         } else if (messageId) {
             const msg = await getMessageForChannelMember(parsedMessageId, userId, res);
             if (!msg) return;
+            parsedChannelId = Number(msg.channel_id);
+        }
+        if (parsedAssignedTo && parsedChannelId) {
+            const target = (await loadParkWorkParticipants(require('../db').pool, 'chat', [parsedAssignedTo])).get(parsedAssignedTo);
+            if (!target || !await canReadParkChatChannel(require('../db').pool, target, parsedChannelId)) {
+                return res.status(403).json({ error: 'Assignee must have channel access' });
+            }
+        }
+        if (parsedAssignedTo && parsedAssignedTo !== Number(userId)) {
+            try {
+                await require('../services/taskExecution').getAssignableTaskOwner(parsedAssignedTo, {
+                    actor: req.user, pool: require('../db').pool, businessContext: 'event_genix'
+                });
+            } catch { return res.status(403).json({ error: 'Task assignment scope required' }); }
         }
         const taskResult = await chat.createTask({
             channelId: parsedChannelId,
@@ -1323,7 +1447,14 @@ router.patch('/tasks/:id', async (req, res) => {
         if (!['open', 'in_progress', 'done'].includes(status)) {
             return res.status(400).json({ error: 'Invalid status' });
         }
-        const task = await chat.updateTask(taskId, userId, { status, role: req.user.role });
+        const existing = (await require('../db').pool.query('SELECT * FROM chat_tasks WHERE id = $1', [taskId])).rows[0];
+        if (!existing) return res.status(404).json({ error: 'Task not found' });
+        if (existing.channel_id && !await requireChannelMemberOrRespond(existing.channel_id, userId, res)) return;
+        const canManage = resolveCapability(req.user, 'tasks.review').allowed;
+        if (!canManage && ![Number(existing.assigned_to), Number(existing.assigned_by)].includes(Number(userId))) {
+            return res.status(403).json({ error: 'Task participant access required' });
+        }
+        const task = await chat.updateTask(taskId, userId, { status, canManage });
         if (!task) return res.status(404).json({ error: 'Task not found' });
         res.json(task);
     } catch (err) {
@@ -1351,10 +1482,11 @@ router.get('/messages/:id/thread', async (req, res) => {
             SELECT cm.*, u.username, u.name AS display_name
             FROM chat_messages cm
             JOIN users u ON u.id = cm.user_id
-            WHERE cm.thread_root_id = $1 AND cm.deleted_at IS NULL
+            WHERE cm.thread_root_id = $1 AND cm.channel_id = $2 AND cm.deleted_at IS NULL
+              AND cm.is_scheduled IS DISTINCT FROM TRUE
             ORDER BY cm.seq ASC
             LIMIT 200
-        `, [messageId]);
+        `, [messageId, rootMessage.channel_id]);
 
         res.json(result.rows.map(r => chat.mapMessageRow(r)));
     } catch (err) {
@@ -1462,6 +1594,7 @@ router.get('/bookmarks', async (req, res) => {
         const userId = req.user.id || req.user.userId;
         const category = req.query.category || null;
         const pool = require('../db').pool;
+        const allowed = await loadReadableParkChatChannelIds(pool, req.user);
 
         let query = `
             SELECT b.*, cm.content, cm.created_at AS message_date, cm.channel_id,
@@ -1471,11 +1604,12 @@ router.get('/bookmarks', async (req, res) => {
             JOIN users u ON u.id = cm.user_id
             JOIN chat_channels cc ON cc.id = cm.channel_id
             JOIN chat_channel_members ccm ON ccm.channel_id = cm.channel_id AND ccm.user_id = b.user_id
-            WHERE b.user_id = $1`;
-        const params = [userId];
+            WHERE b.user_id = $1 AND cm.channel_id = ANY($2::integer[])
+              AND cm.deleted_at IS NULL AND cm.is_scheduled IS DISTINCT FROM TRUE`;
+        const params = [userId, [...allowed]];
 
         if (category) {
-            query += ' AND b.category = $2';
+            query += ' AND b.category = $3';
             params.push(category);
         }
         query += ' ORDER BY b.created_at DESC LIMIT 100';
@@ -1618,13 +1752,15 @@ router.get('/scheduled', async (req, res) => {
     try {
         const userId = req.user.id || req.user.userId;
         const pool = require('../db').pool;
+        const allowed = await loadReadableParkChatChannelIds(pool, req.user);
         const result = await pool.query(`
             SELECT cm.*, cc.name AS channel_name
             FROM chat_messages cm
             JOIN chat_channels cc ON cc.id = cm.channel_id
             WHERE cm.user_id = $1 AND cm.is_scheduled = true AND cm.scheduled_at > NOW()
+              AND cm.deleted_at IS NULL AND cm.channel_id = ANY($2::integer[])
             ORDER BY cm.scheduled_at
-        `, [userId]);
+        `, [userId, [...allowed]]);
         res.json(result.rows.map(r => ({
             id: r.id, content: r.content, channelId: r.channel_id,
             channelName: r.channel_name, scheduledAt: r.scheduled_at
@@ -1891,7 +2027,8 @@ router.get('/stats/leaderboard', async (req, res) => {
     try {
         const days = parseInt(req.query.days || '30', 10);
         const leaderboard = await chat.getChatActivityLeaderboard(days);
-        res.json(leaderboard);
+        const eligible = await loadParkWorkParticipantIds(require('../db').pool, 'chat');
+        res.json(leaderboard.filter(row => eligible.has(Number(row.user_id))));
     } catch (err) {
         log.error('Error getting chat leaderboard', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -1910,7 +2047,7 @@ router.get('/channels/:id/messages/after/:seq', async (req, res) => {
         const afterSeq = parseInt(req.params.seq, 10);
         if (isNaN(channelId) || isNaN(afterSeq)) return res.status(400).json({ error: 'Invalid params' });
 
-        if (!await chat.isMember(channelId, userId)) {
+        if (!await canReadParkChatChannel(require('../db').pool, req.user, channelId)) {
             return res.status(403).json({ error: 'Not a member' });
         }
 
@@ -1919,9 +2056,9 @@ router.get('/channels/:id/messages/after/:seq', async (req, res) => {
                 rm.content AS reply_content, ru.username AS reply_username
             FROM chat_messages cm
             JOIN users u ON u.id = cm.user_id
-            LEFT JOIN chat_messages rm ON rm.id = cm.reply_to
+            LEFT JOIN chat_messages rm ON rm.id = cm.reply_to AND rm.channel_id = cm.channel_id AND rm.deleted_at IS NULL AND rm.is_scheduled IS DISTINCT FROM TRUE
             LEFT JOIN users ru ON ru.id = rm.user_id
-            WHERE cm.channel_id = $1 AND cm.seq > $2
+            WHERE cm.channel_id = $1 AND cm.seq > $2 AND cm.is_scheduled IS DISTINCT FROM TRUE
             ORDER BY cm.seq ASC
             LIMIT 200
         `, [channelId, afterSeq]);
@@ -1938,7 +2075,8 @@ router.get('/channels/:id/messages/after/:seq', async (req, res) => {
 router.get('/online', async (req, res) => {
     try {
         const { getOnlineUserIds } = require('../services/websocket');
-        res.json({ onlineUserIds: getOnlineUserIds() });
+        const eligible = await loadParkWorkParticipantIds(require('../db').pool, 'chat');
+        res.json({ onlineUserIds: getOnlineUserIds().filter(id => eligible.has(Number(id))) });
     } catch (err) {
         res.json({ onlineUserIds: [] });
     }
@@ -1949,6 +2087,7 @@ router.get('/users/:id/last-seen', async (req, res) => {
     try {
         const targetId = parseInt(req.params.id, 10);
         if (isNaN(targetId)) return res.status(400).json({ error: 'Invalid user ID' });
+        if (!await hasParkChatTarget(targetId)) return res.status(404).json({ error: 'User not found' });
 
         const { getOnlineUserIds, getLastSeen } = require('../services/websocket');
         const onlineIds = getOnlineUserIds();
@@ -2233,7 +2372,7 @@ router.get('/polls/:pollId/results', async (req, res) => {
 });
 
 // v32.1: Помічник bridge — proxy to OpenClaw (HostHatch)
-router.post('/kleshnya', async (req, res) => {
+router.post('/kleshnya', requireLegacyBusinessSurface('kleshnya'), async (req, res) => {
     const { message, context } = req.body;
     const user = req.user;
 
@@ -2302,13 +2441,15 @@ router.post('/slash', async (req, res) => {
         switch (cmd) {
             case 'вільно':
             case 'free': {
+                if (!canViewTimelinePage(req.user, 'event_genix')
+                    || !userBusinessModuleState(req.user, 'event_genix', 'timeline').available) return res.status(403).json({ error: 'Timeline access required' });
                 const date = parseArgsDate(args);
                 const params = [date];
                 const visibility = getVisibleBookingScope(req.user, params, 'b');
                 const bk = await pool.query(
                     `SELECT SUBSTRING(b.time, 1, 5) AS t
                      FROM bookings b
-                     WHERE b.date = $1 AND b.status != 'cancelled'
+                     WHERE b.date = $1 AND b.status != 'cancelled' AND b.business_context = 'event_genix'
                      ${visibility.sql}
                      ORDER BY b.time`,
                     params
@@ -2323,13 +2464,15 @@ router.post('/slash', async (req, res) => {
             }
             case 'броні':
             case 'bookings': {
+                if (!canViewTimelinePage(req.user, 'event_genix')
+                    || !userBusinessModuleState(req.user, 'event_genix', 'timeline').available) return res.status(403).json({ error: 'Timeline access required' });
                 const date = parseArgsDate(args);
                 const params = [date];
                 const visibility = getVisibleBookingScope(req.user, params, 'b');
                 const rows = await pool.query(
                     `SELECT SUBSTRING(b.time,1,5) AS t, b.program_name, b.label
                      FROM bookings b
-                     WHERE b.date = $1 AND b.status != 'cancelled'
+                     WHERE b.date = $1 AND b.status != 'cancelled' AND b.business_context = 'event_genix'
                      ${visibility.sql}
                      ORDER BY b.time LIMIT 20`,
                     params
@@ -2341,12 +2484,16 @@ router.post('/slash', async (req, res) => {
             }
             case 'задачі':
             case 'tasks': {
+                if (!resolveCapability(req.user, '/tasks', { type: 'page' }).allowed
+                    || !userBusinessModuleState(req.user, 'event_genix', 'tasks').available) return res.status(403).json({ error: 'Tasks access required' });
+                const taskParams = [];
+                const taskScope = buildTaskVisibilityScope(req.user, taskParams, 't');
                 const rows = await pool.query(
-                    `SELECT title, priority, deadline FROM tasks
-                     WHERE (assigned_to = $1 OR created_by = $1) AND status IN ('todo', 'in_progress')
+                    `SELECT title, priority, deadline FROM tasks t
+                     WHERE t.business_context = 'event_genix' AND status IN ('todo', 'in_progress') ${taskScope}
                      ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END, deadline NULLS LAST
                      LIMIT 5`,
-                    [req.user.username]
+                    taskParams
                 );
                 reply = rows.rowCount
                     ? `✅ Задачі (${rows.rowCount}):\n` + rows.rows.map(t =>
@@ -2356,10 +2503,12 @@ router.post('/slash', async (req, res) => {
                 break;
             }
             case 'склад': {
+                if (!resolveCapability(req.user, '/warehouse', { type: 'page' }).allowed
+                    || !userBusinessModuleState(req.user, 'event_genix', 'warehouse').available) return res.status(403).json({ error: 'Warehouse access required' });
                 const search = args ? `%${args}%` : '%';
                 const rows = await pool.query(
                     `SELECT name, quantity, min_quantity, unit FROM warehouse_stock
-                     WHERE name ILIKE $1 AND is_active = true ORDER BY name LIMIT 5`,
+                     WHERE name ILIKE $1 AND is_active = true AND business_context = 'event_genix' ORDER BY name LIMIT 5`,
                     [search]
                 );
                 reply = rows.rowCount
@@ -2534,6 +2683,10 @@ router.patch('/messages/:id/important', async (req, res) => {
 // POST /api/chat/room-channels/init — create channels for all rooms
 router.post('/room-channels/init', async (req, res) => {
     try {
+        if (!canViewTimelinePage(req.user, 'event_genix')
+            || !userBusinessModuleState(req.user, 'event_genix', 'timeline').available) {
+            return res.status(403).json({ error: 'Timeline access required' });
+        }
         const pool = require('../db').pool;
         if (!['admin', 'director', 'creator'].includes(req.user.role)) {
             return res.status(403).json({ error: 'Admin only' });
@@ -2542,7 +2695,7 @@ router.post('/room-channels/init', async (req, res) => {
         const roomScope = getVisibleBookingScope(req.user, roomParams, 'b');
         const rooms = await pool.query(
             `SELECT DISTINCT b.line_id FROM bookings b
-             WHERE b.line_id IS NOT NULL AND b.line_id != ''
+             WHERE b.line_id IS NOT NULL AND b.line_id != '' AND b.business_context = 'event_genix'
              ${roomScope.sql}
              ORDER BY b.line_id`,
             roomParams
@@ -2573,16 +2726,20 @@ router.get('/room-channels/:lineId/history', async (req, res) => {
         // Bookings in this room
         const bookingParams = [lineId, limit];
         const bookingScope = getVisibleBookingScope(req.user, bookingParams, 'b');
-        const bookings = await pool.query(
+        const canReadHistory = canViewTimelinePage(req.user, 'event_genix')
+            && userBusinessModuleState(req.user, 'event_genix', 'timeline').available
+            && resolveCapability(req.user, 'bookings.details.view').allowed
+            && resolveCapability(req.user, 'bookings.contacts.view').allowed;
+        const bookings = canReadHistory ? await pool.query(
             `SELECT 'booking' AS source_type, id AS source_id,
                     date || 'T' || SUBSTRING(time,1,5) AS event_time,
                     program_name || ' | ' || COALESCE(group_name, label, '') AS content,
                     status, kids_count, created_by
-             FROM bookings b WHERE b.line_id = $1
+             FROM bookings b WHERE b.line_id = $1 AND b.business_context = 'event_genix'
              ${bookingScope.sql}
              ORDER BY b.date DESC, b.time DESC LIMIT $2`,
             bookingParams
-        );
+        ) : { rows: [] };
 
         // Chat messages in room channel
         let chatMsgs = { rows: [] };
@@ -2591,7 +2748,7 @@ router.get('/room-channels/:lineId/history', async (req, res) => {
                 `SELECT 'chat' AS source_type, cm.id::text AS source_id,
                         cm.created_at AS event_time, cm.content, u.name AS author
                  FROM chat_messages cm JOIN users u ON u.id = cm.user_id
-                 WHERE cm.channel_id = $1 AND cm.deleted_at IS NULL
+                 WHERE cm.channel_id = $1 AND cm.deleted_at IS NULL AND cm.is_scheduled IS DISTINCT FROM TRUE
                  ORDER BY cm.created_at DESC LIMIT $2`,
                 [chanRow.rows[0].id, limit]
             );

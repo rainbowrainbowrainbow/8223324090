@@ -150,10 +150,10 @@ describe('chat task authorization and duplicate-safe creation', () => {
         assert.equal(state.tasks.find(task => task.id === 2).status, 'open');
     });
 
-    it('allows elevated chat-task managers to update without ownership', async () => {
+    it('requires a resolved management capability rather than a role string to update without ownership', async () => {
         const chat = loadChatService();
-
-        const task = await chat.updateTask(2, 99, { status: 'in_progress', role: 'director' });
+        assert.equal(await chat.updateTask(2, 99, { status: 'in_progress', role: 'director' }), null);
+        const task = await chat.updateTask(2, 99, { status: 'in_progress', canManage: true });
 
         assert.equal(task.id, 2);
         assert.equal(task.status, 'in_progress');

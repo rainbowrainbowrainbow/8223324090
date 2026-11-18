@@ -1869,34 +1869,7 @@ async function checkHotLeads() {
  * Send scheduled chat messages that are due.
  */
 async function claimDueScheduledChatMessages(now, limit = 20) {
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
-        const result = await client.query(`
-            WITH due AS (
-                SELECT id
-                FROM chat_messages
-                WHERE is_scheduled = true
-                  AND scheduled_at <= $1
-                  AND deleted_at IS NULL
-                ORDER BY scheduled_at ASC, id ASC
-                LIMIT $2
-                FOR UPDATE SKIP LOCKED
-            )
-            UPDATE chat_messages cm
-            SET is_scheduled = false
-            FROM due
-            WHERE cm.id = due.id
-            RETURNING cm.*
-        `, [now, limit]);
-        await client.query('COMMIT');
-        return result.rows;
-    } catch (err) {
-        await client.query('ROLLBACK');
-        throw err;
-    } finally {
-        client.release();
-    }
+    return require('./chatScheduledAccess').claimDueScheduledChatMessages(pool, now, limit);
 }
 
 async function checkScheduledChatMessages() {

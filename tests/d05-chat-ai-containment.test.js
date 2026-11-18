@@ -9,6 +9,7 @@ const { createRequire } = require('node:module');
 const express = require('express');
 const auth = require('../middleware/auth');
 const { buildMembershipAccess, applyMembershipAccess } = require('../services/businessMembership');
+const chatUploadStorage = require('../services/chatUploadStorage');
 
 const contexts = ['event_genix', 'dar', 'crm', 'maysternya_doli', 'fixture_business'];
 function actor(context, mode = 'membership', { revoked = false, inactive = false, role = 'creator' } = {}) {
@@ -63,7 +64,7 @@ function fixture() {
             getChannelMessages: serviceCall('getChannelMessages'), importAssistantTranscript: serviceCall('importAssistantTranscript')
         },
         '../services/websocket': { broadcastToChannel: serviceCall('broadcast'), sendToUser: serviceCall('sendToUser'), sendToUsername: serviceCall('sendToUsername') },
-        '../services/chatUploadStorage': { prepareChatUploadBlob: serviceCall('upload'), validateChatUploadFile: noop },
+        '../services/chatUploadStorage': { ...chatUploadStorage, prepareChatUploadBlob: serviceCall('upload'), validateChatUploadFile: noop },
         '../services/chat-bot': { processMessage: serviceCall('bot') },
         '../services/guardian': {}, '../services/linkPreview': {},
         '../services/dashboardAssistant': {},
@@ -106,7 +107,7 @@ function assertNoWork(state) {
     assert.equal(state.providerCalls, 0, 'No AI/provider invocation');
 }
 
-test('actual chat router denies membership and non-Park compatibility before defaults, reads, transcripts or upload', async () => {
+test('actual chat router denies unconfigured Park and foreign membership/compatibility before any domain work', async () => {
     const f = fixture();
     await withHttp(f, async request => {
         for (const context of contexts) {
@@ -146,7 +147,7 @@ test('every existing Kleshnya JWT route is denied before SQL, history, proxy or 
     });
 });
 
-test('pre-cutover Park retains existing route responses and role/auth guards', async () => {
+test('pre-cutover Park cannot reopen Chat while Kleshnya retains its separately scoped compatibility', async () => {
     const f = fixture();
     f.state.mode = 'compatibility';
     await withHttp(f, async request => {
@@ -154,17 +155,16 @@ test('pre-cutover Park retains existing route responses and role/auth guards', a
         assert.equal((await request('/api/kleshnya/sessions', { authenticated: false })).status, 401);
         assertNoWork(f.state);
         const channels = await request('/api/chat/channels');
-        assert.equal(channels.status, 200);
-        assert.deepEqual(channels.body, []);
-        assert.deepEqual(f.state.serviceCalls, ['ensureDefaultMemberships', 'getChannels']);
+        assert.equal(channels.status, 403);
+        assert.deepEqual(f.state.serviceCalls, []);
         assert.equal((await request('/api/kleshnya/sessions')).status, 200);
         assert.equal(f.state.queries.length, 1);
         f.state.user = actor('event_genix', 'compatibility', { role: 'waiter' });
-        assert.equal((await request('/api/chat/channels')).status, 200);
-        assert.equal(f.state.serviceCalls.length, 4);
+        assert.equal((await request('/api/chat/channels')).status, 403);
+        assert.equal(f.state.serviceCalls.length, 0);
         f.state.user.page_denylist = ['/chat'];
         assert.equal((await request('/api/chat/channels')).status, 403);
-        assert.equal(f.state.serviceCalls.length, 4);
+        assert.equal(f.state.serviceCalls.length, 0);
     });
 });
 

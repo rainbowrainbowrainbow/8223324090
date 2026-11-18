@@ -147,6 +147,11 @@ manual classification and baseline QA plans require explicit inclusion in that
 same owner authorization. Rebind only releaseSha to the verified canonical
 version/cache/changelog descendant if the owner expressly allows that rule;
 all resource/snapshot/identity/date/time/count/TTL fields remain fixed.
+Final rollback review found that the ordinary upload helper rejects older
+versions. The owner package must explicitly include the rollback-only Railway
+redeploy of prior build0442008d-5cca-487b-bf14-e5086108bd9b (SHA859196fe), after
+exact QA and metadata cleanup. This is a proposed specific exception, not current
+authorization or a controller-policy change. See PRODUCTION_CUTOVER_PLAN.md.
 
 Owned local PostgreSQL17 at output/staff-professions-pg-final/data, port55442,
 baseline_access_disposable_test is stopped, verified pg_ctl status3. Fast shutdown

@@ -100,9 +100,26 @@ edited. Synthetic records may not send Telegram/push/messages to real recipients
 create invoices/payments or change real compensation. Cleanup may target only
 that approved run's registry-owned IDs.
 
-Application rollback uses the documented guarded helper and the recorded prior
-live base. The metadata rollback above is independent. Do not claim a deployed
-rollback point or live proof before the corresponding actions actually occur.
+The ordinary upload helper refuses an older version over a newer live version;
+do not promise that it can upload0.84.8 over0.84.9. The proposed explicit Red
+rollback-only exception reuses the existing successful Railway build:
+deployment0442008d-5cca-487b-bf14-e5086108bd9b, SHA859196fedb107b443719cbfc576fa9352cbee15a,
+via Railway redeploy with that exact deploymentId and the fixed project,
+environment and service UUIDs above. The provider's read-only deployment list
+confirms that this build is reusable. No rollback is currently authorized.
+
+Before that rollback, the baseline QA run must be absent or proven cleaned;
+cancel its child booking before retiring identities. Restore only the15approved
+metadata keys under the original snapshot guard while the candidate SHA is still
+live. On cleanup/ownership/metadata drift, stop for review; never drop guards to
+make rollback appear complete. This exception is only for that prior build,
+without arbitrary uploads, settings/secret changes, force-push or shared-history
+rewrite. Verify live0.84.8/exact prior SHA/production branch afterward. The remote
+production ref can then differ from live; record that state and reconcile under
+a later release envelope rather than rewriting history. New releases still use
+the canonical controller/upload helper. The final owner block must explicitly
+authorize this exact rollback path in addition to the forward release and data
+plans; permission is never inferred from the prepared controller manifest.
 
 ## Read-only Railway preflight
 

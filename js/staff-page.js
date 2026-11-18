@@ -3112,7 +3112,8 @@ function syncScheduleRangeActionAvailability() {
     const ready = scheduleRangeDataReady();
     [
         ['exportExcelBtn', ready && StaffState.canExportSchedule],
-        ['printBtn', ready]
+        ['printBtn', ready],
+        ['scheduleAddFreelanceBtn', ready && StaffState.canManageSchedule]
     ].forEach(([id, enabled]) => {
         const button = document.getElementById(id);
         if (!button) return;
@@ -4121,8 +4122,8 @@ function renderScheduleStaffFilterInfo(filteredStaff = null, reserveCount = 0) {
 
 function bindScheduleStaffSearchControls() {
     const workMode = document.getElementById('scheduleWorkModeFilter');
+    if (workMode) workMode.value = StaffState.workModeFilter || 'all';
     if (workMode && workMode.dataset.scheduleWorkModeBound !== 'true') {
-        workMode.value = StaffState.workModeFilter || 'all';
         workMode.addEventListener('change', () => {
             StaffState.workModeFilter = workMode.value;
             renderSchedule();
@@ -4500,36 +4501,57 @@ function renderFreelanceScheduleRow(department, days) {
 }
 
 async function chooseFreelanceStaff(button) {
+    if (!scheduleRangeDataReady() || !StaffState.canManageSchedule) return;
     const dialog = document.getElementById('scheduleFreelanceStaffDialog');
+    if (dialog.open) return;
     const form = dialog.querySelector('form');
     const select = form.elements.staff;
+    const dateInput = form.elements.date;
     const submitButton = form.querySelector('[type="submit"]');
     const status = document.getElementById('scheduleFreelanceStaffStatus');
-    const { freelanceDate: date, freelanceDepartment: department } = button.dataset;
+    const { freelanceDate: fixedDate, freelanceDepartment } = button.dataset;
+    const department = freelanceDepartment || (StaffState.activeDept === 'all' ? '' : StaffState.activeDept);
+    const dateField = form.querySelector('[data-freelance-date-field]');
+    const { start, end } = scheduleCurrentRange();
+    dateField.hidden = dateInput.disabled = Boolean(fixedDate);
+    dateInput.autofocus = !fixedDate;
+    select.autofocus = Boolean(fixedDate);
+    dateInput.min = formatDateStr(start);
+    dateInput.max = formatDateStr(end);
+    const today = todayStr();
+    dateInput.value = fixedDate || (today >= dateInput.min && today <= dateInput.max ? today : dateInput.min);
     const context = staffScheduleRequestContext();
     const range = scheduleCommittedRangeKey();
-    const roster = groupStaffByScheduleDepartment(StaffState.staff, { department, grouping: 'canonical' })[department] || [];
+    const roster = fixedDate
+        ? groupStaffByScheduleDepartment(StaffState.staff, { department, grouping: 'canonical' })[department] || []
+        : [];
     const candidates = new Map();
     const coreGroup = document.createElement('optgroup');
     coreGroup.label = 'Основна команда · ' + scheduleDisplayDepartmentLabel(department);
-    for (const staff of uniqueScheduleStaffById(roster).filter(staff => isScheduleableStaffForUi(staff, date))) {
+    for (const staff of uniqueScheduleStaffById(roster).filter(staff => isScheduleableStaffForUi(staff, fixedDate))) {
         candidates.set(String(staff.id), { staff, professionKey: scheduleProfessionKeyForDepartment(staff, department) });
         coreGroup.append(new Option(scheduleStaffDisplayName(staff), staff.id));
     }
     select.replaceChildren(new Option('Оберіть співробітника', '', true, true));
     if (coreGroup.children.length) select.append(coreGroup);
     submitButton.disabled = true;
-    select.onchange = () => { submitButton.disabled = !candidates.has(select.value); };
+    const syncSubmitButton = () => {
+        submitButton.disabled = !dateInput.validity.valid || !candidates.has(select.value);
+    };
+    select.onchange = syncSubmitButton;
+    dateInput.oninput = syncSubmitButton;
     status.textContent = 'Завантажуємо резерв…';
-    dialog.querySelector('[data-freelance-date-label]').textContent =
-        scheduleDisplayDepartmentLabel(department) + ' · ' + date;
+    const departmentLabel = department ? scheduleDisplayDepartmentLabel(department) : 'Усі відділи';
+    dialog.querySelector('[data-freelance-date-label]').textContent = fixedDate
+        ? departmentLabel + ' · ' + fixedDate : departmentLabel;
     const isCurrent = () => dialog.open && form.onsubmit === submit
         && context === staffScheduleRequestContext() && range === scheduleCommittedRangeKey()
         && scheduleRangeDataReady() && StaffState.canManageSchedule;
     const submit = event => {
         event.preventDefault();
         const candidate = candidates.get(select.value);
-        if (!isCurrent() || !candidate) return;
+        if (!isCurrent() || !candidate || !dateInput.validity.valid) return;
+        const date = fixedDate || dateInput.value;
         const { staff, professionKey } = candidate;
         const reserveStaff = staffPoolStatusForSchedule(staff) === 'reserve' ? staff : null;
         dialog.close();
@@ -4667,6 +4689,12 @@ function renderSchedule() {
         }
     }
     renderScheduleStaffFilterInfo(baseFiltered, visibleReserveIds.size);
+    const addFreelanceButton = document.getElementById('scheduleAddFreelanceBtn');
+    if (addFreelanceButton) {
+        const noFreelanceResults = StaffState.workModeFilter === 'freelance' && visibleReserveIds.size === 0;
+        addFreelanceButton.hidden = !StaffState.canManageSchedule || filtered.length > 0
+            || (StaffState.activeDept === 'all' && !noFreelanceResults);
+    }
 
     let bodyHtml = '';
 
@@ -4674,7 +4702,7 @@ function renderSchedule() {
         const message = baseFiltered.length
             ? 'Немає рядків для поточного health-фільтра.'
             : 'Немає працівників у поточному фільтрі графіка.';
-        bodyHtml = `<tr class="schedule-health-empty-row"><td colspan="${dates.length + 1}">${escapeHtml(message)}</td></tr>`;
+        bodyHtml = `<tr class="schedule-health-empty-row"><td colspan="${dates.length + 1}"><span>${escapeHtml(message)}</span></td></tr>`;
     }
 
     for (const dept of scheduleDepartmentRenderOrder(grouped)) {
@@ -7890,6 +7918,53 @@ async function goToWeek(monday) {
     return goToScheduleRange(range.start, range.end, 'rolling');
 }
 
+async function focusScheduleFreelance(staffId, date, { rangeLoaded = false } = {}) {
+    const id = normalizeScheduleFocusStaffId(staffId);
+    const targetDate = parseScheduleDateInput(date);
+    if (!id || !targetDate || !staffScheduleInitialized) return false;
+    const wrapper = document.getElementById('scheduleWrapper');
+    const context = staffScheduleRequestContext();
+    const loaded = StaffState.canViewSchedule
+        && (rangeLoaded ? scheduleRangeDataReady() : await goToScheduleRange(targetDate, targetDate));
+    if (wrapper.closest('.hr-tab-content:not(.active)') || context !== staffScheduleRequestContext()) return false;
+
+    const dateKey = formatDateStr(targetDate);
+    const entry = loaded ? StaffState.freelanceReserveSchedule[`${id}_${dateKey}`] : null;
+    const segment = entry && scheduleEntrySegmentsForUi(entry, entry.role_type)
+        .find(item => item.workMode === 'freelance');
+    if (!segment) {
+        showNotification(loaded
+            ? 'Фріланс-вихід на цю дату більше недоступний або його видалено.'
+            : 'Не вдалося відкрити фріланс-вихід. Перевірте доступ до графіка та спробуйте ще раз.', 'warning');
+        return false;
+    }
+
+    const staff = { ...entry, id };
+    const department = scheduleProfessionDisplayGroupKey(segment.professionKey) || scheduleDisplayDepartmentKey(staff);
+    if (StaffState.activeDept !== 'all' && StaffState.activeDept !== department) {
+        StaffState.activeDept = department;
+        renderDeptFilter();
+    }
+    const search = normalizeScheduleSearchText(StaffState.searchQuery);
+    if (search && !scheduleStaffSearchHaystack(staff).includes(search)) StaffState.searchQuery = '';
+    if (StaffState.workModeFilter === 'regular') StaffState.workModeFilter = 'freelance';
+    StaffState.focusedStaffId = null;
+    StaffState.focusScrollPending = false;
+    expandedFreelanceDepartments.add(department);
+    setScheduleGroupExpanded(department, true);
+    if (StaffState.showLoadView) resetSchedulePrimaryViewMode();
+    renderSchedule();
+
+    const target = wrapper.querySelector(`[data-freelance-staff="${id}"][data-freelance-date="${dateKey}"][data-freelance-segment="${Number(segment.id)}"]`);
+    if (!target) {
+        showNotification('Фріланс-вихід на цю дату більше недоступний або його видалено.', 'warning');
+        return false;
+    }
+    target.scrollIntoView({ block: 'center', inline: 'center' });
+    target.focus({ preventScroll: true });
+    return true;
+}
+
 async function openScheduleDayPlan(staffId, date) {
     if (!staffScheduleInitialized && staffScheduleInitPromise) await staffScheduleInitPromise;
     if (!staffScheduleInitialized) return false;
@@ -9750,7 +9825,9 @@ async function initStaffSchedulePage(options = {}) {
         const query = new URLSearchParams(window.location.search);
         const draft = readScheduleHrDraft(query.get('scheduleDraft') || '');
         const linkedDate = parseScheduleDateInput(query.get('scheduleDate'));
-        if (draft?.range?.from && draft?.range?.to) await goToScheduleRange(draft.range.from, draft.range.to, draft.rangeMode);
+        const linkedFreelanceStaffId = normalizeScheduleFocusStaffId(query.get('scheduleFreelanceStaff'));
+        if (linkedFreelanceStaffId && linkedDate) await goToScheduleRange(linkedDate, linkedDate);
+        else if (draft?.range?.from && draft?.range?.to) await goToScheduleRange(draft.range.from, draft.range.to, draft.rangeMode);
         else await goToWeek(getScheduleFocusStart(linkedDate || new Date()));
         if (initialContext !== staffScheduleRequestContext()) {
             clearStaffScheduleAccessState();
@@ -9766,6 +9843,9 @@ async function initStaffSchedulePage(options = {}) {
         document.getElementById('nextWeekBtn')?.addEventListener('click', nextWeek);
         document.getElementById('todayWeekBtn')?.addEventListener('click', goToday);
         document.getElementById('schSaveBtn')?.addEventListener('click', handleSave);
+        document.getElementById('scheduleAddFreelanceBtn')?.addEventListener('click', event => {
+            chooseFreelanceStaff(event.currentTarget);
+        });
         document.getElementById('schReplaceBtn')?.addEventListener('click', handleReplaceSchedule);
         document.getElementById('schClearReplacementBtn')?.addEventListener('click', handleClearReplacement);
         document.getElementById('schCancelBtn')?.addEventListener('click', () => closeEditModal(false));
@@ -9847,6 +9927,9 @@ async function initStaffSchedulePage(options = {}) {
         });
 
         staffScheduleInitialized = true;
+        if (linkedFreelanceStaffId && linkedDate) {
+            await focusScheduleFreelance(linkedFreelanceStaffId, formatDateStr(linkedDate), { rangeLoaded: true });
+        }
         staffScheduleAccessFingerprint = staffScheduleRequestContext();
         restoreScheduleHrDraft(draft);
         const linkedSegment = Number(query.get('scheduleSegment'));
@@ -9878,6 +9961,7 @@ window.StaffSchedulePage = {
     refresh: refreshStaffSchedulePage,
     isInitialized: () => staffScheduleInitialized,
     focusStaff: focusScheduleStaff,
+    focusFreelance: focusScheduleFreelance,
     openDayPlan: openScheduleDayPlan,
     renderSchedule
 };

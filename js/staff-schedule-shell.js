@@ -122,6 +122,10 @@
                     <h2 id="scheduleFreelanceStaffTitle">Додати фріланс</h2>
                     <p class="schedule-freelance-dialog-context" data-freelance-date-label></p>
                     <form>
+                        <div class="form-group" data-freelance-date-field hidden>
+                            <label for="scheduleFreelanceDate">Дата виходу</label>
+                            <input type="date" name="date" id="scheduleFreelanceDate" required disabled>
+                        </div>
                         <div class="form-group">
                             <label for="scheduleFreelanceStaff">Співробітник</label>
                             <select name="staff" id="scheduleFreelanceStaff" aria-describedby="scheduleFreelanceStaffStatus" required autofocus></select>
@@ -133,6 +137,7 @@
                         </div>
                     </form>
                 </dialog>
+                <button type="button" id="scheduleAddFreelanceBtn" class="btn-page-primary schedule-add-freelance" aria-haspopup="dialog" hidden>Додати фріланс</button>
                 <div id="scheduleWrapper" class="schedule-wrapper" role="region" aria-label="Графік співробітників" tabindex="0">
                     <table class="schedule-table">
                         <caption class="staff-schedule-table-caption">Графік роботи співробітників за вибраний період</caption>

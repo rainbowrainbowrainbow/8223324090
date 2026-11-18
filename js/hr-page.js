@@ -2808,20 +2808,29 @@ function renderTodayStaffProfileAction(staffId, staffName) {
     return `<button type="button" class="hr-today-row-action hr-today-row-action--profile" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}" onclick="event.stopPropagation();openStaffEdit(${id})">${hrTodayActionIconSvg('profile')}</button>`;
 }
 
-function renderTodayStaffScheduleAction(staffId, staffName) {
+function renderTodayStaffScheduleAction(staffId, staffName, freelanceDate = '') {
     if ((isTodayRecoveryReadOnly() || isTodayParkScoped()) && !canUseHrCapability('hr.schedule.view')) return '';
     const label = `Відкрити графік: ${staffName}`;
     const id = Number(staffId);
     if (!Number.isInteger(id) || id <= 0) return '';
-    return `<a href="/hr?scheduleStaff=${encodeURIComponent(id)}#schedule" class="hr-today-row-action hr-today-row-action--schedule" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}" onclick="event.preventDefault();event.stopPropagation();openTodayStaffSchedule(${id})">${hrTodayActionIconSvg('schedule')}</a>`;
+    const params = freelanceDate
+        ? new URLSearchParams({ scheduleFreelanceStaff: id, scheduleDate: freelanceDate })
+        : new URLSearchParams({ scheduleStaff: id });
+    return `<a href="/hr?${escapeHtml(params.toString())}#schedule" class="hr-today-row-action hr-today-row-action--schedule"
+        title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}" data-schedule-freelance-date="${escapeHtml(freelanceDate)}"
+        onclick="event.stopPropagation();if(event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;event.preventDefault();openTodayStaffSchedule(${id},this.dataset.scheduleFreelanceDate)">${hrTodayActionIconSvg('schedule')}</a>`;
 }
 
-async function openTodayStaffSchedule(staffId) {
+async function openTodayStaffSchedule(staffId, freelanceDate = '') {
     if ((isTodayRecoveryReadOnly() || isTodayParkScoped()) && !canUseHrCapability('hr.schedule.view')) return;
     const id = Number(staffId);
     if (!Number.isInteger(id) || id <= 0) return;
     await activateHrTab('schedule', { updateHash: true });
-    if (window.StaffSchedulePage && typeof window.StaffSchedulePage.focusStaff === 'function') {
+    if (freelanceDate) {
+        if (document.getElementById('tab-schedule')?.classList.contains('active')) {
+            await window.StaffSchedulePage?.focusFreelance(id, freelanceDate);
+        }
+    } else if (window.StaffSchedulePage && typeof window.StaffSchedulePage.focusStaff === 'function') {
         window.StaffSchedulePage.focusStaff(id);
     }
 }
@@ -3110,7 +3119,7 @@ function renderToday(data) {
                     <span class="hr-staff-name-text">${escapeHtml(item.staff_name)}</span>
                     <span class="hr-today-row-actions">
                         ${renderTodayStaffProfileAction(item.staff_id, item.staff_name)}
-                        ${renderTodayStaffScheduleAction(item.staff_id, item.staff_name)}
+                        ${renderTodayStaffScheduleAction(item.staff_id, item.staff_name, item.is_reserve ? data.date : '')}
                     </span>
                 </div>
                 <div class="hr-staff-meta">${roleMeta}${meta ? ' · ' + meta : ''}</div>

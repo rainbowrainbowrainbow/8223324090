@@ -330,9 +330,29 @@ async function run() {
         await savePlan();
         await reserveRecord.waitFor({ state: 'hidden' });
 
-        stage = 'first freelance assignment in the trampoline department';
-        const trampolineDate = new Date(Date.parse(date + 'T12:00:00Z') + 2 * 86_400_000).toISOString().slice(0, 10);
-        await openSchedule(trampolineDate, '/hr#schedule');
+        stage = 'empty freelance filter across all departments';
+        const laterDate = offset => new Date(Date.parse(date + 'T00:00:00Z') + offset * 86_400_000).toISOString().slice(0, 10);
+        const trampolineDate = laterDate(8);
+        const rangeStart = laterDate(7);
+        const readRange = async (from, to) => {
+            await page.locator('#scheduleDateFrom').fill(from);
+            await page.locator('#scheduleDateTo').fill(to);
+            const [response] = await Promise.all([
+                page.waitForResponse(response => {
+                    const url = new URL(response.url());
+                    return response.request().method() === 'GET' && url.pathname === '/api/staff/schedule'
+                        && url.searchParams.get('from') === from && url.searchParams.get('to') === to;
+                }),
+                page.locator('#applyScheduleRangeBtn').click()
+            ]);
+            assert.equal(response.status(), 200);
+            await page.locator('#scheduleDataRegion[data-schedule-state="ready"], #scheduleDataRegion[data-schedule-state="empty"]').waitFor();
+            return (await response.json()).data;
+        };
+        await page.goto(new URL('/hr#schedule', base).href, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => window.StaffSchedulePage?.isInitialized());
+        const beforeFirstFreelance = await readRange(rangeStart, trampolineDate);
+        assert.equal(beforeFirstFreelance.some(entry => entry.segments?.some(segment => segment.workMode === 'freelance')), false);
         await page.locator('#deptFilter [data-dept="all"]').click();
         const departments = await page.locator('#deptFilter [data-dept]:not([data-dept="all"])')
             .evaluateAll(chips => chips.map(chip => chip.dataset.dept));
@@ -343,39 +363,64 @@ async function run() {
                 await page.locator(`#scheduleBody button[data-freelance-toggle="${department}"]`).waitFor();
             }
         }
+        const emptyAdd = page.getByRole('button', { name: 'Додати фріланс', exact: true });
+        await emptyAdd.waitFor();
+        await emptyAdd.press('Enter');
+        await chooser.getByText('Усі відділи', { exact: true }).waitFor();
+        await page.keyboard.press('Escape');
+        await chooser.waitFor({ state: 'hidden' });
+        assert.equal(await emptyAdd.evaluate(button => button === document.activeElement), true);
+        stage = 'first freelance assignment from an empty department';
         await page.locator('#deptFilter [data-dept="trampoline"]').click();
         assert.equal(await page.locator('#scheduleBody [data-schedule-staff-row]').count(), 0);
-        const trampolineToggle = page.getByRole('button', { name: 'Фріланс · Батутисти', exact: true });
         const trampolineRow = page.locator('#scheduleFreelance-trampoline');
-        assert.equal(await trampolineToggle.getAttribute('aria-expanded'), 'false');
+        await workModeFilter.selectOption('all');
+        await page.locator('#scheduleStaffSearch').fill(trampolineReserve.name);
+        assert.equal(await page.locator('#scheduleBody [data-schedule-staff-row]').count(), 0);
+        await emptyAdd.waitFor();
+        await workModeFilter.selectOption('freelance');
         await setWidth(320);
-        await trampolineToggle.press('Enter');
-        await trampolineRow.waitFor();
-        assert.equal(await trampolineToggle.getAttribute('aria-expanded'), 'true');
-        assert.equal(await trampolineToggle.evaluate(button => button === document.activeElement), true);
-        const trampolineAdd = trampolineRow.getByRole('button', { name: '+ Додати фріланс · ' + trampolineDate });
         await assertFits();
-        await trampolineAdd.press('Enter');
-        await chooser.getByText('Батутисти · ' + trampolineDate, { exact: true }).waitFor();
+        await emptyAdd.scrollIntoViewIfNeeded();
+        await page.screenshot({ path: path.join(out, 'freelance-empty-320.png'), animations: 'disabled' });
+        await emptyAdd.click();
+        await chooser.getByText('Батутисти', { exact: true }).waitFor();
+        const pickerDate = chooser.getByLabel('Дата виходу');
+        assert.equal(await pickerDate.inputValue(), rangeStart);
+        assert.equal(await pickerDate.evaluate(input => input === document.activeElement), true);
+        await pickerDate.fill(trampolineDate);
         const trampolineOption = 'reserve:' + trampolineReserve.id + ':trampoline_instructor';
         await staffPicker.locator(`option[value="${trampolineOption}"]`).waitFor({ state: 'attached' });
         await staffPicker.selectOption(trampolineOption);
+        await chooser.screenshot({ path: path.join(out, 'freelance-empty-picker-320.png'), animations: 'disabled' });
         await chooser.getByRole('button', { name: 'Відкрити план' }).click();
         await cards.first().waitFor();
         await setTime(cards.first(), '12:00', '14:00');
         const trampolinePlan = await savePlan();
         assert.equal(trampolinePlan.primaryProfessionKey, 'trampoline_instructor');
         assert.equal(trampolinePlan.reserveFreelance, true);
+        assert.equal(trampolinePlan.date, trampolineDate);
+        assert.equal(await workModeFilter.inputValue(), 'freelance');
         const trampolineRecord = trampolineRow.getByRole('button', { name: new RegExp(trampolineReserve.name) });
         await trampolineRecord.waitFor();
         assert.match(await trampolineRecord.textContent(), /12:00–14:00/);
         await page.locator('#scheduleRangeState').waitFor({ state: 'hidden' });
         await page.screenshot({ path: path.join(out, 'freelance-trampoline-320.png'), animations: 'disabled' });
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => window.StaffSchedulePage?.isInitialized());
+        const afterReload = await readRange(trampolineDate, trampolineDate);
+        assert.equal(afterReload.some(entry => entry.staff_id === trampolineReserve.id), true);
+        await page.locator('#deptFilter [data-dept="trampoline"]').click();
+        await workModeFilter.selectOption('freelance');
+        const trampolineToggle = page.locator('[data-freelance-toggle="trampoline"]');
+        await trampolineToggle.press('Enter');
+        assert.equal(await trampolineToggle.evaluate(button => button === document.activeElement), true);
+        await trampolineRecord.waitFor();
+        assert.match(await trampolineRecord.textContent(), /12:00–14:00/);
         await setWidth(1440);
         await workModeFilter.selectOption('all');
 
         stage = 'freelance across adjacent dates';
-        const laterDate = offset => new Date(Date.parse(date + 'T00:00:00Z') + offset * 86_400_000).toISOString().slice(0, 10);
         const writePlan = (staffId, workDate, segments, extra = {}) => request(auth, '/api/staff/schedule', {
             method: 'PUT', body: { staffId, date: workDate, status: 'working', primaryProfessionKey: segments[0].professionKey, segments, ...extra }
         });
@@ -789,6 +834,9 @@ async function run() {
             const readerPage = await readerContext.newPage();
             await readerPage.goto(new URL('/staff', base).href, { waitUntil: 'domcontentloaded' });
             await readerPage.waitForFunction(() => window.StaffSchedulePage?.isInitialized());
+            await readerPage.locator('#scheduleWorkModeFilter').selectOption('freelance');
+            await readerPage.locator('#scheduleStaffSearch').fill('No matching synthetic employees');
+            assert.equal(await readerPage.locator('#scheduleAddFreelanceBtn').isVisible(), false);
             await readerPage.locator('#staffScheduleActionsToggle').click();
             assert.equal(await readerPage.locator('#copyWeekBtn').isVisible(), false);
             await readerPage.getByRole('link', { name: 'Фріланс-розрахунки' }).click();
@@ -994,6 +1042,67 @@ async function run() {
             body: { staffId: reserve.id, date, attendanceId: reserveDay.attendance_id,
                 allocations: [{ segmentId: reserveBlock.id, minutes: reserveDay.actualMinutes }] } });
         assert.equal(confirmReserve.status, 201, await confirmReserve.text());
+
+        stage = 'Today navigation to a historical freelance block';
+        const reviewDate = laterDate(-3);
+        const historicalPlan = await writePlan(trampolineReserve.id, reviewDate, [
+            { professionKey: 'trampoline_instructor', workMode: 'freelance', shiftStart: '09:00', shiftEnd: '10:00' },
+            { professionKey: 'trampoline_instructor', workMode: 'freelance', shiftStart: '12:00', shiftEnd: '13:00' }
+        ], { reserveFreelance: true });
+        assert.equal(historicalPlan.status, 200, await historicalPlan.clone().text());
+        const historicalEntry = (await historicalPlan.json()).data;
+        await db.query(`INSERT INTO hr_time_records (staff_id, record_date, status, business_context)
+            VALUES ($1, $2, 'manual_review', 'event_genix')`, [trampolineReserve.id, reviewDate]);
+        await page.locator('#hrNav [data-tab="schedule"]').click();
+        await page.waitForFunction(() => window.StaffSchedulePage?.isInitialized());
+        await page.locator('#deptFilter [data-dept="animators"]').click();
+        await workModeFilter.selectOption('regular');
+        await page.locator('#scheduleStaffSearch').fill(staffName);
+        await page.locator('#hrNav [data-tab="today"]').click();
+        await page.locator('#todayReviewOnly').check();
+        await page.locator('#todaySearch').fill(trampolineReserve.name);
+        await page.locator('#todayReviewDate').fill(reviewDate);
+        const historicalLink = page.getByRole('link', { name: 'Відкрити графік: ' + trampolineReserve.name });
+        await historicalLink.waitFor();
+        const href = await historicalLink.getAttribute('href');
+        assert.equal(new URL(href, base).searchParams.get('scheduleDate'), reviewDate);
+        await historicalLink.press('Enter');
+        const firstBlock = trampolineRow.getByRole('button', { name: /09:00.*10:00/ });
+        await firstBlock.waitFor();
+        await page.waitForFunction(() => document.activeElement?.dataset.freelanceStaff
+            && document.activeElement.textContent.includes('09:00–10:00'));
+        assert.equal(await firstBlock.evaluate(button => button === document.activeElement), true);
+        assert.equal(await firstBlock.getAttribute('data-freelance-date'), reviewDate);
+        assert.equal(await page.locator('[data-schedule-group-toggle="trampoline"]').getAttribute('aria-expanded'), 'true');
+        assert.equal(await page.locator('[data-freelance-toggle="trampoline"]').getAttribute('aria-expanded'), 'true');
+        assert.equal(await workModeFilter.inputValue(), 'freelance');
+        await assertFits();
+        await page.screenshot({ path: path.join(out, 'freelance-today-focus-360.png'), animations: 'disabled' });
+        await page.goto(new URL(href, base).href, { waitUntil: 'domcontentloaded' });
+        await firstBlock.waitFor();
+        assert.equal(await firstBlock.evaluate(button => button === document.activeElement), true);
+
+        stage = 'Today navigation to a removed shift and to a regular employee';
+        await page.locator('#hrNav [data-tab="today"]').click();
+        await page.locator('#todayReviewOnly').check();
+        await page.locator('#todayReviewDate').fill(reviewDate);
+        await historicalLink.waitFor();
+        const removed = await request(auth, '/api/staff/schedule', { method: 'PUT', body: {
+            staffId: trampolineReserve.id, date: reviewDate, status: 'dayoff', reserveFreelance: true,
+            expectedUpdatedAt: historicalEntry.planUpdatedAt, segments: []
+        } });
+        assert.equal(removed.status, 200, await removed.text());
+        await historicalLink.click();
+        await page.getByText('Фріланс-вихід на цю дату більше недоступний або його видалено.').waitFor();
+        await page.locator('#scheduleStaffSearch').fill('');
+        await workModeFilter.selectOption('all');
+        await page.locator('#hrNav [data-tab="today"]').click();
+        await page.locator('#todayReviewOnly').uncheck();
+        await page.locator('#todaySearch').fill(staffName);
+        await page.getByRole('link', { name: 'Відкрити графік: ' + staffName }).click();
+        const regularRow = page.locator(`[data-schedule-staff-row="${staff.id}"]`);
+        await regularRow.locator('[data-hr-profile]:focus').waitFor();
+        assert.equal(await regularRow.getAttribute('class').then(value => value.includes('is-schedule-focus')), true);
         console.log(`Freelance actual-app browser journey passed (${membership ? 'Park membership' : 'compatibility'})`);
     } catch (error) {
         throw new Error(`Freelance browser stage failed: ${stage}: ${error.message}`, { cause: error });

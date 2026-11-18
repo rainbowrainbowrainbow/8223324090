@@ -623,6 +623,14 @@ body[data-page-group="hr"] .schedule-health-empty-row td {
     font-weight: 800;
 }
 
+@media (max-width: 480px) {
+    .schedule-health-empty-row td > span {
+        display: block;
+        max-inline-size: calc(100dvw - 6rem);
+        white-space: normal;
+    }
+}
+
 body.dark-mode[data-page-group="hr"] .schedule-health-panel,
 [data-theme="dark"] body[data-page-group="hr"] .schedule-health-panel {
     background: rgba(15, 23, 42, 0.88);
@@ -7831,6 +7839,15 @@ body.dark-mode .hr-shift-multi-guard__segments span,
     font-size: .6875rem;
 }
 
+.schedule-add-freelance {
+    min-block-size: 3rem;
+    margin-block: .5rem;
+}
+
+.schedule-add-freelance[hidden] {
+    display: none;
+}
+
 .schedule-freelance-dialog {
     inline-size: min(28rem, calc(100% - 2rem));
     max-block-size: calc(100% - 2rem);
@@ -7853,9 +7870,13 @@ body.dark-mode .hr-shift-multi-guard__segments span,
     color: var(--gray-600);
 }
 
-.schedule-freelance-dialog select {
+.schedule-freelance-dialog select,
+.schedule-freelance-dialog input[type="date"] {
     display: block;
+    min-block-size: 3rem;
     min-inline-size: 0;
+    inline-size: 100%;
+    font-size: max(1rem, 1em);
     text-overflow: ellipsis;
 }
 

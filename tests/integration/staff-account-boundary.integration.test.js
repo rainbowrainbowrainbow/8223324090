@@ -14,6 +14,7 @@ test('staff account operations enforce Park ownership and payroll/operation perm
     assertSafeIsolatedTestUrl(process.env.TEST_URL);
     const pool = new Pool({ connectionString: database.url.toString(), ssl: false });
     t.after(() => pool.end());
+    const { rows: bootstrapStaff } = await pool.query('SELECT id FROM staff WHERE is_active IS TRUE');
     const marker = 'qa-staff-' + randomUUID().slice(0, 8);
     const password = randomUUID();
     const passwordHash = await bcrypt.hash(password, 10);
@@ -401,7 +402,46 @@ test('staff account operations enforce Park ownership and payroll/operation perm
         assert.equal((await onboard(restricted, payload('revoked-member'))).status, 403);
         assert.equal((await api('/api/staff/' + staff.id + '/link', { actor: restricted, method: 'POST', body: { userId: viewer.id } })).status, 403);
     });
-    await t.test('manual and bulk creation report the same Park access readiness', async () => {
+    await t.test('HR and manual schedule issuance serialize on the same staff card', async () => {
+        const name = marker + '-cross-entry';
+        const usernames = [name + '-hr', name + '-schedule'];
+        const { rows: [person] } = await pool.query(
+            "INSERT INTO staff (name, department, position, role_type, hourly_rate) VALUES ($1, 'QA', 'QA', 'animator', 321) RETURNING id",
+            [name]
+        );
+        const results = await Promise.all([
+            api('/api/users/onboarding', {
+                actor: owner, method: 'POST', headers: { 'Idempotency-Key': randomUUID() },
+                body: {
+                    deriveRoleFromStaff: true, expectedRole: 'animator', personal: { name, username: usernames[0] },
+                    staff: { mode: 'existing', id: person.id }, access: { activateMembership: true },
+                    issueOneTime: true, initialPassword: password
+                }
+            }),
+            api('/api/users', {
+                actor: owner, method: 'POST', headers: { 'Idempotency-Key': randomUUID() },
+                body: {
+                    name, username: usernames[1], role: 'waiter', password, staffId: person.id,
+                    defaultBusinessContext: 'event_genix', activateMembership: true
+                }
+            })
+        ]);
+        assert.deepEqual(results.map(result => result.status).sort(), [200, 409]);
+        const { rows } = await pool.query(
+            'SELECT u.username, ep.staff_id FROM users u LEFT JOIN employee_profiles ep ON ep.user_id=u.id WHERE u.username=ANY($1)',
+            [usernames]
+        );
+        assert.deepEqual(rows, [{ username: usernames[results.findIndex(result => result.status === 200)], staff_id: person.id }]);
+        assert.equal((await pool.query('SELECT hourly_rate FROM staff WHERE id=$1', [person.id])).rows[0].hourly_rate, '321.00');
+    });
+
+    await t.test('manual and bulk creation report the same Park access readiness', async bulkTest => {
+        // The bulk endpoint scans the entire active roster. Keep its workload
+        // tied to this disposable suite's fixtures instead of the bootstrap roster.
+        const bootstrapIds = bootstrapStaff.map(row => row.id);
+        await pool.query('UPDATE staff SET is_active = false WHERE id = ANY($1::int[])', [bootstrapIds]);
+        bulkTest.after(() => pool.query('UPDATE staff SET is_active = true WHERE id = ANY($1::int[])', [bootstrapIds]));
+
         const config = await api('/api/users/creation-access', { actor: owner });
         assert.equal(config.status, 200);
         assert.equal(config.data.activateMembership, true);

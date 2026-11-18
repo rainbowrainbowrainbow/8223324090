@@ -8844,12 +8844,7 @@ function accountOnboardingRoleForStaff(staff) {
 
 function prefillAccountOnboardingFromStaff(staffId) {
     const staff = accountOnboardingOptions?.staff?.find(item => Number(item.id) === Number(staffId));
-    accountOnboardingEl('accountOnboardingName').value = staff?.name || '';
-    accountOnboardingEl('accountOnboardingUsername').value = staff ? suggestAccountUsernameFromStaff(staff) : '';
-    const password = accountOnboardingEl('accountOnboardingPassword');
-    password.value = staff ? generateInitialAccountPassword() : '';
-    password.type = 'password';
-    accountOnboardingEl('accountOnboardingPasswordToggle').setAttribute('aria-pressed', 'false');
+    fillStaffAccountFields(staff, staff ? suggestAccountUsernameFromStaff(staff) : '');
     const role = accountOnboardingRoleForStaff(staff);
     const summary = accountOnboardingEl('accountOnboardingAccessSummary');
     if (summary) summary.textContent = !staff ? '' : role
@@ -8857,31 +8852,12 @@ function prefillAccountOnboardingFromStaff(staffId) {
         : 'Для основної посади в картці не визначено CRM-роль. Перевірте посаду в картці працівника або зверніться до HR.';
 }
 
-function setAccountOnboardingStatus(message = '', type = 'error') {
-    const status = accountOnboardingEl('accountOnboardingStatus');
-    if (!status) return;
-    status.textContent = message;
-    status.dataset.type = message ? type : '';
-}
-
-function focusInvalidAccountOnboarding(message, element) {
-    setAccountOnboardingStatus(message, 'error');
-    element?.setAttribute('aria-invalid', 'true');
-    let ancestor = element?.parentElement;
-    while (ancestor && ancestor !== accountOnboardingEl('accountOnboardingForm')) {
-        if (ancestor.tagName === 'DETAILS') ancestor.open = true;
-        ancestor = ancestor.parentElement;
-    }
-    element?.focus?.({ preventScroll: false });
-    return false;
-}
-
 function validateAccountOnboardingStep() {
-    setAccountOnboardingStatus('');
+    setStaffAccountFormStatus('');
     const select = accountOnboardingEl('accountOnboardingStaffId');
     const staff = accountOnboardingOptions?.staff?.find(item => Number(item.id) === Number(select?.value));
     if (!select?.value || !staff || staff.linked_user_id || staff.linkedUserId || select.selectedOptions?.[0]?.disabled) {
-        return focusInvalidAccountOnboarding('Оберіть картку без прив’язаного CRM-акаунта.', select);
+        return focusInvalidStaffAccountField('Оберіть картку без прив’язаного CRM-акаунта.', select);
     }
     const role = accountOnboardingRoleForStaff(staff);
     if (!role) {
@@ -8889,17 +8865,7 @@ function validateAccountOnboardingStep() {
         summary?.focus();
         return false;
     }
-    const username = accountOnboardingEl('accountOnboardingUsername');
-    if (!/^[a-zA-Z0-9._-]{3,50}$/.test(username.value.trim())) {
-        return focusInvalidAccountOnboarding('Логін: 3–50 символів, лише латиниця, цифри, крапка, дефіс або підкреслення.', username);
-    }
-    const input = accountOnboardingEl('accountOnboardingPassword');
-    const password = input.value;
-    if ([...password].length < 12 || new TextEncoder().encode(password).length > 72
-        || /[\r\n;]/.test(password) || password.normalize('NFKC').trim() !== password) {
-        return focusInvalidAccountOnboarding('Вкажіть пароль від 12 символів, до 72 байтів, без крайніх пробілів, крапки з комою та переносів рядка.', input);
-    }
-    return role;
+    return validateStaffAccountFields() ? role : false;
 }
 
 function buildAccountOnboardingPayload(expectedRole) {
@@ -8957,9 +8923,6 @@ function renderAccountOnboardingReceipt(response) {
     const verifyAction = !businessAccessReady && accountOnboardingState.operationKey
         ? '<button type="button" class="hr-account-toggle" data-account-onboarding-verify-access>Перевірити доступ повторно</button>'
         : '';
-    const copyAction = credential && canShare
-        ? '<button type="button" class="hr-account-primary" data-account-onboarding-copy>Скопіювати дані для входу</button>'
-        : '';
     const conditionSummary = (receipt.conditions || []).map(condition => {
         const after = condition.after || condition;
         const rate = after.rateMode === 'explicit'
@@ -8979,24 +8942,24 @@ function renderAccountOnboardingReceipt(response) {
     const conditionsSummary = Array.isArray(receipt.conditions)
         ? conditionSummary || 'Не змінювалися'
         : 'Дані умов не завантажено';
-    const root = accountOnboardingEl('accountOnboardingReceipt');
-    if (!root) return;
-    root.setAttribute('tabindex', '-1');
-    root.innerHTML = `<h4>${title}</h4><p class="hr-account-receipt-access" role="status" aria-live="polite">${escapeHtml(businessAccessStatusMessage)}</p><p class="hr-account-receipt-access" role="status" aria-live="polite">${escapeHtml(loginMessage)}</p><div class="hr-account-detail-actions">${copyAction}${membershipNextStep}${verifyAction}</div>${recoveredCredential}<div class="hr-account-receipt-grid">${[
-        ['Імʼя та прізвище', receipt.account?.name || response?.user?.name || 'Імʼя не завантажено'],
-        ['Логін для входу', receipt.account?.username || response?.user?.username || 'Логін не завантажено'],
-        ['Картка співробітника', `#${staffId || '—'} · ${receipt.staff?.name || response?.staff?.name || '—'} · ${receipt.staff?.linked === false ? 'зв’язок змінено після створення' : (receipt.staff?.created ? 'створено' : 'прив’язано')}`],
-        ['Професії', professionSummary],
-        ['Ставка / типовий час', conditionsSummary],
-        ['Роль у CRM', roleSummary],
-        ['Вибраний бізнес', businessLabel]
-    ].map(([label, value]) => `<div class="hr-account-detail-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || 'Не задано')}</strong></div>`).join('')}</div>${credential && canShare ? `<div class="hr-account-credential"><strong>Тимчасовий пароль, показується один раз</strong><code>Логін: ${escapeHtml(credential.username || '')}</code><code>Тимчасовий пароль: ${escapeHtml(credential.password || '')}</code></div>` : ''}${warnings.length ? `<div class="hr-account-receipt-warnings"><strong>Створено з попередженнями:</strong><ul>${warnings.map(warning => `<li>${escapeHtml(warning.message || warning.code || '')}</li>`).join('')}</ul></div>` : ''}<div class="hr-account-detail-actions"><button type="button" class="hr-account-primary" data-account-onboarding-finish>Готово</button></div>`;
-    root.classList.remove('hidden');
-    accountOnboardingEl('accountOnboardingForm')?.classList.add('hidden');
-    accountOnboardingEl('accountOnboardingActions')?.classList.add('hidden');
-    setAccountOnboardingStatus(warnings.length ? 'Основні дані створено. Перевірте попередження у квитанції.' : '', warnings.length ? 'warning' : 'success');
-    root.scrollTop = 0;
-    root.focus({ preventScroll: true });
+    renderStaffAccountFormReceipt({
+        title,
+        accessMessage: businessAccessStatusMessage,
+        loginMessage,
+        rows: [
+            ['Імʼя та прізвище', receipt.account?.name || response?.user?.name || 'Імʼя не завантажено'],
+            ['Логін для входу', receipt.account?.username || response?.user?.username || 'Логін не завантажено'],
+            ['Картка співробітника', `#${staffId || '—'} · ${receipt.staff?.name || response?.staff?.name || '—'} · ${receipt.staff?.linked === false ? 'зв’язок змінено після створення' : (receipt.staff?.created ? 'створено' : 'прив’язано')}`],
+            ['Професії', professionSummary],
+            ['Ставка / типовий час', conditionsSummary],
+            ['Роль у CRM', roleSummary],
+            ['Вибраний бізнес', businessLabel]
+        ],
+        credential: canShare ? credential : null,
+        actions: membershipNextStep + verifyAction,
+        nextSteps: recoveredCredential,
+        warnings
+    });
 }
 
 async function submitAccountOnboarding() {
@@ -9004,37 +8967,22 @@ async function submitAccountOnboarding() {
     const expectedRole = validateAccountOnboardingStep();
     if (!expectedRole) return;
     accountOnboardingState.payload = buildAccountOnboardingPayload(expectedRole);
-    const submit = accountOnboardingEl('accountOnboardingSubmit');
-    accountOnboardingState.submitting = true;
-    if (submit) submit.disabled = true;
-    setAccountOnboardingStatus('Зберігаємо дані та створюємо CRM-акаунт…', 'progress');
     const requestSeq = accountOnboardingRequestSeq;
     const context = teamAccessContext();
     const isCurrent = () => requestSeq === accountOnboardingRequestSeq && context === teamAccessContext()
         && accountOnboardingState.open;
-    try {
-        const { result, operationKey, acknowledge } = await submitStaffCreation('onboarding', accountOnboardingState.payload, isCurrent);
-        if (!isCurrent()) return;
-        if (!result?.success) {
-            setAccountOnboardingStatus(result?.error || 'Не вдалося завершити створення акаунта.', 'error');
-            return;
+    await submitStaffAccountForm(accountOnboardingState, isCurrent,
+        () => submitStaffCreation('onboarding', accountOnboardingState.payload, isCurrent),
+        ({ result, operationKey, acknowledge }) => {
+            acknowledge?.();
+            completeAccountOnboarding(result, operationKey);
         }
-        acknowledge?.();
-        completeAccountOnboarding(result, operationKey);
-    } catch {
-        if (isCurrent()) setAccountOnboardingStatus('Не вдалося підтвердити результат. Повторіть із тими самими даними.', 'error');
-    } finally {
-        if (requestSeq === accountOnboardingRequestSeq) {
-            accountOnboardingState.submitting = false;
-            if (submit) submit.disabled = false;
-        }
-    }
+    );
 }
 
 function completeAccountOnboarding(response, operationKey) {
     accountOnboardingState.operationKey = operationKey;
     accountOnboardingState.result = response;
-    accountOnboardingEl('accountOnboardingPassword').value = '';
     accountOnboardingState.payload = null;
     renderAccountOnboardingReceipt(response);
     accountCenterLastUpdatedId = response.receipt?.account?.id || response.user?.id || null;
@@ -9048,27 +8996,12 @@ function closeAccountOnboardingWizard({ force = false } = {}) {
     accountOnboardingRequestSeq += 1;
     accountOnboardingState.open = false;
     accountOnboardingState.submitting = false;
-    const submit = accountOnboardingEl('accountOnboardingSubmit');
-    if (submit) submit.disabled = false;
     accountOnboardingState.receipt = null;
     accountOnboardingState.credential = null;
     accountOnboardingState.result = null;
     accountOnboardingState.operationKey = null;
     accountOnboardingState.payload = null;
-    const overlay = accountOnboardingEl('accountOnboardingOverlay');
-    overlay?.classList.add('hidden');
-    overlay?.setAttribute('aria-hidden', 'true');
-    accountOnboardingEl('accountOnboardingForm')?.reset();
-    accountOnboardingEl('accountOnboardingForm')?.querySelectorAll('[aria-invalid="true"]').forEach(element => element.removeAttribute('aria-invalid'));
-    accountOnboardingEl('accountOnboardingPassword').type = 'password';
-    const passwordToggle = accountOnboardingEl('accountOnboardingPasswordToggle');
-    passwordToggle.setAttribute('aria-pressed', 'false');
-    accountOnboardingEl('accountOnboardingForm')?.classList.remove('hidden');
-    accountOnboardingEl('accountOnboardingActions')?.classList.remove('hidden');
-    accountOnboardingEl('accountOnboardingReceipt')?.classList.add('hidden');
-    if (accountOnboardingEl('accountOnboardingReceipt')) accountOnboardingEl('accountOnboardingReceipt').innerHTML = '';
-    setAccountOnboardingStatus('');
-    setAccountOnboardingBackgroundInert(false);
+    hideStaffAccountForm();
     if (force) return;
     const safeReturnFocus = isUsableAccountFocusTarget(returnFocus)
         ? returnFocus
@@ -9078,59 +9011,18 @@ function closeAccountOnboardingWizard({ force = false } = {}) {
 
 async function requestCloseAccountOnboardingWizard() {
     const state = accountOnboardingState;
-    if (state.submitting || state.confirmingClose) return;
-    if (state.dirty && !state.receipt) {
-        state.confirmingClose = true;
-        const confirmed = await confirmModal('Є незбережені зміни. Закрити без збереження?', {
-            type: 'warning', okText: 'Закрити без збереження', cancelText: 'Продовжити редагування'
-        });
-        state.confirmingClose = false;
-        if (!confirmed || state !== accountOnboardingState || !state.open) return;
+    if (await confirmStaffAccountFormClose(state) && state === accountOnboardingState && state.open) {
+        closeAccountOnboardingWizard();
     }
-    closeAccountOnboardingWizard();
-}
-
-function setAccountOnboardingBackgroundInert(inert) {
-    const overlay = accountOnboardingEl('accountOnboardingOverlay');
-    if (!overlay) return;
-    const targets = Array.from(document.body.children)
-        .filter(element => element !== overlay && !['SCRIPT', 'STYLE', 'LINK'].includes(element.tagName));
-    targets.forEach(element => {
-        if (inert && !element.inert) {
-            element.inert = true;
-            element.dataset.accountOnboardingInert = 'true';
-        } else if (!inert && element.dataset.accountOnboardingInert === 'true') {
-            element.inert = false;
-            delete element.dataset.accountOnboardingInert;
-        }
-    });
 }
 
 function bindAccountOnboardingControls() {
-    const overlay = accountOnboardingEl('accountOnboardingOverlay');
-    if (!overlay || overlay.dataset.bound === 'true') return;
-    const password = accountOnboardingEl('accountOnboardingPassword');
-    accountOnboardingEl('accountOnboardingPasswordToggle').addEventListener('click', event => {
-        const visible = password.type === 'password';
-        password.type = visible ? 'text' : 'password';
-        event.currentTarget.setAttribute('aria-pressed', String(visible));
-    });
-    for (const eventName of ['input', 'change']) {
-        accountOnboardingEl('accountOnboardingForm').addEventListener(eventName, event => {
-            if (!accountOnboardingState.submitting) {
-                accountOnboardingState.dirty = true;
-                event.target.removeAttribute('aria-invalid');
-                setAccountOnboardingStatus('');
-            }
-        });
-    }
-    if (overlay.parentElement !== document.body) document.body.appendChild(overlay);
-    mountNewStaffFields(accountOnboardingEl('accountOnboardingPersonalFields'), 'accountOnboarding', ['Name']);
-    overlay.dataset.bound = 'true';
-    accountOnboardingEl('accountOnboardingClose')?.addEventListener('click', requestCloseAccountOnboardingWizard);
-    accountOnboardingEl('accountOnboardingForm')?.addEventListener('submit', event => {
-        event.preventDefault();
-        void submitAccountOnboarding();
+    const overlay = mountStaffAccountForm();
+    if (overlay.dataset.bound === 'true') return;
+    bindStaffAccountForm({
+        getState: () => accountOnboardingState,
+        submit: submitAccountOnboarding,
+        close: requestCloseAccountOnboardingWizard
     });
     accountOnboardingEl('accountOnboardingStaffId')?.addEventListener('change', event => prefillAccountOnboardingFromStaff(event.target.value));
     accountOnboardingEl('accountOnboardingReceipt')?.addEventListener('click', async event => {
@@ -9143,7 +9035,7 @@ function bindAccountOnboardingControls() {
             if (state !== accountOnboardingState || !state.open || context !== teamAccessContext()) return;
             if (!status?.success) {
                 verify.disabled = false;
-                setAccountOnboardingStatus('Не вдалося підтвердити доступ. Спробуйте ще раз.', 'error');
+                setStaffAccountFormStatus('Не вдалося підтвердити доступ. Спробуйте ще раз.', 'error');
                 return;
             }
             const previous = state.result;
@@ -9158,17 +9050,9 @@ function bindAccountOnboardingControls() {
         }
         if (event.target.closest('[data-account-onboarding-copy]') && accountOnboardingState.credential) {
             const credential = accountOnboardingState.credential;
-            if (!navigator.clipboard?.writeText) {
-                showNotification('Буфер обміну недоступний. Скопіюйте дані вручну.', 'error');
-                return;
-            }
-            try {
-                const name = accountOnboardingEl('accountOnboardingName')?.value?.trim();
-                await navigator.clipboard.writeText(`CRM: ${location.origin}/\nБізнес: ${accountOnboardingState.businessLabel}${name ? `\nІмʼя та прізвище: ${name}` : ''}\nЛогін для входу: ${credential.username}\nПароль: ${credential.password}`);
-                showNotification('Логін і тимчасовий пароль скопійовано', 'success');
-            } catch {
-                showNotification('Не вдалося скопіювати. Скопіюйте дані вручну.', 'error');
-            }
+            await copyStaffAccountFormCredential(
+                credential, accountOnboardingState.businessLabel, accountOnboardingEl('accountOnboardingName').value.trim()
+            );
             return;
         }
         if (event.target.closest('[data-account-onboarding-finish]')) closeAccountOnboardingWizard();
@@ -9178,23 +9062,6 @@ function bindAccountOnboardingControls() {
         if (retry) {
             return void openAccountOnboardingWizard(accountOnboardingState.returnFocus, accountOnboardingState.context);
         }
-        // Accidental backdrop clicks must never discard account setup.
-        if (event.target === overlay) accountOnboardingEl('accountOnboardingClose')?.focus();
-    });
-    overlay.addEventListener('keydown', event => {
-        if (event.key === 'Escape') return void requestCloseAccountOnboardingWizard();
-        if (event.key !== 'Tab') return;
-        const focusable = Array.from(overlay.querySelectorAll('button:not([disabled]):not(.hidden), input:not([disabled]), select:not([disabled]), a[href], summary, [tabindex]:not([tabindex="-1"])')).filter(element => {
-            if (element.matches(':disabled') || !element.getClientRects().length) return false;
-            if (element.closest('[hidden], .hidden')) return false;
-            const closedDetails = element.closest('details:not([open])');
-            return !closedDetails || element.tagName === 'SUMMARY';
-        });
-        if (!focusable.length) return;
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     });
 }
 
@@ -9203,14 +9070,13 @@ async function openAccountOnboardingWizard(button, context = {}) {
         showNotification('Немає доступу до оформлення CRM-акаунтів у ПАРК', 'error');
         return false;
     }
-    const overlay = accountOnboardingEl('accountOnboardingOverlay');
-    if (!overlay) return false;
+    const overlay = mountStaffAccountForm();
     const requestSeq = ++accountOnboardingRequestSeq;
     accountOnboardingState = { open: true, requestSeq, returnFocus: button || document.activeElement, context, accessContext: teamAccessContext(), submitting: false, receipt: null, credential: null, payload: null };
     bindAccountOnboardingControls();
     overlay.classList.remove('hidden');
     overlay.removeAttribute('aria-hidden');
-    setAccountOnboardingBackgroundInert(true);
+    setStaffAccountBackgroundInert(true);
     const loading = accountOnboardingEl('accountOnboardingLoading');
     if (loading) {
         loading.textContent = 'Завантаження довідників…';
@@ -9219,11 +9085,12 @@ async function openAccountOnboardingWizard(button, context = {}) {
     accountOnboardingEl('accountOnboardingForm')?.classList.add('hidden');
     accountOnboardingEl('accountOnboardingActions')?.classList.add('hidden');
     accountOnboardingEl('accountOnboardingReceipt')?.classList.add('hidden');
-    setAccountOnboardingStatus('');
+    setStaffAccountFormStatus('');
     const activeContext = teamAccessContext();
     const recovered = await recoverStaffCreation('onboarding');
     if (!accountOnboardingState.open || requestSeq !== accountOnboardingRequestSeq || activeContext !== teamAccessContext()) return false;
-    if (recovered) {
+    const requestedStaffId = Number(context.staff?.id || context.staffId || 0);
+    if (recovered && (!requestedStaffId || Number(recovered.result.receipt?.staff?.id) === requestedStaffId)) {
         recovered.acknowledge();
         loading?.classList.add('hidden');
         completeAccountOnboarding(recovered.result, recovered.operationKey);
@@ -9236,7 +9103,6 @@ async function openAccountOnboardingWizard(button, context = {}) {
         if (!loadedOptions) return false;
 
         renderAccountOnboardingStaffOptions();
-        const requestedStaffId = Number(context.staff?.id || context.staffId || 0);
         const contextStaff = requestedStaffId
             ? accountOnboardingOptions.staff.find(staff => Number(staff.id) === requestedStaffId)
             : null;
@@ -9261,7 +9127,7 @@ async function openAccountOnboardingWizard(button, context = {}) {
     } catch (error) {
         if (!accountOnboardingState.open || requestSeq !== accountOnboardingRequestSeq) return false;
         const message = error?.message || 'Не вдалося завантажити onboarding.';
-        setAccountOnboardingStatus(message, 'error');
+        setStaffAccountFormStatus(message, 'error');
         if (loading) loading.innerHTML = `<strong>Довідники не завантажилися.</strong><span>${escapeHtml(message)}</span><button type="button" class="hr-account-toggle" data-account-onboarding-retry>Повторити</button>`;
     } finally {
         if (accountOnboardingState.open && requestSeq === accountOnboardingRequestSeq) {
@@ -9276,10 +9142,6 @@ async function openAccountOnboardingWizard(button, context = {}) {
 }
 
 window.openAccountCreateModal = async function(button, context = {}) {
-    if (!accountOnboardingEl('accountOnboardingOverlay')) {
-        showNotification('Контрольований onboarding недоступний. Оновіть сторінку перед створенням акаунта.', 'error');
-        return;
-    }
     await openAccountOnboardingWizard(button, context);
 };
 

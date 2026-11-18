@@ -67,6 +67,7 @@ this document, and `npm run test:ui` coverage in the same pack.
 | `css/features.css` | timeline | `shell-large` | active-large | Root shell feature and modal adjunct styles; large-file consolidation candidate. |
 | `css/graduation.css` | graduation | `page-scoped-large` | active-large | Graduation event builder and embedded view styles. |
 | `css/hermes-studio.css` | hermes-studio | `page-scoped` | active | Hermes Studio creative job queue, brief form, asset review, and decision controls. |
+| `css/staff-account-form.css` | staff-account-form | `page-scoped` | active | Shared Park account form and receipt across HR and the staff schedule. |
 | `css/hr-page.css` | hr | `page-scoped-large` | active-large | HR workspace styles extracted from `hr.html`; large-file consolidation candidate. |
 | `css/omni-workspace.css` | omnichannel | `page-scoped` | active | Pulse-aligned Omni controls, surfaces, spacing, and responsive states. |
 | `css/kleshnya-widget.css` | kleshnya | `feature-shared` | active | Root shell Kleshnya widget styles. |

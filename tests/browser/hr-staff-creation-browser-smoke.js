@@ -191,7 +191,7 @@ async function runActor(browser, pool, actor, existingAccountId) {
     const supplement = { key: `supplement-${actor.label}`, role: actor.label === 'mobile' ? 'delegate' : actor.role, mode: 'existing', width: actor.width, height: 900, theme: 'light', screens: [], checks: [] };
     const captureSupplement = async label => {
         const filename = `${supplement.key}-${label}.png`;
-        await page.screenshot({ path: path.join(supplementDirectory, filename), mask: [page.locator('#accountOnboardingReceipt .hr-account-credential code:nth-of-type(2)')] });
+        await page.screenshot({ path: path.join(supplementDirectory, filename), mask: [page.locator('#accountOnboardingPassword[type="text"], #accountOnboardingReceipt .hr-account-credential code:nth-of-type(2)')] });
         supplement.screens.push(filename);
     };
     const pageErrors = [];
@@ -606,6 +606,155 @@ async function runActor(browser, pool, actor, existingAccountId) {
     }
 }
 
+async function verifyScheduleAccountForms(browser, pool, actor) {
+    const session = await login(actor.username, actor.password);
+    const directory = path.join(output, 'ux-matrix');
+    const cases = [{ width: 1366, height: 768, theme: 'light' }, { width: 390, height: 844, theme: 'dark' }];
+    const evidence = [];
+    for (const { width, height, theme } of cases) {
+        const dark = theme === 'dark';
+        const key = `supplement-schedule-${width}-${theme}`;
+        const username = `qa_schedule_${width}_${runId}`;
+        const name = `QA Schedule ${width} ${runId}`;
+        const { rows: [staff] } = await pool.query(
+            "INSERT INTO staff (name, department, position, role_type) VALUES ($1, 'animators', 'Animator', 'animator') RETURNING id",
+            [name]
+        );
+        const context = await browser.newContext({ viewport: { width, height }, serviceWorkers: 'block' });
+        try {
+            await context.addInitScript(({ session, dark }) => {
+                localStorage.setItem('pzp_token', session.accessToken || session.token);
+                localStorage.setItem('pzp_access_token', session.accessToken || session.token);
+                localStorage.setItem('pzp_current_user', JSON.stringify(session.user));
+                localStorage.setItem('pzp_crm_business_context', 'event_genix');
+                localStorage.setItem('pzp_crm_business_context_user', String(session.user.id));
+                localStorage.setItem('pzp_dark_mode', String(dark));
+            }, { session, dark });
+            const page = await context.newPage();
+            const errors = [];
+            page.on('pageerror', error => errors.push(error.message));
+            page.setDefaultTimeout(20000);
+            await page.route('**/*', route => new URL(route.request().url()).origin === new URL(target).origin ? route.continue() : route.abort());
+            const wizard = page.locator('#accountOnboardingOverlay');
+            const input = page.locator('#accountOnboardingUsername');
+            const open = page.locator('#linkCreateAccountBtn');
+            const linkDialog = page.locator('#linkModalOverlay');
+            const submit = page.locator('#accountOnboardingSubmit');
+            const role = page.locator('#accountOnboardingManualRole');
+            const checks = [];
+            const screens = [];
+            const capture = async label => {
+                const filename = `${key}-${label}.png`;
+                await page.screenshot({ path: path.join(directory, filename),
+                    mask: [page.locator('#accountOnboardingPassword[type="text"], .hr-account-credential code:nth-of-type(2)')] });
+                screens.push(filename);
+            };
+            await page.goto(new URL('/staff', target).href);
+            const search = page.locator('#scheduleStaffSearch[data-schedule-search-bound="true"]');
+            const waitForRoster = () => page.waitForFunction(() => window.StaffSchedulePage?.isInitialized());
+            await waitForRoster();
+            const staffRow = page.locator(`[data-hr-profile="${staff.id}"]`);
+            await search.fill(name);
+            await staffRow.click();
+            await page.getByRole('button', { name: 'Створити CRM-акаунт', exact: true }).click();
+            await input.waitFor({ state: 'visible' });
+            assert.equal(await role.isVisible(), false);
+            assert.equal(await page.locator('#accountOnboardingStaffId').inputValue(), String(staff.id));
+            await capture('schedule-hr');
+            await page.locator('#accountOnboardingClose').click();
+            await wizard.waitFor({ state: 'hidden' });
+            checks.push('normal schedule row → HR profile → canonical form');
+
+            // Give the retained mode a trigger in the isolated shell. The app binds
+            // it through the same view-switch handler and loads the real APIs.
+            await page.route(url => url.pathname === '/staff', async route => {
+                const response = await route.fetch();
+                const body = (await response.text()).replace('</body>',
+                    '<button type="button" style="position:fixed;top:8px;left:50%;z-index:9999" data-schedule-view="accounts">Тестовий режим акаунтів</button></body>');
+                await route.fulfill({ response, body });
+            });
+            await page.goto(new URL('/staff', target).href);
+            await waitForRoster();
+            await search.fill(name);
+            await staffRow.waitFor({ state: 'visible' });
+            const manualMode = page.getByRole('button', { name: 'Тестовий режим акаунтів' });
+            await manualMode.click();
+            await manualMode.evaluate(el => { el.hidden = true; });
+            // The compact schedule hides position badges; open the retained link modal at its desktop entry.
+            if (dark) await page.setViewportSize({ width: 1366, height });
+            await page.locator(`[data-link-staff="${staff.id}"]`).click();
+            if (dark) await page.setViewportSize({ width, height });
+            await open.click();
+            await submit.waitFor({ state: 'visible' });
+            assert.equal(await linkDialog.isVisible(), false, 'the linking dialog must not cover the account form');
+            await page.locator('#accountOnboardingClose').focus();
+            await page.keyboard.press('Shift+Tab');
+            assert.equal(await submit.evaluate(el => el === document.activeElement), true);
+            await page.keyboard.press('Tab');
+            await page.keyboard.press('Escape');
+            await wizard.waitFor({ state: 'hidden' });
+            assert.equal(await linkDialog.isVisible(), true);
+            assert.equal(await open.evaluate(el => el === document.activeElement), true);
+            await open.click();
+            await input.fill(username);
+            await role.selectOption('waiter');
+            await page.locator('#accountOnboardingPasswordToggle').click();
+            assert.equal(await page.locator('#accountOnboardingPassword').getAttribute('type'), 'text');
+            await page.locator('#accountOnboardingPasswordToggle').click();
+            assert.equal(await page.locator('#accountOnboardingPassword').getAttribute('type'), 'password');
+            assert.ok(await wizard.evaluate(el => el.scrollWidth <= el.clientWidth + 1));
+            assert.ok(await submit.evaluate(el => {
+                const bounds = el.getBoundingClientRect();
+                return bounds.height >= (innerWidth < 600 ? 48 : 44)
+                    && el.contains(document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2));
+            }));
+            await capture('account');
+            const requestKeys = [];
+            await page.route('**/api/users', async route => {
+                if (route.request().method() !== 'POST') return route.continue();
+                requestKeys.push(route.request().headers()['idempotency-key']);
+                if (dark && requestKeys.length === 1) {
+                    const completed = await route.fetch();
+                    assert.equal(completed.status(), 200);
+                    return route.abort('connectionreset');
+                }
+                return route.continue();
+            });
+            const result = waitForResponse(page, 'POST', '/api/users');
+            // Two submit events during the same click sequence must not start another operation.
+            await submit.evaluate(el => {
+                el.click();
+                el.form.requestSubmit();
+            });
+            assert.equal((await result).status(), 200);
+            await page.locator('[data-account-onboarding-finish]').waitFor();
+            assert.equal(requestKeys.length, dark ? 2 : 1);
+            assert.equal(new Set(requestKeys).size, 1);
+            assert.equal(await page.locator('[data-account-onboarding-copy]').count(), dark ? 0 : 1);
+            assert.match(await page.locator('#accountOnboardingReceipt').innerText(), /CRM-доступ активний/);
+            const { rows } = await pool.query(
+                'SELECT u.role, ep.staff_id FROM users u JOIN employee_profiles ep ON ep.user_id=u.id WHERE u.username=$1',
+                [username]
+            );
+            assert.deepEqual(rows, [{ role: 'waiter', staff_id: staff.id }]);
+            await capture('result');
+            await page.getByRole('button', { name: 'Готово', exact: true }).click();
+            await wizard.waitFor({ state: 'hidden' });
+            assert.equal(await linkDialog.isVisible(), false);
+            await page.locator('.link-badge.linked').filter({ hasText: username }).waitFor({ state: 'attached' });
+            assert.equal(await staffRow.evaluate(el => el === document.activeElement), true);
+            assert.deepEqual(errors, []);
+            checks.push('manual role, focus return, keyboard wrap, reachable primary action, one linked account');
+            if (dark) checks.push('lost response replays the same operation without the password');
+            evidence.push({ key, role: 'creator', mode: 'existing', width, height, theme, screens, checks });
+            console.log(`[hr-staff] schedule account form ${width}px (${theme}) passed`);
+        } finally {
+            await context.close();
+        }
+    }
+    fs.writeFileSync(path.join(directory, 'supplement-schedule-evidence.json'), JSON.stringify(evidence, null, 2));
+}
+
 async function main() {
     assert.equal(process.env.REQUIRE_ISOLATED_TEST_TARGET, 'true');
     assert.equal(process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER, 'true');
@@ -619,6 +768,7 @@ async function main() {
         const actors = await seed(pool);
         browser = await requirePlaywright().chromium.launch({ headless: true,
             ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } : {}) });
+        await verifyScheduleAccountForms(browser, pool, actors.find(actor => actor.role === 'creator'));
         for (const actor of actors) await runActor(browser, pool, actor, actors.find(item => item.label === 'mobile').id);
         if (process.env.EG_HR_UX_VISUAL_AUDIT === '1') {
             await require('./hr-crm-ux-visual-audit').runHrCrmVisualAudit({ browser, pool, actors, login, target, output, runId });

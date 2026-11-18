@@ -164,14 +164,13 @@ async function checkDrawer(page, width, dark) {
 }
 
 async function checkBackdrop(page) {
-    await page.evaluate(markup => {
-        const parsed = new DOMParser().parseFromString(markup, 'text/html');
-        document.body.append(parsed.getElementById('accountOnboardingOverlay'));
+    await page.addScriptTag({ content: fs.readFileSync(path.join(root, 'js/staff-account-form.js'), 'utf8') });
+    await page.evaluate(() => {
         accountOnboardingState = { open: true, submitting: false };
         bindAccountOnboardingControls();
         document.getElementById('accountOnboardingOverlay').classList.remove('hidden');
         document.getElementById('accountOnboardingUsername').value = 'synthetic.draft';
-    }, markup);
+    });
     await page.locator('#accountOnboardingOverlay').click({ position: { x: 1, y: 1 } });
     assert.equal(await page.locator('#accountOnboardingOverlay').isVisible(), true);
     assert.equal(await page.locator('#accountOnboardingUsername').inputValue(), 'synthetic.draft');

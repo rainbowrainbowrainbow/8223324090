@@ -9,6 +9,7 @@ const vm = require('node:vm');
 const ROOT = path.resolve(__dirname, '..');
 const HR_PAGE_CODE = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
 const HR_HTML = fs.readFileSync(path.join(ROOT, 'hr.html'), 'utf8');
+const STAFF_ACCOUNT_FORM_CODE = fs.readFileSync(path.join(ROOT, 'js', 'staff-account-form.js'), 'utf8');
 const HR_CSS = fs.readFileSync(path.join(ROOT, 'css', 'hr-page.css'), 'utf8');
 const USERS_ROUTE = fs.readFileSync(path.join(ROOT, 'routes', 'users.js'), 'utf8');
 const UI_CODE = fs.readFileSync(path.join(ROOT, 'js', 'ui.js'), 'utf8');
@@ -89,8 +90,8 @@ test('account creation uses an existing staff card in one access form', () => {
     assert.doesNotMatch(HR_HTML, /accountOnboardingStaffMode|accountOnboardingNewStaffFields|data-account-onboarding-step=/);
     assert.match(HR_HTML, /Надати CRM-доступ працівнику/);
     assert.match(HR_PAGE_CODE, /staff: \{ mode: 'existing'/);
-    assert.match(HR_HTML, /id="accountOnboardingReceipt"/);
-    assert.match(HR_HTML, /id="accountOnboardingPassword" type="password"/);
+    assert.match(STAFF_ACCOUNT_FORM_CODE, /id="accountOnboardingReceipt"/);
+    assert.match(STAFF_ACCOUNT_FORM_CODE, /id="accountOnboardingPassword" type="password"/);
     assert.match(HR_PAGE_CODE, /async function openAccountOnboardingWizard/);
     assert.match(HR_PAGE_CODE, /function buildAccountOnboardingPayload/);
     assert.match(HR_PAGE_CODE, /crmApiFetch\('\/api\/users\/onboarding\/options'\)/);
@@ -102,10 +103,10 @@ test('account creation uses an existing staff card in one access form', () => {
     assert.match(HR_PAGE_CODE, /expectedRequestSeq !== accountOnboardingRequestSeq/);
     assert.match(HR_PAGE_CODE, /deriveRoleFromStaff: true/);
     assert.doesNotMatch(HR_HTML, /accountOnboarding(?:EditSetup|RolePresets|ConditionsDetails|AccessDetails)/);
-    assert.match(HR_PAGE_CODE, /document\.body\.appendChild\(overlay\)/);
+    assert.match(STAFF_ACCOUNT_FORM_CODE, /document\.body\.append\(overlay\)/);
     assert.match(HR_PAGE_CODE, /document\.body\.appendChild\(panel\)/);
     assert.match(HR_PAGE_CODE, /panel\.setAttribute\('aria-modal', 'true'\)/);
-    assert.match(HR_PAGE_CODE, /root\.focus\(\{ preventScroll: true \}\)/);
+    assert.match(STAFF_ACCOUNT_FORM_CODE, /receipt\.focus\(\{ preventScroll: true \}\)/);
     assert.match(USERS_ROUTE, /createAccountOnboarding/);
     assert.match(USERS_ROUTE, /profession_conditions: conditionsByStaff/);
     assert.match(USERS_ROUTE, /const linkActive = row\.profile_active !== false && row\.staff_active !== false/);
@@ -125,9 +126,12 @@ function renderReceiptFixture(payload, canAssign = true) {
         accountOnboardingEl: () => root,
         getAccountBusinessCatalog: () => [{ key: 'dar', label: 'Дар' }, { key: 'event_genix', label: 'Парк Закревського' }],
         escapeHtml: value => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'),
-        setAccountOnboardingStatus() {}
+        document: { getElementById: () => ({ ...root, dataset: {} }) }
     };
     vm.createContext(context);
+    vm.runInContext(STAFF_ACCOUNT_FORM_CODE, context);
+    context.staffAccountField = () => root;
+    root.dataset = {};
     vm.runInContext(between(HR_PAGE_CODE, 'function renderAccountOnboardingReceipt(response)', 'async function submitAccountOnboarding()'), context);
     context.renderAccountOnboardingReceipt(payload);
     return { html: root.innerHTML, state: context.accountOnboardingState };
@@ -146,7 +150,7 @@ test('account receipt separates password readiness, profile context, and busines
         assert.doesNotMatch(html, /Парк Закревського/);
         assert.match(html, /role="status" aria-live="polite"/);
     }
-    assert.match(HR_HTML, /accountOnboardingAccessSummary/);
+    assert.match(STAFF_ACCOUNT_FORM_CODE, /accountOnboardingAccessSummary/);
 });
 
 test('recovered receipt distinguishes unavailable details from empty data and preserves staff identity', () => {
@@ -239,21 +243,21 @@ test('account onboarding commits async definitions and restores focus only throu
     assert.match(mobileCloseSource, /isUsableAccountFocusTarget\(portal\?\.returnFocus\)/);
     assert.match(mobileCloseSource, /accountFocusFallback\(\)/);
 
-    const onboardingCloseSource = between(HR_PAGE_CODE, 'function closeAccountOnboardingWizard(', 'function setAccountOnboardingBackgroundInert(');
+    const onboardingCloseSource = between(HR_PAGE_CODE, 'function closeAccountOnboardingWizard(', 'function bindAccountOnboardingControls(');
     assert.match(onboardingCloseSource, /isUsableAccountFocusTarget\(returnFocus\)/);
     assert.match(onboardingCloseSource, /accountFocusFallback\(\)/);
 });
 
 test('account onboarding recovers from request failures and never logs issued credentials', () => {
-    const submitSource = between(HR_PAGE_CODE, 'async function submitAccountOnboarding()', 'function closeAccountOnboardingWizard(');
+    const submitSource = between(STAFF_ACCOUNT_FORM_CODE, 'async function submitStaffAccountForm(', 'function renderStaffAccountFormReceipt(');
     assert.match(submitSource, /try\s*\{/);
     assert.match(submitSource, /catch\s*(?:\(error\)\s*)?\{/);
     assert.match(submitSource, /finally\s*\{/);
-    assert.match(submitSource, /accountOnboardingState\.submitting = false/);
+    assert.match(submitSource, /state\.submitting = false/);
     assert.match(submitSource, /submit\.disabled = false/);
 
     const hrCredentialSource = between(HR_PAGE_CODE, 'function showOneTimeCredentialModal(', 'function showManualPasswordResetResult(');
-    const staffCredentialSource = between(STAFF_PAGE_CODE, 'function showOneTimeCredential(', 'function suggestUsernameFromStaffInfo(');
+    const staffCredentialSource = between(STAFF_ACCOUNT_FORM_CODE, 'async function copyStaffAccountFormCredential(', '\n}');
     assert.doesNotMatch(hrCredentialSource, /console\.(?:log|info|warn|error)/);
     assert.doesNotMatch(staffCredentialSource, /console\.(?:log|info|warn|error)/);
 });
@@ -269,11 +273,13 @@ for (const changed of ['business', 'session', 'closed', 'replacement']) {
             accountOnboardingRequestSeq: 1,
             validateAccountOnboardingStep: () => true,
             buildAccountOnboardingPayload: () => ({ staff: { id: 123 } }), accountOnboardingEl: () => submit,
-            setAccountOnboardingStatus() {}, teamAccessContext: () => identity,
+            teamAccessContext: () => identity, document: { getElementById: () => submit },
             submitStaffCreation: async () => { calls++; return pending; },
             completeAccountOnboarding: () => { completions++; }
         };
         vm.createContext(context);
+        vm.runInContext(STAFF_ACCOUNT_FORM_CODE, context);
+        context.setStaffAccountFormStatus = () => {};
         vm.runInContext(between(HR_PAGE_CODE, 'async function submitAccountOnboarding()', 'function completeAccountOnboarding('), context);
         const request = context.submitAccountOnboarding();
         await context.submitAccountOnboarding();

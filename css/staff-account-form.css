@@ -1,0 +1,410 @@
+.hr-account-danger,
+.hr-account-primary,
+.hr-account-toggle,
+.hr-account-link {
+    border: 1px solid rgba(148,163,184,0.28);
+    border-radius: 12px;
+    padding: 9px 12px;
+    background: rgba(15,23,42,0.04);
+    color: var(--gray-700);
+    font-weight: 900;
+    font-size: 12px;
+    text-decoration: none;
+    cursor: pointer;
+}
+.hr-account-primary {
+    border-color: rgba(16,185,129,0.30);
+    background: linear-gradient(135deg, rgba(16,185,129,0.16), rgba(20,184,166,0.10));
+    color: #047857;
+}
+.hr-account-primary:hover,
+.hr-account-toggle:hover,
+.hr-account-link:hover {
+    border-color: rgba(16,185,129,0.38);
+    background: rgba(16,185,129,0.12);
+    color: #047857;
+}
+
+.hr-account-filter select,
+.hr-account-form-grid input,
+.hr-account-form-grid select,
+.hr-account-time-grid input {
+    width: 100%;
+    min-height: 38px;
+    border: 1px solid rgba(148,163,184,0.28);
+    border-radius: 10px;
+    padding: 7px 9px;
+    background: var(--white, #fff);
+    color: var(--gray-800);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 750;
+}
+.hr-account-filter select:focus,
+.hr-account-form-grid input:focus,
+.hr-account-form-grid select:focus,
+.hr-account-time-grid input:focus {
+    border-color: rgba(16,185,129,0.58);
+    box-shadow: 0 0 0 3px rgba(16,185,129,0.10);
+    outline: none;
+}
+
+.hr-account-icon-btn {
+    display: inline-grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border: 1px solid rgba(148,163,184,0.25);
+    border-radius: 10px;
+    background: rgba(255,255,255,0.76);
+    color: var(--gray-600);
+    font: inherit;
+    font-size: 18px;
+    font-weight: 900;
+    cursor: pointer;
+}
+.hr-account-icon-btn:hover,
+.hr-account-icon-btn:focus-visible {
+    border-color: rgba(16,185,129,0.40);
+    background: rgba(16,185,129,0.09);
+    color: #047857;
+    outline: none;
+}
+
+.hr-account-detail-card {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+    border: 1px solid rgba(148,163,184,0.18);
+    border-radius: 12px;
+    padding: 10px;
+    background: rgba(248,250,252,0.74);
+}
+.hr-account-detail-card.is-wide { grid-column: 1 / -1; }
+.hr-account-detail-card span {
+    color: var(--gray-500);
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+.hr-account-detail-card strong,
+.hr-account-detail-card p {
+    margin: 0;
+    overflow-wrap: anywhere;
+    color: var(--gray-800);
+    font-size: 12px;
+    line-height: 1.4;
+}
+.hr-account-detail-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.hr-account-onboarding-overlay {
+    position: fixed;
+    z-index: 10020;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 20px;
+    background: rgba(15,23,42,0.58);
+    backdrop-filter: blur(7px);
+}
+.hr-account-onboarding {
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+    width: min(1120px, 96vw);
+    max-height: 94vh;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.22);
+    border-radius: 22px;
+    background: #fff;
+    box-shadow: 0 28px 80px rgba(15,23,42,0.34);
+}
+
+.hr-account-onboarding-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 18px 20px 14px;
+    border-bottom: 1px solid rgba(148,163,184,0.16);
+}
+.hr-account-onboarding-head h3 {
+    margin: 2px 0 4px;
+    color: var(--gray-900);
+    font-size: 20px;
+}
+.hr-account-onboarding-head p {
+    margin: 0;
+    color: var(--gray-500);
+    font-size: 12px;
+}
+.hr-account-eyebrow {
+    color: #047857;
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+.hr-account-onboarding-loading {
+    padding: 28px;
+    color: var(--gray-500);
+    text-align: center;
+    font-weight: 850;
+}
+#accountOnboardingExistingStaffFields[hidden] {
+    display: none;
+}
+.hr-account-onboarding-form,
+.hr-account-receipt {
+    min-height: 0;
+    overflow: auto;
+}
+.hr-account-onboarding-panel {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 22px 24px 28px;
+}
+.hr-account-onboarding-panel-head {
+    margin-bottom: 16px;
+}
+.hr-account-onboarding-panel-head h4 {
+    margin: 0 0 4px;
+    color: var(--gray-900);
+    font-size: 18px;
+}
+.hr-account-onboarding-panel-head p {
+    margin: 0;
+    color: var(--gray-500);
+    font-size: 12px;
+}
+.hr-account-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+#accountOnboardingPersonalFields { grid-template-columns: minmax(0, 1fr); }
+.hr-account-form-grid > label,
+.hr-account-time-grid label {
+    display: grid;
+    align-content: start;
+    gap: 5px;
+    color: var(--gray-700);
+    font-size: 11px;
+    font-weight: 850;
+}
+.hr-account-form-grid > label.is-wide { grid-column: 1 / -1; }
+.hr-account-form-grid small {
+    color: var(--gray-500);
+    font-size: 10px;
+    font-weight: 700;
+}
+
+.hr-account-onboarding-status {
+    min-height: 0;
+    padding: 0 20px;
+    color: #b91c1c;
+    font-size: 12px;
+    font-weight: 850;
+}
+.hr-account-onboarding-status:not(:empty) {
+    padding-top: 10px;
+}
+.hr-account-onboarding-status[data-type="progress"] {
+    color: #1d4ed8;
+}
+.hr-account-onboarding-status[data-type="warning"] {
+    color: #a16207;
+}
+.hr-account-onboarding-status[data-type="success"] {
+    color: #15803d;
+}
+.hr-account-onboarding-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 9px;
+    padding: 12px 18px;
+    border-top: 1px solid rgba(148,163,184,0.16);
+}
+.hr-account-receipt {
+    display: grid;
+    gap: 12px;
+    max-width: 820px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 22px 24px 28px;
+}
+.hr-account-onboarding:has(> .hr-account-receipt:not(.hidden)) {
+    grid-template-rows: auto minmax(0, 1fr) auto;
+}
+.hr-account-receipt h4 {
+    margin: 0;
+    color: #047857;
+    font-size: 20px;
+}
+.hr-account-receipt-access,
+.hr-account-field-note {
+    margin: 8px 0 0;
+    color: var(--text-muted, #64748b);
+    font-size: 12px;
+    line-height: 1.5;
+}
+.hr-account-receipt-access {
+    border-left: 3px solid rgba(14, 165, 233, 0.55);
+    padding: 8px 10px;
+    background: rgba(14, 165, 233, 0.06);
+}
+.hr-account-receipt-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+.hr-account-credential {
+    display: grid;
+    gap: 7px;
+    border: 1px solid rgba(245,158,11,0.28);
+    border-radius: 14px;
+    padding: 12px;
+    background: rgba(245,158,11,0.08);
+}
+.hr-account-credential code {
+    display: block;
+    border-radius: 9px;
+    padding: 9px;
+    background: rgba(255,255,255,0.86);
+    color: #78350f;
+    font-size: 13px;
+    overflow-wrap: anywhere;
+}
+.hr-account-receipt-warnings {
+    border: 1px solid rgba(245,158,11,0.24);
+    border-radius: 12px;
+    padding: 10px 12px;
+    background: rgba(245,158,11,0.07);
+    color: #92400e;
+    font-size: 11px;
+}
+
+body.dark-mode .hr-account-toggle,
+body.dark-mode .hr-account-link {
+    background: rgba(15,23,42,0.38);
+    border-color: rgba(148,163,184,0.22);
+    color: #E2E8F0;
+}
+body.dark-mode .hr-account-primary {
+    background: rgba(16,185,129,0.14);
+    border-color: rgba(16,185,129,0.26);
+    color: #A7F3D0;
+}
+
+body.dark-mode .hr-account-toolbar,
+body.dark-mode .hr-account-master,
+body.dark-mode .hr-account-detail,
+body.dark-mode .hr-account-onboarding {
+    background: #202039;
+    border-color: #3D3D5C;
+    color: #E2E8F0;
+}
+body.dark-mode .hr-account-onboarding-status[data-type="error"] { color: #fca5a5; }
+body.dark-mode .hr-account-onboarding-status[data-type="progress"] { color: #93c5fd; }
+body.dark-mode .hr-account-onboarding-status[data-type="warning"] { color: #fde68a; }
+body.dark-mode .hr-account-onboarding-status[data-type="success"] { color: #86efac; }
+
+body.dark-mode .hr-account-identity strong,
+body.dark-mode .hr-account-cell strong,
+body.dark-mode .hr-account-detail-head h4,
+body.dark-mode .hr-account-onboarding-head h3,
+body.dark-mode .hr-account-onboarding-panel-head h4,
+body.dark-mode .hr-account-detail-card strong,
+body.dark-mode .hr-account-detail-card p,
+body.dark-mode .hr-account-history-item strong,
+body.dark-mode .hr-account-conflict-item strong,
+body.dark-mode .hr-account-form-grid > label,
+body.dark-mode .hr-account-time-grid label,
+body.dark-mode .hr-account-advanced summary {
+    color: #E2E8F0;
+}
+body.dark-mode .hr-account-filter select,
+body.dark-mode .hr-account-form-grid input,
+body.dark-mode .hr-account-form-grid select,
+body.dark-mode .hr-account-time-grid input,
+body.dark-mode .hr-account-icon-btn {
+    background: #1E1E38;
+    border-color: #4A4A6A;
+    color: #F8FAFC;
+    color-scheme: dark;
+}
+body.dark-mode .hr-account-detail-card,
+body.dark-mode .hr-account-history-item,
+body.dark-mode .hr-account-conflict-item,
+body.dark-mode .hr-account-choice-row label,
+body.dark-mode .hr-account-option-list label,
+body.dark-mode .hr-account-advanced {
+    background: rgba(15,23,42,0.34);
+    border-color: rgba(148,163,184,0.20);
+}
+
+body.dark-mode .hr-account-credential code {
+    background: rgba(15,23,42,0.48);
+    color: #FDE68A;
+}
+
+@media (max-width: 768px) {
+    .hr-account-detail-grid,
+    .hr-account-review,
+    .hr-account-receipt-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .hr-account-onboarding-overlay {
+        align-items: stretch;
+        padding: 0;
+    }
+    .hr-account-onboarding {
+        width: 100vw;
+        max-height: 100dvh;
+        border: 0;
+        border-radius: 0;
+    }
+    .hr-account-onboarding-head {
+        padding: calc(12px + env(safe-area-inset-top, 0px)) 12px 10px;
+    }
+    .hr-account-onboarding-head p {
+        display: none;
+    }
+    .hr-account-onboarding-panel,
+    .hr-account-receipt {
+        padding: 16px 12px calc(20px + env(safe-area-inset-bottom, 0px));
+    }
+    .hr-account-form-grid,
+    .hr-account-time-grid,
+    .hr-account-option-list,
+    .hr-account-option-list.is-compact,
+    .hr-account-preset-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .hr-account-onboarding-actions {
+        padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+    }
+}
+
+#accountOnboardingOverlay .hr-account-onboarding-panel { width: 100%; box-sizing: border-box; }
+body.dark-mode #accountOnboardingOverlay .hr-account-receipt h4,
+body.dark-mode #accountOnboardingOverlay .hr-account-eyebrow { color: #6ee7b7; }
+#accountOnboardingOverlay .hr-account-onboarding-actions { flex-wrap: wrap; }
+#accountOnboardingSubmit { white-space: normal; max-width: 100%; }
+#accountOnboardingOverlay button { min-height: 44px; }
+
+#accountOnboardingManualRoleFields { margin-top: 12px; }
+#accountOnboardingManualRoleFields[hidden] { display: none; }
+
+@media (max-width: 600px) {
+    #accountOnboardingOverlay button,
+    #accountOnboardingOverlay select,
+    #accountOnboardingOverlay input:not([type="checkbox"]):not([type="radio"]) { min-height: 48px; }
+    #accountOnboardingOverlay select,
+    #accountOnboardingOverlay input:not([type="checkbox"]):not([type="radio"]) { font-size: max(1rem, 1em); }
+    #accountOnboardingSubmit { flex: 1 1 180px; }
+}

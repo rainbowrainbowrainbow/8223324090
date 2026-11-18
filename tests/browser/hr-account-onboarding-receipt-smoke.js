@@ -8,21 +8,6 @@ const ROOT = path.resolve(__dirname, '..', '..');
 const OUTPUT_DIR = path.join(ROOT, 'output', 'playwright', 'hr-team-browser-smoke');
 const read = file => fs.readFileSync(path.join(ROOT, file), 'utf8');
 
-function onboardingMarkup() {
-    const source = read('hr.html');
-    const start = source.indexOf('<div id="accountOnboardingOverlay"');
-    assert.ok(start >= 0);
-    const tags = /<\/?div\b[^>]*>/gi;
-    tags.lastIndex = start;
-    let depth = 0;
-    let match;
-    while ((match = tags.exec(source))) {
-        depth += /^<div\b/i.test(match[0]) ? 1 : -1;
-        if (depth === 0) return source.slice(start, tags.lastIndex);
-    }
-    throw new Error('Account onboarding overlay is incomplete');
-}
-
 function fixture(accessState, businessAccessReady, options = {}) {
     const access = { role: 'director', defaultBusinessContext: 'dar', businessContexts: ['dar'] };
     const readiness = accessState ? { accessState, businessAccessReady } : {};
@@ -45,9 +30,9 @@ function fixture(accessState, businessAccessReady, options = {}) {
 }
 
 async function install(page) {
-    const css = ['css/base.css', 'css/modals.css', 'css/hr-page.css', 'css/pages-hr-foundation.css', 'css/pages-hr-staff.css'].map(read).join('\n');
+    const css = ['css/base.css', 'css/modals.css', 'css/staff-account-form.css', 'css/hr-page.css', 'css/pages-hr-foundation.css', 'css/pages-hr-staff.css'].map(read).join('\n');
     await page.route('**/*', route => route.abort());
-    await page.setContent(`<!doctype html><html lang="uk"><head><meta charset="utf-8"><style>${css}</style></head><body data-page-group="hr"><main><button id="receiptTrigger" type="button">Відкрити синтетичну квитанцію</button></main>${onboardingMarkup()}</body></html>`);
+    await page.setContent(`<!doctype html><html lang="uk"><head><meta charset="utf-8"><style>${css}</style></head><body data-page-group="hr"><main><button id="receiptTrigger" type="button">Відкрити синтетичну квитанцію</button></main></body></html>`);
     await page.evaluate(() => {
         window.AppState = { currentUser: { id: 1, role: 'creator', activeBusinessContext: 'event_genix', businessProfile: { organizations: [{ role: 'owner' }] } } };
         window.__receiptCopies = [];
@@ -57,6 +42,7 @@ async function install(page) {
         document.addEventListener = (type, listener, options) => type === 'DOMContentLoaded' ? undefined : window.__receiptAddEventListener(type, listener, options);
     });
     await page.addScriptTag({ content: read('js/business-membership-manager.js') });
+    await page.addScriptTag({ content: read('js/staff-account-form.js') });
     await page.addScriptTag({ content: read('js/hr-page.js') });
     await page.evaluate(() => {
         document.addEventListener = window.__receiptAddEventListener;
@@ -69,7 +55,7 @@ async function install(page) {
             const overlay = document.getElementById('accountOnboardingOverlay');
             overlay.classList.remove('hidden');
             overlay.removeAttribute('aria-hidden');
-            setAccountOnboardingBackgroundInert(true);
+            setStaffAccountBackgroundInert(true);
             renderAccountOnboardingReceipt(window.__receiptFixture);
         });
     });

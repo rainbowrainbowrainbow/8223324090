@@ -348,6 +348,13 @@ const CSS_SURFACE = [
         reason: 'Hermes Studio creative job queue, brief form, asset review, and decision controls.'
     },
     {
+        file: 'css/staff-account-form.css',
+        owner: 'staff-account-form',
+        category: 'page-scoped',
+        status: 'active',
+        reason: 'Shared single-account form and receipt for the Park HR and staff schedule pages.'
+    },
+    {
         file: 'css/hr-page.css',
         owner: 'hr',
         category: 'page-scoped-large',

@@ -8396,9 +8396,11 @@ async function staffApiFetch(path, options = {}) {
 }
 
 async function fetchLinkStatus() {
+    const context = staffScheduleRequestContext();
     try {
         const res = await staffApiFetch('/api/staff/link-status');
         const data = await res.json();
+        if (context !== staffScheduleRequestContext()) return { success: false, stale: true };
         if (data.success) {
             StaffState.linkData = data.data;
             StaffState.linkStats = data.stats;
@@ -8411,9 +8413,11 @@ async function fetchLinkStatus() {
 }
 
 async function fetchAllUsers() {
+    const context = staffScheduleRequestContext();
     try {
         const res = await staffApiFetch('/api/users');
         const data = await res.json();
+        if (context !== staffScheduleRequestContext()) return [];
         StaffState.allUsers = Array.isArray(data) ? data : (data.data || []);
         return StaffState.allUsers;
     } catch (err) {
@@ -8438,10 +8442,10 @@ async function loadStaffAccountCreationAccess() {
     return null;
 }
 
-async function submitStaffAccountCreation(path, body) {
+async function submitStaffAccountCreation(path, body, idempotencyKey = crypto.randomUUID()) {
     const options = {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify(body)
     };
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -8449,41 +8453,6 @@ async function submitStaffAccountCreation(path, body) {
         if (response && response.status < 500) return response.json();
     }
     return { success: false, error: 'Не вдалося підтвердити результат створення. Оновіть список акаунтів.' };
-}
-
-function validateStaffAccountManualPassword(values = {}) {
-    const password = String(values.password || '');
-    if ([...password].length < 12 || new TextEncoder().encode(password).length > 72
-        || /[\r\n;]/.test(password) || password.normalize('NFKC').trim() !== password) {
-        return { key: 'password', message: 'Вкажіть пароль від 12 символів і до 72 байтів без крайніх пробілів, крапки з комою та переносів рядка.' };
-    }
-    return null;
-}
-
-function showOneTimeCredential(credential, title = 'Тимчасовий пароль, показується один раз', payload = {}) {
-    if (!credential) return;
-    const text = `CRM: ${location.origin}/\nБізнес: ${payload.businessLabel || payload.businessContext || 'Парк Закревського'}\nЛогін: ${credential.username || ''}\nПароль: ${getCredentialPassword(credential)}`;
-    const hasReadiness = Object.prototype.hasOwnProperty.call(payload, 'loginReady');
-    const readinessMessage = hasReadiness
-        ? (payload.loginReady
-            ? '\n\nПеревірено сервером: цей логін і пароль готові до входу.'
-            : `\n\nУвага: сервер не підтвердив готовність входу (${payload.loginReadyReason || 'невідомо'}).`)
-        : '';
-    if (typeof confirmModal === 'function') {
-        confirmModal(`${title}\n\n${text}${readinessMessage}\n\nСкопіюйте зараз: старий пароль у CRM не можна переглянути повторно.`, {
-            type: 'warning',
-            okText: 'Скопіювати',
-            cancelText: 'Закрити'
-        }).then(ok => {
-            if (ok && navigator.clipboard) {
-                navigator.clipboard.writeText(text).then(() => showNotification('One-time credentials скопійовано', 'success'));
-            }
-        });
-        return;
-    }
-    if (typeof showNotification === 'function') {
-        showNotification(text, 'info');
-    }
 }
 
 function suggestUsernameFromStaffInfo(info = {}) {
@@ -8496,6 +8465,18 @@ function suggestUsernameFromStaffInfo(info = {}) {
         .replace(/^\.+|\.+$/g, '');
     return normalized || `staff.${info.id || Date.now()}`;
 }
+
+const SCHEDULE_ACCOUNT_ROLES = {
+    animator: 'Аніматор',
+    manager: 'Менеджер',
+    hr: 'HR',
+    admin: 'Адмін',
+    cook: 'Кухар',
+    barista: 'Бариста',
+    waiter: 'Офіціант',
+    maintenance: 'Технічний директор',
+    cleaning: 'Прибиральник'
+};
 
 function getStaffAccountRole(info = {}) {
     const role = String(info.role_type || '').trim();
@@ -8512,8 +8493,7 @@ function getStaffAccountRole(info = {}) {
         intern: 'animator'
     };
     const mapped = aliases[role] || role;
-    const allowed = new Set(['animator', 'manager', 'hr', 'admin', 'cook', 'barista', 'waiter', 'maintenance', 'cleaning']);
-    return allowed.has(mapped) ? mapped : 'animator';
+    return Object.hasOwn(SCHEDULE_ACCOUNT_ROLES, mapped) ? mapped : 'animator';
 }
 
 function getLinkInfo(staffId) {
@@ -8668,71 +8648,148 @@ async function confirmLinkAccount() {
     }
 }
 
-async function createAccountForLinkingStaff() {
+let scheduleAccountFormState = null;
+
+async function createAccountForLinkingStaff(event) {
     const info = getLinkInfo(StaffState.linkingStaffId);
-    if (!info || typeof formModal !== 'function') return;
+    if (!info || scheduleAccountFormState) return;
+    const state = {
+        info,
+        context: staffScheduleRequestContext(),
+        returnFocus: event.currentTarget
+    };
+    scheduleAccountFormState = state;
     const access = await loadStaffAccountCreationAccess();
-    if (!access) return;
-    const result = await formModal(`Створити акаунт · ${info.name}`, [
-        { key: 'name', label: 'Імʼя в CRM', required: true, defaultValue: info.name || '' },
-        { key: 'username', label: 'Логін', required: true, defaultValue: suggestUsernameFromStaffInfo(info) },
-        { key: 'business', type: 'note', text: access.pendingMembership
-            ? `${access.businessLabel}: акаунт очікуватиме призначення доступу.`
-            : `Бізнес: ${access.businessLabel}` },
-        { key: 'password', label: 'Початковий пароль', type: 'password', initialPasswordControls: true, defaultValue: generateInitialAccountPassword(),
-            hint: 'Можна відредагувати. Мінімум 12 символів.', required: true },
-        { key: 'role', label: 'Основна роль', type: 'select', defaultValue: getStaffAccountRole(info), options: [
-            { value: 'animator', label: 'Аніматор' },
-            { value: 'manager', label: 'Менеджер' },
-            { value: 'hr', label: 'HR' },
-            { value: 'admin', label: 'Адмін' },
-            { value: 'cook', label: 'Кухар' },
-            { value: 'barista', label: 'Бариста' },
-            { value: 'waiter', label: 'Офіціант' },
-            { value: 'maintenance', label: 'Технічний директор' },
-            { value: 'cleaning', label: 'Прибиральник' }
-        ] }
-    ], {
-        icon: '👤',
-        type: 'info',
-        okText: access.activateMembership ? 'Створити акаунт і надати доступ' : 'Створити CRM-акаунт',
-        className: 'staff-account-create-modal',
-        validate: validateStaffAccountManualPassword
-    });
-    if (!result) return;
-    const password = String(result.password || '');
-    try {
-        const data = await submitStaffAccountCreation('/api/users', {
-            username: String(result.username || '').trim(),
-            password,
-            activateMembership: access.activateMembership,
-            defaultBusinessContext: access.businessContext,
-            name: String(result.name || '').trim(),
-            role: result.role || 'animator',
-            staffId: info.id
-        });
-        if (!data.success) {
-            showNotification(data.error || 'Не вдалося створити акаунт', 'error');
-            return;
-        }
-        closeLinkModal();
-        if (data.replayed) {
-            showNotification('Знайдено збережений акаунт. За потреби видайте початковий пароль повторно в керуванні акаунтом.', 'info');
-        } else if (data.loginReady && data.businessAccessReady) {
-            showOneTimeCredential({ username: data.user.username, password }, `CRM-доступ активний · ${info.name}`,
-                { ...data, businessLabel: access.businessLabel });
-        } else {
-            const pending = data.accessState === 'pending_membership';
-            showNotification(pending ? 'Акаунт очікує призначення доступу до бізнесу.'
-                : 'Акаунт створено. Потрібно перевірити доступ до бізнесу.', 'info');
-        }
-        await fetchAllUsers();
-        await fetchLinkStatus();
-        renderLinkStatsBar();
-        renderSchedule();
-    } catch (err) {
-        showNotification('Помилка мережі', 'error');
+    if (scheduleAccountFormState !== state) return;
+    if (!access || StaffState.linkingStaffId !== info.id || state.context !== staffScheduleRequestContext()) {
+        scheduleAccountFormState = null;
+        return;
     }
+    state.access = access;
+    const overlay = mountStaffAccountForm();
+    if (overlay.dataset.bound !== 'true') {
+        bindStaffAccountForm({
+            getState: () => scheduleAccountFormState,
+            submit: submitScheduleAccountForm,
+            close: requestCloseScheduleAccountForm
+        });
+        staffAccountField('Receipt').addEventListener('click', event => {
+            const current = scheduleAccountFormState;
+            if (!current?.receipt) return;
+            if (event.target.closest('[data-account-onboarding-copy]') && current.credential) {
+                void copyStaffAccountFormCredential(current.credential, current.access.businessLabel, current.receipt.user.name);
+            }
+            if (event.target.closest('[data-account-onboarding-finish]')) closeScheduleAccountForm();
+        });
+    }
+    staffAccountField('ExistingStaffFields').hidden = true;
+    staffAccountField('StaffId').disabled = true;
+    staffAccountField('Name').readOnly = false;
+    staffAccountField('Intro').textContent = 'Співробітник: ' + info.name;
+    staffAccountField('ManualRoleFields').hidden = false;
+    const role = staffAccountField('ManualRole');
+    role.disabled = false;
+    role.replaceChildren(...Object.entries(SCHEDULE_ACCOUNT_ROLES).map(([value, label]) => new Option(label, value)));
+    role.value = getStaffAccountRole(info);
+    fillStaffAccountFields(info, suggestUsernameFromStaffInfo(info));
+    staffAccountField('AccessSummary').textContent = access.pendingMembership
+        ? `${access.businessLabel}: акаунт очікуватиме призначення доступу.`
+        : `Бізнес: ${access.businessLabel}`;
+    staffAccountField('Submit').textContent = access.activateMembership
+        ? 'Створити акаунт і надати доступ' : 'Створити CRM-акаунт';
+    document.getElementById('linkModalOverlay')?.classList.remove('visible');
+    overlay.classList.remove('hidden');
+    overlay.removeAttribute('aria-hidden');
+    setStaffAccountBackgroundInert(true);
+    overlay.querySelector('.hr-account-onboarding').focus({ preventScroll: true });
+}
+
+async function submitScheduleAccountForm() {
+    const state = scheduleAccountFormState;
+    if (!state?.access || state.submitting || state.receipt || state.context !== staffScheduleRequestContext()) return;
+    const name = staffAccountField('Name');
+    if (!name.value.trim()) {
+        focusInvalidStaffAccountField('Вкажіть імʼя в CRM.', name);
+        return;
+    }
+    if (!validateStaffAccountFields()) return;
+    const body = {
+        username: staffAccountField('Username').value.trim(),
+        name: name.value.trim(),
+        role: staffAccountField('ManualRole').value,
+        staffId: state.info.id,
+        activateMembership: state.access.activateMembership,
+        defaultBusinessContext: state.access.businessContext
+    };
+    const fingerprint = JSON.stringify(body);
+    if (state.operation?.fingerprint !== fingerprint) {
+        state.operation = { fingerprint, key: crypto.randomUUID() };
+    }
+    const password = staffAccountField('Password').value;
+    const isCurrent = () => state === scheduleAccountFormState && state.context === staffScheduleRequestContext();
+    await submitStaffAccountForm(state, isCurrent, async () => ({
+        result: await submitStaffAccountCreation('/api/users', { ...body, password }, state.operation.key)
+    }), ({ result }) => {
+        state.receipt = result;
+        renderScheduleAccountReceipt(state, password);
+    });
+}
+
+function renderScheduleAccountReceipt(state, password) {
+    const { receipt, access, info } = state;
+    const { user, accessState, businessAccessReady, replayed, loginReady } = receipt;
+    const active = accessState === 'active' && businessAccessReady;
+    const pending = accessState === 'pending_membership';
+    state.credential = !replayed && active && loginReady ? { username: user.username, password } : null;
+    renderStaffAccountFormReceipt({
+        title: active ? 'CRM-доступ активний' : pending ? 'Очікує призначення доступу' : 'CRM-акаунт створено',
+        accessMessage: active ? 'Доступ до вибраного бізнесу активний.'
+            : pending ? 'Доступ до вибраного бізнесу очікує членства.'
+                : 'Стан доступу до вибраного бізнесу не вдалося підтвердити; перевірте членство окремо.',
+        loginMessage: loginReady === true ? 'Пароль готовий до входу.' : 'Готовність пароля до входу не підтверджено.',
+        rows: [
+            ['Імʼя та прізвище', user.name],
+            ['Логін для входу', user.username],
+            ['Картка співробітника', `#${info.id} · ${info.name}`],
+            ['Роль у CRM', SCHEDULE_ACCOUNT_ROLES[user.role] || user.role],
+            ['Вибраний бізнес', access.businessLabel]
+        ],
+        credential: state.credential,
+        nextSteps: replayed
+            ? '<p>Знайдено збережений акаунт. За потреби видайте початковий пароль повторно в керуванні акаунтом.</p>'
+            : ''
+    });
+}
+
+async function requestCloseScheduleAccountForm() {
+    const state = scheduleAccountFormState;
+    if (await confirmStaffAccountFormClose(state) && state === scheduleAccountFormState) closeScheduleAccountForm();
+}
+
+function closeScheduleAccountForm({ force = false } = {}) {
+    const state = scheduleAccountFormState;
+    if (!state) return;
+    scheduleAccountFormState = null;
+    hideStaffAccountForm();
+    if (force) return;
+    if (state.receipt) {
+        closeLinkModal();
+        const rowSelector = `[data-hr-profile="${state.info.id}"]`;
+        document.querySelector(rowSelector)?.focus({ preventScroll: true });
+        void refreshScheduleAccountLinks(state.context, rowSelector);
+    } else {
+        document.getElementById('linkModalOverlay')?.classList.add('visible');
+        state.returnFocus?.focus({ preventScroll: true });
+    }
+}
+
+async function refreshScheduleAccountLinks(context, rowSelector) {
+    await Promise.allSettled([fetchAllUsers(), fetchLinkStatus()]);
+    if (context !== staffScheduleRequestContext()) return;
+    const restoreFocus = document.activeElement.matches(rowSelector);
+    renderLinkStatsBar();
+    renderSchedule();
+    if (restoreFocus) document.querySelector(rowSelector)?.focus({ preventScroll: true });
 }
 
 // Bulk create accounts
@@ -9265,6 +9322,7 @@ function clearStaffScheduleAccessState() {
     editor?.classList.add('hidden');
     void closeEditModal(true);
     void closeFillWeekModal(true);
+    closeScheduleAccountForm({ force: true });
     closeLinkModal();
     closeBulkResults();
     Object.assign(StaffState, {

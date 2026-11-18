@@ -22,6 +22,7 @@
     <link rel="stylesheet" href="css/modals.css?v=0.83.118">
     <link rel="stylesheet" href="css/dark-mode.css?v=0.83.118">
     <link rel="stylesheet" href="css/responsive.css?v=0.83.118">
+    <link rel="stylesheet" href="css/staff-account-form.css?v=0.83.118">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/hr-page.css?v=0.83.118">
@@ -413,45 +414,6 @@
                         <div class="hr-account-detail-empty"><strong>Оберіть акаунт</strong><span>Профіль, HR-звʼязок, доступ, безпека й історія відкриються тут.</span></div>
                     </aside>
                 </div>
-            </div>
-
-            <div id="accountOnboardingOverlay" class="hr-account-onboarding-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="accountOnboardingTitle">
-                <section class="hr-account-onboarding" tabindex="-1">
-                    <header class="hr-account-onboarding-head">
-                        <div>
-                            <span class="hr-account-eyebrow">Контрольоване створення</span>
-                            <h3 id="accountOnboardingTitle">Надати CRM-доступ</h3>
-                            <p>CRM-роль визначається за основною посадою у картці співробітника.</p>
-                        </div>
-                        <button type="button" id="accountOnboardingClose" class="hr-account-icon-btn" aria-label="Закрити створення акаунта">×</button>
-                    </header>
-                    <div id="accountOnboardingLoading" class="hr-account-onboarding-loading hidden" role="status">Завантаження довідників…</div>
-                    <form id="accountOnboardingForm" class="hr-account-onboarding-form" novalidate>
-                        <section class="hr-account-onboarding-panel">
-                            <div id="accountOnboardingExistingStaffFields" class="hr-account-form-grid">
-                                <label for="accountOnboardingStaffId" class="is-wide"><span>Картка співробітника *</span><select id="accountOnboardingStaffId" required><option value="">Оберіть співробітника</option></select><small>Вже зайняті профілі недоступні для вибору.</small></label>
-                            </div>
-                            <div id="accountOnboardingIdentityFields" class="hr-account-form-grid">
-                                <div id="accountOnboardingPersonalFields" class="hr-account-form-grid is-wide"></div>
-                                <label for="accountOnboardingUsername"><span>Логін для входу *</span><input id="accountOnboardingUsername" name="username" maxlength="50" pattern="[a-zA-Z0-9._-]{3,50}" autocomplete="off" required><small>Після створення логін не змінюється.</small></label>
-                                <div class="is-wide">
-                                    <label for="accountOnboardingPassword"><span>Початковий пароль *</span></label>
-                                    <div class="password-visibility-field">
-                                        <input id="accountOnboardingPassword" type="password" autocomplete="new-password" minlength="12" maxlength="72" aria-describedby="accountOnboardingPasswordHint" required>
-                                        <button type="button" id="accountOnboardingPasswordToggle" class="password-visibility-toggle" aria-label="Показати пароль" aria-controls="accountOnboardingPassword" aria-pressed="false"><svg class="password-eye-open" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6Z"/><circle cx="12" cy="12" r="2.5"/></svg><svg class="password-eye-closed" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18M10 6.2a13 13 0 0 1 2-.2c6.4 0 10 6 10 6a16 16 0 0 1-2.2 2.7M6.5 7.5A16 16 0 0 0 2 12s3.6 6 10 6c1.7 0 3.2-.4 4.5-1"/></svg></button>
-                                    </div>
-                                    <small id="accountOnboardingPasswordHint">Можна відредагувати. Від 12 символів, без крайніх пробілів, крапки з комою та переносів рядка.</small>
-                                </div>
-                            </div>
-                            <p id="accountOnboardingAccessSummary" class="hr-account-field-note" role="status" tabindex="-1"></p>
-                        </section>
-                    </form>
-                    <section id="accountOnboardingReceipt" class="hr-account-receipt hidden" aria-live="polite"></section>
-                    <div id="accountOnboardingStatus" class="hr-account-onboarding-status" role="alert" aria-live="assertive"></div>
-                    <footer id="accountOnboardingActions" class="hr-account-onboarding-actions">
-                        <button type="submit" form="accountOnboardingForm" id="accountOnboardingSubmit" class="hr-account-primary">Створити CRM-акаунт</button>
-                    </footer>
-                </section>
             </div>
 
             <!-- TAB 3A: COMPANY STRUCTURE -->
@@ -1593,6 +1555,7 @@
     </div>
 
     <script src="js/ui.js?v=0.83.118"></script>
+    <script src="js/staff-account-form.js?v=0.83.118"></script>
     <script src="js/config.js?v=0.83.118"></script>
     <script src="js/notification.js?v=0.83.118"></script>
     <script src="js/api.js?v=0.83.118"></script>

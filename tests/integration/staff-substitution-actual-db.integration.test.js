@@ -7,11 +7,29 @@ const { assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
 const { createSubstitutionService } = require('../../services/staffSubstitutions');
 const enabled = process.env.RUN_SUBSTITUTION_ACTUAL_DB === 'true';
 const { authRequest } = require('../helpers');
+const { createParkWorkFixture } = require('../helpers/park-work-app-fixture');
+
+async function removeOwnedParkFixture(db, fixture) {
+    const client = await db.connect();
+    try {
+        await client.query('BEGIN');
+        const businesses = await client.query(`DELETE FROM businesses b USING organizations o
+            WHERE b.organization_id=o.id AND o.id=$2 AND o.slug=$3 AND b.id=ANY($1::bigint[]) RETURNING b.id`,
+        [[fixture.park.id, fixture.dar.id], fixture.org.id, `work-${fixture.suffix}`]);
+        assert.equal(businesses.rowCount, 2, 'remove only this test fixture business registry');
+        const organization = await client.query('DELETE FROM organizations WHERE id=$1 AND slug=$2 RETURNING id',
+            [fixture.org.id, `work-${fixture.suffix}`]);
+        assert.equal(organization.rowCount, 1);
+        await client.query('COMMIT');
+    } catch (error) { await client.query('ROLLBACK'); throw error; }
+    finally { client.release(); }
+}
 
 test('default services use the migrated schema for an unrelated permanent occupation', { skip: !enabled }, async () => {
     assert.equal(assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL).isLocal,true);
     assert.equal(process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER,'true');
     const db = new Pool({ connectionString:process.env.TEST_DATABASE_URL, ssl:false });
+    let parkFixture;
     try {
         const staff = (await db.query(`INSERT INTO staff(name,role_type,department,position,is_active,hourly_rate,rate_unit,hr_pool_status,is_freelance)
             VALUES($1,'manager','admin','Synthetic manager',true,100,'hour','core',false) RETURNING id`, [`Substitution QA ${randomUUID()}`])).rows[0];
@@ -593,6 +611,13 @@ test('default services use the migrated schema for an unrelated permanent occupa
         await db.query('INSERT INTO chat_channel_members(channel_id,user_id) VALUES($1,$2)',[channel.id,users[1].id]);
         const chatClaim=await saveReply(chatInput);
         const channelSubstitutions = `/api/chat/channels/${channel.id}/substitutions`;
+        const legacyChatRead = await authRequest('GET', channelSubstitutions);
+        assert.equal(legacyChatRead.status, 403, 'legacy account cannot read the Park Chat namespace');
+        parkFixture = await createParkWorkFixture([]);
+        try {
+            assert.equal(parkFixture.root.id, actor.id, 'the HTTP operator is the registered Park member');
+            await db.query(`UPDATE businesses SET modules=modules || '["notes","leads","omni"]'::jsonb WHERE id=$1`, [parkFixture.park.id]);
+        } finally { await parkFixture.db.end(); }
         const activeChatRead = await authRequest('GET', channelSubstitutions);
         assert.equal(activeChatRead.status,200,JSON.stringify(activeChatRead.data));
         assert.deepEqual(activeChatRead.data, [{kind:'chat_task', itemId:directChat.id,
@@ -764,7 +789,8 @@ test('default services use the migrated schema for an unrelated permanent occupa
                 { id: String(savedRow.id), slotKey, state: 'active', animatorName: 'QA Animator 1' }
             ]);
             assert.equal((await getAfishaEvent(event.id, 'type=event')).substitutions, undefined);
-            assert.equal((await getAfishaEvent(event.id, 'type=event&includeSubstitutions=true&businessContext=dar')).substitutions, undefined);
+            const foreignAfisha = await authRequest('GET', '/api/afisha?type=event&includeSubstitutions=true&businessContext=dar');
+            assert.equal(foreignAfisha.status, 403, 'a Park-only member cannot read another business namespace');
             await service.mutate('event_genix',actor,'cancel',{expectedVersion:1,reason:'Synthetic restore',requestKey:randomUUID()},savedRow.id);
             assert.deepEqual((await getAfishaEvent(event.id)).substitutions, []);
             assert.equal(String((await db.query(`SELECT ${field} AS owner FROM afisha WHERE id=$1`,[event.id])).rows[0].owner),String(animators[0]));
@@ -1204,7 +1230,10 @@ test('default services use the migrated schema for an unrelated permanent occupa
         assert.equal(replacedPayroll.lines.filter(line => line.lineType === 'staff_substitution' && line.amount === 200).length, 1);
         assert.deepEqual(replacedPayroll.payrollBlockingIssues, []);
         // Immutable accounting evidence stays in this disposable database, never a shared/live target.
-    } finally { await db.end(); }
+    } finally {
+        try { if (parkFixture) await removeOwnedParkFixture(db, parkFixture); }
+        finally { await db.end(); }
+    }
 });
 
 test('Park allocates one confirmed break across a partial shift and carries it through payroll', { skip: !enabled }, async () => {

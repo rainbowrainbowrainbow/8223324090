@@ -6,7 +6,8 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { Client } = require('pg');
-const { assertSafeIsolatedTestUrl } = require('../../scripts/test-db-safety');
+const { assertSafeIsolatedTestUrl, assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
+const { createParkWorkFixture } = require('../helpers/park-work-app-fixture');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const TARGET_URL = String(process.env.TEST_URL || '').trim();
@@ -76,7 +77,18 @@ async function login(base, username, password) {
 }
 
 async function createHrSession(base) {
+    const parkFixture = await createParkWorkFixture([]);
+    try { return await createLinkedHrSession(base, parkFixture); }
+    finally { await parkFixture.db.end(); }
+}
+
+async function createLinkedHrSession(base, parkFixture) {
     const bootstrap = await login(base, process.env.TEST_USER, process.env.TEST_PASS);
+    const structure = await api(base, '/api/hr/company-structure', { token: bootstrap.token });
+    const nodeId = `hr-team-${crypto.randomBytes(6).toString('hex')}`;
+    await api(base, '/api/hr/company-structure', { method: 'PUT', token: bootstrap.token,
+        body: { ...structure.data, baseUpdatedAt: structure.data.updatedAt,
+            nodes: [...structure.data.nodes, { id: nodeId, title: 'Synthetic onboarding team', parentId: null }] } });
     const createLinkedAccount = async ({ role, label }) => {
         const staff = await api(base, '/api/staff', {
             method: 'POST',
@@ -89,6 +101,7 @@ async function createHrSession(base) {
             }
         });
         assert.ok(Number(staff?.data?.id) > 0, `${label} staff profile is created`);
+        await parkFixture.db.query('UPDATE staff SET company_structure_node_id=$2 WHERE id=$1', [Number(staff.data.id), nodeId]);
         const username = `${role}.e2e.${Date.now()}.${crypto.randomBytes(2).toString('hex')}`.slice(0, 50);
         const password = `Qa-${crypto.randomBytes(18).toString('base64url')}!`;
         const created = await api(base, '/api/users', {
@@ -99,10 +112,12 @@ async function createHrSession(base) {
                 password,
                 name: `${label} ${RUN_ID}`,
                 role,
-                staffId: Number(staff.data.id)
+                staffId: Number(staff.data.id), businessContexts: ['event_genix'],
+                defaultBusinessContext: 'event_genix', activateMembership: true
             }
         });
         assert.ok(Number(created?.user?.id) > 0, `isolated ${role} user is created`);
+        assert.equal(created.businessAccessReady, true, `${role} has active Park membership`);
         return { username, password, userId: Number(created.user.id) };
     };
 
@@ -122,6 +137,30 @@ function matchesApiResponse(response, method, pathname, options = {}) {
         }
     }
     return true;
+}
+
+async function withRestrictedHrReads(userId, action) {
+    assert.equal(assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL).isLocal, true);
+    const db = new Client({ connectionString: process.env.TEST_DATABASE_URL });
+    let membership;
+    try {
+        await db.connect();
+        const current = await db.query(`SELECT m.business_id,m.action_denylist FROM business_memberships m
+            JOIN businesses b ON b.id=m.business_id AND b.organization_id=m.organization_id
+            JOIN users u ON u.id=m.user_id WHERE m.user_id=$1 AND u.name=$2 AND m.role='hr'
+            AND m.is_active AND b.context_key='event_genix'`, [userId, `HR Fullstack ${RUN_ID}`]);
+        assert.equal(current.rowCount, 1, 'restrict only this synthetic HR membership');
+        membership = current.rows[0];
+        const denied = [...new Set([...(membership.action_denylist || []), 'hr.staff.view', 'hr.schedule.view', 'hr.payroll.view'])];
+        await db.query('UPDATE business_memberships SET action_denylist=$3::text[] WHERE user_id=$1 AND business_id=$2',
+            [userId, membership.business_id, denied]);
+        return await action();
+    } finally {
+        try {
+            if (membership) await db.query('UPDATE business_memberships SET action_denylist=$3::text[] WHERE user_id=$1 AND business_id=$2',
+                [userId, membership.business_id, membership.action_denylist]);
+        } finally { await db.end(); }
+    }
 }
 
 async function responseJson(response, label) {
@@ -255,7 +294,7 @@ async function assertRestrictedHirePicker(page, candidateName) {
     const responsePromise = waitForApi(page, 'GET', '/api/hr/staff');
     await button.click();
     const response = await responsePromise;
-    assert.equal(response.status(), 403, 'legacy account cannot read the protected Park HR list');
+    assert.equal(response.status(), 403, 'explicitly denied member cannot read the protected Park HR list');
     await page.waitForFunction(() => !document.querySelector('.kanban-card button[aria-busy="true"]'));
     assert.equal(await page.locator('.form-modal-overlay:visible').count(), 0, 'restricted hire picker does not offer a submit form');
 }
@@ -412,7 +451,8 @@ async function run() {
             primaryCandidateName,
             animatorVacancy.id
         ));
-        await step('hire picker explains restricted Park staff read', () => assertRestrictedHirePicker(page, primaryCandidateName));
+        await step('hire picker explains restricted Park staff read', () => withRestrictedHrReads(hrSession.userId,
+            () => assertRestrictedHirePicker(page, primaryCandidateName)));
         const firstHire = await step('hire new employee and start animator onboarding through real API', () => hireThroughApi(
             base, hrSession.token,
             animatorApplication,
@@ -480,7 +520,7 @@ async function run() {
             return body.data;
         });
 
-        await step('Training onboarding reports restricted Park read for legacy account', async () => {
+        await step('Training onboarding reports restricted Park read for denied member', () => withRestrictedHrReads(hrSession.userId, async () => {
             await page.goto(`${base}/training.html`, { waitUntil: 'domcontentloaded' });
             await waitForAppShell(page, { requireCrmApiFetch: false });
             const onboardingResponsePromise = waitForApi(page, 'GET', '/api/hr/onboarding');
@@ -488,20 +528,20 @@ async function run() {
             assert.equal((await onboardingResponsePromise).status(), 403);
             await page.locator('#trainingOnboardingList .training-onboarding-empty.is-error [data-onboarding-retry]').waitFor();
             assert.equal(await page.locator('.training-onboarding-card').count(), 0);
-        });
+        }));
         const initialProcesses = await readDisposableProcesses(staffId);
         assert.deepEqual(initialProcesses.map(row => row.profession_key).sort(), ['animator', 'barista'],
-            'two profession processes are durably independent despite restricted legacy UI');
+            'two profession processes are durably independent despite explicit read restrictions');
 
-        await step('Training start picker keeps restricted Park staff read visible', async () => {
+        await step('Training start picker keeps restricted Park staff read visible', () => withRestrictedHrReads(hrSession.userId, async () => {
             const responsePromise = waitForApi(page, 'GET', '/api/hr/staff');
             await page.locator('#trainingStartOnboarding').click();
             assert.equal((await responsePromise).status(), 403);
             await page.waitForFunction(() => document.getElementById('trainingStartOnboarding')?.getAttribute('aria-busy') === 'false');
             assert.equal(await page.locator('.form-modal-overlay:visible').count(), 0);
-        });
+        }));
 
-        await step('Training onboarding reports restricted Park read after corporate start', async () => {
+        await step('Training onboarding reports restricted Park read after corporate start', () => withRestrictedHrReads(hrSession.userId, async () => {
             const body = await api(base, '/api/hr/onboarding/start', {
                 method: 'POST', token: hrSession.token,
                 body: { staff_id: staffId, template_id: template.id, responsible_user_id: hrSession.responsibleUserId }
@@ -514,7 +554,7 @@ async function run() {
             await page.locator('[data-tab="onboarding"]').click();
             assert.equal((await onboardingResponsePromise).status(), 403);
             await page.locator('#trainingOnboardingList .training-onboarding-empty.is-error [data-onboarding-retry]').waitFor();
-        });
+        }));
 
         const beforeProcesses = await readDisposableProcesses(staffId);
         const animatorBefore = findProcess(beforeProcesses, staffId, 'animator');
@@ -523,14 +563,13 @@ async function run() {
         assert.ok(animatorBefore && baristaBefore && generalBefore, 'general and both profession processes exist');
 
         await step('complete one barista checklist item through real API', async () => {
-            const professions = await api(base, '/api/hr/professions', { token: hrSession.token });
-            const barista = professions.data.find(row => row.key === 'barista');
-            const item = barista?.checklist?.[0];
+            const template = await api(base, '/api/hr/professions/barista/checklist', { token: hrSession.token });
+            const item = template.data.items.find(row => row.isActive);
             assert.ok(item, 'barista checklist has a first item');
             await api(base, `/api/hr/staff/${staffId}/profession-checklist`, {
                 method: 'PUT', token: hrSession.token,
-                body: { profession_key: 'barista', checklist_key: item.key || item.id || 'item_1',
-                    title: typeof item === 'string' ? item : (item.title || item.name), completed: true }
+                body: { profession_key: 'barista', checklist_key: item.itemKey,
+                    title: item.title, completed: true }
             });
         });
 
@@ -545,13 +584,13 @@ async function run() {
 
         const shiftDate = localDate();
         await step('persist segmented animator and barista schedule through real API', async () => {
-            const body = await api(base, '/api/hr/shifts', {
-                method: 'POST',
+            const body = await api(base, '/api/staff/schedule', {
+                method: 'PUT',
                 token: hrSession.token,
                 body: {
-                    staff_id: staffId,
-                    shift_date: shiftDate,
-                    shift_type: 'regular',
+                    staffId,
+                    date: shiftDate,
+                    status: 'working',
                     primaryProfessionKey: 'animator',
                     segments: [
                         { professionKey: 'animator', shiftStart: '09:00', shiftEnd: '13:00', breakMinutes: 0 },

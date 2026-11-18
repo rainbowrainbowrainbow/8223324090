@@ -3,8 +3,8 @@
 - Date: 2026-11-18 (Europe/Kyiv).
 - Branch: `codex/baseline-access-20261118`; worktree `D:/Codex/EventGenix/baseline-access-20261118`.
 - Original base: `571a57acb80118cc6cc0e5a923c5a5bba9c09d86`, production 0.83.120.
-- Integrated upstream: `83cd47962bc932f842e49e539d8b8d0398a64efa` (compensation release). Own code/test tip: `114c5b16d`, following `ff735e77c`, `b2fee3ff3`, `284f1db9d`. One runner-mode conflict resolved retaining both modes; HR UI auto-merge reviewed.
-- Latest observed remote: `9d2074466478a5e0a053517906527a0ffecdeedf`, a later compensation retry. It changes package/runner/browser harness contracts; integration is deferred until source dependencies resolve. Latest live read still original base. No version reserved; local package inherits upstream 0.84.0, not a baseline-access release.
+- Integrated upstream and latest observed live/remote: `9d2074466478a5e0a053517906527a0ffecdeedf`, production 0.84.0. The compensation retry changed package/runner/browser harness contracts, with no runtime permission changes. One runner-mode conflict retained both modes; protected patch remains unapplied with its original hash.
+- Own code/test tip: `c9e539ac5`; earlier feature commits after rebase: `c00bdf369`, `8aa8a5906`, `dd5cea0d3`, `52ae36d79`. No version reserved; local package inherits upstream 0.84.0, not a baseline-access release.
 - Candidate: local implementation, not release-ready. Goal remains active.
 - Authorization: user permits baseline authorization/preset code, regressions and local feature commits. No production writes, login/session changes, secrets or protected booking source changes are authorized.
 
@@ -20,17 +20,19 @@
 - Mandatory work links survive old favorites. Unavailable modules remain findable with accessible disabled states, visible reasons and prevented activation.
 - Account creation/link/replay/workspace reports profile, active state, membership, role, pages, modules and data checks. Database probes return no rows and are explicitly distinct from HTTP/browser QA.
 - Read-only audit CLI uses a read-only transaction and reports account-ID-only preset impact/exceptions; no automatic record fixes.
+- Added a separate executable chat ownership inventory. It reports channel/business IDs and counts only, includes historical authors/creators/DM recipients, never infers ownership, uses bounded repeatable-read read-only SQL and always rolls back. Production inventory has not run.
 
 ## Verification
 
 - Node 22.23.4/npm 10.9.9; npm ci passed, no own dependency/lockfile changes.
-- Final integrated `npm test`: PASSED, exit 0, Node 22.23.4/npm 10.9.9. Evidence: `output/baseline-final-npm-test.log`. Includes verify, sys-mb, timeline-marketing and telegram-crm. Unit stage: 4034/4034; My Day 338/338; CRM automation 54/54; UI smoke 1324/1324. Previously obsolete department-SQL and waiter-denial expectations were corrected to authoritative structure/membership scope and waiter access plus explicit-deny containment; no unresolved baseline failures remain.
+- Last full `npm test` on upstream 83cd4796: PASSED, exit 0, Node 22.23.4/npm 10.9.9. Evidence: `output/baseline-final-npm-test.log`. Includes verify, sys-mb, timeline-marketing and telegram-crm. Unit stage: 4034/4034; My Day 338/338; CRM automation 54/54; UI smoke 1324/1324. Previously obsolete department-SQL and waiter-denial expectations were corrected to authoritative structure/membership scope and waiter access plus explicit-deny containment. Full baseline has not been repeated after the later tooling-only upstream integration/new audit script; repeat before a final release candidate.
+- Latest-base focused checks: baseline/isolated-runner/inventory 52 passed, 1 database test skipped without its dedicated variable; permission contracts 111 passed, 1 skipped. Dedicated disposable PostgreSQL inventory run: 2/2, no skips, verifying revoked/inactive/multi-business/historical principals and rejected writes. Evidence: `output/baseline-continuation-focused.log`, `output/baseline-continuation-permission-contracts.log`, `output/baseline-chat-inventory-postgres.log`.
 - Focused baseline/task tests: 42/42. Latest coordination/Express-route/static checks: 96/96, including failed store probes, scoped GET export denial and legacy availability absence-category masking.
 - Real sidebar fixture: six roles at 1280/390, 12/12, keyboard/clicks and old favorites. Disabled-link screenshot reviewed after drawer animation completed.
 - PostgreSQL-backed actual app: all 12 schedule UI flows passed. Tasks/schedule/afisha/training APIs 200; chat 403 chat_not_migrated for all. Overall acceptance FAILED. Training module policy still reports unavailable despite legacy API success.
 - Latest disposable permissions: 13/13 including all26 snapshots; timeline/direct-field/membership suite: 13/13. Integrated onboarding: fresh startup 1/1, hire 1/1, transactional account onboarding 24/24, including replay/concurrency.
 - Existing responsive schedule browser passed. HR receipt desktop/mobile keyboard/focus/inert/pending-readiness rerun passed. UI smoke rerun 1324/1324. Actual-app rerun again has 12/12 successful schedule UI flows, no page errors, and the same chat acceptance blocker. Reviewed mobile/desktop screenshots after waiting for drawer animation.
-- Integrated protected-surface/migration checks passed, syntax 1779 files passed. No protected hashes changed. The final full baseline passed after the latest code/test edits; only this state documentation changed afterward.
+- Protected-surface guard passed again after latest integration (8 blocks). New inventory and changed runner syntax passed. Earlier full syntax check covered 1779 files; no protected hashes changed. Proposed protected patch still passes `git apply --check` without being applied.
 - No push, CI, deploy, production account audit or authenticated live QA.
 
 ## Release stops

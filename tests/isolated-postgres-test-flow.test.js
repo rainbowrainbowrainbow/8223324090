@@ -62,7 +62,7 @@ describe('isolated PostgreSQL test flow safety', () => {
         const guardIndex = main.indexOf('assertLocalManualMoneyDatabase(testDb)');
         assert.ok(guardIndex >= 0 && guardIndex < main.indexOf('acquireIsolatedDatabaseLock(testDb)'),
             'manual money modes must reject an unsafe effective target before any connection or reset');
-        assert.match(runner, /MANUAL_MONEY_MODES = new Set\(\['all', 'finance', 'finance-money', 'finance-money-browser', 'payroll', 'fullstack', 'freelance'\]\)/);
+        assert.match(runner, /MANUAL_MONEY_MODES = new Set\(\['all', 'finance', 'finance-money', 'finance-money-browser', 'payroll', 'fullstack', 'freelance', 'payroll-compensation-browser'\]\)/);
     });
 
     it('holds one session advisory lock for the complete disposable database run', async () => {

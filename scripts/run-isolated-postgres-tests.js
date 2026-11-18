@@ -20,11 +20,12 @@ const SHUTDOWN_TIMEOUT_MS = 20_000;
 const TEST_TIMEOUT_MS = Number(process.env.ISOLATED_TEST_TIMEOUT_MS) || 15 * 60_000;
 const POLL_INTERVAL_MS = 500;
 const ISOLATED_DATABASE_LOCK_NAMESPACE = 'eventgenix-isolated-postgres-runner-v1';
-const MANUAL_MONEY_MODES = new Set(['all', 'finance', 'finance-money', 'finance-money-browser', 'payroll', 'fullstack', 'freelance']);
+const MANUAL_MONEY_MODES = new Set(['all', 'finance', 'finance-money', 'finance-money-browser', 'payroll', 'fullstack', 'freelance', 'payroll-compensation-browser']);
 const EDUCATION_SERIES_ACCEPTANCE = 'tests/integration/education-series.integration-acceptance.test.js';
 const MODES = {
     'payroll-configurable-rules': ['tests/integration/payroll-profiles-configurable-rules.integration.test.js'],
     'payroll-configurable-rules-browser': ['tests/browser/payroll-profiles-configurable-rules-actual-browser.js'],
+    'payroll-compensation-browser': ['tests/browser/hr-pay-actual-app-browser-smoke.js', 'tests/browser/payroll-profiles-configurable-rules-actual-browser.js'],
     'telegram-crm': ['tests/integration/telegram-crm-fullstack.integration.test.js'],
     'hr-hiring': ['tests/integration/park-hr-hiring.integration.test.js'],
     substitutions: ['tests/integration/staff-substitution-actual-db.integration.test.js'],

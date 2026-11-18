@@ -27,6 +27,9 @@ async function login(username,password) {
 }
 async function browserContext(browser,auth,viewport={width:1440,height:1000}) {
     const context=await browser.newContext({viewport,serviceWorkers:'block'});
+    // Keep third-party telemetry out of synthetic payroll scenarios. Application
+    // requests and uncaught-page-error assertions remain real and unchanged.
+    await context.route('https://www.clarity.ms/**',route=>route.fulfill({status:200,contentType:'application/javascript',body:''}));
     await context.addInitScript(auth=>{
         localStorage.setItem('pzp_token',auth.accessToken||auth.token);
         localStorage.setItem('pzp_access_token',auth.accessToken||auth.token);
@@ -93,7 +96,8 @@ async function run() {
     const date=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Kyiv',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
     const next=new Date(new Date(date+'T12:00:00Z').getTime()+86400000).toISOString().slice(0,10);
     const evidence={schemaVersion:2,membershipMode:true,commitSha:process.env.GITHUB_SHA||null,syntheticOnly:true,productionWrites:0,stages:{}};
-    const {chromium}=playwright(),browser=await chromium.launch({headless:true});
+    const {chromium}=playwright();
+    const browser=await chromium.launch({headless:true,...(fs.existsSync(chromium.executablePath())?{}:{channel:'msedge'})});
     let page;
     try {
         const staffId=Number((await db.query(`INSERT INTO staff(name,department,position,role_type,secondary_professions,hourly_rate,rate_unit,is_active)
@@ -114,7 +118,7 @@ async function run() {
         await db.query("UPDATE hr_compensation_policies SET status='active',effective_from='2020-01-01' WHERE policy_version='simultaneous-profession-pay-v1'");
         const context=await browserContext(browser,auth);
         page=await context.newPage(); page.setDefaultTimeout(30000);
-        const errors=[];page.on('pageerror',error=>errors.push(error.message));
+        const errors=[];page.on('pageerror',error=>{errors.push(error.message);console.error('[hr-pay-browser] '+error.stack);});
         await openPage(page,date,next);
         const assertIsolatedVisibleScope=async({expandReception=false}={})=>{
             assert.equal(await page.locator('#scheduleStaffSearch').inputValue(),'Synthetic pay '+stamp);

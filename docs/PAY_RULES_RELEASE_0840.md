@@ -119,6 +119,46 @@ The canonical local credential file is absent, so authenticated live QA remains
 blocked. Public version/asset proof and sanitized deployment logs are available.
 Never obtain credentials from another path or print secret values.
 
+## Attempt 1 CI finding and scoped retry
+
+Attempt 1 created/pushed `83cd47962bc932f842e49e539d8b8d0398a64efa` (0.84.0).
+Full local `npm test` passed, including 4,033 unit cases. Runtime artifact smoke
+`44232004154` succeeded. Main CI `44232004339` finished with 12 successful jobs;
+only HR/payroll failed, during the existing `hr-pay-actual-app` browser script.
+No Railway upload or production migration occurred; live stayed at 0.83.120 /
+`571a57acb80118cc6cc0e5a923c5a5bba9c09d86`.
+
+All SQL cases completed before that failure. At the final schedule-page close,
+the browser collected `Cannot read properties of null (reading 'sequence')`.
+The old fixture saved the message without its stack. External Clarity 0.8.77,
+loaded by the page, has an asynchronous upload path reading session.sequence
+after a stop routine can null that session. This supports telemetry as the
+source, but the missing old stack prevents definitive attribution.
+
+Both compensation browser fixtures now fulfill only the external Clarity tag
+with an empty script, matching existing onboarding/My Day fixture practice.
+First-party requests, database writes, role/scope checks and strict uncaught
+page-error assertions stay unchanged. Future errors additionally log their
+stack. Production telemetry and payroll implementation are unchanged. The older
+browser uses the same installed-Edge fallback as the configurable-rules fixture
+when packaged Chromium is absent; CI's installed Chromium path is unchanged.
+
+Added `test:browser:payroll-compensation:isolated` for both real browser journeys,
+with the existing mandatory effective-loopback/manual-money database guard.
+The command is also a real package input for the required Runtime artifact gate.
+Focused contracts: 35 passed. Both existing and configurable compensation
+browser journeys pass locally in this joint mode, retaining every strict
+application assertion (`output/pay084-ci-fixture-browser.log`).
+
+The next canonical controller attempt reuses the same signed block and deadline.
+Only this task's previously generated 57 version/cache files were restored to
+their pre-bump contents locally so the signed minor transition can run again.
+The corrected release remains a normal descendant of the first candidate; no
+shared history is rewritten and no older binary is deployed. The controller
+will generate 0.84.0 again and require both exact-SHA CI gates on the corrected
+candidate. Migration 423, access mapping, target, controller proposal and data
+boundaries are unchanged. Count the first failure against the three-attempt cap.
+
 ## Rollback and data boundary
 
 No spreadsheet import, real employee pay entry, commission input, promotion,

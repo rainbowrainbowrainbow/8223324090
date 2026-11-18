@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.84.0",
+  "version": "0.83.120",
   "eventGenix": {
-    "releaseLabel": "Налаштовувані ставки, рівні та доплати"
+    "releaseLabel": "Задачі у «Моєму дні»"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",
@@ -188,6 +188,7 @@
     "test:integration:payroll-profiles:isolated": "node scripts/run-isolated-postgres-tests.js payroll",
     "test:integration:payroll-configurable-rules:isolated": "node scripts/run-isolated-postgres-tests.js payroll-configurable-rules",
     "test:browser:payroll-configurable-rules:isolated": "node scripts/run-isolated-postgres-tests.js payroll-configurable-rules-browser",
+    "test:browser:payroll-compensation:isolated": "node scripts/run-isolated-postgres-tests.js payroll-compensation-browser",
     "test:integration:payroll-fullstack:isolated": "node scripts/run-isolated-postgres-tests.js payroll-fullstack",
     "test:integration:admission-tickets:isolated": "node scripts/run-isolated-postgres-tests.js admission",
     "test:integration:education-series:isolated": "npm exec --yes --package=playwright -c \"playwright install --with-deps chromium && node scripts/run-isolated-postgres-tests.js education-series\"",

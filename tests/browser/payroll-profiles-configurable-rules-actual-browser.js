@@ -64,6 +64,9 @@ async function run() {
         const launch = fs.existsSync(chromium.executablePath()) ? {} : { channel: 'msedge' };
         browser = await chromium.launch({ headless: true, ...launch });
         const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: 'uk-UA' });
+        // Match the existing onboarding fixture: payroll checks never exercise
+        // third-party telemetry, but still fail on every application page error.
+        await context.route('https://www.clarity.ms/**', route => route.fulfill({ status: 200, contentType: 'application/javascript', body: '' }));
         await context.addInitScript(auth => {
             localStorage.setItem('pzp_token', auth.accessToken || auth.token);
             localStorage.setItem('pzp_access_token', auth.accessToken || auth.token);
@@ -74,7 +77,7 @@ async function run() {
         }, auth);
         const page = await context.newPage();
         const errors = [];
-        page.on('pageerror', error => errors.push(error.message));
+        page.on('pageerror', error => { errors.push(error.message); console.error('[pay-rules-browser] ' + error.stack); });
         const activeModal = () => page.locator('.confirm-overlay:not(.confirm-exit)').last();
         const submit = () => activeModal().locator('.confirm-ok').click();
         const fill = (key, value) => activeModal().locator('#fm_' + key).fill(String(value));

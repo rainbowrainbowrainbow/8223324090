@@ -2331,7 +2331,7 @@ async function activateHrTab(target, options = {}) {
         reports: loadReports, salary: loadSalary, profiles: loadPayrollProfilesCatalog, zrs: loadZrs, kpi: loadKpi, onboarding: loadOnboarding,
         vacancies: loadVacancies, accounts: loadAccountCenter
     };
-    await loaders[target]?.();
+    await loaders[target]?.(target === 'schedule' ? options : undefined);
     removeLegacyAnimatorShiftSummary();
 }
 
@@ -2825,7 +2825,7 @@ async function openTodayStaffSchedule(staffId, freelanceDate = '') {
     if ((isTodayRecoveryReadOnly() || isTodayParkScoped()) && !canUseHrCapability('hr.schedule.view')) return;
     const id = Number(staffId);
     if (!Number.isInteger(id) || id <= 0) return;
-    await activateHrTab('schedule', { updateHash: true });
+    await activateHrTab('schedule', { updateHash: true, skipDraftRestore: Boolean(freelanceDate) });
     if (freelanceDate) {
         if (document.getElementById('tab-schedule')?.classList.contains('active')) {
             await window.StaffSchedulePage?.focusFreelance(id, freelanceDate);
@@ -3626,7 +3626,7 @@ function hasHrStaffScheduleModule() {
     return !!hrStaffScheduleShell();
 }
 
-async function loadHrScheduleModule() {
+async function loadHrScheduleModule({ skipDraftRestore = false } = {}) {
     const shell = hrStaffScheduleShell();
     if (!shell) return loadSchedule();
     if (!window.StaffSchedulePage || typeof window.StaffSchedulePage.init !== 'function') {
@@ -3635,7 +3635,8 @@ async function loadHrScheduleModule() {
     await window.StaffSchedulePage.init({
         mode: 'hr',
         host: shell,
-        user: AppState.currentUser
+        user: AppState.currentUser,
+        skipDraftRestore
     });
 }
 

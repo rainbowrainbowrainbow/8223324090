@@ -4529,6 +4529,7 @@ async function chooseFreelanceStaff(button) {
     select.autofocus = Boolean(fixedDate);
     dateInput.min = formatDateStr(start);
     dateInput.max = formatDateStr(end);
+    document.getElementById('scheduleFreelanceDateHint').textContent = 'Дати графіка: ' + formatScheduleRangeLabel(start, end);
     const today = todayStr();
     dateInput.value = fixedDate || (today >= dateInput.min && today <= dateInput.max ? today : dateInput.min);
     const context = staffScheduleRequestContext();
@@ -4546,11 +4547,9 @@ async function chooseFreelanceStaff(button) {
     select.replaceChildren(new Option('Оберіть співробітника', '', true, true));
     if (coreGroup.children.length) select.append(coreGroup);
     submitButton.disabled = true;
-    const syncSubmitButton = () => {
-        submitButton.disabled = !dateInput.validity.valid || !candidates.has(select.value);
+    select.onchange = () => {
+        submitButton.disabled = !candidates.has(select.value);
     };
-    select.onchange = syncSubmitButton;
-    dateInput.oninput = syncSubmitButton;
     status.textContent = 'Завантажуємо резерв…';
     const departmentLabel = department ? scheduleDisplayDepartmentLabel(department) : 'Усі відділи';
     dialog.querySelector('[data-freelance-date-label]').textContent = fixedDate
@@ -7751,6 +7750,7 @@ async function handleSave() {
                     delete StaffState.freelanceReserveSchedule[key];
                     if (showTime && result.data.hr_pool_status === 'reserve') {
                         StaffState.freelanceReserveSchedule[key] = result.data;
+                        revealScheduleFreelanceStaff({ ...result.data, id: staffId });
                     } else if (result.data.hr_pool_status === 'core' || !result.data.hr_pool_status) {
                         replaceScheduleStateEntry(previousEntry, result.data);
                     }
@@ -7895,7 +7895,7 @@ async function handleClearReplacement() {
 // WEEK NAVIGATION
 // ==========================================
 
-async function goToScheduleRange(startValue, endValue, mode = 'custom') {
+async function goToScheduleRange(startValue, endValue, mode = 'custom', { restoreDraft = true } = {}) {
     const validation = validateScheduleRange(startValue, endValue);
     if (!validation.ok) {
         showNotification(validation.error, 'error');
@@ -7968,7 +7968,7 @@ async function goToScheduleRange(startValue, endValue, mode = 'custom') {
             StaffState.scheduleRawEntries.length || Object.keys(StaffState.freelanceReserveSchedule).length ? 'ready' : 'empty',
             { range: target }
         );
-        if (staffScheduleInitialized) {
+        if (staffScheduleInitialized && restoreDraft) {
             const draft = readScheduleHrDraft();
             if (draft && draft.date >= target.from && draft.date <= target.to) restoreScheduleHrDraft(draft);
         }
@@ -7996,6 +7996,12 @@ async function goToWeek(monday) {
     return goToScheduleRange(range.start, range.end, 'rolling');
 }
 
+function revealScheduleFreelanceStaff(staff) {
+    const search = normalizeScheduleSearchText(StaffState.searchQuery);
+    if (search && !scheduleStaffSearchHaystack(staff).includes(search)) StaffState.searchQuery = '';
+    if (StaffState.workModeFilter === 'regular') StaffState.workModeFilter = 'freelance';
+}
+
 async function focusScheduleFreelance(staffId, date, { rangeLoaded = false } = {}) {
     const id = normalizeScheduleFocusStaffId(staffId);
     const targetDate = parseScheduleDateInput(date);
@@ -8003,7 +8009,7 @@ async function focusScheduleFreelance(staffId, date, { rangeLoaded = false } = {
     const wrapper = document.getElementById('scheduleWrapper');
     const context = staffScheduleRequestContext();
     const loaded = StaffState.canViewSchedule
-        && (rangeLoaded ? scheduleRangeDataReady() : await goToScheduleRange(targetDate, targetDate));
+        && (rangeLoaded ? scheduleRangeDataReady() : await goToScheduleRange(targetDate, targetDate, 'custom', { restoreDraft: false }));
     if (wrapper.closest('.hr-tab-content:not(.active)') || context !== staffScheduleRequestContext()) return false;
 
     const dateKey = formatDateStr(targetDate);
@@ -8023,9 +8029,7 @@ async function focusScheduleFreelance(staffId, date, { rangeLoaded = false } = {
         StaffState.activeDept = department;
         renderDeptFilter();
     }
-    const search = normalizeScheduleSearchText(StaffState.searchQuery);
-    if (search && !scheduleStaffSearchHaystack(staff).includes(search)) StaffState.searchQuery = '';
-    if (StaffState.workModeFilter === 'regular') StaffState.workModeFilter = 'freelance';
+    revealScheduleFreelanceStaff(staff);
     StaffState.focusedStaffId = null;
     StaffState.focusScrollPending = false;
     expandedFreelanceDepartments.add(department);
@@ -9901,10 +9905,13 @@ async function initStaffSchedulePage(options = {}) {
         // Init the rolling window: yesterday, today, and the upcoming days.
         resetSchedulePrimaryViewMode();
         const query = new URLSearchParams(window.location.search);
-        const draft = readScheduleHrDraft(query.get('scheduleDraft') || '');
         const linkedDate = parseScheduleDateInput(query.get('scheduleDate'));
         const linkedFreelanceStaffId = normalizeScheduleFocusStaffId(query.get('scheduleFreelanceStaff'));
-        if (linkedFreelanceStaffId && linkedDate) await goToScheduleRange(linkedDate, linkedDate);
+        const draftToken = query.get('scheduleDraft');
+        const hasFreelanceLink = linkedFreelanceStaffId && linkedDate;
+        const draft = options.skipDraftRestore || (hasFreelanceLink && !draftToken) ? null : readScheduleHrDraft(draftToken || '');
+        const openLinkedFreelance = hasFreelanceLink && !draft;
+        if (openLinkedFreelance) await goToScheduleRange(linkedDate, linkedDate);
         else if (draft?.range?.from && draft?.range?.to) await goToScheduleRange(draft.range.from, draft.range.to, draft.rangeMode);
         else await goToWeek(getScheduleFocusStart(linkedDate || new Date()));
         if (initialContext !== staffScheduleRequestContext()) {
@@ -10005,7 +10012,7 @@ async function initStaffSchedulePage(options = {}) {
         });
 
         staffScheduleInitialized = true;
-        if (linkedFreelanceStaffId && linkedDate) {
+        if (openLinkedFreelance) {
             await focusScheduleFreelance(linkedFreelanceStaffId, formatDateStr(linkedDate), { rangeLoaded: true });
         }
         staffScheduleAccessFingerprint = staffScheduleRequestContext();

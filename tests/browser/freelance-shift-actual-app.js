@@ -385,7 +385,8 @@ async function run() {
         await page.locator('#scheduleStaffSearch').fill(trampolineReserve.name);
         assert.equal(await page.locator('#scheduleBody [data-schedule-staff-row]').count(), 0);
         await emptyAdd.waitFor();
-        await workModeFilter.selectOption('freelance');
+        await workModeFilter.selectOption('regular');
+        await page.locator('#scheduleStaffSearch').fill('Unmatched synthetic search');
         await setWidth(320);
         await assertFits();
         await emptyAdd.scrollIntoViewIfNeeded();
@@ -395,12 +396,20 @@ async function run() {
         const pickerDate = chooser.getByLabel('Дата виходу');
         assert.equal(await pickerDate.inputValue(), rangeStart);
         assert.equal(await pickerDate.evaluate(input => input === document.activeElement), true);
-        await pickerDate.fill(trampolineDate);
         const trampolineOption = 'reserve:' + trampolineReserve.id + ':trampoline_instructor';
         await staffPicker.locator(`option[value="${trampolineOption}"]`).waitFor({ state: 'attached' });
         await staffPicker.selectOption(trampolineOption);
+        const openPlan = chooser.getByRole('button', { name: 'Відкрити план' });
+        await pickerDate.fill(laterDate(45));
+        assert.equal(await pickerDate.evaluate(input => input.validity.rangeOverflow), true);
+        assert.match(await chooser.locator('#scheduleFreelanceDateHint').innerText(), /Дати графіка:/);
+        assert.equal(await openPlan.isEnabled(), true);
+        await openPlan.click();
+        assert.equal(await chooser.isVisible(), true);
+        assert.equal(await pickerDate.evaluate(input => input === document.activeElement), true);
+        await pickerDate.fill(trampolineDate);
         await chooser.screenshot({ path: path.join(out, 'freelance-empty-picker-320.png'), animations: 'disabled' });
-        await chooser.getByRole('button', { name: 'Відкрити план' }).click();
+        await openPlan.click();
         await cards.first().waitFor();
         await setTime(cards.first(), '12:00', '14:00');
         const trampolinePlan = await savePlan();
@@ -408,6 +417,7 @@ async function run() {
         assert.equal(trampolinePlan.reserveFreelance, true);
         assert.equal(trampolinePlan.date, trampolineDate);
         assert.equal(await workModeFilter.inputValue(), 'freelance');
+        assert.equal(await page.locator('#scheduleStaffSearch').inputValue(), '');
         const trampolineRecord = trampolineRow.getByRole('button', { name: new RegExp(trampolineReserve.name) });
         await trampolineRecord.waitFor();
         assert.match(await trampolineRecord.textContent(), /12:00–14:00/);
@@ -1212,24 +1222,57 @@ async function run() {
         ], { reserveFreelance: true });
         assert.equal(historicalPlan.status, 200, await historicalPlan.clone().text());
         const historicalEntry = (await historicalPlan.json()).data;
+        await db.query(`UPDATE staff SET secondary_professions = '["reception"]' WHERE id = $1`, [staff.id]);
+        const regularPlan = await writePlan(staff.id, reviewDate, [{
+            professionKey: 'animator', workMode: 'regular', shiftStart: '10:00', shiftEnd: '11:00'
+        }]);
+        assert.equal(regularPlan.status, 200, await regularPlan.text());
         await db.query(`INSERT INTO hr_time_records (staff_id, record_date, status, business_context)
             VALUES ($1, $2, 'manual_review', 'event_genix')`, [trampolineReserve.id, reviewDate]);
-        await page.locator('#hrNav [data-tab="schedule"]').click();
+        const todayTab = page.locator('#hrNav [data-tab="today"]');
+        await page.goto(new URL('/hr#schedule', base).href, { waitUntil: 'domcontentloaded' });
         await page.waitForFunction(() => window.StaffSchedulePage?.isInitialized());
+        await readRange(reviewDate, reviewDate);
         await page.locator('#deptFilter [data-dept="animators"]').click();
-        await workModeFilter.selectOption('regular');
-        await page.locator('#scheduleStaffSearch').fill(staffName);
-        await page.locator('#hrNav [data-tab="today"]').click();
-        await page.locator('#todayReviewOnly').check();
-        await page.locator('#todaySearch').fill(trampolineReserve.name);
-        await page.locator('#todayReviewDate').fill(reviewDate);
+        await workModeFilter.selectOption('all');
+        const animators = page.locator('[data-schedule-group-toggle="animators"]');
+        if (await animators.getAttribute('aria-expanded') !== 'true') await animators.click();
+        await page.locator(`.sch-cell[data-staff="${staff.id}"][data-date="${reviewDate}"]`).first().click();
+        await cards.first().locator('.sch-paid-role-editor > summary').click();
+        await cards.first().locator('[data-segment-field="paid-profession"]').selectOption('reception');
+        await page.locator('#schPlanExtra > summary').click();
+        const draftNote = 'Synthetic pending draft for a regular employee';
+        await page.locator('#schNote').fill(draftNote);
+        await cards.first().locator('[data-schedule-pay-conditions]').click();
+        await page.waitForURL(url => url.hash === '#team' && url.searchParams.has('scheduleDraft'));
+        const readDraft = () => page.evaluate(() => JSON.parse(sessionStorage.getItem('pzp_schedule_hr_draft_v1')));
+        const draft = await readDraft();
+        assert.equal(draft.pending, true);
+        assert.equal(draft.staffId, staff.id);
         const historicalLink = page.getByRole('link', { name: 'Відкрити графік: ' + trampolineReserve.name });
-        await historicalLink.waitFor();
+        const prepareToday = async () => {
+            await page.locator('#todayReviewOnly').check();
+            await page.locator('#todaySearch').fill(trampolineReserve.name);
+            await page.locator('#todayReviewDate').fill(reviewDate);
+            await historicalLink.waitFor();
+        };
+        await page.goto(new URL('/hr', base).href, { waitUntil: 'domcontentloaded' });
+        await prepareToday();
         const href = await historicalLink.getAttribute('href');
         assert.equal(new URL(href, base).searchParams.get('scheduleDate'), reviewDate);
         await historicalLink.press('Enter');
         const firstBlock = trampolineRow.getByRole('button', { name: /09:00.*10:00/ });
         await firstBlock.waitFor();
+        await page.waitForFunction(() => document.activeElement?.dataset.freelanceStaff);
+        assert.equal(await firstBlock.evaluate(button => button === document.activeElement), true);
+        assert.equal((await readDraft()).pending, true);
+
+        await page.locator('#deptFilter [data-dept="animators"]').click();
+        await workModeFilter.selectOption('regular');
+        await page.locator('#scheduleStaffSearch').fill(staffName);
+        await todayTab.click();
+        await prepareToday();
+        await historicalLink.press('Enter');
         await page.waitForFunction(() => document.activeElement?.dataset.freelanceStaff
             && document.activeElement.textContent.includes('09:00–10:00'));
         assert.equal(await firstBlock.evaluate(button => button === document.activeElement), true);
@@ -1241,7 +1284,16 @@ async function run() {
         await page.screenshot({ path: path.join(out, 'freelance-today-focus-360.png'), animations: 'disabled' });
         await page.goto(new URL(href, base).href, { waitUntil: 'domcontentloaded' });
         await firstBlock.waitFor();
+        await page.waitForFunction(() => document.activeElement?.dataset.freelanceStaff);
         assert.equal(await firstBlock.evaluate(button => button === document.activeElement), true);
+        assert.deepEqual(await readDraft(), draft, 'the direct link leaves the pending draft intact');
+        await page.goto(new URL(draft.returnUrl, base).href, { waitUntil: 'domcontentloaded' });
+        await page.locator('#schModalOverlay.visible').waitFor();
+        assert.match(await page.locator('#schModalTitle').innerText(), new RegExp(staffName));
+        assert.equal(await page.locator('#schNote').inputValue(), draftNote);
+        await page.locator('#schCancelBtn').click();
+        await page.getByRole('button', { name: 'Закрити без збереження' }).click();
+        await page.locator('#schModalOverlay').waitFor({ state: 'hidden' });
 
         stage = 'Today navigation to a removed shift and to a regular employee';
         await page.locator('#hrNav [data-tab="today"]').click();

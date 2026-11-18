@@ -124,7 +124,8 @@
                     <form>
                         <div class="form-group" data-freelance-date-field hidden>
                             <label for="scheduleFreelanceDate">Дата виходу</label>
-                            <input type="date" name="date" id="scheduleFreelanceDate" required disabled>
+                            <input type="date" name="date" id="scheduleFreelanceDate" aria-describedby="scheduleFreelanceDateHint" required disabled>
+                            <p id="scheduleFreelanceDateHint"></p>
                         </div>
                         <div class="form-group">
                             <label for="scheduleFreelanceStaff">Співробітник</label>

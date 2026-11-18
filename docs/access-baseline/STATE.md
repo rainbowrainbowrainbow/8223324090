@@ -3,7 +3,8 @@
 - Date: 2026-11-18 (Europe/Kyiv).
 - Branch: `codex/baseline-access-20261118`; worktree `D:/Codex/EventGenix/baseline-access-20261118`.
 - Original base: `571a57acb80118cc6cc0e5a923c5a5bba9c09d86`, production 0.83.120.
-- Latest observed remote: `83cd47962bc932f842e49e539d8b8d0398a64efa` (compensation release); integration pending. Live still original base. No version reserved.
+- Integrated upstream: `83cd47962bc932f842e49e539d8b8d0398a64efa` (compensation release). Own code/test tip: `114c5b16d`, following `ff735e77c`, `b2fee3ff3`, `284f1db9d`. One runner-mode conflict resolved retaining both modes; HR UI auto-merge reviewed.
+- Latest observed remote: `9d2074466478a5e0a053517906527a0ffecdeedf`, a later compensation retry. It changes package/runner/browser harness contracts; integration is deferred until source dependencies resolve. Latest live read still original base. No version reserved; local package inherits upstream 0.84.0, not a baseline-access release.
 - Candidate: local implementation, not release-ready. Goal remains active.
 - Authorization: user permits baseline authorization/preset code, regressions and local feature commits. No production writes, login/session changes, secrets or protected booking source changes are authorized.
 
@@ -23,13 +24,13 @@
 ## Verification
 
 - Node 22.23.4/npm 10.9.9; npm ci passed, no own dependency/lockfile changes.
-- Full baseline unit stage: 4003/4003; following contract suites: 338/338 and 54/54. UI smoke found one obsolete focus-guard assertion, updated to per-record guard. Final integrated full rerun required.
-- Latest focused baseline/task tests: 42/42, including failed store probes and scoped GET export denial.
+- Final integrated `npm test`: PASSED, exit 0, Node 22.23.4/npm 10.9.9. Evidence: `output/baseline-final-npm-test.log`. Includes verify, sys-mb, timeline-marketing and telegram-crm. Unit stage: 4034/4034; My Day 338/338; CRM automation 54/54; UI smoke 1324/1324. Previously obsolete department-SQL and waiter-denial expectations were corrected to authoritative structure/membership scope and waiter access plus explicit-deny containment; no unresolved baseline failures remain.
+- Focused baseline/task tests: 42/42. Latest coordination/Express-route/static checks: 96/96, including failed store probes, scoped GET export denial and legacy availability absence-category masking.
 - Real sidebar fixture: six roles at 1280/390, 12/12, keyboard/clicks and old favorites. Disabled-link screenshot reviewed after drawer animation completed.
 - PostgreSQL-backed actual app: all 12 schedule UI flows passed. Tasks/schedule/afisha/training APIs 200; chat 403 chat_not_migrated for all. Overall acceptance FAILED. Training module policy still reports unavailable despite legacy API success.
-- Earlier disposable permissions/timeline suites: 12/12 and 13/13. Latest permissions adds all26 snapshots: 13/13 passed; timeline and onboarding/replay/concurrency reruns in progress.
-- Existing responsive schedule browser passed. HR receipt desktop/mobile keyboard/focus/inert/pending-readiness passed earlier; final rerun in progress.
-- Protected-surface/syntax/migration checks passed earlier; repeat after integration. No protected hashes changed.
+- Latest disposable permissions: 13/13 including all26 snapshots; timeline/direct-field/membership suite: 13/13. Integrated onboarding: fresh startup 1/1, hire 1/1, transactional account onboarding 24/24, including replay/concurrency.
+- Existing responsive schedule browser passed. HR receipt desktop/mobile keyboard/focus/inert/pending-readiness rerun passed. UI smoke rerun 1324/1324. Actual-app rerun again has 12/12 successful schedule UI flows, no page errors, and the same chat acceptance blocker. Reviewed mobile/desktop screenshots after waiting for drawer animation.
+- Integrated protected-surface/migration checks passed, syntax 1779 files passed. No protected hashes changed. The final full baseline passed after the latest code/test edits; only this state documentation changed afterward.
 - No push, CI, deploy, production account audit or authenticated live QA.
 
 ## Release stops
@@ -47,4 +48,4 @@ Modern Web Guidance navbar/accessibility searched and retrieved before UI change
 
 ## Next action
 
-Finish running checks, commit independent implementation, integrate upstream and rerun. Await exact protected approval/module ownership clarification. Prepare Yellow production block only after acceptance/source dependencies resolve. Goal remains unfinished until authorized release/live QA.
+Await exact protected approval/module ownership clarification, then implement the remaining scope, integrate latest upstream and repeat affected gates. Prepare Yellow production block only after acceptance/source dependencies resolve. Goal remains unfinished until authorized release/live QA. The own disposable PostgreSQL cluster was stopped after runner cleanup; no production database was used. Rollback of this unpublished implementation is a revert of its own feature commits; no production rollback is needed.

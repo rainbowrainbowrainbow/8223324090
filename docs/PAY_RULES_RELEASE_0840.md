@@ -75,9 +75,27 @@ Any production/live drift or additional Red scope stops execution.
   readiness limit before any test ran. The repeat with the same default timeout
   passes all 10 SQL/API cases (`output/pay084-configurable-sql-retry.log`). No
   startup timeout, application dependency or production setting was changed.
-- Fresh browser outcome and screenshots are recorded after the current journey
-  completes. Earlier complete baseline evidence belongs to the earlier base;
+- Fresh actual-app browser journey passes in membership mode (exit 0), including
+  reviewed hire, vacancy/company templates, promotion, manual bases and monthly
+  profile editing. All seven desktop/390px mobile screenshots were reviewed;
+  no horizontal overflow or obscured primary action, no page JavaScript errors.
+  Evidence: `output/pay084-browser.log` and
+  `output/playwright/payroll-configurable-rules/`. Native select values truncate
+  normally on mobile; explanatory text remains readable.
+- Modern Web Guidance `forms` and `validate-input-after-interaction` were
+  retrieved in full before integration. Checked native browser compatibility,
+  keyboard focus ("Never disable focus outlines"), text errors ("show visible
+  error text") and mobile behavior. No new platform API or application fallback.
+- Earlier complete baseline evidence belongs to the earlier base;
   see `PAY_RULES_RELEASE_READINESS_2026-11-18.md` for that distinction.
+
+Prepared signed review block: `EG-20261118T031843Z-045a4225`, initial SHA
+`045a4225a6fe2486d5d6ddc7643cc43161a7d1d1`; expires
+`2026-11-18T08:49:43.307Z` (10:49 Europe/Kyiv), attempts used 0 of 3. Its signed
+minor transition targets exactly 0.84.0. Review-copy dry-run passes; the review
+driver only supports prepare/status/dry-run and cannot execute a deployment.
+After approval, the operational controller receives exactly the reviewed patch
+and runs the existing canonical production sequence with that signed block.
 
 After exact approval, apply only the reviewed controller proposal, commit it,
 verify the final delta, and execute the canonical signed block. The controller

@@ -109,7 +109,7 @@ const { installHarness, requirePlaywright, readRepo, HR_HTML, ROOT } = require('
                 await moveDialog.getByRole('combobox').first().selectOption('reserve');
                 assert.equal(await moveDialog.getByLabel('Основна професія').isVisible(), false);
                 assert.equal(await moveDialog.getByLabel('Причина для чорного списку').isVisible(), false);
-                await moveDialog.getByText('Заплановані виходи від сьогодні без запису відвідування буде прибрано.').waitFor();
+                await moveDialog.getByText('Заплановані виходи від сьогодні без відміток відвідування й погоджених умов фрілансу буде прибрано.').waitFor();
                 await page.screenshot({ path: path.join(out, 'move-' + theme + '-' + width + '.png'), fullPage: false });
                 await moveDialog.getByRole('button', { name: 'Перемістити', exact: true }).click();
                 await page.waitForFunction(() => window.__workflowClicks.length === 1);

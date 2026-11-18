@@ -58,6 +58,25 @@ test('legacy booking viewer controls follow effective capability for every role,
     }
 });
 
+test('legacy revenue dashboard remains independent from booking edit/viewer status', async () => {
+    const source = fs.readFileSync(path.join(ROOT, 'js/settings.js'), 'utf8');
+    const start = source.indexOf('async function showDashboard()');
+    const end = source.indexOf('async function loadDashboardData(', start);
+    for (const user of [{ role: 'accountant' }, { role: 'director', action_denylist: ['view_revenue'] }]) {
+        const events = [];
+        const sandbox = {
+            canAccess: action => frontendResolveCapability(user, action, { type: 'action', ignoreServer: true }).allowed,
+            isViewer: () => !policy.resolveCapability(user, 'edit_booking').allowed,
+            document: { getElementById(id) { events.push(id); return { innerHTML: '', classList: { remove() {} } }; } },
+            loadDashboardData: async period => events.push(period), dashboardPeriod: '', dashboardOpen: null
+        };
+        vm.runInNewContext(source.slice(start, end) + '\ndashboardOpen = showDashboard;', sandbox);
+        await sandbox.dashboardOpen();
+        assert.equal(events.includes('month'), user.role === 'accountant', 'finance read capability controls the dashboard');
+        if (user.role === 'director') assert.deepEqual(events, [], 'explicit finance deny blocks before DOM/data work');
+    }
+});
+
 function comparable(decision) {
     return {
         allowed: decision.allowed,

@@ -2067,7 +2067,7 @@ function calcRevenue(bookings) {
 }
 
 async function showDashboard() {
-    if (isViewer()) return;
+    if (!canAccess('view_revenue')) return;
 
     const modal = document.getElementById('dashboardModal');
     const container = document.getElementById('dashboardContent');

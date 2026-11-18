@@ -1,6 +1,7 @@
 # Baseline access preset matrix (candidate, not release proof)
 
 Baseline: production 0.83.120, 571a57acb80118cc6cc0e5a923c5a5bba9c09d86. Generated from the current registry.
+The original snapshot is retained. See STATE.md for source-equivalence checks against later production releases; real account exceptions still require a live audit.
 All 26 roles receive Profile/My Day, Tasks, Chat, Afisha, Training and Staff schedule.
 Explicit denials override both primary/additional role presets and personal grants.
 Membership-required businesses fail closed without an active membership.

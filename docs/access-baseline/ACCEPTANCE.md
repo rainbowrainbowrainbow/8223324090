@@ -11,7 +11,7 @@ protected game-zone scope, production audit or live acceptance.
 | Business/team isolation | Task SQL uses memberships plus canonical staff nodes; schedule edits use exactly one actor staff node; revoked/cross-business timeline API fixtures pass | Audit real responsibility links; no automatic repairs or role-name/department-label substitution |
 | Timeline reading, work details, contacts, money and mutations | EG-BASE-ZONES-20261118 explicitly approved and implemented locally: active Park room metadata.workArea=game_zone plus canonical room_resource_id; independent capabilities, field projection and availability contact gates; direct PostgreSQL API and canonical-modal browser regressions | Production resource classification is still unaudited/unmodified; final live proof remains required |
 | Common work pages and usable data | Presets cover every role; actual-app tasks/schedule/afisha reads pass for six roles | Chat remains chat_not_migrated; training API/module policy mismatch unresolved; a page grant is insufficient |
-| Navigation survives old favorites, accessible desktop/mobile | Six roles x two viewports; native links, Enter/clicks, disabled-module reasons; schedule navigation succeeds in real PostgreSQL-backed app; screenshots reviewed | This proves schedule/navigation flows, not the missing game-zone/modal or Chat/Training workflows |
+| Navigation survives old favorites, accessible desktop/mobile | Six roles x two viewports; native links, Enter/clicks, disabled-module reasons; schedule navigation succeeds in real PostgreSQL-backed app; screenshots reviewed | Separate game-zone/modal evidence is recorded below; Chat/Training workflows remain unavailable |
 | Create/link existing accounts, repeat/concurrent operations | Readiness integrated into creation, link, replay/recovery and workspace; disposable fresh/hire/account suites pass 1 + 1 + 24 | Read-only SQL probes prove store readability only. Data remains api_not_verified until actual authenticated reads exist. Do not mint an impersonation session or claim ready from SELECT 1 |
 | Explicit membership/permission changes | Readiness assessment and inventories perform no membership/override mutation; explicit denials remain authoritative | Any real-user repair needs exact IDs, before/after and approval |
 | Read-only existing-account audit | audit-baseline-access.js prepared, ID-only impact/exceptions, enforced read-only transaction | Production run blocked by missing approved local credentials file; no real account inventory or correction list yet |
@@ -26,3 +26,9 @@ protected game-zone scope, production audit or live acceptance.
 The protected proposal was approved and implemented locally. It does not authorize
 production resource classification, membership repairs, data backfill, workflow
 changes or deployment. Production still runs upstream, without this feature.
+
+Administrator profession/admission save follow-up: the roles button previously
+entered the payroll-rules lane and returned `PARK_HR_PAYROLL_ACCESS_DENIED`.
+The scoped fix and its verification boundaries are recorded in
+STAFF_PROFESSION_SAVE.md. It does not grant payroll-rules capabilities or authorize
+changes to the reported real employee/account.

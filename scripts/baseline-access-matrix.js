@@ -39,6 +39,7 @@ const rows = matrix.map(row => {
 const markdown = `# Baseline access preset matrix (candidate, not release proof)
 
 Baseline: production 0.83.120, ${baseline.sha}. Generated from the current registry.
+The original snapshot is retained. See STATE.md for source-equivalence checks against later production releases; real account exceptions still require a live audit.
 All 26 roles receive Profile/My Day, Tasks, Chat, Afisha, Training and Staff schedule.
 Explicit denials override both primary/additional role presets and personal grants.
 Membership-required businesses fail closed without an active membership.

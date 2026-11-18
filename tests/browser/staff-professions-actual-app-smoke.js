@@ -54,6 +54,14 @@ async function run() {
                     localStorage.setItem('pzp_crm_business_context_user', String(session.user.id));
                 }, session);
                 const page = await context.newPage();
+                const writes = [];
+                page.on('response', response => {
+                    const pathname = new URL(response.url()).pathname;
+                    if (response.request().method() === 'PUT' && [
+                        `/api/hr/staff/${person.id}`, `/api/hr/staff/${person.id}/role-assignments`,
+                        `/api/staff/${person.id}/shift-preferences`
+                    ].includes(pathname)) writes.push({ pathname, status: response.status() });
+                });
                 try {
                     await page.goto(origin + '/hr?tab=team', { waitUntil: 'domcontentloaded' });
                     await page.waitForFunction(() => typeof openStaffEdit === 'function' && typeof AppState.authPermissions?.actions?.['hr.staff.manage'] === 'boolean');
@@ -81,10 +89,27 @@ async function run() {
                     assert.equal(persisted.role_type, 'host');
                     assert.ok(persisted.secondary_professions.includes('reception'));
                     assert.equal(Number(persisted.hourly_rate), 321);
+                    // Also exercise the work-section footer after the roles
+                    // transaction: its revision must be fresh, with no 403/409.
+                    await page.locator('#editRoleType').selectOption('animator');
+                    const workResponse = page.waitForResponse(response => response.request().method() === 'PUT'
+                        && new URL(response.url()).pathname === `/api/hr/staff/${person.id}`);
+                    await page.locator('#editSaveWork').click();
+                    const workWritten = await workResponse;
+                    assert.equal(workWritten.status(), 200, await workWritten.text());
+                    await page.waitForFunction(() => !document.getElementById('editSaveWork').disabled);
+                    const workPersisted = (await db.query('SELECT role_type, secondary_professions, hourly_rate FROM staff WHERE id = $1', [person.id])).rows[0];
+                    assert.equal(workPersisted.role_type, 'animator');
+                    assert.ok(workPersisted.secondary_professions.includes('reception'));
+                    assert.equal(Number(workPersisted.hourly_rate), 321);
+                    assert.equal((await db.query("SELECT admission_status FROM staff_role_assignments WHERE staff_id = $1 AND profession_key = 'reception'", [person.id])).rows[0].admission_status, 'approved');
+                    const preferences = writes.find(row => row.pathname.endsWith('/shift-preferences'));
+                    assert.equal(preferences?.status, 200, JSON.stringify(writes));
+                    assert.ok(writes.every(row => row.status === 200), JSON.stringify(writes));
                     await save.focus();
                     await page.screenshot({ path: path.join(output, `${role}-${width}.png`) });
                     assert.equal(await modal.isVisible(), true);
-                    results.push({ role, width, status: written.status(), ratePreserved: true, admission: 'approved' });
+                    results.push({ role, width, status: written.status(), workSaveStatus: workWritten.status(), shiftPreferencesStatus: preferences.status, ratePreserved: true, admission: 'approved' });
                 } catch (error) {
                     await page.screenshot({ path: path.join(output, `${role}-${width}-failure.png`) });
                     console.error('HR drawer diagnostic', await page.evaluate(() => ({

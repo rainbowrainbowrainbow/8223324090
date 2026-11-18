@@ -78,6 +78,13 @@ test('admin and creator save professions and admissions without changing compens
             assert.deepEqual(after.rates, before.rates);
             assert.deepEqual(after.schemes, before.schemes);
             assert.deepEqual(after.assignments.filter(row => row.profession_key !== 'qa_regression'), before.assignments);
+            state.actor = { role: 'creator' };
+            const financial = await request(path, { method: 'PUT', body: { ...body, assignments: body.assignments.map(row => ({
+                ...row, hourly_rate: row.is_primary ? 654 : 321
+            })) } });
+            assert.equal(financial.status, 200, JSON.stringify({ response: financial.body, error: state.lastError }));
+            assert.equal(Number((await db.query('SELECT hourly_rate FROM staff WHERE id = $1', [staff.id])).rows[0].hourly_rate), 654);
+            assert.equal(Number((await db.query("SELECT hourly_rate FROM staff_profession_rates WHERE staff_id = $1 AND profession_key = 'host'", [staff.id])).rows[0].hourly_rate), 654);
         }, db);
     } finally { await db.end(); }
 });

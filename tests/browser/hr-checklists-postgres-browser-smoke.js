@@ -9,6 +9,7 @@ const crypto = require('node:crypto');
 const { Pool } = require('pg');
 const { assertSafeTestDatabaseUrl, assertSafeIsolatedTestUrl } = require('../../scripts/test-db-safety');
 const { acquireIsolatedDatabaseLock, runSuite } = require('../../scripts/run-isolated-postgres-tests');
+const { createParkWorkFixture } = require('../helpers/park-work-app-fixture');
 const OUT = path.resolve(__dirname, '../../output/playwright/hr-checklists/postgres');
 
 function requirePlaywright() {
@@ -46,6 +47,7 @@ async function run() {
     fs.mkdirSync(OUT, { recursive: true });
     let token;
     let page;
+    let parkFixture;
     const api = async (route, body, method = body ? 'POST' : 'GET', expectedStatus = null) => {
         const response = await fetch(`${base}${route}`, {
             method,
@@ -340,8 +342,25 @@ async function run() {
         await require('./hr-checklists-access-audit')({ api, browser, base, db, evidence, fixture: fixtures.light });
         await require('./hr-checklists-scale-audit')({ api, db, evidence, page, base });
         const trainingFixture = fixtures.light;
+        const legacyProgressUrl = `/api/hr/professions/${trainingFixture.key}/staff/${trainingFixture.staffId}/checklist/${trainingFixture.first.itemKey}`;
+        await api(`/api/hr/staff/${trainingFixture.staffId}/profession-checklist`, {
+            profession_key: trainingFixture.key, checklist_key: trainingFixture.first.itemKey,
+            completed: true, notes: 'QA legacy alias preserved note'
+        }, 'PUT');
+        await api(legacyProgressUrl, { completed: false }, 'PUT');
+        const legacyProgress = (await db.query('SELECT notes, completed_at FROM hr_staff_profession_checklist_progress WHERE staff_id = $1 AND checklist_item_id = $2', [trainingFixture.staffId, trainingFixture.first.id])).rows[0];
+        assert.equal(legacyProgress.notes, 'QA legacy alias preserved note');
+        assert.equal(legacyProgress.completed_at, null);
+        await api(legacyProgressUrl, { completed: false, notes: null }, 'PUT');
+        assert.equal((await db.query('SELECT notes FROM hr_staff_profession_checklist_progress WHERE staff_id = $1 AND checklist_item_id = $2', [trainingFixture.staffId, trainingFixture.first.id])).rows[0].notes, null);
+        // The Training namespace requires explicit current Park membership.
+        // Earlier HR-only matrix cases intentionally exercise legacy accounts.
+        parkFixture = await createParkWorkFixture([]);
         const trainingCredentials = { username: `chk_training_${Date.now()}`, password: crypto.randomBytes(24).toString('base64url') };
-        await api('/api/users', { ...trainingCredentials, name: 'QA Checklist Training', role: 'admin', staffId: trainingFixture.staffId });
+        const trainingAccount = await api('/api/users', { ...trainingCredentials, name: 'QA Checklist Training', role: 'admin',
+            staffId: trainingFixture.staffId, businessContexts: ['event_genix'], defaultBusinessContext: 'event_genix',
+            activateMembership: true });
+        assert.equal(trainingAccount.businessAccessReady, true, 'Training fixture has active Park membership');
         const trainingSession = await api('/api/auth/login', trainingCredentials);
         const lecture = (await db.query(`SELECT lecture.id AS lecture_id, course.id AS course_id
             FROM training_course_lectures lecture JOIN training_courses course ON course.id = lecture.course_id
@@ -363,13 +382,15 @@ async function run() {
             if (completedAt) assert.equal(persisted.completed_at.toISOString(), completedAt, 'Repeated Training completion is idempotent');
             completedAt = persisted.completed_at.toISOString();
         }
-        await api(`/api/hr/professions/${trainingFixture.key}/staff/${trainingFixture.staffId}/checklist/${trainingFixture.first.itemKey}`, { completed: false }, 'PUT');
+        const parkProgressUrl = `/api/hr/staff/${trainingFixture.staffId}/profession-checklist`;
+        const parkProgressBody = { profession_key: trainingFixture.key, checklist_key: trainingFixture.first.itemKey, completed: false };
+        await api(parkProgressUrl, parkProgressBody, 'PUT');
         const aliasProgress = (await db.query('SELECT notes, completed_at FROM hr_staff_profession_checklist_progress WHERE staff_id = $1 AND checklist_item_id = $2', [trainingFixture.staffId, trainingFixture.first.id])).rows[0];
         assert.equal(aliasProgress.notes, 'QA cross-surface preserved note');
         assert.equal(aliasProgress.completed_at, null);
-        await api(`/api/hr/professions/${trainingFixture.key}/staff/${trainingFixture.staffId}/checklist/${trainingFixture.first.itemKey}`, { completed: false, notes: null }, 'PUT');
+        await api(parkProgressUrl, { ...parkProgressBody, notes: null }, 'PUT');
         assert.equal((await db.query('SELECT notes FROM hr_staff_profession_checklist_progress WHERE staff_id = $1 AND checklist_item_id = $2', [trainingFixture.staffId, trainingFixture.first.id])).rows[0].notes, null);
-        evidence.notesAcrossSurfaces = { hrCheckbox: 'PASS', trainingCompletion: 'PASS', trainingIdempotency: 'PASS', aliasOmittedNotes: 'PASS', explicitClearing: 'PASS' };
+        evidence.notesAcrossSurfaces = { hrCheckbox: 'PASS', trainingCompletion: 'PASS', trainingIdempotency: 'PASS', aliasOmittedNotes: 'PASS', explicitClearing: 'PASS', parkCanonicalProgress: 'PASS' };
         assert.deepEqual(evidence.apiFailures, []);
         assert.deepEqual(evidence.pageErrors, []);
         assert.equal(evidence.restrictedStaffCardResponses, 2, 'both legacy staff-card attempts were denied');
@@ -382,6 +403,7 @@ async function run() {
     } finally {
         fs.writeFileSync(path.join(OUT, 'results.json'), JSON.stringify(evidence, null, 2));
         await browser.close();
+        if (parkFixture) await parkFixture.db.end();
         await db.end();
     }
 }

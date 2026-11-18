@@ -12,6 +12,7 @@ const { cleanupTrustedQaRun, runTrustedQaCleanupWatchdog } = require('../../serv
 const { main: runOperatorTool } = require('../../scripts/trusted-qa-baseline-access-run');
 
 test('registered baseline identities authenticate, fail closed on drift and retire through the watchdog', async t => {
+    fs.mkdirSync(path.resolve(__dirname, '../../output'), { recursive: true });
     const f = await createParkWorkFixture([]);
     const transaction = async fn => {
         const client = await f.db.connect();

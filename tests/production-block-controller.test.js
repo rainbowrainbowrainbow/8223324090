@@ -2059,3 +2059,49 @@ test('changelog publication retry uses saved deployment state and preserves rele
     assert.equal(calls, 1);
     assert.equal(readBlockFile(file).runtimeState.releaseAttempts, 1);
 });
+
+test('minor release signs exactly 0.83.120 to 0.84.0 and keeps ordinary release gates', () => {
+    const value = manifest({ releaseBump: 'minor' }, { releaseVersion: '0.83.120', live: { commitSha: LIVE_SHA, version: '0.83.120' } });
+    assert.deepEqual(value.versionBump, { type: 'minor', from: '0.83.120', to: '0.84.0' });
+    assert.equal(validateManifest(value).versionBump.to, '0.84.0');
+    const plan = releaseCommandPlan(value).join('\n');
+    assert.match(plan, /version:bump -- minor/);
+    assert.match(plan, /target 0\.84\.0/);
+    assert.match(plan, /exact-sha-runtime-artifact-run/);
+    assert.match(plan, /release:railway-up/);
+    assert.equal(parseOptions(['prepare', '--release-bump', 'minor']).releaseBump, 'minor');
+});
+
+test('minor release changes are hash-bound and cannot widen the target even after rehashing', () => {
+    const value = manifest({ releaseBump: 'minor' }, { releaseVersion: '0.83.120', live: { commitSha: LIVE_SHA, version: '0.83.120' } });
+    value.versionBump.to = '0.85.0';
+    assert.throws(() => validateManifest(value), { code: 'PRODUCTION_BLOCK_HASH_MISMATCH' });
+    value.manifestHash = manifestHash(value);
+    assert.throws(() => validateManifest(value), { code: 'PRODUCTION_BLOCK_VERSION_BUMP_INVALID' });
+});
+
+test('minor release rejects malformed versions, pre-bumped candidates and unsupported bump modes', () => {
+    const live = { commitSha: LIVE_SHA, version: '0.83.120' };
+    for (const releaseVersion of ['0.83.121', '0.83.120-beta', '00.83.120', '0.83', 'x']) {
+        assert.throws(() => manifest({ releaseBump: 'minor' }, { releaseVersion, live }), { code: 'PRODUCTION_BLOCK_VERSION_BUMP_INVALID' });
+    }
+    assert.throws(() => manifest({ releaseBump: 'major' }), { code: 'PRODUCTION_BLOCK_VERSION_BUMP_INVALID' });
+});
+
+test('legacy patch manifests and plans retain their existing behavior', () => {
+    const value = manifest();
+    assert.equal(value.versionBump, undefined);
+    assert.equal(validateManifest(value).versionBump, undefined);
+    assert.match(releaseCommandPlan(value).join('\n'), /version:bump -- patch/);
+    assert.equal(parseOptions(['prepare']).releaseBump, 'patch');
+});
+
+test('minor transition cannot carry arbitrary fields or override protected workflows', () => {
+    const value = manifest({ releaseBump: 'minor' }, { releaseVersion: '0.83.120', live: { commitSha: LIVE_SHA, version: '0.83.120' } });
+    value.versionBump.command = 'arbitrary';
+    value.manifestHash = manifestHash(value);
+    assert.throws(() => validateManifest(value), { code: 'PRODUCTION_BLOCK_VERSION_BUMP_INVALID' });
+    assert.throws(() => manifest({ releaseBump: 'minor', protectedWorkflow: 'sys-mb-auth-cutover' },
+        { releaseVersion: '0.83.120', live: { commitSha: LIVE_SHA, version: '0.83.120' }, changedPaths: ['middleware/auth.js'] }),
+    { code: 'PRODUCTION_BLOCK_VERSION_BUMP_INVALID' });
+});

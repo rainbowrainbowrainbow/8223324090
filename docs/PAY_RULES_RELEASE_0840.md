@@ -1,9 +1,13 @@
 # Configurable compensation release 0.84.0
 
-Status: reviewed local integration; no production push, deploy or migration yet.
+Status: owner authorized the exact block; production execution is starting.
 The owner explicitly requested deployment after clearing the queue and pinned
-the next minor version to **0.84.0**. Exact authorization is still required for
-the schema migration, production payroll/access rollout and controller change.
+the next minor version to **0.84.0**. The owner then explicitly replied
+`Дозволяю блок PAY-RULES-0840` to the question naming schema migration 423,
+the ten production payroll-access operations, the reviewed minor controller
+change, the fixed production service, three-attempt limit and 10:49 Kyiv expiry.
+Approval recorded at 2026-11-18 03:22:55 UTC. This covers no real-data entry,
+secret, hosting-setting or GitHub workflow mutation.
 
 ## Fixed destination and source
 
@@ -23,7 +27,7 @@ the schema migration, production payroll/access rollout and controller change.
   task-link test; add the three compensation assets and three new unit files.
   Current shared-account, freelance and My Day changes remain in the base.
 
-## Exact pending approval scope: PAY-RULES-0840
+## Exact approved scope: PAY-RULES-0840
 
 One bounded release of the existing configurable compensation implementation:
 fixed/proportional monthly salaries, daily rules, recurring components, manual

@@ -1049,6 +1049,18 @@ function assertFreelanceScheduleScope(reviewed, base, baseVersion, version, qa, 
     'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
 }
 
+function validateMinorReleaseBump(bump) {
+    fail(bump && typeof bump === 'object' && !Array.isArray(bump)
+        && Object.keys(bump).sort().join(',') === 'from,to,type'
+        && bump.type === 'minor' && /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(bump.from || ''),
+    'Minor release needs one signed semantic-version transition', 'PRODUCTION_BLOCK_VERSION_BUMP_INVALID');
+    const [major, minor] = bump.from.split('.').map(Number);
+    fail(Number.isSafeInteger(major) && Number.isSafeInteger(minor + 1)
+        && bump.to === major + '.' + (minor + 1) + '.0',
+    'Minor release target differs from the signed transition', 'PRODUCTION_BLOCK_VERSION_BUMP_INVALID');
+    return bump;
+}
+
 function buildManifest(facts, options = {}) {
     const now = options.now instanceof Date ? options.now : new Date(options.now || Date.now());
     const validityMinutes = Number(options.validityMinutes || 360);
@@ -1063,6 +1075,16 @@ function buildManifest(facts, options = {}) {
     const redPaths = redChangedPaths(changed);
     const protectedWorkflow = validateProtectedWorkflow(options.protectedWorkflow || 'none', changed, redPaths);
     const qaScope = validateQaScope(options.qaScope || { enabled: false });
+    const releaseBump = options.releaseBump || 'patch';
+    fail(['patch', 'minor'].includes(releaseBump), 'Unsupported release bump', 'PRODUCTION_BLOCK_VERSION_BUMP_INVALID');
+    let versionBump;
+    if (releaseBump === 'minor') {
+        fail(!protectedWorkflow.enabled && facts.releaseVersion === facts.live?.version,
+            'Minor bump requires an ordinary release with unchanged base version', 'PRODUCTION_BLOCK_VERSION_BUMP_INVALID');
+        const parts = String(facts.releaseVersion || '').split('.');
+        versionBump = validateMinorReleaseBump({ type: 'minor', from: facts.releaseVersion,
+            to: parts[0] + '.' + (Number(parts[1]) + 1) + '.0' });
+    }
     const maxReleaseAttempts = Number(options.maxReleaseAttempts || DEFAULT_MAX_ATTEMPTS);
     if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE) {
         assertProfileEmployeeReleaseScope(baseLiveSha, facts.live?.version, facts.releaseVersion,
@@ -1160,6 +1182,7 @@ function buildManifest(facts, options = {}) {
         allowedProtectedWorkflow: protectedWorkflow,
         releaseLabel: String(options.releaseLabel || 'Autonomy Hardening').trim().slice(0, 120),
         releaseNotes: validateReleaseNotes(options.releaseNotes || []),
+        ...(versionBump ? { versionBump } : {}),
         maxReleaseAttempts,
         realDataMutationAllowed: false,
         settingsMutationAllowed: false,
@@ -1232,6 +1255,11 @@ function validateManifest(manifest, options = {}) {
     'Production block attempts to permit a Red action', 'PRODUCTION_BLOCK_RED_PERMISSION');
     const qaScope = validateQaScope(manifest.allowedQaScope);
     validateReleaseNotes(manifest.releaseNotes);
+    if (manifest.versionBump !== undefined) {
+        validateMinorReleaseBump(manifest.versionBump);
+        fail(!manifest.allowedProtectedWorkflow?.enabled,
+            'Minor bump cannot override a prepared protected release', 'PRODUCTION_BLOCK_VERSION_BUMP_INVALID');
+    }
     const changed = normalizePathList(manifest.changedPaths || []);
     const protectedWorkflow = manifest.allowedProtectedWorkflow || { enabled: false, kind: null, protectedChangedPaths: [] };
     fail(qaScope.kind !== 'finance' || protectedWorkflow.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA,

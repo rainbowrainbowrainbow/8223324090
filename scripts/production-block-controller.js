@@ -660,7 +660,11 @@ function defaultRuntime() {
                     && JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version === manifest.preparedRelease.version,
                     'Prepared protected release drifted', 'PRODUCTION_BLOCK_RELEASE_SHA_DRIFT');
             } else {
-                commandResult('npm', ['run', 'version:bump', '--', 'patch', '--label', manifest.releaseLabel], { inherit: true });
+                if (manifest.versionBump) fail(JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version === manifest.versionBump.from,
+                    'Package version drifted before minor release', 'PRODUCTION_BLOCK_VERSION_BUMP_DRIFT');
+                commandResult('npm', ['run', 'version:bump', '--', manifest.versionBump?.type || 'patch', '--label', manifest.releaseLabel], { inherit: true });
+                if (manifest.versionBump) fail(JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version === manifest.versionBump.to,
+                    'Generated version differs from signed minor target', 'PRODUCTION_BLOCK_VERSION_BUMP_DRIFT');
                 const releasePaths = git(['diff', '--name-only']).split(/\r?\n/).filter(Boolean);
                 fail(releasePaths.length > 0, 'Version bump did not produce release artifacts', 'PRODUCTION_BLOCK_RELEASE_ARTIFACTS_MISSING');
                 const invalidReleasePaths = releasePaths.filter(file => !isReleaseArtifact(file));
@@ -1103,7 +1107,7 @@ function releaseCommandPlan(manifest) {
         'npm test',
         ...(isPreparedProtectedRelease(manifest)
             ? ['npm run check:version (prepared exact SHA)']
-            : [`npm run version:bump -- patch --label "${manifest.releaseLabel}"`]),
+            : [`npm run version:bump -- ${manifest.versionBump?.type || 'patch'} --label "${manifest.releaseLabel}"${manifest.versionBump ? ' (target ' + manifest.versionBump.to + ')' : ''}`]),
         ...(needsRuntimeArtifactRun(manifest) ? ['Verify Runtime artifact smoke trigger against the production push diff'] : []),
         `git push origin <exact-release-sha>:refs/heads/${manifest.allowedBranch}`,
         'gh run watch <exact-sha-run> --exit-status',
@@ -1424,6 +1428,7 @@ function parseOptions(argv) {
         '--validity-minutes',
         '--max-release-attempts',
         '--release-label',
+        '--release-bump',
         '--release-notes-file',
         '--retry-from',
         '--retry-ci-run',
@@ -1461,6 +1466,7 @@ function parseOptions(argv) {
         maxReleaseAttempts: Number(argValue(args, '--max-release-attempts', '3')),
         releaseLabel: cleanText(argValue(args, '--release-label', 'Autonomy Hardening'), 120),
         releaseNotesFile: argValue(args, '--release-notes-file'),
+        releaseBump: argValue(args, '--release-bump', 'patch'),
         retryFrom: retryFrom ? path.resolve(retryFrom) : null,
         retryCiRun,
         renewalFrom: renewalFrom ? path.resolve(renewalFrom) : null,

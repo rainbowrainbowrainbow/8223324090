@@ -176,11 +176,12 @@ test('all reassignment routes use the same private handoff contract', () => {
     assert.match(myDay, /if \(confirmed === true\) payload\.confirmPrivateHandoff = true/);
 });
 
-test('accountant can work with team tasks across departments while personal tasks stay private', () => {
+test('accountant needs a separate business task scope to work across departments', () => {
     const { getPermissions } = require('../config/roles');
-    const actor = { id: 10, role: 'accountant', username: 'fixture-accountant' };
+    const actor = { id: 10, role: 'accountant', username: 'fixture-accountant', action_allowlist: ['tasks.scope.business'] };
     const task = { owner_user_id: 20, visibility: 'team' };
-    assert.equal(getPermissions(actor.role).canAssignAnyone, true);
+    assert.equal(getPermissions(actor).canAssignAnyone, true);
+    assert.equal(getPermissions({ role: 'accountant' }).canAssignAnyone, false);
     assert.equal(canViewTask(actor, task), true);
     assert.equal(canViewTask(actor, { ...task, visibility: 'private' }), false);
     assert.equal(canMutateTask(actor, { ...task, visibility: 'private' }), false);

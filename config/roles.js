@@ -135,7 +135,16 @@ const DASHBOARD_WIDGET_MIN_ROLES = {
 const DEFAULT_PERMISSIONS = { taskVisibility: 'own', canCreateTasks: false, canDeleteTasks: false, canAssignAnyone: false };
 
 function getPermissions(role) {
-    return ROLE_PERMISSIONS[role] || DEFAULT_PERMISSIONS;
+    const user = typeof role === 'string' ? { role } : role;
+    const { resolveCapability } = require('../services/accountAccessPolicy');
+    const allowed = key => resolveCapability(user, key, { type: 'action' }).allowed;
+    const all = allowed('tasks.scope.business');
+    return {
+        taskVisibility: all ? 'all' : allowed('tasks.scope.team') ? 'department' : 'own',
+        canCreateTasks: allowed('tasks.create'),
+        canDeleteTasks: allowed('tasks.delete'),
+        canAssignAnyone: all
+    };
 }
 
 function getDefaultWidgets(role) {

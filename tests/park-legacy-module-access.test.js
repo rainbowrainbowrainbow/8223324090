@@ -30,6 +30,15 @@ test('Park memberships can use both recovered surfaces with their canonical page
     }
 });
 
+test('staff navigation advertises only the existing schedule lane, preserving legacy containment', () => {
+    const req = request('event_genix', 'instructor');
+    assert.deepEqual(parkLegacySurfaceAvailability(req.user, 'event_genix').staff,
+        { available: true, code: null, scope: 'schedule' });
+    assert.equal(legacyBusinessSurfaceAccess(req, 'staff').available, false, 'no blanket staff namespace grant');
+    assert.equal(parkLegacySurfaceAvailability(request('dar', 'instructor').user, 'dar').staff.available, false);
+    assert.equal(parkLegacySurfaceAvailability(request('event_genix', 'instructor', ['/staff']).user, 'event_genix').staff.available, false);
+});
+
 test('new and batch certificate pages and Art aliases retain explicit denials', () => {
     const createDenied = request('event_genix', 'senior_manager', ['/certificates/new']);
     assert.equal(legacyBusinessSurfaceAccess(createDenied, 'certificates').available, true);

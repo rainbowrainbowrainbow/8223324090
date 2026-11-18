@@ -112,6 +112,8 @@ function canUseTimelineAction(user, context, action) {
         return Boolean(capability && resolveCapability(user, capability, { type: 'action' }).allowed);
     }
     if (action === 'settings' && !resolveCapability(user, 'manage_settings', { type: 'action' }).allowed) return false;
+    const capability = TIMELINE_ACTION_CAPABILITIES[action];
+    if (capability && !resolveCapability(user, capability, { type: 'action' }).allowed) return false;
     const allowed = CONTEXT_ACTION_ROLES[normalized]?.[action];
     if (!Array.isArray(allowed)) return true;
     if (!allowed.length) return false;

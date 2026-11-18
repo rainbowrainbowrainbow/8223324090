@@ -17,8 +17,8 @@ const read = file => fs.readFileSync(path.join(ROOT, file), 'utf8');
 const PAYROLL_ACTION_MATRIX = {
     view_payroll: ['creator', 'director', 'vice_director', 'hr', 'accountant'],
     manage_payroll_accrual: ['creator', 'director', 'vice_director', 'hr', 'accountant'],
-    approve_payroll_installment: ['creator', 'director', 'vice_director', 'hr', 'accountant'],
-    confirm_payroll_payment: ['creator', 'director', 'vice_director', 'hr', 'accountant'],
+    approve_payroll_installment: ['creator', 'director', 'accountant'],
+    confirm_payroll_payment: ['creator', 'director', 'accountant'],
     reverse_payroll_payment: ['creator', 'director', 'accountant'],
     close_payroll_period: ['creator', 'director', 'accountant'],
     manage_payroll_rules: ['creator', 'director', 'hr', 'accountant']

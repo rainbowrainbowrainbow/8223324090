@@ -49,7 +49,7 @@ function normalizeTaskPayload(row = {}, options = {}) {
         && !isExplicitFalse(controlMeta.allowReschedule)
         && !isExplicitFalse(controlMeta.rescheduleAllowed);
     const user = options.user || null;
-    const permissions = user ? getPermissions(user.role) : null;
+    const permissions = user ? getPermissions(user) : null;
     const canUseTaskWriteRoutes = Boolean(permissions?.canCreateTasks)
         || ['senior_instructor', 'instructor'].includes(String(user?.role || ''));
     const authorReadOnly = row.task_standard_visibility === false || row.task_standard_visibility === null;

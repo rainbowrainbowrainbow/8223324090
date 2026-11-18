@@ -20,11 +20,12 @@ const { auditEffectiveRoles } = require('../scripts/audit-hr-timeline-roles');
 const ROOT = path.join(__dirname, '..');
 
 test('timeline read guard rejects restricted roles even with a saved page grant', () => {
-    for (const role of ['barista', 'waiter', 'instructor']) {
+    for (const role of ['barista', 'waiter']) {
         const res = { status(code) { assert.equal(code, 403); return this; }, json() {} };
         assert.equal(requireTimelineView({ user: { role, page_allowlist: ['/'] } }, res, 'event_genix'), false);
     }
     assert.equal(requireTimelineView({ user: { role: 'animator' } }, {}, 'event_genix'), true);
+    assert.equal(requireTimelineView({ user: { role: 'instructor' } }, {}, 'event_genix'), true);
 });
 
 test('legacy HR audit reports only businesses with an effective animator role', async () => {
@@ -1581,7 +1582,7 @@ test('park timeline delete action is manager-operational while permanent delete 
     const bookingsRoute = fs.readFileSync(path.join(ROOT, 'routes', 'bookings.js'), 'utf8');
     const accessAuditScript = fs.readFileSync(path.join(ROOT, 'scripts', 'audit-timeline-access.js'), 'utf8');
     const pkg = fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8');
-    const operationalRoles = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'accountant', 'art_director', 'marketer', 'it_specialist', 'hr', 'admin'];
+    const operationalRoles = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'];
 
     for (const role of operationalRoles) {
         assert.ok(ACTION_PERMISSIONS.create_booking.includes(role), `${role} can create bookings`);
@@ -1591,7 +1592,7 @@ test('park timeline delete action is manager-operational while permanent delete 
         assert.equal(canUseTimelineAction({ role }, 'park_zakrevsky', 'delete'), true, `${role} can delete in park alias`);
     }
     assert.match(accountAccessPolicyCode, /function resolveCapability/);
-    assert.match(contextCode, /delete: \['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'accountant', 'art_director', 'marketer', 'it_specialist', 'hr', 'admin'\]/);
+    assert.match(contextCode, /delete: \['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'\]/);
     assert.match(bookingsRoute, /function requirePermanentBookingDelete/);
     assert.match(bookingsRoute, /userHasAnyRole\(req\.user, \['creator', 'director'\]\)/);
     assert.match(bookingsRoute, /if \(permanent && !requirePermanentBookingDelete\(req, res\)\) return/);

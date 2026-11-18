@@ -1,0 +1,91 @@
+diff --git a/config/permissionRegistry.js b/config/permissionRegistry.js
+index 539420e7b..3afa0159b 100644
+--- a/config/permissionRegistry.js
++++ b/config/permissionRegistry.js
+@@ -500,6 +500,12 @@ const PAGE_PERMISSIONS = Object.freeze([
+ ]);
+ 
+ const ACTION_PERMISSIONS = Object.freeze([
++    action({
++        key: 'timeline.game_zones.view', label: 'Перегляд таймлайна ігрових зон', group: 'bookings',
++        defaultRoles: ['instructor', 'senior_instructor'], risk: 'high',
++        backendConsumers: [source('services/bookingVisibility.js', 'canReadGameZoneBooking', { enforces: true })],
++        apiConsumers: [api('routes/bookings.js', 'GET /api/bookings', null, 'Active classified game-zone resources only.')]
++    }),
+     action({
+         key: 'hr.attendance.view', label: 'Перегляд фактичної відвідуваності', group: 'hr',
+         defaultRoles: [...MANAGER_UP, 'hr', 'admin', 'accountant'], risk: 'high',
+diff --git a/routes/bookings.js b/routes/bookings.js
+index 5f8e52426..342d65b07 100644
+--- a/routes/bookings.js
++++ b/routes/bookings.js
+@@ -146,6 +146,7 @@ const { readLesson, overlapsBookingTime, findTeacherConflict } = require('../ser
+ 
+ // v39.8: Security — require authentication for all booking endpoints
+ router.use(authenticateToken);
++router.use(require('../services/gameZoneAccess').loadGameZoneAccess);
+ router.use(require('../services/bookingFieldAccess').installBookingFieldAccess);
+ 
+ function ticketBusinessContextFromAuthenticatedRequest(req) {
+diff --git a/services/bookingVisibility.js b/services/bookingVisibility.js
+index 26d05c2db..ba3376e9f 100644
+--- a/services/bookingVisibility.js
++++ b/services/bookingVisibility.js
+@@ -401,7 +401,24 @@ function canReadSharedAnimatorTimeline(user, businessContext) {
+         && resolveCapability(user, 'view_all', { type: 'action' }).source !== 'explicit_deny';
+ }
+ 
++function gameZoneIds(user, context) {
++    return context === 'event_genix'
++        && resolveCapability(user, 'timeline.game_zones.view').allowed
++        && resolveCapability(user, '/', { type: 'page' }).allowed
++        && Array.isArray(user?.gameZoneResourceIds) ? user.gameZoneResourceIds : [];
++}
++function canReadGameZoneBooking(user, booking) {
++    const context = booking?.business_context ?? booking?.businessContext;
++    return gameZoneIds(user, context).includes(booking?.room_resource_id ?? booking?.roomResourceId);
++}
+ function buildTimelineBookingVisibilityScope(user, params = [], alias = 'b', businessContext) {
++    const zones = gameZoneIds(user, businessContext);
++    if (zones.length) {
++        params.push(zones);
++        const zoneCondition = `${alias}.room_resource_id = ANY(${params.length}::text[])`;
++        const ownCondition = buildBookingVisibilityCondition(user, params, alias);
++        return `AND (${zoneCondition} OR ${ownCondition})`;
++    }
+     return canReadSharedAnimatorTimeline(user, businessContext)
+         ? ''
+         : buildBookingVisibilityScope(user, params, alias);
+@@ -409,6 +426,7 @@ function buildTimelineBookingVisibilityScope(user, params = [], alias = 'b', bus
+ 
+ function canViewTimelineBooking(user, booking) {
+     if (!booking) return false;
++    if (canReadGameZoneBooking(user, booking)) return true;
+     const businessContext = booking.business_context ?? booking.businessContext ?? 'event_genix';
+     return canReadSharedAnimatorTimeline(user, businessContext) || canViewBooking(user, booking);
+ }
+diff --git a/services/gameZoneAccess.js b/services/gameZoneAccess.js
+new file mode 100644
+index 000000000..91af72dda
+--- /dev/null
++++ b/services/gameZoneAccess.js
+@@ -0,0 +1,19 @@
++'use strict';
++const { resolveCapability } = require('./accountAccessPolicy');
++const { timelineContextFromRequest } = require('./timelineContext');
++const { pool } = require('../db');
++async function loadGameZoneAccess(req, res, next) {
++    try {
++        req.user.gameZoneResourceIds = [];
++        const context = timelineContextFromRequest(req);
++        if (context !== 'event_genix'
++            || !resolveCapability(req.user, 'timeline.game_zones.view').allowed
++            || !resolveCapability(req.user, '/', { type: 'page' }).allowed) return next();
++        const result = await pool.query(`SELECT resource_id FROM timeline_resources
++            WHERE business_context = $1 AND type = 'room' AND is_active IS TRUE
++              AND metadata->>'workArea' = 'game_zone' ORDER BY resource_id`, [context]);
++        req.user.gameZoneResourceIds = result.rows.map(row => row.resource_id);
++        return next();
++    } catch (error) { return next(error); }
++}
++module.exports = { loadGameZoneAccess };

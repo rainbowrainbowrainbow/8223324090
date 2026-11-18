@@ -1868,7 +1868,7 @@ checkPage('staff.html', (doc, html) => {
         && staffScheduleOpenModalBlock.includes('openModal(overlay, trigger, {')
         && staffScheduleOpenModalBlock.includes('show: modal =>')
         && staffScheduleOpenModalBlock.includes('hide: modal =>')
-        && staffScheduleOpenModalBlock.includes('initialFocus: () => StaffState.canManage')
+        && staffScheduleOpenModalBlock.includes('initialFocus: () => canManageStaffScheduleRecord(staffId)')
         && staffScheduleOpenModalBlock.includes("document.getElementById('schStatus')")
         && staffScheduleOpenModalBlock.includes("document.getElementById('schCancelBtn')")
         && staffScheduleOpenModalBlock.includes('onRequestClose: () => closeEditModal(false)')

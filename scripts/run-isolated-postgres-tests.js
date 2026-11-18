@@ -26,6 +26,7 @@ const MODES = {
     'payroll-configurable-rules': ['tests/integration/payroll-profiles-configurable-rules.integration.test.js'],
     'payroll-configurable-rules-browser': ['tests/browser/payroll-profiles-configurable-rules-actual-browser.js'],
     'payroll-compensation-browser': ['tests/browser/hr-pay-actual-app-browser-smoke.js', 'tests/browser/payroll-profiles-configurable-rules-actual-browser.js'],
+    'baseline-access-browser': ['tests/browser/baseline-access-actual-app-smoke.js'],
     'telegram-crm': ['tests/integration/telegram-crm-fullstack.integration.test.js'],
     'hr-hiring': ['tests/integration/park-hr-hiring.integration.test.js'],
     substitutions: ['tests/integration/staff-substitution-actual-db.integration.test.js'],

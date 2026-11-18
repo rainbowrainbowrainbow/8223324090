@@ -169,7 +169,7 @@ test('capability snapshot preserves compatibility maps and structured decisions'
     });
 
     assert.equal(Object.keys(snapshot.pages).length, 44);
-    assert.equal(Object.keys(snapshot.actions).length, 51);
+    assert.equal(Object.keys(snapshot.actions).length, 57);
     assert.equal(snapshot.pages['/analytics'], undefined);
     assert.equal(snapshot.pages['/finance'], false);
     assert.equal(snapshot.actions.export_data, false);
@@ -317,10 +317,11 @@ test('event operations pages exclude service roles even with legacy explicit gra
     const pages = ['/', '/certificates', '/certificates/new', '/certificates/batch', '/certificates/check'];
     const roles = require('../config/permissionRegistry').ROLE_HIERARCHY;
     const allowed = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin', 'animator'];
+    const timelineReaders = [...allowed, 'reception', 'instructor', 'senior_instructor', 'accountant', 'art_director', 'marketer', 'security'];
     for (const role of roles) {
         for (const page of pages) {
             assert.equal(resolveCapability({ role, page_allowlist: pages }, page, { type: 'page' }).allowed,
-                allowed.includes(role) || (role === 'accountant' && ['/', '/certificates'].includes(page)), role + ' ' + page);
+                (page === '/' ? timelineReaders : allowed).includes(role) || (role === 'accountant' && page === '/certificates'), role + ' ' + page);
         }
         assert.equal(resolveCapability({ role }, '/staff', { type: 'page' }).allowed, true, role + ' schedule');
         assert.equal(resolveCapability({ role }, 'hr.schedule.view', { type: 'action' }).allowed, true, role + ' schedule read');

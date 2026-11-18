@@ -42,6 +42,7 @@ const Sidebar = (() => {
     const FAVORITES_MERGED_STORAGE_KEY = 'eg_sidebar_favorites_productivity_merged_v1';
     const SIDEBAR_CURRENCY_SIGNAL_STORAGE_KEY = 'eg_sidebar_currency_signal_enabled_v1';
     const MY_DAY_FAVORITE_HREF = '/profile?tab=myday';
+    const REQUIRED_WORK_HREFS = new Set(['/tasks', '/staff', '/chat', '/afisha', '/training']);
     const PRODUCTIVITY_QUICK_ITEMS = Object.freeze([
         { href: MY_DAY_FAVORITE_HREF, icon: 'task', label: 'Мій день', description: 'особистий фокус' },
         { href: '/tasks?view=my', icon: 'task', label: 'Мої задачі', description: 'повний список', access: 'tasks', businessModule: 'tasks' },
@@ -170,7 +171,7 @@ const Sidebar = (() => {
         { href: '/maysternya-doli', icon: '◇', label: 'Таймлайн МД', access: 'maysternya_doli', group: 'today' },
         { href: '/tasks',        icon: '✅', label: 'Центр задач', access: 'tasks',          group: 'today', statusKey: 'tasks' },
         { href: '/chat',         icon: '💬', label: 'Чат',           access: 'chat',           group: 'today', statusKey: 'chat' },
-        { href: '/staff',        icon: '🗓️', label: 'Графік',        access: 'schedule_daily', group: 'today', quickAccessOnly: true },
+        { href: '/staff',        icon: '🗓️', label: 'Графік',        access: 'schedule_daily', group: 'today' },
 
         { type: 'group', key: 'sales', label: 'Продажі', icon: '🔥', priority: 2, defaultOpen: true },
         { href: '/',             icon: '📅', label: 'Таймлайн', access: 'timeline',       group: 'sales' },
@@ -747,7 +748,10 @@ const Sidebar = (() => {
             ? _getSavedExtraMenuHrefs()
             : defaults;
         const available = new Set(_getSelectableExtraMenuItems(role).map(item => item.href));
-        return saved.filter(href => available.has(href));
+        // Working sections remain discoverable after importing older favorites.
+        // Availability still comes from the effective page and business policy.
+        const required = [MY_DAY_FAVORITE_HREF, '/tasks', '/staff', '/chat', '/afisha', '/training'];
+        return [...new Set([...required, ...saved])].filter(href => available.has(href));
     }
 
     function _getExtraMenuItems(role, includeHidden = false) {
@@ -1300,6 +1304,7 @@ const Sidebar = (() => {
         _initSpotlight();
         _initRipple();
         _initMagnetic();
+        _applyRequiredWorkAvailability(document.getElementById('sidebarNav'), savedUser);
         if (options.refreshOperational !== false) _refreshSidebarOperationalWidgets();
         if (options.refreshTimelineSummary !== false) _refreshSidebarTimelineSummary();
         _queueActiveIndicatorUpdate();
@@ -1572,6 +1577,7 @@ const Sidebar = (() => {
         if (_isMaysternyaSidebarContext(user) && !_isMaysternyaSidebarHrefAllowed(item)) return false;
         if (!moduleId || !api?.current || !api?.hasModule) return true;
         const current = api.current(user);
+        if (current === 'event_genix' && REQUIRED_WORK_HREFS.has(item.href)) return true;
         const creatorSurface = _sidebarUserHasCreator(user) && !window.RolePreview?.getPreviewRole?.();
         if (moduleId === 'timeline') {
             if (item.href === '/' && current === 'maysternya_doli') return false;
@@ -1582,6 +1588,49 @@ const Sidebar = (() => {
         // and server-side business/action guards still decide what can be opened.
         if (current && current !== 'maysternya_doli' && _sidebarUserHasDirectorNavigation(user)) return true;
         return api.hasModule(current, moduleId);
+    }
+
+    function _applyRequiredWorkAvailability(sidebar, user) {
+        if (!sidebar) return;
+        const api = window.CrmBusinessContext;
+        if (api?.current?.(user) !== 'event_genix' || typeof api?.hasModule !== 'function') return;
+        const profile = api.activeProfile?.();
+        let index = 0;
+        sidebar.querySelectorAll('a[href]').forEach(link => {
+            const href = link.getAttribute('href');
+            if (!REQUIRED_WORK_HREFS.has(href)) return;
+            const item = NAV_ITEMS.find(item => item.href === href);
+            const moduleId = _businessModuleForItem(item || {});
+            if (!moduleId || api.hasModule('event_genix', moduleId)) return;
+            const descriptor = profile?.modules?.descriptors?.find(module => module.key === moduleId);
+            const reason = descriptor?.reason || 'Робочий модуль недоступний у цьому бізнесі. Попросіть власника перевірити його налаштування.';
+            link.setAttribute('aria-disabled', 'true');
+            link.dataset.sidebarWorkUnavailable = reason;
+            const copy = link.querySelector('.sidebar-design-extra-copy, .nav-copy') || link;
+            const label = copy.querySelector('span');
+            const status = copy.querySelector('small, .nav-status') || document.createElement('small');
+            const prefix = `sidebarWorkAvailability-${++index}`;
+            status.id = prefix + '-reason';
+            status.removeAttribute('data-sidebar-status-key');
+            status.removeAttribute('data-sidebar-status-tone');
+            status.textContent = descriptor?.canEnable === false ? 'Модуль ще не розмежовано' : 'Потребує налаштування';
+            status.hidden = false;
+            if (!status.parentElement) copy.append(status);
+            if (label) {
+                label.id = prefix + '-label';
+                link.setAttribute('aria-labelledby', label.id);
+            }
+            link.setAttribute('aria-describedby', status.id);
+        });
+        if (sidebar.dataset.workAvailabilityBound === 'true') return;
+        sidebar.dataset.workAvailabilityBound = 'true';
+        sidebar.addEventListener('click', event => {
+            const link = event.target.closest('[data-sidebar-work-unavailable]');
+            if (!link) return;
+            event.preventDefault();
+            event.stopPropagation();
+            if (typeof showNotification === 'function') showNotification(link.dataset.sidebarWorkUnavailable, 'warning');
+        }, true);
     }
 
     function _sidebarHrefForBusinessItem(item = {}, user = _getCurrentSidebarUser()) {

@@ -533,6 +533,10 @@ async function syncHrShiftFromScheduleEntry(client, entry, actor = null, options
 
 async function mutateStaffScheduleEntry(client, entry, options = {}) {
     const staffId = Number(entry?.staffId ?? entry?.staff_id);
+    // Recheck inside the mutation transaction, including bulk/copy callers.
+    if (options.actor?.user && !await require('./staffScheduleScope').assertStaffScheduleTarget(client, options.actor.user, staffId)) {
+        return { ok: false, status: 403, code: 'schedule_team_scope_required', error: 'Працівник поза дозволеною областю графіка.' };
+    }
     const date = normalizeScheduleDate(entry?.date);
     const status = normalizeScheduleStatus(entry?.status, 'working');
     if (!status) {

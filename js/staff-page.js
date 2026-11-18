@@ -112,6 +112,7 @@ const StaffState = {
     viewMode: 'schedule',
     canViewSchedule: false,
     canManageSchedule: false,
+    scheduleEditableStaffIds: [],
     canExportSchedule: false,
     canViewStaff: false,
     canManageStaff: false,
@@ -3455,6 +3456,9 @@ function focusScheduleStaff(staffId, options = {}) {
 
 function applyScheduleReadAccess(data) {
     if (!data?.scheduleAccess) return;
+    StaffState.scheduleEditableStaffIds = Array.isArray(data.scheduleAccess.editableStaffIds)
+        ? data.scheduleAccess.editableStaffIds.map(Number) : [];
+    if (data.scheduleAccess.scope === 'team') StaffState.canExportSchedule = false;
     if (data.scheduleAccess.readOnly !== true) {
         StaffState.recoveryReadOnly = false;
         return;
@@ -3473,6 +3477,12 @@ function applyScheduleReadAccess(data) {
         control.style.display = 'none';
         control.setAttribute('aria-disabled', 'true');
     });
+}
+
+function canManageStaffScheduleRecord(staffId = StaffState.editingCell?.staffId) {
+    if (!StaffState.canManageSchedule) return false;
+    if (typeof canAccess === 'function' && canAccess('hr.schedule.scope.business')) return true;
+    return StaffState.scheduleEditableStaffIds.includes(Number(staffId));
 }
 
 async function fetchHrProfessions() {
@@ -4797,7 +4807,7 @@ function renderSchedule() {
 
     // Cell activation handlers
     tbody.querySelectorAll('.sch-cell').forEach(cell => {
-        if (!StaffState.canManageSchedule) cell.setAttribute('aria-readonly', 'true');
+        if (!canManageStaffScheduleRecord(cell.dataset.staff)) cell.setAttribute('aria-readonly', 'true');
     });
     bindScheduleCellActivation(tbody);
     bindScheduleGroupToggles(tbody);
@@ -6538,7 +6548,7 @@ function updateSchedulePlanSummary(scope) {
         const pending = scope === 'schedule'
             ? Boolean(StaffState.editingCell?.mutationPending || StaffState.editingCell?.shiftPreferencesLoading)
             : _staffFillMutationPending;
-        const readOnly = scope === 'schedule' && !StaffState.canManageSchedule;
+        const readOnly = scope === 'schedule' && !canManageStaffScheduleRecord();
         saveButton.disabled = pending || readOnly || !validation.valid;
     }
     const validationMessageId = updateScheduleSaveValidation(scope, validation);
@@ -7138,7 +7148,7 @@ function scheduleEntryPlanUpdatedAt(entry = null) {
 
 function openEditModal(staffId, date, options = {}) {
     if (_staffScheduleClosePromise || StaffState.editingCell?.mutationPending) return;
-    if (!scheduleRangeDataReady() || (options.addFreelance && !StaffState.canManageSchedule)) return;
+    if (!scheduleRangeDataReady() || (options.addFreelance && !canManageStaffScheduleRecord(staffId))) return;
     const reserveStaff = options.reserveStaff || null;
     const emp = reserveStaff || scheduleStaffById(staffId);
     if (!emp) return;
@@ -7204,7 +7214,7 @@ function openEditModal(staffId, date, options = {}) {
     });
 
     const isReplacement = isReplacementEntry(entry);
-    const canReplace = !reserveStaff && StaffState.canManageSchedule
+    const canReplace = !reserveStaff && canManageStaffScheduleRecord(staffId)
         && entry?.id
         && ['working', 'remote'].includes(entry.status)
         && entry.shift_start
@@ -7234,7 +7244,7 @@ function openEditModal(staffId, date, options = {}) {
     }
 
     toggleTimeFields();
-    setScheduleModalReadOnly(!StaffState.canManageSchedule);
+    setScheduleModalReadOnly(!canManageStaffScheduleRecord(staffId));
     const stateBeforePreferences = getStaffScheduleState();
     const overlay = document.getElementById('schModalOverlay');
     overlay?.setAttribute?.('aria-busy', 'false');
@@ -7250,7 +7260,7 @@ function openEditModal(staffId, date, options = {}) {
                 modal.classList.remove('visible');
                 modal.classList.add('hidden');
             },
-            initialFocus: () => StaffState.canManageSchedule
+            initialFocus: () => canManageStaffScheduleRecord(staffId)
                 ? document.querySelector(`#schSegmentsList [data-segment-index="${activeIndex}"] [data-segment-field="start"]`)
                     || document.getElementById('schStatus')
                 : document.getElementById('schCancelBtn'),
@@ -7615,6 +7625,10 @@ async function handleSave() {
         return;
     }
     const { staffId, date } = editingSession;
+    if (!canManageStaffScheduleRecord(staffId)) {
+        showNotification('Цей план доступний лише для перегляду.', 'info');
+        return;
+    }
     const editingRangeKey = editingSession.rangeKey;
     const previousEntry = editingSession.entry || StaffState.schedule[`${staffId}_${date}`] || null;
     const emp = StaffState.staff.find(staff => Number(staff.id) === Number(staffId));

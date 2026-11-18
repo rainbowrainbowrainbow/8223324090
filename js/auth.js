@@ -3417,6 +3417,12 @@ function resolveCapability(user, capability, context = {}) {
     const previewRole = context.previewRole || '';
     const capabilityId = `${requestedType}:${key}`;
 
+    const membershipAccess = user?.businessMembershipAccess;
+    if (!previewRole && (membershipAccess?.invalid
+        || (membershipAccess?.membershipEnabled === true && !membershipAccess.activeMembership))) {
+        return _frontendCapabilityDecision(normalized, false, 'default_deny', null, 'active_business_membership_required');
+    }
+
     if (!previewRole && context.ignoreServer !== true) {
         const serverDecision = permissions?.capabilities?.[capabilityId];
         if (serverDecision) return { ...serverDecision };

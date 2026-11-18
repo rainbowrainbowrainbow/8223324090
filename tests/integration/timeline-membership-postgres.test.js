@@ -188,6 +188,41 @@ test('actual booking and timeline HTTP routes preserve membership context with P
             assert.equal((await request(actor, 'GET', '/api/bookings/detail/park-private?businessContext=event_genix')).status, 404);
         });
 
+        await t.test('role presets enforce booking contacts, revenue and denied mutations through direct APIs', async () => {
+            for (const role of ['reception', 'animator', 'accountant', 'hr', 'it_specialist', 'marketer', 'art_director']) {
+                const actor = await reset({ parkRole: role, darRole: 'animator' });
+                await pool.query(`UPDATE bookings SET notes = 'synthetic private contact', price = 1200,
+                    extra_data = '{"customerPhone":"synthetic-private"}' WHERE id = 'park-private'`);
+                const detail = await request(actor, 'GET', '/api/bookings/detail/park-private?businessContext=event_genix');
+                if (['hr', 'it_specialist'].includes(role)) {
+                    assert.equal(detail.status, 404, role);
+                } else {
+                    assert.equal(detail.status, 200, role);
+                    const booking = detail.body.booking;
+                    assert.equal(booking.id, 'park-private');
+                    assert.equal(Boolean(booking.extraData), role === 'reception', `${role}: contact container`);
+                    assert.equal(booking.price !== undefined, role === 'accountant', `${role}: financial field`);
+                    if (role !== 'reception') assert.equal(booking.notes, undefined, `${role}: private notes`);
+                }
+                if (role !== 'reception') {
+                    for (const [method, route, body] of [
+                        ['POST', '/api/bookings', {}], ['PUT', '/api/bookings/park-private', { notes: 'forbidden' }],
+                        ['DELETE', '/api/bookings/park-private', undefined]
+                    ]) assert.equal((await request(actor, method, route + '?businessContext=event_genix', body)).status, 403, `${role} ${method}`);
+                }
+            }
+        });
+
+        await t.test('instructor preset opens the page but cannot borrow broad scopes without durable zone assignments', async () => {
+            const actor = await reset({ parkRole: 'instructor', darRole: 'director' });
+            const day = await request(actor, 'GET', '/api/bookings/2026-09-12?businessContext=event_genix');
+            assert.equal(day.status, 200);
+            assert.deepEqual(day.body, [], 'unassigned game-zone records remain closed pending durable mapping');
+            assert.equal((await request(actor, 'GET', '/api/bookings/detail/park-private?businessContext=event_genix')).status, 404);
+            await pool.query("UPDATE business_memberships SET is_active = false WHERE user_id = $1 AND business_id = 1", [actor.id]);
+            assert.equal((await request(actor, 'GET', '/api/bookings/2026-09-12?businessContext=event_genix')).status, 403);
+        });
+
         await t.test('Dar-only account has timeline resources and lines without an implicit Park grant', async () => {
             const actor = await reset({ darOnly: true });
             const resources = await request(actor, 'GET', '/api/timeline/resources');

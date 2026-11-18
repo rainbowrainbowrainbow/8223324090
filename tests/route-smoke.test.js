@@ -5609,7 +5609,7 @@ describe('route-level API safety smoke', () => {
         assert.ok(roles.data.pageAccess['/sales-funnel']);
         assert.equal(roles.data.pageAccess['/leads'], undefined);
         assert.ok(roles.data.pageAccess['/staff'].includes('security'));
-        assert.ok(!roles.data.pageAccess['/tasks'].includes('waiter'));
+        assert.ok(roles.data.pageAccess['/tasks'].includes('waiter'));
         assert.ok(roles.data.actionPermissions.create_booking);
     });
 
@@ -7368,7 +7368,7 @@ describe('route-level API safety smoke', () => {
         assert.deepEqual(accountantReports.data, []);
 
         const waiterChat = await request('GET', '/api/chat-real/channels', undefined, withAuth({}, 'waiter'));
-        assert.equal(waiterChat.status, 403, JSON.stringify(waiterChat.data));
+        assert.equal(waiterChat.status, 200, JSON.stringify(waiterChat.data));
         const animatorChat = await request('GET', '/api/chat-real/channels', undefined, withAuth({}, 'animator'));
         assert.equal(animatorChat.status, 200, JSON.stringify(animatorChat.data));
         assert.equal(animatorChat.data[0].name, 'General');

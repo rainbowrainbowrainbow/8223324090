@@ -46,6 +46,7 @@ function available() {
 
 function parkScheduleAccessMetadata(req) {
     return {
+        ...(req.staffScheduleScope || {}),
         readOnly: false,
         editable: resolveCapability(req.user, 'hr.schedule.manage', { type: 'action' }).allowed,
         businessContext: DEFAULT_BUSINESS_CONTEXT,

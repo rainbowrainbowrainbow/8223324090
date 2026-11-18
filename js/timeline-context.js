@@ -23,9 +23,9 @@
             showAfisha: true,
             defaultHiddenElements: [],
             actionRoles: {
-                create: ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'accountant', 'art_director', 'marketer', 'it_specialist', 'hr', 'admin', 'reception'],
-                edit: ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'accountant', 'art_director', 'marketer', 'it_specialist', 'hr', 'admin', 'reception'],
-                delete: ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'accountant', 'art_director', 'marketer', 'it_specialist', 'hr', 'admin'],
+                create: ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin', 'reception'],
+                edit: ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin', 'reception'],
+                delete: ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'],
                 export: ['creator', 'director', 'vice_director', 'senior_manager', 'manager'],
                 sales: ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'accountant'],
                 settings: ['creator', 'director']
@@ -460,6 +460,11 @@
 
     function canUseAction(action, user, ctx = currentContext()) {
         if (!canAccessContext(user, ctx)) return false;
+        const capability = { create: 'create_booking', edit: 'edit_booking', delete: 'delete_booking',
+            export: 'export_data', sales: 'view_revenue', settings: 'manage_settings' }[action];
+        if (capability && typeof window.resolveCapability === 'function') {
+            return window.resolveCapability(user, capability, { type: 'action' }).allowed;
+        }
         return hasAnyRole(user, ctx.actionRoles?.[action] || []);
     }
 

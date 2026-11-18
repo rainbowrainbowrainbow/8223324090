@@ -99,6 +99,22 @@ const PAGE_PERMISSION_TEST_CONTRACTS = Object.freeze({
 });
 
 const ACTION_PERMISSION_TEST_CONTRACTS = Object.freeze({
+    'hr.attendance.view': actionContract('hr.attendance.view', { sensitive: true,
+        testFiles: ['tests/baseline-access.test.js'], notes: 'Actual attendance is independent from team schedule coordination and payroll fields.' }),
+    'hr.schedule.scope.business': actionContract('hr.schedule.scope.business', { sensitive: true,
+        testFiles: ['tests/baseline-access.test.js'], notes: 'Independent record scope; schedule writes still require hr.schedule.manage.' }),
+    'tasks.scope.business': actionContract('tasks.scope.business', { sensitive: true,
+        testFiles: ['tests/baseline-access.test.js'], notes: 'Business membership and private task checks remain mandatory.' }),
+    'tasks.scope.team': actionContract('tasks.scope.team', { sensitive: true,
+        testFiles: ['tests/baseline-access.test.js'], notes: 'Server-owned staff structure nodes define team scope.' }),
+    'bookings.details.view': actionContract('bookings.details.view', {
+        sensitive: true, testFiles: ['tests/baseline-access.test.js'],
+        notes: 'Working fields are separate from record visibility, contacts, revenue and mutation.'
+    }),
+    'bookings.contacts.view': actionContract('bookings.contacts.view', {
+        sensitive: true, testFiles: ['tests/baseline-access.test.js'],
+        notes: 'No customer contacts or unstructured payloads in coordination responses.'
+    }),
     'hr.today.view': actionContract('hr.today.view', {
         backendScenario: 'GET /api/hr/today',
         testFiles: ['tests/integration/permission-capabilities.integration.test.js', 'tests/hr-capability-contract.test.js']

@@ -1737,7 +1737,7 @@ router.get('/team-control', async (req, res) => {
 });
 // v20.9.16: GET /api/tasks/permissions — current user's task permissions
 router.get('/permissions', (req, res) => {
-    const perms = getPermissions(req.user?.role);
+    const perms = getPermissions(req.user);
     const capabilities = Object.fromEntries(
         ['create', 'delete', 'review'].map(capability => {
             const decision = taskRouteCapabilityDecision(req.user, capability);
@@ -1758,7 +1758,7 @@ router.get('/owners', async (req, res) => {
     try {
         const businessScope = requireTaskReadScope(req, res);
         if (!businessScope) return;
-        const perms = getPermissions(req.user?.role);
+        const perms = getPermissions(req.user);
         if (!perms.canCreateTasks && !perms.canAssignAnyone && !['all', 'department'].includes(perms.taskVisibility)) {
             return res.status(403).json({ error: 'Insufficient permissions' });
         }

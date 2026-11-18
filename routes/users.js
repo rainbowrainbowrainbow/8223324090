@@ -720,10 +720,16 @@ router.get('/:id/workspace', requireAction('manage_accounts'), async (req, res) 
         if (!result.rows.length) return res.status(404).json({ success: false, error: 'Акаунт не знайдено' });
         const user = decorateManagedAccount(result.rows[0], req.user);
         const history = await listAccountSecurityEvents(userId, 20);
+        const workReadiness = canAccessParkStaffAccounts(req)
+            ? await require('../services/accountWorkReadiness').loadAccountWorkReadiness(pool, {
+                userId, businessContext: req.user?.activeBusinessMembership?.businessContext || DEFAULT_BUSINESS_CONTEXT
+            }).catch(() => ({ ready: false, status: 'unavailable', nextStep: 'Повторіть перевірку робочого доступу.' }))
+            : null;
         res.json({
             success: true,
             user,
             history,
+            workReadiness,
             actions: {
                 canMutate: user.can_mutate,
                 canToggle: user.can_toggle,

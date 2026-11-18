@@ -11,6 +11,7 @@ const { describe, it, before, after } = require('node:test');
 const { Pool } = require('pg');
 const { BASE_URL, getToken, request, testDate } = require('../helpers');
 const {
+    ROLE_HIERARCHY,
     PAGE_PERMISSIONS,
     ACTION_PERMISSIONS,
     getPublicPagePermissionMetadata
@@ -148,6 +149,27 @@ describe('disposable token-backed permission capability contract', { skip: !enab
 
     after(async () => {
         if (schemaPool) await schemaPool.end();
+    });
+
+    it('checks the mandatory working pages for all 26 baseline roles through the real capability API', async () => {
+        const creatorToken = await getToken();
+        const account = accounts.matrix;
+        try {
+            for (const role of ROLE_HIERARCHY) {
+                account.role = role;
+                const updated = await updateAccess(account, {}, creatorToken);
+                assert.equal(updated.status, 200, `${role}: role preset update`);
+                const token = await login(account.username, account.password);
+                const snapshot = await permissions(token, role);
+                for (const page of ['/profile', '/tasks', '/chat', '/afisha', '/staff', '/training']) {
+                    assert.equal(snapshot.pages[page], true, `${role} ${page}`);
+                }
+            }
+        } finally {
+            account.role = 'waiter';
+            assert.equal((await updateAccess(account, {}, creatorToken)).status, 200);
+            account.token = await login(account.username, account.password);
+        }
     });
 
     it('allows delegated staff creation independently of HR management', async () => {

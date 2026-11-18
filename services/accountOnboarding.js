@@ -924,15 +924,18 @@ async function resolveAccountBusinessAccess(dbPool, userId, businessContext) {
 }
 
 async function resolveCreatedAccountAccess(db, user, businessContext) {
-    if (user.is_active === false) return { businessAccessReady: false, accessState: 'unknown', businessContext };
+    const workReadiness = await require('./accountWorkReadiness').loadAccountWorkReadiness(db, {
+        userId: user.id, businessContext
+    }).catch(() => ({ ready: false, status: 'unavailable', nextStep: 'Повторіть перевірку робочого доступу.' }));
+    if (user.is_active === false) return { businessAccessReady: false, accessState: 'unknown', businessContext, workReadiness };
     const resolved = await resolveAuthBusinessContext(db, user, { body: { businessContext } });
     if (!resolved.scope.invalid && resolved.scope.activeContext === businessContext) {
-        return { businessAccessReady: true, accessState: 'active', businessContext };
+        return { businessAccessReady: true, accessState: 'active', businessContext, workReadiness };
     }
     const access = resolved.user.businessMembershipAccess;
     const business = access?.registry?.find(item => item.businessContext === businessContext);
     const pending = business?.active && business.accessMode === 'membership' && !access.activeMembership;
-    return { businessAccessReady: false, accessState: pending ? 'pending_membership' : 'unknown', businessContext };
+    return { businessAccessReady: false, accessState: pending ? 'pending_membership' : 'unknown', businessContext, workReadiness };
 }
 
 async function addDefaultChatMemberships(dbPool, userId) {
@@ -1012,6 +1015,9 @@ async function recoverAccountOnboarding(db, saved, actor) {
     const businessContext = row?.default_business_context || DEFAULT_BUSINESS_CONTEXT;
     const access = row ? await resolveAccountBusinessAccess(db, row.id, businessContext)
         : { businessAccessReady: false, accessState: 'unknown' };
+    const workReadiness = await require('./accountWorkReadiness').loadAccountWorkReadiness(db, {
+        userId: saved.account_user_id, staff: { id: saved.staff_id }, businessContext
+    }).catch(() => ({ ready: false, status: 'unavailable', nextStep: 'Повторіть перевірку робочого доступу; повторний запит не змінює права.' }));
     return {
         ...access,
         replayed: true,
@@ -1019,7 +1025,7 @@ async function recoverAccountOnboarding(db, saved, actor) {
         receipt: {
             account: { id: saved.account_user_id, username: row?.username, name: row?.account_name, active: row?.is_active === true },
             staff: { id: saved.staff_id, name: row?.staff_name, created: saved.staff_created, linked: row?.staff_linked === true },
-            access: { ...access, defaultBusinessContext: businessContext }
+            access: { ...access, defaultBusinessContext: businessContext, workReadiness }
         }
     };
 }
@@ -1369,6 +1375,10 @@ async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = 
             receiptAssignments.push({ profession_key: key, is_primary: key === primaryKey });
         }
     }
+    const workReadiness = await require('./accountWorkReadiness').loadAccountWorkReadiness(dbPool, {
+        userId: user.id, staff,
+        businessContext: normalized.access.defaultBusinessContext
+    }).catch(() => ({ ready: false, status: 'unavailable', nextStep: 'Повторіть перевірку робочого доступу; акаунт уже створено.' }));
     const receipt = {
         account: {
             id: user.id,
@@ -1401,7 +1411,8 @@ async function createAccountOnboarding({ payload, actor, req, dbPool = pool } = 
             businessContexts: normalized.access.businessContexts,
             defaultBusinessContext: normalized.access.defaultBusinessContext,
             businessAccessReady: businessAccess.businessAccessReady,
-            accessState: businessAccess.accessState
+            accessState: businessAccess.accessState,
+            workReadiness
         },
         postCommit: { defaultChatMemberships },
         warnings,

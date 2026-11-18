@@ -1,22 +1,11 @@
 const { getPermissions } = require('../config/roles');
-const { resolveCapability } = require('./accountAccessPolicy');
+const { resolveCapability, ACTION_PERMISSIONS } = require('./accountAccessPolicy');
 
-// These sets mirror the legacy requireRole(...) expansion used by task routes.
-// They describe existing route access for UI contracts; they do not grant access.
+// Compatibility metadata comes from the same registry as runtime decisions.
 const TASK_ROUTE_CAPABILITY_ROLES = Object.freeze({
-    create: Object.freeze([
-        'creator', 'director', 'vice_director', 'senior_manager', 'manager',
-        'accountant', 'art_director', 'marketer', 'it_specialist', 'hr', 'admin',
-        'senior_instructor', 'instructor'
-    ]),
-    delete: Object.freeze([
-        'creator', 'director', 'vice_director', 'senior_manager', 'manager',
-        'accountant', 'art_director', 'marketer', 'it_specialist', 'hr', 'admin'
-    ]),
-    review: Object.freeze([
-        'creator', 'director', 'vice_director', 'senior_manager', 'manager',
-        'accountant', 'art_director', 'marketer', 'it_specialist', 'hr', 'admin'
-    ])
+    create: ACTION_PERMISSIONS['tasks.create'],
+    delete: ACTION_PERMISSIONS['tasks.delete'],
+    review: ACTION_PERMISSIONS['tasks.review']
 });
 const TASK_ROUTE_CAPABILITY_ACTIONS = Object.freeze({
     create: 'tasks.create',
@@ -71,8 +60,30 @@ function buildTaskObserverMatch(user, params, alias = 't') {
     )`;
 }
 
+function buildTaskTeamMemberQuery(user, params, actorRef = null) {
+    const userRef = actorRef || pushParam(params, normalizeUserId(user) || 0);
+    const membership = user?.activeBusinessMembership;
+    const businessRef = pushParam(params, Number(membership?.businessId) || 0);
+    const organizationRef = pushParam(params, Number(membership?.organizationId) || 0);
+    return `SELECT target.user_id
+        FROM employee_profiles target
+        JOIN staff target_staff ON target_staff.id = target.staff_id AND target_staff.is_active IS TRUE
+        JOIN employee_profiles actor_profile ON actor_profile.user_id = ${userRef} AND actor_profile.is_active IS TRUE
+        JOIN staff actor_staff ON actor_staff.id = actor_profile.staff_id AND actor_staff.is_active IS TRUE
+        JOIN business_memberships target_member ON target_member.user_id = target.user_id
+            AND target_member.business_id = ${businessRef} AND target_member.organization_id = ${organizationRef}
+            AND target_member.is_active IS TRUE
+        JOIN organization_memberships target_org ON target_org.user_id = target.user_id
+            AND target_org.organization_id = ${organizationRef} AND target_org.is_active IS TRUE
+        WHERE target.is_active IS TRUE AND actor_staff.company_structure_node_id IS NOT NULL
+          AND (SELECT COUNT(*) FROM employee_profiles actor_link
+               JOIN staff actor_link_staff ON actor_link_staff.id = actor_link.staff_id AND actor_link_staff.is_active IS TRUE
+               WHERE actor_link.user_id = ${userRef} AND actor_link.is_active IS TRUE) = 1
+          AND target_staff.company_structure_node_id = actor_staff.company_structure_node_id`;
+}
+
 function buildTaskVisibilityScope(user, params, alias = 't') {
-    const perms = getPermissions(user?.role);
+    const perms = getPermissions(user);
 
     const userId = normalizeUserId(user);
     const tokenRefs = userNameTokens(user).map(token => pushParam(params, token));
@@ -87,50 +98,12 @@ function buildTaskVisibilityScope(user, params, alias = 't') {
 
     if (perms.taskVisibility === 'department') {
         const userIdRef = pushParam(params, userId || 0);
-        const departmentUsers = `
-            SELECT u.id
-            FROM users u
-            JOIN employee_profiles ep ON ep.user_id = u.id
-            WHERE ep.department IS NOT NULL
-              AND ep.department = (
-                  SELECT ep2.department
-                  FROM employee_profiles ep2
-                  WHERE ep2.user_id = ${userIdRef}
-                  LIMIT 1
-              )
-        `;
-        const departmentLegacyTokens = `
-            SELECT token FROM (
-                SELECT u.username AS token
-                FROM users u
-                JOIN employee_profiles ep ON ep.user_id = u.id
-                WHERE ep.department IS NOT NULL
-                  AND ep.department = (
-                      SELECT ep2.department
-                      FROM employee_profiles ep2
-                      WHERE ep2.user_id = ${userIdRef}
-                      LIMIT 1
-                  )
-                UNION
-                SELECT u.name AS token
-                FROM users u
-                JOIN employee_profiles ep ON ep.user_id = u.id
-                WHERE u.name IS NOT NULL
-                  AND u.name <> ''
-                  AND ep.department IS NOT NULL
-                  AND ep.department = (
-                      SELECT ep2.department
-                      FROM employee_profiles ep2
-                      WHERE ep2.user_id = ${userIdRef}
-                      LIMIT 1
-                  )
-            ) owner_tokens
-            WHERE token IS NOT NULL AND token <> ''
-        `;
+        // Department text is not authority. A team is a shared canonical staff
+        // structure node, backed by active profiles, staff and memberships.
+        const departmentUsers = buildTaskTeamMemberQuery(user, params, userIdRef);
         return `AND ${privacyMatch} AND (
             ${alias}.owner_user_id = ${userIdRef}
             OR ${alias}.owner_user_id IN (${departmentUsers})
-            OR (${alias}.owner_user_id IS NULL AND (${alias}.assigned_to IN (${departmentLegacyTokens}) OR ${alias}.owner IN (${departmentLegacyTokens})))
             OR ${legacyMatch}
             OR ${observerMatch}
         )`;
@@ -161,7 +134,7 @@ function observesTask(user, task = {}) {
 }
 
 function canViewTask(user, task = {}) {
-    const perms = getPermissions(user?.role);
+    const perms = getPermissions(user);
     const privateVisibility = ['private', 'me_only'].includes(String(task.visibility || '').trim());
     if (privateVisibility && !ownsTask(user, task) && !observesTask(user, task)) return false;
     if (perms.taskVisibility === 'all') return true;
@@ -170,7 +143,7 @@ function canViewTask(user, task = {}) {
 }
 
 function canMutateTask(user, task = {}) {
-    const perms = getPermissions(user?.role);
+    const perms = getPermissions(user);
     const privateVisibility = ['private', 'me_only'].includes(String(task.visibility || '').trim());
     if (privateVisibility && !ownsTask(user, task)) return false;
     if (perms.taskVisibility === 'all') return true;
@@ -179,7 +152,7 @@ function canMutateTask(user, task = {}) {
 }
 
 function canReassignTask(user, task = {}) {
-    const perms = getPermissions(user?.role);
+    const perms = getPermissions(user);
     return perms.canAssignAnyone === true || perms.taskVisibility === 'all' || perms.taskVisibility === 'department';
 }
 
@@ -279,6 +252,7 @@ module.exports = {
     TASK_ROUTE_CAPABILITY_REASON_CODES,
     buildTaskObserverMatch,
     buildTaskOwnerMatch,
+    buildTaskTeamMemberQuery,
     buildTaskVisibilityScope,
     canAccessTaskMaterials,
     canManageTaskObservers,

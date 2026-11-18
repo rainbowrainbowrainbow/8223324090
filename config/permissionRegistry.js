@@ -36,8 +36,10 @@ const ROLE_HIERARCHY = Object.freeze([
     'creator'
 ]);
 
-const ALL_STAFF = Object.freeze(ROLE_HIERARCHY.filter(role => role !== 'waiter'));
+const ALL_STAFF = ROLE_HIERARCHY;
 const EVENT_OPERATIONS_ACCESS = Object.freeze(['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin', 'animator']);
+const BOOKING_OPERATORS = Object.freeze(['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin', 'reception']);
+const TIMELINE_READ_ACCESS = Object.freeze([...BOOKING_OPERATORS, 'animator', 'senior_instructor', 'instructor', 'accountant', 'art_director', 'marketer', 'security']);
 const MANAGEMENT_UP = Object.freeze(['creator', 'director', 'vice_director', 'senior_manager']);
 const MANAGER_UP = Object.freeze([...MANAGEMENT_UP, 'manager']);
 const ADMIN_UP = Object.freeze([...MANAGER_UP, 'accountant', 'art_director', 'marketer', 'it_specialist', 'hr', 'admin']);
@@ -47,7 +49,7 @@ const HERMES_STUDIO_ACCESS = Object.freeze([...MANAGER_UP, 'art_director', 'mark
 const PROGRAMS_ACCESS = Object.freeze([...MANAGER_UP, 'admin', 'senior_instructor', 'instructor', 'art_director']);
 const HR_PAGE_ACCESS = Object.freeze([...MANAGER_UP, 'hr', 'admin', 'security']);
 const HR_READ_ACCESS = Object.freeze([...HR_PAGE_ACCESS, 'accountant']);
-const TRAINING_ACCESS = Object.freeze([...MANAGER_UP, 'hr', 'senior_instructor', 'instructor']);
+const TRAINING_ACCESS = ALL_STAFF;
 const GUARDIAN_OPS_ACCESS = Object.freeze(['creator', 'director', 'admin', 'security']);
 const FINANCE_ANALYTICS_ACCESS = Object.freeze(['creator', 'director', 'accountant']);
 const PAYMENT_CASHIER_ACCESS = Object.freeze(['creator', 'director', 'accountant', 'manager', 'senior_manager', 'admin', 'art_director', 'reception']);
@@ -123,10 +125,7 @@ const GENERIC_ACTION_BACKEND = Object.freeze([
 
 // Additional operational screens included in the accountant role preset.
 const ACCOUNTANT_OPERATIONAL_PAGES = new Set([
-    '/', '/maysternya-doli', '/center', '/art', '/content', '/designer', '/designs',
-    '/hermes-studio', '/graduation', '/warehouse', '/training', '/demo', '/programs',
-    '/hr', '/checkin', '/omni', '/copilot', '/sound', '/certificates',
-    '/sales-funnel', '/report-agent'
+    '/', '/hr', '/certificates'
 ]);
 
 function accountantPageRoles(definition) {
@@ -210,7 +209,7 @@ const PAGE_PERMISSIONS = Object.freeze([
     }),
     page({
         key: '/', label: 'Таймлайн', group: 'today', canonicalPath: '/',
-        defaultRoles: EVENT_OPERATIONS_ACCESS, explicitAllow: false, risk: 'high', sidebarLinks: ['/', '/?educationSchedule=today'],
+        defaultRoles: TIMELINE_READ_ACCESS, explicitAllow: false, risk: 'high', sidebarLinks: ['/', '/?educationSchedule=today'],
         frontendConsumers: [source('index.html', 'js/auth.js')],
         apiConsumers: [
             api('routes/bookings.js', '/api/bookings', null),
@@ -502,6 +501,42 @@ const PAGE_PERMISSIONS = Object.freeze([
 
 const ACTION_PERMISSIONS = Object.freeze([
     action({
+        key: 'hr.attendance.view', label: 'Перегляд фактичної відвідуваності', group: 'hr',
+        defaultRoles: [...MANAGER_UP, 'hr', 'admin', 'accountant'], risk: 'high',
+        apiConsumers: [api('routes/staff.js', 'GET /api/staff/attendance', 'hr.attendance.view')]
+    }),
+    action({
+        key: 'hr.schedule.scope.business', label: 'Керування графіком усього бізнесу', group: 'hr',
+        defaultRoles: [...MANAGEMENT_UP, 'hr', 'admin'], risk: 'critical',
+        backendConsumers: [source('services/staffScheduleScope.js', 'loadStaffScheduleScope', { enforces: true })],
+        apiConsumers: [api('routes/staff.js', '/api/staff schedule mutations', null, 'Does not grant schedule writes without hr.schedule.manage.')]
+    }),
+    action({
+        key: 'tasks.scope.business', label: 'Задачі всього бізнесу', group: 'tasks',
+        defaultRoles: MANAGEMENT_UP, risk: 'critical',
+        backendConsumers: [source('services/taskPolicy.js', 'buildTaskVisibilityScope', { enforces: true })],
+        apiConsumers: [api('routes/tasks.js', '/api/tasks', null, 'Still requires active business scope and task privacy checks.')]
+    }),
+    action({
+        key: 'tasks.scope.team', label: 'Задачі свого підрозділу', group: 'tasks',
+        defaultRoles: ['manager', 'hr', 'art_director', 'senior_instructor', 'head_chef', 'head_pastry'], risk: 'high',
+        backendConsumers: [source('services/taskPolicy.js', 'buildTaskVisibilityScope', { enforces: true })],
+        apiConsumers: [api('routes/tasks.js', '/api/tasks', null, 'Scope uses the server-owned staff structure node; missing links fail closed to own tasks.')]
+    }),
+    action({
+        key: 'bookings.details.view', label: 'Перегляд робочих деталей подій', group: 'bookings',
+        defaultRoles: TIMELINE_READ_ACCESS, risk: 'high',
+        backendConsumers: [source('services/bookingFieldAccess.js', 'shapeBookingFields', { enforces: true })],
+        apiConsumers: [api('routes/bookings.js', 'GET /api/bookings', null, 'Response field policy; record visibility is checked separately.')]
+    }),
+    action({
+        key: 'bookings.contacts.view', label: 'Перегляд контактів клієнта події', group: 'bookings',
+        defaultRoles: BOOKING_OPERATORS, risk: 'critical',
+        backendConsumers: [source('services/bookingFieldAccess.js', 'shapeBookingFields', { enforces: true })],
+        apiConsumers: [api('routes/bookings.js', 'GET /api/bookings', null, 'Response field policy; does not grant booking visibility or mutations.'),
+            api('routes/bookings.js', 'GET /api/bookings/:id/banquet-summary.pdf', 'bookings.contacts.view')]
+    }),
+    action({
         key: 'hr.today.view', label: 'Перегляд HR: Сьогодні', group: 'hr', defaultRoles: HR_READ_ACCESS, risk: 'high',
         backendConsumers: [source('routes/hr.js', 'function requireHrCapabilityContract', { enforces: true }), source('routes/hermes-schedule.js', "canUseAction(req.user, 'hr.today.view')", { enforces: true })],
         frontendConsumers: [source('js/hr-page.js', "'hr.today.view'", { enforces: true })], apiConsumers: [api('routes/hr.js', '/api/hr/today', null, 'Enforced by requireHrCapabilityContract.'), api('routes/hermes-schedule.js', '/api/hermes/attendance', null, 'GET: machine auth and hr.today.view capability.')]
@@ -513,7 +548,7 @@ const ACTION_PERMISSIONS = Object.freeze([
         apiConsumers: [api('routes/hr.js', '/api/hr/shifts', null, 'Enforced by requireHrCapabilityContract.'), api('routes/staff.js', '/api/staff/schedule reads, shift-preferences reads, and schedule/export-xlsx', 'hr.schedule.view')]
     }),
     action({
-        key: 'hr.schedule.manage', label: 'Керування HR-графіком', group: 'hr', defaultRoles: [...MANAGER_UP, 'hr', 'admin'], legacyKeys: ['manage_staff'], risk: 'critical',
+        key: 'hr.schedule.manage', label: 'Керування HR-графіком', group: 'hr', defaultRoles: [...MANAGER_UP, 'hr', 'admin', 'art_director', 'senior_instructor', 'head_chef', 'head_pastry'], legacyKeys: ['manage_staff'], risk: 'critical',
         backendConsumers: [source('routes/hr.js', 'function requireHrCapabilityContract', { enforces: true })],
         frontendConsumers: [source('js/hr-page.js', "'hr.schedule.manage'", { enforces: true }), source('js/staff-page.js', "canUseStaffCapability('hr.schedule.manage')", { enforces: true })], apiConsumers: [api('routes/hr.js', '/api/hr schedule mutations', null, 'Enforced by requireHrCapabilityContract.'), api('routes/staff.js', '/api/staff schedule mutations', 'hr.schedule.manage')]
     }),
@@ -755,13 +790,13 @@ const ACTION_PERMISSIONS = Object.freeze([
     }),
     action({
         key: 'create_booking', label: 'Створювати бронювання', group: 'bookings',
-        defaultRoles: [...ADMIN_UP, 'reception'], risk: 'high',
+        defaultRoles: BOOKING_OPERATORS, risk: 'high',
         frontendConsumers: [source('js/auth.js', "canAccess('create_booking')", { enforces: true })],
         apiConsumers: [api('routes/bookings.js', '/api/bookings create endpoints', 'create_booking')]
     }),
     action({
         key: 'edit_booking', label: 'Редагувати бронювання', group: 'bookings',
-        defaultRoles: [...ADMIN_UP, 'reception'], risk: 'high',
+        defaultRoles: BOOKING_OPERATORS, risk: 'high',
         frontendConsumers: [
             source('js/booking.js', "canAccess('edit_booking')", { enforces: true }),
             source('js/timeline.js', "canAccess('edit_booking')", { enforces: true }),
@@ -780,7 +815,7 @@ const ACTION_PERMISSIONS = Object.freeze([
     }),
     action({
         key: 'delete_booking', label: 'Видаляти бронювання', group: 'bookings',
-        defaultRoles: ADMIN_UP, risk: 'critical',
+        defaultRoles: BOOKING_OPERATORS.filter(role => role !== 'reception'), risk: 'critical',
         frontendConsumers: [source('js/booking.js', "canAccess('delete_booking')", { enforces: true })],
         apiConsumers: [api('routes/bookings.js', '/api/bookings delete and series-cancel endpoints', 'delete_booking')],
     }),
@@ -797,7 +832,7 @@ const ACTION_PERMISSIONS = Object.freeze([
     }),
     action({
         key: 'view_all', label: 'Бачити всі записи', group: 'record_scope',
-        defaultRoles: [...ADMIN_UP, 'reception'], risk: 'critical',
+        defaultRoles: [...BOOKING_OPERATORS, 'accountant', 'art_director', 'marketer'], risk: 'critical',
         backendConsumers: [source('services/bookingVisibility.js', "canUseAction(user, 'view_all')", { enforces: true })]
     }),
     action({
@@ -947,7 +982,7 @@ const ACTION_PERMISSIONS = Object.freeze([
     }),
     action({
         key: 'tasks.create', label: 'Створювати задачі', group: 'tasks',
-        defaultRoles: [...ADMIN_UP, 'senior_instructor', 'instructor'], risk: 'high',
+        defaultRoles: [...ADMIN_UP, 'senior_instructor', 'instructor', 'head_chef', 'head_pastry'], risk: 'high',
         backendConsumers: [
             source('routes/tasks.js', "requireTaskRouteCapability('create')", { enforces: true }),
             source('services/taskPolicy.js', "create: 'tasks.create'", { enforces: true })
@@ -960,7 +995,7 @@ const ACTION_PERMISSIONS = Object.freeze([
     }),
     action({
         key: 'tasks.delete', label: 'Видаляти задачі', group: 'tasks',
-        defaultRoles: ADMIN_UP, risk: 'critical',
+        defaultRoles: MANAGEMENT_UP, risk: 'critical',
         backendConsumers: [
             source('routes/tasks.js', "requireTaskRouteCapability('delete')", { enforces: true }),
             source('services/taskPolicy.js', "delete: 'tasks.delete'", { enforces: true })
@@ -1030,13 +1065,13 @@ const ACTION_PERMISSIONS = Object.freeze([
     }),
     action({
         key: 'approve_payroll_installment', label: 'Погоджувати виплату', group: 'payroll',
-        defaultRoles: PAYROLL_VIEW_ROLES, risk: 'critical',
+        defaultRoles: PAYROLL_REVERSE_CLOSE_ROLES, risk: 'critical',
         frontendConsumers: [source('js/hr-page.js', "hrCanUsePayrollAction('approve_payroll_installment')", { enforces: true }), source('js/finance-page.js', "financeCanUsePayrollAction('approve_payroll_installment')", { enforces: true })],
         apiConsumers: [api('routes/hr.js', '/api/hr payroll approval', 'approve_payroll_installment'), api('routes/payroll.js', '/api/payroll installments approval', 'approve_payroll_installment')]
     }),
     action({
         key: 'confirm_payroll_payment', label: 'Підтверджувати виплату', group: 'payroll',
-        defaultRoles: PAYROLL_VIEW_ROLES, risk: 'critical',
+        defaultRoles: PAYROLL_REVERSE_CLOSE_ROLES, risk: 'critical',
         frontendConsumers: [source('js/hr-page.js', "hrCanUsePayrollAction('confirm_payroll_payment')", { enforces: true }), source('js/finance-page.js', "financeCanUsePayrollAction('confirm_payroll_payment')", { enforces: true })],
         apiConsumers: [api('routes/payroll.js', '/api/payroll payment confirmation', 'confirm_payroll_payment')]
     }),

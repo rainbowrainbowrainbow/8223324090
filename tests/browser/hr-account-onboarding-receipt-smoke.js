@@ -76,6 +76,11 @@ async function run(browser) {
                 { name: 'unknown', payload: fixture('unknown', false), message: /Стан доступу до вибраного бізнесу не вдалося підтвердити/ },
                 { name: 'missing', payload: fixture(), message: /Стан доступу до вибраного бізнесу не вдалося підтвердити/ },
                 { name: 'nested', payload: fixture('active', true, { nested: true }), message: /Доступ до вибраного бізнесу активний\./ },
+                { name: 'work-unverified', payload: { ...fixture('active', true), workReadiness: {
+                    ready: false, checks: { profile: { passed: true }, active: { passed: true },
+                        membership: { passed: true }, pages: { passed: false }, data: { passed: false, status: 'not_run' } },
+                    nextStep: 'Перевірте персональні заборони робочих розділів.'
+                } }, message: /Доступ до вибраного бізнесу активний\./ },
                 { name: 'password-unconfirmed', payload: { ...fixture('active', true), loginReady: false }, message: /Доступ до вибраного бізнесу активний\./ }
             ];
             for (const scenario of cases) {
@@ -100,7 +105,13 @@ async function run(browser) {
                 }
                 const business = receipt.locator('.hr-account-detail-card').filter({ hasText: 'Вибраний бізнес' });
                 assert.equal(await business.locator('strong').innerText(), 'Дар', 'receipt uses the created account business, not the operator Park context');
-                const canShare = scenario.name === 'active' || scenario.name === 'nested';
+                const canShare = ['active', 'nested', 'work-unverified'].includes(scenario.name);
+                if (scenario.name === 'work-unverified') {
+                    assert.match(await receipt.innerText(), /робочий доступ потребує перевірки/);
+                    assert.match(await receipt.innerText(), /Читання робочих даних/iu);
+                    assert.match(await receipt.innerText(), /Ще не підтверджено/);
+                    assert.match(await receipt.innerText(), /Перевірте персональні заборони/);
+                }
                 const copyButton = receipt.locator('[data-account-onboarding-copy]');
                 assert.equal(await copyButton.count(), canShare ? 1 : 0);
                 assert.equal(await receipt.locator('.hr-account-credential').count(), canShare ? 1 : 0);
@@ -129,7 +140,7 @@ async function run(browser) {
                 assert.equal(await overlay.evaluate(element => element.scrollWidth <= element.clientWidth + 1), true);
                 const receiptBox = await receipt.boundingBox();
                 assert.ok(receiptBox.y >= 0 && receiptBox.y + receiptBox.height <= viewport.height + 1, 'receipt fits its scrollable viewport');
-                if (['active', 'pending', 'unknown'].includes(scenario.name)) {
+                if (['active', 'pending', 'unknown', 'work-unverified'].includes(scenario.name)) {
                     await receipt.evaluate(element => { element.scrollTop = 0; });
                     await page.screenshot({
                         path: path.join(OUTPUT_DIR, `account-receipt-${scenario.name}-${viewport.width}-redacted.png`),

@@ -447,11 +447,11 @@ if (frontend.canAccessPage('/definitely-missing') !== false) {
     fail('canAccessPage must reject unknown pages');
 }
 frontend.sandbox.AppState.currentUser = { role: 'waiter' };
-if (frontend.canAccessPage('/tasks') !== false) {
-    fail('waiter must not pass /tasks page access');
+if (frontend.canAccessPage('/tasks') !== true) {
+    fail('waiter must pass /tasks page access');
 }
-if (frontend.canAccessPage('/chat') !== false) {
-    fail('waiter must not pass /chat page access');
+if (frontend.canAccessPage('/chat') !== true) {
+    fail('waiter must pass /chat page access');
 }
 frontend.sandbox.AppState.currentUser = { role: 'marketer' };
 if (frontend.canAccessPage('/sales-funnel') !== true || frontend.canAccessPage('/leads') !== true) {
@@ -470,6 +470,7 @@ for (const role of ['barista', 'waiter', 'instructor', 'cleaning', 'reception'])
     const user = { role };
     if (frontend.getAuthenticatedTimelineStartPage(user) !== '/staff') fail(role + ' must start with the schedule');
     for (const page of ['/', '/certificates', '/certificates/new', '/certificates/batch', '/certificates/check']) {
+        if (page === '/' && ['instructor', 'reception'].includes(role)) continue;
         if (frontend.resolveCapability({ role, page_allowlist: [page] }, page, { type: 'page', ignoreServer: true }).allowed) {
             fail(role + ' must not restore ' + page + ' with a legacy explicit grant');
         }

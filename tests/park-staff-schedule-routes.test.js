@@ -254,6 +254,8 @@ test('Park schedule ownership through the actual Express staff and HR routers', 
             assert.equal(roster.data[0].id, STAFF_ID);
             assert.equal(roster.data[0].display_group, 'animators');
             assert.deepEqual(roster.scheduleAccess, {
+                scope: 'business',
+                editableStaffIds: null,
                 readOnly: false,
                 editable: true,
                 canCreateStaff: true,
@@ -271,6 +273,8 @@ test('Park schedule ownership through the actual Express staff and HR routers', 
                 { id:'42', date:'2026-09-14', staff_id:STAFF_ID, role:'replacement', partial:true }
             ]);
             assert.deepEqual(schedule.scheduleAccess, {
+                scope: 'business',
+                editableStaffIds: null,
                 readOnly: false,
                 editable: true,
                 canCreateStaff: true,

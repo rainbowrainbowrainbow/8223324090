@@ -1174,7 +1174,7 @@ function crmBusinessContextHasModule(context, moduleId) {
     if (!moduleId) return true;
     const profile = getCrmBusinessProfileForContext(context);
     if (profile?.accessMode === 'membership' || profile?.modules?.source === 'business_registry') {
-        if (['certificates', 'art'].includes(moduleId)) return profile.legacySurfaces?.[moduleId]?.available === true;
+        if (['certificates', 'art', 'staff'].includes(moduleId)) return profile.legacySurfaces?.[moduleId]?.available === true;
         return profile.modules?.enabled?.[moduleId] === true;
     }
     if (profile?.modules?.enabled && Object.prototype.hasOwnProperty.call(profile.modules.enabled, moduleId)) {

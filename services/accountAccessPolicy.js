@@ -279,6 +279,10 @@ function resolveCapability(user, capability, context = {}) {
     if (!normalized.known || (normalized.type === CAPABILITY_TYPES.ACTION && normalized.definition.deprecated === true)) {
         return decision(normalized, false, 'default_deny', null, 'unknown_capability');
     }
+    const membershipAccess = user.businessMembershipAccess;
+    if (membershipAccess?.invalid || (membershipAccess?.membershipEnabled === true && !membershipAccess.activeMembership)) {
+        return decision(normalized, false, 'default_deny', null, 'active_business_membership_required');
+    }
     if (normalized.type === CAPABILITY_TYPES.PAGE && normalized.key === '/maysternya-doli'
         && user?.businessMembershipAccess?.configured === true) {
         const activeContext = user?.activeBusinessMembership?.businessContext

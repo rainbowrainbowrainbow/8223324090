@@ -267,12 +267,13 @@ test('Task 4-8 critical capabilities keep their independent grants and explicit 
     assert.equal(assertParity(manager, 'manage_settings', { type: 'action' }).allowed, false);
 });
 
-test('accountant can open operational pages with consistent browser and server permissions', () => {
+test('accountant opens related operational and finance pages without unrelated specialist pages', () => {
     const user = { role: 'accountant' };
-    const restricted = new Set(['/chat-settings', '/timeline-settings', '/status', '/guardian-ops',
-        '/certificates/new', '/certificates/batch', '/certificates/check']);
+    const allowed = new Set(['/dashboard', '/', '/tasks', '/chat', '/customers', '/staff', '/training',
+        '/booking-summary.html', '/hr', '/finance', '/cashier-payments', '/accounting-deposits',
+        '/afisha', '/reports', '/certificates', '/game', '/profile', '/quiz', '/room', '/shop']);
     for (const page of registry.PAGE_PERMISSIONS.filter(entry => !entry.deprecated)) {
-        assert.equal(assertParity(user, page.key, { type: 'page' }).allowed, !restricted.has(page.key), page.key);
+        assert.equal(assertParity(user, page.key, { type: 'page' }).allowed, allowed.has(page.key), page.key);
     }
     for (const action of ['hr.today.view', 'hr.staff.view', 'hr.reports.view', 'tasks.create']) {
         assert.equal(assertParity(user, action, { type: 'action' }).allowed, true, action);
@@ -286,7 +287,7 @@ test('accountant can open operational pages with consistent browser and server p
 test('accountant operational reads respect effective page access and retain existing write guards', () => {
     const { requireRole } = require('../middleware/auth');
     const { allowAccountantPageRead } = require('../middleware/accountant-page-read');
-    const guard = allowAccountantPageRead('/sales-funnel', requireRole('manager'));
+    const guard = allowAccountantPageRead('/hr', requireRole('manager'));
     function run(user, method) {
         let result = 200;
         const res = { status(code) { result = code; return this; }, json() {} };
@@ -297,7 +298,7 @@ test('accountant operational reads respect effective page access and retain exis
     assert.equal(run(accountant, 'GET'), 200);
     assert.equal(run(accountant, 'HEAD'), 200);
     assert.equal(run(accountant, 'POST'), 403);
-    assert.equal(run({ ...accountant, page_denylist: ['/sales-funnel'] }, 'GET'), 403);
+    assert.equal(run({ ...accountant, page_denylist: ['/hr'] }, 'GET'), 403);
     assert.equal(run({ role: 'animator' }, 'GET'), 403);
     assert.equal(run({ role: 'manager' }, 'POST'), 200);
 });

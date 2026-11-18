@@ -92,9 +92,9 @@ test('reception preset preserves full booking scope without a hardcoded role fal
     assert.equal(buildBookingVisibilityScope(actor, [], 'b'), '');
 });
 
-test('admin-up booking operators can edit and soft-delete through the shared visibility contract', () => {
+test('operational booking roles can edit and soft-delete through the shared visibility contract', () => {
     const booking = { id: 'BK-OPS', created_by: 'someone-else', linked_to: null };
-    const roles = ['manager', 'senior_manager', 'vice_director', 'director', 'accountant', 'hr', 'admin'];
+    const roles = ['manager', 'senior_manager', 'vice_director', 'director', 'admin'];
 
     for (const role of roles) {
         const actor = { id: 100, username: `${role}-user`, name: role, role };

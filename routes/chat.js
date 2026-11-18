@@ -25,11 +25,15 @@ const { listChannelSubstitutions } = require('../services/staffSubstitutionChann
 
 const log = createLogger('ChatAPI');
 
-const CHAT_ACCESS_ROLES = ROLE_HIERARCHY.filter(role => role !== 'waiter');
+const CHAT_ACCESS_ROLES = ROLE_HIERARCHY;
 
 // All chat routes require authentication and /chat page-level access.
 router.use(authenticateToken);
 router.use(requireRole(...CHAT_ACCESS_ROLES));
+router.use((req, res, next) => {
+    if (require('../services/accountAccessPolicy').resolveCapability(req.user, '/chat', { type: 'page' }).allowed) return next();
+    return res.status(403).json({ error: 'Insufficient permissions' });
+});
 router.use(requireLegacyBusinessSurface('chat'));
 
 // Chat message rate limiter: max 1 msg per 500ms per user, 60 msgs/min per channel

@@ -146,6 +146,7 @@ const { readLesson, overlapsBookingTime, findTeacherConflict } = require('../ser
 
 // v39.8: Security — require authentication for all booking endpoints
 router.use(authenticateToken);
+router.use(require('../services/bookingFieldAccess').installBookingFieldAccess);
 
 function ticketBusinessContextFromAuthenticatedRequest(req) {
     return businessContextFromRequest({
@@ -3307,7 +3308,7 @@ router.get('/:id/banquet-summary', async (req, res) => {
     }
 });
 
-router.get('/:id/banquet-summary.pdf', requireAction('view_revenue'), requireAction('export_data'), async (req, res) => {
+router.get('/:id/banquet-summary.pdf', requireAction('view_revenue'), requireAction('export_data'), requireAction('bookings.contacts.view'), async (req, res) => {
     try {
         const summary = await resolveBanquetSummaryForRequest(req, res);
         if (!summary || res.headersSent) return;

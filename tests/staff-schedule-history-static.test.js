@@ -755,9 +755,11 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /entry \? normalizeScheduleStatus\(entry\.status\) : 'unset'/);
     });
 
-    it('keeps sensitive attendance role-gated and payroll capability-gated', () => {
-        assert.match(staffRoute, /const STAFF_ATTENDANCE_READ_ROLES = \['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin', 'accountant'\]/);
-        assert.match(routeBlock('/attendance'), /router\.get\('\/attendance', requireRole\(\.\.\.STAFF_ATTENDANCE_READ_ROLES\)/);
+    it('keeps sensitive attendance and payroll behind separate capabilities', () => {
+        const { ACTION_PERMISSION_BY_KEY } = require('../config/permissionRegistry');
+        assert.deepEqual(ACTION_PERMISSION_BY_KEY['hr.attendance.view'].defaultRoles,
+            ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin', 'accountant']);
+        assert.match(routeBlock('/attendance'), /router\.get\('\/attendance', requireAction\('hr\.attendance\.view'\)/);
         assert.match(routeBlock('/payroll'), /router\.get\('\/payroll', requireAction\('hr\.payroll\.view'\)/);
     });
 

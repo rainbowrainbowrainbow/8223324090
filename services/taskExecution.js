@@ -191,21 +191,15 @@ function ownerCandidateScopeSql(actor, params, options = {}) {
               AND recipient.pilot_enabled
         )`;
     }
-    const perms = getPermissions(actor?.role);
+    const perms = getPermissions(actor);
     if (perms.canAssignAnyone === true || perms.taskVisibility === 'all') return '';
     const actorId = normalizeUserId(actor);
     if (!actorId) return 'AND 1 = 0';
     params.push(actorId);
     const actorRef = `$${params.length}`;
     if (perms.taskVisibility === 'department') {
-        return `AND EXISTS (
-            SELECT 1
-            FROM employee_profiles ep_target
-            JOIN employee_profiles ep_actor ON ep_actor.department = ep_target.department
-            WHERE ep_target.user_id = users.id
-              AND ep_actor.user_id = ${actorRef}
-              AND ep_target.department IS NOT NULL
-        )`;
+        const team = require('./taskPolicy').buildTaskTeamMemberQuery(actor, params, actorRef);
+        return `AND (users.id = ${actorRef} OR users.id IN (${team}))`;
     }
     return `AND users.id = ${actorRef}`;
 }

@@ -8939,6 +8939,7 @@ function renderAccountOnboardingReceipt(response) {
     const businessAccessReady = typeof response?.businessAccessReady === 'boolean'
         ? response.businessAccessReady
         : receipt.access?.businessAccessReady === true;
+    const workReadiness = response?.workReadiness || receipt.access?.workReadiness || null;
     const businessKey = receipt.access?.defaultBusinessContext || receipt.account?.defaultBusinessContext || accountOnboardingState.payload?.access?.defaultBusinessContext || '';
     const businessLabel = accountOnboardingOptions?.membershipBusinesses?.find(item => item.key === businessKey)?.label
         || accountOnboardingState.businessLabel
@@ -8976,13 +8977,14 @@ function renderAccountOnboardingReceipt(response) {
         const shifts = (after.shiftPreferences || []).filter(item => item.isActive).map(item => `${item.dayType === 'weekday' ? 'Будні' : 'Вихідні'}: ${item.startTime}–${item.endTime}`).join(', ');
         return `${professionTitle(condition.professionKey)}: ${rate}${shifts ? ` · ${shifts}` : ''}`;
     }).join('; ');
-    const title = accessState === 'active' && businessAccessReady ? 'CRM-доступ активний'
+    const title = workReadiness && !workReadiness.ready ? 'Акаунт створено · робочий доступ потребує перевірки'
+        : accessState === 'active' && businessAccessReady ? 'CRM-доступ активний'
         : membershipPending ? 'Очікує призначення доступу'
             : receipt.staff?.created === true ? 'Співробітника й CRM-акаунт створено' : 'CRM-акаунт створено';
     const professionSummary = Array.isArray(receipt.professions)
         ? receipt.professions.map(item => `${professionTitle(item.key)}${item.isPrimary ? ' · основна' : ''}`).join(', ') || 'Професії не призначено'
         : 'Дані професій не завантажено';
-    const role = receipt.access?.role || receipt.account?.role;
+    const role = workReadiness?.checks?.role?.effectiveRole || receipt.access?.role || receipt.account?.role;
     const roleSummary = role ? (ROLE_LABELS[role] || role) : 'Роль не завантажено';
     const conditionsSummary = Array.isArray(receipt.conditions)
         ? conditionSummary || 'Не змінювалися'
@@ -8998,11 +9000,19 @@ function renderAccountOnboardingReceipt(response) {
             ['Професії', professionSummary],
             ['Ставка / типовий час', conditionsSummary],
             ['Роль у CRM', roleSummary],
-            ['Вибраний бізнес', businessLabel]
+            ['Вибраний бізнес', businessLabel],
+            ...(workReadiness ? [
+                ['Зв’язок із карткою', workReadiness.checks?.profile?.passed ? 'Підтверджено' : 'Потребує перевірки'],
+                ['Активність працівника й акаунта', workReadiness.checks?.active?.passed ? 'Підтверджено' : 'Потребує перевірки'],
+                ['Членство бізнесу', workReadiness.checks?.membership?.passed ? 'Активне' : 'Не підтверджено'],
+                ['Робочі розділи', workReadiness.checks?.pages?.passed ? 'Дозволені' : 'Є обмеження або перевірка недоступна'],
+                ['Робочі модулі бізнесу', workReadiness.checks?.modules?.passed ? 'Доступні' : 'Є вимкнені або ще не розмежовані модулі'],
+                ['Читання робочих даних', workReadiness.checks?.data?.passed ? 'Підтверджено' : 'Ще не підтверджено']
+            ] : [])
         ],
         credential: canShare ? credential : null,
         actions: membershipNextStep + verifyAction,
-        nextSteps: recoveredCredential,
+        nextSteps: recoveredCredential + (workReadiness?.nextStep ? `<p>${escapeHtml(workReadiness.nextStep)}</p>` : ''),
         warnings
     });
 }

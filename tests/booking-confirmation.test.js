@@ -290,15 +290,14 @@ test('POST /api/bookings/:id/confirm blocks unauthorized actors before mutation'
     });
 });
 
-test('POST /api/bookings/:id/confirm fails closed when object-level booking scope is hidden', async () => {
+test('POST /api/bookings/:id/confirm rejects animator mutation before reading a hidden booking', async () => {
     await withApp([bookingRow({ created_by: 'someone-else' })], async ({ baseUrl, state }) => {
         const res = await request(baseUrl, 'BK-2099-0001', 'animator', { source: 'queue' });
 
-        assert.equal(res.status, 404, JSON.stringify(res.data));
-        assert.equal(res.data.error, 'Booking not found');
+        assert.equal(res.status, 403, JSON.stringify(res.data));
         assert.equal(state.rows[0].status, 'preliminary');
         assert.equal(state.histories.length, 0);
-        assert.deepEqual(state.tx, ['BEGIN', 'ROLLBACK']);
+        assert.deepEqual(state.tx, []);
     });
 });
 

@@ -149,7 +149,9 @@ const log = createLogger('Staff');
 
 // v39.8: Security — require authentication for all staff endpoints
 router.use(authenticateToken);
+router.use(require('../services/staffScheduleScope').createStaffScheduleScopeGuard(pool));
 router.use(requireLegacyBusinessSurface('staff', { parkScheduleRouter: 'staff', parkCheckinJournalRead: true }));
+router.use(require('../services/staffScheduleFieldAccess').installStaffScheduleFieldAccess);
 // Compensation snapshots now include base wages; keep the existing payroll-view boundary.
 function redactAttendanceCompensation(value) {
     if (Array.isArray(value)) return value.map(redactAttendanceCompensation);
@@ -174,7 +176,6 @@ const STAFF_SCHEDULE_BULK_MAX_ENTRIES = 500;
 const STAFF_SCHEDULE_BULK_MAX_DATES = 31;
 const STAFF_SCHEDULE_BULK_MAX_STAFF = 500;
 const STAFF_COPY_WEEK_DATE_COUNT = 7;
-const STAFF_ATTENDANCE_READ_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin', 'accountant'];
 
 function staffPayrollOutstandingBlockerPayload(outstandingInstallments = {}) {
     return {
@@ -1941,7 +1942,7 @@ router.get('/schedule/check/:date', requireAction('hr.schedule.view'), async (re
 });
 
 // GET /api/staff/attendance — payroll-ready actual attendance for schedule range
-router.get('/attendance', requireRole(...STAFF_ATTENDANCE_READ_ROLES), async (req, res) => {
+router.get('/attendance', requireAction('hr.attendance.view'), async (req, res) => {
     try {
         const from = normalizeScheduleDate(req.query.from);
         const to = normalizeScheduleDate(req.query.to);
@@ -2739,6 +2740,10 @@ router.post('/:id/link', requireAction('manage_accounts'), async (req, res) => {
         await client.query('COMMIT');
 
         log.info(`Staff #${link.staff.id} (${link.staff.name}) linked to user #${link.user.id}`);
+        link.workReadiness = await require('../services/accountWorkReadiness').loadAccountWorkReadiness(pool, {
+            userId: link.user.id, staff: link.staff, profile: link.profile,
+            businessContext: req.user?.activeBusinessMembership?.businessContext || DEFAULT_BUSINESS_CONTEXT
+        }).catch(() => ({ ready: false, status: 'unavailable', nextStep: 'Повторіть перевірку робочого доступу; прив’язку вже збережено.' }));
         res.json({ success: true, link });
     } catch (err) {
         try { await client.query('ROLLBACK'); } catch {}

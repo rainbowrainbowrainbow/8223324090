@@ -197,7 +197,7 @@ test('timeline cancellation controls use the shared delete permission contract',
     const bookingJs = fs.readFileSync(path.join(ROOT, 'js', 'booking.js'), 'utf8');
     assert.deepEqual(ACTION_PERMISSION_BY_KEY.delete_booking.defaultRoles, [
         'creator', 'director', 'vice_director', 'senior_manager', 'manager',
-        'accountant', 'art_director', 'marketer', 'it_specialist', 'hr', 'admin'
+        'admin'
     ]);
     assert.match(bookingJs, /function canDeleteTimelineBooking/);
     assert.match(bookingJs, /canAccess\('delete_booking'\)/);

@@ -25,10 +25,16 @@ function hasCurrentParkMembership(user, context) {
 
 function parkLegacySurfaceAvailability(user, context) {
     const member = hasCurrentParkMembership(user, context);
-    return Object.fromEntries(Object.entries(SURFACE_PAGES).map(([surface, pages]) => {
+    const surfaces = Object.fromEntries(Object.entries(SURFACE_PAGES).map(([surface, pages]) => {
         const available = member && pages.some(page => resolveCapability(user, page, { type: 'page' }).allowed);
         return [surface, { available, code: available ? null : `${surface}_not_migrated` }];
     }));
+    // Advertise the already-authorized schedule read lane to navigation only.
+    // Do not add staff to SURFACE_PAGES: that would open unrelated legacy APIs.
+    const scheduleAvailable = member && resolveCapability(user, '/staff', { type: 'page' }).allowed
+        && resolveCapability(user, 'hr.schedule.view').allowed;
+    return { ...surfaces, staff: { available: scheduleAvailable,
+        code: scheduleAvailable ? null : 'staff_not_migrated', scope: 'schedule' } };
 }
 
 function canUseParkLegacySurface(req, surface, scope = resolveBusinessScope(req)) {

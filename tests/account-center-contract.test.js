@@ -268,12 +268,22 @@ for (const changed of ['business', 'session', 'closed', 'replacement']) {
         let identity = 'park:session1';
         const pending = new Promise(done => { resolve = done; });
         const submit = { disabled: false };
+        const document = { getElementById: id => elements[id] };
+        const username = { focus: () => { document.activeElement = username; } };
+        const status = { focus: () => { document.activeElement = status; } };
+        const elements = {
+            accountOnboardingForm: { contains: element => element === username, classList: { contains: () => false } },
+            accountOnboardingUsername: username,
+            accountOnboardingStatus: status,
+            accountOnboardingSubmit: submit
+        };
+        username.focus();
         const context = {
             accountOnboardingState: { open: true, submitting: false, payload: { staff: { id: 123 } } },
             accountOnboardingRequestSeq: 1,
             validateAccountOnboardingStep: () => true,
             buildAccountOnboardingPayload: () => ({ staff: { id: 123 } }), accountOnboardingEl: () => submit,
-            teamAccessContext: () => identity, document: { getElementById: () => submit },
+            teamAccessContext: () => identity, document,
             submitStaffCreation: async () => { calls++; return pending; },
             completeAccountOnboarding: () => { completions++; }
         };
@@ -284,13 +294,17 @@ for (const changed of ['business', 'session', 'closed', 'replacement']) {
         const request = context.submitAccountOnboarding();
         await context.submitAccountOnboarding();
         assert.equal(calls, 1, 'double click sends only one operation');
+        assert.equal(document.activeElement, status);
         if (changed === 'business' || changed === 'session') identity = changed;
         if (changed === 'closed') context.accountOnboardingState.open = false;
         if (changed === 'replacement') context.accountOnboardingRequestSeq++;
+        const currentFocus = {};
+        document.activeElement = currentFocus;
         resolve({ result: { success: true, receipt: { staff: { id: 123 } } }, acknowledge: () => { acknowledgements++; } });
         await request;
         assert.equal(completions, 0);
         assert.equal(acknowledgements, 0, 'the original operation remains recoverable');
+        assert.equal(document.activeElement, currentFocus);
     });
 }
 

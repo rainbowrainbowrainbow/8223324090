@@ -172,7 +172,10 @@ function bindStaffAccountForm({ getState, submit, close }) {
         if (!focusable.length) return;
         const first = focusable[0];
         const last = focusable[focusable.length - 1];
-        if (event.shiftKey && document.activeElement === first) {
+        if (getState()?.submitting && document.activeElement === staffAccountField('Status')) {
+            event.preventDefault();
+            (event.shiftKey ? last : first).focus();
+        } else if (event.shiftKey && document.activeElement === first) {
             event.preventDefault();
             last.focus();
         } else if (!event.shiftKey && document.activeElement === last) {
@@ -198,10 +201,12 @@ async function confirmStaffAccountFormClose(state) {
 async function submitStaffAccountForm(state, isCurrent, request, complete) {
     const form = staffAccountField('Form');
     const submit = staffAccountField('Submit');
+    const returnFocus = form.contains(document.activeElement) ? document.activeElement : staffAccountField('Username');
     state.submitting = true;
+    setStaffAccountFormStatus('Зберігаємо дані та створюємо CRM-акаунт…', 'progress');
+    staffAccountField('Status').focus();
     form.inert = true;
     submit.disabled = true;
-    setStaffAccountFormStatus('Зберігаємо дані та створюємо CRM-акаунт…', 'progress');
     try {
         const response = await request();
         if (!isCurrent()) return;
@@ -217,6 +222,7 @@ async function submitStaffAccountForm(state, isCurrent, request, complete) {
             state.submitting = false;
             form.inert = false;
             submit.disabled = false;
+            if (!form.classList.contains('hidden')) returnFocus.focus();
         }
     }
 }

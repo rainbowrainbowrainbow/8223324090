@@ -419,10 +419,61 @@ async function runActor(browser, pool, actor, existingAccountId) {
                 assert.ok(parseFloat(await passwordInput.evaluate(el => getComputedStyle(el).fontSize)) >= 16);
             }
             await captureSupplement('crm-access-form');
+            const usernameInput = page.locator('#accountOnboardingUsername');
+            const form = page.locator('#accountOnboardingForm');
+            const status = page.locator('#accountOnboardingStatus');
+            const close = page.locator('#accountOnboardingClose');
+            let unblockFailure;
+            const failureGate = new Promise(resolve => { unblockFailure = resolve; });
+            await page.route('**/api/users/onboarding', async route => {
+                await failureGate;
+                await route.fulfill({ status: 400, json: { success: false, error: 'Синтетична помилка видачі доступу.' } });
+            }, { times: 1 });
+            let issuancePosts = 0;
+            const countIssuance = request => {
+                if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/users/onboarding') issuancePosts++;
+            };
+            page.on('request', countIssuance);
+            try {
+                const dispatched = page.waitForRequest(request =>
+                    request.method() === 'POST' && new URL(request.url()).pathname === '/api/users/onboarding');
+                await usernameInput.press('Enter');
+                await dispatched;
+                assert.equal(await status.evaluate(el => el === document.activeElement), true);
+                assert.equal(await form.evaluate(el => el.inert), true);
+                assert.equal(await page.locator('#accountOnboardingSubmit').isDisabled(), true);
+                await page.keyboard.press('Enter');
+                await page.keyboard.press('Tab');
+                assert.equal(await close.evaluate(el => el === document.activeElement), true);
+                await page.keyboard.press('Shift+Tab');
+                assert.equal(await close.evaluate(el => el === document.activeElement), true);
+                await status.focus();
+                await page.keyboard.press('Shift+Tab');
+                assert.equal(await close.evaluate(el => el === document.activeElement), true);
+                assert.equal(issuancePosts, 1);
+                await status.focus();
+                await captureSupplement('crm-access-submitting-focus');
+            } finally {
+                unblockFailure();
+            }
+            await status.getByText('Синтетична помилка видачі доступу.').waitFor();
+            assert.equal(await usernameInput.evaluate(el => el === document.activeElement), true);
+            assert.equal(await form.evaluate(el => el.inert), false);
+            assert.equal(await page.locator('#accountOnboardingSubmit').isEnabled(), true);
+            assert.equal(await usernameInput.inputValue(), username);
+            assert.equal(await passwordInput.inputValue(), initialPassword);
+            assert.equal(await page.locator('#accountOnboardingStaffId').inputValue(), String(staff.id));
+            await captureSupplement('crm-access-error-focus');
+            await page.keyboard.press('Tab');
+            assert.equal(await passwordInput.evaluate(el => el === document.activeElement), true);
+            await page.keyboard.press('Shift+Tab');
+            assert.equal(await usernameInput.evaluate(el => el === document.activeElement), true);
             const [linked] = await Promise.all([
                 waitForResponse(page, 'POST', '/api/users/onboarding'),
-                page.locator('#accountOnboardingSubmit').click()
+                page.keyboard.press('Enter')
             ]);
+            page.off('request', countIssuance);
+            assert.equal(issuancePosts, 2, 'one failed request and one retry');
             assert.equal(linked.status(), 200, 'CRM account created');
             const linkedResult = await linked.json();
             assert.ok(linkedResult.credential?.password === initialPassword, 'the submitted password was used');
@@ -447,6 +498,8 @@ async function runActor(browser, pool, actor, existingAccountId) {
             assert.equal(membership.rows[0].is_active, true);
             assert.equal(membership.rows[0].role, createdSession.user.role);
             const receipt = page.locator('#accountOnboardingReceipt');
+            await receipt.waitFor({ state: 'visible' });
+            assert.equal(await receipt.evaluate(el => el === document.activeElement), true);
             if (actor.parkWorker) {
                 await receipt.getByText('Доступ до вибраного бізнесу активний.', { exact: false }).waitFor();
                 await captureSupplement('crm-access-active');

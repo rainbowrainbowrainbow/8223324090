@@ -213,6 +213,7 @@
     padding-top: 10px;
 }
 .hr-account-onboarding-status[data-type="progress"] {
+    align-self: start;
     color: #1d4ed8;
 }
 .hr-account-onboarding-status[data-type="warning"] {

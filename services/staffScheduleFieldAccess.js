@@ -38,6 +38,12 @@ function installStaffScheduleFieldAccess(req, res, next) {
     const path = String(req.path || '/').replace(/\/$/, '') || '/';
     // Audit history is a personnel record, not a team coordination field.
     if (path.startsWith('/schedule/history/')) return res.status(403).json({ success: false, error: 'Insufficient permissions' });
+    if (/^\/schedule\/check\/\d{4}-\d{2}-\d{2}$/.test(path)) {
+        const json = res.json.bind(res);
+        res.json = payload => json(Array.isArray(payload?.unavailable)
+            ? { ...payload, unavailable: payload.unavailable.map(shapeCoordinationRow) } : payload);
+        return next();
+    }
     if (!['/', '/schedule', '/schedule/hours'].includes(path)) return next();
     const json = res.json.bind(res);
     res.json = payload => {

@@ -129,6 +129,15 @@ test('team schedule coordination hides absence reasons, notes, account identitie
         status: 'dayoff', hr_shift_type: 'dayoff', dayoffs: 6, totalHours: 8 });
 });
 
+test('legacy schedule availability cannot disclose private absence categories', () => {
+    const { installStaffScheduleFieldAccess } = require('../services/staffScheduleFieldAccess');
+    let response;
+    const res = { json(value) { response = value; } };
+    installStaffScheduleFieldAccess({ user: { role: 'animator' }, method: 'GET', path: '/schedule/check/2026-11-18' }, res, () => {});
+    res.json({ success: true, available: [], unavailable: [{ id: 7, name: 'Synthetic', status: 'sick', note: 'private reason' }] });
+    assert.deepEqual(response.unavailable, [{ id: 7, name: 'Synthetic', status: 'dayoff' }]);
+});
+
 test('audit reports preset impact and personal exceptions without customer or account secrets', () => {
     const { auditAccount } = require('../services/baselineAccessAudit');
     const report = auditAccount({ user: { id: 8, role: 'hr', password_hash: 'must-not-leak' },

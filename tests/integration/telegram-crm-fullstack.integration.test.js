@@ -12,7 +12,7 @@ const { assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
 const { applyPilot, PILOT } = require('../../scripts/telegram-crm-pilot');
 const enabled = process.env.RUN_TELEGRAM_CRM_FULLSTACK === 'true';
 const check = (name, fn) => test(name, { skip: !enabled }, fn);
-let pool, jwt, owner, peer, business;
+let pool, jwt, owner, peer, business, voiceCreator;
 const telegram = String(randomInt(900000000000, 910000000000));
 let peerTelegram = String(randomInt(920000000000, 930000000000));
 let nextUpdate = 100;
@@ -240,6 +240,7 @@ check('four confirmed participants can create for every peer with current busine
         await pool.query('UPDATE business_memberships SET action_allowlist=$3::text[] WHERE business_id=$1 AND user_id=$2',
             [business.id,peer.id,original]);
     }
+    voiceCreator = participants[1];
 });
 
 check('CRM task writes persist a distinct assignment on A to B to A, retry and cancel stale work', async () => {
@@ -292,7 +293,7 @@ check('CRM task writes persist a distinct assignment on A to B to A, retry and c
     assert.deepEqual(result, { status: 'cancelled', reason: 'assignment_inactive' });
 });
 
-test('confirmed arbitrary recipient receives a CRM assignment through the actual Python worker, with restart after CRM acknowledgement loss', {
+test('newly confirmed recipient receives CRM and bot voice assignments without another inbound message', {
     skip: !enabled || !process.env.NOTIFICATION_E2E_PYTHON
 }, async () => {
     const newTelegram = String(randomInt(940000000000, 950000000000));
@@ -310,6 +311,7 @@ test('confirmed arbitrary recipient receives a CRM assignment through the actual
     const start = new URL(replace.data.url).searchParams.get('start').slice(4);
     assert.equal((await bot('/link/claim', { token: start }, newTelegram)).status, 200);
     assert.equal((await request('POST', '/api/auth/telegram-crm/link/confirm', replace.data, token)).status, 200);
+    peerTelegram = newTelegram;
     const task = await request('POST', '/api/tasks', {
         title, date: '2099-11-05', deadline: '2099-11-05T08:00:00.000Z',
         ownerUserId: peer.id, businessContext: 'event_genix'
@@ -317,21 +319,30 @@ test('confirmed arbitrary recipient receives a CRM assignment through the actual
     assert.ok([200, 201].includes(task.status), JSON.stringify(task.data));
     const id = task.data.task.id;
     const { stdout } = await promisify(execFile)(process.env.NOTIFICATION_E2E_PYTHON, [
-        join(__dirname, '../fixtures/telegram-crm-notification-probe.py'), BASE_URL, String(peer.id), newTelegram, String(id)
+        join(__dirname, '../fixtures/telegram-crm-notification-probe.py'), BASE_URL, String(peer.id), newTelegram,
+        String(id), voiceCreator.telegram
     ]);
-    assert.deepEqual(JSON.parse(stdout.trim()), {
+    const { voiceTaskId, voiceMessageId, ...outcome } = JSON.parse(stdout.trim());
+    assert.ok(Number.isSafeInteger(voiceTaskId) && voiceTaskId > 0 && voiceTaskId !== id);
+    assert.ok(Number.isSafeInteger(voiceMessageId) && voiceMessageId > 0);
+    assert.deepEqual(outcome, {
         sent: 1, messageId: 50001, restarted: true,
         deliveryCommandConfirmed: process.env.NOTIFICATION_E2E_EXPECT_DELIVERY_COMMAND !== '0',
         morningWithTasks: true, emptyMorningSilent: true
     });
     const { rows } = await pool.query(`SELECT task_id, status, reason, telegram_message_id
         FROM telegram_crm_assignment_outbox WHERE task_id=ANY($1::int[]) ORDER BY id`,
-    [[invalidated.data.task.id, id]]);
+    [[invalidated.data.task.id, id, voiceTaskId]]);
     assert.deepEqual(rows, [
         { task_id: invalidated.data.task.id, status: 'cancelled', reason: 'binding_unavailable', telegram_message_id: null },
-        { task_id: id, status: 'sent', reason: null, telegram_message_id: '50001' }
+        { task_id: id, status: 'sent', reason: null, telegram_message_id: '50001' },
+        { task_id: voiceTaskId, status: 'sent', reason: null, telegram_message_id: String(voiceMessageId) }
     ]);
-    peerTelegram = newTelegram;
+    const voiceTasks = await pool.query(`SELECT id, source_module, owner_user_id, created_by_user_id
+        FROM tasks WHERE title=$1`, ['Disposable voice assignment lifecycle']);
+    assert.deepEqual(voiceTasks.rows, [{
+        id: voiceTaskId, source_module: 'telegram_crm', owner_user_id: peer.id, created_by_user_id: voiceCreator.user.id
+    }]);
 });
 
 check('Telegram personal creation stays self-only and team tasks remain team-visible', async () => {

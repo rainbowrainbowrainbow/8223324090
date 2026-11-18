@@ -404,7 +404,7 @@ describe('isolated PostgreSQL test flow safety', () => {
         assert.match(runner, /RUN_PAYROLL_SIMULTANEOUS_ADDITIONAL_INTEGRATION/);
         assert.match(runner, /RUN_ZRS_PAYROLL_PERIOD_LOCK_INTEGRATION/);
         assert.match(runner, /RUN_PAYROLL_INSTALLMENTS_INTEGRATION/);
-        assert.match(runner, /payroll:\s*\[\s*'tests\/integration\/payroll-profiles\.integration\.test\.js',\s*'tests\/integration\/payroll-profiles-conditions\.integration\.test\.js',\s*'tests\/integration\/payroll-simultaneous-additional\.integration\.test\.js',\s*'tests\/integration\/zrs-payroll-period-lock\.integration\.test\.js',\s*'tests\/integration\/payroll-installments\.integration\.test\.js',\s*'tests\/integration\/payroll-fullstack-settlement\.integration\.test\.js',\s*'tests\/integration\/analytics-reporting-postgres\.test\.js',\s*'tests\/integration\/finance-reporting-local\.integration\.test\.js',\s*'tests\/integration\/finance-transactions-pnl\.integration\.test\.js',\s*'tests\/integration\/finance-money-movements\.integration\.test\.js',\s*'tests\/integration\/finance-money-qa\.integration\.test\.js',\s*'tests\/finance-qa-report-scope\.test\.js',\s*'tests\/integration\/costing-management-postgres\.test\.js'\s*\]/);
+        assert.match(runner, /payroll:\s*\[\s*'tests\/integration\/payroll-profiles-configurable-rules\.integration\.test\.js',\s*'tests\/integration\/payroll-profiles\.integration\.test\.js',\s*'tests\/integration\/payroll-profiles-conditions\.integration\.test\.js',\s*'tests\/integration\/payroll-simultaneous-additional\.integration\.test\.js',\s*'tests\/integration\/zrs-payroll-period-lock\.integration\.test\.js',\s*'tests\/integration\/payroll-installments\.integration\.test\.js',\s*'tests\/integration\/payroll-fullstack-settlement\.integration\.test\.js',\s*'tests\/integration\/analytics-reporting-postgres\.test\.js',\s*'tests\/integration\/finance-reporting-local\.integration\.test\.js',\s*'tests\/integration\/finance-transactions-pnl\.integration\.test\.js',\s*'tests\/integration\/finance-money-movements\.integration\.test\.js',\s*'tests\/integration\/finance-money-qa\.integration\.test\.js',\s*'tests\/finance-qa-report-scope\.test\.js',\s*'tests\/integration\/costing-management-postgres\.test\.js'\s*\]/);
         assert.match(runner, /COSTING_TEST_PG_REQUIRED:\s*testFile\.includes\('costing-management-postgres\.test'\)/);
         assert.match(runner, /'payroll-fullstack':\s*\[\s*'tests\/integration\/payroll-fullstack-settlement\.integration\.test\.js'\s*\]/);
         assert.match(runner, /RUN_PAYROLL_FULLSTACK_SETTLEMENT_INTEGRATION/);
@@ -439,6 +439,7 @@ describe('isolated PostgreSQL test flow safety', () => {
             'tests/browser/hr-staff-creation-browser-smoke.js',
             'tests/browser/hr-onboarding-fullstack-browser-smoke.js',
             'tests/browser/hr-pay-actual-app-browser-smoke.js',
+            'tests/browser/payroll-profiles-configurable-rules-actual-browser.js',
             'tests/browser/hr-attendance-ocr-actual-app-browser-smoke.js',
             'tests/browser/finance-money-actual-app-browser-smoke.js',
             'tests/browser/freelance-shift-actual-app.js'

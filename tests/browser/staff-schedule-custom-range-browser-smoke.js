@@ -1217,7 +1217,7 @@ async function assertNoDuplicateDepartmentSubGroups(page) {
 }
 
 async function scheduleEmployeeRowCount(page) {
-    return page.locator('#scheduleBody tr:not(.dept-row):not(.sub-group-row):not(.schedule-health-empty-row)').count();
+    return page.locator('#scheduleBody [data-schedule-staff-row]').count();
 }
 
 async function assertScheduleGroupsCollapsedByDefault(page) {
@@ -1280,11 +1280,11 @@ async function assertScheduleGroupExpansionPersists(page) {
 async function assertScheduleSearchAutoExpandsGroups(page) {
     const searchTerm = await page.locator('[data-schedule-group-toggle]').first().getAttribute('data-schedule-group-toggle') || 'animator';
     await page.locator('#scheduleStaffSearch').fill(searchTerm);
-    await page.waitForFunction(() => document.querySelectorAll('#scheduleBody tr:not(.dept-row):not(.sub-group-row):not(.schedule-health-empty-row)').length > 0);
+    await page.waitForFunction(() => document.querySelectorAll('#scheduleBody [data-schedule-staff-row]').length > 0);
     assert.ok(await scheduleEmployeeRowCount(page) > 0, 'active search reveals matching rows even when groups are collapsed');
     assert.ok((await page.locator('[data-schedule-group-toggle][aria-expanded="true"]').count()) > 0, 'active search marks matching groups expanded for accessibility');
     await page.locator('#scheduleStaffSearch').fill('');
-    await page.waitForFunction(() => document.querySelectorAll('#scheduleBody tr:not(.dept-row):not(.sub-group-row):not(.schedule-health-empty-row)').length === 0);
+    await page.waitForFunction(() => document.querySelectorAll('#scheduleBody [data-schedule-staff-row]').length === 0);
 }
 
 async function expandAllScheduleGroups(page) {
@@ -1294,7 +1294,7 @@ async function expandAllScheduleGroups(page) {
         await collapsed.first().click();
     }
     await page.waitForFunction(() => document.querySelectorAll('[data-schedule-group-toggle][aria-expanded="false"]').length === 0);
-    await page.waitForFunction(() => document.querySelectorAll('#scheduleBody tr:not(.dept-row):not(.sub-group-row):not(.schedule-health-empty-row)').length > 0);
+    await page.waitForFunction(() => document.querySelectorAll('#scheduleBody [data-schedule-staff-row]').length > 0);
 }
 
 async function collapseAllScheduleGroups(page) {

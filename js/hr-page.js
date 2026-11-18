@@ -6817,6 +6817,22 @@ async function recoverStaffCreation(kind) {
     return result?.success ? { result, operationKey: attempt.key, acknowledge: () => writeStaffCreationAttempt(storageKey, null) } : null;
 }
 
+function completeStaffCreationAttempt(kind, body, result, storageKey, attempt) {
+    if (kind === 'onboarding' && body.staff?.mode === 'existing') {
+        const resultStaffId = Number(result.receipt?.staff?.id ?? result.staff?.id);
+        if (resultStaffId !== Number(body.staff.id)) {
+            return {
+                result: {
+                    success: false,
+                    code: 'ACCOUNT_ONBOARDING_OTHER_STAFF',
+                    error: 'Знайдено результат для іншої картки. Відкрийте картку, з якої починали видачу доступу, або центр акаунтів.'
+                }
+            };
+        }
+    }
+    return { result, operationKey: attempt.key, acknowledge: () => writeStaffCreationAttempt(storageKey, null) };
+}
+
 async function submitStaffCreation(kind, initialBody, isCurrent) {
     const storageKey = staffCreationStorageKey(kind);
     const { submit } = STAFF_CREATION_ENDPOINTS[kind];
@@ -6834,7 +6850,7 @@ async function submitStaffCreation(kind, initialBody, isCurrent) {
             new TextEncoder().encode(JSON.stringify(operationBody))))).map(byte => byte.toString(16).padStart(2, '0')).join('');
         if (attempt) {
             const recovered = await lookupStaffCreationAttempt(kind, attempt);
-            if (recovered?.success) return { result: recovered, operationKey: attempt.key, acknowledge: () => writeStaffCreationAttempt(storageKey, null) };
+            if (recovered?.success) return completeStaffCreationAttempt(kind, body, recovered, storageKey, attempt);
             if (recovered?.status === 403) return { result: recovered };
             if (attempt.fingerprint !== fingerprint) {
                 return { result: { success: false, error: 'Попереднє збереження ще не підтверджено. Відновіть ті самі дані й повторіть перевірку. Нове створення заблоковане.' } };
@@ -6848,11 +6864,11 @@ async function submitStaffCreation(kind, initialBody, isCurrent) {
         let result = await crmApiFetch(submit, {
             method: 'POST', body, headers: { 'Idempotency-Key': attempt.key }
         }).catch(() => null);
-        if (result?.success) return { result, operationKey: attempt.key, acknowledge: () => writeStaffCreationAttempt(storageKey, null) };
+        if (result?.success) return completeStaffCreationAttempt(kind, body, result, storageKey, attempt);
         if (!result || result.status >= 500 || [408, 429].includes(result.status)
             || result.code === 'STAFF_OPERATION_PAYLOAD_CHANGED') {
             const recovered = await lookupStaffCreationAttempt(kind, attempt);
-            if (recovered?.success) return { result: recovered, operationKey: attempt.key, acknowledge: () => writeStaffCreationAttempt(storageKey, null) };
+            if (recovered?.success) return completeStaffCreationAttempt(kind, body, recovered, storageKey, attempt);
             return { result: { success: false, error: 'Результат збереження ще не підтверджено. Повторіть із тими самими даними, щоб перевірити попередню операцію.' } };
         }
         if (result.status === 403) return { result };
@@ -9044,7 +9060,9 @@ function bindAccountOnboardingControls() {
         submit: submitAccountOnboarding,
         close: requestCloseAccountOnboardingWizard
     });
-    accountOnboardingEl('accountOnboardingStaffId')?.addEventListener('change', event => prefillAccountOnboardingFromStaff(event.target.value));
+    accountOnboardingEl('accountOnboardingStaffId')?.addEventListener('change', event => {
+        if (!accountOnboardingState.submitting) prefillAccountOnboardingFromStaff(event.target.value);
+    });
     accountOnboardingEl('accountOnboardingReceipt')?.addEventListener('click', async event => {
         const verify = event.target.closest('[data-account-onboarding-verify-access]');
         if (verify && accountOnboardingState.operationKey) {
@@ -9069,10 +9087,9 @@ function bindAccountOnboardingControls() {
             return;
         }
         if (event.target.closest('[data-account-onboarding-copy]') && accountOnboardingState.credential) {
-            const credential = accountOnboardingState.credential;
-            await copyStaffAccountFormCredential(
-                credential, accountOnboardingState.businessLabel, accountOnboardingEl('accountOnboardingName').value.trim()
-            );
+            const { credential, receipt, result, businessLabel } = accountOnboardingState;
+            const accountName = receipt?.account?.name || result?.user?.name;
+            await copyStaffAccountFormCredential(credential, businessLabel, accountName);
             return;
         }
         if (event.target.closest('[data-account-onboarding-finish]')) closeAccountOnboardingWizard();

@@ -567,8 +567,10 @@ async function runActor(browser, pool, actor, existingAccountId) {
             assert.equal((await password.inputValue()).length, 16);
             await page.locator('#accountOnboardingUsername').fill(newUsername);
             assert.equal(await page.locator('#accountOnboardingStaffId').inputValue(), String(recoveryStaff.id));
+            let recoveryKey;
             await page.route('**/api/users/onboarding', async route => {
                 if (route.request().method() !== 'POST') return route.continue();
+                recoveryKey = route.request().headers()['idempotency-key'];
                 const committed = await route.fetch();
                 assert.equal(committed.status(), 200);
                 await route.abort('failed');
@@ -586,6 +588,90 @@ async function runActor(browser, pool, actor, existingAccountId) {
             assert.match(await receipt.textContent(), new RegExp(`#${recovery.receipt.staff.id}`));
             const { rows: recoveredStaff } = await pool.query('SELECT id FROM staff WHERE name = $1', [newName]);
             assert.deepEqual(recoveredStaff, [{ id: recovery.receipt.staff.id }]);
+            await page.locator('[data-account-onboarding-finish]').click();
+
+
+            const { rows: [nextStaff] } = await pool.query(
+                "INSERT INTO staff (name, department, position, role_type) VALUES ($1, 'animators', 'QA Animator', 'animator') RETURNING id, name",
+                ['QA Clipboard ' + runId]
+            );
+            await page.evaluate(key => writeStaffCreationAttempt(staffCreationStorageKey('onboarding'), {
+                key, fingerprint: 'synthetic-interrupted-previous-attempt'
+            }), recoveryKey);
+            await page.goto(new URL('/hr?employee=' + nextStaff.id, target).href);
+            await profile.getByRole('button', { name: 'Створити CRM-акаунт', exact: true }).click();
+            await staffPicker.waitFor({ state: 'attached' });
+            const onboardingForm = page.locator('#accountOnboardingForm');
+            const accountName = page.locator('#accountOnboardingName');
+            await onboardingForm.waitFor({ state: 'visible' });
+            assert.equal(await staffPicker.inputValue(), String(nextStaff.id));
+            await page.locator('#accountOnboardingUsername').fill('qa_clipboard_' + runId);
+            let otherCardPosts = 0;
+            const countOtherCardPosts = request => {
+                if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/users/onboarding') otherCardPosts++;
+            };
+            page.on('request', countOtherCardPosts);
+            await page.locator('#accountOnboardingSubmit').click();
+            await page.waitForFunction(() => document.getElementById('accountOnboardingStatus')?.textContent.includes('Знайдено результат для іншої картки.'));
+            page.off('request', countOtherCardPosts);
+            assert.equal(otherCardPosts, 0);
+            assert.equal(await receipt.isVisible(), false);
+            assert.equal(await onboardingForm.evaluate(el => el.inert), false);
+            assert.equal(await page.evaluate(() => readStaffCreationAttempt(staffCreationStorageKey('onboarding')).key), recoveryKey);
+
+            await page.goto(new URL('/hr?tab=accounts', target).href);
+            await centerAction.click();
+            await receipt.getByText('Збережену операцію знайдено.', { exact: false }).waitFor();
+            assert.match(await receipt.textContent(), new RegExp('#' + recoveryStaff.id));
+            await page.locator('[data-account-onboarding-finish]').click();
+
+            await centerAction.click();
+            await staffPicker.selectOption(String(nextStaff.id));
+            await page.locator('#accountOnboardingUsername').fill('qa_clipboard_' + runId);
+            let unblock;
+            let markDispatched;
+            const requestGate = new Promise(resolve => { unblock = resolve; });
+            const dispatched = new Promise(resolve => { markDispatched = resolve; });
+            await page.route('**/api/users/onboarding', async route => {
+                markDispatched();
+                await requestGate;
+                return route.continue();
+            }, { times: 1 });
+            const issuance = waitForResponse(page, 'POST', '/api/users/onboarding');
+            try {
+                await page.locator('#accountOnboardingSubmit').click();
+                await dispatched;
+                assert.equal(await onboardingForm.evaluate(el => el.inert), true);
+                const closeControl = page.locator('#accountOnboardingClose');
+                await closeControl.focus();
+                await page.keyboard.press('Shift+Tab');
+                assert.equal(await closeControl.evaluate(el => el === document.activeElement), true);
+                // A late programmatic change must be ignored while the form is saving.
+                await staffPicker.evaluate((el, staleId) => {
+                    el.value = String(staleId);
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                }, unsupportedStaff.id);
+                assert.equal(await accountName.inputValue(), nextStaff.name);
+            } finally {
+                unblock();
+            }
+            assert.equal((await issuance).status(), 200);
+            const copy = receipt.locator('[data-account-onboarding-copy]');
+            await copy.waitFor({ state: 'visible' });
+            await page.evaluate(() => {
+                Object.defineProperty(navigator, 'clipboard', {
+                    configurable: true, value: { writeText: async text => { window.qaCopiedAccount = text; } }
+                });
+                document.getElementById('accountOnboardingName').value = 'QA stale draft';
+            });
+            await copy.click();
+            const copiedCorrectly = await page.evaluate(expected => {
+                const value = window.qaCopiedAccount;
+                delete window.qaCopiedAccount;
+                delete navigator.clipboard;
+                return value?.includes(expected) === true && !value.includes('QA stale draft');
+            }, nextStaff.name);
+            assert.equal(copiedCorrectly, true);
             await page.locator('[data-account-onboarding-finish]').click();
 
             const professionKey = 'qa_kitchen_' + runId;

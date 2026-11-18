@@ -8934,45 +8934,79 @@ function closeScheduleAccountForm({ force = false } = {}) {
 async function refreshScheduleAccountLinks(context, rowSelector) {
     await Promise.allSettled([fetchAllUsers(), fetchLinkStatus()]);
     if (context !== staffScheduleRequestContext()) return;
-    const restoreFocus = document.activeElement.matches(rowSelector);
+    const restoreFocus = rowSelector && document.activeElement.matches(rowSelector);
     renderLinkStatsBar();
     renderSchedule();
     if (restoreFocus) document.querySelector(rowSelector)?.focus({ preventScroll: true });
 }
 
 // Bulk create accounts
+let bulkAccountRun = null;
+
 async function handleBulkCreate() {
+    const context = staffScheduleRequestContext();
+    if (bulkAccountRun?.context !== context) bulkAccountRun = null;
+    if (bulkAccountRun?.busy) return;
+
     const unlinked = StaffState.linkStats?.unlinked || 0;
-    if (unlinked === 0) {
+    if (!bulkAccountRun && unlinked === 0) {
         showNotification('Всі працівники вже мають акаунти', 'success');
         return;
     }
 
-    const access = await loadStaffAccountCreationAccess();
-    if (!access) return;
-    const detail = access.pendingMembership
-        ? 'Акаунти очікуватимуть призначення доступу до бізнесу.'
-        : `Бізнес: ${access.businessLabel}. Паролі будуть доступні для акаунтів із підтвердженим доступом.`;
-    if (!await confirmModal(`Створити акаунти для ${unlinked} працівників?\n\n${detail}`, { type: 'warning', okText: 'Створити' })) return;
-
-    showNotification('Створюємо акаунти...');
+    const run = bulkAccountRun ||= {
+        context, batch: null, key: crypto.randomUUID(), access: null,
+        result: { created: [], skipped: [], replayed: false }
+    };
+    const isCurrent = () => bulkAccountRun === run && context === staffScheduleRequestContext();
+    run.busy = true;
     try {
-        const data = await submitStaffAccountCreation('/api/staff/bulk-create-accounts', {
-            activateMembership: access.activateMembership
-        });
-
-        if (data.success) {
-            StaffState.bulkResults = { ...data, businessLabel: access.businessLabel };
-            showBulkResults(StaffState.bulkResults);
-            await fetchLinkStatus();
-            renderLinkStatsBar();
-            renderSchedule();
-        } else {
-            showNotification(data.error || 'Помилка створення', 'error');
+        if (!run.access) {
+            const access = await loadStaffAccountCreationAccess();
+            if (!access || !isCurrent()) return;
+            const detail = access.pendingMembership
+                ? 'Акаунти очікуватимуть призначення доступу до бізнесу.'
+                : `Бізнес: ${access.businessLabel}. Паролі будуть доступні для акаунтів із підтвердженим доступом.`;
+            if (!await confirmModal(`Створити акаунти для ${unlinked} працівників?\n\n${detail}`, { type: 'warning', okText: 'Створити' })
+                || !isCurrent()) return;
+            run.access = access;
+            run.result.businessLabel = access.businessLabel;
         }
-    } catch (err) {
-        showNotification('Помилка мережі', 'error');
+
+        showNotification('Створюємо акаунти порціями…');
+        while (isCurrent()) {
+            const data = await submitStaffAccountCreation('/api/staff/bulk-create-accounts', {
+                activateMembership: run.access.activateMembership, batch: run.batch
+            }, run.key);
+            if (!isCurrent()) return;
+            if (!data.success) {
+                showBulkAccountRunResult(run, data.error || 'Не вдалося завершити поточну порцію.');
+                return;
+            }
+            run.result.created.push(...data.created);
+            run.result.skipped.push(...data.skipped);
+            run.result.replayed ||= data.replayed === true;
+            if (!data.nextBatch) {
+                bulkAccountRun = null;
+                showBulkAccountRunResult(run);
+                return;
+            }
+            run.batch = data.nextBatch;
+            run.key = crypto.randomUUID();
+        }
+    } catch {
+        if (isCurrent() && run.access) showBulkAccountRunResult(run, 'Не вдалося підтвердити результат поточної порції.');
+    } finally {
+        run.busy = false;
+        if (bulkAccountRun === run && !run.access) bulkAccountRun = null;
     }
+}
+
+function showBulkAccountRunResult(run, error = '') {
+    run.result.error = error;
+    StaffState.bulkResults = run.result;
+    showBulkResults(run.result);
+    void refreshScheduleAccountLinks(run.context);
 }
 
 function showBulkResults(data) {
@@ -8980,11 +9014,14 @@ function showBulkResults(data) {
     const created = Array.isArray(data.created) ? data.created : [];
     const skipped = Array.isArray(data.skipped) ? data.skipped : [];
     let html = `<p style="margin:0 0 8px;font-size:14px;font-weight:700">Створено: ${created.length} акаунтів</p>`;
-    if (data.replayed) html += '<p>Знайдено збережений результат. За потреби видайте пароль повторно в керуванні акаунтом.</p>';
-    else if (created.some(item => item.credential)) html += '<p>Початкові паролі показуються один раз.</p>';
+    if (data.error) {
+        html += `<p role="alert">${escapeHtml(data.error)}</p><button type="button" class="btn-page-secondary" data-bulk-accounts-resume>Повторити порцію</button>`;
+    }
+    if (data.replayed) html += '<p>Відновлені результати не містять паролів. За потреби видайте пароль повторно в керуванні акаунтом.</p>';
+    if (created.some(item => item.credential)) html += '<p>Початкові паролі показуються один раз.</p>';
 
     if (skipped.length > 0) {
-        html += `<p style="margin:0 0 8px;font-size:12px;color:var(--gray-500)">Пропущено: ${skipped.length} (дублі або вже привʼязані)</p>`;
+        html += `<p style="margin:0 0 8px;font-size:12px;color:var(--gray-500)">Пропущено: ${skipped.length}</p>`;
     }
 
     html += `<table class="bulk-results-table">
@@ -9013,6 +9050,7 @@ function showBulkResults(data) {
 
 function closeBulkResults() {
     document.getElementById('bulkResultsOverlay')?.classList.remove('visible');
+    for (const item of StaffState.bulkResults?.created || []) item.credential = null;
     StaffState.bulkResults = null;
     document.getElementById('bulkResultsBody')?.replaceChildren();
 }
@@ -9474,6 +9512,7 @@ function clearStaffScheduleAccessState() {
     void closeFillWeekModal(true);
     closeScheduleAccountForm({ force: true });
     closeLinkModal();
+    bulkAccountRun = null;
     closeBulkResults();
     Object.assign(StaffState, {
         staff: [], professions: [], departments: {}, displayGroups: [], scheduleCategoryContract: null,
@@ -9790,6 +9829,9 @@ async function initStaffSchedulePage(options = {}) {
 
         // Bulk results modal
         document.getElementById('bulkCloseBtn')?.addEventListener('click', closeBulkResults);
+        document.getElementById('bulkResultsBody')?.addEventListener('click', event => {
+            if (event.target.closest('[data-bulk-accounts-resume]')) void handleBulkCreate();
+        });
         document.getElementById('bulkCopyBtn')?.addEventListener('click', copyBulkResults);
         document.getElementById('bulkCsvBtn')?.addEventListener('click', downloadBulkCsv);
         document.getElementById('bulkPdfBtn')?.addEventListener('click', downloadBulkPdf);

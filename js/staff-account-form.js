@@ -116,6 +116,7 @@ function hideStaffAccountForm() {
     overlay.classList.add('hidden');
     overlay.setAttribute('aria-hidden', 'true');
     const form = staffAccountField('Form');
+    form.inert = false;
     form.reset();
     form.querySelectorAll('[aria-invalid="true"]').forEach(element => element.removeAttribute('aria-invalid'));
     staffAccountField('Password').type = 'password';
@@ -166,7 +167,7 @@ function bindStaffAccountForm({ getState, submit, close }) {
         if (event.key !== 'Tab') return;
         const focusable = Array.from(overlay.querySelectorAll('button, input, select, a[href], summary, [tabindex="0"]')).filter(element => {
             return !element.matches(':disabled') && element.getClientRects().length
-                && !element.closest('[hidden], .hidden');
+                && !element.closest('[hidden], .hidden, [inert]');
         });
         if (!focusable.length) return;
         const first = focusable[0];
@@ -195,8 +196,10 @@ async function confirmStaffAccountFormClose(state) {
 }
 
 async function submitStaffAccountForm(state, isCurrent, request, complete) {
+    const form = staffAccountField('Form');
     const submit = staffAccountField('Submit');
     state.submitting = true;
+    form.inert = true;
     submit.disabled = true;
     setStaffAccountFormStatus('Зберігаємо дані та створюємо CRM-акаунт…', 'progress');
     try {
@@ -212,6 +215,7 @@ async function submitStaffAccountForm(state, isCurrent, request, complete) {
     } finally {
         if (isCurrent()) {
             state.submitting = false;
+            form.inert = false;
             submit.disabled = false;
         }
     }

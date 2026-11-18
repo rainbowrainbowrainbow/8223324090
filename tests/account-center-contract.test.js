@@ -302,3 +302,40 @@ test('HR onboarding full-stack browser smoke uses deterministic app readiness an
     assert.match(HR_FULLSTACK_BROWSER_SMOKE, /return window\.loadVacancies\(\)/);
     assert.doesNotMatch(HR_FULLSTACK_BROWSER_SMOKE, /selectOption\('all'\)/);
 });
+
+test('bulk account recovery resumes the failed page with the same key and retains completed rows', async () => {
+    const nextBatch = { afterStaffId: 12, throughStaffId: 24 };
+    const calls = [];
+    const reports = [];
+    let nextKey = 0;
+    let confirmations = 0;
+    const context = vm.createContext({
+        StaffState: { linkStats: { unlinked: 24 }, bulkResults: null },
+        staffScheduleRequestContext: () => 'synthetic-park-session',
+        crypto: { randomUUID: () => 'operation-' + ++nextKey },
+        loadStaffAccountCreationAccess: async () => ({ activateMembership: true, businessLabel: 'Synthetic Park' }),
+        confirmModal: async () => { confirmations++; return true; },
+        showNotification() {},
+        showBulkResults: result => reports.push(JSON.parse(JSON.stringify(result))),
+        refreshScheduleAccountLinks: async () => {},
+        submitStaffAccountCreation: async (_path, payload, key) => {
+            calls.push({ payload, key });
+            if (calls.length === 1) return { success: true, created: [{staffId: 12}], skipped: [], nextBatch };
+            if (calls.length === 2) return { success: false, error: 'Unconfirmed page' };
+            return { success: true, replayed: true, created: [{staffId: 24, credential: null}], skipped: [], nextBatch: null };
+        }
+    });
+    vm.runInContext(between(STAFF_PAGE_CODE, 'let bulkAccountRun = null;', 'function showBulkResults(data)'), context);
+    await context.handleBulkCreate();
+    await context.handleBulkCreate();
+    assert.equal(confirmations, 1);
+    assert.equal(calls[0].payload.batch, null);
+    assert.equal(calls[1].payload.batch, nextBatch);
+    assert.equal(calls[2].payload.batch, nextBatch);
+    assert.notEqual(calls[0].key, calls[1].key);
+    assert.equal(calls[1].key, calls[2].key);
+    assert.equal(reports[0].error, 'Unconfirmed page');
+    assert.equal(reports[1].error, '');
+    assert.deepEqual(reports[1].created.map(row => row.staffId), [12, 24]);
+    assert.equal(reports[1].created[1].credential, null);
+});

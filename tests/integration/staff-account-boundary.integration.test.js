@@ -710,4 +710,64 @@ test('staff account operations enforce Park ownership and payroll/operation perm
         assert.equal((await pool.query('SELECT 1 FROM staff_offboarding_events WHERE staff_id = $1', [person.id])).rowCount, 2);
         assert.equal(await completed(), true);
     });
+
+    await t.test('bulk account issuance bounds each request and resumes an exact roster without reissuing credentials', async () => {
+        const { rows: fixtures } = await pool.query(`
+            INSERT INTO staff (name, department, position, role_type, unique_person_key)
+            SELECT $1 || '-' || lpad(n::text, 2, '0'), 'animators', 'QA Animator', 'animator',
+                CASE WHEN n = 1 THEN $1 || '.park'
+                     WHEN n = 26 THEN $1 || '.second' ELSE NULL END
+            FROM generate_series(1, 26) n ORDER BY n
+            RETURNING id`, [marker + '-bulk-page']);
+        const path = '/api/staff/bulk-create-accounts';
+        const create = (batch, key = randomUUID()) => api(path, {
+            actor: owner, method: 'POST', headers: { 'Idempotency-Key': key },
+            body: { activateMembership: true, ...(batch !== undefined ? { batch } : {}) }
+        });
+        const legacy = await create(undefined);
+        assert.equal(legacy.status, 409);
+        assert.equal(legacy.data.code, 'BULK_ACCOUNT_BATCH_REQUIRED');
+        assert.equal((await pool.query('SELECT 1 FROM employee_profiles WHERE staff_id=ANY($1::int[]) AND user_id IS NOT NULL',
+            [fixtures.map(row => row.id)])).rowCount, 0);
+
+        const key = randomUUID();
+        const first = await create(null, key);
+        assert.equal(first.status, 200, first.data.code);
+        assert.ok(first.data.nextBatch);
+        const replay = await create(null, key);
+        assert.equal(replay.status, 200);
+        assert.equal(replay.data.replayed, true);
+        assert.deepEqual(replay.data.nextBatch, first.data.nextBatch);
+        assert.ok(replay.data.created.every(row => row.credential === null));
+        assert.deepEqual(replay.data.created.map(row => row.staffId).sort(), first.data.created.map(row => row.staffId).sort());
+
+        const { rows: [late] } = await pool.query(
+            "INSERT INTO staff (name, department, position, role_type) VALUES ($1, 'animators', 'QA Animator', 'animator') RETURNING id",
+            [marker + '-after-bulk-snapshot']
+        );
+        const pages = [first.data];
+        let batch = first.data.nextBatch;
+        while (batch) {
+            const page = await create(batch);
+            assert.equal(page.status, 200, page.data.code);
+            pages.push(page.data);
+            if (page.data.nextBatch) {
+                assert.ok(page.data.nextBatch.afterStaffId > batch.afterStaffId);
+                assert.equal(page.data.nextBatch.throughStaffId, batch.throughStaffId);
+            }
+            batch = page.data.nextBatch;
+        }
+        assert.ok(pages.length >= 3);
+        assert.ok(pages.every(page => page.created.length + page.skipped.length <= 12));
+        const created = pages.flatMap(page => page.created);
+        const skipped = pages.flatMap(page => page.skipped);
+        assert.equal(new Set(created.map(row => row.staffId)).size, created.length);
+        assert.ok(created.every(row => row.businessAccessReady && row.credential?.password));
+        const [duplicate] = fixtures.slice(-1);
+        assert.ok(skipped.some(row => row.staffId === duplicate.id && row.reason === 'duplicate_person_key'));
+        const testedIds = new Set(fixtures.slice(0, -1).map(row => row.id));
+        assert.equal(created.filter(row => testedIds.has(row.staffId)).length, testedIds.size);
+        const deferred = await pool.query('SELECT 1 FROM employee_profiles WHERE staff_id=ANY($1::int[]) AND user_id IS NOT NULL', [[late.id, duplicate.id]]);
+        assert.equal(deferred.rowCount, 0);
+    });
 });

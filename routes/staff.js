@@ -2780,19 +2780,36 @@ router.post('/:id/unlink', requireAction('manage_accounts'), async (req, res) =>
     }
 });
 
+const BULK_ACCOUNT_BATCH_SIZE = 12;
+
 // POST /api/staff/bulk-create-accounts — create one-time credential packets for unlinked staff
 router.post('/bulk-create-accounts', requireAction('manage_accounts'), async (req, res) => {
     const activateMembership = req.body?.activateMembership;
     if (activateMembership !== undefined && typeof activateMembership !== 'boolean') {
         return res.status(400).json({ success: false, error: 'Некоректний режим надання доступу' });
     }
+    const batch = req.body?.batch;
+    if (batch !== undefined && batch !== null && (
+        typeof batch !== 'object' || Array.isArray(batch)
+        || !Number.isInteger(batch.afterStaffId) || !Number.isInteger(batch.throughStaffId)
+        || batch.afterStaffId < 1 || batch.throughStaffId <= batch.afterStaffId || batch.throughStaffId > 2_147_483_647
+    )) {
+        return res.status(400).json({ success: false, error: 'Некоректна порція створення акаунтів' });
+    }
+    const cursor = batch == null ? batch : { afterStaffId: batch.afterStaffId, throughStaffId: batch.throughStaffId };
+    const paginated = cursor !== undefined;
     const businessContext = DEFAULT_BUSINESS_CONTEXT;
     const client = await pool.connect();
     try {
         const operation = describeAccountCreationOperation(req, 'bulk_account_creation', {
-            businessContext, activateMembership: Boolean(activateMembership)
+            businessContext, activateMembership: Boolean(activateMembership),
+            ...(paginated ? { batch: cursor } : {})
         });
+        if (paginated && !operation) {
+            return res.status(400).json({ success: false, error: 'Для створення порціями потрібен ключ операції' });
+        }
         await client.query('BEGIN');
+        await client.query("SET LOCAL lock_timeout = '5s'");
         await lockOrganizationOwnership(client);
         const saved = await lockAccountCreationOperation(client, operation);
         if (saved) {
@@ -2810,37 +2827,58 @@ router.post('/bulk-create-accounts', requireAction('manage_accounts'), async (re
                     username: row.username, role: row.role, ...access, credential: null });
             }
             await client.query('COMMIT');
-            return res.json({ success: true, replayed: true, created, skipped: saved.skipped });
+            return res.json({
+                success: true, replayed: true, created, skipped: saved.skipped,
+                ...(paginated ? { nextBatch: saved.nextBatch ?? null } : {})
+            });
         }
 
-        // Find all active non-freelance staff without user accounts
-        const unlinked = await client.query(`
-            SELECT s.id, s.name, s.department, s.role_type, s.unique_person_key
-            FROM staff s
-            WHERE ${activeOperationalStaffWhere('s')}
-              AND s.is_freelance = false
-              AND NOT EXISTS (
-                  SELECT 1
-                  FROM employee_profiles ep
-                  WHERE ep.staff_id = s.id
-                    AND ep.user_id IS NOT NULL
-              )
-            ORDER BY s.department, s.name
-        `);
-
+        // The first page pins the roster boundary for all subsequent batches.
+        const throughStaffId = cursor?.throughStaffId ?? (await client.query(
+            'SELECT COALESCE(max(id), 0) AS id FROM staff'
+        )).rows[0].id;
+        const { rows: unlinked } = await client.query(`
+            WITH roster AS (
+                SELECT s.id, s.name, s.department, s.role_type, s.unique_person_key,
+                    NULLIF(regexp_replace(s.unique_person_key, '[.][A-Za-z0-9_]+$', ''), '') AS person_key,
+                    EXISTS (SELECT 1 FROM employee_profiles ep WHERE ep.staff_id = s.id AND ep.user_id IS NOT NULL) AS linked
+                FROM staff s
+                WHERE ${activeOperationalStaffWhere('s')}
+                  AND s.is_freelance = false
+                  AND s.id <= $1
+            ),
+            ranked AS (
+                SELECT *,
+                    row_number() OVER (PARTITION BY person_key ORDER BY department, name, id) AS person_rank,
+                    bool_or(linked) OVER (PARTITION BY person_key) AS person_linked
+                FROM roster
+            )
+            SELECT id, name, department, role_type, unique_person_key,
+                person_key IS NOT NULL AND (person_rank > 1 OR person_linked) AS duplicate_person
+            FROM ranked
+            WHERE NOT linked AND id > $2
+            ORDER BY CASE WHEN $4::boolean THEN id END, department, name, id
+            LIMIT $3
+        `, [throughStaffId, cursor?.afterStaffId ?? 0, BULK_ACCOUNT_BATCH_SIZE + 1, paginated]);
+        const hasMore = unlinked.length > BULK_ACCOUNT_BATCH_SIZE;
+        if (hasMore && !paginated) {
+            throw Object.assign(new Error('Для великого списку оновіть сторінку й повторіть створення порціями.'),
+                { statusCode: 409, code: 'BULK_ACCOUNT_BATCH_REQUIRED' });
+        }
+        const batchRows = unlinked.slice(0, BULK_ACCOUNT_BATCH_SIZE);
+        const nextBatch = hasMore
+            ? { afterStaffId: batchRows.at(-1).id, throughStaffId }
+            : null;
         const created = [];
         const createdUserIds = [];
         const skipped = [];
-        const seenPersonKeys = new Set();
 
-        for (const staff of unlinked.rows) {
-            // Skip duplicates (same person in multiple departments)
-            const personKey = staff.unique_person_key?.replace(/\.\w+$/, ''); // strip .mgr suffix
-            if (personKey && seenPersonKeys.has(personKey)) {
+        for (const staff of batchRows) {
+            if (res.headersSent || res.destroyed) throw new Error('bulk_account_request_closed');
+            if (staff.duplicate_person) {
                 skipped.push({ staffId: staff.id, name: staff.name, reason: 'duplicate_person_key', label: 'Дубль: акаунт створюється тільки для основного staff-профілю' });
                 continue;
             }
-            if (personKey) seenPersonKeys.add(personKey);
 
             const role = staffRoleToAccountRole(staff.role_type);
             if (!role) {
@@ -2884,10 +2922,6 @@ router.post('/bulk-create-accounts', requireAction('manage_accounts'), async (re
             const username = await uniqueUsername(client, suggestedUsername);
             const password = generateOneTimePassword();
             const passwordHash = await bcrypt.hash(password, 10);
-            const hashVerified = await bcrypt.compare(password, passwordHash);
-            if (!hashVerified) {
-                throw new Error('bulk_account_password_hash_verification_failed');
-            }
 
             const userResult = await client.query(
                 'INSERT INTO users (username, password_hash, role, name, password_changed_at) VALUES ($1, $2, $3, $4, NOW()) RETURNING id, username, name, role',
@@ -2943,14 +2977,17 @@ router.post('/bulk-create-accounts', requireAction('manage_accounts'), async (re
 
         await recordAccountCreationOperation(client, operation, {
             userIds: createdUserIds,
-            skipped: skipped.map(({ staffId, reason, label }) => ({ staffId, reason, label }))
+            skipped: skipped.map(({ staffId, reason, label }) => ({ staffId, reason, label })),
+            ...(paginated ? { nextBatch } : {})
         }, req);
+        if (res.headersSent || res.destroyed) throw new Error('bulk_account_request_closed');
         await client.query('COMMIT');
         log.info(`Bulk create: ${created.length} accounts created, ${skipped.length} skipped`);
         res.json({
             success: true,
             created,
             skipped,
+            ...(paginated ? { nextBatch } : {}),
             credentialsPolicy: {
                 oneTimeVisible: true,
                 oldPasswordsReadable: false,
@@ -2960,6 +2997,12 @@ router.post('/bulk-create-accounts', requireAction('manage_accounts'), async (re
         });
     } catch (err) {
         await client.query('ROLLBACK');
+        if (res.headersSent || res.destroyed) return;
+        if (err.code === '55P03') {
+            return res.status(503).json({
+                success: false, code: 'BULK_ACCOUNT_BUSY', error: 'Інша операція з акаунтами ще триває. Повторіть цю порцію.'
+            });
+        }
         log.error('POST /staff/bulk-create-accounts error', err);
         const status = err.statusCode || err.status;
         res.status(status || 500).json({ success: false, error: status ? err.message : 'Помилка сервера', ...(status && err.code ? { code: err.code } : {}) });

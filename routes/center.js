@@ -1150,7 +1150,8 @@ router.get('/operations/today', async (req, res) => {
                     date,
                     deadline,
                     created_at,
-                    updated_at
+                    updated_at,
+                    business_context
                 FROM tasks
                 WHERE COALESCE(status, 'todo') NOT IN ('done', 'completed', 'cancelled', 'archived')
                   AND archived_at IS NULL
@@ -1284,6 +1285,7 @@ router.get('/operations/today', async (req, res) => {
         const unconfirmedBookings = bookings.filter(booking => booking.status === 'preliminary');
         const openTasks = tasksRes.rows.map(row => ({
             id: row.id,
+            businessContext: row.business_context,
             title: row.title,
             status: row.status || 'todo',
             priority: row.priority || 'normal',
@@ -1340,7 +1342,7 @@ router.get('/operations/today', async (req, res) => {
                 { bookingId: booking.id }
             )),
             ...unconfirmedBookings.slice(0, 8).map(booking => operationsIssue('booking_unconfirmed', 'warning', `Не підтверджено: ${booking.label}`, [booking.time, booking.clientName].filter(Boolean).join(' · '), { bookingId: booking.id })),
-            ...openTasks.filter(task => task.isOverdue).slice(0, 8).map(task => operationsIssue('task_overdue', 'critical', `Прострочена задача: ${task.title}`, task.assignedTo || 'без відповідального', { taskId: task.id })),
+            ...openTasks.filter(task => task.isOverdue).slice(0, 8).map(task => operationsIssue('task_overdue', 'critical', `Прострочена задача: ${task.title}`, task.assignedTo || 'без відповідального', { taskId: task.id, businessContext: task.businessContext })),
             ...pendingReports.filter(report => report.approvalStatus !== 'approved').slice(0, 8).map(report => operationsIssue('report_pending', 'warning', `Звіт #${report.id} потребує уваги`, report.category || report.status, { reportId: report.id }))
         ];
 

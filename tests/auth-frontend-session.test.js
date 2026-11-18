@@ -2789,6 +2789,149 @@ test('account/profile/staff surfaces do not block refresh-token bootstrap with l
     assert.match(HR_PAGE_CODE, /apiFetchWithAuthRetry\(path, request\)/);
 });
 
+for (const staleStatus of [200, 401, 403]) test(`verify drops a stale ${staleStatus} response after same-token business generation changes`, async () => {
+    const park = { id: 42, username: 'context.user', activeBusinessContext: 'event_genix' };
+    const dar = { ...park, activeBusinessContext: 'dar' };
+    let releaseFirst, calls = 0;
+    const { context, store } = loadApi(async () => {
+        calls++;
+        if (calls === 1) return new Promise(resolve => { releaseFirst = resolve; });
+        return response(200, { user: dar });
+    }, { pzp_token: 'same-access', pzp_refresh_token: 'same-refresh',
+        pzp_auth_session_generation: 'park-generation', pzp_current_user: JSON.stringify(park) });
+    const pending = context.apiVerifyToken();
+    await flushAsyncTurns();
+    store.set('pzp_auth_session_generation', 'dar-generation');
+    store.set('pzp_current_user', JSON.stringify(dar));
+    releaseFirst(response(staleStatus, { user: park, code: 'auth_session_revoked' }));
+    const result = await pending;
+    assert.equal(result?.activeBusinessContext, 'dar');
+    assert.equal(JSON.parse(store.get('pzp_current_user')).activeBusinessContext, 'dar');
+    assert.equal(store.get('pzp_token'), 'same-access');
+    assert.equal(store.get('pzp_refresh_token'), 'same-refresh');
+    assert.equal(calls, 2, 'retry uses the current shared session instead of publishing or clearing the stale one');
+});
+
+test('verify rechecks generation after deferred JSON decoding', async () => {
+    const park = { id: 42, username: 'context.user', activeBusinessContext: 'event_genix' };
+    const dar = { ...park, activeBusinessContext: 'dar' };
+    let decode, calls = 0;
+    const { context, store } = loadApi(async () => {
+        calls++;
+        if (calls !== 1) return response(200, { user: dar });
+        return { ok: true, status: 200, clone: () => ({ json: async () => ({}) }),
+            json: () => new Promise(resolve => { decode = resolve; }) };
+    }, { pzp_token: 'same-access', pzp_refresh_token: 'same-refresh',
+        pzp_auth_session_generation: 'park-generation', pzp_current_user: JSON.stringify(park) });
+    const pending = context.apiVerifyToken();
+    await flushAsyncTurns(30);
+    assert.equal(typeof decode, 'function');
+    store.set('pzp_auth_session_generation', 'dar-generation');
+    store.set('pzp_current_user', JSON.stringify(dar));
+    decode({ user: park });
+    assert.equal((await pending)?.activeBusinessContext, 'dar');
+    assert.equal(JSON.parse(store.get('pzp_current_user')).activeBusinessContext, 'dar');
+});
+
+test('verify resolves default-business identity through the requested server profile before publishing', async () => {
+    const park = { id: 42, username: 'context.user', role: 'manager', activeBusinessContext: 'event_genix', businessContextPolicy: {} };
+    const dar = { ...park, role: 'animator', activeBusinessContext: 'dar', actionDenylist: ['edit_tasks'] };
+    const calls = [];
+    const { context, store } = loadApi(async (url, options) => {
+        calls.push(url);
+        if (url === '/api/auth/verify?businessContext=dar') {
+            assert.equal(options.headers['X-Business-Context'], 'dar');
+            return response(200, { user: park });
+        }
+        assert.equal(url, '/api/auth/business-profile?businessContext=dar');
+        assert.equal(JSON.parse(store.get('pzp_current_user')).activeBusinessContext, 'dar', 'default identity must never be published as a context switch');
+        return response(200, { user: dar });
+    }, { pzp_token: 'same-access', pzp_refresh_token: 'same-refresh', pzp_auth_session_generation: 'dar-generation',
+        pzp_current_user: JSON.stringify({ ...dar, role: 'creator', permissions: { admin: true } }) });
+    context.window.location.search = '?businessContext=dar';
+    context.window.location.href = 'http://localhost/profile?tab=myday&open=42&businessContext=dar';
+    const result = await context.apiVerifyToken();
+    assert.equal(result.activeBusinessContext, 'dar');
+    assert.equal(result.role, 'animator', 'server profile, not cached privileges, supplies active business authorization');
+    assert.equal(result.permissions, undefined);
+    assert.equal(calls.length, 2);
+});
+
+test('a denied requested business profile cannot clear the valid session or grant its task access', async () => {
+    const park = { id: 42, username: 'context.user', role: 'manager', activeBusinessContext: 'event_genix', businessContextPolicy: {} };
+    const { context, store } = loadApi(async url => url === '/api/auth/verify?businessContext=dar'
+        ? response(200, { user: park }) : response(403, { error: 'Business denied' }), {
+        pzp_token: 'same-access', pzp_refresh_token: 'same-refresh', pzp_auth_session_generation: 'park-generation',
+        pzp_current_user: JSON.stringify(park)
+    });
+    context.window.location.search = '?businessContext=dar';
+    assert.equal(await context.apiVerifyToken(), null);
+    assert.equal(store.get('pzp_token'), 'same-access');
+    assert.equal(JSON.parse(store.get('pzp_current_user')).activeBusinessContext, 'event_genix');
+    assert.equal(context.getApiAuthSessionFailure().kind, 'transient');
+});
+
+test('verify rejects an obsolete URL business even before the shared generation changes', async () => {
+    const user = { id: 42, username: 'context.user', activeBusinessContext: 'dar', businessContextPolicy: {} };
+    let releaseFirst;
+    const calls = [];
+    const { context, store } = loadApi(async url => {
+        calls.push(url);
+        if (calls.length === 1) return new Promise(resolve => { releaseFirst = resolve; });
+        return response(200, { user: { ...user, activeBusinessContext: 'event_genix' } });
+    }, { pzp_token: 'same-access', pzp_refresh_token: 'same-refresh', pzp_auth_session_generation: 'same-generation',
+        pzp_current_user: JSON.stringify(user) });
+    context.window.location.search = '?businessContext=dar';
+    const pending = context.apiVerifyToken();
+    await flushAsyncTurns();
+    context.window.location.search = '?businessContext=event_genix';
+    releaseFirst(response(200, { user }));
+    assert.equal((await pending).activeBusinessContext, 'event_genix');
+    assert.equal(JSON.parse(store.get('pzp_current_user')).activeBusinessContext, 'event_genix');
+    assert.deepEqual(calls, ['/api/auth/verify?businessContext=dar', '/api/auth/verify?businessContext=event_genix']);
+});
+
+test('current-generation forbidden verify still terminates a revoked session', async () => {
+    const { context, store } = loadApi(async () => response(403, { code: 'auth_session_revoked' }), {
+        pzp_token: 'revoked-access', pzp_refresh_token: 'revoked-refresh',
+        pzp_auth_session_generation: 'current-generation', pzp_current_user: JSON.stringify({ id: 42, username: 'context.user' })
+    });
+    assert.equal(await context.apiVerifyToken(), null);
+    assert.equal(store.has('pzp_token'), false);
+    assert.equal(store.has('pzp_refresh_token'), false);
+    assert.equal(store.has('pzp_current_user'), false);
+    assert.equal(context.getApiAuthSessionFailure().kind, 'terminal');
+});
+
+test('scoped verify adopts its own token refresh without losing the requested business', async () => {
+    const user = { id: 42, username: 'context.user', activeBusinessContext: 'dar', businessContextPolicy: {} };
+    let verifies = 0;
+    const { context } = loadApi(async (url, options) => {
+        if (url === '/api/auth/refresh') return response(200, { accessToken: 'new-access', refreshToken: 'new-refresh', user });
+        assert.equal(url, '/api/auth/verify?businessContext=dar');
+        verifies++;
+        if (verifies === 1) return response(401, { error: 'expired' });
+        assert.equal(options.headers.Authorization, 'Bearer new-access');
+        return response(200, { user });
+    }, { pzp_token: 'old-access', pzp_refresh_token: 'old-refresh', pzp_auth_session_generation: 'dar-generation',
+        pzp_current_user: JSON.stringify(user) });
+    context.window.location.search = '?businessContext=dar';
+    assert.equal((await context.apiVerifyToken()).activeBusinessContext, 'dar');
+    assert.equal(verifies, 2);
+});
+
+test('verify cannot publish a different identity returned by context discovery', async () => {
+    const user = { id: 42, username: 'context.user', activeBusinessContext: 'event_genix', businessContextPolicy: {} };
+    const { context, store } = loadApi(async url => url.startsWith('/api/auth/verify')
+        ? response(200, { user }) : response(200, { user: { ...user, id: 99, username: 'another.user', activeBusinessContext: 'dar' } }), {
+        pzp_token: 'same-access', pzp_refresh_token: 'same-refresh', pzp_auth_session_generation: 'current-generation',
+        pzp_current_user: JSON.stringify(user)
+    });
+    context.window.location.search = '?businessContext=dar';
+    assert.equal(await context.apiVerifyToken(), null);
+    assert.equal(JSON.parse(store.get('pzp_current_user')).id, 42);
+});
+
 test('apiVerifyToken retries verify once after an expired stored token', async () => {
     const calls = [];
     const { context } = loadApi(async (url, options = {}) => {

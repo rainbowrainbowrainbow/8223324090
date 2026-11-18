@@ -2883,7 +2883,7 @@ async function createLeadAssistantFollowUpTask(conversationId, analysis, options
     created: !task.duplicateSkipped,
     task,
     analysis: effectiveAnalysis,
-    link: task?.id ? taskUrl(task.id) : null,
+    link: task?.id ? taskUrl(task.id, task) : null,
   };
 }
 

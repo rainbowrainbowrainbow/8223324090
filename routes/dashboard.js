@@ -481,7 +481,7 @@ async function buildUrgentTaskAlerts(user, businessScope, limit = 5) {
     const movementParam = params.push(URGENT_TASK_MOVEMENT_ACTION_TYPES);
     const limitParam = params.push(Math.max(1, Math.min(parseInt(limit, 10) || 5, 20)));
     const result = await pool.query(
-        `SELECT t.id, t.title, t.deadline, t.priority, t.status, t.owner_user_id,
+        `SELECT t.id, t.title, t.deadline, t.priority, t.status, t.owner_user_id, t.business_context,
                 t.assigned_to, t.owner, t.updated_at, t.created_at, t.snoozed_until,
                 t.next_notification_at, t.escalate_after,
                 u.name AS owner_name, u.username AS owner_username
@@ -523,7 +523,7 @@ async function buildUrgentTaskAlerts(user, businessScope, limit = 5) {
             icon: '🔥',
             title: `Термінова без руху: "${(row.title || '').slice(0, 48)}"`,
             message: 'Потрібен час виконання або перенесення, щоб задача не висіла без руху.',
-            link: taskUrl(row.id),
+            link: taskUrl(row.id, row),
             taskId: row.id,
             owner: task.ownerLabel || null,
             ownerState: task.ownerState || 'unassigned',
@@ -2468,7 +2468,7 @@ router.get('/alerts', async (req, res) => {
         const shiftBookingBusinessCondition = appendDashboardBusinessScope(shiftParams, businessScope, 'b');
         const [urgentAlerts, overdue, unconfirmed, lowStock, coldLeads, shiftCheck, controlCompletions] = await Promise.all([
             buildUrgentTaskAlerts(req.user, businessScope, 5),
-            pool.query(`SELECT t.id, t.title, t.deadline, t.priority, t.status, t.owner_user_id,
+            pool.query(`SELECT t.id, t.title, t.deadline, t.priority, t.status, t.owner_user_id, t.business_context,
                                t.assigned_to, t.owner, t.updated_at, t.created_at,
                                u.name AS owner_name, u.username AS owner_username
                         FROM tasks t
@@ -2495,7 +2495,7 @@ router.get('/alerts', async (req, res) => {
             const task = taskWidgetPayload([t])[0] || t;
             alerts.push({ id: `overdue_${t.id}`, level: 'warning', icon: '⚠️',
                 title: `Прострочена: "${(t.title || '').slice(0, 40)}"`,
-                link: taskUrl(t.id), taskId: t.id,
+                link: taskUrl(t.id, t), taskId: t.id,
                 owner: task.ownerLabel || null,
                 ownerState: task.ownerState || 'unassigned',
                 intelligence: task.intelligence || null,
@@ -2574,7 +2574,7 @@ async function broadcastAlerts() {
         overdue.rows.forEach(t => {
             alerts.push({ id: `overdue_${t.id}`, level: 'warning', icon: '⚠️',
                 title: `Прострочена: "${(t.title || '').slice(0, 40)}"`,
-                link: taskUrl(t.id), taskId: t.id,
+                link: taskUrl(t.id, t), taskId: t.id,
                 action: { label: '📋 Відкрити задачу', prompt: `Задача прострочена: "${t.title}". Що робимо?` }
             });
         });

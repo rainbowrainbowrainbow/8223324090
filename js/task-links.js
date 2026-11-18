@@ -23,7 +23,8 @@
         try {
             const url = new URL(value, origin);
             if (url.origin === 'null' || url.origin !== new URL(origin).origin || !/^\/tasks(?:\.html)?\/?$/.test(url.pathname)) return null;
-            const key = ['open', 'highlight', 'taskId'].find(name => url.searchParams.has(name));
+            // Keep existing alias precedence; task was emitted by Operations Center.
+            const key = ['open', 'highlight', 'taskId', 'task'].find(name => url.searchParams.has(name));
             if (!key) return null;
             const id = taskId(url.searchParams.get(key));
             if (!id) return '/profile?tab=myday&open=invalid';

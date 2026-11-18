@@ -15,6 +15,52 @@ const { inventory } = require('../../scripts/my-day-legacy-task-inventory');
 const { cancelledBookingAutoArchivePredicateSql } = require('../../services/taskLifecycle');
 const { buildMachineTaskControlMetaPatch, MACHINE_AUTO_ARCHIVE_POLICY_CANCELLED_BOOKING } = require('../../services/taskAutomationPolicy');
 
+test('task search and Operations Center retain each task context across Park and Dar links', {
+    skip: process.env.RUN_MY_DAY_PARK_INTEGRATION !== 'true'
+}, async () => {
+    assert.equal(process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER, 'true');
+    assertSafeIsolatedTestUrl(process.env.TEST_URL);
+    const token = await getToken();
+    const profile = await request('GET', '/api/auth/profile', undefined, token);
+    const owner = profile.data.user;
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: false });
+    const title = `Task context fixture ${randomBytes(6).toString('hex')}`;
+    try {
+        const { rows } = await pool.query(`
+            INSERT INTO tasks (title, status, priority, task_mode, visibility, owner_user_id, created_by, business_context, deadline)
+            SELECT $1, 'todo', 'urgent', 'personal', 'me_only', $2, $3, context, NOW() - INTERVAL '1 hour'
+            FROM unnest(ARRAY['event_genix', 'dar']) AS context RETURNING id, business_context`, [title, owner.id, owner.username]);
+        for (const row of rows) {
+            const search = await request('GET', `/api/search?q=${encodeURIComponent(title)}&businessContext=${row.business_context}`, undefined, token);
+            assert.equal(search.status, 200);
+            const match = search.data.results.tasks.find(task => task.id === row.id);
+            assert.ok(match, 'visible task is searchable');
+            const link = new URL(match.href, process.env.TEST_URL);
+            assert.equal(link.pathname, '/profile');
+            assert.equal(link.searchParams.get('businessContext'), row.business_context);
+            assert.equal(link.searchParams.get('open'), String(row.id));
+            const detail = await request('GET', `/api/tasks/${row.id}?businessContext=${row.business_context}`, undefined, token);
+            assert.equal(detail.status, 200);
+            const otherContext = row.business_context === 'dar' ? 'event_genix' : 'dar';
+            const mismatched = await request('GET', `/api/tasks/${row.id}?businessContext=${otherContext}`, undefined, token);
+            assert.ok([403, 404].includes(mismatched.status), 'adding context to links must not weaken task scope checks');
+        }
+        const operations = await request('GET', '/api/center/operations/today', undefined, token);
+        assert.equal(operations.status, 200);
+        for (const row of rows) {
+            const task = operations.data.openTasks?.find(task => task.id === row.id);
+            assert.ok(task, 'Operations Center includes the urgent fixture');
+            assert.equal(task.businessContext, row.business_context);
+            const incident = operations.data.incidents?.find(issue => issue.ref?.taskId === row.id);
+            assert.ok(incident, 'Operations Center includes the overdue fixture incident');
+            assert.equal(incident.ref.businessContext, row.business_context);
+        }
+    } finally {
+        await pool.query('DELETE FROM tasks WHERE title = $1 AND owner_user_id = $2', [title, owner.id]);
+        await pool.end();
+    }
+});
+
 test('park edition paginates all periods and disables legacy module writes', {
     skip: process.env.RUN_MY_DAY_PARK_INTEGRATION !== 'true'
 }, async () => {

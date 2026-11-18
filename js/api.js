@@ -1856,7 +1856,7 @@ async function hydrateCrmBusinessProfile(options = {}) {
         if (options.requireReady && payload.user?.accessContext?.status !== 'ready') {
             throw apiErrorFromPayload(payload, 'Цей бізнес недоступний для поточного акаунта');
         }
-        let user = payload.user ? mergeApiCurrentUser(payload.user) : options.user;
+        let user = payload.user ? mergeApiCurrentUser(payload.user, { sessionSnapshot }) : options.user;
         if (payload.user && !user) return null;
         if (user && options.user) {
             delete options.user.permissions;
@@ -4226,6 +4226,10 @@ function rememberApiAuthSession(data = {}, options = {}) {
 
 function mergeApiCurrentUser(user = null, options = {}) {
     if (!user) return user;
+    if (options.sessionSnapshot && !isApiAuthSessionSnapshotCurrent(options.sessionSnapshot)) {
+        markApiAuthSessionChanged('user-merge');
+        return null;
+    }
     let transition = null;
     try {
         const saved = JSON.parse(localStorage.getItem(CONFIG.STORAGE.CURRENT_USER) || '{}');
@@ -4701,16 +4705,23 @@ async function apiVerifyToken(sessionChangeRetry = 0) {
         return null;
     }
     let verifiedRefreshToken = localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY);
+    let verifySession = captureApiAuthSessionSnapshot();
+    let verifyBusinessHeaders = apiAuthBusinessContextHeaders();
+    const verifyUrl = () => `${API_BASE}/auth/verify${verifyBusinessHeaders['X-Business-Context']
+        ? `?businessContext=${encodeURIComponent(verifyBusinessHeaders['X-Business-Context'])}` : ''}`;
+    const isVerifySessionCurrent = () => getStoredAuthToken() === token
+        && localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY) === verifiedRefreshToken
+        && isApiAuthSessionSnapshotCurrent(verifySession)
+        && apiAuthBusinessContextHeaders()['X-Business-Context'] === verifyBusinessHeaders['X-Business-Context'];
     try {
-        let response = await apiNetworkFetch(`${API_BASE}/auth/verify`, {
-            headers: { 'Authorization': `Bearer ${token}`, ...apiAuthBusinessContextHeaders() }
+        let response = await apiNetworkFetch(verifyUrl(), {
+            headers: { 'Authorization': `Bearer ${token}`, ...verifyBusinessHeaders }
         });
         if (getActiveApiAuthTransitionMarker()) {
             setApiAuthSessionFailure('transient', { stage: 'verify', reason: 'session-transition' });
             return null;
         }
-        if (getStoredAuthToken() !== token
-            || localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY) !== verifiedRefreshToken) {
+        if (!isVerifySessionCurrent()) {
             if (sessionChangeRetry < 1) return apiVerifyToken(sessionChangeRetry + 1);
             setApiAuthSessionFailure('transient', { stage: 'verify', reason: 'session-changed' });
             return null;
@@ -4719,21 +4730,18 @@ async function apiVerifyToken(sessionChangeRetry = 0) {
         ({ response, data: verifyResponseData } = await retryApiAuthRateLimitedResponse(
             response,
             verifyResponseData,
-            () => apiNetworkFetch(`${API_BASE}/auth/verify`, {
-                headers: { 'Authorization': `Bearer ${token}`, ...apiAuthBusinessContextHeaders() }
+            () => apiNetworkFetch(verifyUrl(), {
+                headers: { 'Authorization': `Bearer ${token}`, ...verifyBusinessHeaders }
             }),
             {
-                canContinue: () => !getActiveApiAuthTransitionMarker()
-                    && getStoredAuthToken() === token
-                    && localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY) === verifiedRefreshToken
+                canContinue: () => !getActiveApiAuthTransitionMarker() && isVerifySessionCurrent()
             }
         ));
         if (getActiveApiAuthTransitionMarker()) {
             setApiAuthSessionFailure('transient', { stage: 'verify', reason: 'session-transition' });
             return null;
         }
-        if (getStoredAuthToken() !== token
-            || localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY) !== verifiedRefreshToken) {
+        if (!isVerifySessionCurrent()) {
             if (sessionChangeRetry < 1) return apiVerifyToken(sessionChangeRetry + 1);
             setApiAuthSessionFailure('transient', { stage: 'verify', reason: 'session-changed' });
             return null;
@@ -4778,15 +4786,16 @@ async function apiVerifyToken(sessionChangeRetry = 0) {
             const refreshedToken = refreshResult.accessToken;
             token = refreshedToken;
             verifiedRefreshToken = localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY);
-            response = await apiNetworkFetch(`${API_BASE}/auth/verify`, {
-                headers: { 'Authorization': `Bearer ${refreshedToken}`, ...apiAuthBusinessContextHeaders() }
+            verifySession = captureApiAuthSessionSnapshot();
+            verifyBusinessHeaders = apiAuthBusinessContextHeaders();
+            response = await apiNetworkFetch(verifyUrl(), {
+                headers: { 'Authorization': `Bearer ${refreshedToken}`, ...verifyBusinessHeaders }
             });
             if (getActiveApiAuthTransitionMarker()) {
                 setApiAuthSessionFailure('transient', { stage: 'verify', reason: 'session-transition' });
                 return null;
             }
-            if (getStoredAuthToken() !== token
-                || localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY) !== verifiedRefreshToken) {
+            if (!isVerifySessionCurrent()) {
                 if (sessionChangeRetry < 1) return apiVerifyToken(sessionChangeRetry + 1);
                 setApiAuthSessionFailure('transient', { stage: 'verify', reason: 'session-changed' });
                 return null;
@@ -4795,21 +4804,18 @@ async function apiVerifyToken(sessionChangeRetry = 0) {
             ({ response, data: verifyResponseData } = await retryApiAuthRateLimitedResponse(
                 response,
                 verifyResponseData,
-                () => apiNetworkFetch(`${API_BASE}/auth/verify`, {
-                    headers: { 'Authorization': `Bearer ${refreshedToken}`, ...apiAuthBusinessContextHeaders() }
+                () => apiNetworkFetch(verifyUrl(), {
+                    headers: { 'Authorization': `Bearer ${refreshedToken}`, ...verifyBusinessHeaders }
                 }),
                 {
-                    canContinue: () => !getActiveApiAuthTransitionMarker()
-                        && getStoredAuthToken() === token
-                        && localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY) === verifiedRefreshToken
+                    canContinue: () => !getActiveApiAuthTransitionMarker() && isVerifySessionCurrent()
                 }
             ));
             if (getActiveApiAuthTransitionMarker()) {
                 setApiAuthSessionFailure('transient', { stage: 'verify', reason: 'session-transition' });
                 return null;
             }
-            if (getStoredAuthToken() !== token
-                || localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY) !== verifiedRefreshToken) {
+            if (!isVerifySessionCurrent()) {
                 if (sessionChangeRetry < 1) return apiVerifyToken(sessionChangeRetry + 1);
                 setApiAuthSessionFailure('transient', { stage: 'verify', reason: 'session-changed' });
                 return null;
@@ -4828,8 +4834,7 @@ async function apiVerifyToken(sessionChangeRetry = 0) {
             return null;
         }
         const data = await response.json().catch(() => null);
-        if (getStoredAuthToken() !== token
-            || localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY) !== verifiedRefreshToken) {
+        if (!isVerifySessionCurrent()) {
             if (sessionChangeRetry < 1) return apiVerifyToken(sessionChangeRetry + 1);
             setApiAuthSessionFailure('transient', { stage: 'verify', reason: 'session-changed' });
             return null;
@@ -4843,7 +4848,28 @@ async function apiVerifyToken(sessionChangeRetry = 0) {
             });
             return null;
         }
-        const user = mergeApiCurrentUser(data.user);
+        let verifiedUser = data.user;
+        const requestedBusiness = verifyBusinessHeaders['X-Business-Context'];
+        if (requestedBusiness && verifiedUser.businessContextPolicy
+            && verifiedUser.activeBusinessContext !== requestedBusiness) {
+            // Verify proves identity but can describe the account's default business.
+            // Resolve the requested business on the server before publishing it, so
+            // other tabs never observe a temporary default-context downgrade.
+            const profile = await apiGetBusinessOperatingProfile({
+                context: requestedBusiness, user: verifiedUser, sessionSnapshot: verifySession
+            });
+            if (!isVerifySessionCurrent()) {
+                if (sessionChangeRetry < 1) return apiVerifyToken(sessionChangeRetry + 1);
+                markApiAuthSessionChanged('verify-business-profile');
+                return null;
+            }
+            if (!profile?.user || !apiAuthUsersShareIdentity(verifiedUser, profile.user)) {
+                setApiAuthSessionFailure('transient', { stage: 'verify', reason: 'malformed-business-profile' });
+                return null;
+            }
+            verifiedUser = profile.user;
+        }
+        const user = mergeApiCurrentUser(verifiedUser, { sessionSnapshot: verifySession });
         if (!user) {
             setApiAuthSessionFailure('transient', { stage: 'verify', reason: 'session-transition' });
             return null;
@@ -4851,8 +4877,7 @@ async function apiVerifyToken(sessionChangeRetry = 0) {
         clearApiAuthSessionFailure();
         return user;
     } catch (err) {
-        if (getStoredAuthToken() !== token
-            || localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY) !== verifiedRefreshToken) {
+        if (!isVerifySessionCurrent()) {
             if (sessionChangeRetry < 1) return apiVerifyToken(sessionChangeRetry + 1);
             setApiAuthSessionFailure('transient', { stage: 'verify', reason: 'session-changed' });
             return null;

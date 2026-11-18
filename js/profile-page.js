@@ -1471,7 +1471,14 @@ async function initProfilePage() {
         });
         for (const event of ['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'permissions:lifecycle']) {
             window.addEventListener(event, () => {
-                document.querySelector('.park-task-dialog[open]')?.close();
+                const taskDialog = document.querySelector('.park-task-dialog[open]');
+                if (taskDialog && (!taskDialog.canLeave || taskDialog.canLeave())) {
+                    // Data invalidation is not an explicit user dismissal. Keep the
+                    // navigation intent and reload detail through the scoped API.
+                    taskDialog.dataset.keepTaskIntent = 'true';
+                    taskDialog.close();
+                    queueMicrotask(() => syncMyDayTaskDialog());
+                }
                 profileControlTasks = null;
                 document.querySelectorAll('[data-profile-control-list]').forEach(list => {
                     list.innerHTML = renderProfileControlList(list.dataset.profileControlList);
@@ -1990,6 +1997,13 @@ function renderProfile() {
 async function switchTab(tab, options = {}) {
     tab = normalizeProfileTab(tab);
     if ((tab === 'control' || Object.hasOwn(PROFILE_EMPLOYEE_TABS, tab)) && !isOwnProfile) tab = 'professions';
+    const taskDialog = document.querySelector('.park-task-dialog[open]');
+    if (tab !== 'myday' && taskDialog?.canLeave && !taskDialog.canLeave()) {
+        if (options.skipUrl) {
+            window.history.pushState({ ...window.history.state, myDayTask: Number(taskDialog.dataset.myDayTask) }, '', taskDialog.taskLocation);
+        }
+        return false;
+    }
     const requestSeq = ++profileTabRequestSeq;
     activeTab = tab;
     if (tab !== 'myday') {
@@ -6217,7 +6231,10 @@ function syncMyDayTaskDialog(opener = null, { initialize = false } = {}) {
         if (rawId && isOwnProfile && activeTab === 'myday') {
             window.ProfileMyDay?.openTaskDialog({ taskId: '—', opener,
                 load: () => Promise.reject(Object.assign(new Error('Некоректне посилання на задачу.'), { status: 400 })),
-                onClose: () => { url.searchParams.delete('open'); window.history.replaceState(window.history.state, '', url); }
+                onClose: dialog => {
+                    if (dialog.dataset.keepTaskIntent === 'true') return;
+                    url.searchParams.delete('open'); window.history.replaceState(window.history.state, '', url);
+                }
             });
         }
         focusMyDayTaskDate(null);
@@ -6250,6 +6267,7 @@ function syncMyDayTaskDialog(opener = null, { initialize = false } = {}) {
         statusLabel: task => ({ todo: 'До виконання', in_progress: 'У роботі', waiting: 'Очікує',
             review: 'На перевірці', done: 'Виконано', cancelled: 'Скасовано', archived: 'Архівна' })[cabinetTaskStatus(task)] || 'Відкрита',
         onClose: dialog => {
+            if (dialog.dataset.keepTaskIntent === 'true') return;
             if (document.querySelector('.park-task-dialog[open]')) return;
             const location = new URL(window.location.href);
             if (location.searchParams.get('open') !== dialog.dataset.myDayTask) return;

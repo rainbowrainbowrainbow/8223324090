@@ -100,7 +100,7 @@ router.get('/', async (req, res) => {
             `, [pattern, businessContext, limit]) : Promise.resolve({ rows: [] }),
 
             pool.query(`
-                SELECT t.id, t.title, t.date, t.status, t.priority, t.assigned_to, t.category
+                SELECT t.id, t.title, t.date, t.status, t.priority, t.assigned_to, t.category, t.business_context
                 FROM tasks t
                 WHERE (t.title ILIKE $1 OR t.description ILIKE $1)
                   AND t.status != 'done'
@@ -155,7 +155,7 @@ router.get('/', async (req, res) => {
                     title: r.title,
                     subtitle: [r.date || 'Без дати', r.assigned_to || '', r.category || ''].filter(Boolean).join(' | '),
                     status: r.status,
-                    href: taskUrl(r.id),
+                    href: taskUrl(r.id, { businessContext: r.business_context }),
                     meta: { priority: r.priority, category: r.category }
                 })),
                 staff: staff.rows.map(r => ({

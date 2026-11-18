@@ -230,7 +230,7 @@ function hrefForTask(row, actor = null, options = {}) {
                 customer_id: row.linked_customer_id || null,
                 visible: linkedBookingVisible
             },
-            { type: 'task', id: row.id, visible: true }
+            { type: 'task', id: row.id, visible: true, businessContext: row.business_context || row.businessContext }
         );
         return route.href || `/?date=${encodeURIComponent(dateValue(bookingDate))}&highlight=${encodeURIComponent(bookingId)}`;
     }
@@ -252,7 +252,7 @@ function bookingDerivedTaskRoute(row, actor = null) {
             customer_id: row.linked_customer_id || null,
             visible: linkedBookingVisible
         },
-        { type: 'task', id: row.id, visible: true }
+        { type: 'task', id: row.id, visible: true, businessContext: row.business_context || row.businessContext }
     );
 }
 
@@ -475,7 +475,7 @@ function conversationItem(row, bucket = 'waiting_reply', options = {}) {
             replySlaState,
             replyExpectedMessageId: row.reply_expected_message_id || null,
             replyEscalationTaskId: row.reply_escalation_task_id || null,
-            replyEscalationHref: row.reply_escalation_task_id ? taskUrl(row.reply_escalation_task_id) : null,
+            replyEscalationHref: row.reply_escalation_task_id ? taskUrl(row.reply_escalation_task_id, { businessContext: row.reply_escalation_business_context }) : null,
             deliveryStatus: row.delivery_status || null,
             lastInboundAt: isoValue(row.last_inbound_at),
             lastOutboundAt: isoValue(row.last_outbound_at),
@@ -881,6 +881,7 @@ async function buildWorkQueue({
                    COALESCE(c.reply_sla_at, c.awaiting_reply_since) AS due_at,
                    cm.delivery_status, cm.delivery_error, cm.failed_at,
                    rt.id AS reply_escalation_task_id,
+                   rt.business_context AS reply_escalation_business_context,
                    cust.lead_id
             FROM conversations c
             LEFT JOIN conversation_messages cm ON cm.id = c.reply_expected_message_id

@@ -448,7 +448,7 @@ function linkedEntityHref(linkedEntity = {}) {
     const type = String(linkedEntity.type || linkedEntity.entityType || '').toLowerCase();
     const id = linkedEntity.id ?? linkedEntity.entity_id ?? linkedEntity.entityId ?? linkedEntity.source_id ?? linkedEntity.sourceId;
     if (!id) return null;
-    if (type === 'task') return taskUrl(id);
+    if (type === 'task') return taskUrl(id, linkedEntity);
     if (type === 'lead') return `/sales-funnel?lead=${encodeURIComponent(id)}`;
     if (type === 'customer') return `/customers?open=${encodeURIComponent(id)}`;
     return null;

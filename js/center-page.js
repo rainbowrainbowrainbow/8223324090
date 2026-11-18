@@ -2475,7 +2475,7 @@ function renderOpsIssue(issue = {}) {
             : ref.bookingId
                 ? `<a href="/?bookingId=${encodeURIComponent(ref.bookingId)}" class="center-ops-link">Бронювання</a>`
                 : ref.taskId
-                    ? `<a href="/tasks?task=${encodeURIComponent(ref.taskId)}" class="center-ops-link">Задача</a>`
+                    ? `<a href="${TaskLinks.taskUrl(ref.taskId, ref)}" class="center-ops-link">Задача</a>`
                     : '';
     return `<div class="center-ops-row center-ops-row--issue is-${escapeHtml(issue.severity || 'info')}">
         <div class="center-ops-row-main">
@@ -2531,7 +2531,7 @@ function renderOpsTask(task = {}) {
             ${opsRowMeta([task.priority, task.assignedTo || 'без відповідального', task.deadline ? formatDateTime(task.deadline) : task.date])}
         </div>
         ${opsBadge(task.status || 'todo', task.isOverdue ? 'critical' : 'info')}
-        <a href="/tasks?task=${encodeURIComponent(task.id || '')}" class="center-ops-link">Відкрити</a>
+        <a href="${TaskLinks.taskUrl(task.id, { businessContext: task.businessContext || task.business_context })}" class="center-ops-link">Відкрити</a>
     </div>`;
 }
 

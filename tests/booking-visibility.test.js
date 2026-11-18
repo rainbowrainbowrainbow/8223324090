@@ -260,6 +260,8 @@ test('booking-derived linked routes prefer exact visible child route then parent
     assert.equal(taskRoute.href, '/profile?tab=myday&open=991');
     assert.equal(taskRoute.fallbackHref, '/?date=2026-05-14&highlight=BK-10');
     assert.equal(taskRoute.routeKind, 'linked-task');
+    const scopedTaskRoute = resolveBookingDerivedLinkedRoute(actor, booking, { type: 'task', id: 992, visible: true, business_context: 'dar' });
+    assert.equal(scopedTaskRoute.href, '/profile?tab=myday&open=992&businessContext=dar');
 
     const leadFallback = resolveBookingDerivedLinkedRoute(actor, booking, { type: 'lead', id: 55, visible: false });
     assert.equal(leadFallback.allowed, true);

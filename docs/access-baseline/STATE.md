@@ -41,16 +41,36 @@
 - Earlier approved-zone actual PostgreSQL15/15; actual-app canonical modal instructor/senior_instructor/reception/accountant x1280/390:8/8, click/Enter/Escape/focus/control/field checks, screenshots reviewed. Protected8hash guard unchanged/passed.
 - On integrated0.84.6, actual six-role sidebar/schedule/common-data12/12: tasks/staff/chat/afisha/training all200. Readiness extension and final styling rerun also12/12, including own-profile check by Enter and all seven positive groups; both final readiness screenshots reviewed. output/work-readiness-six-role-browser-final.log. Full common-work acceptance now passes locally.
 - On0.84.6, Chat actualAPI8/8, Training4/4 and administrator/creator profession-save Chrome4/4 pass (output/baseline-0846-*.log). Real-person cards remain untouched.
-- Readiness focused54/54; loopback outcomes2/2; actual disposable authenticated API4/4, no skips. Permission contracts138passed/2dedicatedDBskips. API/CSS surface checks pass. Final full npm test running; earlier runs exposed obsolete runner wiring assertion and missing new-route API documentation, both corrected. UI guard identified defer/src attribute-order parsing; markup reordered without removing defer. These failed runs are not passes.
+- Readiness focused54/54; loopback outcomes2/2; actual disposable authenticated API4/4, no skips. Permission contracts138passed/2dedicatedDBskips. API/CSS surface checks pass. Earlier full runs exposed obsolete runner wiring, new-route API documentation, Chat poll/reminder fixtures without current membership, and defer/src static parsing; all corrected. These failed runs are not passes.
+- Integrated npm test ran its complete verify stage successfully: unit4037/4037, MyDay338/338, automation54/54 and UI1324/1324, with repository guards passing. The subsequent legacy frontend stage failed2extracted-function cases because its fixture omitted the new Chat context epoch/scope helper. Fixed that fixture; full post-verify chain test:sys-mb, test:timeline-marketing and test:telegram-crm then passed, exit0 (output/baseline-0846-postverify.log). Timeline47/47, Telegram12/12. The original one-command npm test exited1 (output/baseline-0846-final-repository.log); do not call that run a full pass. A fresh one-command npm test remains required on the final candidate after live-QA tooling preparation. Earlier MyDay window fixture correction also passed338/338. No runtime guard was weakened.
 - Readiness/onboarding disposable startup1/1, hire1/1, account onboarding24/24 including replay/concurrency; store probes are not authenticated API readiness.
 
 ## Remaining gates / next action
 
-1. Finish current full npm test/UI run on integrated0.84.6; investigate failures rather than weakening gates. Readiness and six-role actual UI/common-data now pass. Commit the complete verified local readiness stage.
+1. Implement and prove the dedicated bounded registered live-QA workflow described in LIVE_QA_DESIGN.md. Readiness functional SHA9149bc3c7; subsequent changes only repair MyDay/legacy test fixtures and persist evidence/design. All current verification and post-verification stages pass separately; fresh one-command npm test is still required on the final candidate.
 2. Refresh latest remote/live and parallel release markers. Further drift requires semantic integration and proportionate affected checks before RC.
 3. Recheck remote/live/parallel releases and prepare final RC/version/manifest. Exact15resource metadata action and production delivery require concrete separate authorizations under the runbook; do not ask again for the already recorded policy decisions.
 4. After valid release envelope: exact-SHA CI, documented manual Railway helper, bounded disposable live QA/cleanup. Goal complete only after behavior/release/live proof.
 
+## Live QA preparation dependency
+
+Read-only credential-alias preflight found two approved accounts: creator4 is a
+real owner with an active staff bridge; isolated test48 is senior_manager/member,
+with no active staff bridge, hr.staff.manage=true, manage_accounts=false and
+hr.payroll.view=false. No login, lease or account mutation occurred. Names,
+passwords and tokens were not printed or persisted. Existing HR fixture QA
+requires two preconfigured isolated owner/delegate accounts and permits animator
+fixtures only; these credentials cannot satisfy that protocol. Do not bypass its
+guards, use a real employee session for the scenario, or silently grant owner
+rights. Prepare a dedicated bounded registered instructor/admin fixture workflow
+and its cleanup/TTL proof (or use genuinely available preconfigured isolated test
+credentials) before the final production approval question. Creating production
+test identities/roles still needs the exact envelope; no production action is
+authorized here. Existing sys-mb-auth-cutover controller mode already covers the
+candidate's reviewed policy paths and sole Red path routes/auth.js; no controller
+policy exception is needed. Its only auth-route change skips incidental profile
+achievement grants during the read-only work check.
+
 Owned local PostgreSQL17 cluster remains running for tests at output/staff-professions-pg-final/data, port55442, baseline_access_disposable_test. Never use production credentials in this runner. Stop the exact owned cluster after tests with pg_ctl fast and verify completion; do not stop during running suites.
 
-Chat verification: actual authenticated PostgreSQL/HTTP8/8, socket/task/namespace parity70/70, focused perimeter38/38, final file/record11/11, actual-app private file browser1280/3902/2 with final screenshots reviewed. See CHAT_SCOPE.md for evidence and guidance. Final integrated full baseline and six-role common-work acceptance remain pending. Modern Web Guidance security/performance guides were retrieved and applied to private attachments; no product browser code changed in the Training API step. Local rollback is reverting own unpublished feature commits; production remains unchanged.
+Chat verification: actual authenticated PostgreSQL/HTTP8/8, socket/task/namespace parity70/70, focused perimeter38/38, final file/record11/11, actual-app private file browser1280/3902/2 with final screenshots reviewed. See CHAT_SCOPE.md. Integrated six-role common-work/readiness12/12 passes. Final one-command baseline remains pending as explained above. Modern Web Guidance security/performance guides were applied to private attachments and accessibility to readiness; all three guides read in full, final mobile/desktop screenshots reviewed. Local rollback is reverting own unpublished feature commits; production remains unchanged.

@@ -48,6 +48,11 @@ is absent from another person's profile. Scoped CSS keeps the button at least
   check by Enter, receives all seven positive groups and navigates to the schedule.
   Final styling rerun and full repository baseline are recorded in STATE.md.
 - API and CSS surface checks pass; the new route is documented in API_SURFACE.md.
+- Final styling/browser rerun:12/12, both readiness screenshots reviewed,
+  output/work-readiness-six-role-browser-final.log. UI1324/1324 passes. Integrated
+  unit4037/4037 passes; MyDay338/338 and automation54/54 pass after adding the
+  missing window event method to the minimal MyDay fixture. Full one-command
+  repository rerun status is recorded in STATE.md.
 
 An initial integration fixture used jsonb for a text[] denial column; corrected
 before the final API pass. Full-check discoveries (runner wiring expectation and

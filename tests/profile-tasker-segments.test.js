@@ -24,6 +24,7 @@ function loadProfileTaskerContext({ legacyGames = false } = {}) {
     const localState = new Map();
     const sandbox = {
         console,
+        addEventListener() {},
         fetch: async (url) => {
             const target = String(url || '');
             if (target.includes('/business/live-counters')) {

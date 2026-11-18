@@ -133,7 +133,8 @@ async function chatActionsSetup() {
     w._resolveInitialChannelTarget = () => null;
     w._getInitialDialogEmptyState = () => ({});
     w.fetch = async (url, options) => { calls.push({ url, ...options }); return response(200, options.method === 'GET' ? [] : { id: 1 }); };
-    w.eval("var API_BASE = '/api/chat'; var _chatActionError = null; var _channels = []; var _chatUsers = [];");
+    w.eval("var API_BASE = '/api/chat'; var _chatActionError = null; var _channels = []; var _chatUsers = []; var _chatContextEpoch = 0;");
+    w.eval(fragment('js/chat-page.js', '    function _chatScopeKey()', '    var _chatBoundScope'));
     w.eval(fragment('js/chat-page.js', '    async function _api(', '    function _clampNumber('));
     w.eval(fragment('js/chat-page.js', '    function _setChatActionError(', '    function _handleChatInitError('));
     w.eval(fragment('js/chat-page.js', '    function _setChatComposerEnabled(', '    function _showDialogLoadingState('));

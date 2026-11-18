@@ -9,11 +9,13 @@ const { auditAccount } = require('../services/baselineAccessAudit');
 async function main() {
     const connectionString = process.env.ACCESS_AUDIT_DATABASE_URL;
     if (!connectionString) throw new Error('Set the dedicated ACCESS_AUDIT_DATABASE_URL locally; never pass credentials as CLI arguments.');
-    const db = new Client({ connectionString });
+    const db = new Client({ connectionString, connectionTimeoutMillis: 10000,
+        application_name: 'eventgenix_baseline_access_readonly_audit' });
     await db.connect();
     try {
         await db.query('BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
         await db.query("SET LOCAL statement_timeout = '30s'");
+        await db.query("SET LOCAL lock_timeout = '3s'");
         const users = await db.query(`SELECT id, role, is_active, extra_roles, page_allowlist, page_denylist,
             action_allowlist, action_denylist, business_contexts, default_business_context
             FROM users WHERE is_active IS TRUE ORDER BY id`);

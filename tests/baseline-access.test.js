@@ -158,6 +158,23 @@ test('audit reports preset impact and personal exceptions without customer or ac
     assert.equal(JSON.stringify(report).includes('must-not-leak'), false);
 });
 
+test('account inventory never exports arbitrary stored role, profession or override values', () => {
+    const { auditAccount } = require('../services/baselineAccessAudit');
+    const report = auditAccount({ user: { id: 8, role: 'admin', extra_roles: ['hr', 'PRIVATE_ROLE'],
+        page_allowlist: ['/tasks', 'PRIVATE_PAGE'], action_denylist: ['edit_booking', 'PRIVATE_ACTION'] },
+    access: { membershipEnabled: false }, profiles: [{ profession: 'PRIVATE_PROFESSION' }] });
+    assert.doesNotMatch(JSON.stringify(report), /PRIVATE/);
+    assert.deepEqual(report.additionalRoles, ['hr']);
+    assert.equal(report.unknownAdditionalRoleCount, 1);
+    assert.equal(report.unknownProfessionCount, 1);
+    assert.equal(report.professionRoleMismatch, true);
+    assert.deepEqual(report.exceptions.pagesAllowed, ['/tasks']);
+    assert.deepEqual(report.exceptions.actionsDenied, ['edit_booking']);
+    assert.equal(report.unrecognizedExceptionCounts.pagesAllowed, 1);
+    assert.equal(report.unrecognizedExceptionCounts.actionsDenied, 1);
+    assert.equal(report.impact.some(change => change.capability === 'action:edit_booking'), false);
+});
+
 test('task scope, creation and deletion honor additional roles and explicit denials', () => {
     const { getPermissions } = require('../config/roles');
     const { buildTaskVisibilityScope } = require('../services/taskPolicy');

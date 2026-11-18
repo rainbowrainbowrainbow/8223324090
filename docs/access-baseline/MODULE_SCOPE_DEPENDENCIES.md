@@ -36,8 +36,11 @@ data change is authorized by this baseline implementation.
 The inventory was verified against a disposable PostgreSQL schema with no content,
 name, metadata or credential columns, including revoked/inactive principals,
 multi-business recipients, historical authors, empty channels and cross-channel
-replies. A real production inventory has not run because the permitted local
-credentials file is unavailable.
+replies. A real production inventory ran after the owner supplied the relocated
+approved credentials source: 22 channels, 17 with multi-business principal sets
+and 11 with unresolved principals. These sets do not establish ownership. Exact
+IDs and source hashes are in ignored owner-review artifacts; see
+PRODUCTION_AUDIT_20261118.md. No channel was classified or changed.
 
 ## Training
 
@@ -49,6 +52,17 @@ content. Add explicit content ownership (or an approved shared-content relation)
 and constrain progress to active business. Filter lists and direct IDs; guard
 submissions, downloads, completion and reminders. Enable the module only when all
 consumers agree. No global course classification is inferred.
+
+`node scripts/audit-training-scope.js` now provides the bounded read-only
+structural inventory, verified in minimal and fully migrated disposable
+PostgreSQL and executed read-only against production. It returns IDs,
+references, flags and counts across 17 relations. Production has 31 profession
+seed courses, 93 lectures and 7 canonical progress rows, with no ownership
+columns. Legacy progress/submission tables are empty. No content or URLs are
+exported; historical `staff_id` identity semantics remain unverified.
+
+Owner input is pending on Park-only versus shared HR content. No automatic
+classification, backfill, identity remapping or new API lane is applied.
 
 ## Staff responsibility
 

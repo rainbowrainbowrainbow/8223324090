@@ -71,7 +71,8 @@ async function runInventory(db) {
 async function main() {
     const connectionString = process.env.ACCESS_AUDIT_DATABASE_URL;
     if (!connectionString) throw new Error('Dedicated audit connection required');
-    const db = new Client({ connectionString });
+    const db = new Client({ connectionString, connectionTimeoutMillis: 10000,
+        application_name: 'eventgenix_chat_scope_readonly_audit' });
     await db.connect();
     try { process.stdout.write(JSON.stringify(await runInventory(db), null, 2) + '\n'); }
     finally { await db.end(); }

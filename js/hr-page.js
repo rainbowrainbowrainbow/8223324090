@@ -11570,7 +11570,8 @@ async function saveStaffRoleAssignments(button = null) {
     }, async () => {
         const staffId = activeEditStaffId();
         if (!staffId) return { success: false, error: 'missing_staff_id' };
-        const assignments = readStaffRoleAssignmentRows();
+        const assignments = readStaffRoleAssignmentRows().map(({ hourly_rate, ...assignment }) => assignment);
+        const submittedWorkFields = captureStaffProfileScopeFields('work', ['editRoleType', 'editSecondaryProfessions']);
         if (!assignments.length) {
             showNotification('Немає ролей для збереження', 'error');
             return { success: false, error: 'empty_role_assignments' };
@@ -11587,6 +11588,8 @@ async function saveStaffRoleAssignments(button = null) {
             return data || { success: false };
         }
         await loadStaffRoleAssignments(staffId);
+        staffProfileRevision = data.profile_revision ?? staffProfileRevision;
+        markStaffProfileScopeFieldsClean('work', submittedWorkFields);
         markStaffProfileScopesClean(['roles']);
         showNotification('Ролі та допуски оновлено', 'success');
         return data;

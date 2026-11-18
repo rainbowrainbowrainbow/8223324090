@@ -30,6 +30,7 @@ const {
 } = require('../services/businessContext');
 const { requireLegacyBusinessSurface } = require('../services/legacyBusinessSurface');
 const { staffWorkflowCapability } = require('../services/parkHrStaffWorkflowAccess');
+const { isProfessionOnlyRoleAssignmentBody, saveStaffProfessionAssignments } = require('../services/staffProfessionAssignments');
 const { parkHrStaffCardEditCapability, PARK_STAFF_PROFILE_FIELD_LIMITS } = require('../services/parkHrStaffCardRead');
 const { normalizeStaffNameParts } = require('../services/staffCreation');
 const { MAX_AVATAR_BYTES, storeProfileAvatarBlob } = require('../services/profileAvatarStorage');
@@ -4620,6 +4621,10 @@ router.get('/role-assignments/report', async (req, res) => {
 });
 
 router.put('/staff/:id/role-assignments', requireHrManage, async (req, res) => {
+    if (isProfessionOnlyRoleAssignmentBody(req.body)
+        && resolveStaffOperation(req.user, 'hr.staff.profile.edit') !== 'hr.staff.manage') {
+        return res.status(403).json({ success: false, error: 'Немає доступу до редагування професій.' });
+    }
     const client = await pool.connect();
     try {
         const rawRows = Array.isArray(req.body.assignments) ? req.body.assignments : (Array.isArray(req.body.data) ? req.body.data : []);
@@ -4654,24 +4659,35 @@ router.put('/staff/:id/role-assignments', requireHrManage, async (req, res) => {
             await client.query('ROLLBACK');
             return res.status(400).json({ success: false, error: validation.error });
         }
-        const saved = await replaceStaffRoleAssignments(client, req.params.id, rows, req.user?.username || null);
-        await client.query(
-            `UPDATE staff
-             SET role_type = $2,
-                 secondary_professions = $3::jsonb,
-                 hourly_rate = COALESCE($4, hourly_rate)
-             WHERE id = $1`,
-            [
-                req.params.id,
-                primaryRole,
-                JSON.stringify(validation.secondaryProfessions || []),
-                rows.find(row => row.is_primary && row.hourly_rate !== null)?.hourly_rate ?? null
-            ]
-        );
-        const rateRows = rows
-            .filter(row => row.hourly_rate !== null && Number(row.hourly_rate) > 0)
-            .map(row => ({ profession_key: row.profession_key, hourly_rate: row.hourly_rate }));
-        await applyStaffProfessionRateChanges(client, req.params.id, rateRows);
+        const professionOnly = isProfessionOnlyRoleAssignmentBody(req.body);
+        const saved = professionOnly
+            ? await saveStaffProfessionAssignments(client, req.params.id, rows, req.user?.username || null)
+            : await replaceStaffRoleAssignments(client, req.params.id, rows, req.user?.username || null);
+        let profileRevision;
+        if (professionOnly) {
+            const updated = await client.query(`UPDATE staff SET role_type = $2, secondary_professions = $3::jsonb
+                WHERE id = $1 RETURNING xmin::text AS profile_revision`,
+            [req.params.id, primaryRole, JSON.stringify(validation.secondaryProfessions || [])]);
+            profileRevision = updated.rows[0]?.profile_revision;
+        } else {
+            await client.query(
+                `UPDATE staff
+                 SET role_type = $2,
+                     secondary_professions = $3::jsonb,
+                     hourly_rate = COALESCE($4, hourly_rate)
+                 WHERE id = $1`,
+                [
+                    req.params.id,
+                    primaryRole,
+                    JSON.stringify(validation.secondaryProfessions || []),
+                    rows.find(row => row.is_primary && row.hourly_rate !== null)?.hourly_rate ?? null
+                ]
+            );
+            const rateRows = rows
+                .filter(row => row.hourly_rate !== null && Number(row.hourly_rate) > 0)
+                .map(row => ({ profession_key: row.profession_key, hourly_rate: row.hourly_rate }));
+            await applyStaffProfessionRateChanges(client, req.params.id, rateRows);
+        }
         await client.query('COMMIT');
         await auditLog('staff_role_assignments_update', parseInt(req.params.id), req.user?.username, {
             primary_role: primaryRole,
@@ -4683,7 +4699,7 @@ router.put('/staff/:id/role-assignments', requireHrManage, async (req, res) => {
                 internship_status: row.internship_status
             }))
         }, req.ip);
-        res.json({ success: true, data: saved });
+        res.json({ success: true, data: saved, profile_revision: profileRevision });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         log.error('PUT /hr/staff/:id/role-assignments error', err);

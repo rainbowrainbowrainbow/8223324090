@@ -23,6 +23,8 @@ const ISOLATED_DATABASE_LOCK_NAMESPACE = 'eventgenix-isolated-postgres-runner-v1
 const MANUAL_MONEY_MODES = new Set(['all', 'finance', 'finance-money', 'finance-money-browser', 'payroll', 'fullstack', 'freelance', 'payroll-compensation-browser']);
 const EDUCATION_SERIES_ACCEPTANCE = 'tests/integration/education-series.integration-acceptance.test.js';
 const MODES = {
+    'staff-professions': ['tests/integration/park-hr-staff-professions.test.js'],
+    'staff-professions-browser': ['tests/browser/staff-professions-actual-app-smoke.js'],
     'payroll-configurable-rules': ['tests/integration/payroll-profiles-configurable-rules.integration.test.js'],
     'payroll-configurable-rules-browser': ['tests/browser/payroll-profiles-configurable-rules-actual-browser.js'],
     'payroll-compensation-browser': ['tests/browser/hr-pay-actual-app-browser-smoke.js', 'tests/browser/payroll-profiles-configurable-rules-actual-browser.js'],

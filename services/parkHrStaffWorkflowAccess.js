@@ -2,6 +2,7 @@
 
 const { resolveCapability } = require('./accountAccessPolicy');
 const { resolveStaffOperation } = require('./staffOperationAccess');
+const { isProfessionOnlyRoleAssignmentBody } = require('./staffProfessionAssignments');
 const { resolveBusinessScope } = require('./businessContext');
 const { hasCurrentParkScheduleMembership, parkStaffScheduleRoutePath } = require('./parkStaffScheduleAccess');
 
@@ -24,6 +25,10 @@ const routes = [
 function staffWorkflowCapability(req) {
     const method = req.method === 'HEAD' ? 'GET' : req.method;
     const path = parkStaffScheduleRoutePath(req);
+    if (method === 'PUT' && /^\/staff\/[1-9]\d*\/role-assignments$/.test(path)
+        && isProfessionOnlyRoleAssignmentBody(req.body)) {
+        return resolveStaffOperation(req.user, 'hr.staff.profile.edit') === MANAGE ? MANAGE : undefined;
+    }
     return routes.find(([verb, pattern]) => verb === method && pattern.test(path))?.[2];
 }
 

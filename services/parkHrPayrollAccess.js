@@ -4,6 +4,7 @@ const { resolveCapability } = require('./accountAccessPolicy');
 const { resolveBusinessScope, DEFAULT_BUSINESS_CONTEXT } = require('./businessContext');
 const { hasCurrentParkScheduleMembership, parkStaffScheduleRoutePath } = require('./parkStaffScheduleAccess');
 const { projectParkStaffSchedulePayload } = require('./parkStaffScheduleProjection');
+const { isProfessionOnlyRoleAssignmentBody } = require('./staffProfessionAssignments');
 
 const VIEW = ['hr.payroll.view'];
 const RULES = [...VIEW, 'hr.payroll.manage', 'manage_payroll_rules'];
@@ -71,6 +72,8 @@ function parkHrPayrollCapabilities(req, routerId) {
         if (path === '/payroll-profiles' || /^\/payroll-profiles\/[1-9]\d*\/(?:clone|versions|sync-from-base)$/.test(path)) return RULES;
     }
     if (method === 'PUT') {
+        if (/^\/staff\/[1-9]\d*\/role-assignments$/.test(path)
+            && isProfessionOnlyRoleAssignmentBody(req.body)) return null;
         if (/^\/records\/[1-9]\d*\/correct$/.test(path)) return ['hr.schedule.manage'];
         if (/^\/staff\/[1-9]\d*\/(?:payroll-day-exception|payroll-profile-assignments|payroll-scheme)$/.test(path)
             || /^\/payroll-profiles\/[1-9]\d*\/archive$/.test(path)) return RULES;

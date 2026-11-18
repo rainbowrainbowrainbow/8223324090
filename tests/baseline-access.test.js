@@ -85,7 +85,13 @@ test('link readiness separately reports membership, pages and unverified API rea
     assert.equal(pending.checks.pages.passed, true);
     assert.equal(pending.checks.data.status, 'not_run');
     assert.equal(pending.ready, false);
-    const verified = assessAccountWorkReadiness({ ...input, dataChecks: REQUIRED_WORK_PAGES.map(page => ({ page, passed: true })) });
+    const storeOnly = assessAccountWorkReadiness({ ...input,
+        dataChecks: REQUIRED_WORK_PAGES.map(page => ({ page, passed: true, probe: 'read_only_database' })) });
+    assert.equal(storeOnly.checks.data.passed, false, 'SQL store reads cannot impersonate authenticated API verification');
+    assert.equal(storeOnly.checks.data.status, 'api_not_verified');
+    const verified = assessAccountWorkReadiness({ ...input,
+        dataChecks: REQUIRED_WORK_PAGES.map(page => ({ page, passed: true, probe: 'authenticated_api' })) });
+    assert.equal(verified.checks.data.passed, true);
     assert.equal(verified.ready, false, 'successful read probes cannot hide unavailable business modules');
     assert.equal(verified.checks.modules.results.some(module => module.module === 'chat' && !module.available), true);
     const missing = assessAccountWorkReadiness({ ...input, access: buildMembershipAccess({}, [], 'event_genix', [member('instructor')]) });
@@ -112,7 +118,9 @@ test('readiness probes expose store failures without granting unavailable module
     assert.deepEqual(probes, ['profile', 'tasks', 'afisha', 'staff']);
     const reads = result.checks.data.results;
     assert.equal(reads.find(read => read.page === '/tasks').code, 'work_data_read_failed');
-    assert.equal(reads.find(read => read.page === '/staff').passed, true, 'empty schedule is valid');
+    assert.equal(reads.find(read => read.page === '/staff').storeReadPassed, true, 'empty schedule store is valid');
+    assert.equal(reads.find(read => read.page === '/staff').passed, false, 'authenticated API still requires verification');
+    assert.equal(result.checks.data.status, 'api_not_verified');
     assert.equal(reads.find(read => read.page === '/chat').probe, 'not_run');
     assert.equal(result.ready, false);
     assert.doesNotMatch(JSON.stringify(result), /private database details|not-returned/);

@@ -25,6 +25,8 @@ function assessAccountWorkReadiness({ user, staff, profile, access, dataChecks =
             : userBusinessModuleState(effective, context, module);
         return { page, module, ...state };
     });
+    const authenticatedReadsVerified = REQUIRED_WORK_PAGES.every(page => dataChecks.some(check => check.page === page
+        && check.passed === true && check.probe === 'authenticated_api'));
     const checks = {
         profile: { passed: linked, reason: linked ? 'linked' : 'staff_link_required' },
         active: { passed: active, reason: active ? 'active' : 'inactive_account_or_staff' },
@@ -32,8 +34,9 @@ function assessAccountWorkReadiness({ user, staff, profile, access, dataChecks =
         role: { passed: ROLE_HIERARCHY.includes(role), effectiveRole: role },
         pages: { passed: pages.every(page => page.allowed), results: pages },
         modules: { passed: modules.every(module => module.available), results: modules },
-        data: { passed: REQUIRED_WORK_PAGES.every(page => dataChecks.some(check => check.page === page && check.passed === true)),
-            status: dataChecks.length ? 'checked' : 'not_run', results: dataChecks }
+        data: { passed: authenticatedReadsVerified,
+            status: !dataChecks.length ? 'not_run' : authenticatedReadsVerified ? 'checked' : 'api_not_verified',
+            results: dataChecks }
     };
     const ready = Object.values(checks).every(check => check.passed);
     const nextStep = !linked ? 'Прив’яжіть акаунт до активної картки працівника.'
@@ -94,9 +97,11 @@ async function loadAccountWorkReadiness(db, { userId, staff, businessContext }) 
             // Empty work sections are valid. Return only success, never rows or
             // counts. This probes the data store; HTTP/login QA is independent.
             await db.query(...probes[page]);
-            dataChecks.push({ page, passed: true, status: 'passed', probe: 'read_only_database' });
+            dataChecks.push({ page, passed: false, storeReadPassed: true,
+                status: 'api_not_verified', probe: 'read_only_database', code: 'authenticated_work_read_required' });
         } catch {
-            dataChecks.push({ page, passed: false, status: 'failed', probe: 'read_only_database', code: 'work_data_read_failed' });
+            dataChecks.push({ page, passed: false, storeReadPassed: false,
+                status: 'failed', probe: 'read_only_database', code: 'work_data_read_failed' });
         }
     }
     return assessAccountWorkReadiness({ ...input, dataChecks });

@@ -14,6 +14,7 @@ from unittest.mock import patch
 import httpx
 
 from d_brain.services.crm_client import CrmClient, CrmError
+from d_brain.services.crm_flow import CrmFlow
 from d_brain.services.crm_notification_delivery import process_assignments, sync_recipients
 from d_brain.services.crm_notifications import queue_morning
 from d_brain.services.crm_store import CrmStore
@@ -83,6 +84,19 @@ async def main(base_url, user_id, actor, task_id):
         assert len(sent) == 1 and not restarted.store.assignment_results()
 
         version = roster[actor]["bindingVersion"]
+        diagnostic, _ = await CrmFlow(client, store=restarted.store).handle(
+            actor,
+            {
+                "text": f"/crm delivery {task_id}",
+                "action": "",
+                "event_at": int(datetime.now(KYIV).timestamp()),
+                "update_id": 1,
+            },
+            {},
+        )
+        assert diagnostic["_bindingVersion"] == version
+        assert diagnostic["text"] == f"Задача №{task_id}. Telegram прийняв повідомлення."
+
         morning = await queue_morning(
             restarted.store, actor, client, datetime(2099, 11, 5, 10, tzinfo=KYIV), expected_version=version
         )
@@ -93,7 +107,8 @@ async def main(base_url, user_id, actor, task_id):
         )
         assert restarted.store.morning_done(actor, "2099-11-06") and restarted.store.next(actor) is None
     print(json.dumps({"sent": len(sent), "messageId": 50001, "restarted": True,
-                      "morningWithTasks": True, "emptyMorningSilent": True}))
+                      "deliveryCommandConfirmed": True, "morningWithTasks": True,
+                      "emptyMorningSilent": True}))
 
 
 if __name__ == "__main__":

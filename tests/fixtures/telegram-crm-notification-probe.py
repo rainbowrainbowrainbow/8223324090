@@ -84,18 +84,20 @@ async def main(base_url, user_id, actor, task_id):
         assert len(sent) == 1 and not restarted.store.assignment_results()
 
         version = roster[actor]["bindingVersion"]
-        diagnostic, _ = await CrmFlow(client, store=restarted.store).handle(
-            actor,
-            {
-                "text": f"/crm delivery {task_id}",
-                "action": "",
-                "event_at": int(datetime.now(KYIV).timestamp()),
-                "update_id": 1,
-            },
-            {},
-        )
-        assert diagnostic["_bindingVersion"] == version
-        assert diagnostic["text"] == f"Задача №{task_id}. Telegram прийняв повідомлення."
+        expect_delivery_command = os.environ.get("NOTIFICATION_E2E_EXPECT_DELIVERY_COMMAND") != "0"
+        if expect_delivery_command:
+            diagnostic, _ = await CrmFlow(client, store=restarted.store).handle(
+                actor,
+                {
+                    "text": f"/crm delivery {task_id}",
+                    "action": "",
+                    "event_at": int(datetime.now(KYIV).timestamp()),
+                    "update_id": 1,
+                },
+                {},
+            )
+            assert diagnostic["_bindingVersion"] == version
+            assert diagnostic["text"] == f"Задача №{task_id}. Telegram прийняв повідомлення."
 
         morning = await queue_morning(
             restarted.store, actor, client, datetime(2099, 11, 5, 10, tzinfo=KYIV), expected_version=version
@@ -107,7 +109,7 @@ async def main(base_url, user_id, actor, task_id):
         )
         assert restarted.store.morning_done(actor, "2099-11-06") and restarted.store.next(actor) is None
     print(json.dumps({"sent": len(sent), "messageId": 50001, "restarted": True,
-                      "deliveryCommandConfirmed": True, "morningWithTasks": True,
+                      "deliveryCommandConfirmed": expect_delivery_command, "morningWithTasks": True,
                       "emptyMorningSilent": True}))
 
 

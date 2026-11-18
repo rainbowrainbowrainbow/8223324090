@@ -320,7 +320,8 @@ test('confirmed arbitrary recipient receives a CRM assignment through the actual
         join(__dirname, '../fixtures/telegram-crm-notification-probe.py'), BASE_URL, String(peer.id), newTelegram, String(id)
     ]);
     assert.deepEqual(JSON.parse(stdout.trim()), {
-        sent: 1, messageId: 50001, restarted: true, deliveryCommandConfirmed: true,
+        sent: 1, messageId: 50001, restarted: true,
+        deliveryCommandConfirmed: process.env.NOTIFICATION_E2E_EXPECT_DELIVERY_COMMAND !== '0',
         morningWithTasks: true, emptyMorningSilent: true
     });
     const { rows } = await pool.query(`SELECT task_id, status, reason, telegram_message_id

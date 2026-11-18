@@ -116,7 +116,13 @@ async function run(browser) {
                     }), 'Copy is reachable before scrolling');
                     await copyButton.click();
                     const copied = await page.evaluate(() => window.__receiptCopies.at(-1));
-                    assert.equal(copied, `CRM: ${new URL(page.url()).origin}/\nБізнес: Дар\nЛогін для входу: synthetic.receipt\nПароль: SyntheticReceipt234`);
+                    assert.equal(copied, [
+                        `CRM: ${new URL(page.url()).origin}/`,
+                        'Бізнес: Дар',
+                        `Імʼя та прізвище: ${scenario.payload.receipt.account.name}`,
+                        'Логін для входу: synthetic.receipt',
+                        'Пароль: SyntheticReceipt234'
+                    ].join('\n'));
                 }
                 assert.equal(await page.evaluate(() => accountOnboardingState.credential.password), 'SyntheticReceipt234');
                 assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true);

@@ -1,6 +1,6 @@
 # HR → CRM UX verification
 
-The existing HR card and account onboarding endpoint remain authoritative. Existing-person onboarding uses three steps; new-person onboarding uses four. Optional setup, compensation and extra access are explicit opt-ins. This change does not alter permission presets, business membership policy or schema.
+Park CRM issuance uses one step for an existing staff card. The HR card opens the form with that card selected. Account Center lets the user select an eligible existing card. The schedule opens the HR profile from the person’s row. The retained manual schedule mode reuses the form with its own explicit role options and the existing manual account API. The schedule toolbar has no trigger for that mode.
 
 ## Regression boundaries
 
@@ -28,9 +28,9 @@ node scripts/build-hr-crm-ux-gallery.js
 npx --yes --package playwright node scripts/render-hr-crm-guide.js
 ```
 
-The browser harness covers 40 role/mode/viewport/theme cases plus six advanced/native-zoom cases. The underlying smoke also captures create/edit, existing account linking, conflicting edits and response-loss recovery. Screenshots are full viewport; one-time passwords are masked. Evidence and the fullscreen gallery are generated under `output/playwright/hr-staff-creation/ux-matrix/`.
+The visual matrix covers 40 role/entry/viewport/theme cases with one image per distinct form and receipt state. The extended audit covers six mobile and native browser zoom cases. The actual-app smoke clicks through the schedule row to the HR profile and independently exercises the retained manual mode on desktop and mobile. The underlying smoke also captures create/edit, existing account linking, conflicting edits and response-loss recovery. Screenshots are full viewport; one-time passwords are masked. Evidence and the fullscreen gallery are generated under `output/playwright/hr-staff-creation/ux-matrix/`.
 
-The administrator's ordinary entry is the saved HR card CTA. The new-person wizard matrix invokes the same canonical wizard function for this role; it does not assert that the restricted Accounts tab is visible.
+The administrator enters through the saved HR card. The matrix invokes the same form with the staff selector for this actor to cover the layout. Account Center visibility for the actor follows the existing page access rules.
 
 `docs/hr-crm-staff-guide.html` is the editable two-page Ukrainian guide, reusing the prior PDF's content and navy/mint presentation. The earlier ReportLab source was unavailable. The renderer writes an explicitly unreleased candidate PDF under `output/pdf/`; the prior published PDF remains historical until release acceptance.
 

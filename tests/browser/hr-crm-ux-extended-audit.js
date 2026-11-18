@@ -51,10 +51,23 @@ async function runHrCrmExtendedAudit({ browser, pool, actors, login, target, out
             }, { session, theme });
             await page.route('**/*', route => new URL(route.request().url()).origin === new URL(target).origin ? route.continue() : route.abort());
             const record = { key, role: 'creator', mode, width, height, theme, zoom, screens: [], checks: [] };
+            const viewportCapture = zoom > 1 ? await context.newCDPSession(page) : null;
+            const credentialMask = '#accountOnboardingPassword[type="text"], #accountOnboardingReceipt .hr-account-credential code:nth-of-type(2)';
             const capture = async label => {
                 const filename = `${key}-${label}.png`;
-                await page.screenshot({ path: path.join(directory, filename),
-                    mask: [page.locator('#accountOnboardingReceipt .hr-account-credential code:nth-of-type(2)')] });
+                const destination = path.join(directory, filename);
+                if (viewportCapture) {
+                    // Capture the browser surface without Playwright's document clip at native zoom.
+                    const mask = await page.addStyleTag({ content: credentialMask + ' { visibility: hidden !important; }' });
+                    try {
+                        const { data } = await viewportCapture.send('Page.captureScreenshot', { format: 'png', fromSurface: true });
+                        fs.writeFileSync(destination, Buffer.from(data, 'base64'));
+                    } finally {
+                        await mask.evaluate(element => element.remove());
+                    }
+                } else {
+                    await page.screenshot({ path: destination, mask: [page.locator(credentialMask)] });
+                }
                 record.screens.push(filename);
             };
             try {
@@ -119,13 +132,12 @@ async function runHrCrmExtendedAudit({ browser, pool, actors, login, target, out
                 assert.deepEqual(Object.keys(payload.access), ['activateMembership']);
                 assert.equal(Object.hasOwn(payload, 'professions'), false);
                 assert.equal(Object.hasOwn(payload, 'conditions'), false);
-                await capture('account');
                 const submit = page.locator('#accountOnboardingSubmit');
                 assert.equal(await submit.evaluate(el => {
                     const rect = el.getBoundingClientRect();
                     return rect.bottom <= innerHeight && rect.right <= innerWidth && el.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
                 }), true);
-                await capture('ready-to-submit');
+                await capture('account');
                 await submit.focus();
                 await page.keyboard.press('Tab');
                 assert.equal(await page.locator('#accountOnboardingClose').evaluate(el => el === document.activeElement), true);

@@ -49,7 +49,7 @@ async function runHrCrmVisualAudit({ browser, pool, actors, login, target, outpu
                     const capture = async label => {
                         const filename = `${key}-${label}.png`;
                         await page.screenshot({ path: path.join(directory, filename), fullPage: false,
-                            mask: [page.locator('#accountOnboardingReceipt .hr-account-credential code:nth-of-type(2)')] });
+                            mask: [page.locator('#accountOnboardingPassword[type="text"], #accountOnboardingReceipt .hr-account-credential code:nth-of-type(2)')] });
                         record.screens.push(filename);
                     };
                     if (mode === 'existing') {
@@ -107,14 +107,12 @@ async function runHrCrmVisualAudit({ browser, pool, actors, login, target, outpu
                         });
                     }, selector);
                     await page.locator('#accountOnboardingUsername').fill(username);
-                    await assertLayout();
-                    await capture('account');
                     const summary = page.locator('#accountOnboardingAccessSummary');
                     assert.match(await summary.innerText(), /Парк/);
                     record.contrast = [...(record.contrast || []), ...await measureContrast('.hr-account-eyebrow, #accountOnboardingAccessSummary')];
                     assert.ok(record.contrast.every(item => item.ratio >= 4.5), JSON.stringify(record.contrast));
                     await assertLayout();
-                    await capture('access');
+                    await capture('account');
                     const [response] = await Promise.all([
                         page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/users/onboarding'),
                         page.locator('#accountOnboardingSubmit').click()
@@ -143,7 +141,7 @@ async function runHrCrmVisualAudit({ browser, pool, actors, login, target, outpu
                     await page.keyboard.press('Shift+Tab');
                     assert.equal(await overlay.evaluate(root => root.contains(document.activeElement)), true);
                     await page.locator('[data-account-onboarding-finish]').click();
-                    record.checks = ['form geometry', 'primary action hit-test', '44px primary action', 'back retains login', 'API committed', 'one staff row', 'membership state', 'keyboard contained'];
+                    record.checks = ['form geometry', 'primary action hit-test', '44px primary action', 'Park access summary and contrast', 'API committed', 'one staff row', 'membership state', 'keyboard contained'];
                     if (mode === 'existing') record.checks.push('same staff ID', 'base rate unchanged');
                     evidence.push(record);
                     fs.writeFileSync(path.join(directory, 'evidence.json'), JSON.stringify(evidence, null, 2));
@@ -152,7 +150,7 @@ async function runHrCrmVisualAudit({ browser, pool, actors, login, target, outpu
                 assert.deepEqual(errors, []);
             } catch (error) {
                 await page.screenshot({ path: path.join(directory, `${actor.label}-${width}-${theme}-failure.png`),
-                    mask: [page.locator('#accountOnboardingReceipt .hr-account-credential code:nth-of-type(2)')] });
+                    mask: [page.locator('#accountOnboardingPassword[type="text"], #accountOnboardingReceipt .hr-account-credential code:nth-of-type(2)')] });
                 throw error;
             } finally { await context.close(); }
         }

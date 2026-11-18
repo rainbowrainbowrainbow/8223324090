@@ -200,13 +200,14 @@ async function run() {
              VALUES ($1, 'animators', 'Synthetic QA', 'animator', 'hour', 120, true) RETURNING id`,
             [controlName]
         );
-        const { rows: [reserve, blacklisted] } = await db.query(
+        const { rows: [reserve, blacklisted, trampolineReserve] } = await db.query(
             `INSERT INTO staff (name, department, position, role_type, secondary_professions, rate_unit, hourly_rate,
                                 is_active, hr_pool_status, termination_date)
              VALUES ($1, 'animators', 'Synthetic QA', 'animator', '["waiter"]', 'hour', 120, false, 'reserve', $3::date - 1),
-                    ($2, 'animators', 'Synthetic QA', 'animator', '[]', 'hour', 120, false, 'blacklisted', $3::date - 1)
+                    ($2, 'animators', 'Synthetic QA', 'animator', '[]', 'hour', 120, false, 'blacklisted', $3::date - 1),
+                    ($4, 'trampoline', 'Synthetic QA', 'trampoline_instructor', '[]', 'hour', 120, false, 'reserve', $3::date - 1)
              RETURNING id, name`,
-            ['Synthetic Reserve ' + suffix, 'Synthetic Blacklist ' + suffix, date]
+            ['Synthetic Reserve ' + suffix, 'Synthetic Blacklist ' + suffix, date, 'Synthetic Trampoline Reserve ' + suffix]
         );
         stage = 'schedule save';
         let cell = await openSchedule();
@@ -328,6 +329,50 @@ async function run() {
         await page.locator('#schStatus').selectOption('dayoff');
         await savePlan();
         await reserveRecord.waitFor({ state: 'hidden' });
+
+        stage = 'first freelance assignment in the trampoline department';
+        const trampolineDate = new Date(Date.parse(date + 'T12:00:00Z') + 2 * 86_400_000).toISOString().slice(0, 10);
+        await openSchedule(trampolineDate, '/hr#schedule');
+        await page.locator('#deptFilter [data-dept="all"]').click();
+        const departments = await page.locator('#deptFilter [data-dept]:not([data-dept="all"])')
+            .evaluateAll(chips => chips.map(chip => chip.dataset.dept));
+        assert.ok(departments.includes('trampoline'));
+        for (const mode of ['all', 'freelance']) {
+            await workModeFilter.selectOption(mode);
+            for (const department of departments) {
+                await page.locator(`#scheduleBody button[data-freelance-toggle="${department}"]`).waitFor();
+            }
+        }
+        await page.locator('#deptFilter [data-dept="trampoline"]').click();
+        assert.equal(await page.locator('#scheduleBody [data-schedule-staff-row]').count(), 0);
+        const trampolineToggle = page.getByRole('button', { name: 'Фріланс · Батутисти', exact: true });
+        const trampolineRow = page.locator('#scheduleFreelance-trampoline');
+        assert.equal(await trampolineToggle.getAttribute('aria-expanded'), 'false');
+        await setWidth(320);
+        await trampolineToggle.press('Enter');
+        await trampolineRow.waitFor();
+        assert.equal(await trampolineToggle.getAttribute('aria-expanded'), 'true');
+        assert.equal(await trampolineToggle.evaluate(button => button === document.activeElement), true);
+        const trampolineAdd = trampolineRow.getByRole('button', { name: '+ Додати фріланс · ' + trampolineDate });
+        await assertFits();
+        await trampolineAdd.press('Enter');
+        await chooser.getByText('Батутисти · ' + trampolineDate, { exact: true }).waitFor();
+        const trampolineOption = 'reserve:' + trampolineReserve.id + ':trampoline_instructor';
+        await staffPicker.locator(`option[value="${trampolineOption}"]`).waitFor({ state: 'attached' });
+        await staffPicker.selectOption(trampolineOption);
+        await chooser.getByRole('button', { name: 'Відкрити план' }).click();
+        await cards.first().waitFor();
+        await setTime(cards.first(), '12:00', '14:00');
+        const trampolinePlan = await savePlan();
+        assert.equal(trampolinePlan.primaryProfessionKey, 'trampoline_instructor');
+        assert.equal(trampolinePlan.reserveFreelance, true);
+        const trampolineRecord = trampolineRow.getByRole('button', { name: new RegExp(trampolineReserve.name) });
+        await trampolineRecord.waitFor();
+        assert.match(await trampolineRecord.textContent(), /12:00–14:00/);
+        await page.locator('#scheduleRangeState').waitFor({ state: 'hidden' });
+        await page.screenshot({ path: path.join(out, 'freelance-trampoline-320.png'), animations: 'disabled' });
+        await setWidth(1440);
+        await workModeFilter.selectOption('all');
 
         stage = 'freelance across adjacent dates';
         const laterDate = offset => new Date(Date.parse(date + 'T00:00:00Z') + offset * 86_400_000).toISOString().slice(0, 10);

@@ -4642,6 +4642,13 @@ function renderSchedule() {
     const reserveByGroupAndDate = new Map();
     const visibleReserveIds = new Set();
     const search = normalizeScheduleSearchText(StaffState.searchQuery);
+    if (StaffState.canManageSchedule && !search && StaffState.healthFilter === 'all'
+        && StaffState.workModeFilter !== 'regular') {
+        const departments = StaffState.activeDept === 'all'
+            ? scheduleDepartmentOptions().map(({ value }) => value)
+            : [StaffState.activeDept];
+        for (const department of departments) grouped[department] ||= [];
+    }
     const reserveEntries = StaffState.workModeFilter === 'regular'
         ? [] : Object.values(StaffState.freelanceReserveSchedule);
     for (const entry of reserveEntries) {
@@ -4702,6 +4709,7 @@ function renderSchedule() {
             return { date, records };
         });
         const count = freelanceDays.reduce((total, day) => total + day.records.length, 0);
+        const freelanceCount = count ? ' · ' + count : '';
         const deptKey = escapeHtml(dept);
 
         // Department header
@@ -4714,7 +4722,8 @@ function renderSchedule() {
             </button>
             <button type="button" class="schedule-freelance-action" id="scheduleFreelanceToggle-${deptKey}"
                 data-freelance-toggle="${deptKey}" aria-controls="scheduleFreelance-${deptKey}"
-                aria-expanded="${groupExpanded && expandedFreelanceDepartments.has(dept)}">Фріланс${count ? ' · ' + count : ''}</button>
+                aria-label="${escapeHtml('Фріланс · ' + deptLabel + freelanceCount)}"
+                aria-expanded="${groupExpanded && expandedFreelanceDepartments.has(dept)}">Фріланс${freelanceCount}</button>
         </td><td class="schedule-category-fill-cell schedule-group-fill-cell" colspan="${dates.length}" aria-hidden="true">
         </td></tr>`;
 
@@ -7652,6 +7661,7 @@ async function handleSave() {
                 } else {
                     replaceScheduleStateEntry(previousEntry, result.data);
                 }
+                if (showTime && StaffState.rangeLoadState === 'empty') setScheduleRangeLoadState('ready');
                 renderSchedule();
             }
             if (scheduleModalSessionIsCurrent(editingSession)) {

@@ -4,8 +4,8 @@
  */
 const router = require('express').Router();
 const { pool } = require('../db');
-const { requireMinRole, authenticateToken, canUseAction } = require('../middleware/auth');
-const { allowAccountantPageRead } = require('../middleware/accountant-page-read');
+const { authenticateToken, canUseAction } = require('../middleware/auth');
+const { requireParkWorkModule, loadParkWorkParticipantIds } = require('../services/parkWorkModuleAccess');
 const { createLogger } = require('../utils/logger');
 const {
     isProfessionChecklistError,
@@ -115,7 +115,30 @@ function categorizeContent(text) {
 // GET /api/training/weekly-pending — pending responses for a week
 // v39.8: Security — require authentication
 router.use(authenticateToken);
-router.get('/weekly-pending', allowAccountantPageRead('/training', requireMinRole('manager')), async (req, res) => {
+router.use(requireParkWorkModule('training'));
+
+function requireTrainingManage(req, res, next) {
+    if (canUseAction(req.user, 'training.manage')) return next();
+    return res.status(403).json({ success: false, code: 'training_manage_required', error: 'Потрібен дозвіл керування навчанням.' });
+}
+
+// These legacy tables reference staff, unlike homework's historical account IDs.
+// Resolve the bridge explicitly; an account ID must never select another staff's progress.
+router.use(async (req, res, next) => {
+    const path = req.path.toLowerCase().replace(/\/+$/, '') || '/';
+    const personalRead = ['GET', 'HEAD'].includes(req.method) && ['/knowledge-base', '/tests-list', '/progress', '/overview-stats'].includes(path);
+    const personalWrite = req.method === 'POST' && (/^\/knowledge-base\/[^/]+\/mark-read$/.test(path)
+        || /^\/tests\/[^/]+\/submit$/.test(path));
+    if (!personalRead && !personalWrite) return next();
+    try {
+        const linked = await loadLinkedStaffProfile(pool, trainingUserId(req));
+        if (personalWrite || path === '/progress') requireActiveLinkedStaffProfile(linked);
+        req.trainingStaffId = linked.status === 'linked' && linked.staff?.isActive !== false ? linked.staffId : null;
+        return next();
+    } catch (err) { return sendTrainingCourseError(res, err, 'Resolve training staff error'); }
+});
+
+router.get('/weekly-pending', requireTrainingManage, async (req, res) => {
     try {
         const week = parseInt(req.query.week) || getISOWeek(new Date());
         const year = parseInt(req.query.year) || new Date().getFullYear();
@@ -137,7 +160,7 @@ router.get('/weekly-pending', allowAccountantPageRead('/training', requireMinRol
 });
 
 // POST /api/training/review — batch approve/reject
-router.post('/review', requireMinRole('manager'), async (req, res) => {
+router.post('/review', requireTrainingManage, async (req, res) => {
     const { decisions, reviewed_by_telegram_id } = req.body;
     if (!decisions || !Array.isArray(decisions) || decisions.length === 0) {
         return res.status(400).json({ error: 'Потрібен масив decisions' });
@@ -208,22 +231,31 @@ router.post('/review', requireMinRole('manager'), async (req, res) => {
 
 // POST /api/training/submit — save a training response from staff
 router.post('/submit', async (req, res) => {
-    const { staff_id, telegram_id, content } = req.body;
-    if (!content || content.trim().length === 0) {
+    const { content } = req.body;
+    if (typeof content !== 'string' || content.trim().length === 0) {
         return res.status(400).json({ error: 'Потрібен текст відповіді' });
     }
 
     try {
+        const linked = await loadLinkedStaffProfile(pool, trainingUserId(req));
+        const requested = req.body.staff_id == null ? null : Number(req.body.staff_id);
+        let staff_id;
+        if (requested !== null && (!Number.isSafeInteger(requested) || requested <= 0)) {
+            throw trainingCourseRequestError('Некоректний працівник', 400, 'TRAINING_STAFF_INVALID');
+        }
+        if (requested !== null && requested !== linked.staffId) {
+            if (!canUseAction(req.user, 'training.manage')) {
+                throw trainingCourseRequestError('Можна надсилати лише власну відповідь', 403, 'TRAINING_STAFF_FORBIDDEN');
+            }
+            staff_id = requested;
+        } else staff_id = requireActiveLinkedStaffProfile(linked).staffId;
+        const staffRes = await pool.query('SELECT name, telegram_id FROM staff WHERE id = $1 AND is_active IS TRUE', [staff_id]);
+        if (staffRes.rows.length !== 1) throw trainingCourseRequestError('Активного працівника не знайдено', 404, 'TRAINING_STAFF_NOT_FOUND');
+        const staffName = staffRes.rows[0].name;
+        const telegram_id = staffRes.rows[0].telegram_id;
         const now = new Date();
         const week = getISOWeek(now);
         const year = now.getFullYear();
-
-        // Get staff name
-        let staffName = 'Невідомий';
-        if (staff_id) {
-            const staffRes = await pool.query('SELECT name FROM staff WHERE id = $1', [staff_id]);
-            if (staffRes.rows.length > 0) staffName = staffRes.rows[0].name;
-        }
 
         const result = await pool.query(
             `INSERT INTO staff_training_inputs (staff_id, staff_name, telegram_id, content, week_number, year)
@@ -242,8 +274,7 @@ router.post('/submit', async (req, res) => {
 
         res.json({ success: true, id: result.rows[0].id });
     } catch (err) {
-        log.error('submit error', err);
-        res.status(500).json({ error: 'Помилка збереження' });
+        return sendTrainingCourseError(res, err, 'Submit training input error');
     }
 });
 
@@ -285,7 +316,7 @@ router.get('/materials', async (req, res) => {
 });
 
 // POST /api/training/send-weekly-prompt — manually trigger weekly prompt (for testing)
-router.post('/send-weekly-prompt', requireMinRole('manager'), async (req, res) => {
+router.post('/send-weekly-prompt', requireTrainingManage, async (req, res) => {
     try {
         const { sendWeeklyTrainingPrompts } = require('../services/training');
         const sent = await sendWeeklyTrainingPrompts();
@@ -354,7 +385,7 @@ router.get('/knowledge-base', async (req, res) => {
             where += ` AND kb.difficulty = $${params.length}`;
         }
 
-        const staffId = req.user?.id || null;
+        const staffId = req.trainingStaffId;
         let staffSelect = '';
         if (staffId) {
             params.push(staffId);
@@ -399,15 +430,16 @@ router.get('/knowledge-base/:id', async (req, res) => {
 router.post('/knowledge-base/:id/mark-read', async (req, res) => {
     try {
         const articleId = req.params.id;
-        const staffId = req.user?.id;
+        const staffId = req.trainingStaffId;
         if (!staffId) return res.status(401).json({ error: 'Потрібна авторизація' });
 
-        await pool.query(
+        const marked = await pool.query(
             `INSERT INTO knowledge_base_progress (staff_id, article_id, completed_at)
-             VALUES ($1, $2, NOW())
-             ON CONFLICT (staff_id, article_id) DO UPDATE SET completed_at = NOW()`,
+             SELECT $1, id, NOW() FROM knowledge_base WHERE id = $2 AND is_active IS TRUE
+             ON CONFLICT (staff_id, article_id) DO UPDATE SET completed_at = NOW() RETURNING article_id`,
             [staffId, articleId]
         );
+        if (!marked.rows.length) return res.status(404).json({ error: 'Активну статтю не знайдено' });
 
         // Check badges
         await checkTrainingBadges(staffId);
@@ -445,7 +477,7 @@ router.get('/tests/:articleId', async (req, res) => {
 // GET /api/training/tests-list — all available tests
 router.get('/tests-list', async (req, res) => {
     try {
-        const staffId = req.user?.id;
+        const staffId = req.trainingStaffId;
         const staffParams = [];
         let staffSelect = '';
         if (staffId) {
@@ -477,14 +509,14 @@ router.get('/tests-list', async (req, res) => {
 // POST /api/training/tests/:testId/submit — submit test answers
 router.post('/tests/:testId/submit', async (req, res) => {
     try {
-        const staffId = req.user?.id;
+        const staffId = req.trainingStaffId;
         if (!staffId) return res.status(401).json({ error: 'Потрібна авторизація' });
 
         const { answers, timeSpent } = req.body;
         if (!answers || !Array.isArray(answers)) return res.status(400).json({ error: 'Потрібні відповіді' });
 
         // Get test with correct answers
-        const testRes = await pool.query('SELECT * FROM training_tests WHERE id = $1', [req.params.testId]);
+        const testRes = await pool.query('SELECT test.* FROM training_tests test JOIN knowledge_base article ON article.id = test.article_id WHERE test.id = $1 AND test.is_active IS TRUE AND article.is_active IS TRUE', [req.params.testId]);
         if (testRes.rows.length === 0) return res.status(404).json({ error: 'Тест не знайдено' });
 
         const test = testRes.rows[0];
@@ -522,7 +554,7 @@ router.post('/tests/:testId/submit', async (req, res) => {
 // GET /api/training/progress — personal progress
 router.get('/progress', async (req, res) => {
     try {
-        const staffId = req.user?.id;
+        const staffId = req.trainingStaffId;
         if (!staffId) return res.status(401).json({ error: 'Потрібна авторизація' });
 
         const [totalArticles, readArticles, testResults, badges] = await Promise.all([
@@ -595,7 +627,7 @@ router.get('/leaderboard', async (req, res) => {
 // GET /api/training/overview-stats — overview for the training page header
 router.get('/overview-stats', async (req, res) => {
     try {
-        const staffId = req.user?.id;
+        const staffId = req.trainingStaffId;
         const [totalArticles, totalTests, readByUser, passedByUser] = await Promise.all([
             pool.query('SELECT COUNT(*) FROM knowledge_base WHERE is_active = true'),
             pool.query('SELECT COUNT(*) FROM training_tests WHERE is_active = true'),
@@ -663,8 +695,13 @@ function getISOWeek(date) {
 // HOMEWORK / ASSIGNMENTS SYSTEM (v25.4.0)
 // ============================================================
 
+function projectOwnAssignment(row) {
+    const { assigned_to: _targets, pending_reviews: _reviews, ...own } = row;
+    return own;
+}
+
 // POST /api/training/assignments — create assignment (manager+)
-router.post('/assignments', requireMinRole('manager'), async (req, res) => {
+router.post('/assignments', requireTrainingManage, async (req, res) => {
     try {
         const { title, description, type, resourceUrl, assignedTo, dueDate, points } = req.body;
         if (!title) return res.status(400).json({ error: 'Назва завдання обов\'язкова' });
@@ -672,12 +709,22 @@ router.post('/assignments', requireMinRole('manager'), async (req, res) => {
         const validTypes = ['homework', 'watch', 'read', 'create', 'practice'];
         const assignmentType = validTypes.includes(type) ? type : 'homework';
         const userId = req.user.id || req.user.userId;
+        // Homework deliberately retains its existing account-ID API/storage contract.
+        const targets = assignedTo == null ? [] : assignedTo;
+        if (!Array.isArray(targets) || targets.length > 1000
+            || targets.some(id => !Number.isSafeInteger(id) || id <= 0)) {
+            return res.status(400).json({ error: 'Некоректні одержувачі', code: 'TRAINING_TARGETS_INVALID' });
+        }
+        const eligible = await loadParkWorkParticipantIds(pool, 'training', targets);
+        if (targets.some(id => !eligible.has(id))) {
+            return res.status(403).json({ error: 'Одержувач не має робочого доступу Парку', code: 'TRAINING_TARGET_FORBIDDEN' });
+        }
 
         const result = await pool.query(
             `INSERT INTO training_assignments (title, description, type, resource_url, assigned_to, assigned_by, due_date, points)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
             [title, description || null, assignmentType, resourceUrl || null,
-             assignedTo || '{}', userId, dueDate || null, points || 10]
+             [...new Set(targets)], userId, dueDate || null, points || 10]
         );
         res.json({ success: true, assignment: result.rows[0] });
     } catch (err) {
@@ -691,6 +738,7 @@ router.get('/assignments', async (req, res) => {
     try {
         const { filter } = req.query; // my, all, overdue
         const userId = req.user.id || req.user.userId;
+        const manager = canUseAction(req.user, 'training.manage');
         let query, params;
 
         if (filter === 'overdue') {
@@ -698,9 +746,10 @@ router.get('/assignments', async (req, res) => {
                      FROM training_assignments a
                      LEFT JOIN training_submissions s ON s.assignment_id = a.id AND s.staff_id = $1
                      WHERE a.is_active = true AND a.due_date < NOW() AND (s.status IS NULL OR s.status = 'pending')
+                       AND (a.assigned_to = '{}' OR $1 = ANY(a.assigned_to))
                      ORDER BY a.due_date ASC`;
             params = [userId];
-        } else if (filter === 'my') {
+        } else if (filter === 'my' || !manager) {
             query = `SELECT a.*, s.status AS my_status, s.submitted_at, s.score, s.review_comment
                      FROM training_assignments a
                      LEFT JOIN training_submissions s ON s.assignment_id = a.id AND s.staff_id = $1
@@ -718,7 +767,7 @@ router.get('/assignments', async (req, res) => {
         }
 
         const result = await pool.query(query, params);
-        res.json({ success: true, assignments: result.rows });
+        res.json({ success: true, assignments: manager ? result.rows : result.rows.map(projectOwnAssignment) });
     } catch (err) {
         log.error('Get assignments error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -728,16 +777,19 @@ router.get('/assignments', async (req, res) => {
 // GET /api/training/assignments/:id — assignment details
 router.get('/assignments/:id', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM training_assignments WHERE id = $1', [req.params.id]);
+        const manager = canUseAction(req.user, 'training.manage');
+        const userId = trainingUserId(req);
+        const result = await pool.query(`SELECT * FROM training_assignments WHERE id = $1 AND is_active IS TRUE
+            AND ($3::boolean OR assigned_to = '{}' OR $2 = ANY(assigned_to))`, [req.params.id, userId, manager]);
         if (result.rows.length === 0) return res.status(404).json({ error: 'Завдання не знайдено' });
 
         const submissions = await pool.query(
             `SELECT s.*, u.name AS staff_name FROM training_submissions s
              LEFT JOIN users u ON u.id = s.staff_id
-             WHERE s.assignment_id = $1 ORDER BY s.submitted_at DESC`,
-            [req.params.id]
+             WHERE s.assignment_id = $1 AND ($3::boolean OR s.staff_id = $2) ORDER BY s.submitted_at DESC`,
+            [req.params.id, userId, manager]
         );
-        res.json({ assignment: result.rows[0], submissions: submissions.rows });
+        res.json({ assignment: manager ? result.rows[0] : projectOwnAssignment(result.rows[0]), submissions: submissions.rows });
     } catch (err) {
         log.error('Get assignment error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -752,12 +804,14 @@ router.post('/assignments/:id/submit', async (req, res) => {
 
         const result = await pool.query(
             `INSERT INTO training_submissions (assignment_id, staff_id, status, submission_text, submitted_at)
-             VALUES ($1, $2, 'submitted', $3, NOW())
+             SELECT id, $2, 'submitted', $3, NOW() FROM training_assignments
+             WHERE id = $1 AND is_active IS TRUE AND (assigned_to = '{}' OR $2 = ANY(assigned_to))
              ON CONFLICT (assignment_id, staff_id) DO UPDATE
              SET status = 'submitted', submission_text = $3, submitted_at = NOW()
              RETURNING *`,
             [req.params.id, userId, text || '']
         );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Власне активне завдання не знайдено' });
         res.json({ success: true, submission: result.rows[0] });
     } catch (err) {
         log.error('Submit assignment error', err);
@@ -766,19 +820,25 @@ router.post('/assignments/:id/submit', async (req, res) => {
 });
 
 // POST /api/training/assignments/:id/review — review submission (manager+)
-router.post('/assignments/:id/review', requireMinRole('manager'), async (req, res) => {
+router.post('/assignments/:id/review', requireTrainingManage, async (req, res) => {
     try {
         const { staffId, status, comment, score } = req.body;
         if (!staffId || !['approved', 'rejected'].includes(status)) {
             return res.status(400).json({ error: 'staffId та status (approved/rejected) обов\'язкові' });
         }
         const reviewerId = req.user.id || req.user.userId;
+        const targetId = Number(staffId); // Historical homework field contains an account ID.
+        if (!Number.isSafeInteger(targetId) || targetId <= 0) return res.status(400).json({ error: 'Некоректний одержувач' });
+        if (!(await loadParkWorkParticipantIds(pool, 'training', [targetId])).has(targetId)) {
+            return res.status(403).json({ error: 'Одержувач не має робочого доступу Парку', code: 'TRAINING_TARGET_FORBIDDEN' });
+        }
 
         const result = await pool.query(
             `UPDATE training_submissions SET status = $1, review_comment = $2, score = $3,
              reviewed_by = $4, reviewed_at = NOW()
-             WHERE assignment_id = $5 AND staff_id = $6 RETURNING *`,
-            [status, comment || null, score || null, reviewerId, req.params.id, staffId]
+             WHERE assignment_id = $5 AND staff_id = $6
+               AND EXISTS (SELECT 1 FROM training_assignments a WHERE a.id = $5 AND a.is_active IS TRUE) RETURNING *`,
+            [status, comment || null, score || null, reviewerId, req.params.id, targetId]
         );
         if (result.rows.length === 0) return res.status(404).json({ error: 'Здачу не знайдено' });
 
@@ -803,7 +863,7 @@ router.post('/assignments/:id/review', requireMinRole('manager'), async (req, re
 });
 
 // DELETE /api/training/assignments/:id — delete assignment (creator only)
-router.delete('/assignments/:id', requireMinRole('manager'), async (req, res) => {
+router.delete('/assignments/:id', requireTrainingManage, async (req, res) => {
     try {
         const result = await pool.query(
             'DELETE FROM training_assignments WHERE id = $1 RETURNING id',
@@ -822,7 +882,7 @@ router.delete('/assignments/:id', requireMinRole('manager'), async (req, res) =>
 // ============================================================
 
 // POST /api/training/courses — create course (manager+)
-router.post('/courses', requireMinRole('manager'), async (req, res) => {
+router.post('/courses', requireTrainingManage, async (req, res) => {
     try {
         const { title, description, icon, targetRoles, estimatedHours } = req.body;
         if (!title) return res.status(400).json({ error: 'Назва курсу обов\'язкова' });
@@ -946,6 +1006,7 @@ router.get('/courses/:id', async (req, res) => {
         const course = await pool.query('SELECT * FROM training_courses WHERE id = $1', [req.params.id]);
         if (course.rows.length === 0) return res.status(404).json({ error: 'Курс не знайдено' });
         const courseRow = course.rows[0];
+        if (courseRow.is_active === false) return res.status(404).json({ error: 'Активний курс не знайдено' });
         const linkedProfile = await loadLinkedStaffProfile(pool, userId);
         if (isProfessionSeedCourse(courseRow)) {
             const lectures = await pool.query(
@@ -986,7 +1047,10 @@ router.get('/courses/:id', async (req, res) => {
                         && linkedProfile.status === 'linked'
                         && linkedProfile.staff?.isActive !== false
                 },
-                lectures: lectures.rows,
+                lectures: canUseAction(req.user, 'training.manage') ? lectures.rows : lectures.rows.map(row => {
+                    const { notes: _notes, completed_by: _author, ...learning } = row;
+                    return learning;
+                }),
                 enrollment: null,
                 canonicalProgress: {
                     staffId: linkedProfile.staffId,
@@ -1030,7 +1094,7 @@ router.get('/courses/:id', async (req, res) => {
 });
 
 // POST /api/training/courses/:id/lectures — add lecture to course (manager+)
-router.post('/courses/:id/lectures', requireMinRole('manager'), async (req, res) => {
+router.post('/courses/:id/lectures', requireTrainingManage, async (req, res) => {
     try {
         const { title, description, articleId, resourceUrls, durationMinutes, scheduledDate } = req.body;
         if (!title) return res.status(400).json({ error: 'Назва лекції обов\'язкова' });

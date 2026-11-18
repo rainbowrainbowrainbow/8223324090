@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
+const { buildMembershipAccess, applyMembershipAccess } = require('../services/businessMembership');
 
 const MOCKED_MODULES = [
     '../db',
@@ -83,6 +84,9 @@ async function withTrainingApp(options, run) {
                 username: String(req.headers['x-test-username'] || 'hr-reviewer'),
                 role: String(req.headers['x-test-role'] || 'hr')
             };
+            const rows = [{ business_id: 1, organization_id: 1, context_key: 'event_genix',
+                access_mode: 'membership', role: req.user.role, business_modules: ['training'], is_default: true }];
+            req.user = applyMembershipAccess(req.user, buildMembershipAccess(req.user, rows, 'event_genix', rows));
             next();
         },
         requireMinRole: () => (_req, _res, next) => next(),
@@ -155,6 +159,22 @@ async function withTrainingApp(options, run) {
         clearModules();
     }
 }
+
+test('ordinary learners never receive staff notes or completion-author metadata from seeded courses', async () => {
+    await withTrainingApp({ canManageStaff: false, poolQuery: async sql => {
+        if (sql === 'SELECT * FROM training_courses WHERE id = $1') return { rows: [{ id: 10, source: 'hr_profession_seed', profession_key: 'animator', is_active: true }] };
+        if (sql.includes('FROM employee_profiles profile')) return { rows: [{ staff_id: 7, is_active: true }] };
+        if (sql.includes('FROM training_course_lectures lecture')) return { rows: [{ id: 101,
+            notes: 'PRIVATE_STAFF_NOTE_CANARY', completed_by: 'PRIVATE_AUTHOR_CANARY', completed_at: '2026-11-18' }] };
+        throw new Error('Unexpected learner fixture query');
+    } }, async ({ request }) => {
+        const result = await request('GET', '/api/training/courses/10');
+        assert.equal(result.status, 200);
+        assert.equal(result.data.course.can_complete, false);
+        assert.equal(result.data.lectures[0].completed_at, '2026-11-18');
+        assert.equal(JSON.stringify(result.data).includes('PRIVATE_'), false);
+    });
+});
 
 test('course list uses canonical published item progress for profession seeds and legacy enrollment for manual courses', async () => {
     await withTrainingApp({

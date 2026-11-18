@@ -5,6 +5,7 @@
 const { pool } = require('../db');
 const { sendTelegramMessage } = require('./telegram');
 const { createLogger } = require('../utils/logger');
+const { loadParkWorkParticipantIds } = require('./parkWorkModuleAccess');
 
 const log = createLogger('Training');
 
@@ -26,13 +27,16 @@ async function sendWeeklyTrainingPrompts() {
     const year = now.getFullYear();
 
     const staffResult = await pool.query(
-        `SELECT id, name, telegram_id FROM staff
-         WHERE is_active = true AND telegram_id IS NOT NULL AND telegram_id != ''
-         AND training_enabled = true`
+        `SELECT s.id, s.name, s.telegram_id, profile.user_id FROM staff s
+         JOIN employee_profiles profile ON profile.staff_id = s.id AND profile.is_active IS TRUE
+         WHERE s.is_active IS TRUE AND s.telegram_id IS NOT NULL AND s.telegram_id != ''
+         AND s.training_enabled IS TRUE`
     );
+    const recipients = await loadParkWorkParticipantIds(pool, 'training');
 
     let sent = 0;
     for (const s of staffResult.rows) {
+        if (!recipients.has(Number(s.user_id))) continue;
         // Check if already sent this week
         const exists = await pool.query(
             `SELECT id FROM training_prompts_sent
@@ -63,6 +67,10 @@ async function sendWeeklyTrainingPrompts() {
 
 // Send weekly summary to director (Friday)
 async function sendWeeklySummaryToDirector() {
+    const candidates = await pool.query('SELECT id FROM users WHERE telegram_chat_id::text = $1 AND is_active IS TRUE', [String(DIRECTOR_TELEGRAM_ID)]);
+    if (candidates.rows.length !== 1) return;
+    const recipientId = Number(candidates.rows[0].id);
+    if (!(await loadParkWorkParticipantIds(pool, 'training', [recipientId], { action: 'training.manage' })).has(recipientId)) return;
     const now = new Date();
     const week = getISOWeek(now);
     const year = now.getFullYear();
@@ -124,12 +132,15 @@ async function sendWeeklySummaryToDirector() {
 async function handleTrainingResponse(telegramId, text) {
     // Find staff by telegram_id
     const staffResult = await pool.query(
-        'SELECT id, name FROM staff WHERE telegram_id = $1 AND is_active = true',
+        `SELECT s.id, s.name, profile.user_id FROM staff s
+         JOIN employee_profiles profile ON profile.staff_id = s.id AND profile.is_active IS TRUE
+         WHERE s.telegram_id = $1 AND s.is_active IS TRUE AND s.training_enabled IS TRUE`,
         [String(telegramId)]
     );
-    if (staffResult.rows.length === 0) return false;
+    if (staffResult.rows.length !== 1) return false;
 
     const staff = staffResult.rows[0];
+    if (!(await loadParkWorkParticipantIds(pool, 'training', [Number(staff.user_id)])).has(Number(staff.user_id))) return false;
     const now = new Date();
     const week = getISOWeek(now);
     const year = now.getFullYear();

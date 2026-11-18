@@ -9,7 +9,7 @@ const CORE_MODULES = Object.freeze({
 });
 const UNMIGRATED_MODULES = Object.freeze({
     chat: 'Чат', reports: 'Звіти', copilot: 'Copilot', staff: 'Працівники (legacy)',
-    training: 'Навчання', checkin: 'Check-in', kitchen: 'Кухня',
+    checkin: 'Check-in', kitchen: 'Кухня',
     content: 'Контент', art: 'Art', sound: 'Звук',
     certificates: 'Сертифікати', kleshnya: 'Клешня',
     guardian: 'Guardian', center: 'Центр', game: 'Гра', demo: 'Демо',
@@ -20,6 +20,10 @@ function businessModuleCatalog(contextKey) {
     const catalog = Object.entries(CORE_MODULES).map(([key, label]) => ({
         key, label, status: 'supported', canEnable: true, reason: null
     }));
+    catalog.push({ key: 'training', label: 'Навчання',
+        status: contextKey === 'event_genix' ? 'limited' : 'not_migrated',
+        canEnable: contextKey === 'event_genix',
+        reason: 'Наявні навчальні матеріали належать лише Парку; іншим бізнесам потрібне окреме перенесення.' });
     catalog.push({ key: 'omni', label: 'Omni', status: 'limited', canEnable: true,
         reason: 'Робота з чатами бізнесу. Підключення каналів і надсилання потребують окремого налаштування.' });
     const graduationSupported = ['event_genix', 'dar'].includes(contextKey);

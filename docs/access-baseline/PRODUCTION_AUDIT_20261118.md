@@ -25,7 +25,7 @@ Sanitized ID/count-only reports are local under ignored `output/`:
 | `training-scope-production-inventory.json` | 17 relations without ownership columns; complete bounded row/reference enumeration. 31 profession-seed courses, 93 lectures, 7 canonical progress rows. Legacy enrollment/knowledge progress/test-results/submission tables are empty. No content, questions, answers, scores, names or URLs returned. |
 | `game-zone-production-classification.json` | 15 active Park room resources, none explicitly `workArea=game_zone`. 18 bookings lack canonical room references across history; none is a current/future non-cancelled booking. No label inference or backfill. |
 | `reported-access-production-diagnostic.json` | Unique matches for the reported administrator/card and instructor/account. The old administrator payload lacks three payroll-rule capabilities; the candidate metadata workflow is allowed. The instructor's candidate zone scope is allowed but its explicit resource set is empty. Authorization simulation only, no HTTP write or impersonation. |
-| `BASELINE_PRODUCTION_REVIEW_UK.md`, `baseline-production-decisions.proposed.json` | Owner-facing exact IDs and unresolved decisions, with source hashes. All proposed ownership/classification values remain null; production-write authorization is false. |
+| `BASELINE_PRODUCTION_REVIEW_UK.md`, `baseline-production-decisions.proposed.json` | Owner-facing exact IDs, recorded Park ownership/15-resource classification decisions and source hashes. Regeneration preserves decisions only for unchanged inventory hashes; production-write authorization remains false. |
 
 Node absence requires review against each account's effective team scope, not an
 automatic correction for every account. No department or profession text was
@@ -73,11 +73,18 @@ continues using the unchanged effective account.
 SQL review applied Supabase Postgres Best Practices: explicit projections, one
 connection per snapshot, bounded waits and primary-key-ordered bounded reads.
 
-## Required decisions
+## Owner decisions and remaining execution gates
 
-Define the actual instructor game-zone resources, Park-only/shared ownership of
-the enumerated HR courses, and exact ownership/shared policy of Chat channels.
-Then implement complete tenant boundaries and authenticated API-readiness proof,
-and prepare exact production manifests and the separately authorized release.
-The local zone approval does not authorize real account/resource/channel/course
-mutations.
+The owner selected all 15 existing room resources as instructor game zones and
+assigned courses 1–31 exclusively to Park. For Chat the owner delegated the
+decision, stating only Park currently operates; the chosen policy assigns the
+22 inventoried channels (1–20, 27, 28) exclusively to Park while preserving their
+membership/privacy restrictions. No ownership is inferred from mixed principal
+memberships. Other business statuses remain unchanged.
+
+A final read-only preflight confirmed Park already configures both modules and
+all 15 room metadata objects lack `workArea`. The only identified production
+classification change is the exact 15-key addition; no historical booking
+backfill or module-configuration change is proposed. Production mutation remains
+unauthorized. Complete API/recipient/file boundaries and authenticated readiness
+proof before preparing the separately approved production cutover and release.

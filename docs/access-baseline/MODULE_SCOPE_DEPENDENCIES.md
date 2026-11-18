@@ -1,72 +1,36 @@
 # Work-module ownership dependencies
 
-Page presets do not establish ownership of global rows. These proposals are
-preparation only: no migration, production backfill or new API lane is applied.
+Page presets do not establish ownership of global rows. On2026-11-18 the owner assigned existing Chat and Training data exclusively to Park. No production mutation or release has occurred.
 
-## Chat
+## Approved namespace policy
 
-Current chat_channels lacks business ownership. Park membership requests fail
-with chat_not_migrated. Bypassing this boundary exposes global channels.
+- Chat channel IDs1–20,27,28: single Park owner (event_genix/business1), preserving channel membership and privacy. The owner delegated this decision because only Park operates now. Mixed participant memberships are not the ownership authority.
+- Training course IDs1–31: exclusively Park, explicitly selected by the owner. Their93lectures and7canonical progress rows remain in the same namespace. Empty legacy progress tables are not evidence that account/staff IDs may be conflated on future writes.
+- Instructor resources: all15active room-* records, database IDs8–22. Exact production classification is metadata.workArea=game_zone; all audited before-values lack that key, so rollback removes only this key. Execution needs exact Red approval. No historical booking backfill is proposed: none of18missing canonical references is a current/future non-cancelled booking.
+- Park already configures chat and training. Required module additions are empty; no business configuration write or other business status change is needed.
 
-1. `node scripts/audit-chat-scope.js` is the prepared read-only inventory. Set
-   `ACCESS_AUDIT_DATABASE_URL` locally through the approved credentials source;
-   never put it in command arguments or output. The script starts a repeatable-read
-   read-only transaction, limits statement/lock waits and always rolls back.
-   It returns channel IDs/types, active-principal business-ID sets, unresolved or
-   multi-business principal counts, message/non-text counts and cross-channel
-   reply counts. Principals include members, creators, DM recipients and historical
-   authors. Content, names, file URLs and credentials are never selected. Non-text
-   counts are not an exact attachment inventory. Mixed/absent memberships remain
-   unresolved, and even a single business-ID set never establishes ownership.
-2. Owner approves an exact channel-to-business manifest. Shared channels need an
-   explicit ownership policy; never infer Park ownership from default context.
-3. Add durable business ownership through an additive migration. Unclassified
-   channels remain inaccessible to membership business APIs. No startup backfill.
-4. Guard channels/messages/members/search/unread/attachments, socket subscriptions
-   and background notifications by business and existing channel membership.
-   Private channels retain independent checks.
-5. New channels receive a server-validated business owner. Direct conversations
-   need the same boundary; mixed recipients fail closed.
-6. Test cross-business IDs, revoked membership, reconnect, historical attachments
-   and classified/unclassified channels before enabling the module.
+Use the existing exclusive-Park legacy namespace pattern with fresh active membership, configured module/page checks and independent record/privacy guards. Per-row owner columns/backfills are unnecessary for this approved single owner. A future additional business requires its own ownership migration; a module toggle must never expose these global tables there.
 
-Production classification needs exact IDs, before values and rollback. No such
-data change is authorized by this baseline implementation.
+## Chat: implementation remaining
 
-The inventory was verified against a disposable PostgreSQL schema with no content,
-name, metadata or credential columns, including revoked/inactive principals,
-multi-business recipients, historical authors, empty channels and cross-channel
-replies. A real production inventory ran after the owner supplied the relocated
-approved credentials source: 22 channels, 17 with multi-business principal sets
-and 11 with unresolved principals. These sets do not establish ownership. Exact
-IDs and source hashes are in ignored owner-review artifacts; see
-PRODUCTION_AUDIT_20261118.md. No channel was classified or changed.
+Current production channels have no per-row business column. Keep the module contained until all of the following agree:
 
-## Training
+1. HTTP common reads/writes require an active Park membership, page and configured module. Preserve channel membership, DM/assistant privacy and linked-booking visibility/business checks.
+2. User/profile/presence/DM/invite targets resolve current Park eligibility. Avoid stale channel-list authorization caches, and constrain reply/thread references to their parent channel.
+3. Blob and legacy local attachments require authentication and an authoritative live message/channel relationship. A guessed filename, path channel ID or copied metadata reference cannot transfer ownership. Cover static-file fallback and encoded-path bypasses.
+4. Socket subscriptions/delivery, presence, push and background producers retain the same Park/channel/record boundaries. Booking links cannot bypass Chat ownership or expose foreign business records/independent financial fields.
+5. Complete actual PostgreSQL/authenticated HTTP, recipient/reconnect/revocation, historical-file and browser desktop/mobile regressions before enablement.
 
-Registry policy says not migrated while the legacy API can answer a Park member.
-Readiness exposes this mismatch rather than marking the common minimum complete.
+## Training: implemented locally
 
-Inventory course/lesson/assignment/attempt/progress ownership and identify shared
-content. Add explicit content ownership (or an approved shared-content relation)
-and constrain progress to active business. Filter lists and direct IDs; guard
-submissions, downloads, completion and reminders. Enable the module only when all
-consumers agree. No global course classification is inferred.
+Every route now requires current Park module/page access. Management uses canonical training.manage; learner progress uses an active canonical staff bridge. Homework retains its historical account-ID contract with assigned/public parents, own-only submissions, reduced DTOs and fresh Park recipients. Telegram delivery/inputs enforce the same current eligibility; private summaries additionally require management permission. See TRAINING_SCOPE.md for proof and remaining release gates.
 
-`node scripts/audit-training-scope.js` now provides the bounded read-only
-structural inventory, verified in minimal and fully migrated disposable
-PostgreSQL and executed read-only against production. It returns IDs,
-references, flags and counts across 17 relations. Production has 31 profession
-seed courses, 93 lectures and 7 canonical progress rows, with no ownership
-columns. Legacy progress/submission tables are empty. No content or URLs are
-exported; historical `staff_id` identity semantics remain unverified.
+## Read-only evidence and mutation boundary
 
-Owner input is pending on Park-only versus shared HR content. No automatic
-classification, backfill, identity remapping or new API lane is applied.
+Inventory CLIs use bounded repeatable-read/read-only snapshots, statement/lock limits and rollback. Actual production inventory:22Chat channels (17with mixed business principal sets,11with unresolved principals); Training17relations,31seed courses,93lectures,7canonical progress rows and empty legacy attempt/submission tables. Reports contain IDs/counts/flags, not content/names/URLs/secrets. See PRODUCTION_AUDIT_20261118.md.
+
+Ignored owner-review artifacts retain exact IDs, source hashes and recorded policy choices; productionDataMutationAuthorized remains false. Their regeneration refuses inventory drift rather than overwriting approved decisions. Revalidate exact before-state immediately before any approved production write.
 
 ## Staff responsibility
 
-Team writes use exactly one active employee profile and its active staff card's
-company_structure_node_id. Audit missing, ambiguous and orphan links without
-repair. Cross-node leadership needs an explicit business/leader/target-node
-responsibility relation. Department labels and professions cannot substitute.
+Team writes use exactly one active employee profile and the active staff card's company_structure_node_id. Real missing/ambiguous/orphan links are review signals; never repair them automatically or substitute department/profession text. Cross-node leadership needs an explicit business/leader/target-node responsibility relation and exact approval for real-record changes.

@@ -5,7 +5,7 @@
 - Original base: `571a57acb80118cc6cc0e5a923c5a5bba9c09d86`, production 0.83.120.
 - Integrated upstream and latest observed live/remote: `9d2074466478a5e0a053517906527a0ffecdeedf`, production 0.84.0. The compensation retry changed package/runner/browser harness contracts, with no runtime permission changes. One runner-mode conflict retained both modes; protected patch remains unapplied with its original hash.
 - Own code/test tip: `62087c22c`, following chat inventory `c9e539ac5`; earlier feature commits after rebase: `c00bdf369`, `8aa8a5906`, `dd5cea0d3`, `52ae36d79`. No version reserved; local package inherits upstream 0.84.0, not a baseline-access release.
-- Candidate: local implementation, not release-ready. Goal remains active.
+- Candidate: local implementation, not release-ready. Goal blocked pending owner input/external access; not complete.
 - Authorization: user permits baseline authorization/preset code, regressions and local feature commits. No production writes, login/session changes, secrets or protected booking source changes are authorized.
 
 ## Implemented locally
@@ -45,7 +45,7 @@
 6. Compensation upstream overlaps HR UI/package scripts/isolated runner. Integrate only own commits and repeat checks. Parallel Tasks/My Day/Telegram overlaps task policy/contracts; refresh remote before release.
 7. Authenticated API readiness is not automated by a store probe. Creation/link responses explicitly report api_not_verified. Complete target-account API verification after module/source boundaries are resolved; do not manufacture an impersonation session or infer success from a policy snapshot.
 
-See ACCEPTANCE.md for the requirement-by-requirement gap ledger. Six-role schedule UI proof is not full workflow acceptance. The previous Goal turn made implementation/verification progress; this continuation integrated the now-live upstream, added a tested executable inventory and removed a potential readiness false positive. External approval/credentials/ownership blockers remain unresolved; Goal is active.
+See ACCEPTANCE.md for the requirement-by-requirement gap ledger. Six-role schedule UI proof is not full workflow acceptance. Prior turns made implementation/verification progress, integrated the now-live upstream, added a tested executable inventory and removed a potential readiness false positive. The third consecutive blocker audit reconfirmed clean tip 9278d7a16, unchanged live/remote 9d207446, absent approved credentials and no owner approval/classification answer. No specific running job is being awaited. The Goal is blocked on these external conditions, not complete.
 
 ## Web guidance
 
@@ -53,4 +53,4 @@ Modern Web Guidance navbar/accessibility searched and retrieved before UI change
 
 ## Next action
 
-Await exact protected approval/module ownership clarification, then implement the remaining scope, integrate latest upstream and repeat affected gates. Prepare Yellow production block only after acceptance/source dependencies resolve. Goal remains unfinished until authorized release/live QA. The own disposable PostgreSQL cluster was stopped after runner cleanup; no production database was used. Rollback of this unpublished implementation is a revert of its own feature commits; no production rollback is needed.
+Resume after exact protected approval/module ownership clarification and required approved local access become available. Implement remaining scope, refresh upstream and repeat affected gates; prepare Yellow production block only after acceptance/source dependencies resolve. Goal remains unfinished until authorized release/live QA. The own disposable PostgreSQL cluster was stopped after runner cleanup; no production database was used. Rollback of this unpublished implementation is a revert of its own feature commits; no production rollback is needed.

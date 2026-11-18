@@ -21,7 +21,7 @@ protected game-zone scope, production audit or live acceptance.
 | Local delivery and release preparation | Isolated feature worktree with own commits; upstream integration; unchanged protected patch hash; no own dependency/lockfile change | Final RC/version/manifest after dependencies resolve and latest production preflight |
 | Bounded production release | No push/deploy or production write performed | Owner's exact Yellow envelope required by the attached brief; then exact-SHA CI, documented Railway helper, bounded disposable QA/cleanup |
 | Instructor and Nazar live cases | No real-person change; no unique Nazar account/card established | Authorized test account and approved credentials required; identify Nazar uniquely before any person-specific proposal |
-| Goal completion | State and proof paths persisted; unfinished requirements explicitly retained | Goal remains active until all required behavior, release and live QA are proven |
+| Goal completion | State and proof paths persisted; unfinished requirements explicitly retained | Goal blocked on external approval/access/ownership after the third audit; completion still requires all behavior, release and live QA |
 
 The protected proposal is local-only and remains unapplied. It does not authorize
 production resource classification, membership repairs, data backfill, workflow

@@ -750,7 +750,7 @@ async function createTrustedQaRun(queryable, options = {}) {
 async function loadTrustedQaRun(queryable, token, businessContext) {
     if (!token) return null;
     const result = await queryable.query(
-        `SELECT *
+        `SELECT *, allowed_date::text AS allowed_date
            FROM trusted_qa_runs
           WHERE token_hash = $1
             AND business_context = $2

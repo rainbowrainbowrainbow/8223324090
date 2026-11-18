@@ -110,6 +110,12 @@ test('registered baseline identities authenticate, fail closed on drift and reti
             await f.db.query("UPDATE staff SET phone='synthetic-contact-drift' WHERE id=$1", [actor.staffId]);
             await assert.rejects(transaction(db => finishBaselineQaRun(db, plan, planHash)), { code: 'BASELINE_QA_CLEANUP_DRIFT' });
             await f.db.query('UPDATE staff SET phone=NULL WHERE id=$1', [actor.staffId]);
+            const { rows: [preference] } = await f.db.query(`INSERT INTO staff_shift_preferences
+                (staff_id,profession_key,day_type,start_time,end_time,created_by,updated_by)
+                VALUES($1,'animator','weekday','10:00','20:00',$2,$2) RETURNING id`, [actor.staffId, actor.username]);
+            await assert.rejects(transaction(db => finishBaselineQaRun(db, plan, planHash)), { code: 'BASELINE_QA_CLEANUP_DRIFT' });
+            assert.equal((await f.db.query('SELECT id FROM staff_shift_preferences WHERE id=$1', [preference.id])).rowCount, 1);
+            await f.db.query('DELETE FROM staff_shift_preferences WHERE id=$1', [preference.id]);
         });
         await t.test('expiry watchdog retires all eight entities and invalidates existing sessions', async () => {
             await f.db.query(`UPDATE trusted_qa_runs SET created_at=NOW()-INTERVAL '31 minutes',

@@ -8,6 +8,7 @@ const { createHash } = require('node:crypto');
 const { Client } = require('pg');
 const { assertSafeTestDatabaseUrl, assertSafeIsolatedTestUrl } = require('./test-db-safety');
 const { describeBaselineQaPlan, preflightBaselineQaPlan, createBaselineQaRun, finishBaselineQaRun } = require('../services/baselineAccessQa');
+const { createBaselineBookingRun, finishBaselineBookingRun } = require('../services/baselineBookingQa');
 
 const LIVE_URL = 'https://8223324090-production.up.railway.app';
 const TARGET_HASH = '6fb86cf6959f026d7c55b6c65edffc3499e5bb581d51840a730f915fef0e9cfd';
@@ -34,13 +35,17 @@ function resolveEnvironment(values, env) {
     return { connectionString, origin: LIVE_URL };
 }
 
-async function jsonRequest(origin, endpoint, { method = 'GET', token, body } = {}) {
+async function jsonRequest(origin, endpoint, { method = 'GET', token, body, qaToken, requestId } = {}) {
     const response = await fetch(origin + endpoint, { method, redirect: 'error', signal: AbortSignal.timeout(30000),
         headers: { accept: 'application/json', 'content-type': 'application/json', 'x-business-context': 'event_genix',
-            ...(token ? { authorization: 'Bearer ' + token } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
+            ...(token ? { authorization: 'Bearer ' + token } : {}),
+            ...(qaToken ? { 'x-qa-run-token': qaToken, 'x-qa-run-request-id': requestId } : {}) },
+        body: body === undefined ? undefined : JSON.stringify(body) });
     // Never return raw error bodies to the CLI's diagnostic output.
     if (!response.ok || !/^application\/json\b/i.test(response.headers.get('content-type') || '')) {
-        await response.body?.cancel(); fail(false, 'BASELINE_QA_API_READ_FAILED');
+        await response.body?.cancel();
+        const error = new Error(`BASELINE_QA_API_READ_FAILED (${method} ${new URL(origin + endpoint).pathname}, HTTP ${response.status})`);
+        error.code = 'BASELINE_QA_API_READ_FAILED'; throw error;
     }
     const reader = response.body.getReader();
     const chunks = []; let size = 0;
@@ -55,18 +60,19 @@ async function jsonRequest(origin, endpoint, { method = 'GET', token, body } = {
     } finally { reader.releaseLock(); }
 }
 
-async function exerciseIdentityApis(origin, actors) {
+async function exerciseIdentityApis(origin, actors, { saveProfession = true } = {}) {
     const results = [];
     for (const actor of actors) {
         const login = await jsonRequest(origin, '/api/auth/login', { method: 'POST',
             body: { username: actor.username, password: actor.password } });
         fail(Number(login.user?.id) === actor.id && typeof login.token === 'string', 'BASELINE_QA_LOGIN_IDENTITY_MISMATCH');
+        Object.defineProperty(actor, 'session', { value: { token: login.token, user: login.user } });
         const readiness = await jsonRequest(origin, '/api/work-access/check', { method: 'POST', token: login.token, body: {} });
         fail(readiness.success && readiness.readiness?.ready === true
             && readiness.readiness.checks.data.results.length === 6
             && readiness.readiness.checks.data.results.every(read => read.passed && read.probe === 'authenticated_api'),
         'BASELINE_QA_WORK_READS_INCOMPLETE');
-        if (actor.role === 'admin') {
+        if (actor.role === 'admin' && saveProfession) {
             const result = await jsonRequest(origin, `/api/hr/staff/${actor.staffId}/role-assignments`, { method: 'PUT', token: login.token,
                 body: { primary_role: 'host', assignments: [
                     { profession_key: 'host', is_primary: true, status: 'active', admission_status: 'approved', internship_status: 'completed' },
@@ -75,14 +81,15 @@ async function exerciseIdentityApis(origin, actors) {
             fail(result.success === true && Boolean(result.profile_revision), 'BASELINE_QA_PROFESSION_SAVE_FAILED');
         }
         results.push({ role: actor.role, accountId: actor.id, staffId: actor.staffId, authenticatedReads: 6,
-            professionSave: actor.role === 'admin' ? 'passed' : 'not_applicable' });
+            professionSave: actor.role === 'admin' && saveProfession ? 'passed' : 'not_applicable' });
     }
     return results;
 }
 
 async function main(argv = process.argv.slice(2), env = process.env) {
     const { values } = parseArgs({ args: argv, options: { mode: { type: 'string', default: 'plan' },
-        'plan-file': { type: 'string' }, 'approved-hash': { type: 'string' }, confirm: { type: 'string' }, local: { type: 'boolean' } } });
+        'plan-file': { type: 'string' }, 'approved-hash': { type: 'string' }, confirm: { type: 'string' }, local: { type: 'boolean' },
+        'output-dir': { type: 'string' } } });
     fail(['plan','run','finish'].includes(values.mode) && path.isAbsolute(values['plan-file'] || ''), 'BASELINE_QA_ARGUMENT_INVALID');
     const { plan, planHash } = describeBaselineQaPlan(JSON.parse(fs.readFileSync(values['plan-file'], 'utf8').replace(/^\uFEFF/, '')));
     if (values.mode !== 'plan') fail(values.confirm === 'EXECUTE_EXACT_BASELINE_ACCESS_QA'
@@ -105,21 +112,43 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     };
     try {
         if (values.mode === 'plan') {
-            await transaction(() => preflightBaselineQaPlan(db, plan), true);
-            return { ready: true, readOnly: true, runId: plan.runId, planHash, accounts: 2, staff: 2, registeredEntities: 8, roles: ['instructor','admin'] };
+            const preview = await transaction(() => preflightBaselineQaPlan(db, plan), true);
+            return { ready: !preview.bookingReadiness || preview.bookingReadiness.ready, readOnly: true,
+                classificationRequired: preview.bookingReadiness?.classificationRequired || false,
+                runId: plan.runId, planHash, accounts: 2, staff: 2, registeredEntities: plan.booking ? 9 : 8, roles: ['instructor','admin'] };
         }
-        if (values.mode === 'finish') return await transaction(() => finishBaselineQaRun(db, plan, planHash));
+        if (values.mode === 'finish') {
+            if (plan.booking) await transaction(() => finishBaselineBookingRun(db, plan, planHash));
+            return await transaction(() => finishBaselineQaRun(db, plan, planHash));
+        }
+        const browserScenario = plan.booking ? require('./baseline-access-qa-browser') : null;
+        if (browserScenario) browserScenario.requireBrowserRuntime();
         let created;
+        let bookingScope;
         let results;
+        let browserResults;
         try {
             created = await transaction(() => createBaselineQaRun(db, plan, planHash));
-            results = await exerciseIdentityApis(target.origin, created.actors);
+            results = await exerciseIdentityApis(target.origin, created.actors, { saveProfession: !plan.booking });
+            if (plan.booking) {
+                bookingScope = await transaction(() => createBaselineBookingRun(db, plan, planHash, created));
+                const admin = created.actors.find(actor => actor.role === 'admin');
+                const { requestId, ...bookingBody } = plan.booking;
+                const response = await jsonRequest(target.origin, '/api/bookings', { method: 'POST', token: admin.session.token,
+                    qaToken: bookingScope.token, requestId, body: bookingBody });
+                const bookingId = String(response.booking?.id || response.id || '');
+                fail(Boolean(bookingId), 'BASELINE_QA_BOOKING_CREATE_FAILED');
+                browserResults = await browserScenario.exerciseBaselineBrowser({ origin: target.origin, actors: created.actors,
+                    plan, bookingId, outputDirectory: values['output-dir'],
+                    api: (actor, endpoint, options = {}) => jsonRequest(target.origin, endpoint, { ...options, token: actor.session.token }) });
+            }
         } finally {
             // The expiry watchdog is the recovery path if this process or its
             // database connection disappears before this exact cleanup commits.
+            if (bookingScope) await transaction(() => finishBaselineBookingRun(db, plan, planHash));
             if (created) await transaction(() => finishBaselineQaRun(db, plan, planHash));
         }
-        return { success: true, runId: plan.runId, results, cleanup: 'cleaned' };
+        return { success: true, runId: plan.runId, results, ...(browserResults ? { browserResults } : {}), cleanup: 'cleaned' };
     } finally { await db.end(); }
 }
 

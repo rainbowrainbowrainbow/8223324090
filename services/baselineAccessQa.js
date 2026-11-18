@@ -23,7 +23,8 @@ function requireQa(condition, code = 'BASELINE_QA_INVALID') {
 function describeBaselineQaPlan(input) {
     const { runId, operatorId, businessId, releaseSha, ttlMinutes } = input || {};
     const plan = { runId, operatorId, businessId, releaseSha, ttlMinutes };
-    requireQa(input && Object.keys(input).length === 5 && Object.keys(input).every(key => Object.hasOwn(plan, key))
+    if (input?.booking !== undefined) plan.booking = require('./baselineBookingQa').normalizeBaselineBooking(input.booking, runId);
+    requireQa(input && Object.keys(input).length === Object.keys(plan).length && Object.keys(input).every(key => Object.hasOwn(plan, key))
         && RUN_ID.test(runId) && /^[a-f0-9]{40}$/.test(releaseSha)
         && [operatorId, businessId].every(id => Number.isSafeInteger(id) && id > 0)
         && Number.isInteger(ttlMinutes) && ttlMinutes >= 1 && ttlMinutes <= 30, 'BASELINE_QA_PLAN_INVALID');
@@ -59,7 +60,9 @@ async function preflightBaselineQaPlan(db, input, { lock = false } = {}) {
     const open = await db.query(`SELECT 1 FROM trusted_qa_runs
         WHERE source=$1 AND (run_id=$2 OR state IN ('active','cleanup_pending','blocked')) LIMIT 1`, [SOURCE, plan.runId]);
     requireQa(!open.rowCount, 'BASELINE_QA_RUN_ALREADY_OPEN');
-    return { ...description, organizationId: Number(access.activeMembership.organizationId) };
+    const bookingReadiness = plan.booking ? await require('./baselineBookingQa').preflightBaselineBooking(db, plan.booking,
+        { allowPendingClassification: !lock }) : null;
+    return { ...description, organizationId: Number(access.activeMembership.organizationId), bookingReadiness };
 }
 
 async function createBaselineQaRun(db, input, approvedHash) {
@@ -89,7 +92,8 @@ async function createBaselineQaRun(db, input, approvedHash) {
         await db.query(`INSERT INTO business_memberships(organization_id,business_id,user_id,role,is_default)
             VALUES($1,$2,$3,$4,true)`, [organizationId, plan.businessId, account.id, role]);
         for (const [type, id, payload] of [
-            ['baseline_staff', staff.id, { name }],
+            ['baseline_staff', staff.id, { name, ...(plan.booking && role === 'admin'
+                ? { shiftPreferenceActor: username, shiftPreferenceProfessions: ['animator', 'host', 'reception'] } : {}) }],
             ['baseline_account', account.id, { username, role, staffId: staff.id }],
             ['baseline_profile', profile.id, { userId: account.id, staffId: staff.id }],
             ['baseline_membership', account.id, { organizationId, businessId: plan.businessId, role }]
@@ -176,6 +180,7 @@ async function cleanupBaselineQa(db, { run, entities }) {
             OR EXISTS(SELECT 1 FROM organization_memberships WHERE user_id=ANY($1::int[]) AND is_active)
             OR EXISTS(SELECT 1 FROM employee_profiles WHERE id=ANY($2::int[]) AND (is_active OR user_id IS NOT NULL))
             OR EXISTS(SELECT 1 FROM staff WHERE id=ANY($3::int[]) AND is_active)
+            OR EXISTS(SELECT 1 FROM staff_shift_preferences WHERE staff_id=ANY($3::int[]))
             OR EXISTS(SELECT 1 FROM staff_role_assignments WHERE staff_id=ANY($3::int[]) AND status='active') AS found`,
         [ids(accounts), ids(profiles), ids(staff)]);
         return result.rows[0]?.found;
@@ -191,7 +196,6 @@ async function cleanupBaselineQa(db, { run, entities }) {
         OR EXISTS(SELECT 1 FROM hr_shifts WHERE staff_id=ANY($2::int[]))
         OR EXISTS(SELECT 1 FROM hr_time_records WHERE staff_id=ANY($2::int[]))
         OR EXISTS(SELECT 1 FROM staff_schedule WHERE staff_id=ANY($2::int[]))
-        OR EXISTS(SELECT 1 FROM staff_shift_preferences WHERE staff_id=ANY($2::int[]))
         OR EXISTS(SELECT 1 FROM payroll_reports WHERE staff_id=ANY($2::int[]))
         OR EXISTS(SELECT 1 FROM staff_profession_rates WHERE staff_id=ANY($2::int[]))
         OR EXISTS(SELECT 1 FROM payroll_schemes WHERE staff_id=ANY($2::int[]))
@@ -203,6 +207,20 @@ async function cleanupBaselineQa(db, { run, entities }) {
         OR EXISTS(SELECT 1 FROM bookings WHERE created_by=ANY($3::text[]) AND COALESCE(status,'confirmed')<>'cancelled') AS found`,
     [ids(accounts), ids(staff), userRows.rows.map(row => row.username)]);
     guard(unexpected.rows[0]?.found === false);
+    // The work-section footer saves default times, never actual shifts. These
+    // dependent rows are owned by the registered synthetic staff and actor.
+    const preferences = await db.query(`SELECT id,staff_id,profession_key,day_type,created_by,updated_by
+        FROM staff_shift_preferences WHERE staff_id=ANY($1::int[]) ORDER BY id FOR UPDATE`, [ids(staff)]);
+    guard(preferences.rowCount <= 6 && preferences.rows.every(row => {
+        const scope = staff.get(row.staff_id);
+        return scope?.shiftPreferenceActor === `${run.run_id}-account-2`
+            && JSON.stringify(scope.shiftPreferenceProfessions) === JSON.stringify(['animator','host','reception'])
+            && scope.shiftPreferenceProfessions.includes(row.profession_key)
+            && ['weekday','weekend'].includes(row.day_type)
+            && row.created_by === scope.shiftPreferenceActor && row.updated_by === scope.shiftPreferenceActor;
+    }));
+    if (preferences.rowCount) await db.query('DELETE FROM staff_shift_preferences WHERE id=ANY($1::bigint[])',
+        [preferences.rows.map(row => row.id)]);
     for (const [userId, owned] of memberships) {
         await db.query('UPDATE business_memberships SET is_active=false,is_default=false WHERE user_id=$1 AND business_id=$2 AND organization_id=$3',
             [userId, owned.businessId, owned.organizationId]);

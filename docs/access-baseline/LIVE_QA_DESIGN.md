@@ -1,4 +1,4 @@
-# Dedicated baseline live QA design — identity/API stage implemented
+# Dedicated baseline live QA design — local protocol implemented
 
 This is a preparation dependency, not permission to execute production writes.
 Do not reuse the animator-only HR fixture protocol or relax its existing guards.
@@ -9,9 +9,12 @@ session may stand in for the instructor/admin acceptance actors.
 The dedicated identity bootstrap, exact retirement/watchdog and one-shot API
 operator are now implemented and verified on disposable PostgreSQL; see
 BASELINE_QA_PROTOCOL.md. This resolves the missing isolated-role actors without
-changing either existing account. Canonical booking fixture binding, full browser
-guard/scenarios and final production plan/preflight remain unimplemented. The
-current five-field identity plan does not authorize a booking or shift write.
+changing either existing account. Optional hash-bound canonical booking and full
+browser guard/scenarios are now implemented; see BASELINE_QA_PROTOCOL.md. Final
+integrated tests and production plan/preflight remain required. Five-field
+identity-only plans still allow no booking/default-shift write. The optional
+sixth field explicitly includes the exact one-booking and six-default-time-row
+maximum scope; no actual shift or schedule write is included.
 
 ## Proposed bounded protocol
 

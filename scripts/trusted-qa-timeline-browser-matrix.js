@@ -374,6 +374,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+    requirePlaywright,
     ALLOWED_POST_PATHS,
     MIN_COMPACT_IDENTITY_FONT_PX,
     THEMES,

@@ -38,3 +38,42 @@ test('cleanup rejects even millisecond lifetime extension before acquiring any r
     await assert.rejects(cleanupBaselineQa({ query() { assert.fail('Out-of-scope lifecycle must not lock or mutate records'); } },
         { run, entities }), { code: 'BASELINE_QA_CLEANUP_DRIFT' });
 });
+
+test('canonical booking scope is hash-bound and rejects contact, finance and extra-animator fields', () => {
+    const plan = { runId: 'baqa-0123456789ab', operatorId: 48, businessId: 1, releaseSha: 'a'.repeat(40), ttlMinutes: 15 };
+    const booking = { requestId: plan.runId + '-booking', label: plan.runId + '-event', programId: 'qa-program',
+        productId: 'qa-program', programName: 'Synthetic program', programCode: 'QA', category: 'quest',
+        lineId: 'qa-line', roomResourceId: 'room-qa', room: 'Synthetic room', date: '2099-06-15', time: '13:00',
+        duration: 60, hosts: 1, status: 'confirmed', pinataMode: 'none' };
+    const hash = describeBaselineQaPlan({ ...plan, booking }).planHash;
+    assert.notEqual(hash, describeBaselineQaPlan(plan).planHash);
+    for (const patch of [{ time: '14:00' }, { roomResourceId: 'room-other' }, { date: '2099-06-16' }]) {
+        assert.notEqual(describeBaselineQaPlan({ ...plan, booking: { ...booking, ...patch } }).planHash, hash);
+    }
+    for (const patch of [{ customerPhone: 'synthetic' }, { price: 0 }, { hosts: 2 }, { pinataMode: 'park' },
+        { secondAnimatorLineId: 'another' }, { duration: 121 }, { time: '09:00' }, { label: 'unowned' }]) {
+        assert.throws(() => describeBaselineQaPlan({ ...plan, booking: { ...booking, ...patch } }));
+    }
+});
+
+test('browser perimeter blocks background data writes and binds normal login to its synthetic account', async () => {
+    const { installGuard } = require('../scripts/baseline-access-qa-browser');
+    let handler;
+    const context = { routeWebSocket: async () => {}, route: async (_, fn) => { handler = fn; } };
+    const actor = { id: 2, staffId: 3, username: 'synthetic', password: 'memory-only', role: 'admin' };
+    await installGuard(context, 'http://127.0.0.1:45678', actor, [actor], 'booking-qa', { date: '2099-06-15' });
+    const exercise = async (endpoint, method = 'GET', body) => {
+        let outcome;
+        await handler({ request: () => ({ url: () => 'http://127.0.0.1:45678' + endpoint, method: () => method,
+            postDataJSON: () => body }), abort: () => { outcome = 'abort'; }, continue: options => { outcome = options || 'continue'; } });
+        return outcome;
+    };
+    for (const [endpoint, method] of [['/api/chat/channels','GET'], ['/api/afisha/2099-06-15','GET'],
+        ['/api/hr/staff/99','GET'], ['/api/bookings','POST'], ['/api/settings','PUT']]) {
+        assert.equal(await exercise(endpoint, method), 'abort');
+    }
+    assert.equal(await exercise('/api/auth/login','POST',{ username: 'foreign', password: 'memory-only' }), 'abort');
+    assert.equal(await exercise('/api/auth/login','POST',{ username: actor.username, password: actor.password }), 'continue');
+    assert.equal(await exercise('/api/hr/staff/3/role-assignments','PUT'), 'continue');
+    assert.match((await exercise('/api/auth/profile')).url, /accessProbe=1/);
+});

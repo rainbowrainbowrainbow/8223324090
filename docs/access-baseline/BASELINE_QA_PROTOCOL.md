@@ -1,8 +1,8 @@
 # Registered baseline identity QA
 
-Status: identity lifecycle and API operator implemented locally. Production
-execution is not authorized. The canonical booking fixture and full browser
-scenario in LIVE_QA_DESIGN.md remain separate unfinished work.
+Status: identity/API lifecycle and optional canonical booking/browser scenario
+implemented locally. Production execution is not authorized. Final integrated
+verification and the exact production plan remain required.
 
 ## Scope
 
@@ -16,6 +16,11 @@ payroll/finance row or external notification recipient is created.
 
 The plan contains exactly runId (baqa- followed by12lowercase hex characters),
 operatorId, businessId, releaseSha (40lowercase hex) and ttlMinutes (1–30).
+An optional sixth field, booking, binds one exact canonical fixture (existing
+product, anonymous animator line, room, date/time, synthetic label). No contact,
+price override, extra animator, pinata or operational child entity is allowed.
+The window is10:00–20:00 and duration at most120minutes. Read-only planning may
+report pending game-zone classification; execution requires it already applied.
 Normalization binds every field to a SHA256 hash. Production requires Park
 business1, the canonical deployed SHA/branch and complete deployment metadata.
 The fixed database target fingerprint matches the existing trusted operator
@@ -34,7 +39,8 @@ token is exported. Authentication uses the existing normal login route.
 
 ## Operator commands
 
-Prepare an absolute JSON plan path containing only the five non-secret fields.
+Prepare an absolute JSON plan path containing the five non-secret fields and,
+for full acceptance, the exact booking field.
 Load the approved process-local credential through the established local file;
 do not paste passwords, database URLs or tokens into commands/chat.
 
@@ -59,6 +65,23 @@ Exact cleanup runs in finally, including API failure. Its success is required
 before the command reports success. If the process/connection disappears, the
 existing expiry watchdog dispatches the same source-specific cleanup.
 
+With booking present, the CLI registers a separate one-entity child using the
+existing trusted_qa booking source, one POST /api/bookings, exact fixture manifest
+and synthetic admin identity. The existing product/room/line are references,
+never registered as disposable products/resources. The server attaches its
+canonical marker and suppresses business side effects. The child is cancelled
+before parent retirement, including on browser failure. Optional absolute
+--output-dir receives only cropped synthetic modals and sanitized outcomes.
+
+The browser performs normal UI login for instructor/admin at1280/390px, existing
+rooms navigation (production defaults to animators), canonical detail/field and
+keyboard checks, both profession save buttons, companion default-time save, and
+reopening the card to verify persistence. It blocks foreign origins, sockets,
+Chat background joins, recurring-afisha materialization and unexpected writes;
+auth profile uses its existing read-only accessProbe. Real authenticated list
+responses are reduced to registered records before rendering. API assertions
+remain server-authenticated and unmocked. No credentials/traces are persisted.
+
 Manual exact retirement remains available after expiry:
 
 ```text
@@ -81,6 +104,15 @@ Only owned memberships, accounts/sessions, employee bridges, role assignments an
 staff are retired. Audits and inactive fixture rows remain. Existing operator and
 unregistered records stay untouched. Repeat finish verifies inactivity and is
 idempotent; registry/ownership drift never silently becomes successful cleanup.
+
+Only a booking-bound plan adds the admin staff entity's exact dependent default
+shift preference scope: at most six rows, animator/host/reception x
+weekday/weekend, created_by AND updated_by the registered synthetic admin.
+Cleanup locks and validates every dependent row before deleting those exact
+stable IDs. Unexpected actor/profession/cardinality aborts retirement. Identity-
+only plans still reject every preference row. No actual shift/schedule/time,
+payroll, attendance or real-person row is allowed. Repeated cleanup also proves
+that no preference remains.
 
 ## Verification
 

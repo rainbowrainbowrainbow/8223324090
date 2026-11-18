@@ -9,6 +9,22 @@
 
 ## Implemented locally
 
+Latest local work: optional exact booking plan, canonical trusted_qa child run,
+normal UI logins and instructor/admin1280/390 scenarios implemented. Initial full
+CLI browser run1/1 passed (four actual UI scenarios), with child cancellation,
+parent retirement, post-booking interruption and expiry recovery. Cropped
+screenshots reviewed; output/baseline-registered-browser-gate.log. Focused52/52
+passed (output/baseline-registered-focused.log). Expanded preference-drift
+recovery assertion and final rerun remain pending. Parent registry owns at most
+six exact dependent default-time rows only under booking-bound plans; five-field
+plans still reject them. A DATE projection fixes existing QA execution-window
+comparison on hosts east of UTC without changing booking contracts or parsers.
+
+Parallel release detected: remote production859196fedb107b443719cbfc576fa9352cbee15a
+(0.84.8, Park account issuance recovery), while live remains0.84.6/b0f6077d at the
+read-only check. Integration is the next step after this local checkpoint;
+revalidate convergence and choose the next free patch only at final RC.
+
 - Full 26-role before/after matrix; common working pages, required navigation independent of old favorites, canonical capability consumers, active membership and explicit-denial precedence.
 - Booking operations narrowed to operational roles; independent event-detail/contact/revenue fields and exports. Payroll approval/payment confirmation require explicit grants. HR/IT broad booking scope removed.
 - Team tasks/schedule use authoritative active staff structure nodes and memberships. Coordination DTOs omit absence reasons, notes, personnel metadata and compensation; attendance/export remain separate.

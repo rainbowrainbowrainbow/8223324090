@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.84.3",
+  "version": "0.84.4",
   "eventGenix": {
-    "releaseLabel": "Фріланс із резерву в графіку"
+    "releaseLabel": "Підказки у графіку та HR-форма"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

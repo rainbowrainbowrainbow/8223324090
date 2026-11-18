@@ -160,8 +160,11 @@ test('pre-cutover Park retains existing route responses and role/auth guards', a
         assert.equal((await request('/api/kleshnya/sessions')).status, 200);
         assert.equal(f.state.queries.length, 1);
         f.state.user = actor('event_genix', 'compatibility', { role: 'waiter' });
+        assert.equal((await request('/api/chat/channels')).status, 200);
+        assert.equal(f.state.serviceCalls.length, 4);
+        f.state.user.page_denylist = ['/chat'];
         assert.equal((await request('/api/chat/channels')).status, 403);
-        assert.equal(f.state.serviceCalls.length, 2);
+        assert.equal(f.state.serviceCalls.length, 4);
     });
 });
 

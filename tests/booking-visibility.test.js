@@ -257,7 +257,7 @@ test('booking-derived linked routes prefer exact visible child route then parent
 
     const taskRoute = resolveBookingDerivedLinkedRoute(actor, booking, { type: 'task', id: 991, visible: true });
     assert.equal(taskRoute.allowed, true);
-    assert.equal(taskRoute.href, '/tasks?open=991');
+    assert.equal(taskRoute.href, '/profile?tab=myday&open=991');
     assert.equal(taskRoute.fallbackHref, '/?date=2026-05-14&highlight=BK-10');
     assert.equal(taskRoute.routeKind, 'linked-task');
 

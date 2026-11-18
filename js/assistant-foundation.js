@@ -1216,7 +1216,7 @@
                 actionId: 'assistant.navigate',
                 label: 'Відкрити задачу',
                 summary: `Відкриваю задачу #${taskOpenMatch[1]}.`,
-                payload: { href: `tasks.html?open=${encodeURIComponent(taskOpenMatch[1])}`, pageId: 'tasks' }
+                payload: { href: `/profile?tab=myday&open=${encodeURIComponent(taskOpenMatch[1])}`, pageId: 'tasks' }
             });
         }
         const leadOpenMatch = text.match(/(?:відкрий|відкрити|покажи|open).{0,18}(?:лід|lead)\s*#?\s*(\d+)/i);

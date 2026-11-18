@@ -111,7 +111,7 @@ test('builds a safe task notification payload for Hermes delivery', () => {
         ownerUserId: 4,
         ownerLabel: 'Сергій',
         dueAt: '2026-06-30T15:00:00.000Z',
-        crmUrl: 'https://crm.example.com/tasks?open=123',
+        crmUrl: 'https://crm.example.com/profile?tab=myday&open=123',
         createdAt: '2026-06-29T10:00:00.000Z',
         updatedAt: '2026-06-29T11:00:00.000Z'
     });
@@ -214,7 +214,7 @@ test('createNotificationOutboxEvent sanitizes explicit payload before storing an
             priority: 'high',
             ownerUserId: 4,
             ownerLabel: 'Sergiy',
-            crmUrl: 'https://crm.example.com/tasks?open=777',
+            crmUrl: 'https://crm.example.com/profile?tab=myday&open=777',
             createdAt: '2026-06-29T10:00:00.000Z',
             updatedAt: '2026-06-29T11:00:00.000Z',
             apiKey: 'secret-api-key',

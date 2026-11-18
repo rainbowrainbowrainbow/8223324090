@@ -2816,7 +2816,7 @@ check('Park task actions use delegated buttons and canonical details',
     && parkMyDayCode.includes("control('reschedule-date',")
     && parkMyDayCode.includes("control('edit',")
     && profileCode.includes('TaskDetailDrawer.open')
-    && profileCode.includes('/tasks?view=my&open=')
+    && profileCode.includes('/profile?tab=myday&open=')
     && !profileCode.includes('TaskReportGate.openReportModal')
     && !profileCode.includes('onclick="setCabinetTaskStatus'));
 check('Profile task actions expose Ukrainian labels', profileCode.includes("const doneActionLabel = 'Виконати задачу';") && profileCode.includes('aria-label="Більше дій"') && profileCode.includes("'Показати деталі задачі'") && profilePagesCss.includes('.cabinet-task-action-done'));

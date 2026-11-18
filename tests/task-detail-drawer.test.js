@@ -10,6 +10,7 @@ const { withTaskDrawerContract, taskSourceSummary } = require('../services/taskD
 function loadDrawerContext() {
     const sandbox = {
         URL,
+        TaskLinks: require('../js/task-links'),
         console,
         location: {
             href: 'https://crm.test/tasks?mode=overview',
@@ -65,18 +66,17 @@ test('drawer contract exposes only server-derived allowed actions and a safe CRM
 
 test('shared drawer controller preserves open URLs and routes non-task surfaces to the canonical task page', async () => {
     const ctx = loadDrawerContext();
-    assert.equal(ctx.TaskDetailDrawer.taskUrl(17, { view: 'my' }), '/tasks?view=my&open=17');
+    assert.equal(ctx.TaskDetailDrawer.taskUrl(17, { view: 'my' }), '/profile?tab=myday&open=17');
 
     await ctx.TaskDetailDrawer.open(17, { view: 'my', sourceSurface: 'profile_my_day' });
-    assert.equal(ctx.location.href, '/tasks?view=my&open=17');
+    assert.equal(ctx.location.href, '/profile?tab=myday&open=17');
 
     let rendered = null;
     ctx.location.href = 'https://crm.test/tasks?mode=overview';
     ctx.TaskDetailDrawer.registerRenderer((id, options) => { rendered = { id, options }; return true; }, () => true);
     await ctx.TaskDetailDrawer.open(22, { sourceSurface: 'tasks_page' });
-    assert.equal(rendered.id, 22);
-    assert.equal(rendered.options.sourceSurface, 'tasks_page');
-    assert.equal(ctx.history.entries.at(-1).url, 'https://crm.test/tasks?mode=overview&open=22');
+    assert.equal(rendered, null);
+    assert.equal(ctx.location.href, '/profile?tab=myday&open=22');
 });
 
 test('task lead source links use the canonical viewer and preserve the task business context', () => {
@@ -111,6 +111,6 @@ test('task surfaces use the shared controller rather than a second detail render
     assert.match(profilePage, /TaskDetailDrawer\.open\(taskId, \{ view: 'my'/);
     assert.match(tasksHtml, /js\/task-detail-drawer\.js/);
     assert.match(profileHtml, /js\/task-detail-drawer\.js/);
-    assert.match(route, /withTaskDrawerContract\(normalizeTaskPayload\(result\.rows\[0\], \{ user: req\.user \}\), req\.user\)/);
-    assert.match(route, /COALESCE\(dep\.dependencies, '\[\]'::json\) AS dependencies/);
+    assert.match(route, /withTaskDrawerContract\(normalizeTaskPayload\(row, \{ user: req\.user \}\), req\.user/);
+    assert.match(route, /authorReadOnly: !row\.task_standard_visibility/);
 });

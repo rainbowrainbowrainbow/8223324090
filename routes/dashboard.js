@@ -1,3 +1,4 @@
+const { taskUrl } = require('../js/task-links');
 /**
  * routes/dashboard.js — Dashboard API (v24.3.0)
  * User dashboard config, widget data, /today aggregate, weather/currency cache
@@ -522,7 +523,7 @@ async function buildUrgentTaskAlerts(user, businessScope, limit = 5) {
             icon: '🔥',
             title: `Термінова без руху: "${(row.title || '').slice(0, 48)}"`,
             message: 'Потрібен час виконання або перенесення, щоб задача не висіла без руху.',
-            link: `/tasks?open=${row.id}`,
+            link: taskUrl(row.id),
             taskId: row.id,
             owner: task.ownerLabel || null,
             ownerState: task.ownerState || 'unassigned',
@@ -1956,7 +1957,7 @@ router.get('/widgets/:type', requireDashboardWidgetRevenue, allowDashboardPublic
                     exceptions.push({
                         id: `prep_overdue_${t.id}`, type: 'prep_overdue', level: 'warning', icon: '⏰',
                         title: `Прострочена підготовка: ${(t.title || '').slice(0,40)}`,
-                        link: `/tasks?taskId=${encodeURIComponent(t.id)}&businessContext=${encodeURIComponent(businessScope.activeContext)}`, action: { label: 'Виконати', prompt: `Задача підготовки ${t.id} прострочена` }
+                        link: taskUrl(t.id, { businessContext: businessScope.activeContext }), action: { label: 'Виконати', prompt: `Задача підготовки ${t.id} прострочена` }
                     });
                 });
                 detractors.rows.forEach(r => {
@@ -2494,7 +2495,7 @@ router.get('/alerts', async (req, res) => {
             const task = taskWidgetPayload([t])[0] || t;
             alerts.push({ id: `overdue_${t.id}`, level: 'warning', icon: '⚠️',
                 title: `Прострочена: "${(t.title || '').slice(0, 40)}"`,
-                link: `/tasks?open=${t.id}`, taskId: t.id,
+                link: taskUrl(t.id), taskId: t.id,
                 owner: task.ownerLabel || null,
                 ownerState: task.ownerState || 'unassigned',
                 intelligence: task.intelligence || null,
@@ -2573,7 +2574,7 @@ async function broadcastAlerts() {
         overdue.rows.forEach(t => {
             alerts.push({ id: `overdue_${t.id}`, level: 'warning', icon: '⚠️',
                 title: `Прострочена: "${(t.title || '').slice(0, 40)}"`,
-                link: `/tasks?open=${t.id}`, taskId: t.id,
+                link: taskUrl(t.id), taskId: t.id,
                 action: { label: '📋 Відкрити задачу', prompt: `Задача прострочена: "${t.title}". Що робимо?` }
             });
         });

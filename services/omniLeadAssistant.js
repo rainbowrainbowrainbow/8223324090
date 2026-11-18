@@ -1,5 +1,7 @@
 'use strict';
 
+const { taskUrl } = require('../js/task-links');
+
 const crypto = require('node:crypto');
 const { pool } = require('../db');
 const { settingsCache } = require('./cache');
@@ -2881,7 +2883,7 @@ async function createLeadAssistantFollowUpTask(conversationId, analysis, options
     created: !task.duplicateSkipped,
     task,
     analysis: effectiveAnalysis,
-    link: task?.id ? `/tasks?highlight=${encodeURIComponent(task.id)}` : null,
+    link: task?.id ? taskUrl(task.id) : null,
   };
 }
 

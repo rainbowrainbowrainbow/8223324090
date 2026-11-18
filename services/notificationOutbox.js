@@ -1,5 +1,7 @@
 'use strict';
 
+const { taskUrl, legacyDestination } = require('../js/task-links');
+
 const crypto = require('crypto');
 const { pool: defaultPool } = require('../db');
 const { isTrustedDisposableQaSource } = require('./disposableQa');
@@ -225,7 +227,14 @@ function normalizePriority(value) {
 
 function taskCrmUrl(taskId, context = {}) {
     const explicit = textOrNull(context.crmUrl || context.taskUrl);
-    if (explicit) return explicit;
+    if (explicit) {
+        try {
+            const parsed = new URL(explicit, 'http://localhost');
+            const destination = legacyDestination(explicit, parsed.origin);
+            if (destination) return /^https?:\/\//.test(explicit) ? parsed.origin + destination : destination;
+        } catch {}
+        return explicit;
+    }
 
     const baseUrl = textOrNull(
         context.crmBaseUrl
@@ -234,7 +243,7 @@ function taskCrmUrl(taskId, context = {}) {
         || process.env.PUBLIC_BASE_URL
         || process.env.APP_BASE_URL
     );
-    const path = `/tasks?open=${encodeURIComponent(taskId)}`;
+    const path = taskUrl(taskId, context);
     return baseUrl ? `${baseUrl.replace(/\/+$/, '')}${path}` : path;
 }
 

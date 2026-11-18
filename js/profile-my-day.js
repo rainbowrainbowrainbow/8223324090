@@ -17,18 +17,50 @@
         return { executor: 'Виконую', author: 'На контролі', participant: 'Спостерігаю', viewer: 'Перегляд' }[role] || '';
     }
 
-    function openTaskDialog({ taskId, load, selectDate, statusLabel, opener, onClose }) {
+    function openTaskDialog({ taskId, load, selectDate, statusLabel, opener, onClose, mode, save, complete, reschedule }) {
         const dialog = document.createElement('dialog');
         dialog.className = 'park-task-dialog';
         dialog.dataset.myDayTask = taskId;
+        dialog.dataset.myDayMode = mode || '';
+        dialog.taskLocation = global.location.href;
         dialog.setAttribute('aria-labelledby', 'park-task-dialog-title');
         dialog.innerHTML = `<header class="park-task-dialog-head">
             <h2 id="park-task-dialog-title">Задача #${taskId}</h2>
             <form method="dialog"><button type="submit" autofocus>Закрити</button></form>
-        </header><div class="park-task-dialog-content"><p role="status">Завантаження задачі…</p></div>`;
+        </header><p id="my-day-task-guard" class="park-task-dialog-guard" aria-live="polite"></p>
+        <button type="button" class="park-task-dialog-discard" aria-describedby="my-day-task-guard" hidden>Відкинути зміни та закрити</button>
+        <div class="park-task-dialog-content"><p role="status">Завантаження задачі…</p></div>`;
         const controller = new AbortController();
+        const title = dialog.querySelector('h2');
+        const content = dialog.querySelector('.park-task-dialog-content');
+        const guard = dialog.querySelector('.park-task-dialog-guard');
+        const discard = dialog.querySelector('.park-task-dialog-discard');
+        const escape = global.escapeHtml;
+        let task, busy = false, dirty = false;
+        const beforeUnload = event => {
+            if (!dirty && !busy) return;
+            event.preventDefault(); event.returnValue = '';
+        };
+        global.addEventListener('beforeunload', beforeUnload);
+        function preventLoss(event) {
+            if (!busy && !dirty) return;
+            event.preventDefault();
+            guard.textContent = busy ? 'Дочекайтеся завершення збереження.' : 'Є незбережені зміни. Збережіть їх або відкиньте.';
+            discard.hidden = busy;
+            if (!busy) discard.focus();
+        }
+        dialog.addEventListener('cancel', preventLoss);
+        dialog.querySelector('form').addEventListener('submit', preventLoss);
+        discard.addEventListener('click', () => { dirty = false; dialog.dataset.dirty = 'false'; dialog.close(); });
+        // History-driven replacement must honor the same dirty-form guard.
+        dialog.canLeave = () => {
+            if (!busy && !dirty) return true;
+            preventLoss({ preventDefault() {} });
+            return false;
+        };
         dialog.addEventListener('close', () => {
             controller.abort();
+            global.removeEventListener('beforeunload', beforeUnload);
             dialog.remove();
             onClose(dialog);
             if (!opener?.isConnected && !document.querySelector('dialog[open]')) {
@@ -37,35 +69,105 @@
         }, { once: true });
         document.body.append(dialog);
         dialog.showModal();
-
-        const title = dialog.querySelector('h2');
-        const content = dialog.querySelector('.park-task-dialog-content');
-        const escape = global.escapeHtml;
-        void (async () => {
+        function errorText(error) {
+            if (error.status === 400) return 'Некоректне посилання на задачу.';
+            if (error.status === 401) return 'Потрібно увійти, щоб відкрити задачу.';
+            if ([403, 404].includes(error.status)) return 'Задача недоступна або її видалено.';
+            return 'Не вдалося завантажити або зберегти задачу. Перевірте з’єднання та спробуйте ще раз.';
+        }
+        function showError(error, mutation = false) {
+            let alert = content.querySelector('[role="alert"]');
+            if (!alert) { alert = document.createElement('p'); alert.setAttribute('role', 'alert'); content.prepend(alert); }
+            alert.textContent = mutation && error.name !== 'TypeError' && error.message ? error.message : errorText(error);
+        }
+        async function run(action) {
+            if (busy) return;
+            busy = true;
+            content.setAttribute('aria-busy', 'true');
+            content.querySelectorAll('button, input, textarea, select').forEach(control => { control.disabled = true; });
             try {
-                const task = await load(controller.signal);
-                if (!dialog.open) return;
-                if (!task?.id) throw new Error('Task unavailable');
-                const due = selectDate(task);
-                const executor = task.ownerLabel || task.owner_name || task.owner_username;
-                title.textContent = task.title || `Задача #${taskId}`;
-                const description = typeof task.description === 'string' ? task.description.trim() : '';
-                content.innerHTML = `<dl class="park-task-dialog-facts">
-                    <div><dt>Моя роль</dt><dd>${escape(roleLabel(taskRole(task)) || 'Перегляд')}</dd></div>
-                    <div><dt>Стан</dt><dd>${escape(statusLabel(task))}</dd></div>
-                    <div><dt>Дата</dt><dd>${due ? `<time datetime="${escape(due)}">${escape(due.split('-').reverse().join('.'))}</time>` : 'Без дати'}</dd></div>
-                    ${executor ? `<div><dt>Виконавець</dt><dd>${escape(executor)}</dd></div>` : ''}
-                </dl>
-                ${description && description !== title.textContent.trim() ? `<p class="park-task-dialog-description">${escape(description)}</p>` : ''}
-                <a class="park-task-dialog-actions" href="/tasks?view=my&amp;open=${taskId}">Усі дії із задачею</a>`;
-            } catch (error) {
-                if (!dialog.open) return;
-                content.innerHTML = '<p role="alert"></p>';
-                content.firstElementChild.textContent = [403, 404].includes(error.status)
-                    ? 'Задача недоступна або її видалено.'
-                    : 'Не вдалося завантажити задачу. Спробуйте відкрити її ще раз.';
+                await action();
+                dirty = false;
+                dialog.dataset.dirty = 'false';
+                guard.textContent = '';
+                discard.hidden = true;
+                await refresh();
+                content.querySelector('button')?.focus({ preventScroll: true });
+            } catch (error) { if (dialog.open) showError(error, true); }
+            finally {
+                busy = false;
+                content.removeAttribute('aria-busy');
+                content.querySelectorAll('button, input, textarea, select').forEach(control => { control.disabled = false; });
             }
-        })();
+        }
+        function render(edit = false) {
+            const due = selectDate(task);
+            const executor = task.ownerLabel || task.owner_name || task.owner_username;
+            const actions = task.drawer?.actions || {};
+            const priorities = global.TaskUiShared?.TASK_PRIORITY_OPTIONS || [];
+            const priority = global.TaskUiShared?.normalizeTaskPriority(task.priority) || 'normal';
+            title.textContent = task.title || `Задача #${taskId}`;
+            const description = typeof task.description === 'string' ? task.description.trim() : '';
+            content.innerHTML = `<dl class="park-task-dialog-facts">
+                <div><dt>Моя роль</dt><dd>${escape(roleLabel(taskRole(task)) || 'Перегляд')}</dd></div>
+                <div><dt>Стан</dt><dd>${escape(statusLabel(task))}</dd></div>
+                <div><dt>Дата</dt><dd>${due ? `<time datetime="${escape(due)}">${escape(due.split('-').reverse().join('.'))}</time>` : 'Без дати'}</dd></div>
+                ${executor ? `<div><dt>Виконавець</dt><dd>${escape(executor)}</dd></div>` : ''}
+            </dl>
+            ${description && description !== title.textContent.trim() ? `<p class="park-task-dialog-description">${escape(description)}</p>` : ''}
+            <div class="park-task-dialog-buttons">
+                ${actions.edit && save ? '<button type="button" data-dialog-edit>Редагувати</button>' : ''}
+                ${actions.complete && complete ? '<button type="button" data-dialog-complete>Виконати</button>' : ''}
+            </div>
+            ${actions.edit && save ? `<form data-dialog-editor ${edit ? '' : 'hidden'}>
+                <label for="my-day-edit-title">Назва</label><input id="my-day-edit-title" name="title" required value="${escape(task.title || '')}">
+                <label for="my-day-edit-description">Опис</label><textarea id="my-day-edit-description" name="description" rows="4">${escape(task.description || '')}</textarea>
+                <label for="my-day-edit-priority">Пріоритет</label><select id="my-day-edit-priority" name="priority">${priorities.map(item => `<option value="${escape(item.value)}" ${item.value === priority ? 'selected' : ''}>${escape(item.label)}</option>`).join('')}</select>
+                <button type="submit">Зберегти</button>
+            </form>` : ''}
+            ${actions.reschedule && reschedule ? `<form data-dialog-schedule>
+                <label for="my-day-reschedule-date">Нова дата</label><input id="my-day-reschedule-date" name="date" type="date" required value="${escape(due || '')}">
+                <button type="submit">Перенести</button>
+            </form>` : ''}`;
+            const editor = content.querySelector('[data-dialog-editor]');
+            content.querySelector('[data-dialog-edit]')?.addEventListener('click', () => { editor.hidden = false; editor.elements.title.focus(); });
+            editor?.addEventListener('input', () => { dirty = true; dialog.dataset.dirty = 'true'; });
+            editor?.addEventListener('submit', event => {
+                event.preventDefault();
+                const patch = Object.fromEntries(new FormData(editor));
+                void run(() => save(task, patch));
+            });
+            content.querySelector('[data-dialog-complete]')?.addEventListener('click', () => {
+                if (dirty) { preventLoss({ preventDefault() {} }); return; }
+                void run(() => complete(task));
+            });
+            const schedule = content.querySelector('[data-dialog-schedule]');
+            schedule?.addEventListener('submit', event => {
+                event.preventDefault();
+                if (dirty) { preventLoss({ preventDefault() {} }); return; }
+                void run(() => reschedule(schedule.elements.date.value));
+            });
+        }
+        async function refresh(edit = false) {
+            const loaded = await load(controller.signal);
+            if (!dialog.open) return;
+            task = loaded?.task || loaded?.data || loaded;
+            if (!task?.id) throw Object.assign(new Error('Task unavailable'), { status: 401 });
+            render(edit);
+        }
+        async function initialLoad() {
+            try { await refresh(mode === 'edit'); }
+            catch (error) {
+                if (!dialog.open) return;
+                content.replaceChildren();
+                showError(error);
+                const retry = document.createElement('button');
+                retry.type = 'button'; retry.textContent = 'Спробувати ще раз';
+                retry.addEventListener('click', () => { retry.disabled = true; void initialLoad(); });
+                if (![400, 403, 404].includes(error.status)) content.append(retry);
+            }
+        }
+        void initialLoad();
         return dialog;
     }
 

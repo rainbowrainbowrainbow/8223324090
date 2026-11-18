@@ -781,9 +781,11 @@ async function verifyArchiveExplanation(page, baseUrl) {
 }
 
 async function verifyDrawer(page, baseUrl) {
-    await openPage(page, baseUrl, '?mode=overview&open=42');
+    // Keep the retained Task Center renderer's visual/access contract covered in
+    // isolation. User entry routing is verified separately and in the actual app.
+    await openPage(page, baseUrl, '?mode=overview');
+    await page.evaluate(() => renderTaskDetailDrawer(42));
     await page.waitForSelector('#taskDetailOverlay');
-    assert.equal(new URL(page.url()).searchParams.get('open'), '42');
     assert.equal(await page.locator('#taskDetailOverlay').getAttribute('data-task-version'), '3');
     const disabledControls = await page.locator('#taskDetailOverlay [disabled][aria-disabled="true"]').count();
     assert.ok(disabledControls >= 3, `drawer exposes permission-disabled controls (${disabledControls})`);
@@ -934,7 +936,7 @@ async function run() {
             await taskCard.screenshot({
                 path: path.join(evidence, 'task-list-substitution-mobile.png'), animations: 'disabled'
             });
-            await taskCard.locator('.task-card-title').click();
+            await page.evaluate(() => renderTaskDetailDrawer(42));
             const label = page.locator('.task-detail-source-card [data-task-substitution]');
             assert.equal(await label.innerText(), 'Підміна №901 · погоджено');
             await label.scrollIntoViewIfNeeded();
@@ -954,7 +956,7 @@ async function run() {
             await openPage(page, fixture.baseUrl, overdueList);
             await taskCard.waitFor();
             assert.equal(await cardLabel.count(), 0);
-            await taskCard.locator('.task-card-title').click();
+            await page.evaluate(() => renderTaskDetailDrawer(42));
             await page.locator('.task-detail-source-card').waitFor();
             assert.equal(await label.count(), 0);
             console.log('Task list and detail substitution mobile smoke passed.');
@@ -966,6 +968,10 @@ async function run() {
         await verifyDrawer(page, fixture.baseUrl);
         await verifyStates(page, fixture.baseUrl, state);
         await verifyResponsiveThemesAndMotion(page, fixture.baseUrl, state);
+        await page.route('**/profile?*', route => route.fulfill({ contentType: 'text/html', body: '<main>My Day destination fixture</main>' }));
+        await openPage(page, fixture.baseUrl, '?mode=overview&dashboardFilter=my-overdue');
+        await page.locator('#boardContent .task-card[data-task-id="42"] .task-card-title').click();
+        await page.waitForURL(url => url.pathname === '/profile' && url.searchParams.get('tab') === 'myday' && url.searchParams.get('open') === '42');
         assert.ok(state.requests.some(item => item.includes('/api/tasks/overview')), 'overview uses mocked API');
         assert.ok(state.requests.some(item => item.includes('/api/tasks/team-control')), 'team/planning use mocked API');
         assert.deepEqual(state.mutations, [], 'browser issued no task or preference mutations');

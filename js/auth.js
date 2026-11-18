@@ -1707,7 +1707,7 @@ function normalizeSafeAuthReturnRoute(value) {
     try {
         const locationOrigin = window.location?.origin || 'http://localhost';
         const parsed = new URL(String(value || window.location?.href || window.location?.pathname || '/'), locationOrigin);
-        if (parsed.origin !== locationOrigin) return '';
+        if (parsed.origin === 'null' || parsed.origin !== locationOrigin) return '';
         pathname = parsed.pathname || '/';
         params = parsed.searchParams;
     } catch {
@@ -1728,6 +1728,9 @@ function normalizeSafeAuthReturnRoute(value) {
         const query = new URLSearchParams({ tab: 'myday', open: params.get('open') });
         const date = params.get('date');
         if (date === 'undated' || /^\d{4}-\d{2}-\d{2}$/.test(date || '')) query.set('date', date);
+        const context = params.get('businessContext');
+        if (/^[a-z][a-z0-9_]{0,63}$/.test(context || '')) query.set('businessContext', context);
+        if (params.get('mode') === 'edit') query.set('mode', 'edit');
         return `/profile?${query}`;
     }
     const output = [moduleName];
@@ -1751,7 +1754,10 @@ function rememberAuthReturnRoute(reason = 'terminal-auth') {
     const route = normalizeSafeAuthReturnRoute();
     if (!route || route === '/' || route === '/index') return false;
     try {
-        localStorage.setItem(AUTH_RETURN_ROUTE_KEY, JSON.stringify({ route, at: Date.now(), reason: String(reason || 'terminal-auth') }));
+        const taskIntent = route.startsWith('/profile?tab=myday&open=');
+        const storage = taskIntent && typeof sessionStorage !== 'undefined' ? sessionStorage : localStorage;
+        storage.setItem(AUTH_RETURN_ROUTE_KEY, JSON.stringify({ route, at: Date.now(), reason: String(reason || 'terminal-auth'),
+            ...(taskIntent ? { userId: AppState.currentUser?.id || null } : {}) }));
         recordRedirectDiagnostic('auth-redirect', {
             stage: 'show-login-screen',
             redirectReason: 'login-page',
@@ -1765,11 +1771,15 @@ function rememberAuthReturnRoute(reason = 'terminal-auth') {
 
 function consumeAuthReturnRoute(user = AppState.currentUser) {
     let entry = null;
+    let tabIntent = false;
     const clearIntent = () => {
         try { localStorage.removeItem(AUTH_RETURN_ROUTE_KEY); } catch {}
+        try { sessionStorage.removeItem(AUTH_RETURN_ROUTE_KEY); } catch {}
     };
     try {
-        const raw = localStorage.getItem(AUTH_RETURN_ROUTE_KEY) || '';
+        const tabRaw = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(AUTH_RETURN_ROUTE_KEY) : '';
+        tabIntent = Boolean(tabRaw);
+        const raw = tabRaw || localStorage.getItem(AUTH_RETURN_ROUTE_KEY) || '';
         if (raw) entry = JSON.parse(raw);
     } catch {
         clearIntent();
@@ -1777,6 +1787,14 @@ function consumeAuthReturnRoute(user = AppState.currentUser) {
     }
     const route = normalizeSafeAuthReturnRoute(entry?.route || '');
     const at = Number(entry?.at || 0);
+    if (!tabIntent && typeof sessionStorage !== 'undefined' && route.startsWith('/profile?tab=myday&open=')) {
+        clearIntent();
+        return '';
+    }
+    if (entry?.userId && String(entry.userId) !== String(user?.id)) {
+        clearIntent();
+        return '';
+    }
     if (!route || route === '/' || route === '/index') {
         clearIntent();
         return '';

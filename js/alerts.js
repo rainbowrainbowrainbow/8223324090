@@ -587,7 +587,7 @@ async function _submitAlertTask(btn, alertId) {
         if (resp.ok) {
             const data = await resp.json();
             const taskId = data.task?.id || data.id || '';
-            form.innerHTML = `<div style="color:#22c55e;font-size:12px;padding:6px">✅ Задачу #${taskId} створено! <a href="/tasks?open=${taskId}" style="color:#22c55e;text-decoration:underline">Відкрити</a></div>`;
+            form.innerHTML = `<div style="color:#22c55e;font-size:12px;padding:6px">✅ Задачу #${taskId} створено! <a href="/profile?tab=myday&open=${taskId}" style="color:#22c55e;text-decoration:underline">Відкрити</a></div>`;
             setTimeout(() => { form.parentElement.innerHTML = ''; _dismissAlert(alertId); }, 3000);
         } else { btn.disabled = false; btn.textContent = '📋 Спробувати ще'; }
     } catch { btn.disabled = false; btn.textContent = '📋 Поставити задачу'; }

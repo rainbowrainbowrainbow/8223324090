@@ -7,8 +7,8 @@
     let activeTaskId = null;
 
     function normalizeTaskId(value) {
-        const id = Number.parseInt(String(value || ''), 10);
-        return Number.isInteger(id) && id > 0 ? id : null;
+        const id = /^[1-9]\d*$/.test(String(value || '')) ? Number(value) : NaN;
+        return Number.isSafeInteger(id) && id > 0 ? id : null;
     }
 
     function openTaskIdFromUrl() {
@@ -20,11 +20,7 @@
     }
 
     function taskUrl(taskId, options = {}) {
-        const url = new URL('/tasks', global.location?.origin || global.location?.href || 'http://localhost');
-        if (options.view) url.searchParams.set('view', options.view);
-        if (options.mode) url.searchParams.set('mode', options.mode);
-        url.searchParams.set('open', String(taskId));
-        return `${url.pathname}${url.search}${url.hash}`;
+        return global.TaskLinks.taskUrl(taskId, options);
     }
 
     function syncOpenParam(taskId, { replace = false } = {}) {
@@ -92,10 +88,7 @@
         const id = normalizeTaskId(taskId);
         if (!id) return Promise.resolve(false);
         activeTaskId = id;
-        if (typeof renderer === 'function') {
-            if (!options.fromUrl) syncOpenParam(id, { replace: options.replaceUrl === true });
-            return Promise.resolve(renderer(id, { ...options, taskId: id }));
-        }
+        // Task Center is a separate workspace; every task entry now belongs to My Day.
         global.location.href = taskUrl(id, options);
         return Promise.resolve(true);
     }

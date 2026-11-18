@@ -1,3 +1,4 @@
+const { taskUrl } = require('../js/task-links');
 const express = require('express');
 const router = express.Router();
 const { authenticateToken, canUseAction, resolveCapability } = require('../middleware/auth');
@@ -154,7 +155,7 @@ router.get('/', async (req, res) => {
                     title: r.title,
                     subtitle: [r.date || 'Без дати', r.assigned_to || '', r.category || ''].filter(Boolean).join(' | '),
                     status: r.status,
-                    href: `/tasks?open=${encodeURIComponent(r.id)}`,
+                    href: taskUrl(r.id),
                     meta: { priority: r.priority, category: r.category }
                 })),
                 staff: staff.rows.map(r => ({

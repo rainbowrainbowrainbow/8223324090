@@ -624,6 +624,8 @@ html:has(.park-my-day.is-completing-task)::view-transition-new(root) { animation
 }
 .park-task-dialog-head { display: flex; align-items: start; justify-content: space-between; gap: .75rem; }
 .park-task-dialog-head h2 { margin-block: 0; font-size: clamp(1.125rem, 4vw, 1.5rem); }
+.park-task-dialog-head form { flex-shrink: 0; }
+.park-task-dialog-head button { white-space: nowrap; }
 .park-task-dialog-head button, .park-task-dialog-actions { min-block-size: 44px; }
 .park-task-dialog-head button { padding-inline: .75rem; font: inherit; }
 .park-task-dialog-actions {
@@ -638,6 +640,19 @@ html:has(.park-my-day.is-completing-task)::view-transition-new(root) { animation
     text-underline-offset: .2em;
 }
 .park-task-dialog-content { margin-block-start: 1rem; }
+.park-task-dialog-content form:not([hidden]) { display: grid; gap: .5rem; margin-block-start: 1rem; }
+.park-task-dialog-content input, .park-task-dialog-content textarea, .park-task-dialog-content select {
+    inline-size: 100%; min-inline-size: 0; box-sizing: border-box; padding: .65rem;
+    color: inherit; background: var(--gray-50, white); border: 1px solid var(--gray-300, currentColor); border-radius: .5rem; font: inherit;
+}
+.park-task-dialog-buttons { display: flex; flex-wrap: wrap; gap: .5rem; }
+.park-task-dialog-content button, .park-task-dialog-discard {
+    min-block-size: 44px; padding: .5rem .75rem; font: inherit; max-inline-size: 100%;
+    border: 1px solid var(--gray-300, currentColor); border-radius: .55rem;
+    color: CanvasText; background: Canvas; cursor: pointer;
+}
+.park-task-dialog-guard { min-block-size: 1.5em; margin-block: .5rem; }
+.park-task-dialog-content [hidden] { display: none; }
 .park-task-dialog-description { margin-block-start: .9rem; white-space: pre-wrap; }
 .park-task-dialog-facts {
     display: grid;

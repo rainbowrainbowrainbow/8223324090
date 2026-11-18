@@ -633,7 +633,7 @@ async function navigateToResult(item) {
             window.location.href = `/customers?highlight=${encodeURIComponent(item.id)}`;
             break;
         case 'task':
-            window.location.href = `/tasks?highlight=${encodeURIComponent(item.id)}`;
+            window.location.href = `/profile?tab=myday&open=${encodeURIComponent(item.id)}`;
             break;
         case 'staff':
             window.location.href = `/staff?highlight=${encodeURIComponent(item.id)}`;

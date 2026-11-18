@@ -1,5 +1,7 @@
 'use strict';
 
+const { taskUrl } = require('../js/task-links');
+
 const crypto = require('node:crypto');
 const { audit, failure, transaction } = require('./telegramCrmIdentity');
 const { buildTaskPersonalQuery, taskViewerRoles } = require('./taskPersonalScope');
@@ -128,7 +130,7 @@ function createTelegramCrmTasks(options) {
             ownerLabel: row.owner_name || row.assigned_to || row.owner || null,
             viewerRoles: taskViewerRoles(actor, row), date: row.date || null, deadline: row.deadline || null,
             workDate: row.work_date || null, scheduledStartAt: row.scheduled_start_at || null,
-            businessContext: row.business_context || scope.activeContext, url: `/tasks?open=${row.id}` };
+            businessContext: row.business_context || scope.activeContext, url: taskUrl(row.id, { businessContext: row.business_context || scope.activeContext }) };
     }
 
     async function assertReceiptVisible(client, actor, scope, taskId) {

@@ -37,7 +37,7 @@ test('maps CRM task rows to stable Hermes list items', () => {
     assert.equal(item.priority, 'urgent');
     assert.deepEqual(item.assignee, { id: '7', name: 'Manager Name' });
     assert.equal(item.due_at, '2026-06-30T09:00:00.000Z');
-    assert.equal(item.crm_url, 'https://crm.example.com/tasks?open=123');
+    assert.equal(item.crm_url, 'https://crm.example.com/profile?tab=myday&open=123&businessContext=event_genix');
     assert.deepEqual(item.labels, ['booking', 'confirmation', 'followup', 'urgent']);
     assert.equal(item.metadata.crm_status, 'todo');
     assert.equal(item.metadata.business_context, 'event_genix');

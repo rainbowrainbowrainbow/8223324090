@@ -37,6 +37,12 @@ async function run() {
         await setup.end();
     }
 
+    if (process.env.TASK_ENTRY_ONLY === '1') {
+        const evidence = path.resolve(__dirname, '../../output/qa');
+        fs.mkdirSync(evidence, { recursive: true });
+        await require('./task-entry-checks').verifyTaskEntry({ origin, session, evidence });
+        return;
+    }
     const { chromium } = requirePlaywright();
     const browser = await chromium.launch();
     const evidence = path.resolve(__dirname, '../../output/qa');
@@ -319,8 +325,9 @@ async function run() {
         await page.goBack();
         await taskDialog.waitFor({ state: 'hidden' });
         await titleButton.click();
-        await taskDialog.getByRole('link', { name: 'Усі дії із задачею' }).click();
-        await page.waitForURL(url => url.pathname === '/tasks' && url.searchParams.has('open'));
+        await taskDialog.getByRole('button', { name: 'Редагувати', exact: true }).click();
+        await taskDialog.locator('[data-dialog-editor]').waitFor();
+        assert.equal(new URL(page.url()).pathname, '/profile');
         await page.goBack();
         await taskDialog.waitFor({ state: 'hidden' });
         await work.waitFor();
@@ -350,7 +357,8 @@ async function run() {
         await page.setViewportSize({ width: 390, height: 844 });
         await work.waitFor();
         await work.getByRole('button', { name: 'Редагувати' }).click();
-        await page.waitForURL(url => url.pathname === '/tasks' && url.searchParams.get('mode') === 'edit');
+        await page.waitForURL(url => url.pathname === '/profile' && url.searchParams.get('mode') === 'edit');
+        await taskDialog.locator('[data-dialog-editor]').waitFor();
         await page.goBack();
         await work.waitFor();
         const id = Number(await work.getAttribute('data-task-id'));
@@ -369,12 +377,9 @@ async function run() {
         assert.equal((await stopped).status(), 200);
         await timer.waitFor({ state: 'hidden' });
         await page.goto(origin + `/tasks?view=my&open=${legacyIds[1]}`);
-        const centerComplete = page.locator('[data-task-drawer-action="complete"]');
-        await centerComplete.waitFor().catch(error => {
-            return page.locator('#boardContent').textContent().then(board => {
-                throw new Error(`${error.message}\nTask Center boot: ${taskBoot.join('; ')}\nErrors: ${pageErrors.join('; ')}\nBoard: ${board?.trim().slice(0, 320)}`, { cause: error });
-            });
-        });
+        const centerComplete = page.locator('.park-task-dialog [data-dialog-complete]');
+        await centerComplete.waitFor();
+        assert.equal(new URL(page.url()).pathname, '/profile');
         const centerResponse = page.waitForResponse(r => r.request().method() === 'POST'
             && new URL(r.url()).pathname === `/api/tasks/${legacyIds[1]}/complete`);
         await centerComplete.click();
@@ -482,10 +487,16 @@ async function run() {
         assert.equal(mobileNavRows, 2);
         await page.screenshot({ path: path.join(evidence, 'profile-control-390.png'), animations: 'disabled' });
         await authoredTask.click();
-        await page.waitForURL(url => url.pathname === '/tasks' && url.searchParams.has('open'));
-        const taskDrawerTitle = page.locator('#taskDetailOverlay #_tdTitle');
-        await taskDrawerTitle.waitFor();
-        assert.equal(await taskDrawerTitle.inputValue(), assignedTitle);
+        await page.waitForURL(url => url.pathname === '/profile' && url.searchParams.get('tab') === 'myday' && url.searchParams.has('open'));
+        await page.locator('.park-task-dialog').getByRole('heading', { name: assignedTitle, exact: true }).waitFor();
+        const openedTaskId = new URL(page.url()).searchParams.get('open');
+        const openedTask = await (await fetch(origin + '/api/tasks/' + openedTaskId, {
+            headers: { authorization: 'Bearer ' + session.token }
+        })).json();
+        assert.equal(await page.locator('.park-task-dialog [data-dialog-complete]').count(),
+            openedTask.drawer.actions.complete ? 1 : 0, 'dialog follows the server-derived action contract');
+        await page.goBack();
+        await page.locator('.park-task-dialog').waitFor({ state: 'hidden' });
         await page.goBack();
         await authoredTask.waitFor();
         await page.reload();
@@ -568,10 +579,11 @@ async function run() {
         await authoredTask.waitFor();
         assert.equal(await page.locator('[data-profile-control-new]:visible').count(), 0);
 
+        await require('./task-entry-checks').verifyTaskEntry({ origin, session, evidence, taskId: Number(workId) });
         assert.deepEqual(pageErrors, []);
         assert.deepEqual(gameRequests, []);
         assert.deepEqual(hermesRequests, []);
-        console.log('Park local app / PostgreSQL browser: fixed board layout, legacy completion on both surfaces, keyboard undo, history restore, date reschedule, edit route, and timer recovery.');
+        console.log('Park local app / PostgreSQL browser: fixed board layout, legacy-link completion in My Day, keyboard undo, history restore, date reschedule, in-place editing, server action contracts, and timer recovery.');
     } finally {
         await browser.close();
     }

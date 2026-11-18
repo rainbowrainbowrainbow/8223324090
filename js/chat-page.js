@@ -3232,7 +3232,7 @@
                 var label = prefix + ' · ' + row.title;
                 if (row.taskId) {
                     var link = document.createElement('a');
-                    link.href = 'tasks.html?open=' + encodeURIComponent(row.taskId);
+                    link.href = '/profile?tab=myday&open=' + encodeURIComponent(row.taskId);
                     link.textContent = label;
                     item.append(link);
                 } else {

@@ -1,5 +1,7 @@
 'use strict';
 
+const { taskUrl } = require('../js/task-links');
+
 const MAX_HERMES_LIMIT = 50;
 
 const STATUS_MAP = Object.freeze({
@@ -92,7 +94,7 @@ function crmTaskId(task = {}) {
 
 function crmUrlForTask(task = {}, options = {}) {
     const id = crmTaskId(task);
-    const path = `/tasks?open=${encodeURIComponent(id)}`;
+    const path = taskUrl(id, { businessContext: task.business_context || task.businessContext });
     const baseUrl = textOrNull(options.crmBaseUrl || options.baseUrl || options.publicBaseUrl);
     return baseUrl ? `${baseUrl.replace(/\/+$/, '')}${path}` : path;
 }

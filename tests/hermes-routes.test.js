@@ -3040,7 +3040,7 @@ describe('Hermes task create route', () => {
             assert.deepEqual(res.data.task.assignee, { id: '8', name: 'Ops User' });
             assert.deepEqual(res.data.task.creator, { id: '7', name: 'Hermes Actor' });
             assert.deepEqual(res.data.task.subtasks, []);
-            assert.equal(res.data.task.crm_url.includes('/tasks?open='), true);
+            assert.equal(res.data.task.crm_url.includes('/profile?tab=myday&open='), true);
             assert.equal(res.data.meta.sourceSurface, 'hermes');
             assert.equal(res.data.meta.idempotencyKey, 'create-success-1');
 

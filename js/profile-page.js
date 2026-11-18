@@ -5075,7 +5075,7 @@ function cabinetTaskUpdatePayload(task = {}, patch = {}) {
 async function updateCabinetTaskFields(taskId, patch = {}, options = {}) {
     const id = normalizeCabinetTaskId(taskId);
     if (!id) throw new Error('Invalid task id');
-    const task = findCabinetTask(id) || {};
+    const task = options.task || findCabinetTask(id) || {};
     const result = await apiPut(`/tasks/${id}`, cabinetTaskUpdatePayload(task, patch));
     if (!result?.success) throw new Error(result?.error || 'Task update failed');
     notifyTaskWidgetsChanged({ action: options.action || 'task_update', taskId: id });
@@ -6206,9 +6206,20 @@ function syncMyDayTaskDialog(opener = null, { initialize = false } = {}) {
     const rawId = url.searchParams.get('open');
     const taskId = isOwnProfile && activeTab === 'myday' && /^[1-9]\d*$/.test(rawId || '')
         ? Number(rawId) : null;
-    if (current && Number(current.dataset.myDayTask) === taskId) return;
+    if (current && Number(current.dataset.myDayTask) === taskId
+        && current.dataset.myDayMode === (url.searchParams.get('mode') || '')) return;
+    if (current?.canLeave && !current.canLeave()) {
+        window.history.pushState({ ...window.history.state, myDayTask: Number(current.dataset.myDayTask) }, '', current.taskLocation);
+        return;
+    }
     current?.close();
     if (!Number.isSafeInteger(taskId) || !window.ProfileMyDay) {
+        if (rawId && isOwnProfile && activeTab === 'myday') {
+            window.ProfileMyDay?.openTaskDialog({ taskId: '—', opener,
+                load: () => Promise.reject(Object.assign(new Error('Некоректне посилання на задачу.'), { status: 400 })),
+                onClose: () => { url.searchParams.delete('open'); window.history.replaceState(window.history.state, '', url); }
+            });
+        }
         focusMyDayTaskDate(null);
         return;
     }
@@ -6216,6 +6227,7 @@ function syncMyDayTaskDialog(opener = null, { initialize = false } = {}) {
         const base = new URL(url);
         base.searchParams.delete('open');
         base.searchParams.delete('date');
+        base.searchParams.delete('mode');
         window.history.replaceState(window.history.state, '', base);
         window.history.pushState({ ...window.history.state, myDayTask: taskId }, '', url);
     }
@@ -6223,8 +6235,13 @@ function syncMyDayTaskDialog(opener = null, { initialize = false } = {}) {
     if (date === 'undated') focusMyDayTaskDate('');
     else if (/^\d{4}-\d{2}-\d{2}$/.test(date || '')) focusMyDayTaskDate(date);
     window.ProfileMyDay.openTaskDialog({
-        taskId, opener,
+        taskId, opener, mode: url.searchParams.get('mode'),
         load: signal => apiGetScopedJson(`/tasks/${taskId}`, { signal }),
+        save: (task, patch) => updateCabinetTaskFields(taskId, patch, { task, notify: false }),
+        complete: task => setCabinetTaskStatus(taskId, 'done', { task, silent: true, allowUndo: false }),
+        reschedule: date => rescheduleCabinetTask(taskId, 'date', {
+            date, notify: false, sourceSurface: 'profile_my_cabinet'
+        }),
         selectDate: task => {
             const due = cabinetTaskFocusDateKey(task);
             if (!opener && due !== date) focusMyDayTaskDate(due);
@@ -6242,6 +6259,7 @@ function syncMyDayTaskDialog(opener = null, { initialize = false } = {}) {
             }
             location.searchParams.delete('open');
             location.searchParams.delete('date');
+            location.searchParams.delete('mode');
             window.history.replaceState(window.history.state, '', location);
             focusMyDayTaskDate(null);
         }
@@ -6624,16 +6642,18 @@ async function handleCabinetTaskActionClick(event) {
 
     if (action === 'open' || action === 'edit') {
         const mode = action === 'edit' ? 'edit' : '';
-        if (action === 'open' && activeTab === 'myday' && window.ProfileMyDay) {
+        if (activeTab === 'myday' && window.ProfileMyDay) {
             const url = new URL(window.location.href);
             url.searchParams.set('open', String(taskId));
             url.searchParams.delete('date');
+            if (mode) url.searchParams.set('mode', mode);
+            else url.searchParams.delete('mode');
             window.history.pushState({ ...window.history.state, myDayTask: taskId }, '', url);
             syncMyDayTaskDialog(button);
         } else if (window.TaskDetailDrawer?.open) {
             window.TaskDetailDrawer.open(taskId, { view: 'my', mode, sourceSurface: 'profile_my_day' });
         } else {
-            window.location.href = `/tasks?view=my&open=${encodeURIComponent(taskId)}${mode ? '&mode=edit' : ''}`;
+            window.location.href = `/profile?tab=myday&open=${encodeURIComponent(taskId)}${mode ? '&mode=edit' : ''}`;
         }
         return;
     }
@@ -6834,11 +6854,11 @@ function showCabinetTaskCreateSuccessToast(result = {}, draft = {}, verification
         payload.actions = [
             {
                 label: 'Відкрити',
-                href: `/tasks?view=my&open=${encodeURIComponent(taskId)}`
+                href: `/profile?tab=myday&open=${encodeURIComponent(taskId)}`
             },
             {
                 label: 'Редагувати',
-                href: `/tasks?view=my&open=${encodeURIComponent(taskId)}&mode=edit`
+                href: `/profile?tab=myday&open=${encodeURIComponent(taskId)}&mode=edit`
             }
         ];
     }
@@ -6908,7 +6928,9 @@ async function rescheduleCabinetTask(taskId, option = 'tomorrow', options = {}) 
     const id = normalizeCabinetTaskId(taskId);
     if (!id) throw new Error('Invalid task id');
     let dateText = '';
-    if (option === 'today') {
+    if (options.date) {
+        dateText = options.date;
+    } else if (option === 'today') {
         dateText = cabinetDateKeyOffset();
     } else if (option === 'day_after') {
         dateText = profileDateOffsetStr(2);

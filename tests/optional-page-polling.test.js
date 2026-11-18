@@ -65,7 +65,7 @@ test('completion alerts refresh on visible polling and return, preserve read sta
     win.isAuthenticatedRuntimeReady = () => true;
     const completion = {
         id: 'control_completed_123_456_789', type: 'control_completion', level: 'info',
-        title: '<img src=x onerror=alert(1)>', message: 'Для ознайомлення', link: '/tasks?open=456'
+        title: '<img src=x onerror=alert(1)>', message: 'Для ознайомлення', link: '/profile?tab=myday&open=456'
     };
     let serverRead = false;
     completion.eventKey = '456:789';

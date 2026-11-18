@@ -31,6 +31,7 @@ focused route tests in the same pack.
 | `/api/analytics` | `routes/analytics.js` | analytics |
 | `/api/art-director` | `routes/art-director.js` | art-director |
 | `/api/auth` | `routes/auth.js` | auth |
+| `/api/work-access` | `routes/work-access.js` | Authenticated own-account work-read verification; fixed local APIs, no impersonation |
 | `/api/backup` | `routes/backup.js` | backup |
 | `/api/board` | `routes/board.js` | board |
 | `/api/banquet-deposits` | `routes/banquet-deposits.js` | banquet deposit accountant workflow |

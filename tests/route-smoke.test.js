@@ -7368,10 +7368,13 @@ describe('route-level API safety smoke', () => {
         assert.deepEqual(accountantReports.data, []);
 
         const waiterChat = await request('GET', '/api/chat-real/channels', undefined, withAuth({}, 'waiter'));
-        assert.equal(waiterChat.status, 200, JSON.stringify(waiterChat.data));
+        // This legacy fixture has no current Park membership. A page preset must
+        // not reopen the namespace; positive member reads use actual-app tests.
+        assert.equal(waiterChat.status, 403, JSON.stringify(waiterChat.data));
+        assert.equal(waiterChat.data.code, 'chat_not_migrated');
         const animatorChat = await request('GET', '/api/chat-real/channels', undefined, withAuth({}, 'animator'));
-        assert.equal(animatorChat.status, 200, JSON.stringify(animatorChat.data));
-        assert.equal(animatorChat.data[0].name, 'General');
+        assert.equal(animatorChat.status, 403, JSON.stringify(animatorChat.data));
+        assert.equal(animatorChat.data.code, 'chat_not_migrated');
     });
 
     it('does not allow broad query-token fallback on chat-adjacent protected routes', async () => {

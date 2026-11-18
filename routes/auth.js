@@ -1090,7 +1090,7 @@ router.get('/profile', authenticateToken, async (req, res) => {
         };
 
         // Auto-check achievements
-        await _checkAndGrantAchievements(username, { tasks, bookings, streak, points });
+        if (req.query.accessProbe !== '1') await _checkAndGrantAchievements(username, { tasks, bookings, streak, points });
 
         const profilePayload = {
             user: {

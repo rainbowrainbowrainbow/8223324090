@@ -3327,3 +3327,36 @@ html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-composer-im
 #hr-personal-reminders li + li {
     margin-block-start: 0.75rem;
 }
+.profile-work-access {
+    padding: 16px;
+    margin-block: 16px;
+}
+
+.profile-work-access summary {
+    min-block-size: 24px;
+    cursor: pointer;
+}
+
+.profile-work-access button {
+    min-block-size: 44px;
+    max-inline-size: 100%;
+    padding: 10px 14px;
+    border: 1px solid currentColor;
+    border-radius: 8px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+
+.profile-work-access button:disabled {
+    cursor: wait;
+}
+
+.profile-work-access ul {
+    padding-inline-start: 20px;
+}
+
+.profile-work-access progress {
+    max-inline-size: 100%;
+}

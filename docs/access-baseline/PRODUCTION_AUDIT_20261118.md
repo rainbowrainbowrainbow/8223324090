@@ -86,5 +86,8 @@ A final read-only preflight confirmed Park already configures both modules and
 all 15 room metadata objects lack `workArea`. The only identified production
 classification change is the exact 15-key addition; no historical booking
 backfill or module-configuration change is proposed. Production mutation remains
-unauthorized. Complete API/recipient/file boundaries and authenticated readiness
-proof before preparing the separately approved production cutover and release.
+unauthorized. API/recipient/file boundaries and authenticated readiness now pass
+locally on integrated0.84.6; see CHAT_SCOPE.md, WORK_READINESS.md and STATE.md.
+The exact resource pairs, before-state fences and rollback are reviewable in
+PRODUCTION_CUTOVER_PLAN.md. Final RC and separately approved production execution
+remain required.

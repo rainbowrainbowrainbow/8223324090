@@ -3,8 +3,8 @@
 - Date: 2026-11-18, Europe/Kyiv. Goal active and unfinished.
 - Branch: codex/baseline-access-20261118; isolated worktree D:/Codex/EventGenix/baseline-access-20261118. Original dirty checkout remains untouched.
 - Original base: 571a57acb80118cc6cc0e5a923c5a5bba9c09d86 (0.83.120).
-- Integrated/last observed production: d4abaadfc45f7df53b79920d6c20ae55e51275d8 (0.84.4). All own unpublished commits rebased successfully, without conflicts or shared-history changes. Preset registry/roles/accountAccessPolicy unchanged from original snapshot through this base.
-- Audit parent: 27d642c24. Training/owner-decision implementation is the commit containing this state; resolve the current branch HEAD for its SHA. No feature version reserved; inherited 0.84.4 is upstream's version.
+- Integrated production base: b0f6077df31ae1eb5dbd6e5753dcb24619253a79 (0.84.6). Own20unpublished commits rebased; only Chat script-version conflict resolved, retaining upstream0.84.6 and defer. Latest freelance schedule and Telegram-unlinked task assignment preserved; canonical team guards retained. No shared-history changes.
+- Last committed Chat SHA27341f3c2; Training29d8a9b19. Readiness implementation is the commit containing this state; resolve HEAD for its SHA. No feature version reserved; inherited0.84.6 is upstream's version. Recheck live/remote before final RC.
 - Authorized: baseline role/authorization code, regressions and local feature commits; protected local zone block EG-BASE-ZONES-20261118 explicitly approved. No production classification, real-person repairs, login/session mechanism changes, secret/settings changes, push or deploy performed/authorized by that local block.
 
 ## Implemented locally
@@ -12,7 +12,7 @@
 - Full 26-role before/after matrix; common working pages, required navigation independent of old favorites, canonical capability consumers, active membership and explicit-denial precedence.
 - Booking operations narrowed to operational roles; independent event-detail/contact/revenue fields and exports. Payroll approval/payment confirmation require explicit grants. HR/IT broad booking scope removed.
 - Team tasks/schedule use authoritative active staff structure nodes and memberships. Coordination DTOs omit absence reasons, notes, personnel metadata and compensation; attendance/export remain separate.
-- Account create/link/replay readiness distinguishes staff bridge, membership, role, pages, modules and store probes. Database probes never claim authenticated API proof: data remains api_not_verified. No impersonation sessions minted.
+- Account create/link/replay readiness distinguishes staff bridge, membership, role, pages, modules and store probes. Database probes never claim authenticated API proof. Own Profile now offers an explicit check of six real authenticated APIs, with fixed loopback destinations, bounded reads, fresh policy before/after and no stored private bodies or impersonation sessions. See WORK_READINESS.md.
 - Approved zone reads use active Park room metadata.workArea=game_zone and canonical room_resource_id. No room-label inference, booking mapper/modal/source changes or protected-manifest updates. Viewer consumes effective edit_booking; legacy revenue reads consume view_revenue.
 - Administrator profession/admission save fixed without payroll capability grants; strict metadata-only payload/route lane preserves retained rates/schemes/notes. Both save buttons and subsequent revision-dependent actions verified. See STAFF_PROFESSION_SAVE.md.
 - Bounded read-only account/Chat/Training inventory CLIs; safe registered-key projections, explicit truncation, repeatable read/read-only transactions and rollback. Real production audits completed. See PRODUCTION_AUDIT_20261118.md.
@@ -39,13 +39,15 @@
 - New Training focused28/28; final actual-app authenticated disposable PostgreSQL4/4, no skips (output/park-training-actual-api-final.log). Includes path normalization, organization/account revocation and management-denied recipient assertions. Initial fixture column mismatch corrected before pass. See TRAINING_SCOPE.md.
 - Actual PostgreSQL inventories: minimal Chat/Training5/5 and fully migrated Training1/1, no skips. Rejected INSERT proved read-only mode. Permission audits contain no names/messages/URLs/secrets.
 - Earlier approved-zone actual PostgreSQL15/15; actual-app canonical modal instructor/senior_instructor/reception/accountant x1280/390:8/8, click/Enter/Escape/focus/control/field checks, screenshots reviewed. Protected8hash guard unchanged/passed.
-- Six-role sidebar/schedule UI12/12; tasks/schedule/afisha reads passed. Full common-work acceptance still fails while Chat is contained. Do not count this as a complete baseline pass.
+- On integrated0.84.6, actual six-role sidebar/schedule/common-data12/12: tasks/staff/chat/afisha/training all200. Readiness extension and final styling rerun also12/12, including own-profile check by Enter and all seven positive groups; both final readiness screenshots reviewed. output/work-readiness-six-role-browser-final.log. Full common-work acceptance now passes locally.
+- On0.84.6, Chat actualAPI8/8, Training4/4 and administrator/creator profession-save Chrome4/4 pass (output/baseline-0846-*.log). Real-person cards remain untouched.
+- Readiness focused54/54; loopback outcomes2/2; actual disposable authenticated API4/4, no skips. Permission contracts138passed/2dedicatedDBskips. API/CSS surface checks pass. Final full npm test running; earlier runs exposed obsolete runner wiring assertion and missing new-route API documentation, both corrected. UI guard identified defer/src attribute-order parsing; markup reordered without removing defer. These failed runs are not passes.
 - Readiness/onboarding disposable startup1/1, hire1/1, account onboarding24/24 including replay/concurrency; store probes are not authenticated API readiness.
 
 ## Remaining gates / next action
 
-1. Commit the locally verified Chat perimeter, then integrate latest upstream before final validation. Last refreshed live is0.84.5/7a3c4ed4; remote production advanced to b0f6077d. Current integrated base remains0.84.4; never report the candidate as up to date until integration and affected checks pass.
-2. Complete authenticated API-readiness reporting without impersonation; rerun six-role actual UI/common-data acceptance and relevant final checks.
+1. Finish current full npm test/UI run on integrated0.84.6; investigate failures rather than weakening gates. Readiness and six-role actual UI/common-data now pass. Commit the complete verified local readiness stage.
+2. Refresh latest remote/live and parallel release markers. Further drift requires semantic integration and proportionate affected checks before RC.
 3. Recheck remote/live/parallel releases and prepare final RC/version/manifest. Exact15resource metadata action and production delivery require concrete separate authorizations under the runbook; do not ask again for the already recorded policy decisions.
 4. After valid release envelope: exact-SHA CI, documented manual Railway helper, bounded disposable live QA/cleanup. Goal complete only after behavior/release/live proof.
 

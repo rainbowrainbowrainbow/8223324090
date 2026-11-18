@@ -60,8 +60,11 @@ Completed checks:
   `output/staff-professions-browser/report.json` plus screenshots.
 
 Tests use synthetic users and staff in a loopback disposable PostgreSQL database.
-The reported administrator and employee were not queried or changed. Live QA
-requires the approved local credentials file, which is currently unavailable.
+The reported administrator and employee were subsequently identified uniquely by
+the approved read-only production audit. Their actual rights confirm the payroll
+payload mismatch and allow the candidate metadata-only save. No real save or
+impersonation occurred. Owner-provided relocated credentials are available; the
+old Plotva path is no longer a blocker. See PRODUCTION_AUDIT_20261118.md.
 
 The live service and production branch were initially observed at version 0.84.2,
 `bad00fa51592b12e2ef9b37cae5422b312146f12`. This fix is local and has not been
@@ -80,3 +83,9 @@ keyboard behavior and pending-action handling are retained. No new browser APIs
 or dependencies are introduced.
 
 Source: [Modern Web Guidance: forms](https://github.com/GoogleChrome/modern-web-guidance/blob/main/skills/modern-web-guidance/guides/forms/forms.md).
+
+The candidate is now integrated onto0.84.6/b0f6077d, preserving upstream freelance
+and task-assignment changes. Final actual-app administrator/creator1280/390 saves
+pass4/4 (output/baseline-0846-professions-browser.log), with compensation and
+admissions preserved. This remains local proof; production delivery and disposable
+live validation require the final authorization envelope.

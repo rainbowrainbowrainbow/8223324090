@@ -63,8 +63,12 @@ an HTTP request from the opener.
 
 ## Existing-data dependency
 
-A read-only inventory must identify which production resource IDs are game zones.
-The allowed local live-QA secrets file is unavailable on this host, so this task
-has not classified any real resource or identified Nazar's staff/account pair.
-Any proposed production metadata updates require an exact ID inventory, before
-values and a separately authorized rollback.
+The owner selected all15existing Park room resources, database IDs8–22. Read-only
+production inventory confirms active room-* identities, object metadata and no
+workArea key; the exact proposed addition is workArea=game_zone and rollback
+removes only that added key. No historical booking backfill is needed. The
+reported instructor account/staff pair was identified uniquely and current rights
+were simulated, without logging in or changing real records. Owner-provided
+relocated credentials are available; the old Plotva path is no longer a blocker.
+See PRODUCTION_AUDIT_20261118.md and STATE.md. Exact production execution still
+requires separately bounded Red approval and fresh before-state validation.

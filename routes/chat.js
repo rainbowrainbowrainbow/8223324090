@@ -487,7 +487,7 @@ async function provisionRoomChatChannel({ pool, lineId, userId }) {
 router.get('/channels', async (req, res) => {
     try {
         const userId = getCurrentUserId(req);
-        await chat.ensureDefaultMemberships(userId);
+        if (req.query.accessProbe !== '1') await chat.ensureDefaultMemberships(userId);
         const allowed = await loadReadableParkChatChannelIds(require('../db').pool, req.user);
         const channels = await chat.getChannels(userId, [...allowed]);
         res.json(channels.filter(channel => allowed.has(Number(channel.id))));

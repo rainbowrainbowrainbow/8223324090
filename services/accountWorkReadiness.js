@@ -28,7 +28,8 @@ function assessAccountWorkReadiness({ user, staff, profile, access, dataChecks =
     const authenticatedReadsVerified = REQUIRED_WORK_PAGES.every(page => dataChecks.some(check => check.page === page
         && check.passed === true && check.probe === 'authenticated_api'));
     const checks = {
-        profile: { passed: linked, reason: linked ? 'linked' : 'staff_link_required' },
+        profile: { passed: linked, reason: linked ? 'linked' : 'staff_link_required',
+            profileId: linked ? profile.id : null, staffId: linked ? profile.staffId : null },
         active: { passed: active, reason: active ? 'active' : 'inactive_account_or_staff' },
         membership: { passed: membership, reason: membership ? 'active' : 'active_business_membership_required' },
         role: { passed: ROLE_HIERARCHY.includes(role), effectiveRole: role },
@@ -45,12 +46,14 @@ function assessAccountWorkReadiness({ user, staff, profile, access, dataChecks =
         : !checks.role.passed ? 'Уточніть роль у членстві бізнесу.'
         : !checks.pages.passed ? 'Перевірте персональні заборони робочих розділів; вони не скасовуються автоматично.'
         : !checks.modules.passed ? 'Перевірте доступність робочих модулів бізнесу: деякі ще не розмежовані або вимкнені. Роль і членство автоматично не змінюються.'
-        : !checks.data.passed ? 'Виконайте перевірку читання робочих API під цим акаунтом.'
+        : !checks.data.passed ? (dataChecks.some(check => check.probe === 'authenticated_api')
+            ? 'Не всі робочі розділи вдалося перевірити. Повторіть перевірку; якщо проблема лишається, зверніться до адміністратора.'
+            : 'Відкрийте власний профіль і натисніть «Перевірити робочий доступ».')
         : 'Робочий доступ підтверджено.';
     return { ready, businessContext: access?.activeMembership?.businessContext || null, checks, nextStep };
 }
 
-async function loadAccountWorkReadiness(db, { userId, staff, businessContext }) {
+async function loadAccountWorkReadiness(db, { userId, staff, businessContext, authenticatedReadChecks }) {
     // Explicit access columns only: never load passwords, aliases or tokens.
     const result = await db.query(
         `SELECT id, role, is_active, extra_roles, page_allowlist, page_denylist,
@@ -72,6 +75,11 @@ async function loadAccountWorkReadiness(db, { userId, staff, businessContext }) 
     const input = { user, staff: targetStaff ? { ...targetStaff, is_active: link?.staff_active } : null,
         profile: verifiedProfile, access };
     const policy = assessAccountWorkReadiness(input);
+    // Only the internal self-check route supplies these outcomes, after actual
+    // authenticated HTTP reads. Never accept them from a request body.
+    if (authenticatedReadChecks !== undefined) {
+        return assessAccountWorkReadiness({ ...input, dataChecks: authenticatedReadChecks });
+    }
     const probes = {
         '/profile': ['SELECT 1 FROM users WHERE id = $1 LIMIT 1', [userId]],
         '/tasks': ['SELECT 1 FROM tasks WHERE owner_user_id = $1 AND business_context = $2 LIMIT 1', [userId, businessContext]],

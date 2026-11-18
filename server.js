@@ -313,6 +313,7 @@ app.use('/api', apiAudit);
 app.use('/api/auth/telegram-crm', require('./routes/telegram-crm').getRouters().account);
 app.use('/api/telegram-crm/bot', require('./routes/telegram-crm').getRouters().bot);
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/work-access', require('./routes/work-access'));
 app.use('/api/organizations', require('./routes/organizations'));
 app.use('/api/bookings', require('./routes/bookings'));
 app.use('/api/banquets', require('./routes/banquets'));

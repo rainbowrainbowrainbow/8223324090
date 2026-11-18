@@ -24,6 +24,7 @@ const MANUAL_MONEY_MODES = new Set(['all', 'finance', 'finance-money', 'finance-
 const EDUCATION_SERIES_ACCEPTANCE = 'tests/integration/education-series.integration-acceptance.test.js';
 const MODES = {
     'park-chat-browser': ['tests/browser/park-chat-private-uploads.js'],
+    'work-readiness': ['tests/integration/work-readiness-workflow.test.js'],
     'park-chat': ['tests/integration/park-chat-workflow.test.js'],
     'park-training': ['tests/integration/park-training-workflow.test.js'],
     'training-scope-audit': ['tests/integration/training-scope-migrated.test.js'],
@@ -70,7 +71,8 @@ const MODES = {
         'tests/integration/permission-capabilities.integration.test.js',
         'tests/integration/timeline-membership-postgres.test.js',
         'tests/integration/park-training-workflow.test.js',
-        'tests/integration/park-chat-workflow.test.js'
+        'tests/integration/park-chat-workflow.test.js',
+        'tests/integration/work-readiness-workflow.test.js'
     ],
     payroll: [
         'tests/integration/payroll-profiles.integration.test.js',

@@ -45,5 +45,6 @@ configuration is unchanged; tests use synthetic mocked delivery only.
 - Full npm test on0.84.4 passed, exit0 (output/park-training-npm-test.log), including unit4036/4036, MyDay338/338, automation54/54 and all repository/post-verify checks. The additional final focused28/28 and authenticated API4/4 reruns passed.
 - No production data, credentials, sessions or external messages were changed.
   Full-candidate browser/readiness, exact-SHA CI and authorized live QA remain
-  separate release gates. Chat remains disabled until its file/recipient/socket
-  perimeter is complete.
+  separate release gates. Chat's local perimeter is now complete; see CHAT_SCOPE.md.
+  On integrated0.84.6, Training actualAPI4/4 and six-role common-work/readiness
+  browser12/12 pass. Final full-check/release evidence is in STATE.md.

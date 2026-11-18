@@ -1980,7 +1980,15 @@ function renderProfile() {
             `}
         </div>
 
-        <section class="profile-work-hub ${isMyDayTab ? 'profile-work-hub--myday' : ''}" aria-label="Робочий доступ профілю">
+          ${isOwnProfile ? `<details class="profile-work-panel profile-work-access" id="profileWorkAccess">
+              <summary>Робочий доступ</summary>
+              <p id="profileWorkAccessHint">Перевірте, чи доступні ваші задачі, графік, чат, афіша та навчання в Парку.</p>
+              <button type="button" class="btn btn-secondary" id="profileWorkAccessCheck" aria-describedby="profileWorkAccessHint">Перевірити робочий доступ</button>
+              <progress id="profileWorkAccessProgress" aria-label="Перевірка робочого доступу" hidden></progress>
+              <p id="profileWorkAccessStatus" role="status"></p>
+              <ul id="profileWorkAccessResults" hidden></ul>
+          </details>` : ''}
+          <section class="profile-work-hub ${isMyDayTab ? 'profile-work-hub--myday' : ''}" aria-label="Робочий доступ профілю">
             ${isOwnProfile ? '' : renderProfileProfessionSwitcher(professionEntries)}
             ${renderProfileSecondaryTabs()}
         </section>
@@ -7508,7 +7516,62 @@ function bindCabinetRefreshButton(root = document) {
     });
 }
 
+let profileWorkAccessEpoch = 0;
+for (const event of ['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'crm:auth-cleared']) {
+    window.addEventListener(event, () => {
+        profileWorkAccessEpoch++;
+        const status = document.getElementById('profileWorkAccessStatus');
+        const list = document.getElementById('profileWorkAccessResults');
+        if (status) status.textContent = '';
+        if (list) { list.replaceChildren(); list.hidden = true; }
+    });
+}
+
+async function checkProfileWorkAccess() {
+    const button = document.getElementById('profileWorkAccessCheck');
+    const status = document.getElementById('profileWorkAccessStatus');
+    const list = document.getElementById('profileWorkAccessResults');
+    const progress = document.getElementById('profileWorkAccessProgress');
+    if (!isOwnProfile || !button || button.disabled) return;
+    const session = captureApiAuthSessionSnapshot();
+    const epoch = profileWorkAccessEpoch;
+    const context = JSON.stringify(getCrmBusinessScope());
+    const current = () => epoch === profileWorkAccessEpoch && button.isConnected && document.getElementById('profileWorkAccessCheck') === button
+        && isApiAuthSessionSnapshotCurrent(session) && JSON.stringify(getCrmBusinessScope()) === context;
+    button.disabled = true;
+    progress.hidden = false;
+    list.hidden = true;
+    list.replaceChildren();
+    status.textContent = '';
+    try {
+        const response = await safeFetch('/api/work-access/check', { method: 'POST',
+            headers: { 'Content-Type': 'application/json' }, body: '{}', cache: 'no-store' });
+        const result = response ? await response.json() : null;
+        if (!current()) return;
+        if (!response?.ok || !result?.success || !result.readiness?.checks) {
+            status.textContent = result?.error || 'Не вдалося завершити перевірку. Повторіть пізніше.';
+            return;
+        }
+        const labels = { profile: 'Картка працівника', active: 'Активність акаунта й картки',
+            membership: 'Членство в Парку', role: 'Робоча роль', pages: 'Робочі розділи',
+            modules: 'Модулі Парку', data: 'Читання робочих даних' };
+        for (const [key, label] of Object.entries(labels)) {
+            const item = document.createElement('li');
+            item.textContent = label + ': ' + (result.readiness.checks[key]?.passed ? 'підтверджено' : 'потребує перевірки');
+            list.appendChild(item);
+        }
+        list.hidden = false;
+        status.textContent = result.readiness.ready ? 'Робочий доступ підтверджено на час цієї перевірки.'
+            : result.readiness.nextStep;
+    } catch {
+        if (current()) status.textContent = 'Не вдалося завершити перевірку. Повторіть пізніше.';
+    } finally {
+        if (button.isConnected) { button.disabled = false; progress.hidden = true; }
+    }
+}
+
 function attachProfileListeners() {
+    document.getElementById('profileWorkAccessCheck')?.addEventListener('click', checkProfileWorkAccess);
     bindProfileControlTabs();
     if (isOwnProfile) void window.TelegramCrmProfile?.mount(document.querySelector('[data-telegram-crm-profile]'));
     const controlLink = document.querySelector('[data-profile-control-link]');

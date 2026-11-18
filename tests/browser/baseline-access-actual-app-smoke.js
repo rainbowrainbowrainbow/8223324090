@@ -14,7 +14,8 @@ async function run() {
     assert.equal(process.env.REQUIRE_ISOLATED_TEST_TARGET, 'true');
     const origin = assertSafeIsolatedTestUrl(process.env.TEST_URL).origin;
     const db = new Pool({ connectionString: process.env.DATABASE_URL, ssl: false });
-    const browser = await requirePlaywright().chromium.launch({ headless: true, channel: 'chrome' });
+    const browser = await requirePlaywright().chromium.launch({ headless: true,
+        ...(process.platform === 'win32' ? { channel: 'chrome' } : {}) });
     const output = path.resolve(__dirname, '../../output/baseline-access-actual-browser');
     fs.mkdirSync(output, { recursive: true });
     const results = [];
@@ -84,6 +85,14 @@ async function run() {
                 try {
                     await page.goto(origin + '/profile', { waitUntil: 'domcontentloaded' });
                     await page.waitForFunction(() => typeof AppState !== 'undefined' && AppState.authPermissions?.pages?.['/staff'] === true);
+                    phase = 'own_access_check';
+                    await page.locator('#profileWorkAccess summary').click();
+                    await page.locator('#profileWorkAccessCheck').focus();
+                    await page.keyboard.press('Enter');
+                    await page.waitForFunction(() => document.getElementById('profileWorkAccessStatus')?.textContent.includes('підтверджено на час'));
+                    assert.equal(await page.locator('#profileWorkAccessResults li').count(), 7);
+                    assert.equal(await page.locator('#profileWorkAccessCheck').isEnabled(), true);
+                    if (role === 'waiter') await page.locator('#profileWorkAccess').screenshot({ path: path.join(output, `readiness-${width}.png`) });
                     phase = 'schedule_navigation';
                     if (width < 768) await page.locator('#sidebarToggle').click();
                     const schedule = page.locator('#sidebarNav a[href="/staff"]').filter({ visible: true }).first();

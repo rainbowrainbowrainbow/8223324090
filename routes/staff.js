@@ -832,11 +832,12 @@ router.get('/schedule', requireAction('hr.schedule.view'), async (req, res) => {
         if (!from || !to) {
             return res.status(400).json({ success: false, error: 'Потрібні параметри from та to' });
         }
+        const includeFreelanceReserve = req.query.include_freelance_reserve === 'true';
         const result = await pool.query(
             `SELECT ss.*, ss.date::text AS date,
                     CASE WHEN ss.status = 'day_off' THEN 'dayoff' ELSE ss.status END AS status,
                     s.name, s.department, s.position, s.color, s.is_active,
-                    s.role_type, s.company_structure_node_id,
+                    s.role_type, s.company_structure_node_id, s.hr_pool_status, s.display_name,
                     COALESCE(s.secondary_professions, '[]'::jsonb) AS secondary_professions,
                     hs.id AS hr_shift_id,
                     hs.profession_key AS hr_profession_key,
@@ -895,7 +896,12 @@ router.get('/schedule', requireAction('hr.schedule.view'), async (req, res) => {
              LEFT JOIN hr_shifts hs ON hs.staff_id = ss.staff_id AND hs.shift_date::text = LEFT(ss.date::text, 10)
              LEFT JOIN staff original_staff ON original_staff.id = hs.original_staff_id
              WHERE ss.date >= $1 AND ss.date <= $2
-               AND ${activeScheduleStaffWhere('s', 'ss.date')}
+               AND (${activeScheduleStaffWhere('s', 'ss.date')}
+                    ${includeFreelanceReserve ? `OR (
+                        s.hr_pool_status = 'reserve' AND NOT COALESCE(s.is_freelance, false)
+                        AND EXISTS (SELECT 1 FROM hr_shift_segments block
+                                    WHERE block.hr_shift_id = hs.id AND block.work_mode = 'freelance')
+                    )` : ''})
              ORDER BY s.department, s.name, ss.date`,
             [from, to]
         );
@@ -973,7 +979,8 @@ router.put('/schedule', requireAction('hr.schedule.manage'), async (req, res) =>
             actor: { user: req.user, ip: req.ip },
             source: 'staff.schedule.put',
             auditAction: 'staff_schedule_update',
-            requireExpectedUpdatedAt: true
+            requireExpectedUpdatedAt: true,
+            allowReserveFreelance: req.body.reserveFreelance === true
         });
         if (!mutation.ok) {
             await client.query('ROLLBACK');
@@ -2173,7 +2180,9 @@ router.get('/', async (req, res) => {
             params.push(department);
             conditions.push(`department = $${params.length}`);
         }
-        if (active !== undefined) {
+        if (req.query.pool === 'reserve') {
+            conditions.push(`staff.hr_pool_status = 'reserve' AND NOT COALESCE(staff.is_freelance, false)`);
+        } else if (active !== undefined) {
             const activeRequested = active === 'true';
             if (activeRequested) {
                 conditions.push(activeScheduleStaffWhere('staff', 'CURRENT_DATE', { includeFreelance: shouldIncludeFreelance }));

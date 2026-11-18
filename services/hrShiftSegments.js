@@ -1403,6 +1403,48 @@ function rolePersistenceSignature(roles = []) {
     })));
 }
 
+async function assertNoAdjacentFreelanceOverlap(client, staffId, shiftDate, segments, existingRows) {
+    if (!segments.length) return;
+    const storedModes = new Map(existingRows.map(row => [String(row.id), row.work_mode]));
+    const proposed = segments.map(segment => ({
+        ...segment,
+        workMode: segment.workMode ?? storedModes.get(String(segment.id)) ?? 'regular'
+    }));
+    const reachesPreviousPlan = proposed.some(segment => segment.startMinutes < MINUTES_PER_DAY);
+    const reachesNextPlan = proposed.some(segment => segment.endMinutes > MINUTES_PER_DAY);
+    const { rows } = await client.query(
+        `SELECT neighbor.work_date::text AS work_date, neighbor.day_delta,
+                COALESCE(block.planned_start::text, shift.planned_start::text, mirror.shift_start::text) AS shift_start,
+                COALESCE(block.planned_end::text, shift.planned_end::text, mirror.shift_end::text) AS shift_end,
+                block.start_day_offset, block.end_day_offset, block.work_mode
+         FROM (SELECT $2::date + day_delta AS work_date, day_delta
+               FROM (VALUES (-1), (1)) AS days(day_delta)
+               WHERE (day_delta = -1 AND $4::boolean) OR (day_delta = 1 AND $5::boolean)) neighbor
+         LEFT JOIN hr_shifts shift ON shift.staff_id = $1 AND shift.shift_date = neighbor.work_date
+         LEFT JOIN hr_shift_segments block ON block.hr_shift_id = shift.id
+         LEFT JOIN staff_schedule mirror ON shift.id IS NULL AND mirror.staff_id = $1
+              AND mirror.date = neighbor.work_date::text AND mirror.status IN ('working', 'remote')
+         WHERE (shift.id IS NOT NULL OR mirror.id IS NOT NULL)
+           AND ($3::boolean OR block.work_mode = 'freelance')
+         ORDER BY neighbor.day_delta, block.sort_order, block.id`,
+        [staffId, shiftDate, proposed.some(segment => segment.workMode === 'freelance'),
+            reachesPreviousPlan, reachesNextPlan]
+    );
+    for (const row of rows) {
+        const start = timeToMinutes(row.shift_start);
+        const end = timeToMinutes(row.shift_end);
+        if (start === null || end === null || start === end) continue;
+        const from = start + (row.day_delta + (row.start_day_offset ?? 0)) * MINUTES_PER_DAY;
+        const to = end + (row.day_delta + (row.end_day_offset ?? Number(end < start))) * MINUTES_PER_DAY;
+        const overlap = proposed.find(segment => (segment.workMode === 'freelance' || row.work_mode === 'freelance')
+            && segment.startMinutes < to && from < segment.endMinutes);
+        if (!overlap) continue;
+        fail('HR_SHIFT_PLAN_ADJACENT_DATE_OVERLAP',
+            `Блок перетинається зі зміною за ${row.work_date} (${minutesToTime(start)}–${minutesToTime(end)}).`,
+            { staffId, shiftDate, conflictDate: row.work_date, segmentIndex: overlap.inputIndex }, 409);
+    }
+}
+
 async function loadHrShiftDayPlan(db, input = {}, options = {}) {
     const selector = shiftSelector(input);
     if (options.forUpdate === true) {
@@ -1512,6 +1554,9 @@ async function replaceHrShiftSegments(client, hrShiftId, plan, options = {}) {
             before: existingRows.map(segmentPayloadFromRow), after: normalizedPlan.segments
         });
     }
+    // Schedule writers hold the staff row lock across validation and persistence.
+    await assertNoAdjacentFreelanceOverlap(client, expectedStaffId, normalizeShiftDate(locked.rows[0].shift_date),
+        normalizedPlan.segments, existingRows);
     const actor = options.actor || null;
     const parent = await client.query(
         `UPDATE hr_shifts SET

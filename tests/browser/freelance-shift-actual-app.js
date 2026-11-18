@@ -174,8 +174,8 @@ async function run() {
             }, `${menuFinanceSelector}[aria-current="page"]`);
         };
 
-        const openSchedule = async (workDate = date) => {
-            await page.goto(new URL('/staff', base).href, { waitUntil: 'domcontentloaded' });
+        const openSchedule = async (workDate = date, route = '/staff') => {
+            await page.goto(new URL(route, base).href, { waitUntil: 'domcontentloaded' });
             await page.waitForFunction(() => window.StaffSchedulePage?.isInitialized());
             await page.locator('#scheduleWorkModeFilter').selectOption('all');
             await page.locator('#scheduleDateFrom').fill(workDate);
@@ -199,6 +199,14 @@ async function run() {
             `INSERT INTO staff (name, department, position, role_type, rate_unit, hourly_rate, is_active)
              VALUES ($1, 'animators', 'Synthetic QA', 'animator', 'hour', 120, true) RETURNING id`,
             [controlName]
+        );
+        const { rows: [reserve, blacklisted] } = await db.query(
+            `INSERT INTO staff (name, department, position, role_type, secondary_professions, rate_unit, hourly_rate,
+                                is_active, hr_pool_status, termination_date)
+             VALUES ($1, 'animators', 'Synthetic QA', 'animator', '["waiter"]', 'hour', 120, false, 'reserve', $3::date - 1),
+                    ($2, 'animators', 'Synthetic QA', 'animator', '[]', 'hour', 120, false, 'blacklisted', $3::date - 1)
+             RETURNING id, name`,
+            ['Synthetic Reserve ' + suffix, 'Synthetic Blacklist ' + suffix, date]
         );
         stage = 'schedule save';
         let cell = await openSchedule();
@@ -246,9 +254,9 @@ async function run() {
         await row.waitFor();
         await row.getByRole('button', { name: '+ Додати фріланс · ' + date }).click();
         const chooser = page.getByRole('dialog', { name: 'Додати фріланс' });
-        await chooser.getByText(date, { exact: true }).waitFor();
+        await chooser.getByText('Аніматори · ' + date, { exact: true }).waitFor();
         await chooser.getByLabel('Співробітник').selectOption(String(control.id));
-        await chooser.getByRole('button', { name: 'Далі' }).click();
+        await chooser.getByRole('button', { name: 'Відкрити план' }).click();
         await setTime(cards.nth(1), '15:59', '20:00');
         assert.equal(await page.locator('#schSaveBtn').isDisabled(), true, 'Overlapping freelance plans cannot be saved');
         await setTime(cards.nth(1), '16:00', '20:00');
@@ -256,6 +264,117 @@ async function run() {
         const replay = await Promise.all([0, 1].map(() => request(auth, '/api/staff/schedule', { method: 'PUT', body: added })));
         assert.deepEqual(replay.map(response => response.status), [409, 409]);
         assert.deepEqual((await controlRecords.allTextContents()).map(text => text.trim()), ['12:00–16:00', '16:00–20:00']);
+        stage = 'freelance reserve picker and server validation';
+        await openSchedule(date, '/hr#schedule');
+        if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
+        const addFreelance = row.getByRole('button', { name: '+ Додати фріланс · ' + date });
+        const reserveOption = 'reserve:' + reserve.id + ':animator';
+        const staffPicker = chooser.getByLabel('Співробітник');
+        await addFreelance.click();
+        await staffPicker.locator('option[value="' + reserveOption + '"]').waitFor({ state: 'attached' });
+        assert.match(await staffPicker.locator('option[value="' + reserveOption + '"]').evaluate(option =>
+            option.parentElement.label), /^Резерв · /);
+        assert.equal(await staffPicker.locator('option[value="reserve:' + reserve.id + ':waiter"]').count(), 1);
+        assert.equal(await staffPicker.locator('option').filter({ hasText: blacklisted.name }).count(), 0);
+        assert.equal(await staffPicker.evaluate(select => select === document.activeElement), true);
+        await chooser.screenshot({ path: path.join(out, 'freelance-reserve-picker-desktop.png'), animations: 'disabled' });
+        await page.keyboard.press('Escape');
+        await chooser.waitFor({ state: 'hidden' });
+        assert.equal(await addFreelance.evaluate(button => button === document.activeElement), true);
+        await setWidth(320);
+        await addFreelance.click();
+        await staffPicker.locator('option[value="' + reserveOption + '"]').waitFor({ state: 'attached' });
+        assert.ok(await chooser.evaluate(dialog => {
+            const rect = dialog.getBoundingClientRect();
+            return rect.left >= 8 && rect.right <= innerWidth - 8
+                && Math.abs(rect.left + rect.width / 2 - innerWidth / 2) < 2;
+        }), 'Picker must fit and center on a 320px viewport');
+        await staffPicker.selectOption(reserveOption);
+        await chooser.screenshot({ path: path.join(out, 'freelance-reserve-picker-320.png'), animations: 'disabled' });
+        await chooser.getByRole('button', { name: 'Відкрити план' }).click();
+        await setTime(cards.first(), '12:00', '14:00');
+        const reservePlan = await savePlan();
+        assert.equal(reservePlan.reserveFreelance, true);
+        assert.equal(await page.locator('[data-schedule-staff-row="' + reserve.id + '"]').count(), 0);
+        const reserveRecord = row.getByRole('button', { name: new RegExp(reserve.name) });
+        await reserveRecord.waitFor();
+        const workModeFilter = page.locator('#scheduleWorkModeFilter');
+        await workModeFilter.selectOption('regular');
+        await reserveRecord.waitFor({ state: 'hidden' });
+        await workModeFilter.selectOption('freelance');
+        await reserveRecord.waitFor();
+        assert.match(await page.locator('#scheduleStaffFilterInfo').textContent(), /З резерву на фрілансі — 1/);
+        await workModeFilter.selectOption('all');
+        const plans = (await (await request(auth, '/api/staff/schedule?from=' + date + '&to=' + date
+            + '&include_freelance_reserve=true')).json()).data;
+        const reserveEntry = plans.find(plan => plan.staff_id === reserve.id);
+        assert.equal(reserveEntry.hr_pool_status, 'reserve');
+        const updateReserve = { ...reservePlan, expectedUpdatedAt: reserveEntry.planUpdatedAt, segments: reserveEntry.segments };
+        const overlap = await request(auth, '/api/staff/schedule', { method: 'PUT', body: {
+            ...updateReserve, segments: [...updateReserve.segments,
+                { professionKey: 'animator', shiftStart: '13:00', shiftEnd: '15:00', workMode: 'freelance' }]
+        } });
+        assert.equal((await overlap.json()).code, 'HR_SHIFT_PLAN_SEGMENTS_OVERLAP');
+        const regular = await request(auth, '/api/staff/schedule', { method: 'PUT', body: {
+            ...updateReserve, segments: updateReserve.segments.map(segment => ({ ...segment, workMode: 'regular' }))
+        } });
+        assert.equal((await regular.json()).code, 'STAFF_RESERVE_FREELANCE_ONLY');
+        const stale = await request(auth, '/api/staff/schedule', { method: 'PUT', body: reservePlan });
+        assert.equal(stale.status, 409);
+        await setWidth(1440);
+        await openSchedule(date, '/hr#schedule');
+        if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
+        await reserveRecord.click();
+        await page.locator('#schStatus').selectOption('dayoff');
+        await savePlan();
+        await reserveRecord.waitFor({ state: 'hidden' });
+
+        stage = 'freelance across adjacent dates';
+        const laterDate = offset => new Date(Date.parse(date + 'T00:00:00Z') + offset * 86_400_000).toISOString().slice(0, 10);
+        const writePlan = (staffId, workDate, segments, extra = {}) => request(auth, '/api/staff/schedule', {
+            method: 'PUT', body: { staffId, date: workDate, status: 'working', primaryProfessionKey: segments[0].professionKey, segments, ...extra }
+        });
+        const firstDate = laterDate(20);
+        const nextDate = laterDate(21);
+        const nextRegular = { professionKey: 'animator', workMode: 'regular', shiftStart: '02:00', shiftEnd: '04:00' };
+        const regularSaved = await writePlan(control.id, nextDate, [nextRegular]);
+        assert.equal(regularSaved.status, 200, await regularSaved.clone().text());
+        const regularEntry = (await regularSaved.json()).data;
+        const overnight = { professionKey: 'animator', workMode: 'freelance', shiftStart: '22:00', shiftEnd: '03:00',
+            startDayOffset: 0, endDayOffset: 1 };
+        const conflictWithNext = await writePlan(control.id, firstDate, [overnight]);
+        assert.equal(conflictWithNext.status, 409, await conflictWithNext.clone().text());
+        const nextConflict = await conflictWithNext.json();
+        assert.equal(nextConflict.code, 'HR_SHIFT_PLAN_ADJACENT_DATE_OVERLAP');
+        assert.equal(nextConflict.details.conflictDate, nextDate);
+        const adjacent = await writePlan(control.id, firstDate, [{ ...overnight, shiftEnd: '02:00' }]);
+        assert.equal(adjacent.status, 200, await adjacent.text());
+        const conflictWithPrevious = await writePlan(control.id, nextDate, [{
+            ...nextRegular, id: regularEntry.segments[0].id, shiftStart: '01:59'
+        }], { expectedUpdatedAt: regularEntry.planUpdatedAt });
+        assert.equal(conflictWithPrevious.status, 409);
+        assert.equal((await conflictWithPrevious.json()).details.conflictDate, firstDate);
+        const concurrentPlans = await Promise.all([
+            writePlan(reserve.id, firstDate, [overnight], { reserveFreelance: true }),
+            writePlan(reserve.id, nextDate, [{ ...nextRegular, workMode: 'freelance' }], { reserveFreelance: true })
+        ]);
+        assert.deepEqual(concurrentPlans.map(result => result.status).sort(), [200, 409]);
+        const rejectedPlan = concurrentPlans.find(result => result.status === 409);
+        assert.equal((await rejectedPlan.json()).code, 'HR_SHIFT_PLAN_ADJACENT_DATE_OVERLAP');
+        await db.query(
+            `INSERT INTO staff_schedule (staff_id, date, status, shift_start, shift_end)
+             VALUES ($1, $2, 'working', '22:00', '02:00')`,
+            [control.id, laterDate(25)]
+        );
+        const legacyConflict = await writePlan(control.id, laterDate(26), [{
+            ...nextRegular, workMode: 'freelance', shiftStart: '01:00'
+        }]);
+        assert.equal(legacyConflict.status, 409);
+        assert.equal((await legacyConflict.json()).code, 'HR_SHIFT_PLAN_ADJACENT_DATE_OVERLAP');
+
+        stage = 'freelance row edits';
+        await openSchedule();
+        if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
         const mixedRecord = row.locator('[data-freelance-segment][data-freelance-staff="' + staff.id + '"]');
         await mixedRecord.click();
         await setTime(cards.nth(1), '16:00', '20:00');
@@ -788,6 +907,48 @@ async function run() {
         ]);
         assert.equal(reviewed.status(), 200, (await reviewed.json()).error);
         await reviewRow.getByText(/Фактичні перерви/).waitFor();
+
+        stage = 'reserve freelance attendance through HR Today';
+        const todayPath = '/api/hr/today';
+        const beforeReserve = await (await request(auth, todayPath)).json();
+        assert.ok(!beforeReserve.data.some(item => item.staff_id === reserve.id), 'Future plans do not put reserve on today’s roster');
+        const noPlan = await request(auth, '/api/hr/clock-in', { method: 'POST', body: { staff_id: reserve.id, date } });
+        assert.equal(noPlan.status, 409);
+        assert.equal((await noPlan.json()).code, 'ATTENDANCE_RESERVE_FREELANCE_NOT_SCHEDULED');
+        const plannedReserve = await writePlan(reserve.id, date, [{
+            professionKey: 'animator', shiftStart: '00:00', shiftEnd: '00:01', workMode: 'freelance'
+        }], { reserveFreelance: true });
+        assert.equal(plannedReserve.status, 200, await plannedReserve.text());
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await page.locator('#todaySearch').fill(reserve.name);
+        const todayReserve = page.locator(`#todayList [data-staff-id="${reserve.id}"]`);
+        await todayReserve.getByText(/Резерв · фріланс/).waitFor();
+        await todayReserve.screenshot({ path: path.join(out, 'freelance-reserve-today-360.png'), animations: 'disabled' });
+        const markReserve = async (action, time) => {
+            await todayReserve.getByRole('button', { name: new RegExp('Обрати час ' + (action === 'in' ? 'приходу' : 'виходу')) }).click();
+            const dialog = page.locator('#hrTodayClockDialog');
+            await dialog.locator('#hrTodayClockTime').fill(time);
+            const [result] = await Promise.all([
+                page.waitForResponse(response => new URL(response.url()).pathname === '/api/hr/clock-' + action),
+                dialog.locator('button[type="submit"]').click()
+            ]);
+            assert.equal(result.status(), 200, await result.text());
+            await dialog.waitFor({ state: 'hidden' });
+        };
+        await markReserve('in', '00:00');
+        await markReserve('out', '00:01');
+        const [reserveDay] = (await (await request(auth, endpoint + '&staffId=' + reserve.id)).json()).data;
+        assert.equal(reserveDay.attendanceState, 'ready');
+        const [reserveBlock] = reserveDay.segments;
+        if (!Number(reserveBlock.rate)) {
+            const terms = await request(auth, '/api/payroll/freelance/terms', { method: 'POST',
+                body: { staffId: reserve.id, date, segmentId: reserveBlock.id, rateUnit: 'hour', rate: '120', reason: 'Synthetic reserve' } });
+            assert.equal(terms.status, 201);
+        }
+        const confirmReserve = await request(auth, '/api/payroll/freelance/attendance', { method: 'POST',
+            body: { staffId: reserve.id, date, attendanceId: reserveDay.attendance_id,
+                allocations: [{ segmentId: reserveBlock.id, minutes: reserveDay.actualMinutes }] } });
+        assert.equal(confirmReserve.status, 201, await confirmReserve.text());
         console.log(`Freelance actual-app browser journey passed (${membership ? 'Park membership' : 'compatibility'})`);
     } catch (error) {
         throw new Error(`Freelance browser stage failed: ${stage}: ${error.message}`, { cause: error });

@@ -7832,24 +7832,48 @@ body.dark-mode .hr-shift-multi-guard__segments span,
 }
 
 .schedule-freelance-dialog {
-    max-inline-size: min(24rem, calc(100% - 2rem));
-    padding: 1rem;
-    border: 1px solid currentColor;
-    border-radius: 12px;
+    inline-size: min(28rem, calc(100% - 2rem));
+    max-block-size: calc(100% - 2rem);
+    margin: auto;
+    overflow: auto;
+    padding: clamp(1rem, 4vw, 1.5rem);
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-md, 12px);
     background: var(--surface, Canvas);
     color: var(--gray-900, CanvasText);
+    box-shadow: var(--shadow-xl);
+}
+
+.schedule-freelance-dialog h2 {
+    font-size: 1.25rem;
+}
+
+.schedule-freelance-dialog-context {
+    margin: .25rem 0 1.125rem;
+    color: var(--gray-600);
 }
 
 .schedule-freelance-dialog select {
     display: block;
-    inline-size: 100%;
-    margin-block: .5rem 1rem;
+    min-inline-size: 0;
+    text-overflow: ellipsis;
+}
+
+#scheduleFreelanceStaffStatus {
+    margin-block-start: .5rem;
+    color: var(--gray-600);
+    font-size: var(--font-sm);
 }
 
 .schedule-freelance-dialog-actions {
     display: flex;
     flex-wrap: wrap;
+    justify-content: flex-end;
     gap: .5rem;
+}
+
+.schedule-freelance-dialog-actions button {
+    min-block-size: 44px;
 }
 
 .schedule-freelance-dialog:modal,

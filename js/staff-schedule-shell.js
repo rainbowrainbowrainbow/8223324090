@@ -120,13 +120,16 @@
                 </div>
                 <dialog id="scheduleFreelanceStaffDialog" class="schedule-freelance-dialog" aria-labelledby="scheduleFreelanceStaffTitle">
                     <h2 id="scheduleFreelanceStaffTitle">Додати фріланс</h2>
-                    <p data-freelance-date-label></p>
+                    <p class="schedule-freelance-dialog-context" data-freelance-date-label></p>
                     <form>
-                        <label for="scheduleFreelanceStaff">Співробітник</label>
-                        <select name="staff" id="scheduleFreelanceStaff" required autofocus></select>
+                        <div class="form-group">
+                            <label for="scheduleFreelanceStaff">Співробітник</label>
+                            <select name="staff" id="scheduleFreelanceStaff" aria-describedby="scheduleFreelanceStaffStatus" required autofocus></select>
+                            <p id="scheduleFreelanceStaffStatus" role="status"></p>
+                        </div>
                         <div class="schedule-freelance-dialog-actions">
                             <button type="button" class="btn-page-secondary" onclick="this.closest('dialog').close()">Закрити</button>
-                            <button type="submit" class="btn-page-primary">Далі</button>
+                            <button type="submit" class="btn-page-primary">Відкрити план</button>
                         </div>
                     </form>
                 </dialog>

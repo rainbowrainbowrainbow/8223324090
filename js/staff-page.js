@@ -77,6 +77,7 @@ const StaffState = {
     rangeRetry: null,
     staff: [],
     schedule: {},       // { staffId_date: entry }
+    freelanceReserveSchedule: {},
     scheduleLoadedRange: null,
     scheduleRawEntries: [], // raw rows for health duplicate/overlap checks
     shiftSubstitutionLabels: {},
@@ -3557,7 +3558,7 @@ async function parseScheduleReadResponse(response, fallbackError) {
 async function fetchSchedule(from, to, options = {}) {
     const context = staffScheduleRequestContext();
     try {
-        const res = await staffApiFetch(`/api/staff/schedule?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, {
+        const res = await staffApiFetch(`/api/staff/schedule?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&include_freelance_reserve=true`, {
             signal: options.signal
         });
         const parsed = await parseScheduleReadResponse(res, 'Не вдалося завантажити графік');
@@ -3566,9 +3567,14 @@ async function fetchSchedule(from, to, options = {}) {
         applyScheduleReadAccess(parsed.data);
 
         const schedule = {};
+        const freelanceReserveSchedule = {};
         const scheduleRawEntries = [];
         for (const entry of (parsed.data.data || [])) {
             const normalizedEntry = { ...entry, status: normalizeScheduleStatus(entry.status) };
+            if (entry.hr_pool_status === 'reserve') {
+                freelanceReserveSchedule[scheduleEntryKey(normalizedEntry)] = normalizedEntry;
+                continue;
+            }
             scheduleRawEntries.push(normalizedEntry);
             schedule[`${normalizedEntry.staff_id}_${normalizedEntry.date}`] = normalizedEntry;
         }
@@ -3583,6 +3589,7 @@ async function fetchSchedule(from, to, options = {}) {
         return {
             success: true,
             schedule,
+            freelanceReserveSchedule,
             scheduleRawEntries,
             shiftSubstitutionLabels,
             displayGroups: normalizeScheduleDisplayGroups(
@@ -3712,6 +3719,7 @@ async function saveScheduleEntry(staffId, date, shiftStart, shiftEnd, status, no
     if (dayPlan) {
         payload.segments = dayPlan.segments;
         payload.primaryProfessionKey = dayPlan.primaryProfessionKey;
+        if (dayPlan.reserveFreelance) payload.reserveFreelance = true;
         if (dayPlan.expectedUpdatedAt) payload.expectedUpdatedAt = dayPlan.expectedUpdatedAt;
     }
     const res = await staffApiFetch('/api/staff/schedule', {
@@ -4099,15 +4107,16 @@ function bindScheduleDepartmentFilterScrollCue(container = document.getElementBy
     container.dataset.scheduleScrollCueBound = 'true';
 }
 
-function renderScheduleStaffFilterInfo(filteredStaff = null) {
+function renderScheduleStaffFilterInfo(filteredStaff = null, reserveCount = 0) {
     const info = document.getElementById('scheduleStaffFilterInfo');
     if (!info) return;
     const base = scheduleStaffVisibleWithoutSearch();
     const visible = Array.isArray(filteredStaff) ? filteredStaff : scheduleVisibleStaff();
     const query = normalizeScheduleSearchText(StaffState.searchQuery);
-    info.textContent = query || (StaffState.workModeFilter && StaffState.workModeFilter !== 'all')
+    const summary = query || (StaffState.workModeFilter && StaffState.workModeFilter !== 'all')
         ? `Показано ${visible.length} з ${base.length}`
         : `${base.length} співробітників у графіку`;
+    info.textContent = reserveCount ? `${summary} · З резерву на фрілансі — ${reserveCount}` : summary;
 }
 
 function bindScheduleStaffSearchControls() {
@@ -4474,11 +4483,15 @@ function renderFreelanceScheduleRow(department, days) {
         ${days.map(({ date, records }) => `<td>
             ${records.map(({ staff, segment }) => {
                 const interval = segment.shiftStart + '–' + segment.shiftEnd;
-                const label = [scheduleStaffDisplayName(staff), date, scheduleSegmentTimeLabel(segment)].join(' · ');
+                const name = scheduleStaffDisplayName(staff);
+                const reserve = staffPoolStatusForSchedule(staff) === 'reserve';
+                const label = [name, date, scheduleSegmentTimeLabel(segment), reserve ? 'Резерв' : ''].filter(Boolean).join(' · ');
                 const day = segment.startDayOffset === 1 ? '+1 день' : segment.endDayOffset === 1 ? 'Кінець +1 день' : '';
                 return `<button type="button" class="schedule-freelance-action" data-freelance-staff="${Number(staff.id)}"
                     data-freelance-date="${date}" data-freelance-segment="${Number(segment.id)}"
-                    aria-label="${escapeHtml(label)}">${escapeHtml(interval)}${day ? '<small>' + day + '</small>' : ''}</button>`;
+                    data-schedule-department="${escapeHtml(department)}" data-schedule-profession="${escapeHtml(segment.professionKey)}"
+                    aria-label="${escapeHtml(label)}">${escapeHtml(interval)}${day ? '<small>' + day + '</small>' : ''}
+                    ${reserve ? '<small>' + escapeHtml(name) + ' · резерв</small>' : ''}</button>`;
             }).join('')}
             ${StaffState.canManageSchedule ? '<button type="button" class="schedule-freelance-action" data-freelance-department="' + escapeHtml(department)
                 + '" data-freelance-date="' + date + '" aria-label="+ Додати фріланс · ' + date + '">+ Додати</button>' : ''}
@@ -4486,28 +4499,75 @@ function renderFreelanceScheduleRow(department, days) {
     </tr>`;
 }
 
-function chooseFreelanceStaff(button) {
+async function chooseFreelanceStaff(button) {
     const dialog = document.getElementById('scheduleFreelanceStaffDialog');
     const form = dialog.querySelector('form');
     const select = form.elements.staff;
+    const submitButton = form.querySelector('[type="submit"]');
+    const status = document.getElementById('scheduleFreelanceStaffStatus');
     const { freelanceDate: date, freelanceDepartment: department } = button.dataset;
     const context = staffScheduleRequestContext();
     const range = scheduleCommittedRangeKey();
     const roster = groupStaffByScheduleDepartment(StaffState.staff, { department, grouping: 'canonical' })[department] || [];
-    select.replaceChildren(new Option('Оберіть співробітника', ''), ...uniqueScheduleStaffById(roster)
-        .filter(staff => isScheduleableStaffForUi(staff, date))
-        .map(staff => new Option(scheduleStaffDisplayName(staff), staff.id)));
-    form.querySelector('[type="submit"]').disabled = select.options.length === 1;
-    dialog.querySelector('[data-freelance-date-label]').textContent = date;
-    form.onsubmit = event => {
+    const candidates = new Map();
+    const coreGroup = document.createElement('optgroup');
+    coreGroup.label = 'Основна команда · ' + scheduleDisplayDepartmentLabel(department);
+    for (const staff of uniqueScheduleStaffById(roster).filter(staff => isScheduleableStaffForUi(staff, date))) {
+        candidates.set(String(staff.id), { staff, professionKey: scheduleProfessionKeyForDepartment(staff, department) });
+        coreGroup.append(new Option(scheduleStaffDisplayName(staff), staff.id));
+    }
+    select.replaceChildren(new Option('Оберіть співробітника', '', true, true));
+    if (coreGroup.children.length) select.append(coreGroup);
+    submitButton.disabled = true;
+    select.onchange = () => { submitButton.disabled = !candidates.has(select.value); };
+    status.textContent = 'Завантажуємо резерв…';
+    dialog.querySelector('[data-freelance-date-label]').textContent =
+        scheduleDisplayDepartmentLabel(department) + ' · ' + date;
+    const isCurrent = () => dialog.open && form.onsubmit === submit
+        && context === staffScheduleRequestContext() && range === scheduleCommittedRangeKey()
+        && scheduleRangeDataReady() && StaffState.canManageSchedule;
+    const submit = event => {
         event.preventDefault();
+        const candidate = candidates.get(select.value);
+        if (!isCurrent() || !candidate) return;
+        const { staff, professionKey } = candidate;
+        const reserveStaff = staffPoolStatusForSchedule(staff) === 'reserve' ? staff : null;
         dialog.close();
-        if (context !== staffScheduleRequestContext() || range !== scheduleCommittedRangeKey()) return;
-        const staffId = Number(select.value);
-        const professionKey = scheduleProfessionKeyForDepartment(scheduleStaffById(staffId), department);
-        openEditModal(staffId, date, { addFreelance: true, department, professionKey, trigger: button });
+        openEditModal(Number(staff.id), date, { addFreelance: true, department, professionKey, reserveStaff, trigger: button });
     };
+    form.onsubmit = submit;
     dialog.showModal();
+    try {
+        const response = await staffApiFetch('/api/staff?pool=reserve');
+        const result = await parseScheduleReadResponse(response, 'Не вдалося завантажити резерв');
+        if (!isCurrent()) return;
+        if (!result.success) throw new Error(result.error);
+        const byProfession = new Map();
+        const unassigned = document.createElement('optgroup');
+        unassigned.label = 'Резерв · Без професії';
+        unassigned.disabled = true;
+        for (const staff of uniqueScheduleStaffById(result.data.data)) {
+            if (staffPoolStatusForSchedule(staff) !== 'reserve') continue;
+            const professionKeys = staffProfessionKeys(staff);
+            if (!professionKeys.length) unassigned.append(new Option(scheduleStaffDisplayName(staff), ''));
+            for (const professionKey of professionKeys) {
+                const group = byProfession.get(professionKey) || document.createElement('optgroup');
+                group.label = 'Резерв · ' + professionLabel(professionKey);
+                const key = `reserve:${staff.id}:${professionKey}`;
+                candidates.set(key, { staff, professionKey });
+                group.append(new Option(scheduleStaffDisplayName(staff), key));
+                byProfession.set(professionKey, group);
+            }
+        }
+        const priority = key => scheduleProfessionDisplayGroupKey(key) === department ? 0 : 1;
+        const groups = [...byProfession].sort(([left, a], [right, b]) =>
+            priority(left) - priority(right) || a.label.localeCompare(b.label, 'uk'));
+        select.append(...groups.map(([, group]) => group));
+        if (unassigned.children.length) select.append(unassigned);
+        status.textContent = groups.length ? '' : 'У резерві немає співробітників із зазначеною професією.';
+    } catch {
+        if (isCurrent()) status.textContent = 'Не вдалося завантажити резерв. Закрийте й відкрийте вибір повторно.';
+    }
 }
 
 function bindFreelanceScheduleActions(tbody) {
@@ -4532,9 +4592,11 @@ function bindFreelanceScheduleActions(tbody) {
             }
         } else if (freelanceDate && scheduleRangeDataReady()) {
             if (freelanceStaff) {
+                const reserveEntry = StaffState.freelanceReserveSchedule[`${freelanceStaff}_${freelanceDate}`];
                 openEditModal(Number(freelanceStaff), freelanceDate, {
                     trigger: button, department: button.dataset.scheduleDepartment,
                     professionKey: button.dataset.scheduleProfession,
+                    reserveStaff: reserveEntry ? { ...reserveEntry, id: Number(freelanceStaff) } : null,
                     addFreelance: !freelanceSegment, freelanceSegmentId: Number(freelanceSegment)
                 });
             } else if (StaffState.canManageSchedule) {
@@ -4569,7 +4631,6 @@ function renderSchedule() {
     const tbody = document.getElementById('scheduleBody');
     const visibleSnapshot = scheduleFinalVisibleStaffSnapshot(StaffState.staff, dates);
     const baseFiltered = visibleSnapshot.base;
-    renderScheduleStaffFilterInfo(baseFiltered);
     const health = visibleSnapshot.health;
     const filtered = visibleSnapshot.visible;
 
@@ -4578,10 +4639,31 @@ function renderSchedule() {
         department: StaffState.activeDept,
         grouping: 'canonical'
     });
+    const reserveByGroupAndDate = new Map();
+    const visibleReserveIds = new Set();
+    const search = normalizeScheduleSearchText(StaffState.searchQuery);
+    const reserveEntries = StaffState.workModeFilter === 'regular'
+        ? [] : Object.values(StaffState.freelanceReserveSchedule);
+    for (const entry of reserveEntries) {
+        const staff = { ...entry, id: entry.staff_id };
+        if (search && !scheduleStaffSearchHaystack(staff).includes(search)) continue;
+        for (const segment of scheduleEntrySegmentsForUi(entry, staff.role_type)) {
+            if (segment.workMode !== 'freelance') continue;
+            const group = scheduleProfessionDisplayGroupKey(segment.professionKey) || scheduleDisplayDepartmentKey(staff);
+            if (StaffState.activeDept !== 'all' && StaffState.activeDept !== group) continue;
+            grouped[group] ||= [];
+            const key = `${group}_${entry.date}`;
+            const records = reserveByGroupAndDate.get(key) || [];
+            records.push({ staff, segment });
+            reserveByGroupAndDate.set(key, records);
+            visibleReserveIds.add(staff.id);
+        }
+    }
+    renderScheduleStaffFilterInfo(baseFiltered, visibleReserveIds.size);
 
     let bodyHtml = '';
 
-    if (!filtered.length) {
+    if (!Object.keys(grouped).length) {
         const message = baseFiltered.length
             ? 'Немає рядків для поточного health-фільтра.'
             : 'Немає працівників у поточному фільтрі графіка.';
@@ -4614,7 +4696,8 @@ function renderSchedule() {
                         && (scheduleDisplayDepartmentKey(staff) === dept
                             || scheduleProfessionDisplayGroupKey(segment.professionKey) === dept))
                     .map(segment => ({ staff, segment }));
-            }).sort((left, right) => (scheduleSegmentAbsoluteBounds(left.segment)?.start ?? Infinity)
+            }).concat(reserveByGroupAndDate.get(`${dept}_${date}`) || [])
+                .sort((left, right) => (scheduleSegmentAbsoluteBounds(left.segment)?.start ?? Infinity)
                 - (scheduleSegmentAbsoluteBounds(right.segment)?.start ?? Infinity));
             return { date, records };
         });
@@ -4780,7 +4863,7 @@ function schedulePlanIsWorkingStatus(status) {
 function schedulePlanStaff(scope) {
     if (scope === 'schedule') {
         const staffId = Number(StaffState.editingCell?.staffId);
-        const staff = StaffState.staff.find(item => Number(item.id) === staffId);
+        const staff = StaffState.editingCell?.reserveStaff || scheduleStaffById(staffId);
         return staff ? [staff] : [];
     }
     const selected = document.getElementById('fillStaffSelect')?.value || 'all';
@@ -4820,6 +4903,7 @@ function createSchedulePlanSegment(scope, overrides = {}) {
     const defaultTimes = schedulePlanDefaultSegmentTimes(scope, professionKey, overrides);
     return normalizeScheduleSegmentForUi({
         professionKey,
+        ...(scope === 'schedule' && StaffState.editingCell?.reserveStaff ? { workMode: 'freelance' } : {}),
         shiftStart: defaultTimes.shiftStart,
         shiftEnd: defaultTimes.shiftEnd,
         breakMinutes: 0,
@@ -5462,7 +5546,7 @@ function renderSchedulePlanSegmentCard(scope, segment, index, segmentCount) {
                 <div class="form-group sch-segment-work-mode-field">
                     <label for="${escapeHtml(workModeId)}">Формат виходу</label>
                     <select id="${escapeHtml(workModeId)}" data-segment-field="work-mode">
-                        <option value="regular">За графіком</option>
+                        ${scope === 'schedule' && StaffState.editingCell?.reserveStaff ? '' : '<option value="regular">За графіком</option>'}
                         <option value="freelance" ${segment.workMode === 'freelance' ? 'selected' : ''}>Фріланс</option>
                     </select>
                     ${scope === 'schedule' && segment.workMode === 'freelance' && scheduleCanViewPayrollAmounts()
@@ -6053,6 +6137,13 @@ function validateSchedulePlan(scope, options = {}) {
         fieldErrors.push({ index, field, message });
         errors.push(`Блок ${index + 1}: ${message}`);
     };
+    const reserveSession = scope === 'schedule' && StaffState.editingCell?.reserveStaff
+        ? StaffState.editingCell : null;
+    if (reserveSession && (sourceSegments.some(segment => segment.workMode !== 'freelance')
+        || reserveSession.entry?.segments?.some(segment => (segment.workMode ?? segment.work_mode) !== 'freelance')
+        || (!working && (status !== 'dayoff' || !reserveSession.entry)))) {
+        errors.push('Для резерву доступні лише фріланс-блоки. Наявний фріланс можна скасувати через статус «Вихідний».');
+    }
     if (working && !sourceSegments.length) errors.push('Додайте хоча б один часовий блок.');
     if (sourceSegments.length > STAFF_SCHEDULE_MAX_SEGMENTS) errors.push(`Максимум ${STAFF_SCHEDULE_MAX_SEGMENTS} блоків на день.`);
     if (segments.length > STAFF_SCHEDULE_MAX_SEGMENTS) {
@@ -6999,20 +7090,22 @@ function scheduleEntryPlanUpdatedAt(entry = null) {
 function openEditModal(staffId, date, options = {}) {
     if (_staffScheduleClosePromise || StaffState.editingCell?.mutationPending) return;
     if (!scheduleRangeDataReady() || (options.addFreelance && !StaffState.canManageSchedule)) return;
-    const emp = StaffState.staff.find(s => s.id === staffId);
+    const reserveStaff = options.reserveStaff || null;
+    const emp = reserveStaff || scheduleStaffById(staffId);
     if (!emp) return;
-    if (StaffState.canManageSchedule && !isScheduleableStaffForUi(emp, date)) {
+    if (StaffState.canManageSchedule && !reserveStaff && !isScheduleableStaffForUi(emp, date)) {
         showNotification(scheduleableStaffErrorMessage({ code: 'STAFF_NOT_SCHEDULEABLE' }), 'error');
         return;
     }
 
-    const entry = StaffState.schedule[`${staffId}_${date}`];
+    const entry = (reserveStaff ? StaffState.freelanceReserveSchedule : StaffState.schedule)[`${staffId}_${date}`];
     const sectionDepartment = normalizeScheduleDisplayGroupKey(options.department || '');
     const sectionProfessionKey = normalizeProfessionKey(options.professionKey);
     StaffState.editingCell = {
         staffId,
         date,
         entry,
+        reserveStaff,
         sectionDepartment,
         sectionProfessionKey,
         rangeKey: scheduleCommittedRangeKey(),
@@ -7062,7 +7155,7 @@ function openEditModal(staffId, date, options = {}) {
     });
 
     const isReplacement = isReplacementEntry(entry);
-    const canReplace = StaffState.canManageSchedule
+    const canReplace = !reserveStaff && StaffState.canManageSchedule
         && entry?.id
         && ['working', 'remote'].includes(entry.status)
         && entry.shift_start
@@ -7115,6 +7208,11 @@ function openEditModal(staffId, date, options = {}) {
             onRequestClose: () => closeEditModal(false),
             restoreFocus: () => {
                 if (trigger?.isConnected && trigger.dataset.freelanceDate) return trigger;
+                if (reserveStaff && sectionDepartment) {
+                    const row = document.getElementById('scheduleFreelance-' + sectionDepartment);
+                    return row?.querySelector(`[data-freelance-date="${date}"][data-freelance-department]`)
+                        || document.getElementById('scheduleFreelanceToggle-' + sectionDepartment);
+                }
                 return scheduleCellFocusTarget(staffId, date, trigger, sectionDepartment);
             }
         });
@@ -7144,15 +7242,21 @@ async function refreshStaleScheduleModalPlan(session) {
     if (!scheduleModalSessionIsCurrent(session)) return false;
 
     const previousEntry = session.entry || StaffState.schedule[`${session.staffId}_${session.date}`] || null;
-    const freshEntry = result.schedule[`${session.staffId}_${session.date}`] || null;
-    replaceScheduleStateEntry(previousEntry, freshEntry);
-    replaceScheduleRawStateEntry(previousEntry, freshEntry);
+    const key = `${session.staffId}_${session.date}`;
+    const freshEntry = (session.reserveStaff ? result.freelanceReserveSchedule : result.schedule)[key] || null;
+    if (session.reserveStaff) {
+        if (freshEntry) StaffState.freelanceReserveSchedule[key] = freshEntry;
+        else delete StaffState.freelanceReserveSchedule[key];
+    } else {
+        replaceScheduleStateEntry(previousEntry, freshEntry);
+        replaceScheduleRawStateEntry(previousEntry, freshEntry);
+    }
     session.entry = freshEntry;
     session.planUpdatedAt = scheduleEntryPlanUpdatedAt(freshEntry);
     session.staleConflict = null;
     session.hrDraftStale = false;
 
-    const employee = StaffState.staff.find(staff => Number(staff.id) === Number(session.staffId));
+    const employee = session.reserveStaff || scheduleStaffById(session.staffId);
     const primaryProfessionKey = normalizeProfessionKey(
         freshEntry?.primary_profession_key
         || freshEntry?.primaryProfessionKey
@@ -7465,7 +7569,7 @@ async function handleSave() {
     const editingRangeKey = editingSession.rangeKey;
     const previousEntry = editingSession.entry || StaffState.schedule[`${staffId}_${date}`] || null;
     const emp = StaffState.staff.find(staff => Number(staff.id) === Number(staffId));
-    if (emp && !isScheduleableStaffForUi(emp, date)) {
+    if (!editingSession.reserveStaff && emp && !isScheduleableStaffForUi(emp, date)) {
         showNotification(scheduleableStaffErrorMessage({ code: 'STAFF_NOT_SCHEDULEABLE' }), 'error');
         return;
     }
@@ -7497,6 +7601,7 @@ async function handleSave() {
     try {
         const result = await saveScheduleEntry(staffId, date, shiftStart, shiftEnd, status, note, professionKey, {
             primaryProfessionKey: professionKey,
+            reserveFreelance: Boolean(editingSession.reserveStaff),
             expectedUpdatedAt: editingSession.planUpdatedAt,
             segments: validation.segments.map(segment => ({
                 id: segment.id,
@@ -7514,7 +7619,27 @@ async function handleSave() {
         });
         if (result.success) {
             if (scheduleRangeDataReady() && editingRangeKey === scheduleCommittedRangeKey()) {
-                replaceScheduleStateEntry(previousEntry, result.data);
+                if (editingSession.reserveStaff) {
+                    const key = `${staffId}_${date}`;
+                    delete StaffState.freelanceReserveSchedule[key];
+                    if (showTime && result.data.hr_pool_status === 'reserve') {
+                        StaffState.freelanceReserveSchedule[key] = result.data;
+                    } else if (result.data.hr_pool_status === 'core' || !result.data.hr_pool_status) {
+                        replaceScheduleStateEntry(previousEntry, result.data);
+                    }
+                    const groups = new Set(validation.segments.map(segment =>
+                        scheduleProfessionDisplayGroupKey(segment.professionKey) || scheduleDisplayDepartmentKey(editingSession.reserveStaff)));
+                    for (const group of groups) {
+                        expandedFreelanceDepartments.add(group);
+                        setScheduleGroupExpanded(group, true);
+                    }
+                    if (groups.size && StaffState.activeDept !== 'all' && !groups.has(StaffState.activeDept)) {
+                        StaffState.activeDept = groups.values().next().value;
+                        renderDeptFilter();
+                    }
+                } else {
+                    replaceScheduleStateEntry(previousEntry, result.data);
+                }
                 renderSchedule();
             }
             if (scheduleModalSessionIsCurrent(editingSession)) {
@@ -7693,6 +7818,7 @@ async function goToScheduleRange(startValue, endValue, mode = 'custom') {
 
         // Atomic latest-only commit: no individual read mutates committed schedule state.
         StaffState.schedule = scheduleResult.schedule;
+        StaffState.freelanceReserveSchedule = scheduleResult.freelanceReserveSchedule;
         StaffState.scheduleRawEntries = scheduleResult.scheduleRawEntries;
         StaffState.shiftSubstitutionLabels = scheduleResult.shiftSubstitutionLabels;
         StaffState.displayGroups = scheduleResult.displayGroups;
@@ -7711,7 +7837,7 @@ async function goToScheduleRange(startValue, endValue, mode = 'custom') {
         if (StaffState.showLoadView) renderLoadView();
         syncScheduleViewSwitch();
         setScheduleRangeLoadState(
-            StaffState.scheduleRawEntries.length ? 'ready' : 'empty',
+            StaffState.scheduleRawEntries.length || Object.keys(StaffState.freelanceReserveSchedule).length ? 'ready' : 'empty',
             { range: target }
         );
         if (staffScheduleInitialized) {
@@ -9306,6 +9432,8 @@ function syncStaffScheduleCapabilities() {
 
 function clearStaffScheduleAccessState() {
     staffScheduleAccessBlocked = true;
+    const freelancePicker = document.getElementById('scheduleFreelanceStaffDialog');
+    if (freelancePicker?.open) freelancePicker.close();
     const freelanceFinanceLink = document.getElementById('staffFreelanceFinanceLink');
     if (freelanceFinanceLink) freelanceFinanceLink.hidden = true;
     staffScheduleRangeLoadSeq++;
@@ -9327,7 +9455,7 @@ function clearStaffScheduleAccessState() {
     closeBulkResults();
     Object.assign(StaffState, {
         staff: [], professions: [], departments: {}, displayGroups: [], scheduleCategoryContract: null,
-        schedule: {}, scheduleRawEntries: [], shiftSubstitutionLabels: {}, scheduleLoadedRange: null, attendance: {}, attendanceSummary: null,
+        schedule: {}, freelanceReserveSchedule: {}, scheduleRawEntries: [], shiftSubstitutionLabels: {}, scheduleLoadedRange: null, attendance: {}, attendanceSummary: null,
         attendanceUnavailable: true, hoursData: null, scheduleHistory: {}, shiftPreferences: {},
         linkData: [], linkStats: null, allUsers: [], bulkResults: null,
         staffingForecast: null, staffingForecastBookings: {}, staffingForecastAvailable: false,

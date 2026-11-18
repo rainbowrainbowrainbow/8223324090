@@ -3084,7 +3084,8 @@ function renderToday(data) {
             roleLabel,
             item.position && item.position !== roleLabel ? item.position : '',
             displayGroupLabel,
-            departmentMeta && departmentMeta !== displayGroupLabel ? departmentMeta : ''
+            departmentMeta && departmentMeta !== displayGroupLabel ? departmentMeta : '',
+            !historical && item.is_reserve ? 'Резерв · фріланс' : ''
         ].filter(Boolean).join(' · ');
 
         const canFinishPrevious = historical && !recoveryReadOnly && canManageHrSchedule()
@@ -3335,7 +3336,10 @@ async function handleClock(staffId, action, manual = null) {
     if ((action === 'in') === onShift) return;
     const showError = manual?.showError || (message => showNotification(message, 'error'));
     if (action === 'cancel' && (!canManageHrSchedule() || todayItem.record?.can_cancel_arrival !== true)) return;
-    if (action === 'in' && !isHrScheduleableStaffForDate(todayItem, todayData.date || hrTodayKyivDate())) {
+    const canStartToday = todayItem.is_reserve
+        ? todayItem.shift?.segments?.some(segment => (segment.workMode ?? segment.work_mode) === 'freelance')
+        : isHrScheduleableStaffForDate(todayItem, todayData.date || hrTodayKyivDate());
+    if (action === 'in' && !canStartToday) {
         showError(hrScheduleableStaffErrorMessage({ code: 'STAFF_NOT_SCHEDULEABLE' }));
         return;
     }

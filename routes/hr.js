@@ -116,6 +116,7 @@ const {
 const {
     activeStaffWhere,
     loadStaffScheduleabilityCards,
+    reserveFreelanceOnDateWhere,
     scheduleableStaffErrorPayload,
     scheduleableStaffWhere,
     validateStaffScheduleabilityCardForDate,
@@ -6322,12 +6323,16 @@ router.get('/today', async (req, res) => {
                         birth_date IS NOT NULL
                         AND EXTRACT(MONTH FROM birth_date::date) = EXTRACT(MONTH FROM $1::date)
                         AND EXTRACT(DAY FROM birth_date::date) = EXTRACT(DAY FROM $1::date)
-                    ) AS is_birthday_today
+                    ) AS is_birthday_today,
+                    staff.hr_pool_status = 'reserve' AS is_reserve
              FROM staff
              WHERE ${historical ? `EXISTS (
                 SELECT 1 FROM hr_time_records tr WHERE tr.staff_id = staff.id AND tr.record_date = $1
                 AND COALESCE(tr.business_context, 'event_genix') = $2 AND tr.status IS DISTINCT FROM $3
-             )` : scheduleableStaffWhere('staff', { dateExpression: '$1' })}
+             )` : `(
+                ${scheduleableStaffWhere('staff', { dateExpression: '$1' })}
+                OR (${reserveFreelanceOnDateWhere('staff', '$1')})
+             )`}
              ORDER BY department, name`,
             historical ? [today, context, CANCELLED_ARRIVAL_STATUS] : [today]
         );
@@ -6378,6 +6383,7 @@ router.get('/today', async (req, res) => {
                 birth_date: s.birth_date,
                 has_photo: Boolean(String(s.photo_url || '').trim()),
                 is_birthday_today: Boolean(s.is_birthday_today),
+                is_reserve: Boolean(s.is_reserve),
                 shift: shift ? {
                     planned_start: shift.planned_start,
                     planned_end: shift.planned_end,
@@ -6729,6 +6735,23 @@ router.post('/clock-in', requireHrManage, async (req, res) => {
         if (error) return res.status(status).json({ success: false, error, code });
         const businessContext = hrBusinessContextFromRequest(req);
         await client.query('BEGIN');
+        const { rows: [reserve] } = await client.query(
+            `SELECT id FROM staff WHERE id = $1 AND hr_pool_status = 'reserve' FOR UPDATE`,
+            [staffId]
+        );
+        if (reserve) {
+            const scheduled = await client.query(
+                `SELECT 1 FROM staff WHERE id = $1 AND (${reserveFreelanceOnDateWhere('staff', '$2::date')})`,
+                [staffId, today]
+            );
+            if (!scheduled.rows.length) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({
+                    success: false, code: 'ATTENDANCE_RESERVE_FREELANCE_NOT_SCHEDULED',
+                    error: 'На сьогодні немає запланованого фріланс-виходу для цієї людини з резерву.'
+                });
+            }
+        }
         await lockAttendanceWriteTarget(client, { staffId, date: today });
         const clockInResult = await recordAttendanceClockIn(client, {
             staffId,

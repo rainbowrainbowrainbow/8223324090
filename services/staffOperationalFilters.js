@@ -34,6 +34,16 @@ function scheduleableStaffWhere(alias = 's', options = {}) {
     });
 }
 
+function reserveFreelanceOnDateWhere(alias, dateExpression) {
+    const staff = normalizeAlias(alias);
+    return `${staff}.hr_pool_status = 'reserve' AND NOT COALESCE(${staff}.is_freelance, false)
+        AND EXISTS (
+            SELECT 1 FROM hr_shifts shift
+            JOIN hr_shift_segments block ON block.hr_shift_id = shift.id
+            WHERE shift.staff_id = ${staff}.id AND shift.shift_date = ${dateExpression} AND block.work_mode = 'freelance'
+        )`;
+}
+
 function normalizeScheduleDateValue(value) {
     if (!value) return null;
     if (value instanceof Date) {
@@ -160,7 +170,10 @@ async function validateStaffScheduleableForDate(db, staffId, date, options = {})
         [id, safeDate]
     );
     const row = result.rows[0] || null;
-    if (row?.is_scheduleable === true) {
+    // Reserve is a pool status, independent of the ended regular employment.
+    const reserveFreelance = options.allowReserveFreelance === true
+        && row?.hr_pool_status === 'reserve' && row.is_freelance !== true;
+    if (row?.is_scheduleable === true || reserveFreelance) {
         return {
             ok: true,
             code: 'STAFF_SCHEDULEABLE',
@@ -198,6 +211,7 @@ module.exports = {
     activeStaffWhere,
     assertStaffScheduleableForDate,
     loadStaffScheduleabilityCards,
+    reserveFreelanceOnDateWhere,
     scheduleableStaffErrorPayload,
     scheduleableStaffWhere,
     terminationDateWhere,

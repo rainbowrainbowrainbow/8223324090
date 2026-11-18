@@ -13,7 +13,8 @@ const ROSTER_FIELDS = [
 ];
 const SCHEDULE_FIELDS = [
     'id', 'staff_id', 'date', 'status', 'shift_start', 'shift_end', 'note', 'profession_key', 'break_minutes',
-    'name', 'department', 'position', 'color', 'is_active', 'role_type', 'secondary_professions',
+    'name', 'display_name', 'department', 'position', 'color', 'is_active', 'role_type',
+    'secondary_professions', 'hr_pool_status',
     'company_structure_node_id', 'hr_shift_id', 'original_staff_id', 'original_staff_name',
     'replacement_reason', 'replaced_by', 'replaced_at', 'created_at', 'updated_at',
     'primaryProfessionKey', 'primary_profession_key', 'professionKeys', 'profession_keys',
@@ -119,7 +120,7 @@ function projectAttendance(row) {
 
 function projectToday(row) {
     const projected = pick(row, ['staff_id', 'staff_name', 'department', 'company_structure_node_id',
-        'position', 'staff_color', 'role_type', 'photo_url', 'has_photo', 'is_birthday_today', ...DISPLAY_FIELDS]);
+        'position', 'staff_color', 'role_type', 'photo_url', 'has_photo', 'is_birthday_today', 'is_reserve', ...DISPLAY_FIELDS]);
     projected.shift = row.shift ? pick(row.shift, ['planned_start', 'planned_end', 'shift_type',
         'primary_profession_key', 'planned_minutes']) : null;
     if (projected.shift && Object.hasOwn(row.shift, 'segments')) {

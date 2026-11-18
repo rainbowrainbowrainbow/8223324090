@@ -66,6 +66,7 @@ function createExistingMultiSegmentClient(shiftType = 'regular', segmentRows = n
             if (/^SELECT .* FROM hr_shifts WHERE id = \$1(?: FOR UPDATE)?$/.test(text)) {
                 return { rows: [parent()] };
             }
+            if (/^SELECT neighbor.work_date/.test(text)) return { rows: [] };
             if (/FROM hr_shift_segments hss/.test(text)) {
                 return {
                     rows: segmentRows || [
@@ -1146,7 +1147,7 @@ test('new-plan persistence locks parent, updates envelope, then inserts children
             if (/^UPDATE hr_shifts SET/.test(text)) {
                 return { rows: [{ id: 42, planned_start: params[0], planned_end: params[1], break_minutes: params[2], profession_key: params[3] }] };
             }
-            if (/FROM hr_shift_segments hss/.test(text)) return { rows: [] };
+            if (/^SELECT neighbor.work_date/.test(text) || /FROM hr_shift_segments hss/.test(text)) return { rows: [] };
             if (/^DELETE FROM hr_shift_segments/.test(text)) return { rows: [] };
             if (/^INSERT INTO hr_shift_segments/.test(text)) {
                 nextSegmentId += 1;

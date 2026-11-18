@@ -423,7 +423,8 @@ async function loadEnrichedScheduleEntry(client, scheduleId) {
     const result = await client.query(
         `SELECT ss.*, ss.date::text AS date,
                 s.name, s.department, s.position, s.color, s.is_active,
-                s.role_type, COALESCE(s.secondary_professions, '[]'::jsonb) AS secondary_professions,
+                s.role_type, s.hr_pool_status, s.display_name,
+                COALESCE(s.secondary_professions, '[]'::jsonb) AS secondary_professions,
                 hs.id AS hr_shift_id,
                 hs.updated_at AS hr_shift_updated_at,
                 to_char(
@@ -512,6 +513,7 @@ async function syncHrShiftFromScheduleEntry(client, entry, actor = null, options
             auditSource: options.auditSource || 'staff_schedule',
             requireExpectedUpdatedAt: options.requireExpectedUpdatedAt === true,
             ignoreExpectedUpdatedAt: options.ignoreExpectedUpdatedAt === true,
+            requireActiveStaff: options.requireActiveStaff,
             professionCard: options.professionCard || null,
             paidRoleValidationContext: options.paidRoleValidationContext
         });
@@ -537,7 +539,8 @@ async function mutateStaffScheduleEntry(client, entry, options = {}) {
         return { ok: false, status: 400, code: 'SCHEDULE_STATUS_INVALID', error: 'Невідомий статус графіка' };
     }
     const validation = options.staffValidation || await validateScheduleWriteStaff(client, staffId, date, {
-        forUpdate: options.forUpdate !== false
+        forUpdate: options.forUpdate !== false,
+        allowReserveFreelance: options.allowReserveFreelance === true
     });
     if (!validation.ok) {
         return { ok: false, status: validation.status || 400, code: validation.code, error: validation.error, validation };
@@ -545,17 +548,37 @@ async function mutateStaffScheduleEntry(client, entry, options = {}) {
     const previousPlan = Object.prototype.hasOwnProperty.call(options, 'previousPlan')
         ? options.previousPlan
         : await loadHrShiftDayPlan(client, { staffId, shiftDate: date });
+    let previousScheduleEntry = options.previousScheduleEntry;
+    const reserveFreelance = validation.staff?.hr_pool_status === 'reserve';
+    if (reserveFreelance) {
+        const previousSegments = previousPlan?.plan.segments || [];
+        previousScheduleEntry = await loadScheduleEntryForUpdate(client, staffId, date);
+        const segments = entry.segments;
+        const freelanceOnly = Array.isArray(segments) && segments.length > 0
+            && segments.every(segment => (segment?.workMode ?? segment?.work_mode) === 'freelance');
+        const cancelFreelance = status === 'dayoff' && previousSegments.length > 0
+            && Array.isArray(segments) && segments.length === 0;
+        if (previousSegments.some(segment => segment.workMode !== 'freelance')
+            || (!previousPlan && previousScheduleEntry && scheduleStatusNeedsProfession(previousScheduleEntry.status))
+            || !(scheduleStatusNeedsProfession(status) ? freelanceOnly : cancelFreelance)) {
+            return {
+                ok: false, status: 409, code: 'STAFF_RESERVE_FREELANCE_ONLY',
+                error: 'Для резерву можна планувати тільки фріланс. Наявний звичайний план не можна замінити.'
+            };
+        }
+    }
     const normalizedEntry = { ...entry, staffId, date, status };
     const hrSync = await syncHrShiftFromScheduleEntry(client, normalizedEntry, options.actor, {
         skipStaffValidation: true,
         requireExpectedUpdatedAt: options.requireExpectedUpdatedAt === true,
         ignoreExpectedUpdatedAt: options.ignoreExpectedUpdatedAt === true,
+        requireActiveStaff: !reserveFreelance,
         professionCard: options.professionCard || null,
         paidRoleValidationContext: options.paidRoleValidationContext
     });
     if (hrSync?.ok === false) return hrSync;
-    const previous = Object.prototype.hasOwnProperty.call(options, 'previousScheduleEntry')
-        ? options.previousScheduleEntry
+    const previous = reserveFreelance || Object.prototype.hasOwnProperty.call(options, 'previousScheduleEntry')
+        ? previousScheduleEntry
         : await loadScheduleEntryForUpdate(client, staffId, date);
     const upserted = await upsertScheduleMirrorFromPlan(client, normalizedEntry, hrSync.plan);
     const enriched = options.loadEnriched === false || !upserted?.id

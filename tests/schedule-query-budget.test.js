@@ -248,7 +248,7 @@ async function measureNewPlanPersistence(additionalProfessionKeys) {
         if (/^UPDATE hr_shifts SET planned_start/i.test(text)) {
             return { rows: [{ id: 42, staff_id: 1, shift_date: '2099-01-01' }] };
         }
-        if (/FROM hr_shift_segments hss/i.test(text)) return { rows: [] };
+        if (/^SELECT neighbor.work_date/i.test(text) || /FROM hr_shift_segments hss/i.test(text)) return { rows: [] };
         if (/^INSERT INTO hr_shift_segments /i.test(text)) return { rows: [{ id: nextSegmentId++ }] };
         if (/^INSERT INTO hr_shift_segment_roles /i.test(text)) return { rows: [], rowCount: additionalProfessionKeys.length * MATRIX_SEGMENT_COUNT };
         throw new Error(`Unexpected query in persistence budget fixture: ${text.slice(0, 240)}`);
@@ -269,7 +269,7 @@ async function measureNewPlanPersistence(additionalProfessionKeys) {
         { professionCard, actor: 'query-budget-test' }
     ));
     client.assertBudgets({
-        phases: { persistence: 16 },
+        phases: { persistence: 17 },
         categories: { profession_card_load: 0, persistence: 14 }
     });
     return client;
@@ -279,6 +279,7 @@ test('12-segment persistence batches additional roles and performs no qualificat
     const oneRole = await measureNewPlanPersistence(['security']);
     const threeRoles = await measureNewPlanPersistence(['security', 'animator', 'cook']);
     assert.equal(oneRole.calls.length, threeRoles.calls.length, 'additional role count must not add queries');
+    assert.equal(threeRoles.calls.filter(call => /^SELECT neighbor.work_date/i.test(call.sql)).length, 1);
     assert.equal(threeRoles.calls.filter(call => /INSERT INTO hr_shift_segment_roles/i.test(call.sql)).length, 1);
 });
 

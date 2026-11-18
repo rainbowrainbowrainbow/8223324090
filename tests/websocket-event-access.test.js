@@ -141,13 +141,16 @@ test('generic and addressed Omni delivery cannot omit or substitute its required
     assert.equal(await f.canReceiveEvent(f.user, 'omni:conversation', { businessContext: 'event_genix' }, { page: '/tasks' }), false);
 });
 
-test('task query retains department and private/observer guards under the active business role', async t => {
+test('task query retains authoritative team and private/observer guards under the active business role', async t => {
     const f = fixture(t);
     f.state.memberships[0].role = 'manager';
     assert.equal(await f.canReceiveEvent(f.user, 'task:assigned', { task: { id: 51 } }), true);
     const query = f.state.calls.find(row => row.sql.startsWith('SELECT t.id FROM tasks t'));
     assert.match(query.sql, /t.business_context = \$2/);
-    assert.match(query.sql, /ep.department/);
+    assert.match(query.sql, /company_structure_node_id/);
+    assert.match(query.sql, /business_memberships/);
+    assert.match(query.sql, /organization_memberships/);
+    assert.doesNotMatch(query.sql, /ep\.department/);
     assert.match(query.sql, /task_observers/);
     assert.match(query.sql, /COALESCE\(t.visibility, 'team'\)/);
     assert.deepEqual(query.params.slice(0, 2), [51, 'event_genix']);

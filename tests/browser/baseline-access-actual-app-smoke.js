@@ -92,6 +92,11 @@ async function run() {
                     phase = 'schedule_loading';
                     await page.locator('#scheduleWrapper').waitFor({ state: 'visible' });
                     if (width < 768) await page.locator('#sidebarToggle').click();
+                    await page.waitForFunction(() => document.getElementById('sidebarNav').getBoundingClientRect().x >= -1);
+                    await page.locator('#sidebarNav').evaluate(async element => {
+                        await Promise.all(element.getAnimations().map(animation => animation.finished.catch(() => {})));
+                        await document.fonts.ready;
+                    });
                     await page.locator('#sidebarNav').screenshot({ path: path.join(output, `${role}-${width}.png`) });
                     uiPassed = true;
                 } catch (error) {

@@ -4,25 +4,28 @@
 - Branch: codex/baseline-access-20261118; isolated worktree D:/Codex/EventGenix/baseline-access-20261118. Original dirty checkout remains untouched.
 - Original base: 571a57acb80118cc6cc0e5a923c5a5bba9c09d86 (0.83.120).
 - Integrated production base:859196fedb107b443719cbfc576fa9352cbee15a (0.84.8). Own24unpublished commits rebased; only Chat script-version/defer conflicts resolved, retaining upstream0.84.8 and ordered deferred private-upload/page scripts. Park account issuance recovery, freelance schedule and Telegram-unlinked task assignment preserved. No shared-history changes.
-- Rebased QA/browser checkpoint378e2ad47815dfd2360894fe1a1023c622f24cf7. Historical SHAs in older evidence are superseded by this rebase. No feature version reserved; inherited0.84.8 is upstream's version. Recheck live/remote before final RC.
+- Rebased QA/browser checkpoint378e2ad47815dfd2360894fe1a1023c622f24cf7; bounded classification/recovery implementation71758dfc2b4e108b19e03f5b4e5985e6cbc95d91. Historical SHAs in older evidence are superseded by this rebase. No feature version reserved; inherited0.84.8 is upstream's version. Recheck live/remote before final RC.
 - Authorized: baseline role/authorization code, regressions and local feature commits; protected local zone block EG-BASE-ZONES-20261118 explicitly approved. No production classification, real-person repairs, login/session mechanism changes, secret/settings changes, push or deploy performed/authorized by that local block.
 
 ## Implemented locally
 
 Latest local work: optional exact booking plan, canonical trusted_qa child run,
-normal UI logins and instructor/admin1280/390 scenarios implemented. Initial full
-CLI browser run1/1 passed (four actual UI scenarios), with child cancellation,
-parent retirement, post-booking interruption and expiry recovery. Cropped
-screenshots reviewed; output/baseline-registered-browser-gate.log. Focused52/52
-passed (output/baseline-registered-focused.log). Expanded preference-drift
-recovery assertion and final rerun remain pending. Parent registry owns at most
+normal UI logins and instructor/admin1280/390 scenarios implemented. Final
+integrated CLI browser run1/1 passed (four actual UI scenarios), including child
+cancellation, parent retirement, post-booking interruption, expiry recovery,
+parent-before-child rejection and foreign preference ownership drift. Final
+cropped/masked screenshots reviewed; output/baseline-0848-final-browser.log.
+Final identity/API/CLI lifecycle10/10 passes without skips;
+output/baseline-0848-final-identities.log. Parent registry owns at most
 six exact dependent default-time rows only under booking-bound plans; five-field
 plans still reject them. A DATE projection fixes existing QA execution-window
 comparison on hosts east of UTC without changing booking contracts or parsers.
 
 Parallel release859196fedb107b443719cbfc576fa9352cbee15a (0.84.8) integrated.
-At the last read-only check live remained0.84.6/b0f6077d; the other release was
-waiting for its last CI browser job. Revalidate convergence before final RC.
+Live and GitHub now converge on0.84.8/859196fedb107b443719cbfc576fa9352cbee15a.
+Railway deployment0442008d-5cca-487b-bf14-e5086108bd9b isSUCCESS; staged
+resources0/shared variables0/destructive=false. CLI GitHub/Railway read-only
+target checks also pass. No0.84.9tag was found at the preflight check.
 
 On the integrated0.84.8 code: focused53/53 (output/baseline-0848-final-focused.log),
 runtime22.23.4/npm10.9.9 and8protected blocks pass. Classification helper actual
@@ -31,11 +34,30 @@ full rollback, unrelated metadata preservation, complete rollback on one-row
 drift and repeated-apply refusal. New CLI defaults to read-only and binds fixed
 target, deployed SHA, exact15pairs and original metadata hash. Production preflight
 read-only confirms all15rows; snapshot hash1b8e19adb248168c5be70b436db5cd3583577cface19371ff52fa41096578dd0.
-No classification execution occurred. Final integrated browser/recovery and
-identity reruns, one-command npm test, RC/preflight and approval remain pending.
+No classification execution occurred. The initial integrated one-command
+npm test exited1 at unit4037/4038: one old fixture mock only recognized
+SELECT * FROM and rejected the new DATE-as-text projection. Its lookup matcher
+now recognizes the token-bound query and explicitly asserts the DATE projection;
+all durable marker/authorization assertions remain. Targeted48/48 passes in
+output/baseline-0848-qa-date-regression.log. The fresh complete npm test retry
+passed, exit0: unit4038/4038, MyDay338/338, automation54/54, UI1324/1324,
+syntax1819files and all guards. Its post-verify packs pass79/93/20/25/138/20/47/12.
+Evidence: output/baseline-0848-final-npm-test-retry.log. The first command remains
+an exit1 historical failure. RC/controller manifest and exact production approval
+remain required; exact-SHA CI/deploy/live QA have not run for this candidate.
 The reviewed protected proposal was restored from checkout CRLF to the exact
 approved LF bytes only after verifying normalized SHA256 equals
 ADC3BEC1A3EE6EFEBA57C87FFA84CE0B425DCFF7AFB69ECB07BF707C9E23FC43.
+The final raw HEAD blob and worktree bytes both match that exact hash.
+
+Concrete production read-only preflight passed for operator48, Park1 and the
+canonical eligible line748 on2026-11-19,13:00–14:00, room-marvel/Марвел, product
+anim60 (Анімація60хв/codeАН/categoryanimation, exact catalog spacing in JSON).
+Run baqa-20261118a001:2staff/2accounts/2profiles/2membership pairs/1booking,
+at most6dependent default-time rows,20minute TTL. Deployment and classification
+remain pending by design; productionDataMutationAuthorized=false,writesExecuted=0.
+The preliminary code-checkpoint bundle is output/baseline-release-review-71758dfc2b4e;
+regenerate against final committed HEAD before presenting authorization.
 
 - Full 26-role before/after matrix; common working pages, required navigation independent of old favorites, canonical capability consumers, active membership and explicit-denial precedence.
 - Booking operations narrowed to operational roles; independent event-detail/contact/revenue fields and exports. Payroll approval/payment confirmation require explicit grants. HR/IT broad booking scope removed.
@@ -92,8 +114,8 @@ fixtures only; these credentials cannot satisfy that protocol. Do not bypass its
 guards, use a real employee session for the scenario, or silently grant owner
 rights. The dedicated bounded registered instructor/admin identity workflow and
 cleanup/TTL proof now pass locally. CLI-only creation leaves operator48 unchanged,
-uses existing login and never exports its generated passwords/tokens. Finish the
-browser/booking scope before the final production approval question. Creating production
+uses existing login and never exports its generated passwords/tokens. The full
+browser/booking scope and recovery are now verified locally. Creating production
 test identities/roles still needs the exact envelope; no production action is
 authorized here. Existing sys-mb-auth-cutover controller mode already covers the
 candidate's reviewed policy paths and sole Red path routes/auth.js; no controller
@@ -114,21 +136,23 @@ exit0 in output/baseline-qa-identity-final.log. Maximum lifetime retains millise
 precision and has a dedicated pre-lock rejection regression.
 Runtime and all8protected timeline blocks pass. No production writes.
 
-Next implementation details: extend the CLI one-shot flow to exercise the browser
-while its generated credentials still exist in memory, before finally cleanup.
-The current API helper returns sanitized outcomes, not reusable sessions. Bind a
-separate canonical booking fixture (existing product/line/room, exact free date and
-time, no real customer) into the approved hash and generic booking QA registry;
-retire that booking before the identity run. Prefer normal browser login, block
-cross-origin/socket/notification/unexpected writes and crop only synthetic modal
-content. Preserve both profession save paths. The HR work footer can legitimately
-send a companion shift-preferences PUT when profession changes dirty that scope;
-do not fake a success or silently leave those rows. If the real browser scenario
-needs it, add exact registered/bounded preference ownership and cleanup proof,
-then include that dependency in the final QA envelope. Current five-field plan
-authorizes no booking/shift writes. No UI or booking QA was executed by the new
-identity-only CLI, so neither is a completed live proof.
+The one-shot CLI now completes normal UI logins, canonical booking details, both
+admin profession saves and exact child/default-time/identity cleanup. Credentials
+remain in memory. Five-field plans still allow no booking/default-time rows.
+Final remaining work: commit verification/release notes, regenerate immutable
+candidate-bound plans, prepare the existing sys-mb-auth-cutover release controller
+manifest and present one concrete combined Red/Yellow owner block. No controller
+policy exception is needed. Controller QA is disabled; the separately hashed
+manual classification and baseline QA plans require explicit inclusion in that
+same owner authorization. Rebind only releaseSha to the verified canonical
+version/cache/changelog descendant if the owner expressly allows that rule;
+all resource/snapshot/identity/date/time/count/TTL fields remain fixed.
 
-Owned local PostgreSQL17 cluster remains running for tests at output/staff-professions-pg-final/data, port55442, baseline_access_disposable_test. Never use production credentials in this runner. Stop the exact owned cluster after tests with pg_ctl fast and verify completion; do not stop during running suites.
+Owned local PostgreSQL17 at output/staff-professions-pg-final/data, port55442,
+baseline_access_disposable_test is stopped, verified pg_ctl status3. Fast shutdown
+waited on a large disposable-test checkpoint; after verifying the exact owned
+path/PID11052, immediate shutdown completed. No other cluster was stopped. A
+future reuse may perform normal crash recovery; all test assertions and cleanup
+finished before shutdown. No production database was involved.
 
-Chat verification: actual authenticated PostgreSQL/HTTP8/8, socket/task/namespace parity70/70, focused perimeter38/38, final file/record11/11, actual-app private file browser1280/3902/2 with final screenshots reviewed. See CHAT_SCOPE.md. Integrated six-role common-work/readiness12/12 passes. Final one-command baseline remains pending as explained above. Modern Web Guidance security/performance guides were applied to private attachments and accessibility to readiness; all three guides read in full, final mobile/desktop screenshots reviewed. Local rollback is reverting own unpublished feature commits; production remains unchanged.
+Chat verification: actual authenticated PostgreSQL/HTTP8/8, socket/task/namespace parity70/70, focused perimeter38/38, final file/record11/11, actual-app private file browser1280/3902/2 with final screenshots reviewed. See CHAT_SCOPE.md. Integrated six-role common-work/readiness12/12 passes. Fresh one-command npm test now passes on the integrated0.84.8 code as recorded above. Modern Web Guidance security/performance guides were applied to private attachments and accessibility to readiness; all three guides read in full, final mobile/desktop screenshots reviewed. Forms/accessibility guidance was rechecked for upstream integration; existing native controls, pending-form blocking and canonical keyboard/focus behavior retained. Local rollback is reverting own unpublished feature commits; this task has not changed production.

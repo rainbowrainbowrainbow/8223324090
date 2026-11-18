@@ -11,7 +11,8 @@ operator are now implemented and verified on disposable PostgreSQL; see
 BASELINE_QA_PROTOCOL.md. This resolves the missing isolated-role actors without
 changing either existing account. Optional hash-bound canonical booking and full
 browser guard/scenarios are now implemented; see BASELINE_QA_PROTOCOL.md. Final
-integrated tests and production plan/preflight remain required. Five-field
+integrated tests pass; final controller authorization and production execution
+remain required. Five-field
 identity-only plans still allow no booking/default-shift write. The optional
 sixth field explicitly includes the exact one-booking and six-default-time-row
 maximum scope; no actual shift or schedule write is included.

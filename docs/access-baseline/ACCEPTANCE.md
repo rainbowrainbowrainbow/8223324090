@@ -1,6 +1,6 @@
 # Baseline access acceptance ledger
 
-Status: unfinished local candidate on upstream0.84.6 (b0f6077d). See STATE.md for current SHA/checks and PRODUCTION_AUDIT_20261118.md for actual production evidence. No deployment or production write has occurred.
+Status: local candidate integrated with upstream/live0.84.8 (859196fe). Final registered instructor/admin browser4scenarios, identity lifecycle10/10 and fresh full npm test pass, exit0; see STATE.md. No deployment or production write by this task has occurred.
 
 | Requirement | Evidence | Remaining gate |
 |---|---|---|
@@ -13,9 +13,9 @@ Status: unfinished local candidate on upstream0.84.6 (b0f6077d). See STATE.md fo
 | Chat ownership | Owner delegates Park-only choice; HTTP/DM/recipient/file/socket/background boundaries implemented; actual API8/8, parity70/70 and browser2/2; see CHAT_SCOPE.md | Final integrated regression and approved live proof; no inferred ownership |
 | Create/link/replay/concurrency | Independent bridge/membership/role/page/module checks; own-profile actual authenticated six-API proof; real API4/4, final six-role UI12/12; see WORK_READINESS.md | Other accounts remain api_not_verified until their own check; no SELECT1 proof or impersonation sessions; approved live proof |
 | Existing-account/resource audit | Real read-only production reports completed using owner-provided relocated approved credentials | No real repairs authorized; exact source-state revalidation before any future write |
-| Runtime/tests | Node22.23.4/npm10.9.9; integrated verify and corrected post-verify stages pass separately; current DB/UI evidence in STATE.md | Fresh one-command npm test after final QA tooling; exact-SHA CI after authorized push |
+| Runtime/tests | Node22.23.4/npm10.9.9; fresh full npm test exit0, unit4038, MyDay338, automation54, UI1324, syntax1819; final DB/UI evidence in STATE.md | Exact-SHA CI after authorized push |
 | Release | Isolated feature branch with local commits; integrated current upstream; no own dependency changes | Final RC/version/manifest, live/remote/parallel preflight, concrete authorization envelope, exact-SHA CI and documented manual helper |
-| Live QA | Real cases identified read-only; dedicated registered identity/API lifecycle now local10/10, focused64/64 and full permissions gate54/54; operator untouched | Finish canonical booking/browser scope (LIVE_QA_DESIGN.md), final exact authorization and live scenarios; no real-person mutation |
-| Goal completion | Active; Chat, Training, readiness and six-role local acceptance implemented; owner decisions and credential availability resolved | Finish full checks, final RC/preflight, authorized release/live QA; do not mark complete early |
+| Live QA | Real cases identified read-only; final registered browser4scenarios, interruption/expiry/ownership recovery and identity lifecycle10/10 on integrated0.84.8; classification actual PostgreSQL1/1; operator untouched | Final candidate-bound approval and actual live scenarios; no real-person mutation |
+| Goal completion | Active; local implementation and final checks complete; owner decisions and credential availability resolved | Final RC/controller preflight, authorized exact-SHA CI/release/live QA; do not mark complete early |
 
 Owner decisions are recorded in MODULE_SCOPE_DEPENDENCIES.md and hash-bound ignored review artifacts. Policy selection does not execute production changes. EG-BASE-ZONES-20261118 authorizes the reviewed local protected scope; it does not authorize production metadata, membership repairs, secrets/settings or deployment.

@@ -8,8 +8,8 @@
 - Environment: production, d9f9b984-d54d-4620-a8bf-c48882ad5158.
 - Service name:8223324090; actual Railway service UUID:
   3fb62d4c-2dc2-4701-8e2b-09ce16e188ee.
-- Last verified live/remote version0.84.6, base
-  b0f6077df31ae1eb5dbd6e5753dcb24619253a79. Revalidate before authorization,
+- Last verified live/remote version0.84.8, base
+  859196fedb107b443719cbfc576fa9352cbee15a. Revalidate before authorization,
   push and upload. A different live/remote release requires reconciliation.
 
 ## Separate real-data action requiring exact Red approval
@@ -71,6 +71,23 @@ exclusive Park namespace; both modules are already configured there.
 
 ## Release and disposable QA requiring the final bounded envelope
 
+The concrete read-only preflight on2026-11-18 confirms operator48, business1,
+canonical eligible line748 on2026-11-19,13:00–14:00 and room-marvel/Марвел (ID8).
+The existing product is anim60, Анімація60хв, codeАН, categoryanimation, one host,
+without stock requirements. The actual plan retains the catalog's exact name
+spacing. No alternate slot or product is authorized automatically on drift.
+
+Proposed run baqa-20261118a001 lasts20minutes: exactly two synthetic staff cards,
+two accounts (instructor/admin), two employee bridges, two membership pairs and
+one canonical booking; at most six exact dependent default-time rows. No real
+staff/schedule row, customer, finance or payroll record may change. The existing
+line is only a reference; its animator row is masked in screenshots. Child
+cancellation precedes parent retirement, including recovery. The reviewed
+metadata snapshot hash is1b8e19adb248168c5be70b436db5cd3583577cface19371ff52fa41096578dd0.
+Final candidate-bound JSON plans and hashes belong in the immutable review bundle
+under output/baseline-release-review-<candidate-prefix>; plan preparation is
+read-only and does not authorize execution.
+
 After final local checks/commit, choose the next free patch, prepare the exact
 candidate and hash-bound controller manifest. State the permitted descendants,
 six-hour deadline, maximum three attempts and exact rollback base. Use exact-SHA
@@ -88,6 +105,12 @@ live base. The metadata rollback above is independent. Do not claim a deployed
 rollback point or live proof before the corresponding actions actually occur.
 
 ## Read-only Railway preflight
+
+Latest after upstream0.84.8: project/environment/service identities match the
+fixed target; deployment0442008d-5cca-487b-bf14-e5086108bd9b isSUCCESS. Staged
+resources0, shared variables0, destructive=false and no staged network delta.
+GitHub and live both resolve to859196fedb107b443719cbfc576fa9352cbee15a.
+The following earlier snapshot is retained as history.
 
 2026-11-18: all three production services online, zero warnings/criticals and
 zero recent failures. CRM deployment cf86d5cc-df5e-436f-bb59-6b517f74a296 succeeded.

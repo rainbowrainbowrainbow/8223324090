@@ -120,6 +120,17 @@ that no preference remains.
 
 ## Verification
 
+Latest integrated0.84.8 proof: full registered browser scenario1/1 (four actual
+instructor/admin desktop/mobile UI scenarios), including post-booking interruption,
+expiry recovery, parent-before-child rejection and foreign preference ownership
+drift. Final cropped/masked screenshots reviewed. Final identity/API/CLI lifecycle
+10/10, no skips, includes unexpected preference rejection for five-field plans.
+Evidence: output/baseline-0848-final-browser.log and
+output/baseline-0848-final-identities.log. Classification actual PostgreSQL1/1
+and focused53/53 also pass; see STATE.md. Fresh one-command npm test passes,
+exit0; its unit suite is4038/4038 after the DATE-query mock correction.
+No production writes, logins or fixture creation were performed.
+
 - Node22.23.4/npm10.9.9; final focused plan/target/registry/runner tests64/64,
   including millisecond-precise maximum-lifetime rejection before record locks.
 - Actual disposable PostgreSQL and running application: expanded lifecycle10/10,
@@ -133,4 +144,5 @@ that no preference remains.
   permission capabilities, zone membership, Training, Chat and work readiness.
   Final gate result and exact evidence filenames are in STATE.md.
 - Runtime and protected timeline guard pass; no schema/dependency/session
-  mechanism changes. Final full npm test and approved live proof remain required.
+  mechanism changes. Fresh full npm test passes; exact-SHA CI and approved live
+  proof remain required.

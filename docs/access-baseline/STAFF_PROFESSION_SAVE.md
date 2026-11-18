@@ -89,3 +89,10 @@ and task-assignment changes. Final actual-app administrator/creator1280/390 save
 pass4/4 (output/baseline-0846-professions-browser.log), with compensation and
 admissions preserved. This remains local proof; production delivery and disposable
 live validation require the final authorization envelope.
+
+Latest integration: upstream/live0.84.8/859196fe. The final registered QA browser
+executes normal admin login at1280/390, both save buttons, companion default-time
+save and reopening to verify primary/secondary profession and admission. All four
+instructor/admin UI scenarios pass; final identity/API/CLI lifecycle10/10 passes.
+Fresh npm test passes, exit0, including4038unit tests. Evidence is recorded in
+STATE.md and BASELINE_QA_PROTOCOL.md. No real staff card was edited.

@@ -518,7 +518,9 @@ test('successful fixture authorization attaches a durable server-issued fixture 
     const trustedRun = run({ token_hash: sha256('fixture-token') });
     const queryable = {
         async query(sql) {
-            if (/SELECT \*\s+FROM trusted_qa_runs/.test(sql)) {
+            if (/FROM trusted_qa_runs\s+WHERE token_hash = \$1/.test(sql)) {
+                assert.match(sql, /allowed_date::text AS allowed_date/,
+                    'Keep the approved DATE independent of the host timezone');
                 return { rows: [trustedRun], rowCount: 1 };
             }
             if (/INSERT INTO trusted_qa_run_token_uses/.test(sql)) {

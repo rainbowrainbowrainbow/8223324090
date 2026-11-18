@@ -3427,6 +3427,7 @@ router.get('/professions', async (req, res) => {
             || req.query.include_inactive_people === 'true'
             || req.query.includeInactivePeople === 'true';
         const catalog = await loadProfessionWorkspaceCatalog(pool, { includeInactivePeople });
+        res.locals.professionDisplayGroupContext = catalog.displayGroupContext;
         res.json({
             success: true,
             data: catalog.items,

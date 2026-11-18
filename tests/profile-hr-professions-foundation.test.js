@@ -175,7 +175,11 @@ describe('profile, HR professions, and timeline compatibility foundation', () =>
                         { id: 1, key: 'empty_role', title: 'Без команди', checklist: [], is_active: true, sort_order: 1 },
                         { id: 2, key: 'host', title: 'Ведуча', checklist: ['Сценарій'], is_active: true, sort_order: 2, structure_node_id: 'art' },
                         { id: 3, key: 'animator', title: 'Аніматор', checklist: ['Реквізит', 'Програма'], is_active: true, sort_order: 3 },
-                        { id: 4, key: 'archived_role', title: 'Архівна', checklist: [], is_active: false, sort_order: 4 }
+                        { id: 4, key: 'archived_role', title: 'Архівна', checklist: [], is_active: false, sort_order: 4 },
+                        { id: 5, key: 'cook', title: 'Кухар', department: 'Кухня', is_active: true },
+                        { id: 6, key: 'manager', title: 'Менеджер', department: 'Продажі', is_active: true },
+                        { id: 7, key: 'security', title: 'Охорона', department: 'Безпека', is_active: true },
+                        { id: 8, key: 'custom_operations', title: 'Операції', department: 'cafe', structure_node_id: 'ops', is_active: true }
                     ] };
                 }
                 if (/WITH profession_assignments AS/i.test(sql)) {
@@ -203,12 +207,23 @@ describe('profile, HR professions, and timeline compatibility foundation', () =>
                     { id: 203, profession_id: 3, item_key: 'animator_legacy_archived', title: 'Архівний пункт', sort_order: 30, is_active: false, legacy_position: null }
                 ] };
                 if (/FROM training_courses/i.test(sql)) return { rows: [{ profession_key: 'animator', course_count: 2, active_course_count: 1 }] };
-                if (/FROM settings WHERE key = 'hr_company_structure'/i.test(sql)) return { rows: [{ value: { nodes: [{ id: 'art', title: 'Арт' }] } }] };
+                if (/FROM settings WHERE key = 'hr_company_structure'/i.test(sql)) return { rows: [{ value: { nodes: [
+                    { id: 'art', title: 'Арт' },
+                    { id: 'ops', title: 'Операції', displayGroup: 'tech' }
+                ] } }] };
                 throw new Error(`Unexpected profession workspace query: ${sql}`);
             }
         };
 
         const catalog = await loadProfessionWorkspaceCatalog(db);
+        for (const [key, groupLabel, subgroupLabel] of [
+            ['cook', 'Кафе', 'Кухня'],
+            ['manager', 'Рецепція', 'Менеджери'],
+            ['security', 'Технічний відділ', 'Охорона'],
+            ['custom_operations', 'Технічний відділ', '']
+        ]) {
+            assert.deepEqual(catalog.items.find(item => item.key === key).schedulePlacement, { groupLabel, subgroupLabel }, key);
+        }
         assert.equal(catalog.items.find(item => item.key === 'empty_role').staffCount, 0);
         assert.equal(catalog.items.find(item => item.key === 'host').staffCount, 1);
         assert.equal(catalog.items.find(item => item.key === 'host').people[0].shiftPreferences[0].startTime, '10:00');

@@ -12,6 +12,7 @@ const { requirePlaywright } = require('./timeline-room-summary-browser-smoke');
 const target = process.env.TEST_URL;
 const output = path.resolve(__dirname, '../../output/playwright/hr-staff-creation');
 const runId = crypto.randomBytes(4).toString('hex');
+const schedulePlacementOnly = process.env.EG_HR_STAFF_SCHEDULE_PLACEMENT_ONLY === '1';
 
 async function login(username, password) {
     const response = await fetch(new URL('/api/auth/login', target), {
@@ -239,8 +240,29 @@ async function runActor(browser, pool, actor, existingAccountId) {
         const name = `QA Staff ${actor.label} ${runId}`;
         await dialog.locator('[name="family_name"]').fill('QA');
         await dialog.locator('[name="given_name"]').fill(name.slice(3));
-        await dialog.locator('[name="department"]').selectOption({ label: 'Аніматори' });
-        await dialog.locator('[name="position"]').selectOption('animator');
+        const department = dialog.locator('[name="department"]');
+        const position = dialog.getByRole('combobox', { name: 'Посада *' });
+        const schedulePlacement = dialog.locator('#hrCreateStaffSchedulePlacement');
+        if (schedulePlacementOnly) {
+            for (const [departmentLabel, professionKey, expectedPlacement] of [
+                ['Продажі', 'manager', 'Рецепція → Менеджери'],
+                ['Безпека', 'security', 'Технічний відділ → Охорона'],
+                ['Кухня', 'cook', 'Кафе → Кухня']
+            ]) {
+                await department.selectOption({ label: departmentLabel });
+                assert.equal(await schedulePlacement.innerText(), '');
+                await position.selectOption(professionKey);
+                assert.equal(await schedulePlacement.innerText(), `У графіку — ${expectedPlacement}`);
+            }
+            await dialog.screenshot({ path: path.join(output, `${actor.label}-schedule-placement.png`) });
+        }
+        await department.selectOption({ label: 'Аніматори' });
+        await position.selectOption('animator');
+        const placementText = await schedulePlacement.innerText();
+        assert.equal(placementText, 'У графіку — Аніматори');
+        assert.equal(await position.getAttribute('aria-describedby'), 'hrCreateStaffSchedulePlacement');
+        await position.press('Tab');
+        assert.equal(await dialog.locator('[name="hireDate"]').evaluate(el => el === document.activeElement), true);
 
         await dialog.screenshot({ path: path.join(output, `${actor.label}-create.png`) });
         await captureSupplement('hr-create');
@@ -266,6 +288,14 @@ async function runActor(browser, pool, actor, existingAccountId) {
         if (loseResponse) await page.unroute('**/api/staff');
         assert.equal(creation.status(), 200, loseResponse ? 'committed staff operation recovered' : 'staff created');
         const { data: staff } = await creation.json();
+        if (actor.role === 'creator') {
+            const scheduleStaff = await page.evaluate(async () => window.crmApiFetch('/api/staff'));
+            assert.ok(scheduleStaff.success);
+            const scheduled = scheduleStaff.data.find(row => row.id === staff.id);
+            assert.ok(scheduled, 'new staff card is available to the schedule');
+            assert.deepEqual([scheduled.display_group_label, scheduled.display_subgroup_label], ['Аніматори', 'Аніматори']);
+            assert.equal(placementText, `У графіку — ${scheduled.display_group_label}`);
+        }
         const profile = page.locator('#staffEditModal');
         await profile.waitFor({ state: 'visible' });
         await page.waitForFunction(id => Number(document.getElementById('editStaffId').value) === id, staff.id);
@@ -276,6 +306,17 @@ async function runActor(browser, pool, actor, existingAccountId) {
             assert.equal(await profile.getByRole('button', { name: 'Створити CRM-акаунт' }).count(), 0);
         }
         await captureSupplement('hr-created');
+        if (schedulePlacementOnly) {
+            const catalogDepartment = await page.evaluate(async () => {
+                const catalog = await ensureProfessionsLoaded({ silent: true });
+                return catalog.find(profession => profession.key === 'animator').department.trim();
+            });
+            const { rows } = await pool.query('SELECT department, role_type FROM staff WHERE id = $1', [staff.id]);
+            assert.deepEqual(rows, [{ department: catalogDepartment, role_type: 'animator' }]);
+            assert.deepEqual(pageErrors, []);
+            console.log(`[hr-staff] ${actor.label}: schedule placement and staff creation confirmed`);
+            return;
+        }
         if (['desktop', 'mobile'].includes(actor.label)) {
             const picker = profile.locator('#editStaffPhotoFile');
             const upload = profile.locator('#editStaffPhotoUpload');
@@ -573,6 +614,8 @@ async function runActor(browser, pool, actor, existingAccountId) {
             await createButton.click();
             await dialog.locator('[name="department"]').selectOption({ label: 'Кухня' });
             await dialog.locator('[name="position"]').selectOption(professionKey);
+            assert.equal(await schedulePlacement.innerText(), 'У графіку — Адміністрація',
+                'placement uses the effective Park department for a custom profession');
             await dialog.locator('#hrCreateStaffCancel').click();
             await verifyKitchenAccount(browser, page, pool);
 
@@ -768,7 +811,9 @@ async function main() {
         const actors = await seed(pool);
         browser = await requirePlaywright().chromium.launch({ headless: true,
             ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } : {}) });
-        await verifyScheduleAccountForms(browser, pool, actors.find(actor => actor.role === 'creator'));
+        if (!schedulePlacementOnly) {
+            await verifyScheduleAccountForms(browser, pool, actors.find(actor => actor.role === 'creator'));
+        }
         for (const actor of actors) await runActor(browser, pool, actor, actors.find(item => item.label === 'mobile').id);
         if (process.env.EG_HR_UX_VISUAL_AUDIT === '1') {
             await require('./hr-crm-ux-visual-audit').runHrCrmVisualAudit({ browser, pool, actors, login, target, output, runId });

@@ -151,6 +151,9 @@ function hasExplicitHourlyRate(person) {
 
 function projectProfessionCatalogRow(row, { includePayroll = false } = {}) {
     const projected = pick(row, ['id', 'key', 'title', 'department', 'color', 'is_active', 'structure_node_id', 'sort_order']);
+    if (row?.schedulePlacement) {
+        projected.schedulePlacement = pick(row.schedulePlacement, ['groupLabel', 'subgroupLabel']);
+    }
     if (!Array.isArray(row?.people)) return projected;
     projected.people = mapRows(row.people, person => ({
         ...pick(person, ['id', 'isActive', 'isPrimary', 'assignmentStatus', 'admissionStatus', 'internshipStatus']),

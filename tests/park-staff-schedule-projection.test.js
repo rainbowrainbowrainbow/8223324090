@@ -63,7 +63,9 @@ test('Park roster preserves schedule grouping and badges without account or cont
 
 test('Park profession dependency exposes rate presence without rate amounts or unrelated HR inventory', () => {
     const output = project('hr', '/professions', { success: true, data: [{ id: 4, key: 'animator', title: 'Аніматор',
-        department: 'animators', color: '#abcdef', is_active: true, people: [{ id: 7, isActive: true,
+        department: 'animators', color: '#abcdef', is_active: true,
+        schedulePlacement: { groupLabel: 'Аніматори', subgroupLabel: 'Аніматори', privateField: 'PRIVATE' },
+        people: [{ id: 7, isActive: true,
             assignmentStatus: 'active', admissionStatus: 'approved', explicitRate: 450, fallbackRate: 400,
             storedExplicitRate: 450, ignoredExplicitRate: 450, hourlyRate: 450, rateUnit: 'hour',
             rateSource: 'staff_profession_rates.hourly_rate' }], checklist: ['PRIVATE'] }],
@@ -71,6 +73,7 @@ test('Park profession dependency exposes rate presence without rate amounts or u
     assert.deepEqual(output, {
         success: true,
         data: [{ id: 4, key: 'animator', title: 'Аніматор', department: 'animators', color: '#abcdef', is_active: true,
+            schedulePlacement: { groupLabel: 'Аніматори', subgroupLabel: 'Аніматори' },
             people: [{ id: 7, isActive: true, assignmentStatus: 'active', admissionStatus: 'approved',
                 hasExplicitHourlyRate: true }] }],
         professionCatalogAccess: {
@@ -83,6 +86,7 @@ test('Park profession dependency exposes rate presence without rate amounts or u
         }
     });
     assert.equal(JSON.stringify(output).includes('450'), false);
+    assert.equal(JSON.stringify(output).includes('PRIVATE'), false);
 });
 
 test('Park payroll viewers receive only explicit rate fields needed for schedule planning', () => {

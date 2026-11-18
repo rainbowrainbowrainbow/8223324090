@@ -3,6 +3,7 @@
 const { resolveCapability } = require('./accountAccessPolicy');
 const { resolveBusinessScope } = require('./businessContext');
 const { hasCurrentParkScheduleMembership } = require('./parkStaffScheduleAccess');
+const { professionSchedulePlacement } = require('./staffDisplayGroups');
 
 function parkProfessionDepartments(db) {
     return async (req, res, next) => {
@@ -58,7 +59,16 @@ function parkProfessionDepartments(db) {
                     const departments = new Map(rows.map(row => [Number(row.profession_id), row.department]));
                     const withDepartment = row => departments.has(Number(row.id))
                         ? { ...row, department: departments.get(Number(row.id)) } : row;
-                    if (catalog) return send({ ...payload, data: payload.data.map(withDepartment) });
+                    if (catalog) {
+                        const data = payload.data.map(row => {
+                            const profession = withDepartment(row);
+                            return profession === row ? row : {
+                                ...profession,
+                                schedulePlacement: professionSchedulePlacement(profession, res.locals.professionDisplayGroupContext)
+                            };
+                        });
+                        return send({ ...payload, data });
+                    }
                     const profession = withDepartment(payload.data.profession);
                     return send({ ...payload, data: { ...payload.data, profession,
                         parkDepartmentEditable: canEdit && Boolean(profession.id)

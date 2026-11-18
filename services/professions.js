@@ -1,7 +1,7 @@
 'use strict';
 
 const { scheduleableStaffWhere } = require('./staffOperationalFilters');
-const { normalizeStaffCompanyStructurePayload } = require('./staffDisplayGroups');
+const { professionSchedulePlacement, staffDisplayGroupContextFromCompanyStructure } = require('./staffDisplayGroups');
 
 function parseJsonArray(value, fallback = []) {
     if (Array.isArray(value)) return value;
@@ -819,10 +819,13 @@ async function loadProfessionWorkspaceCatalog(db, options = {}) {
             updatedAt: row.updated_at || null
         });
     }
-    const structure = normalizeStaffCompanyStructurePayload(safeRows(structureResult)[0]?.value || {});
-    const structureNodeById = new Map(structure.nodes.map(node => [node.id, node]));
+    const professionRows = safeRows(professionResult);
+    const displayGroupContext = staffDisplayGroupContextFromCompanyStructure(safeRows(structureResult)[0]?.value || {}, {
+        professions: professionRows.filter(profession => profession.is_active !== false)
+    });
+    const { companyStructure: structure, structureNodeById } = displayGroupContext;
 
-    const items = curateProfessionCatalogRows(safeRows(professionResult)).map(profession => {
+    const items = curateProfessionCatalogRows(professionRows).map(profession => {
         const key = normalizeProfessionKey(profession.key);
         const people = peopleByKey.get(key) || [];
         const structureNode = profession.structureNodeId ? structureNodeById.get(profession.structureNodeId) || null : null;
@@ -870,6 +873,7 @@ async function loadProfessionWorkspaceCatalog(db, options = {}) {
             hasChecklist: checklist.length > 0,
             checklistCount: checklist.length,
             structureNode: structureNode ? { id: structureNode.id, title: structureNode.title } : null,
+            schedulePlacement: professionSchedulePlacement(profession, displayGroupContext),
             people,
             checklistProgress: progressByKey.get(key) || {
                 records: 0,
@@ -889,6 +893,7 @@ async function loadProfessionWorkspaceCatalog(db, options = {}) {
 
     return {
         items,
+        displayGroupContext,
         structureNodes: structure.nodes.map(node => ({ id: node.id, title: node.title })),
         inventory: professionCatalogInventory()
     };

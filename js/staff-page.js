@@ -5503,6 +5503,8 @@ function renderSchedulePlanSegmentCard(scope, segment, index, segmentCount) {
     const paidProfessionId = schedulePlanFieldId(scope, 'paid-profession', index, segment.clientKey);
     const paidStartId = schedulePlanFieldId(scope, 'paid-start', index, segment.clientKey);
     const paidEndId = schedulePlanFieldId(scope, 'paid-end', index, segment.clientKey);
+    const paidTimeHintId = schedulePlanFieldId(scope, 'paid-time-hint', index, segment.clientKey);
+    const addPeriodLabel = scope === 'schedule' ? 'Додати інший період роботи' : 'Додати часовий блок';
     const paidMultiplierId = schedulePlanFieldId(scope, 'paid-multiplier', index, segment.clientKey);
     const paidBreakId = schedulePlanFieldId(scope, 'paid-break-period', index, segment.clientKey);
     const paidRole = (segment.additionalRoles || [])
@@ -5599,6 +5601,9 @@ function renderSchedulePlanSegmentCard(scope, segment, index, segmentCount) {
                     <button type="button" class="btn-page-secondary" data-paid-period="first">Перша половина</button>
                     <button type="button" class="btn-page-secondary" data-paid-period="second">Друга половина</button>
                 </div>` : ''}
+                <p id="${escapeHtml(paidTimeHintId)}" class="sch-paid-role-preview">
+                    Для роботи до початку або після завершення цього блоку скористайтеся кнопкою «${addPeriodLabel}». У полях нижче вкажіть години суміщення.
+                </p>
                 <div class="sch-paid-role-grid">
                     <div class="form-group sch-paid-profession-field">
                         <label for="${escapeHtml(paidProfessionId)}">Оплачувана професія</label>
@@ -5607,12 +5612,12 @@ function renderSchedulePlanSegmentCard(scope, segment, index, segmentCount) {
                     </div>
                     <div class="form-group">
                         <label for="${escapeHtml(paidStartId)}">Початок оплати</label>
-                        <input type="time" id="${escapeHtml(paidStartId)}" data-segment-field="paid-start" value="${escapeHtml(paidStart)}" ${paidRole ? '' : 'disabled'}>
+                        <input type="time" id="${escapeHtml(paidStartId)}" data-segment-field="paid-start" value="${escapeHtml(paidStart)}" aria-describedby="${escapeHtml(paidTimeHintId)}" ${paidRole ? '' : 'disabled'}>
                         <div class="sch-field-error" data-field-error="paid-start"></div>
                     </div>
                     <div class="form-group">
                         <label for="${escapeHtml(paidEndId)}">Завершення оплати</label>
-                        <input type="time" id="${escapeHtml(paidEndId)}" data-segment-field="paid-end" value="${escapeHtml(paidEnd)}" ${paidRole ? '' : 'disabled'}>
+                        <input type="time" id="${escapeHtml(paidEndId)}" data-segment-field="paid-end" value="${escapeHtml(paidEnd)}" aria-describedby="${escapeHtml(paidTimeHintId)}" ${paidRole ? '' : 'disabled'}>
                         <div class="sch-field-error" data-field-error="paid-end"></div>
                     </div>
                     <div class="form-group" ${isScheduleRecoveryReadOnly(scope) ? 'hidden style="display:none"' : ''}>
@@ -6326,10 +6331,15 @@ function applySchedulePlanFieldErrors(scope, fieldErrors = []) {
     list.querySelectorAll('.sch-field-error').forEach(node => {
         node.textContent = '';
         node.hidden = true;
+        const control = node.closest('.form-group')?.querySelector('[data-segment-field]');
+        const description = control?.getAttribute('aria-describedby');
+        if (!description || !node.id) return;
+        const ids = description.split(/\s+/).filter(id => id !== node.id);
+        if (ids.length) control.setAttribute('aria-describedby', ids.join(' '));
+        else control.removeAttribute('aria-describedby');
     });
     list.querySelectorAll('[data-segment-field]').forEach(control => {
         control.removeAttribute('aria-invalid');
-        control.removeAttribute('aria-describedby');
         control.closest('.form-group')?.classList.remove('has-error');
     });
     fieldErrors.forEach(error => {
@@ -6341,7 +6351,9 @@ function applySchedulePlanFieldErrors(scope, fieldErrors = []) {
         message.textContent = error.message;
         if (!message.id) message.id = `${control.id || `${scope}-field`}-error`;
         control.setAttribute('aria-invalid', 'true');
-        control.setAttribute('aria-describedby', message.id);
+        const descriptions = new Set((control.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean));
+        descriptions.add(message.id);
+        control.setAttribute('aria-describedby', [...descriptions].join(' '));
         control.closest('.form-group')?.classList.add('has-error');
     });
 }

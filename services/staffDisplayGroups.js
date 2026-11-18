@@ -446,6 +446,17 @@ function decorateStaffWithDisplayGroup(staff = {}, options = {}) {
     };
 }
 
+function professionSchedulePlacement(profession, displayGroupContext) {
+    const placement = decorateStaffWithDisplayGroup({
+        role_type: profession.key,
+        department: profession.department
+    }, { displayGroupContext });
+    return {
+        groupLabel: placement.display_group_label,
+        subgroupLabel: placement.display_subgroup_label
+    };
+}
+
 function decorateStaffRowsWithDisplayGroups(rows = [], options = {}) {
     return (Array.isArray(rows) ? rows : []).map(row => decorateStaffWithDisplayGroup(row, options));
 }
@@ -486,6 +497,7 @@ module.exports = {
     normalizeStaffCompanyStructureNodeRef,
     normalizeStaffCompanyStructurePayload,
     normalizeStaffDisplayGroupKey,
+    professionSchedulePlacement,
     resolveStaffDisplayGroup,
     staffProfessionCategoryRule,
     staffScheduleCategoryMemberships,

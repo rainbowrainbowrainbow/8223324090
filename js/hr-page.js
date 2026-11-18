@@ -6883,11 +6883,19 @@ function bindHrStaffCreation() {
     mountNewStaffFields(document.getElementById('hrCreateStaffFields'), 'hrCreateStaff',
         ['FamilyName', 'GivenName', 'Phone', 'Department', 'Position', 'HireDate', 'Address']);
     const status = document.getElementById('hrCreateStaffStatus');
+    const placement = document.getElementById('hrCreateStaffSchedulePlacement');
     const submit = form.querySelector('[type="submit"]');
     const cancel = document.getElementById('hrCreateStaffCancel');
     const department = form.elements.department;
     const position = form.elements.position;
+    position.setAttribute('aria-describedby', placement.id);
     let jobs = [];
+    const showSchedulePlacement = () => {
+        const job = jobs.find(item => item.key === position.value && item.departmentKey === department.value);
+        const { groupLabel, subgroupLabel } = job?.schedulePlacement || {};
+        const labels = new Set([groupLabel, subgroupLabel].filter(Boolean));
+        placement.textContent = labels.size ? `У графіку — ${[...labels].join(' → ')}` : '';
+    };
     const showPositions = () => {
         const matching = jobs.filter(job => job.departmentKey === department.value);
         position.replaceChildren(new Option(department.value ? 'Оберіть посаду' : 'Спочатку оберіть відділ', ''));
@@ -6895,8 +6903,10 @@ function bindHrStaffCreation() {
             .forEach(job => position.add(new Option(professionDisplayTitle(job.key, job.title), job.key)));
         position.disabled = !matching.length;
         submit.disabled = !matching.length;
+        showSchedulePlacement();
     };
     department.addEventListener('change', showPositions);
+    position.addEventListener('change', showSchedulePlacement);
     form.elements.phone.addEventListener('blur', event => {
         const input = event.currentTarget;
         const value = input.value.trim();
@@ -6954,7 +6964,13 @@ function bindHrStaffCreation() {
             const title = item.title || item.label || item.name;
             const departmentValue = String(item.department || '').trim();
             if (!item.key || !title || !departmentValue || item.is_active === false || item.isActive === false) return [];
-            return [{ key: item.key, title, departmentValue, departmentKey: professionDepartmentKey(departmentValue) }];
+            return [{
+                key: item.key,
+                title,
+                departmentValue,
+                departmentKey: professionDepartmentKey(departmentValue),
+                schedulePlacement: item.schedulePlacement
+            }];
         });
         const departments = professionDepartmentOptions(jobs.map(job => job.departmentValue));
         departments.forEach(([key, label]) => department.add(new Option(label, key)));

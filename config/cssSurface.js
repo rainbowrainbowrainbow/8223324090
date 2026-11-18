@@ -9,6 +9,8 @@ const CSS_APP_SHELL_PRECACHE = [
 ];
 
 const CSS_SURFACE = [
+    { file: 'css/hr-pay-rules.css', owner: 'hr-payroll', category: 'page-scoped', status: 'active',
+        reason: 'Scoped compensation forms with visible keyboard focus and mobile control sizes.' },
     { file: 'css/telegram-crm-profile.css', owner: 'profile', category: 'page-scoped', status: 'active',
         reason: 'Optional Telegram connection, first-login prompt, accessible confirmation forms.' },
     {

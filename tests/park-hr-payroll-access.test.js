@@ -50,6 +50,33 @@ test('fresh Park membership opens only the enumerated conditions, profiles and a
     assert.equal((await invoke(request('/preview'), { routerId: 'payroll' })).passed, true);
 });
 
+test('approved compensation mapping opens ten exact operations and retains capability, context and ownership denials', async () => {
+    const routes = [['GET', '/payroll-rules/defaults'], ['GET', '/payroll-rules/levels'],
+        ['GET', '/staff/12/payroll-rules'], ['GET', '/vacancies/12/payroll-template'],
+        ['POST', '/payroll-rules/defaults'], ['POST', '/payroll-rules/levels'],
+        ['POST', '/staff/12/payroll-rules/qualification'], ['POST', '/staff/12/payroll-rules/vacancy'],
+        ['PUT', '/staff/12/payroll-rules/component-input'], ['PUT', '/vacancies/12/payroll-template']];
+    for (const [method, path] of routes) {
+        assert.equal((await invoke(request(path, method))).passed, true, path);
+        const capabilities = method === 'GET' ? ['hr.payroll.view'] : ['hr.payroll.view', 'hr.payroll.manage', 'manage_payroll_rules'];
+        assert.deepEqual(parkHrPayrollCapabilities(request(path, method), 'hr'), capabilities);
+        for (const options of [...capabilities.map(action => ({ deny: [action] })), { context: 'dar' },
+            { context: 'all' }, { revoked: 'event_genix' }]) {
+            const denied = await invoke(request(path, method, options));
+            assert.equal(denied.status, 403, `${method} ${path} ${JSON.stringify(options)}`);
+            assert.equal(denied.calls, 0);
+        }
+        assert.equal((await invoke(request(path, method), { conflict: true })).status, 409);
+    }
+    for (const [method, path] of [['DELETE', '/payroll-rules/levels'], ['PUT', '/payroll-rules/defaults'],
+        ['POST', '/staff/0/payroll-rules/qualification'], ['GET', '/staff/12/payroll-rules/history'],
+        ['PUT', '/staff/12/payroll-rules/unknown'], ['POST', '/vacancies/12/payroll-template'],
+        ['PUT', '/vacancies/0/payroll-template'], ['POST', '/staff/12/payroll-rules/qualification/extra']]) {
+        assert.equal(parkHrPayrollCapabilities(request(path, method), 'hr'), null, path);
+        assert.equal((await invoke(request(path, method))).status, 403);
+    }
+});
+
 test('payments, close, settlements, bulk and unrelated HR writes remain denied even for creator', async () => {
     for (const [routerId, method, path, body] of [
         ['payroll','POST','/installments/1/payments/confirm'], ['payroll','POST','/payments/1/reverse'],

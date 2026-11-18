@@ -195,6 +195,7 @@ const {
     simulatePayrollProfiles,
     syncPayrollProfileFromBase
 } = require('../services/hrPayrollProfiles');
+const compensationRules = require('../services/hrCompensationRules');
 const {
     hrShiftPlanErrorPayload,
     hrShiftPlanErrorStatus,
@@ -4322,6 +4323,40 @@ router.get('/payroll-profiles/diagnostics', requirePayrollView, async (req, res)
         sendPayrollProfileFailure(res, err, 'GET /hr/payroll-profiles/diagnostics error');
     }
 });
+
+function compensationRuleHandler(operation, input) {
+    return async (req, res) => {
+        try {
+            const payload = { ...input(req), businessContext: businessContextFromRequest(req) };
+            const data = req.method === 'GET'
+                ? await compensationRules[operation](payload)
+                : await compensationRules[operation](payload, req.user);
+            res.json({ success: true, data });
+        } catch (err) { sendPayrollProfileFailure(res, err, `${req.method} /hr compensation rules`); }
+    };
+}
+// Reuse payroll view/rules guards. The separately approved exact Park operation
+// mapping opens no new capabilities or cross-company legacy namespaces.
+router.get('/payroll-rules/defaults', requirePayrollView,
+    compensationRuleHandler('listRuleDefaults', req => req.query));
+router.post('/payroll-rules/defaults', requirePayrollRules,
+    compensationRuleHandler('saveRuleDefault', req => req.body));
+router.get('/payroll-rules/levels', requirePayrollView,
+    compensationRuleHandler('listQualificationLevels', req => req.query));
+router.post('/payroll-rules/levels', requirePayrollRules,
+    compensationRuleHandler('createQualificationLevel', req => req.body));
+router.get('/staff/:id/payroll-rules', requirePayrollView,
+    compensationRuleHandler('staffRuleWorkspace', req => ({ ...req.query, staffId: req.params.id })));
+router.post('/staff/:id/payroll-rules/qualification', requirePayrollRules,
+    compensationRuleHandler('changeQualificationLevel', req => ({ ...req.body, staffId: req.params.id })));
+router.put('/staff/:id/payroll-rules/component-input', requirePayrollRules,
+    compensationRuleHandler('saveComponentInput', req => ({ ...req.body, staffId: req.params.id })));
+router.get('/vacancies/:id/payroll-template', requirePayrollView,
+    compensationRuleHandler('vacancyTemplate', req => ({ ...req.query, vacancyId: req.params.id })));
+router.put('/vacancies/:id/payroll-template', requirePayrollRules,
+    compensationRuleHandler('saveVacancyTemplate', req => ({ ...req.body, vacancyId: req.params.id })));
+router.post('/staff/:id/payroll-rules/vacancy', requirePayrollRules,
+    compensationRuleHandler('applyVacancyTemplate', req => ({ ...req.body, staffId: req.params.id })));
 
 router.post('/payroll-profiles/simulator', requirePayrollView, async (req, res) => {
     try {
@@ -9502,7 +9537,8 @@ router.post('/applications/:id/hire', requireHrManage, async (req, res) => {
     const afterCommit = [];
     try {
         const hireMode = String(req.body.hire_mode || req.body.hireMode || 'new_staff').trim();
-        if (Number(req.body.salary || 0) !== 0 && !canManageStaffPayrollRules(req.user)) {
+        const compensation = req.body.compensation?.apply === true ? req.body.compensation : null;
+        if ((Number(req.body.salary || 0) !== 0 || compensation) && !canManageStaffPayrollRules(req.user)) {
             return res.status(403).json({ success: false, error: 'Для встановлення ставки потрібен доступ до зарплатних умов.' });
         }
         const vacancyAction = String(req.body.vacancy_action || req.body.vacancyAction || '').trim();
@@ -9516,6 +9552,7 @@ router.post('/applications/:id/hire', requireHrManage, async (req, res) => {
         }
 
         await client.query('BEGIN');
+        if (compensation) await lockPayrollPeriodMutation(String(compensation.effectiveFrom || '').slice(0, 7), client);
         const app = await client.query(
             `SELECT a.*, a.birth_date::text AS application_birth_date, v.role_type, v.department AS vacancy_department, v.title AS vac_title,
                     v.status AS vacancy_status, v.target_hires
@@ -9628,6 +9665,15 @@ router.post('/applications/:id/hire', requireHrManage, async (req, res) => {
             );
         }
 
+        let compensationResult = null;
+        if (compensation) {
+            compensationResult = await compensationRules.applyVacancyTemplate({
+                businessContext: businessContextFromRequest(req), vacancyId: a.vacancy_id, staffId: staff.id,
+                effectiveFrom: compensation.effectiveFrom, expectedTemplateHash: compensation.expectedTemplateHash,
+                selectedRate: compensation.selectedRate, payDecision: compensation.payDecision,
+                reason: compensation.reason
+            }, req.user, { db: client, reuseClient: true });
+        }
         let onboarding = null;
         if (startProfessionOnboarding) {
             onboarding = await assignOnboardingResponsible(staff.id, responsibleUserId, req.user, {
@@ -9702,6 +9748,7 @@ router.post('/applications/:id/hire', requireHrManage, async (req, res) => {
             profession_key: professionKey,
             onboarding_progress_id: onboarding?.progress?.id || null,
             hire_mode: hireMode,
+            compensation_applied: Boolean(compensationResult),
             vacancy_action: resolvedVacancyAction,
             vacancy_status: vacancyStatus,
             target_hires: targetHires,

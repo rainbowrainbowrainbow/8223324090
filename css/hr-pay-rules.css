@@ -1,0 +1,23 @@
+.hr-pay-rule-form .fm-field {
+    font-size: max(1rem, 1em) !important;
+    min-height: 3rem;
+}
+.hr-pay-rule-form .fm-field:focus-visible,
+.hr-pay-rule-form button:focus-visible {
+    outline: 3px solid var(--primary, #6d28d9) !important;
+    outline-offset: 2px;
+}
+.hr-pay-rule-form .confirm-btn {
+    min-height: 3rem;
+}
+.hr-pay-rule-summary {
+    overflow-wrap: anywhere;
+    line-height: 1.5;
+}
+.hr-pay-rule-form .form-modal-note {
+    white-space: pre-line;
+}
+@media (max-width: 600px) {
+    .hr-pay-rule-form { max-width: 100%; }
+    .hr-pay-rule-form .confirm-actions { flex-wrap: wrap; }
+}

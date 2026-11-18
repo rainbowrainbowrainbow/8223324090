@@ -11894,7 +11894,8 @@ function renderStaffPayrollProfileCard(professionKey) {
             <div><span>Ставка профілю на вибрану дату</span><strong>${version ? payrollProfileMoney(staffPayrollProfileRateOnDate(version, conditionsDate)) : '—'}</strong><small>${escapeHtml(legacyLabel)}</small></div>
             <div><span>Умови на ${escapeHtml(conditionsDate)}</span><strong>${escapeHtml(version ? payrollProfileVersionLabel(version) : '—')}</strong><small>${escapeHtml(effectiveDates)}</small></div>
         </div>
-        <p class="hr-staff-payroll-profile-diff">${version ? escapeHtml(payrollProfilePaymentHint(version.rateUnit || version.rate_unit)) : escapeHtml(legacyLabel)}</p>
+        <p class="hr-staff-payroll-profile-diff hr-pay-rule-summary">${version?.payRules && window.HrPayRules ? escapeHtml(window.HrPayRules.describe(version.payRules)) : version ? escapeHtml(payrollProfilePaymentHint(version.rateUnit || version.rate_unit)) : escapeHtml(legacyLabel)}</p>
+        ${profile?.templateOrigin ? `<p class="hr-staff-payroll-profile-diff">Умови скопійовано з вакансії. Подальші зміни вакансії не змінюють цю ставку.</p>` : ''}
         ${warning ? `<p class="hr-staff-payroll-profile-diff" role="status">${escapeHtml(warning)}</p>` : ''}
         ${version && (version.rateUnit || version.rate_unit) !== 'month' ? `<div class="hr-payroll-profile-period-grid">${staffPayrollProfilePeriodSummary(version)}</div>` : ''}
         ${renderStaffPayrollFutureConditions(key)}
@@ -11906,6 +11907,7 @@ function renderStaffPayrollProfileCard(professionKey) {
             <button type="button" data-staff-payroll-profile-action="temporary" data-profession-key="${escapeHtml(key)}"${actionDisabled}>Тимчасове призначення</button>
             <button type="button" data-staff-payroll-profile-action="change" data-profession-key="${escapeHtml(key)}" data-profile-id="${profile ? Number(profile.id) : ''}"${!profile ? ' disabled' : actionDisabled}>Змінити з дати</button>
             <button type="button" data-staff-payroll-profile-action="history" data-profession-key="${escapeHtml(key)}">Історія</button>
+            <button type="button" data-staff-payroll-profile-action="rules-workspace" data-profession-key="${escapeHtml(key)}">Рівень і бази відсотків</button>
         </div>
     </article>`;
 }
@@ -12175,10 +12177,10 @@ function validateStaffPayrollPeriodRates(values = {}) {
     }
     const unit = normalizeStaffRateUnit(values.rateUnit || 'hour');
     if (unit === 'month') {
-        const hasPeriodRates = STAFF_PAYROLL_RATE_PERIODS.some(period => String(values[`${period.key}Rate`] || '').trim());
-        return hasPeriodRates
-            ? { key: 'rateUnit', message: 'Для місячного профілю ставки буднів і вихідних не застосовуються. Очистіть ці поля.' }
-            : null;
+        // The day fields are hidden when switching a daily/hourly profile to a
+        // month. The collector discards them; requiring hidden fields to be
+        // cleared would make this transition impossible in the form.
+        return null;
     }
     for (const period of STAFF_PAYROLL_RATE_PERIODS) {
         const key = `${period.key}Rate`;
@@ -12225,12 +12227,14 @@ async function changeStaffPayrollProfileVersion(professionKey, profileId = null)
         ] },
         { key: 'defaultRate', label: 'Базова ставка', type: 'number', required: true, defaultValue: String(defaultRate || '') },
         ...staffPayrollVersionPeriodFields(version),
+        ...(window.HrPayRules?.fields(version) || []),
         { key: 'effectiveFrom', label: 'Дата початку нової версії', type: 'date', required: true, defaultValue: payrollProfileNextEffectiveDate(profile) },
         { key: 'changeReason', label: 'Причина зміни', required: true, defaultValue: 'Зміна умов оплати з картки працівника' }
     ], {
         icon: '💸',
         okText: 'Створити версію',
-        validate: validateStaffPayrollPeriodRates
+        className: 'hr-pay-rule-form',
+        validate: values => validateStaffPayrollPeriodRates(values) || window.HrPayRules?.validate(values, version)
     });
     if (!result) return { cancelled: true };
     const nextDefaultRate = payrollProfileNumber(result.defaultRate, NaN);
@@ -12242,7 +12246,8 @@ async function changeStaffPayrollProfileVersion(professionKey, profileId = null)
             defaultRate: nextDefaultRate,
             effectiveFrom: result.effectiveFrom,
             changeReason: result.changeReason,
-            dayRates
+            dayRates,
+            payRules: window.HrPayRules?.collect(result, version)
         }
     });
     if (!response?.success) {
@@ -12276,9 +12281,11 @@ async function convertLegacyStaffPayrollProfile(professionKey) {
             defaultRate: legacy.rate,
             dayRates: []
         }),
+        ...(window.HrPayRules?.fields({ rateUnit: legacy.rateUnit }) || []),
         { key: 'effectiveFrom', label: 'Дата початку', type: 'date', required: true, defaultValue: todayStr() },
         { key: 'reason', label: 'Причина', required: true, defaultValue: 'Індивідуальні умови оплати працівника' }
-    ], { icon: '🔁', okText: 'Створити й призначити', validate: validateStaffPayrollPeriodRates });
+    ], { icon: '🔁', okText: 'Створити й призначити', className: 'hr-pay-rule-form',
+        validate: values => validateStaffPayrollPeriodRates(values) || window.HrPayRules?.validate(values, { rateUnit: legacy.rateUnit }) });
     if (!result) return { cancelled: true };
     const dayRates = staffPayrollDayRatesFromPeriods(result, Number(result.defaultRate));
     const createResponse = await hrFetch('/payroll-profiles', {
@@ -12294,7 +12301,8 @@ async function convertLegacyStaffPayrollProfile(professionKey) {
             defaultRate: Number(result.defaultRate),
             effectiveFrom: result.effectiveFrom,
             changeReason: result.reason,
-            dayRates
+            dayRates,
+            payRules: window.HrPayRules?.collect(result, { rateUnit: legacy.rateUnit })
         }
     });
     if (!createResponse?.success) {
@@ -12487,7 +12495,9 @@ async function showStaffPayrollProfileSimulator() {
     const compareText = compare
         ? `\n\nПрофіль B: ${compare.profile?.title || ''}\nСума B: ${payrollProfileMoney(compare.total)}\nΔ B-A: ${payrollProfileMoney(data.delta)}`
         : '';
+    const review = payrollProfileReviewNote([...(primary.blockingIssues || []), ...(compare?.blockingIssues || [])]);
     await formModal('Результат симулятора', [
+        ...(review ? [{ key: 'review', type: 'note', text: review }] : []),
         { key: 'note', type: 'note', text: `Профіль A: ${primary.profile?.title || ''}\nПеріод: ${primary.period?.from || result.from} — ${primary.period?.to || result.to}\nСума A: ${payrollProfileMoney(primary.total)}${compareText}\n\nBreakdown:\n${breakdown || 'Немає робочих днів у сценарії.'}` }
     ], { icon: '🧮', okText: 'Закрити' });
 }
@@ -12503,6 +12513,7 @@ async function handleStaffPayrollProfileAction(button) {
         temporary: () => chooseStaffPayrollProfile(professionKey, { assignmentKind: 'temporary' }),
         change: () => changeStaffPayrollProfileVersion(professionKey, profileId),
         history: () => showStaffPayrollProfileHistory(professionKey),
+        'rules-workspace': () => window.HrCompensationUi?.employee(professionKey),
         'convert-legacy': () => convertLegacyStaffPayrollProfile(professionKey)
     };
     if (!actionMap[action]) return { success: false, error: 'unknown_action' };
@@ -17183,6 +17194,7 @@ function renderPayrollProfileCard(profile = {}) {
             <div><span>Працівники</span><strong>${affected}</strong><small>${assignments ? `${assignments} explicit` : ''}${defaultStaff ? `${assignments ? ' · ' : ''}${defaultStaff} default` : ''}</small></div>
         </div>
         <div class="hr-payroll-profile-day-grid">${payrollProfileVersionDayChips(version)}</div>
+        ${hrCanUsePayrollAction('manage_payroll_rules') && profile.status !== 'archived' ? `<button type="button" data-pay-rules-profile="${Number(profile.id)}">Правила розрахунку й компоненти</button>` : ''}
         <footer class="hr-payroll-profile-card-footer">
             <span>${sourceTitle ? `Клон з #${Number(sourceId)} · ${escapeHtml(sourceTitle)}` : 'Джерело: власний профіль'}</span>
             <div class="hr-payroll-profile-actions">
@@ -17624,13 +17636,14 @@ async function createPayrollProfileFromCatalog() {
         { key: 'defaultRate', label: 'Базова ставка', type: 'number', required: true, placeholder: '150' },
         { key: 'weekdayRate', label: 'Пн–Пт override', type: 'number', placeholder: 'порожньо = default' },
         { key: 'weekendRate', label: 'Сб–Нд override', type: 'number', placeholder: 'порожньо = default' },
+        ...(window.HrPayRules?.fields({ rateUnit: 'hour' }) || []),
         { key: 'effectiveFrom', label: 'Дата початку', type: 'date', required: true, defaultValue: todayStr() },
         { key: 'isDefault', label: 'Типовий варіант професії', type: 'select', options: [
             { value: 'true', label: 'Так' },
             { value: 'false', label: 'Ні' }
         ], defaultValue: 'false' },
         { key: 'changeReason', label: 'Причина', required: true, placeholder: 'Початкові умови оплати' }
-    ], { icon: '💸', okText: 'Створити профіль' });
+    ], { icon: '💸', okText: 'Створити профіль', className: 'hr-pay-rule-form', validate: values => window.HrPayRules?.validate(values, { rateUnit: 'hour' }) });
     if (!result) return;
     const defaultRate = payrollProfileNumber(result.defaultRate, NaN);
     if (!Number.isFinite(defaultRate) || defaultRate <= 0) {
@@ -17667,7 +17680,8 @@ async function createPayrollProfileFromCatalog() {
             defaultRate,
             effectiveFrom: result.effectiveFrom,
             changeReason: result.changeReason,
-            dayRates
+            dayRates,
+            payRules: window.HrPayRules?.collect(result, { rateUnit: 'hour' })
         }
     });
     if (!response?.success) {
@@ -17800,6 +17814,11 @@ function payrollProfileResultLines(items = [], mapper, limit = 12) {
     return `${rows.join('\n')}${extra}`;
 }
 
+function payrollProfileReviewNote(issues = []) {
+    const messages = [...new Set(issues.map(issue => issue.message || issue.code).filter(Boolean))];
+    return messages.length ? `ПОТРІБНА ПЕРЕВІРКА. Показана сума неповна; відсутні дані не є нулем.\n${messages.slice(0, 12).join('\n')}` : '';
+}
+
 async function showPayrollProfileDiagnostics() {
     const result = await formModal('Діагностика зарплатних профілів', [
         { key: 'asOfDate', label: 'Дата перевірки', type: 'date', defaultValue: todayStr(), required: true },
@@ -17854,6 +17873,8 @@ async function showPayrollProfileForecast() {
         ? `\n\nPlan vs actual:\nПлан: ${payrollProfileMoney(data.actual.planVsActual.plannedSalary)}\nФакт: ${payrollProfileMoney(data.actual.planVsActual.actualSalary)}\nΔ: ${payrollProfileMoney(data.actual.planVsActual.delta)}`
         : '';
     await formModal('Forecast фонду зарплати', [
+        ...((data.rows || []).some(row => row.blocking_issues?.length) || (data.actual?.rows || []).some(row => row.blocking_issues?.length)
+            ? [{ key: 'review', type: 'note', text: payrollProfileReviewNote([...(data.rows || []), ...(data.actual?.rows || [])].flatMap(row => row.blocking_issues || [])) }] : []),
         { key: 'note', type: 'note', text: `Період: ${data.period?.from || result.from} — ${data.period?.to || result.to}\nStaff: ${totals.staff || 0}\nПланові години: ${payrollProfileNumber(totals.planned_hours).toLocaleString('uk-UA')}\nФонд: ${payrollProfileMoney(totals.total_salary)}\n\nПо професіях:\n${professions || 'Немає планових змін.'}\n\nНайдорожчі дні:\n${days || 'Немає даних.'}${actual}` }
     ], { icon: '📈', okText: 'Закрити' });
 }
@@ -17897,6 +17918,8 @@ async function showPayrollProfileImpactForecast(profileId) {
     const data = response.data || {};
     const exceptions = payrollProfileResultLines(data.personalExceptions, item => `• #${item.id} ${item.title}`, 8);
     await formModal('Impact preview профілю', [
+        ...([...(data.current?.rows || []), ...(data.projected?.rows || [])].some(row => row.blocking_issues?.length)
+            ? [{ key: 'review', type: 'note', text: payrollProfileReviewNote([...(data.current?.rows || []), ...(data.projected?.rows || [])].flatMap(row => row.blocking_issues || [])) }] : []),
         { key: 'note', type: 'note', text: `Профіль: ${profile.title}\nAffected staff: ${data.affectedStaffCount || 0}\nПоточний фонд: ${payrollProfileMoney(data.currentFund)}\nПрогнозований фонд: ${payrollProfileMoney(data.projectedFund)}\nΔ: ${payrollProfileMoney(data.delta)}\n\nPersonal винятки, які не зміняться:\n${exceptions || 'Немає.'}` }
     ], { icon: '📊', okText: 'Закрити' });
 }
@@ -19933,6 +19956,7 @@ async function loadVacancies() {
             ${v.description ? `<div class="vac-desc">${escapeHtml(v.description.slice(0, 120))}${v.description.length > 120 ? '…' : ''}</div>` : ''}
             <div class="vac-actions" onclick="event.stopPropagation()">
                 <button type="button" class="btn-vac-action" onclick="editVacancy(${v.id})">Редагувати</button>
+                ${hrCanUsePayrollAction('manage_payroll_rules') ? `<button type="button" class="btn-vac-action" data-vacancy-pay-rules="${Number(v.id)}">Умови оплати</button>` : ''}
                 ${v.status === 'open' ? `<button type="button" class="btn-vac-action" onclick="patchVacancy(${v.id},'paused')">Призупинити</button>` : ''}
                 ${v.status !== 'filled' && v.status !== 'closed' ? `<button type="button" class="btn-vac-action filled" onclick="patchVacancy(${v.id},'filled')">Заповнено</button>` : ''}
                 ${v.status === 'paused' ? `<button type="button" class="btn-vac-action" onclick="patchVacancy(${v.id},'open')">Відкрити</button>` : ''}
@@ -20260,6 +20284,9 @@ async function hireCandidate(id, button = null) {
         const professionKey = normalizeProfessionKey(candidate.vacancy_role_type);
         const canSetHireRate = ['hr.payroll.view', 'hr.payroll.manage', 'manage_payroll_rules']
             .every(capability => canUseHrCapability(capability));
+        const compensationPreview = canSetHireRate && window.HrCompensationUi
+            ? await hrFetch(`/vacancies/${Number(candidate.vacancy_id)}/payroll-template?effectiveFrom=${todayStr()}`).catch(() => null) : null;
+        const compensationTemplate = compensationPreview?.success ? compensationPreview.data : null;
         const vacancyHasHeadcount = Number(candidate.vacancy_target_hires) > 0;
         const eligibleStaff = (staffResponse.data || []).filter(staff => !staffProfessionKeys(staff).includes(professionKey));
         const staffOptions = eligibleStaff.map(staff => ({
@@ -20271,6 +20298,21 @@ async function hireCandidate(id, button = null) {
             label: `${user.label || user.name || user.username || `User #${user.id}`}${user.role ? ` · ${ROLE_LABELS[user.role] || user.role}` : ''}`
         }));
         const result = await formModal(`Найняти · ${candidate.name}`, [
+            ...(canSetHireRate ? [
+                { key: 'compensationSummary', type: 'note', text: compensationTemplate?.template
+                    ? `Умови вакансії: ${window.HrCompensationUi.summary(compensationTemplate.template)}`
+                    : compensationPreview?.success ? 'Умови оплати вакансії ще не задано.' : 'Умови оплати вакансії зараз недоступні. Найм можна виконати без застосування шаблону.' },
+                ...(compensationTemplate?.template ? [
+                    { key: 'applyCompensation', label: 'Оплата з вакансії', type: 'select', defaultValue: 'no', options: [
+                        { value: 'no', label: 'Не застосовувати зараз' }, { value: 'yes', label: 'Створити персональну копію умов вакансії' }
+                    ] },
+                    { key: 'compensationRate', label: 'Погоджена точна ставка', type: 'number', defaultValue: compensationTemplate.template.defaultRate ?? '',
+                        required: true, visibleWhen: values => values.applyCompensation === 'yes' },
+                    { key: 'compensationDate', label: 'Дата початку оплати', type: 'date', defaultValue: todayStr(), required: true,
+                        visibleWhen: values => values.applyCompensation === 'yes' },
+                    { key: 'compensationReason', label: 'Підстава умов оплати', required: true, visibleWhen: values => values.applyCompensation === 'yes' }
+                ] : [])
+            ] : []),
             {
                 key: 'hireMode',
                 label: 'Сценарій найму',
@@ -20302,7 +20344,7 @@ async function hireCandidate(id, button = null) {
                 label: 'Ставка нового працівника',
                 type: 'number',
                 defaultValue: candidate.salary_expectation || 0,
-                visibleWhen: values => values.hireMode === 'new_staff' && canSetHireRate
+                visibleWhen: values => values.hireMode === 'new_staff' && canSetHireRate && values.applyCompensation !== 'yes'
             },
             {
                 key: 'startOnboarding',
@@ -20355,11 +20397,16 @@ async function hireCandidate(id, button = null) {
             hire_mode: result.hireMode,
             start_profession_onboarding: result.startOnboarding === 'yes'
         };
+        if (result.applyCompensation === 'yes' && compensationTemplate?.template) payload.compensation = {
+            apply: true, expectedTemplateHash: compensationTemplate.templateHash,
+            effectiveFrom: result.compensationDate, selectedRate: Number(result.compensationRate),
+            reason: result.compensationReason, payDecision: 'replace'
+        };
         if (!vacancyHasHeadcount) payload.vacancy_action = result.vacancyAction;
         if (result.hireMode === 'existing_staff') payload.existing_staff_id = Number(result.existingStaffId);
         else {
             payload.department = result.department;
-            payload.salary = canSetHireRate ? Number(result.salary || 0) : 0;
+            payload.salary = canSetHireRate && !payload.compensation ? Number(result.salary || 0) : 0;
         }
         if (result.startOnboarding === 'yes') payload.responsible_user_id = Number(result.responsibleUserId);
         const res = await hrFetch(`/applications/${id}/hire`, { method: 'POST', body: payload });

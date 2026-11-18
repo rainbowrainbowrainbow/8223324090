@@ -1,5 +1,6 @@
 const { createHash } = require('node:crypto');
 const { pool } = require('../db');
+const { normalizePayRules } = require('./payrollRules');
 const { canUseAction } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const { attendanceFactMinutes, attendanceTimezoneTransitionIssue, hydrateAttendanceRecords } = require('./hrAttendance');
@@ -949,7 +950,7 @@ function checkedSubstitutionLines(baseLines, substitutionLines, issues) {
 
 function calculateMonthlyPayroll(staff, scheme, metrics, adjustments = {}, entries = [], professionPay = null) {
     const activeScheme = scheme || fallbackSchemeForStaff(staff);
-    const usesConditionSnapshots = metrics.conditionDays?.length && professionPay?.applies;
+    const usesConditionSnapshots = (metrics.conditionDays?.length || professionPay?.configuredRules) && professionPay?.applies;
     const calculationBlockers = payrollCalculationBlockers(staff, activeScheme, metrics).filter(issue => {
         // Frozen standard-pay conditions own their dated rate/unit/norm checks. Other business blockers remain.
         if (!usesConditionSnapshots) return true;
@@ -1023,7 +1024,9 @@ function calculateAdvanceInstallment(options = {}) {
     const blockers = [];
     let amount = 0;
 
-    if (schemeType === 'monthly_fixed') {
+    const configuredRange = options.rangeProfessionPay?.configuredRules || options.rangeCalculation?.professionPay?.configuredRules
+        || options.rangeCalculation?.configuredRules;
+    if (schemeType === 'monthly_fixed' && !configuredRange) {
         const monthlyAmount = effectiveMonthlyFixedAmount(staff, scheme, options.monthlyCalculation);
         const basis = monthlyFixedProrationBasis(staff, scheme, monthMetrics);
         const fullNorm = basis.monthlyNormMinutes;
@@ -1684,6 +1687,7 @@ async function loadPayrollAttendanceMetrics(options = {}, db = pool) {
         }
         if (!bucket.conditionDays) bucket.conditionDays = [];
         bucket.conditionDays.push({ date, attendanceRef, snapshot: compensationSnapshot, worked,
+            ...(leavePolicy.required ? { leaveReviewRequired: true } : {}),
             ...(businessContext ? { businessContext } : {}),
             paidPlannedMinutes: Math.round(plannedMinutes * leavePolicy.paidPlannedFactor),
             paidPlannedFactor: leavePolicy.paidPlannedFactor });
@@ -1819,6 +1823,7 @@ function mapPayrollProfileVersion(row, dayRateMap = new Map()) {
         versionNumber: Number(row.version_number || 0),
         rateUnit: normalizeStaffRateUnit(row.rate_unit),
         defaultRate: toNumber(row.default_rate, 0),
+        ...(row.pay_rules ? { payRules: normalizePayRules(row.pay_rules, normalizeStaffRateUnit(row.rate_unit)) } : {}),
         effectiveFrom: normalizeDateValue(row.effective_from),
         effectiveTo: normalizeDateValue(row.effective_to),
         changeReason: row.change_reason || null,
@@ -1938,7 +1943,8 @@ async function loadPayrollProfileContext(staffIds = [], period = {}, db = pool) 
                     default_rate,
                     effective_from,
                     effective_to,
-                    change_reason
+                    change_reason,
+                    pay_rules
              FROM payroll_profile_versions
              WHERE profile_id = ANY($1::bigint[])
                AND effective_from <= $3::date
@@ -2091,6 +2097,7 @@ function profileResolution(profile, version, workDate, sourceOrder, assignment =
         rateSource: payrollProfileRateSource(sourceOrder, appliedRule),
         sourceOrder,
         rateUnit: version.rateUnit,
+        ...(version.payRules ? { payRules: structuredClone(version.payRules) } : {}),
         professionKey: profile.professionKey,
         workDate: normalizeDateValue(workDate),
         isoWeekday,
@@ -3170,6 +3177,57 @@ function calculateProfessionPayWithResolver(staff, activeScheme, metrics, profes
     });
 }
 
+function configuredConditionDays(staff, scheme, metrics, rates, profiles) {
+    if (!payrollProfileContextEnabled(profiles)) return metrics.conditionDays || [];
+    const from = normalizeDateValue(metrics.periodFrom || profiles.from);
+    const to = normalizeDateValue(metrics.periodTo || profiles.to);
+    if (!from || !to || from > to) return metrics.conditionDays || [];
+    const days = new Map((metrics.conditionDays || []).map(day => [day.date, day]));
+    const primary = normalizeProfessionKey(staff.roleType || staff.role_type);
+    const professions = new Set([primary]);
+    for (const key of profiles.assignmentsByStaffProfession?.keys() || []) {
+        if (key.startsWith(Number(staff.id) + ':')) professions.add(key.slice(key.indexOf(':') + 1));
+    }
+    let hasConfigured = false;
+    for (let workDate = from; workDate <= to;) {
+        const existing = days.get(workDate);
+        // A recorded legacy, missing or reviewed capture cannot be repaired by
+        // consulting a current profile. Only dates without attendance get terms.
+        if (!existing) {
+            const allocations = [];
+            for (const professionKey of professions) {
+                const resolution = resolveEffectivePayrollProfile(staff, professionKey, workDate, {
+                    payrollProfileContext: profiles, professionRateMap: rates, scheme
+                });
+                const additional = professionKey !== primary;
+                if (!resolution.payRules || (additional && (!resolution.assignmentId || resolution.rateUnit !== 'month'))) continue;
+                if (resolution.rateUnit !== 'month' && !resolution.payRules.components?.length) continue;
+                const terms = { ...resolution, ruleVersion: require('./hrPayrollConditions').CONDITION_RULE_VERSION };
+                allocations.push({ allocationType: additional ? 'simultaneous_additional' : 'base', professionKey,
+                    plannedMinutes: 0, actualMinutes: 0, overtimeMinutes: 0, conditions: terms });
+            }
+            if (allocations.length) {
+                hasConfigured = true;
+                days.set(workDate, { date: workDate, worked: false, paidPlannedFactor: 0,
+                    snapshot: { schemaVersion: 2, state: 'final', compensationAllocations: allocations }, entitlementOnly: true });
+            }
+        } else if (existing.snapshot?.compensationAllocations?.some(item => item.conditions?.payRules)) hasConfigured = true;
+        else {
+            const current = resolveEffectivePayrollProfile(staff, primary, workDate, {
+                payrollProfileContext: profiles, professionRateMap: rates, scheme
+            });
+            if (current.payRules) {
+                hasConfigured = true;
+                days.set(workDate, { ...existing, configurationConflict: true });
+            }
+        }
+        const next = new Date(workDate + 'T00:00:00Z');
+        next.setUTCDate(next.getUTCDate() + 1);
+        workDate = next.toISOString().slice(0, 10);
+    }
+    return hasConfigured ? [...days.values()].sort((a, b) => a.date.localeCompare(b.date)) : metrics.conditionDays || [];
+}
+
 function calculateProfessionPay(staff, scheme, metrics = payrollMetricBucket(staff?.id), professionRateMap = new Map(), payrollProfileContext = null) {
     const metricDefaults = payrollMetricBucket(staff?.id);
     metrics = { ...metricDefaults, ...(metrics || {}) };
@@ -3223,6 +3281,14 @@ function calculateProfessionPay(staff, scheme, metrics = payrollMetricBucket(sta
     }
     const rateUnit = schemeType === 'monthly_fixed' ? 'month' : (schemeType === 'per_shift' ? 'day' : 'hour');
     const fallbackProfessionKey = normalizeProfessionKey(staff.roleType || staff.role_type);
+    const datedDays = configuredConditionDays(staff, activeScheme, metrics, professionRateMap, payrollProfileContext);
+    if (datedDays.some(day => day.snapshot?.compensationAllocations?.some(item => item.conditions?.payRules))) {
+        return require('./payrollConditionCalculation').calculateConditionSnapshots({ ...metrics, configuredEntitlementCoverage: true,
+            periodFrom: metrics.periodFrom || payrollProfileContext?.from,
+            periodTo: metrics.periodTo || payrollProfileContext?.to,
+            hireDate: normalizeDateValue(staff.hireDate ?? staff.hire_date),
+            terminationDate: normalizeDateValue(staff.terminationDate ?? staff.termination_date), conditionDays: datedDays }, OVERTIME_MULTIPLIER);
+    }
     if (Array.isArray(metrics.conditionDays) && metrics.conditionDays.length) {
         return require('./payrollConditionCalculation').calculateConditionSnapshots(metrics, OVERTIME_MULTIPLIER);
     }
@@ -3979,6 +4045,11 @@ async function buildPayrollContext(month, options = {}, db = pool) {
         from: periodOptions.from || monthBounds.from,
         to: periodOptions.to || monthBounds.to
     }, db);
+    const hasCommissionRules = [...payrollProfileContext.profilesById.values()].some(profile =>
+        profile.versions.some(version => version.payRules?.components?.some(component => component.kind === 'percent')));
+    const componentInputMap = hasCommissionRules && staffIds.length
+        ? await require('./hrCompensationRules').loadComponentInputs({ businessContext: 'event_genix', month: normalizedMonth, staffIds }, { db })
+        : new Map();
     const kpiAuditSnapshotMap = includeMonthlyAdjustments && !periodOptions.staffId
         ? await fetchPayrollKpiAuditSnapshots(normalizedMonth, staffIds, db)
         : new Map();
@@ -4001,6 +4072,7 @@ async function buildPayrollContext(month, options = {}, db = pool) {
         periodIncome,
         professionRateMap,
         payrollProfileContext,
+        componentInputMap,
         kpiAuditSnapshotMap
     };
 }
@@ -4080,6 +4152,7 @@ function rowFromCalculation(staff, calculation, metrics, report) {
         schemeEffectiveTo: schemeSnapshot.effectiveTo,
         schemeUpdatedAt: schemeSnapshot.updatedAt,
         isFallbackScheme: !!scheme.isFallback,
+        configuredRules: calculation.professionPay?.configuredRules === true,
         hourlyRate: staff.hourlyRate,
         rateUnit: calculation.professionPay?.rateUnit || staff.rateUnit,
         rate_unit: calculation.professionPay?.rateUnit || staff.rateUnit,
@@ -4188,6 +4261,7 @@ function buildPayrollRowsFromContext(context) {
             substitutionCorrectionLines: correctionLines,
             periodFrom: context.period.from,
             periodTo: context.period.to,
+            componentInputs: context.componentInputMap?.get(staff.id) || {},
             periodIncome,
             periodIncomeBusinessContext: incomeBusinessContext,
             periodIncomeSource: incomeBusinessContext ? 'finance_transactions.recognition_date' : null,
@@ -4423,6 +4497,7 @@ async function buildCanonicalPayrollInstallmentPreview(options = {}, db = pool) 
         },
         monthlyCalculation: { summary: { base: monthlyRow.baseAmount } },
         rangeCalculation: {
+            configuredRules: advanceRow.configuredRules,
             lines: advanceRow.lines || [],
             blockers: payrollCommitBlockingIssues(advanceRow)
         },
@@ -5400,6 +5475,7 @@ async function generatePayrollReports(month, user) {
                 },
                 monthlyCalculation: { summary: { base: row.baseAmount } },
                 rangeCalculation: {
+                    configuredRules: advanceRow.configuredRules,
                     lines: advanceRow.lines || [],
                     blockers: payrollCommitBlockingIssues(advanceRow)
                 },
@@ -5501,6 +5577,7 @@ async function calculateCurrentPayrollInstallment(row, advanceDecisionRow = null
         },
         monthlyCalculation: { summary: { base: monthlyRow.baseAmount } },
         rangeCalculation: {
+            configuredRules: advanceRow.configuredRules,
             lines: advanceRow.lines || [],
             blockers: payrollCommitBlockingIssues(advanceRow)
         },

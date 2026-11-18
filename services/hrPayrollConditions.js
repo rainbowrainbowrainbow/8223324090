@@ -70,7 +70,8 @@ function resolvePayrollConditions(context, staffId, professionKey, date, purpose
     const result = exception?.state === 'active' ? { ...base, applies: true, warnings: [], rate: exception.rate,
         rateUnit: exception.rateUnit, source: 'payroll_day_exception', rateSource: 'payroll_day_exception',
         sourceOrder: 'day_exception', appliedRule: 'day_exception',
-        ...(exception.selectedProfile ? {profileId:exception.selectedProfile.profileId, profileVersionId:exception.selectedProfile.profileVersionId, profileTitle:exception.selectedProfile.title} : {}), exception } : { ...base, exception: null };
+        ...(exception.selectedProfile ? {profileId:exception.selectedProfile.profileId, profileVersionId:exception.selectedProfile.profileVersionId,
+            profileTitle:exception.selectedProfile.title, payRules: exception.selectedProfile.payRules || null} : {}), exception } : { ...base, exception: null };
     const config = typeof scheme?.config === 'string' ? JSON.parse(scheme.config) : scheme?.config || {};
     // The monthly norm is frozen too; future edits cannot change the denominator.
     result.monthlyNorm = { monthlyNormMinutes: Number(config.monthlyNormMinutes ?? config.monthly_norm_minutes ?? 0),
@@ -143,6 +144,7 @@ async function getPayrollDayConditions(db, staffId, professionKey, date, purpose
             const override = version.rateUnit === 'month' ? null : version.dayRates.find(row => row.isoWeekday === weekday);
             return { profileId: profile.id, profileVersionId: version.id, title: profile.title,
                 rate: override ? override.rate : version.defaultRate, rateUnit: version.rateUnit,
+                ...(version.payRules ? { payRules: structuredClone(version.payRules) } : {}),
                 effectiveFrom: version.effectiveFrom, effectiveTo: version.effectiveTo };
         });
     const exception = context.exceptions.get(exceptionKey(staffId, professionKey, date, purpose));
@@ -245,7 +247,8 @@ async function savePayrollDayException(db, payload, actor) {
                 throw conditionError('PAYROLL_DAY_PROFILE_STALE', 'Варіант оплати змінився або більше недоступний. Оновіть умови.', 409);
             }
             selectedProfile = {profileId:profile.id,profileVersionId:version.id,title:profile.title,
-                rate:input.rate,rateUnit:input.rateUnit,effectiveFrom:version.effectiveFrom,effectiveTo:version.effectiveTo};
+                rate:input.rate,rateUnit:input.rateUnit,effectiveFrom:version.effectiveFrom,effectiveTo:version.effectiveTo,
+                ...(version.payRules ? { payRules: structuredClone(version.payRules) } : {})};
         }
         if (input.state === 'active') {
             if (input.purpose === 'additional' && input.professionKey !== staff.role_type) assertAdditionalAdmission(context, input.staffId, input.professionKey);

@@ -36,6 +36,15 @@ function parkHrPayrollCapabilities(req, routerId) {
         return null;
     }
     if (routerId !== 'hr') return null;
+    // Owner-approved PAY-RULES-ACCESS: exact compensation operations reuse the
+    // existing view/manage checks and all membership/ownership guards below.
+    if (method === 'GET' && (['/payroll-rules/defaults', '/payroll-rules/levels'].includes(path)
+        || /^\/staff\/[1-9]\d*\/payroll-rules$/.test(path)
+        || /^\/vacancies\/[1-9]\d*\/payroll-template$/.test(path))) return VIEW;
+    if (method === 'POST' && (['/payroll-rules/defaults', '/payroll-rules/levels'].includes(path)
+        || /^\/staff\/[1-9]\d*\/payroll-rules\/(?:qualification|vacancy)$/.test(path))) return RULES;
+    if (method === 'PUT' && (/^\/staff\/[1-9]\d*\/payroll-rules\/component-input$/.test(path)
+        || /^\/vacancies\/[1-9]\d*\/payroll-template$/.test(path))) return RULES;
     // Exact OCR operations reuse attendance management; all membership,
     // context, writable-scope and ownership guards below remain in force.
     if ((method === 'GET' && (path === '/attendance/ocr/status'

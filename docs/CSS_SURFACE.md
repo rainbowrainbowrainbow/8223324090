@@ -69,6 +69,7 @@ this document, and `npm run test:ui` coverage in the same pack.
 | `css/hermes-studio.css` | hermes-studio | `page-scoped` | active | Hermes Studio creative job queue, brief form, asset review, and decision controls. |
 | `css/staff-account-form.css` | staff-account-form | `page-scoped` | active | Shared Park account form and receipt across HR and the staff schedule. |
 | `css/hr-page.css` | hr | `page-scoped-large` | active-large | HR workspace styles extracted from `hr.html`; large-file consolidation candidate. |
+| `css/hr-pay-rules.css` | hr-payroll | `page-scoped` | active | Scoped compensation forms, visible keyboard focus and mobile control sizes. |
 | `css/omni-workspace.css` | omnichannel | `page-scoped` | active | Pulse-aligned Omni controls, surfaces, spacing, and responsive states. |
 | `css/kleshnya-widget.css` | kleshnya | `feature-shared` | active | Root shell Kleshnya widget styles. |
 | `css/layout.css` | shared-ui | `shared-large` | active-large | Shared layout, sidebar, and content frame styles. |

@@ -1,14 +1,29 @@
 'use strict';
 
 const { CONDITION_RULE_VERSION } = require('./hrPayrollConditions');
+const { calculateConfiguredRate, calculateConfiguredComponents } = require('./payrollRules');
 const money = value => Math.round(value);
 const positive = value => Math.max(0, Number(value) || 0);
 function calculateConditionSnapshots(metrics, overtimeMultiplier) {
     const baseLines = [], additionalLines = [], overtimeLines = [], professionRateSummary = [];
     const blockingIssues = [...(metrics.payrollBlockingIssues || [])];
-    const groups = new Map();
+    const groups = new Map(), componentGroups = new Map();
     const problem = (code, message, details = {}) => blockingIssues.push({ code, message, severity: 'error', ...details });
+    function captureBounds(group, terms) {
+        const key = `${terms.profileId || ''}:${terms.profileVersionId || ''}:${terms.assignmentId || ''}`;
+        const before = group.versionBounds.get(key);
+        const end = [before?.effectiveTo, terms.effectiveTo].filter(Boolean).sort()[0] || null;
+        group.versionBounds.set(key, { effectiveFrom: terms.effectiveFrom || before?.effectiveFrom || null, effectiveTo: end });
+        const ranges = [...group.versionBounds.values()];
+        group.terms = { ...group.terms,
+            effectiveFrom: ranges.map(range => range.effectiveFrom).filter(Boolean).sort()[0] || null,
+            effectiveTo: ranges.some(range => !range.effectiveTo) ? null : ranges.map(range => range.effectiveTo).sort().at(-1) };
+    }
     for (const day of metrics.conditionDays || []) {
+        if (day.configurationConflict) {
+            problem('PAYROLL_RULES_FROZEN_HISTORY_CONFLICT', 'Нові правила перетинаються з раніше зафіксованими умовами. Потрібна перевірка історії.', { date: day.date });
+            continue;
+        }
         const snapshot = day.snapshot;
         if (!snapshot || snapshot.schemaVersion !== 2) {
             if (day.worked || day.paidPlannedMinutes > 0) problem('PAYROLL_BASE_SNAPSHOT_REQUIRED',
@@ -28,24 +43,24 @@ function calculateConditionSnapshots(metrics, overtimeMultiplier) {
             const minutes = positive(allocation.actualMinutes);
             const overtime = additional ? 0 : positive(allocation.overtimeMinutes);
             const planned = positive(allocation.plannedMinutes) * (day.paidPlannedFactor ?? 1);
-            if (!minutes && !day.worked && !planned) continue;
+            if (!minutes && !day.worked && !planned && !terms?.payRules) continue;
             if (!terms || terms.ruleVersion !== CONDITION_RULE_VERSION || !(terms.rate > 0)
                 || !['hour', 'day', 'month'].includes(terms.rateUnit)) {
                 problem('PAYROLL_CONDITION_SNAPSHOT_INVALID', 'Неповний snapshot умов оплати', { date: day.date, professionKey: allocation.professionKey });
                 continue;
             }
-            if (terms.rateUnit !== 'month' && !minutes) continue;
+            if (terms.rateUnit !== 'month' && !minutes && !terms.payRules) continue;
             const share = additional ? (allocation.payMultiplier ?? 1) : 1;
             if (share !== 1 && (share !== 0.5 || terms.rateUnit !== 'hour')) {
                 problem('PAYROLL_CONDITION_SHARE_INVALID', 'Некоректна частка додаткової ставки',
                     { date: day.date, professionKey: allocation.professionKey });
                 continue;
             }
-            const key = `${additional ? 'additional' : 'base'}:${allocation.professionKey}:${terms.rateUnit === 'month' ? day.date.slice(0, 7) : day.date}`;
-            const signature = JSON.stringify([terms.rateUnit, terms.rate, terms.rateUnit === 'month' ? terms.monthlyNorm : null]);
+            const signature = JSON.stringify([terms.rateUnit, terms.rate, terms.rateUnit === 'month' && !terms.payRules ? terms.monthlyNorm : null, terms.payRules || null]);
+            const key = `${additional ? 'additional' : 'base'}:${allocation.professionKey}:${terms.rateUnit === 'month' ? day.date.slice(0, 7) : day.date}${terms.rateUnit === 'month' && terms.payRules ? ':' + signature : ''}`;
             if (!groups.has(key)) groups.set(key, { terms, additional, professionKey: allocation.professionKey,
                 date: day.date, minutes: 0, minutesByShare: new Map(), overtime: 0,
-                plannedByDate: new Map(), signature, conflict: false, refs: [] });
+                plannedByDate: new Map(), paidDays: new Map(), dates: new Set(), versionBounds: new Map(), signature, conflict: false, refs: [], leaveReviewRequired: false });
             const group = groups.get(key);
             if (group.signature !== signature) {
                 group.conflict = true;
@@ -56,7 +71,29 @@ function calculateConditionSnapshots(metrics, overtimeMultiplier) {
             group.minutesByShare.set(share, (group.minutesByShare.get(share) || 0) + minutes);
             group.overtime += overtime;
             group.plannedByDate.set(day.date, (group.plannedByDate.get(day.date) || 0) + planned);
+            group.paidDays.set(day.date, day.worked ? (day.paidPlannedFactor ?? 1) : 0);
+            group.dates.add(day.date);
+            group.leaveReviewRequired ||= day.leaveReviewRequired === true;
+            // Newer captures can carry a closed effective range while older captures
+            // of the same immutable version still carry its former open end.
+            if (terms.payRules) captureBounds(group, terms);
             group.refs.push({ attendanceRef: day.attendanceRef, segmentRef: allocation.segmentId, roleRef: allocation.roleId, exceptionId: terms.exception?.id || null });
+            for (const component of terms.payRules?.components || []) {
+                const componentKey = `${additional}:${allocation.professionKey}:${day.date.slice(0, 7)}:${component.id}:${JSON.stringify(component)}`;
+                if (!componentGroups.has(componentKey)) componentGroups.set(componentKey, { ...group,
+                    terms: { ...terms, payRules: { ...terms.payRules, components: [component] } },
+                    plannedByDate: new Map(), paidDays: new Map(), dates: new Set(), versionBounds: new Map(), refs: [], profileVersions: new Set() });
+                const componentGroup = componentGroups.get(componentKey);
+                componentGroup.plannedByDate.set(day.date, (componentGroup.plannedByDate.get(day.date) || 0) + planned);
+                componentGroup.paidDays.set(day.date, day.worked ? (day.paidPlannedFactor ?? 1) : 0);
+                componentGroup.dates.add(day.date);
+                componentGroup.profileVersions.add(`${terms.profileId}:${terms.profileVersionId}`);
+                componentGroup.leaveReviewRequired ||= day.leaveReviewRequired === true;
+                componentGroup.refs.push(group.refs.at(-1));
+                // Identical components retained across base-rate versions form one
+                // entitlement. A changed component creates separate reviewed terms.
+                captureBounds(componentGroup, terms);
+            }
         }
     }
     // A profession cannot change unit silently inside a month, even across different day keys.
@@ -68,9 +105,25 @@ function calculateConditionSnapshots(metrics, overtimeMultiplier) {
     }
     for (const [key, values] of units) if (values.size > 1) problem('PAYROLL_UNIT_CHANGE_IN_MONTH_UNSUPPORTED',
         'Зміна одиниці оплати всередині місяця потребує погодженого правила', { key });
-    function addLine(group, quantity, rate, formula, overtime = false, share = 1) {
+    function boundedTerms(group) {
+        const dates = [...group.dates].sort();
+        if (metrics.configuredEntitlementCoverage && group.terms.rateUnit === 'month') {
+            for (let index = 1; index < dates.length; index++) {
+                if ((Date.parse(dates[index]) - Date.parse(dates[index - 1])) / 86400000 !== 1) {
+                    throw Object.assign(new Error('Неперервність місячних умов не підтверджена. Потрібна окрема перевірка інтервалів.'), { code: 'PAYROLL_RULES_PERIOD_GAP_REVIEW' });
+                }
+            }
+        }
+        const peers = [...groups.values()].filter(peer => peer.additional === group.additional
+            && peer.professionKey === group.professionKey && peer.date.slice(0, 7) === group.date.slice(0, 7) && peer.terms.payRules);
+        if (new Set(peers.map(peer => peer.signature)).size <= 1) return group.terms;
+        return { ...group.terms,
+            effectiveFrom: [group.terms.effectiveFrom, dates[0]].filter(Boolean).sort().at(-1),
+            effectiveTo: [group.terms.effectiveTo, dates.at(-1)].filter(Boolean).sort()[0] };
+    }
+    function addLine(group, quantity, rate, formula, overtime = false, share = 1, configured = null) {
         const terms = group.terms;
-        const amount = money(quantity * rate * share);
+        const amount = configured ? configured.amount : money(quantity * rate * share);
         const type = overtime ? 'overtime' : group.additional ? 'simultaneous_additional' : `profession_${terms.rateUnit}`;
         const meta = { professionKey: group.professionKey, workDate: group.date, rateUnit: terms.rateUnit,
             attendanceRef: group.refs[0]?.attendanceRef, segmentRef: group.refs[0]?.segmentRef, roleRef: group.refs[0]?.roleRef,
@@ -78,6 +131,7 @@ function calculateConditionSnapshots(metrics, overtimeMultiplier) {
             exceptionId: terms.exception?.id || null, exceptionVersion: terms.exception?.version || null,
             exceptionReason: terms.exception?.reason || null, exceptionAuthor: terms.exception?.createdBy || null,
             appliedRule: terms.appliedRule, ruleVersion: terms.ruleVersion, formula, refs: group.refs,
+            ...(terms.payRules ? { payRules: terms.payRules } : {}),
             ...(group.additional && terms.rateUnit === 'hour' ? { rateShares: [...group.minutesByShare].map(([share, minutes]) => ({ share, minutes })) } : {}) };
         const item = { group: overtime ? 'overtime' : group.additional ? 'additional' : 'base', lineType: type,
             label: `${group.additional ? 'Додаткова оплата' : 'Основна оплата'}: ${group.professionKey}`,
@@ -97,6 +151,26 @@ function calculateConditionSnapshots(metrics, overtimeMultiplier) {
     for (const group of groups.values()) {
         if (group.conflict) continue;
         const terms = group.terms;
+        if (terms.payRules) {
+            try {
+                const context = { month: group.date.slice(0, 7), periodFrom: metrics.periodFrom, periodTo: metrics.periodTo,
+                    actualMinutes: group.minutes, overtimeMinutes: group.overtime,
+                    paidPlannedMinutes: [...group.plannedByDate.values()].reduce((sum, value) => sum + value, 0),
+                    paidDays: [...group.paidDays.values()].reduce((sum, value) => sum + value, 0),
+                    hireDate: metrics.hireDate, terminationDate: metrics.terminationDate, leaveReviewRequired: group.leaveReviewRequired };
+                const result = calculateConfiguredRate(boundedTerms(group), context);
+                for (const issue of result.blockingIssues) problem(issue.code, issue.message, { professionKey: group.professionKey, date: group.date });
+                if (!result.blockingIssues.length) {
+                    const share = group.additional && terms.rateUnit === 'hour'
+                        ? [...group.minutesByShare].reduce((sum, [factor, value]) => sum + value * factor, 0) / (group.minutes || 1) : 1;
+                    addLine(group, result.quantity || 0, terms.rate, result.formula, false, share,
+                        { amount: money(result.amount * share) });
+                    if (result.overtimeAmount) addLine(group, 1, result.overtimeAmount,
+                        `Понаднормова оплата: ${result.overtimeAmount}`, true, 1, { amount: result.overtimeAmount });
+                }
+            } catch (error) { problem(error.code || 'PAYROLL_RULES_INVALID', error.message, { professionKey: group.professionKey, date: group.date }); }
+            continue;
+        }
         if (terms.rateUnit === 'hour') {
             const minutes = Math.max(0, group.minutes - group.overtime);
             if (group.additional && group.minutesByShare.size > 1) {
@@ -123,8 +197,30 @@ function calculateConditionSnapshots(metrics, overtimeMultiplier) {
             addLine(group, planned / norm.monthlyNormMinutes, terms.rate, `${planned} / ${norm.monthlyNormMinutes} × ${terms.rate}`);
         }
     }
+    for (const group of componentGroups.values()) {
+        try {
+            const result = calculateConfiguredComponents(boundedTerms(group), {
+                month: group.date.slice(0, 7), periodFrom: metrics.periodFrom, periodTo: metrics.periodTo,
+                paidPlannedMinutes: [...group.plannedByDate.values()].reduce((sum, value) => sum + value, 0),
+                paidDays: [...group.paidDays.values()].reduce((sum, value) => sum + value, 0),
+                hireDate: metrics.hireDate, terminationDate: metrics.terminationDate,
+                leaveReviewRequired: group.leaveReviewRequired,
+                componentInputs: metrics.componentInputsByMonth?.[group.date.slice(0, 7)] || metrics.componentInputs
+            });
+            for (const issue of result.blockingIssues) problem(issue.code, issue.message, { ...issue, professionKey: group.professionKey });
+            for (const component of result.lines) {
+                additionalLines.push({ group: 'additional', lineType: component.kind === 'percent' ? 'configured_commission' : 'configured_monthly_component',
+                    label: component.label, amount: component.amount, quantity: component.quantity, rate: component.rate,
+                    source: component.source, formula: component.formula, componentId: component.componentId,
+                    meta: { ...component, professionKey: group.professionKey, profileId: group.terms.profileId,
+                        profileVersionId: group.terms.profileVersionId, profileVersions: [...group.profileVersions],
+                        refs: group.refs, ruleVersion: group.terms.ruleVersion } });
+            }
+        } catch (error) { problem(error.code || 'PAYROLL_RULES_INVALID', error.message, { professionKey: group.professionKey }); }
+    }
     const sum = rows => rows.reduce((total, row) => total + row.amount, 0);
-    return { applies: true, baseLines, additionalLines, overtimeLines, baseAmount: sum(baseLines),
+    return { applies: true, configuredRules: [...groups.values()].some(group => Boolean(group.terms.payRules)),
+        baseLines, additionalLines, overtimeLines, baseAmount: sum(baseLines),
         additionalAmount: sum(additionalLines), overtimeAmount: sum(overtimeLines),
         totalAmount: sum(baseLines) + sum(additionalLines) + sum(overtimeLines), professionRateSummary,
         allocationIssues: [...(metrics.allocationIssues || []), ...blockingIssues], blockingIssues,

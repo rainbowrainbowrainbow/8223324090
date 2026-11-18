@@ -1,6 +1,7 @@
 'use strict';
 
 const { pool } = require('../db');
+const { normalizePayRules } = require('./payrollRules');
 const {
     normalizeProfessionKey,
     staffProfessionKeys,
@@ -287,13 +288,17 @@ function normalizeVersionPayload(payload = {}, fallback = {}, options = {}) {
         throw payrollProfileError('effectiveTo must be on or after effectiveFrom', 400, 'PAYROLL_PROFILE_DATE_RANGE_INVALID');
     }
     const dayRateSource = payload.dayRates ?? payload.day_rates ?? fallback.dayRates ?? fallback.day_rates ?? [];
+    const rulesSource = Object.hasOwn(payload, 'payRules') ? payload.payRules
+        : Object.hasOwn(payload, 'pay_rules') ? payload.pay_rules : fallback.payRules ?? fallback.pay_rules;
+    const payRules = normalizePayRules(rulesSource, rateUnit);
     return {
         rateUnit,
         defaultRate,
         effectiveFrom,
         effectiveTo,
         changeReason: mutationReason(payload, { required: options.reasonRequired === true }),
-        dayRates: normalizeDayRates(dayRateSource, rateUnit, defaultRate)
+        dayRates: normalizeDayRates(dayRateSource, rateUnit, defaultRate),
+        ...(payRules ? { payRules } : {})
     };
 }
 
@@ -301,7 +306,7 @@ function versionHasPayload(payload = {}) {
     const source = payload.version && typeof payload.version === 'object' ? payload.version : payload;
     return [
         'rateUnit', 'rate_unit', 'defaultRate', 'default_rate', 'effectiveFrom', 'effective_from',
-        'effectiveTo', 'effective_to', 'dayRates', 'day_rates'
+        'effectiveTo', 'effective_to', 'dayRates', 'day_rates', 'payRules', 'pay_rules'
     ].some(key => Object.prototype.hasOwnProperty.call(source, key));
 }
 
@@ -325,6 +330,7 @@ function normalizeProfileVersion(row, dayRates = []) {
         rateUnit: row.rate_unit,
         default_rate: Number(row.default_rate),
         defaultRate: Number(row.default_rate),
+        ...(row.pay_rules ? { payRules: normalizePayRules(row.pay_rules, row.rate_unit) } : {}),
         effective_from: dateOnly(row.effective_from),
         effectiveFrom: dateOnly(row.effective_from),
         effective_to: dateOnly(row.effective_to),
@@ -373,6 +379,7 @@ function normalizeProfile(row, extras = {}) {
         professionTitle: row.profession_title || null,
         profile_kind: row.profile_kind,
         profileKind: row.profile_kind,
+        ...(row.template_origin ? { templateOrigin: row.template_origin } : {}),
         owner_staff_id: row.owner_staff_id == null ? null : Number(row.owner_staff_id),
         ownerStaffId: row.owner_staff_id == null ? null : Number(row.owner_staff_id),
         owner_staff_name: row.owner_staff_name || null,
@@ -738,9 +745,6 @@ async function insertVersion(db, profile, payload, actor, options = {}) {
     if (profile.status === 'archived') {
         throw payrollProfileError('archived profile cannot receive new versions', 409, 'PAYROLL_PROFILE_ARCHIVED');
     }
-    const normalized = normalizeVersionPayload(payload, options.fallback || {}, {
-        reasonRequired: options.reasonRequired === true
-    });
     const existingResult = await db.query(
         `SELECT *
          FROM payroll_profile_versions
@@ -751,6 +755,10 @@ async function insertVersion(db, profile, payload, actor, options = {}) {
     );
     const existingRows = safeRows(existingResult);
     const latestRow = existingRows[0] || null;
+    const normalized = normalizeVersionPayload(payload, {
+        ...(options.fallback || {}),
+        ...(latestRow?.pay_rules ? { payRules: latestRow.pay_rules } : {})
+    }, { reasonRequired: options.reasonRequired === true });
     if (latestRow && compareDates(normalized.effectiveFrom, latestRow.effective_from) <= 0) {
         throw payrollProfileError(
             'new version must start after the latest profile version',
@@ -774,8 +782,8 @@ async function insertVersion(db, profile, payload, actor, options = {}) {
     const inserted = await db.query(
         `INSERT INTO payroll_profile_versions
             (profile_id, version_number, rate_unit, default_rate, effective_from, effective_to,
-             change_reason, created_by, activated_by, activated_at)
-         VALUES ($1, $2, $3, $4, $5::date, $6::date, $7, $8, $8, NOW())
+             change_reason, created_by, activated_by, activated_at, pay_rules)
+         VALUES ($1, $2, $3, $4, $5::date, $6::date, $7, $8, $8, NOW(), $9::jsonb)
          RETURNING *`,
         [
             profile.id,
@@ -785,7 +793,8 @@ async function insertVersion(db, profile, payload, actor, options = {}) {
             normalized.effectiveFrom,
             normalized.effectiveTo,
             normalized.changeReason,
-            createdBy
+            createdBy,
+            normalized.payRules ? JSON.stringify(normalized.payRules) : null
         ]
     );
     const version = safeRows(inserted)[0];
@@ -947,7 +956,8 @@ async function createPayrollProfileClone(sourceProfileId, payload = {}, actor = 
             effectiveFrom,
             effectiveTo: payload.effectiveTo ?? payload.effective_to ?? null,
             changeReason: mutationReason(payload) || `Cloned from payroll profile #${source.id}`,
-            dayRates: sourceVersion.dayRates
+            dayRates: sourceVersion.dayRates,
+            payRules: sourceVersion.payRules
         }, actor);
 
         let assignment = null;
@@ -1019,6 +1029,9 @@ function buildPayrollProfileVersionDiff(personalVersion, baseVersion) {
     if (Number(personalVersion.defaultRate) !== Number(baseVersion.defaultRate)) {
         fields.push({ field: 'default_rate', from: Number(personalVersion.defaultRate), to: Number(baseVersion.defaultRate) });
     }
+    if (JSON.stringify(personalVersion.payRules || null) !== JSON.stringify(baseVersion.payRules || null)) {
+        fields.push({ field: 'pay_rules', from: personalVersion.payRules || null, to: baseVersion.payRules || null });
+    }
     const personalRates = dayRateMap(personalVersion);
     const baseRates = dayRateMap(baseVersion);
     const weekdays = [...new Set([...personalRates.keys(), ...baseRates.keys()])].sort((a, b) => a - b);
@@ -1062,6 +1075,8 @@ function mergePayrollProfileSyncVersion(personalVersion, baseVersion, selected) 
     return {
         rateUnit: nextRateUnit,
         defaultRate: nextDefaultRate,
+        ...((personalVersion.payRules || baseVersion.payRules)
+            ? { payRules: structuredClone((fieldSelected(selectedSet, 'pay_rules') ? baseVersion.payRules : personalVersion.payRules) || null) } : {}),
         dayRates: nextRateUnit === 'month'
             ? []
             : [...nextDayRates.entries()].map(([isoWeekday, rate]) => ({ isoWeekday, rate }))
@@ -1458,6 +1473,7 @@ function resolverVersionFromProfileVersion(version = {}) {
         versionNumber: Number(version.versionNumber || version.version_number || 1),
         rateUnit: normalizeRateUnit(version.rateUnit || version.rate_unit || 'hour', 'hour'),
         defaultRate: Number(version.defaultRate ?? version.default_rate ?? 0),
+        ...((version.payRules || version.pay_rules) ? { payRules: normalizePayRules(version.payRules || version.pay_rules, version.rateUnit || version.rate_unit || 'hour') } : {}),
         effectiveFrom: normalizeDate(version.effectiveFrom || version.effective_from || todayKyivDate(), 'effectiveFrom', { required: true }),
         effectiveTo: normalizeDate(version.effectiveTo || version.effective_to, 'effectiveTo'),
         changeReason: version.changeReason || version.change_reason || null,
@@ -1540,6 +1556,39 @@ function simulateProfileAmount(profile, payload = {}) {
     };
     const context = resolverContextWithDefaultProfile(profile, { staffId: staff.id, professionKey, from: period.from, to: period.to });
     const days = buildSimulationDays(payload, period);
+    if (context.profilesById.get(Number(profile.id))?.versions?.some(version => version.payRules)) {
+        const { CONDITION_RULE_VERSION } = require('./hrPayrollConditions');
+        const { calculateConditionSnapshots } = require('./payrollConditionCalculation');
+        const byDate = new Map(days.map(day => [day.date, day]));
+        const breakdown = [];
+        const blockingIssues = [];
+        for (const month of [...new Set(datesInRange(period.from, period.to).map(day => day.slice(0, 7)))]) {
+            const selectedDates = datesInRange(period.from, period.to).filter(day => day.startsWith(month));
+            const conditionDays = selectedDates.map(workDate => {
+                const source = byDate.get(workDate);
+                const resolution = resolveEffectivePayrollProfile(staff, professionKey, workDate, { payrollProfileContext: context });
+                return { date: workDate, worked: Boolean(source?.minutes), paidPlannedFactor: 1,
+                    snapshot: { schemaVersion: 2, state: 'final', compensationAllocations: [{ allocationType: 'base', professionKey,
+                        actualMinutes: (source?.minutes || 0) + (source?.overtimeMinutes || 0),
+                        plannedMinutes: source?.minutes || 0, overtimeMinutes: source?.overtimeMinutes || 0,
+                        conditions: { ...resolution, ruleVersion: CONDITION_RULE_VERSION } }] } };
+            });
+            const result = calculateConditionSnapshots({ periodFrom: selectedDates[0], periodTo: selectedDates.at(-1), conditionDays,
+                componentInputs: payload.componentInputsByMonth?.[month] || payload.componentInputs }, OVERTIME_MULTIPLIER);
+            blockingIssues.push(...result.blockingIssues);
+            breakdown.push(...[...result.baseLines, ...result.additionalLines, ...result.overtimeLines].map(item => ({
+                date: item.workDate || item.meta?.workDate || selectedDates[0], hours: item.minutes ? item.minutes / 60 : 0,
+                overtimeHours: 0, rate: item.rate, rateUnit: item.rateUnit || 'month', amount: item.amount,
+                baseAmount: item.group === 'overtime' ? 0 : item.amount, overtimeAmount: item.group === 'overtime' ? item.amount : 0,
+                formula: item.formula || item.meta?.formula, profileId: item.profileId || item.meta?.profileId,
+                profileVersionId: item.profileVersionId || item.meta?.profileVersionId, source: item.source,
+                componentId: item.componentId || null
+            })));
+        }
+        return { profile: { id: profile.id, title: profile.title }, period, professionKey,
+            total: breakdown.reduce((sum, item) => sum + item.amount, 0), breakdown, blockingIssues,
+            ready: blockingIssues.length === 0 };
+    }
     let monthPaid = false;
     const breakdown = days.map(day => {
         const resolution = resolveEffectivePayrollProfile(staff, professionKey, day.date, { payrollProfileContext: context, preferredRateUnit: 'hour' });
@@ -1583,6 +1632,14 @@ function simulateProfileAmount(profile, payload = {}) {
 
 async function simulatePayrollProfiles(payload = {}, options = {}) {
     const db = options.db || pool;
+    if (Number(payload.staffId || payload.staff_id) > 0 && !payload.componentInputs && !payload.componentInputsByMonth) {
+        const period = normalizeSimulationPeriod(payload), staffId = Number(payload.staffId || payload.staff_id);
+        const inputs = {};
+        for (const month of [...new Set(datesInRange(period.from, period.to).map(date => date.slice(0, 7)))]) {
+            inputs[month] = (await require('./hrCompensationRules').loadComponentInputs({ businessContext: 'event_genix', month, staffId }, { db })).get(staffId) || {};
+        }
+        payload = { ...payload, componentInputsByMonth: inputs };
+    }
     const profileAId = payload.profileAId ?? payload.profile_a_id ?? payload.profileId ?? payload.profile_id;
     const profileBId = payload.profileBId ?? payload.profile_b_id ?? payload.compareProfileId ?? payload.compare_profile_id;
     const profileA = await loadProfile(db, profileAId, { asOfDate: payload.from || todayKyivDate() });
@@ -1633,6 +1690,7 @@ function addForecastShiftToMetrics(metrics, shift) {
         overtimeMinutes: 0,
         allocationSource: 'hr_shifts_forecast',
         primaryProfessionKey: professionKey,
+        additionalRoles: shift.additional_roles || [],
         segmentAllocations: [{
             professionKey,
             actualMinutes: minutes
@@ -1649,10 +1707,6 @@ async function loadForecastShiftRows(db, period, filters = {}) {
         clauses.push(`hs.staff_id = ANY($${params.length}::int[])`);
     }
     const professionKey = normalizeProfessionKey(filters.professionKey || filters.profession_key);
-    if (professionKey) {
-        params.push(professionKey);
-        clauses.push(`COALESCE(hs.profession_key, s.role_type) = $${params.length}`);
-    }
     const result = await db.query(
         `SELECT hs.id,
                 hs.staff_id,
@@ -1672,10 +1726,11 @@ async function loadForecastShiftRows(db, period, filters = {}) {
          ORDER BY hs.shift_date, s.name, hs.id`,
         params
     );
-    return safeRows(result).map(row => ({
-        ...row,
-        planned_minutes: plannedMinutesFromTimes(row.planned_start, row.planned_end, row.break_minutes)
-    }));
+    const plans = await require('./hrShiftSegments').hydrateHrShiftDayPlans(db, safeRows(result));
+    return plans.flatMap(({ shift, plan }) => plan.segments.map(segment => ({
+        ...shift, profession_key: segment.professionKey, planned_minutes: segment.plannedMinutes,
+        additional_roles: segment.additionalRoles || []
+    }))).filter(row => !professionKey || row.profession_key === professionKey);
 }
 
 function applyProfileOverrideToContext(context, profile, draftVersion = null) {
@@ -1714,11 +1769,26 @@ function applyProfileOverrideToContext(context, profile, draftVersion = null) {
 async function forecastPayrollProfiles(options = {}, serviceOptions = {}) {
     const db = serviceOptions.db || pool;
     const period = normalizeSimulationPeriod(options);
+    if ((Object.hasOwn(options, 'staffIds') || Object.hasOwn(options, 'staff_ids'))
+        && !(options.staffIds || options.staff_ids || []).length) {
+        return { period, source: 'hr_shifts', rows: [], totals: { staff: 0, planned_days: 0, planned_hours: 0,
+            base_salary: 0, overtime_pay: 0, total_salary: 0 }, byProfession: [], expensiveDays: [], actual: null, profileContextWarnings: [] };
+    }
     const shifts = await loadForecastShiftRows(db, period, options);
-    const staffIds = [...new Set(shifts.map(row => Number(row.staff_id)).filter(Number.isInteger))];
+    const requestedIds = uniquePositiveIds(options.staffIds || options.staff_ids || [], 'staffId');
+    // Fixed monthly contracts and recurring components can accrue without shifts.
+    // Staff still comes from the existing Park namespace, behind its route guard.
+    const staffRows = safeRows(await db.query(`SELECT s.id AS staff_id,s.name AS staff_name,s.role_type,s.department,
+            s.hourly_rate,s.rate_unit,s.hire_date::text,s.termination_date::text
+        FROM staff s WHERE s.is_active=true
+          AND (NULLIF(s.hire_date::text, '') IS NULL OR NULLIF(s.hire_date::text, '')::date <= $2::date)
+          AND (s.termination_date IS NULL OR s.termination_date > $1::date)
+          AND ($3::int[] IS NULL OR s.id=ANY($3::int[]))`,
+    [period.from, period.to, requestedIds.length ? requestedIds : null]));
+    const staffIds = [...new Set([...shifts, ...staffRows].map(row => Number(row.staff_id)).filter(Number.isInteger))];
     const metricsByStaff = new Map(staffIds.map(id => [id, emptyForecastMetrics(id)]));
     const staffById = new Map();
-    for (const row of shifts) {
+    for (const row of [...staffRows, ...shifts]) {
         const staffId = Number(row.staff_id);
         if (!staffById.has(staffId)) {
             staffById.set(staffId, {
@@ -1730,10 +1800,12 @@ async function forecastPayrollProfiles(options = {}, serviceOptions = {}) {
                 hourlyRate: Number(row.hourly_rate || 0),
                 hourly_rate: Number(row.hourly_rate || 0),
                 rateUnit: normalizeRateUnit(row.rate_unit || 'hour', 'hour'),
-                rate_unit: normalizeRateUnit(row.rate_unit || 'hour', 'hour')
+                rate_unit: normalizeRateUnit(row.rate_unit || 'hour', 'hour'),
+                hire_date: row.hire_date || null,
+                termination_date: row.termination_date || null
             });
         }
-        addForecastShiftToMetrics(metricsByStaff.get(staffId), row);
+        if (row.shift_date) addForecastShiftToMetrics(metricsByStaff.get(staffId), row);
     }
     for (const metrics of metricsByStaff.values()) {
         const workedDates = new Set(metrics.attendanceDays.map(day => day.date).filter(Boolean));
@@ -1747,9 +1819,58 @@ async function forecastPayrollProfiles(options = {}, serviceOptions = {}) {
     if (options.profileOverride) {
         applyProfileOverrideToContext(profileContext, options.profileOverride.profile, options.profileOverride.version);
     }
-    const rows = staffIds.map(staffId => {
+    const componentInputsByStaff = new Map(staffIds.map(id => [id, {}]));
+    const hasPercent = [...profileContext.profilesById.values()].some(profile =>
+        profile.versions.some(version => version.payRules?.components?.some(component => component.kind === 'percent')));
+    if (hasPercent && staffIds.length) {
+        for (const month of [...new Set(datesInRange(period.from, period.to).map(date => date.slice(0, 7)))]) {
+            const inputs = await require('./hrCompensationRules').loadComponentInputs({ businessContext: 'event_genix', month, staffIds }, { db });
+            for (const id of staffIds) componentInputsByStaff.get(id)[month] = inputs.get(id) || {};
+        }
+    }
+    const professionFilter = normalizeProfessionKey(options.professionKey || options.profession_key);
+    const includedIds = staffIds.filter(id => {
+        if (metricsByStaff.get(id).attendanceDays.length) return true;
+        const staff = staffById.get(id);
+        if (professionFilter && normalizeProfessionKey(staff.role_type) !== professionFilter) return false;
+        const result = calculateProfessionPay(staff, schemeMap.get(id), { periodFrom: period.from, periodTo: period.to }, professionRateMap, profileContext);
+        return result.configuredRules === true;
+    });
+    const prepareMetrics = (staffId, metrics, planned) => {
+        const { CONDITION_RULE_VERSION } = require('./hrPayrollConditions');
+        metrics.periodFrom = period.from;
+        metrics.periodTo = period.to;
+        metrics.componentInputsByMonth = componentInputsByStaff.get(staffId);
+        if (planned) {
+            const conditions = (metrics.attendanceDays || []).map(day => ({ date: day.date, worked: day.actualMinutes > 0,
+                paidPlannedFactor: 1, snapshot: { schemaVersion: 2, state: 'final', compensationAllocations: [{
+                    allocationType: 'base', professionKey: day.primaryProfessionKey, actualMinutes: day.actualMinutes,
+                    plannedMinutes: day.plannedMinutes, overtimeMinutes: 0,
+                    conditions: { ...resolveEffectivePayrollProfile(staffById.get(staffId), day.primaryProfessionKey, day.date, {
+                        payrollProfileContext: profileContext, professionRateMap, scheme: schemeMap.get(staffId)
+                    }), ruleVersion: CONDITION_RULE_VERSION }
+                }, ...(day.additionalRoles || []).filter(role => role.compensationMode === 'paid_hourly').map(role => ({
+                    allocationType: 'simultaneous_additional', professionKey: role.professionKey,
+                    actualMinutes: day.actualMinutes, plannedMinutes: day.plannedMinutes, overtimeMinutes: 0,
+                    payMultiplier: role.payMultiplier,
+                    conditions: { ...resolveEffectivePayrollProfile(staffById.get(staffId), role.professionKey, day.date, {
+                        payrollProfileContext: profileContext, professionRateMap, scheme: schemeMap.get(staffId)
+                    }), ruleVersion: CONDITION_RULE_VERSION }
+                }))] } }));
+            if (conditions.some(day => day.snapshot.compensationAllocations.some(item => item.conditions.payRules))) {
+                const byDate = new Map();
+                for (const day of conditions) {
+                    if (!byDate.has(day.date)) byDate.set(day.date, day);
+                    else byDate.get(day.date).snapshot.compensationAllocations.push(...day.snapshot.compensationAllocations);
+                }
+                metrics.conditionDays = [...byDate.values()];
+            }
+        }
+        return metrics;
+    };
+    const rows = includedIds.map(staffId => {
         const staff = staffById.get(staffId);
-        const metrics = metricsByStaff.get(staffId) || emptyForecastMetrics(staffId);
+        const metrics = prepareMetrics(staffId, metricsByStaff.get(staffId) || emptyForecastMetrics(staffId), true);
         const scheme = schemeMap.get(staffId) || {
             schemeType: staff.rateUnit === 'month' ? 'monthly_fixed' : (staff.rateUnit === 'day' ? 'per_shift' : 'hourly'),
             config: {},
@@ -1768,6 +1889,7 @@ async function forecastPayrollProfiles(options = {}, serviceOptions = {}) {
             base_salary: Math.round(pay.baseAmount || 0),
             overtime_pay: Math.round(pay.overtimeAmount || 0),
             total_salary: Math.round(pay.totalAmount || 0),
+            blocking_issues: pay.blockingIssues || [],
             profession_rate_summary: pay.professionRateSummary || [],
             allocation_issues: pay.allocationIssues || [],
             reconciliation: pay.reconciliation || metrics.reconciliation
@@ -1785,15 +1907,15 @@ async function forecastPayrollProfiles(options = {}, serviceOptions = {}) {
     totals.planned_hours = Math.round(totals.planned_hours * 10) / 10;
 
     let actual = null;
-    if (boolValue(options.includeActual ?? options.include_actual, false) && staffIds.length) {
+    if (boolValue(options.includeActual ?? options.include_actual, false) && includedIds.length) {
         const actualMetrics = await loadPayrollAttendanceMetrics({
             from: period.from,
             to: period.to,
-            staffIds
+            staffIds: includedIds
         }, db);
-        const actualRows = staffIds.map(staffId => {
+        const actualRows = includedIds.map(staffId => {
             const staff = staffById.get(staffId);
-            const metrics = actualMetrics.get(staffId) || emptyForecastMetrics(staffId);
+            const metrics = prepareMetrics(staffId, actualMetrics.get(staffId) || emptyForecastMetrics(staffId), false);
             const scheme = schemeMap.get(staffId) || {
                 schemeType: staff.rateUnit === 'month' ? 'monthly_fixed' : (staff.rateUnit === 'day' ? 'per_shift' : 'hourly'),
                 config: {},
@@ -1808,6 +1930,7 @@ async function forecastPayrollProfiles(options = {}, serviceOptions = {}) {
                 actual_days: Number(metrics.daysWorked || 0),
                 actual_hours: Number(metrics.hoursWorked || 0),
                 actual_salary: Math.round(pay.totalAmount || 0),
+                blocking_issues: pay.blockingIssues || [],
                 profession_rate_summary: pay.professionRateSummary || [],
                 allocation_issues: pay.allocationIssues || [],
                 reconciliation: pay.reconciliation || metrics.reconciliation
@@ -2321,6 +2444,7 @@ async function previewPayrollProfileBulk(payload = {}, options = {}) {
         const multiplier = 1 + (percent / 100);
         const draftVersion = {
             rateUnit: current.rateUnit,
+            ...(current.payRules ? { payRules: structuredClone(current.payRules) } : {}),
             defaultRate: Math.round(Number(current.defaultRate || 0) * multiplier * 100) / 100,
             effectiveFrom,
             changeReason: mutationReason(payload) || `Bulk ${percent}% payroll profile change`,
@@ -2508,6 +2632,7 @@ module.exports = {
     applyPayrollProfileBulk,
     archivePayrollProfile,
     buildPayrollProfileVersionDiff,
+    buildAssignmentPatchForEffectiveFrom,
     createPayrollProfile,
     createPayrollProfileClone,
     createPayrollProfileVersion,
@@ -2521,6 +2646,7 @@ module.exports = {
     mergePayrollProfileSyncVersion,
     previewPayrollProfileBulk,
     saveStaffPayrollProfileAssignments,
+    simulateProfileAmount,
     simulatePayrollProfiles,
     syncPayrollProfileFromBase
 };

@@ -63,12 +63,47 @@ The owner queue hold remains binding even if the service itself reports idle.
 
 ## Local validation
 
-Integrated focused regression selection: 75 passed, no failures/skips.
-The integrated full `npm test`, expanded isolated `payroll` mode and actual-app
-browser journey are rerun for this preparation; see the final ignored receipt
-and `output/pay-release-*.log` for actual terminal results. Earlier goal evidence
-is preserved in `docs/CONFIGURABLE_PAY_RULES_VERIFICATION.md` and is not relabeled
-as proof of this new base.
+Final functional checkpoint: `ef3f68cf9`.
+The release preparation also fixes an independently reproduced monthly-boundary
+bug: changing a note, recurring component amount or component label must not
+split an unchanged fixed base salary into separate partial-month contracts.
+Base and component financial signatures now resolve independently. Profile
+context includes complete earning months for continuity, while payment amounts,
+attendance and manual bases remain restricted to the requested period. A future
+configured version does not replace a legacy-only requested period.
+
+Disposable PostgreSQL verifies a fixed base of 19,000 with a monthly component
+changing from 6,000 to 8,000 on day 16: forecast and actual monthly total 26,000,
+advance 12,500, final 13,500, no blockers. Focused behavioral coverage also checks
+component removal, immutable version references, cross-month ranges, unchanged
+component labels and no commission-base requests for inactive components.
+The final focused financial regression selection passes 121 tests with no
+failures or skips (`output/pay-release-boundary-regression.log`).
+
+The integrated full `npm test` passes (exit 0), including 4,029 unit tests with
+no failures or skips, runtime/version checks, migration governance, protected
+timeline contracts, syntax, access contracts and UI smoke. Expanded isolated
+`payroll` passes all 14 suites / 132 tests with no failures or skips (exit 0),
+including the 10 configurable-rule database/API cases. Fresh actual-app browser
+journey passes in membership mode (exit 0): real employee navigation, company
+default, two manual bases, qualification promotion, fixed monthly save, vacancy
+template and reviewed hire. All seven fresh desktop/mobile screenshots were
+visually reviewed; the 390px layout has no horizontal overflow, keyboard focus
+stays within the form, and primary actions remain visible. Long native select
+values truncate normally; the explanatory text still describes their meaning.
+There were no page JavaScript errors. Evidence is in
+`output/playwright/payroll-configurable-rules/` and `output/pay-release-final-*.log`.
+Earlier goal evidence is preserved in
+`docs/CONFIGURABLE_PAY_RULES_VERIFICATION.md` and is not relabeled as proof of
+this new base.
+
+Release SQL postchecks were additionally rehearsed inside the initialized
+disposable integration database before the runner's automatic schema cleanup:
+migration ledger entry, three expected columns, seven aggregate counters and
+unchanged qualification-history count. All 10 integration cases passed again
+(`output/pay-release-postchecks-integration.log`, exit 0). The final follow-up
+changes only documentation and these postcheck assertions; the functional
+payload remains identical to the fully tested checkpoint above.
 
 Node 22.23.4 / npm 10.9.9; shared ignored node_modules junction, no install or
 application dependency/lockfile change. Process-only GNU Bash settings reuse the
@@ -77,6 +112,13 @@ genuine bundled shell for the existing mirror bootstrap tests. Local PostgreSQL
 `checkpoint_completion_target=0` avoids the previously diagnosed database-drop
 checkpoint delay, without disabling durability or changing production settings.
 All mutations are synthetic and confined to disposable local test databases.
+
+The Modern Web Guidance `forms` and `validate-input-after-interaction` guides
+were retrieved in full before HR asset integration. Rechecked visible keyboard
+focus ("Never disable focus outlines"), text errors ("show visible error text"),
+native form compatibility and the 390px mobile layout. The final browser journey
+uses installed Microsoft Edge when packaged Chromium is absent; this is a local
+test-launch fallback and adds no application dependency or browser API.
 
 Exact-SHA GitHub CI has not run: no remote push is part of this preparation.
 Authenticated live QA remains deferred; the canonical local credentials file

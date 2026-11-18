@@ -230,6 +230,15 @@ describe('configurable compensation on disposable PostgreSQL', { skip: !enabled,
         const after = await db.query('SELECT COUNT(*)::int AS count FROM hr_staff_qualification_events');
         assert.equal(after.rows[0].count, before.rows[0].count);
         assert.ok(after.rows[0].count >= 3);
+        // Rehearse the release postcheck before the isolated runner clears its
+        // schema; the receipt must recognize configured data without altering it.
+        const inspection = await db.query(fs.readFileSync(path.join(__dirname, '../../docs/PAY_RULES_RELEASE_POSTCHECKS.sql'), 'utf8'));
+        const selected = inspection.filter(result => result.command === 'SELECT');
+        assert.equal(selected[0].rows[0].version, '423_configurable_pay_rules');
+        assert.equal(selected[1].rows.length, 3);
+        assert.equal(selected[2].rows.length, 7);
+        assert.equal(Number(selected[2].rows.find(row => row.entity === 'qualification_events').configured_count), before.rows[0].count);
+        assert.equal((await db.query('SELECT COUNT(*)::int AS count FROM hr_staff_qualification_events')).rows[0].count, before.rows[0].count);
     });
 
     test('authenticated routes expose rule settings and atomically apply a reviewed vacancy snapshot during hire', async () => {

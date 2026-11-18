@@ -8,9 +8,16 @@ preparation only: no migration, production backfill or new API lane is applied.
 Current chat_channels lacks business ownership. Park membership requests fail
 with chat_not_migrated. Bypassing this boundary exposes global channels.
 
-1. Read-only inventory returns channel IDs/types, member business-ID sets,
-   parent/thread references and attachment counts, without message bodies or PII.
-   Mixed/absent memberships remain unresolved.
+1. `node scripts/audit-chat-scope.js` is the prepared read-only inventory. Set
+   `ACCESS_AUDIT_DATABASE_URL` locally through the approved credentials source;
+   never put it in command arguments or output. The script starts a repeatable-read
+   read-only transaction, limits statement/lock waits and always rolls back.
+   It returns channel IDs/types, active-principal business-ID sets, unresolved or
+   multi-business principal counts, message/non-text counts and cross-channel
+   reply counts. Principals include members, creators, DM recipients and historical
+   authors. Content, names, file URLs and credentials are never selected. Non-text
+   counts are not an exact attachment inventory. Mixed/absent memberships remain
+   unresolved, and even a single business-ID set never establishes ownership.
 2. Owner approves an exact channel-to-business manifest. Shared channels need an
    explicit ownership policy; never infer Park ownership from default context.
 3. Add durable business ownership through an additive migration. Unclassified
@@ -25,6 +32,12 @@ with chat_not_migrated. Bypassing this boundary exposes global channels.
 
 Production classification needs exact IDs, before values and rollback. No such
 data change is authorized by this baseline implementation.
+
+The inventory was verified against a disposable PostgreSQL schema with no content,
+name, metadata or credential columns, including revoked/inactive principals,
+multi-business recipients, historical authors, empty channels and cross-channel
+replies. A real production inventory has not run because the permitted local
+credentials file is unavailable.
 
 ## Training
 

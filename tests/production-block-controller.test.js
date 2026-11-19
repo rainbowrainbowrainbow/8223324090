@@ -83,6 +83,8 @@ test('freelance cancellation workflow pins the reviewed SQL, production base and
     const block = manifest(options, facts);
     assert.equal(block.migrationClassifications[0].red, true);
     assert.doesNotThrow(() => validateManifest(block));
+    assert.doesNotThrow(() => assertPreparedProductionBase(block, { ...facts.live, sourceBranch: 'codex/eventgenix-production' }, facts.remoteSha));
+    assert.throws(() => assertPreparedProductionBase(block, { ...facts.live, sourceBranch: 'codex/eventgenix-production' }, '4'.repeat(40)), { code: 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT' });
     assert.throws(() => manifest({}, facts), { code: 'PRODUCTION_BLOCK_RED_MIGRATION' });
     assert.throws(() => manifest(options, { ...facts, migrations: [{ file, sql: sql + '\nSELECT 1;' }] }),
         { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID' });

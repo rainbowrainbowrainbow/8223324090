@@ -370,6 +370,12 @@ function assertPreparedProductionBase(manifest, live, remoteSha) {
         return;
     }
 
+    if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.FREELANCE_CANCEL_424) {
+        fail(remoteSha === '60c9f296d93a9a8ce4b8a2f374d41085c4dd32e9' || remoteSha === manifest.initialHeadSha,
+            'Freelance cancellation remote differs from the failed predecessor or exact candidate', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
+        return;
+    }
+
     const freelancePredecessor = freelanceScheduleReleaseFor(manifest.allowedProtectedWorkflow?.kind)?.failedPredecessorSha;
     if (freelancePredecessor) {
         fail(remoteSha === freelancePredecessor || remoteSha === manifest.initialHeadSha,

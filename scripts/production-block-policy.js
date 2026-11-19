@@ -1157,8 +1157,13 @@ function buildManifest(facts, options = {}) {
     if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.FREELANCE_CANCEL_424) {
         migrations.forEach((item, index) => { item.sqlHash = migrationSqlHash(facts.migrations[index].sql); });
         validateFreelanceCancel424(baseLiveSha, facts.live?.version, facts.releaseVersion, qaScope, migrations, maxReleaseAttempts);
-        fail(facts.remoteSha === baseLiveSha && facts.live?.deploymentMetadata?.complete === true,
-            'Freelance cancellation requires matching live and remote', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
+        fail(facts.remoteSha === '60c9f296d93a9a8ce4b8a2f374d41085c4dd32e9' && facts.live?.deploymentMetadata?.complete === true
+            && facts.freelanceCancelFailedCi?.headSha === facts.remoteSha
+            && facts.freelanceCancelFailedCi?.headBranch === TARGET.branch
+            && facts.freelanceCancelFailedCi?.workflowName === 'CI'
+            && facts.freelanceCancelFailedCi?.status === 'completed'
+            && facts.freelanceCancelFailedCi?.conclusion === 'failure',
+            'Freelance cancellation requires the exact failed predecessor and live base', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
     }
     if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA) {
         migrations.forEach((item, index) => {

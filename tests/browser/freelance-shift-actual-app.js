@@ -525,9 +525,10 @@ async function run() {
             assert.equal(await page.locator('#schSegmentsList .is-active').getAttribute('data-segment-id'), String(target.id));
             await assertFits();
             if (width === 320) await page.screenshot({ path: path.join(out, route === '/staff' ? 'freelance-staff-editor-320.png' : 'freelance-hr-editor-320.png') });
+            await page.waitForFunction(() => document.querySelector('#schModalOverlay')?.contains(document.activeElement));
             await page.keyboard.press('Escape');
             await page.locator('#schModalOverlay').waitFor({ state: 'hidden' });
-            assert.equal(await dualBlock.evaluate(button => button === document.activeElement), true);
+            await page.waitForFunction(id => document.activeElement?.dataset.freelanceSegment === String(id), target.id);
             await page.locator('#deptFilter [data-dept="trampoline"]').click();
             assert.equal(await dualBlock.count(), 1);
         }
@@ -556,6 +557,7 @@ async function run() {
         assert.equal(await page.locator(`[data-freelance-segment="${addedDualId}"]`).count(), 1);
         await addedDualBlock.press('Enter');
         assert.equal(await page.locator('#schSegmentsList .is-active').getAttribute('data-segment-id'), addedDualId);
+        await page.waitForFunction(() => document.querySelector('#schModalOverlay')?.contains(document.activeElement));
         await page.keyboard.press('Escape');
         await page.locator('#schModalOverlay').waitFor({ state: 'hidden' });
         await dualBlock.click();

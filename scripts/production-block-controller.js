@@ -553,6 +553,9 @@ function defaultRuntime() {
                 migrations: loadMigrations(paths),
                 ...(usesStandardProtectedReleaseFlow(options.protectedWorkflow)
                     ? { remoteSha: remoteProductionSha() } : {}),
+                ...(options.protectedWorkflow === PROTECTED_WORKFLOWS.FREELANCE_CANCEL_424 ? {
+                    freelanceCancelFailedCi: JSON.parse(commandResult('gh', ['run', 'view', '44527459519', '--json', 'headSha,headBranch,workflowName,status,conclusion']))
+                } : {}),
                 ...(profileEmployee ? {
                     profileEmployeeAuthBlob: git(['rev-parse', `${head}:routes/auth.js`])
                 } : {}),
@@ -694,7 +697,8 @@ function defaultRuntime() {
             if (standardProtectedRelease) {
                 const reviewed = freelanceScheduleReleaseFor(workflow);
                 if (reviewed?.failedPredecessorSha) assertFreelanceScheduleFailedCi(readFreelanceScheduleFailedCi(reviewed), reviewed);
-                await assertStandardProductionBase(manifest, reviewed?.failedPredecessorSha || manifest.baseLiveSha);
+                await assertStandardProductionBase(manifest, workflow === PROTECTED_WORKFLOWS.FREELANCE_CANCEL_424
+                    ? '60c9f296d93a9a8ce4b8a2f374d41085c4dd32e9' : reviewed?.failedPredecessorSha || manifest.baseLiveSha);
             }
             if (needsRuntimeArtifactRun(manifest)) assertRuntimeArtifactPushPaths(remoteSha, releaseSha);
             fail(remoteProductionSha() === remoteSha,

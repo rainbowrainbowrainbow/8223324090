@@ -75,7 +75,10 @@ test('freelance cancellation workflow pins the reviewed SQL, production base and
     const sql = fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
     const base = '74e676086cee83ab33f80c60649e2696e3573d58';
     const facts = { live: { commitSha: base, version: '0.84.12', deploymentMetadata: { complete: true } },
-        remoteSha: base, releaseVersion: '0.84.13', changedPaths: [file], migrations: [{ file, sql }] };
+        remoteSha: '60c9f296d93a9a8ce4b8a2f374d41085c4dd32e9',
+        freelanceCancelFailedCi: { headSha: '60c9f296d93a9a8ce4b8a2f374d41085c4dd32e9',
+            headBranch: 'codex/eventgenix-production', workflowName: 'CI', status: 'completed', conclusion: 'failure' },
+        releaseVersion: '0.84.13', changedPaths: [file], migrations: [{ file, sql }] };
     const options = { protectedWorkflow: 'freelance-cancel-424', maxReleaseAttempts: 3 };
     const block = manifest(options, facts);
     assert.equal(block.migrationClassifications[0].red, true);

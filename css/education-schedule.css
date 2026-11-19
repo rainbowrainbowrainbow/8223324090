@@ -48,7 +48,6 @@ html[data-theme="dark"] .education-groups-layout input, html[data-theme="dark"] 
 .education-schedule-tab.active { border-color: #0EA586; background: rgba(14,165,134,.08); box-shadow: 0 5px 18px rgba(14,165,134,.10); }
 .education-today-panel { padding: clamp(14px, 2.2vw, 22px); border: 1px solid var(--gray-200); border-radius: var(--radius-lg, 16px); background: var(--surface, var(--white, #fff)); }
 .education-today-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
-.education-schedule-eyebrow { margin: 0 0 4px; color: #0EA586; font-size: 10px; font-weight: 900; letter-spacing: .12em; }
 .education-today-heading h2 { margin: 0; color: var(--gray-900); font-size: clamp(18px, 2vw, 22px); }
 .education-schedule-filters { display: flex; flex-wrap: wrap; gap: 10px; }
 .education-schedule-filters label { display: grid; gap: 4px; color: var(--gray-600); font-size: 11px; font-weight: 800; }
@@ -163,7 +162,7 @@ body.timeline-mode-education #settingsTimelineDisplaySection button:not(:disable
 body.timeline-mode-education #educationLessonSection label { color: var(--edu-text); }
 .education-schedule-workspace :is(small,.education-today-status,.education-today-empty,.education-attendance-history,.education-schedule-filters label),
 body.timeline-mode-education #bookingPanel :is(small,.form-hint) { color: var(--edu-muted); }
-.education-schedule-workspace :is(.education-schedule-eyebrow,.education-lesson-time,.education-lesson-count),
+.education-schedule-workspace :is(.education-lesson-time,.education-lesson-count),
 .education-schedule-workspace .education-schedule-tab > span:first-child { color: var(--edu-accent); }
 .education-schedule-workspace :is(.education-today-panel,.education-lesson-card,.education-schedule-tab) { background: var(--edu-surface); border-color: var(--edu-border); }
 .education-schedule-workspace .education-schedule-tab.active { background: var(--edu-soft); border-color: var(--edu-accent); }

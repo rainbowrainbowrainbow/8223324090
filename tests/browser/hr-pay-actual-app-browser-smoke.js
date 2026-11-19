@@ -316,7 +316,34 @@ async function run() {
         await topup.locator('.sch-day-pay-current').scrollIntoViewIfNeeded();
         await page.screenshot({path:path.join(output,'monthly-topup-mobile.png')});
         assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
-        await closeCell(page);await context.close();
+        await closeCell(page);
+        for (const [entry, width] of [['/staff', 390], ['/hr#schedule', 1440], ['/hr#schedule', 390]]) {
+            await page.setViewportSize({ width, height: 844 });
+            await page.goto(base + entry, { waitUntil: 'domcontentloaded' });
+            await page.waitForFunction(() => document.querySelector('#scheduleDataRegion')?.dataset.scheduleState === 'ready');
+            await page.locator('#todayWeekBtn').click();
+            await page.waitForFunction(() => document.querySelector('#scheduleDataRegion')?.dataset.scheduleState === 'ready');
+            await page.locator('#deptFilter [data-dept="reception"]').click();
+            await page.locator('#scheduleStaffSearch').fill('Synthetic pay ' + stamp);
+            await page.waitForFunction(() => document.querySelector('#scheduleStaffFilterInfo')?.textContent?.startsWith('Показано 1 з '));
+            if (width === 390) {
+                const disclosure = page.getByRole('button', { name: 'Дії графіка' });
+                if (await disclosure.getAttribute('aria-expanded') === 'false') await disclosure.click();
+            }
+            const preview = page.waitForResponse(response => new URL(response.url()).pathname === copyApiPath
+                && response.request().method() === 'POST' && response.request().postDataJSON()?.dryRun === true);
+            await page.locator('#copyWeekBtn').click();
+            const response = await preview;
+            assert.equal(response.status(), 200);
+            const request = response.request().postDataJSON();
+            assert.equal(request.fromMonday, previewRequest.fromMonday);
+            assert.deepEqual(request.staffIds, [staffId]);
+            assert.ok((await response.json()).conflicts > 0, 'the canonical target conflict is shown in either schedule entry');
+            await page.getByText(/У цільовому тижні вже є/).waitFor();
+            assert.equal(await page.locator('.confirm-overlay[data-confirm-kind="confirm"]').count(), 0);
+            await page.screenshot({ path: path.join(output, `copy-week-${entry === '/staff' ? 'staff' : 'hr'}-${width}.png`) });
+        }
+        await context.close();
         // Existing role plus explicit salary deny: API is 403 and UI never requests or stores amounts.
         const username='pay_reader_'+stamp,password=crypto.randomBytes(24).toString('base64url')+'!';
         const created=await request('/api/users',token,{username,password,name:'Synthetic salary restricted',role:'hr',staffId},'POST');

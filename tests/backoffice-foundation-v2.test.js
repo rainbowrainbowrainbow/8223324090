@@ -324,6 +324,6 @@ describe('backoffice foundation v2 contracts', () => {
         assert.match(staffPage, /createAccountForLinkingStaff/);
         assert.match(staffPage, /data-linked-user/);
         assert.match(staffScheduleShell, /linkCreateAccountBtn/);
-        assert.match(staffScheduleShell, /bulkCsvBtn" class="btn-page-secondary hidden/);
+        assert.doesNotMatch(staffScheduleShell, /bulkCsvBtn|bulkPdfBtn|bulkResultsOverlay/);
     });
 });

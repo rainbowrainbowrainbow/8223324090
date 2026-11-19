@@ -817,7 +817,9 @@ async function visibleTaskCard(page, title) {
 
 async function main() {
     requireIsolatedTarget();
-    const { chromium } = requirePlaywright();
+    const browserName = process.env.MY_DAY_BROWSER || 'chromium';
+    assert.ok(['chromium', 'webkit'].includes(browserName), 'MY_DAY_BROWSER must be chromium or webkit');
+    const browserType = requirePlaywright()[browserName];
     const openAiMock = createOpenAIMockServer(Number(process.env.MY_DAY_OPENAI_MOCK_PORT));
     await openAiMock.start();
     const session = await login(TARGET_URL);
@@ -827,7 +829,7 @@ async function main() {
     const selectedImpactIds = impacts.slice(0, 3).map(impact => Number(impact.id)).filter(Boolean);
     assert.ok(selectedImpactIds.length >= 2, 'starter kit exposes at least two active impacts');
 
-    const browser = await chromium.launch({ headless: HEADLESS });
+    const browser = await browserType.launch({ headless: HEADLESS });
     const sessionStorageState = browserStorageStateForSession(session);
     const context = await browser.newContext({ viewport: { width: 1366, height: 900 }, serviceWorkers: 'block', storageState: sessionStorageState });
     await context.route('https://www.clarity.ms/**', route => route.fulfill({

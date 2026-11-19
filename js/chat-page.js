@@ -3274,9 +3274,9 @@
                 var item = document.createElement('li');
                 var prefix = row.kind === 'chat_task' ? 'Задача чату' : 'Доручення наради';
                 var label = prefix + ' · ' + row.title;
-                if (row.taskId) {
+                if (row.taskHref) {
                     var link = document.createElement('a');
-                    link.href = '/profile?tab=myday&open=' + encodeURIComponent(row.taskId);
+                    link.href = row.taskHref;
                     link.textContent = label;
                     item.append(link);
                 } else {

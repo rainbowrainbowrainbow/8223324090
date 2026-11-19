@@ -163,6 +163,7 @@ function loadDashboardHarness(options = {}) {
         nativeAddEventListener(type, listener, listenerOptions);
     };
 
+    dom.window.TaskLinks = require('../js/task-links');
     vm.runInContext(instrumentDashboardSource(), dom.getInternalVMContext(), {
         filename: 'js/dashboard-page.js'
     });
@@ -943,7 +944,7 @@ test('my focus completion action is isolated from opening task details or draggi
     assert.match(source, /event\?\.preventDefault\?\.\(\);/);
     assert.match(source, /event\?\.stopPropagation\?\.\(\);/);
     assert.match(source, /class="widget-task-title focus-task-detail-link" href=/);
-    assert.match(source, /href: '\/profile\?tab=myday&open=' \+ encodeURIComponent\(task.id\)/);
+    assert.match(source, /href: TaskLinks\.taskUrl\(task\.id, \{ businessContext: task\.business_context \}\)/);
     const focusRenderer = source.slice(source.indexOf('    function renderMyFocus('), source.indexOf('    function taskerStatusLabel('));
     assert.doesNotMatch(focusRenderer, /class="widget-task-item" onclick=/, 'details use a keyboard accessible link separate from completion');
 });

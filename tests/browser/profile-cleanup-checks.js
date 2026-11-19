@@ -110,9 +110,14 @@ async function verifySettings(page, origin, evidence) {
         await page.locator('#profileAvatarZoom').fill('1.35');
         await page.locator('#profileAvatarPositionX').fill('63');
         await page.locator('#profileAvatarPositionY').fill('39');
-        const uploaded = page.waitForResponse(response => response.url().includes('/profile/avatar/upload'));
-        await page.getByRole('button', { name: 'Зберегти фото', exact: true }).click();
-        assert.ok((await uploaded).ok());
+        const save = page.locator('#profileAvatarUploadBtn:enabled');
+        await save.scrollIntoViewIfNeeded();
+        const [uploaded] = await Promise.all([
+            page.waitForResponse(response => new URL(response.url()).pathname === '/api/auth/profile/avatar/upload'
+                && response.request().method() === 'POST'),
+            save.click()
+        ]);
+        assert.ok(uploaded.ok());
         await headerAvatar.locator('img').waitFor();
         await page.reload();
         for (const avatar of [preview, headerAvatar]) {

@@ -22,7 +22,7 @@ function penaltyEvent(overrides = {}) {
         actionType: 'task_rescheduled',
         actor: {
             userId: 4,
-            name: '‘¥à£?©'
+            name: 'ï¿½ï¿½ï¿½?ï¿½'
         },
         sourceSurface: 'profile_my_cabinet_overdue_to_today_button',
         oldValue: {
@@ -101,7 +101,7 @@ test('postponement explanation normalizes actor, source, due and priority facts'
         attentionLevel: 1,
         lastPostponedAt: '2026-07-29T08:30:00.000Z',
         actorType: 'manual',
-        actorName: '‘¥à£?©',
+        actorName: 'ï¿½ï¿½ï¿½?ï¿½',
         sourceSurface: 'my_day',
         reason: 'overdue_to_today',
         oldDue: '2026-07-28T20:59:59.999Z',
@@ -195,7 +195,7 @@ test('latest penalty events are loaded in one ordered batch query', async () => 
                     task_id: 5,
                     action_type: 'task_rescheduled',
                     actor_user_id: 4,
-                    actor_name_snapshot: '‘¥à£?©',
+                    actor_name_snapshot: 'ï¿½ï¿½ï¿½?ï¿½',
                     source_surface: 'profile_my_cabinet',
                     old_value_json: { date: '2026-07-28' },
                     new_value_json: { date: '2026-07-29' },
@@ -214,11 +214,11 @@ test('latest penalty events are loaded in one ordered batch query', async () => 
 
     assert.equal(calls.length, 1);
     assert.deepEqual(calls[0].params, [[5, 3], 'task_rescheduled']);
-    assert.match(calls[0].text, /SELECT DISTINCT ON \(task_id\)/);
+    assert.match(calls[0].text, /SELECT DISTINCT ON \(h\.task_id\)/);
     assert.match(calls[0].text, /task_id = ANY\(\$1::int\[\]\)/);
     assert.match(calls[0].text, /countsAsPostponement/);
     assert.match(calls[0].text, /NOT IN \('snooze', 'technical_correction'\)/);
-    assert.match(calls[0].text, /ORDER BY task_id, created_at DESC, id DESC/);
+    assert.match(calls[0].text, /ORDER BY h\.task_id, h\.created_at DESC, h\.id DESC/);
     assert.equal(events.size, 1);
     assert.equal(events.get(5).id, 99);
 });
@@ -240,7 +240,7 @@ test('My Day projection adds explanations with one history query and no N+1', as
             task_id: task.id,
             action_type: 'task_rescheduled',
             actor_user_id: 4,
-            actor_name_snapshot: '‘¥à£?©',
+            actor_name_snapshot: 'ï¿½ï¿½ï¿½?ï¿½',
             source_surface: 'profile_my_cabinet_overdue_to_today_button',
             old_value_json: { date: '2026-07-28' },
             new_value_json: { date: '2026-07-29' },
@@ -292,7 +292,7 @@ test('My Day projection adds explanations with one history query and no N+1', as
         user: {
             id: 4,
             username: 'serhiy',
-            name: '‘¥à£?©',
+            name: 'ï¿½ï¿½ï¿½?ï¿½',
             role: 'creator'
         },
         businessScope: {

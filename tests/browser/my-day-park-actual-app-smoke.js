@@ -43,8 +43,9 @@ async function run() {
         await require('./task-entry-checks').verifyTaskEntry({ origin, session, evidence });
         return;
     }
-    const { chromium } = requirePlaywright();
-    const browser = await chromium.launch();
+    const browserName = process.env.MY_DAY_BROWSER || 'chromium';
+    assert.ok(['chromium', 'webkit'].includes(browserName), 'MY_DAY_BROWSER must be chromium or webkit');
+    const browser = await requirePlaywright()[browserName].launch();
     const evidence = path.resolve(__dirname, '../../output/qa');
     fs.mkdirSync(evidence, { recursive: true });
     try {
@@ -316,12 +317,18 @@ async function run() {
             && url.searchParams.get('tab') === 'myday' && url.searchParams.get('open') === workId);
         await taskDialog.getByText('Виконую', { exact: true }).waitFor();
         assert.ok(await taskDialog.getByRole('button', { name: 'Закрити' }).evaluate(node => node === document.activeElement));
-        assert.ok(await taskDialog.evaluate(dialog => {
-            const bounds = dialog.getBoundingClientRect();
-            return bounds.left >= 12 && bounds.right <= innerWidth - 12
-                && Math.abs(bounds.left + bounds.width / 2 - innerWidth / 2) < 2
-                && Math.abs(bounds.top + bounds.height / 2 - innerHeight / 2) < 2;
-        }), 'The mobile task dialog is centered with room at the edges');
+        const mobileDialogGeometry = await taskDialog.evaluate(dialog => ({
+            bounds: dialog.getBoundingClientRect().toJSON(),
+            viewport: [innerWidth, innerHeight],
+            layoutViewport: [document.documentElement.clientWidth, document.documentElement.clientHeight],
+            visualViewport: [window.visualViewport?.width, window.visualViewport?.height]
+        }));
+        // WebKit can reserve a non-overlay scrollbar, outside the layout viewport.
+        const { bounds, layoutViewport: [viewportWidth, viewportHeight] } = mobileDialogGeometry;
+        assert.ok(bounds.left >= 12 && bounds.right <= viewportWidth - 12
+            && Math.abs(bounds.left + bounds.width / 2 - viewportWidth / 2) < 2
+            && Math.abs(bounds.top + bounds.height / 2 - viewportHeight / 2) < 2,
+        'The mobile task dialog is centered with room at the edges: ' + JSON.stringify(mobileDialogGeometry));
         await page.goBack();
         await taskDialog.waitFor({ state: 'hidden' });
         await titleButton.click();
@@ -349,8 +356,8 @@ async function run() {
         await taskDialog.locator(`time[datetime="${futureDate}"]`).waitFor();
         assert.ok(await taskDialog.evaluate(dialog => {
             const bounds = dialog.getBoundingClientRect();
-            return Math.abs(bounds.left + bounds.width / 2 - innerWidth / 2) < 2
-                && Math.abs(bounds.top + bounds.height / 2 - innerHeight / 2) < 2;
+            return Math.abs(bounds.left + bounds.width / 2 - document.documentElement.clientWidth / 2) < 2
+                && Math.abs(bounds.top + bounds.height / 2 - document.documentElement.clientHeight / 2) < 2;
         }), 'The desktop deep link opens a centered task dialog');
         await page.keyboard.press('Escape');
         await page.waitForURL(url => url.pathname === '/profile' && !url.searchParams.has('open'));

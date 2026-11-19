@@ -442,21 +442,22 @@ async function runActor(browser, pool, actor, existingAccountId) {
                 assert.equal(await status.evaluate(el => el === document.activeElement), true);
                 assert.equal(await form.evaluate(el => el.inert), true);
                 assert.equal(await page.locator('#accountOnboardingSubmit').isDisabled(), true);
+                assert.equal(await close.isDisabled(), true);
+                assert.match(await status.getByRole('status').textContent(), /Зберігаємо дані/);
+                assert.equal(await status.getByRole('alert').textContent(), '');
                 await page.keyboard.press('Enter');
                 await page.keyboard.press('Tab');
-                assert.equal(await close.evaluate(el => el === document.activeElement), true);
+                assert.equal(await status.evaluate(el => el === document.activeElement), true);
                 await page.keyboard.press('Shift+Tab');
-                assert.equal(await close.evaluate(el => el === document.activeElement), true);
-                await status.focus();
-                await page.keyboard.press('Shift+Tab');
-                assert.equal(await close.evaluate(el => el === document.activeElement), true);
+                assert.equal(await status.evaluate(el => el === document.activeElement), true);
                 assert.equal(issuancePosts, 1);
                 await status.focus();
                 await captureSupplement('crm-access-submitting-focus');
             } finally {
                 unblockFailure();
             }
-            await status.getByText('Синтетична помилка видачі доступу.').waitFor();
+            await status.getByRole('alert').getByText('Синтетична помилка видачі доступу.').waitFor();
+            assert.equal(await close.isEnabled(), true);
             assert.equal(await usernameInput.evaluate(el => el === document.activeElement), true);
             assert.equal(await form.evaluate(el => el.inert), false);
             assert.equal(await page.locator('#accountOnboardingSubmit').isEnabled(), true);
@@ -696,9 +697,9 @@ async function runActor(browser, pool, actor, existingAccountId) {
                 await dispatched;
                 assert.equal(await onboardingForm.evaluate(el => el.inert), true);
                 const closeControl = page.locator('#accountOnboardingClose');
-                await closeControl.focus();
+                assert.equal(await closeControl.isDisabled(), true);
                 await page.keyboard.press('Shift+Tab');
-                assert.equal(await closeControl.evaluate(el => el === document.activeElement), true);
+                assert.equal(await page.locator('#accountOnboardingStatus').evaluate(el => el === document.activeElement), true);
                 // A late programmatic change must be ignored while the form is saving.
                 await staffPicker.evaluate((el, staleId) => {
                     el.value = String(staleId);

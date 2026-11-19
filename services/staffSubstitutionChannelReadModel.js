@@ -2,6 +2,7 @@
 
 const { canAccessBusinessContext } = require('./businessContext');
 const { buildTaskVisibilityScope } = require('./taskPolicy');
+const { taskUrl } = require('../js/task-links');
 
 async function listChannelSubstitutions(db, actor, channelId) {
     const business = 'event_genix';
@@ -49,7 +50,7 @@ async function listChannelSubstitutions(db, actor, channelId) {
         SELECT kind, item_id AS "itemId", title, task_id AS "taskId", id::text, state
         FROM items WHERE state IN ('active','completed')
         ORDER BY items.id DESC LIMIT 50`, params);
-    return rows;
+    return rows.map(row => row.taskId ? { ...row, taskHref: taskUrl(row.taskId, { businessContext: business }) } : row);
 }
 
 module.exports = { listChannelSubstitutions };

@@ -83,6 +83,139 @@ test('staff account operations enforce Park ownership and payroll/operation perm
     const onboard = (actor, body) => api('/api/users/onboarding', { actor, method: 'POST', body });
     const readStaff = async () => (await pool.query('SELECT phone, hourly_rate FROM staff WHERE id = $1', [staff.id])).rows[0];
 
+    await t.test('attendance authorizes the linked active team at write time', async () => {
+        const lead = await actor('attendance-team', 'manager', park);
+        const unlinked = await actor('attendance-no-profile', 'manager', park);
+        const deniedSchedule = await actor('attendance-denied', 'manager', park, ['hr.schedule.manage']);
+        const group = marker + '-attendance-team';
+        let sequence = 0;
+        async function person(node, active = true) {
+            return (await pool.query(
+                "INSERT INTO staff (name, department, position, role_type, company_structure_node_id, is_active) VALUES ($1, 'animators', 'QA', 'animator', $2, $3) RETURNING id",
+                [marker + '-attendance-' + ++sequence, node, active])).rows[0].id;
+        }
+        const linked = await person(group);
+        const teammate = await person(group);
+        const otherTeam = await person(marker + '-other-attendance');
+        const concurrent = await person(group);
+        const inactive = await person(group, false);
+        await pool.query('INSERT INTO employee_profiles (user_id, staff_id, full_name) VALUES ($1, $2, $3)',
+            [lead.id, linked, marker]);
+        const mark = (principal, staffId, settings = {}) => api('/api/hr/mark-absent', {
+            actor: principal, method: 'POST', body: { staff_id: staffId, status: 'day_off', notes: marker }, ...settings
+        });
+        assert.equal((await mark(lead, teammate)).status, 200);
+        for (const [principal, staffId, settings] of [
+            [lead, otherTeam], [lead, inactive], [unlinked, teammate], [deniedSchedule, teammate],
+            [lead, teammate, { context: 'dar' }], [lead, teammate, { headers: { 'X-Business-Scope': 'all' } }]
+        ]) {
+            assert.equal((await mark(principal, staffId, settings)).status, 403);
+        }
+
+        const ownArrival = await person(group);
+        const outsideArrival = await person(marker + '-outside-arrival');
+        const attendance = (principal, path, body, method = 'POST') => api('/api/hr/' + path, {
+            actor: principal, method, body
+        });
+        assert.equal((await attendance(lead, 'clock-in', { staff_id: outsideArrival })).status, 403);
+        assert.equal((await attendance(lead, 'clock-in', { staff_id: ownArrival })).status, 200);
+        assert.equal((await attendance(owner, 'clock-in', { staff_id: outsideArrival })).status, 200);
+        const { rows: [outsideRecord] } = await pool.query(
+            'SELECT id, clock_in, clock_out, updated_at FROM hr_time_records WHERE staff_id=$1', [outsideArrival]);
+        const target = { staff_id: outsideArrival, record_id: outsideRecord.id, clock_in: outsideRecord.clock_in.toISOString() };
+        assert.equal((await attendance(lead, 'clock-out', target)).status, 403);
+        assert.equal((await attendance(lead, 'clock-in/cancel', target)).status, 403);
+        const correction = `records/${outsideRecord.id}/correct`;
+        assert.equal((await attendance(lead, correction, { staff_id: outsideArrival, notes: marker }, 'PUT')).status, 403);
+        assert.equal((await attendance(lead, correction, { staff_id: ownArrival, notes: marker }, 'PUT')).status, 400);
+        assert.deepEqual((await pool.query('SELECT id, clock_in, clock_out, updated_at FROM hr_time_records WHERE id=$1',
+            [outsideRecord.id])).rows, [outsideRecord]);
+        await pool.query('UPDATE staff SET is_active=false WHERE id = ANY($1::int[])', [[ownArrival, outsideArrival]]);
+
+        const transfer = await pool.connect();
+        let pending;
+        try {
+            await transfer.query('BEGIN');
+            const transferPid = (await transfer.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+            await transfer.query('UPDATE staff SET company_structure_node_id=$2 WHERE id=$1', [concurrent, marker + '-moved']);
+            pending = mark(lead, concurrent);
+            let blocked = false;
+            for (let attempt = 0; attempt < 80 && !blocked; attempt += 1) {
+                const result = await pool.query('SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))) AS blocked', [transferPid]);
+                blocked = result.rows[0].blocked;
+                if (!blocked) await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            assert.equal(blocked, true, 'request must reach the structural lock before the transfer is committed');
+            await transfer.query('COMMIT');
+            const result = await pending;
+            assert.equal(result.status, 403);
+            assert.equal(result.data.code, 'ATTENDANCE_STAFF_SCOPE_DENIED');
+        } finally {
+            await transfer.query('ROLLBACK').catch(() => {});
+            transfer.release();
+            await pending?.catch(() => {});
+        }
+
+        await pool.query('UPDATE employee_profiles SET is_active=false WHERE user_id=$1', [lead.id]);
+        assert.equal((await mark(lead, teammate)).status, 403);
+        await pool.query('UPDATE employee_profiles SET is_active=true WHERE user_id=$1', [lead.id]);
+        await pool.query('UPDATE business_memberships SET is_active=false WHERE user_id=$1 AND business_id=$2', [lead.id, park.id]);
+        assert.equal((await mark(lead, teammate)).status, 403);
+        const record = await pool.query('SELECT staff_id, status FROM hr_time_records WHERE staff_id=ANY($1::int[])', [
+            [teammate, otherTeam, concurrent, inactive]
+        ]);
+        assert.deepEqual(record.rows, [{ staff_id: teammate, status: 'day_off' }]);
+        const logged = await pool.query("SELECT staff_id FROM hr_audit_log WHERE staff_id=ANY($1::int[]) AND action='mark_absent'", [
+            [teammate, otherTeam, concurrent, inactive]
+        ]);
+        assert.deepEqual(logged.rows, [{ staff_id: teammate }]);
+    });
+
+    await t.test('copy week checks resolved raw categories and revalidates the explicit team at apply', async () => {
+        const lead = await actor('copy-team', 'manager', park);
+        const group = marker + '-copy-team';
+        const fromMonday = '2099-01-12';
+        const toMonday = '2099-01-19';
+        const categories = [['animators', 'animator'], ['trampoline', 'instructor'], ['cafe', 'cook'], ['cleaning', 'cleaner']];
+        const staffIds = [];
+        for (const [department, role] of categories) {
+            const { rows: [member] } = await pool.query(
+                "INSERT INTO staff (name, department, position, role_type, company_structure_node_id) VALUES ($1, $2, 'QA', $3, $4) RETURNING id",
+                [marker + '-copy-' + department, department, role, group]);
+            staffIds.push(member.id);
+            await pool.query("INSERT INTO staff_schedule (staff_id, date, status, shift_start, shift_end, profession_key) VALUES ($1, $2, 'working', '09:00', '13:00', $3)",
+                [member.id, fromMonday, role]);
+        }
+        await pool.query('INSERT INTO employee_profiles (user_id, staff_id, full_name) VALUES ($1, $2, $3)',
+            [lead.id, staffIds[0], marker]);
+        const copy = (payload, dryRun = false) => api('/api/staff/schedule/copy-week', {
+            actor: lead, method: 'POST', body: { fromMonday, toMonday, ...payload, dryRun, rejectConflicts: true }
+        });
+
+        for (const [department] of categories) {
+            const preview = await copy({ department }, true);
+            assert.equal(preview.status, 200, JSON.stringify({ department, code: preview.data.code, error: preview.data.error }));
+            assert.equal(preview.data.count, 1);
+        }
+        const [animator, trampoline, cook] = staffIds;
+        const copyResult = await copy({ department: 'animators' });
+        assert.equal(copyResult.status, 200, JSON.stringify({ code: copyResult.data.code, error: copyResult.data.error }));
+        assert.equal(copyResult.data.count, 1);
+        assert.equal((await copy({ staffIds: [animator] })).status, 409);
+        assert.equal((await copy({ staffIds: [] }, true)).status, 403);
+        assert.equal((await copy({ displayGroup: 'all' }, true)).status, 403);
+        assert.equal((await copy({ staffIds: [cook], department: 'trampoline' }, true)).status, 400);
+
+        const payload = { staffIds: [trampoline, cook], displayGroup: 'trampoline' };
+        assert.equal((await copy(payload, true)).data.count, 2);
+        await pool.query('UPDATE staff SET company_structure_node_id=$2 WHERE id=$1', [cook, marker + '-copy-foreign']);
+        assert.equal((await copy(payload)).status, 403);
+        assert.equal((await copy({ department: 'cafe', displayGroup: 'trampoline' }, true)).status, 403);
+        const targets = await pool.query('SELECT staff_id FROM staff_schedule WHERE staff_id=ANY($1::int[]) AND date=$2 ORDER BY staff_id',
+            [staffIds, toMonday]);
+        assert.deepEqual(targets.rows, [{ staff_id: animator }]);
+    });
+
     await t.test('explicit existing-card conditions validate locked professions without replacing assignments', async () => {
         const { rows: [person] } = await pool.query(
             `INSERT INTO staff (name, department, position, role_type, hourly_rate)

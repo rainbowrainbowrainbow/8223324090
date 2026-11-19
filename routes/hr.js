@@ -218,6 +218,7 @@ const {
     normalizeScheduleDate,
     scheduleDateSequence
 } = require('../services/staffScheduleMutations');
+const { canWriteScheduleTargets, loadLockedTeamScheduleScope } = require('../services/staffScheduleScope');
 const {
     LIVE_MULTI_SEGMENT_QA_CONFIRMATION,
     LIVE_MULTI_SEGMENT_QA_FINANCIAL_PROOF_VERSION,
@@ -369,6 +370,12 @@ function requireHrCapabilityContract(req, res, next) {
     const candidates = hrCapabilityCandidates(req);
     const allowed = candidates.find(capability => canUseAction(req.user, capability));
     if (allowed) {
+        const legacyScheduleWrite = allowed === 'hr.schedule.manage' &&
+            /^\/(?:shifts|leave-requests)(?:\/|$)/.test(String(req.path || '/'));
+        if (legacyScheduleWrite && !canUseAction(req.user, 'hr.schedule.scope.business')) {
+            return res.status(403).json({ success: false, code: 'HR_BUSINESS_SCHEDULE_SCOPE_REQUIRED',
+                error: 'Для цієї дії потрібен доступ до графіка всього бізнесу.' });
+        }
         req.hrCapability = allowed;
         if (!canUseAction(req.user, 'hr.payroll.view')) {
             const sendJson = res.json.bind(res);
@@ -6742,6 +6749,24 @@ async function resolveHrTodayClockTime(client, body, today, { rejectAmbiguous = 
     return { actualTime: result.actualTime };
 }
 
+async function assertAttendanceStaffScope(client, req, staffId, businessContext) {
+    if (resolveBusinessScope(req).canWrite === true && businessContext === hrBusinessContextFromRequest(req)) {
+        if (canUseAction(req.user, 'hr.schedule.scope.business')) return;
+        const scope = await loadLockedTeamScheduleScope(client, req.user, [staffId]);
+        if (canWriteScheduleTargets(scope, [staffId])) return;
+    }
+    const error = new Error('Зміни табеля дозволені лише для працівників вашого підтвердженого підрозділу.');
+    error.code = 'ATTENDANCE_STAFF_SCOPE_DENIED';
+    error.statusCode = 403;
+    throw error;
+}
+
+function sendAttendanceScopeFailure(res, error) {
+    if (!['ATTENDANCE_STAFF_SCOPE_DENIED', 'ATTENDANCE_TARGET_MISMATCH'].includes(error?.code)) return false;
+    res.status(error.statusCode).json({ success: false, code: error.code, error: error.message });
+    return true;
+}
+
 // POST /api/hr/clock-in
 router.post('/clock-in', requireHrManage, async (req, res) => {
     const staffId = Number(req.body?.staff_id);
@@ -6755,6 +6780,8 @@ router.post('/clock-in', requireHrManage, async (req, res) => {
         if (error) return res.status(status).json({ success: false, error, code });
         const businessContext = hrBusinessContextFromRequest(req);
         await client.query('BEGIN');
+        await lockAttendanceWriteTarget(client, { staffId, date: today });
+        await assertAttendanceStaffScope(client, req, staffId, businessContext);
         const { rows: [reserve] } = await client.query(
             `SELECT id FROM staff WHERE id = $1 AND hr_pool_status = 'reserve' FOR UPDATE`,
             [staffId]
@@ -6772,7 +6799,6 @@ router.post('/clock-in', requireHrManage, async (req, res) => {
                 });
             }
         }
-        await lockAttendanceWriteTarget(client, { staffId, date: today });
         const clockInResult = await recordAttendanceClockIn(client, {
             staffId,
             recordDate: today,
@@ -6793,6 +6819,7 @@ router.post('/clock-in', requireHrManage, async (req, res) => {
         });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
+        if (sendAttendanceScopeFailure(res, err)) return;
         log.error('POST /hr/clock-in error', err);
         if (sendHrMutationFailure(res, err)) return;
         res.status(500).json({ success: false, error: 'Помилка сервера' });
@@ -6818,7 +6845,18 @@ router.post('/clock-in/cancel', requireHrManage, async (req, res) => {
         await lockPayrollPeriodMutation(month, client);
         await acquirePayrollPeriodMutationLock(client, month);
         await assertPayrollPeriodOpen(month, client);
-        await lockAttendanceWriteTarget(client, { staffId, date: today });
+        const businessContext = hrBusinessContextFromRequest(req);
+        const { rows: [record] } = await client.query(
+            'SELECT staff_id, business_context FROM hr_time_records WHERE id = $1 AND record_date = $2',
+            [recordId, today]
+        );
+        if (!record || Number(record.staff_id) !== staffId || record.business_context !== businessContext) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ success: false, code: 'ATTENDANCE_ARRIVAL_NOT_CANCELLABLE',
+                error: 'Цей прихід уже змінився або його не можна скасувати. Оновіть дані.' });
+        }
+        await lockAttendanceWriteTarget(client, { staffId: Number(record.staff_id), date: today });
+        await assertAttendanceStaffScope(client, req, Number(record.staff_id), record.business_context);
         await cancelAttendanceClockIn(client, {
             staffId, recordId, recordDate: today, clockIn,
             businessContext: hrBusinessContextFromRequest(req),
@@ -6829,6 +6867,7 @@ router.post('/clock-in/cancel', requireHrManage, async (req, res) => {
         return res.json({ success: true, data: null });
     } catch (error) {
         await client.query('ROLLBACK').catch(() => {});
+        if (sendAttendanceScopeFailure(res, error)) return;
         if (error.statusCode === 409 || error.statusCode === 423) {
             return res.status(error.statusCode).json({ success: false, code: error.code, error: error.message });
         }
@@ -6859,9 +6898,10 @@ router.post('/clock-out', requireHrManage, async (req, res) => {
         const businessContext = hrBusinessContextFromRequest(req);
         await client.query('BEGIN');
         let recordDate = today;
+        let recordBusinessContext = businessContext;
         if (recordId) {
             const { rows: [target] } = await client.query(
-                `SELECT record_date::text AS record_date
+                `SELECT record_date::text AS record_date, COALESCE(business_context, 'event_genix') AS business_context
                  FROM hr_time_records
                  WHERE id = $1 AND staff_id = $2
                    AND COALESCE(business_context, 'event_genix') = $3
@@ -6874,12 +6914,14 @@ router.post('/clock-out', requireHrManage, async (req, res) => {
                     error: 'Запис зміни не знайдено. Оновіть список.' });
             }
             recordDate = target.record_date;
+            recordBusinessContext = target.business_context;
             const month = recordDate.slice(0, 7);
             await lockPayrollPeriodMutation(month, client);
             await acquirePayrollPeriodMutationLock(client, month);
             await assertPayrollPeriodOpen(month, client);
         }
         await lockAttendanceWriteTarget(client, { staffId, date: recordDate });
+        await assertAttendanceStaffScope(client, req, staffId, recordBusinessContext);
         const clockOutResult = await recordAttendanceClockOut(client, {
             staffId,
             recordDate,
@@ -6901,6 +6943,7 @@ router.post('/clock-out', requireHrManage, async (req, res) => {
         });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
+        if (sendAttendanceScopeFailure(res, err)) return;
         log.error('POST /hr/clock-out error', err);
         if (['ATTENDANCE_CLOCK_IN_REQUIRED', 'ATTENDANCE_ARRIVAL_CHANGED', 'ATTENDANCE_EXIT_BEFORE_ARRIVAL',
             'ATTENDANCE_BREAK_OUTSIDE_SHIFT'].includes(err?.code)) {
@@ -6929,6 +6972,7 @@ router.post('/mark-absent', requireHrManage, async (req, res) => {
         const today = todayKyiv();
         await client.query('BEGIN');
         await lockAttendanceWriteTarget(client, { staffId, date: today });
+        await assertAttendanceStaffScope(client, req, staffId, hrBusinessContextFromRequest(req));
         const result = await recordAttendanceStatus(client, {
             staffId,
             recordDate: today,
@@ -6945,6 +6989,7 @@ router.post('/mark-absent', requireHrManage, async (req, res) => {
         res.json({ success: true, data: result.record });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
+        if (sendAttendanceScopeFailure(res, err)) return;
         log.error('POST /hr/mark-absent error', err);
         if (err?.code === 'ATTENDANCE_STATUS_CONFLICT') {
             return res.status(err.statusCode || 409).json({ success: false, code: err.code, error: err.message });
@@ -6990,8 +7035,8 @@ router.put('/records/:id/correct', requireHrManage, async (req, res) => {
         // Resolve the advisory-lock target before taking the row lock so all
         // attendance writers keep the same lock ordering.
         const target = await client.query(
-            `SELECT staff_id, record_date::text AS record_date FROM hr_time_records
-              WHERE id = $1 AND COALESCE(business_context, 'event_genix') = $2`,
+            `SELECT staff_id, record_date::text AS record_date, COALESCE(business_context, 'event_genix') AS business_context
+              FROM hr_time_records WHERE id = $1 AND COALESCE(business_context, 'event_genix') = $2`,
             [req.params.id, hrBusinessContextFromRequest(req)]
         );
         if (target.rows.length === 0) {
@@ -6999,6 +7044,13 @@ router.put('/records/:id/correct', requireHrManage, async (req, res) => {
             return res.status(404).json({ success: false, error: 'Не знайдено' });
         }
 
+        const recordStaffId = Number(target.rows[0].staff_id);
+        if (req.body.staff_id !== undefined && parsePositiveSafeInteger(req.body.staff_id) !== recordStaffId) {
+            const error = new Error('Запис табеля не відповідає вибраному працівнику.');
+            error.code = 'ATTENDANCE_TARGET_MISMATCH';
+            error.statusCode = 400;
+            throw error;
+        }
         const recordDate = target.rows[0].record_date;
         const month = recordDate.slice(0, 7);
         await lockPayrollPeriodMutation(month, client);
@@ -7008,6 +7060,8 @@ router.put('/records/:id/correct', requireHrManage, async (req, res) => {
             staffId: target.rows[0].staff_id,
             date: recordDate
         });
+
+        await assertAttendanceStaffScope(client, req, recordStaffId, target.rows[0].business_context);
 
         if (break_action !== undefined) {
             let endedAt = break_ended_at;
@@ -7266,6 +7320,7 @@ router.put('/records/:id/correct', requireHrManage, async (req, res) => {
         });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
+        if (sendAttendanceScopeFailure(res, err)) return;
         if (err.code?.startsWith('ATTENDANCE_BREAK_') || err.code === 'FREELANCE_ATTENDANCE_LOCKED') {
             return res.status(err.statusCode).json({ success: false, code: err.code, error: err.message });
         }

@@ -2052,10 +2052,6 @@ body.staff-schedule-hr-mode #hrStaffScheduleShell .staff-schedule-command {
     text-shadow: 0 1px 0 rgba(255,255,255,0.62);
 }
 
-body.staff-schedule-hr-mode #bulkCreateBtn {
-    display: none !important;
-}
-
 body[data-page-group="hr"] .staff-schedule-command-bar {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
@@ -7410,12 +7406,6 @@ body.dark-mode .sch-segment-more.is-section-role,
     max-width: 480px;
 }
 
-#bulkResultsOverlay .sch-modal {
-    max-width: 640px;
-    max-height: 80vh;
-    overflow-y: auto;
-}
-
 #fillStaffSelect {
     width: 100%;
 }
@@ -7453,14 +7443,9 @@ body.dark-mode .sch-segment-more.is-section-role,
     border-radius: var(--radius-sm);
 }
 
-#bulkResultsOverlay .modal-actions {
-    margin-top: 12px;
-}
-
 #schModalOverlay .modal-actions > button,
 #fillWeekOverlay .modal-actions > button,
-#linkModalOverlay .modal-actions > button,
-#bulkResultsOverlay .modal-actions > button {
+#linkModalOverlay .modal-actions > button {
     flex: 1;
 }
 

@@ -85,16 +85,16 @@ async function verifyTaskEntry({ origin, session, evidence }) {
         page.setDefaultTimeout(20000);
         const navigate = async url => { await settleBootstrapReads(page); return page.goto(url); };
         const reload = async () => { await settleBootstrapReads(page); return page.reload(); };
-        const api = async (endpoint, body) => {
-            const response = await fetch(origin + endpoint, { method: body ? 'POST' : 'GET', headers: {
-                authorization: 'Bearer ' + session.token, 'content-type': 'application/json'
+        const api = async (endpoint, body, options = {}) => {
+            const response = await fetch(origin + endpoint, { method: options.method || (body ? 'POST' : 'GET'), headers: {
+                authorization: 'Bearer ' + (options.token || session.token), 'content-type': 'application/json'
             }, ...(body ? { body: JSON.stringify(body) } : {}) });
             assert.ok(response.ok, `${endpoint}: ${response.status}`);
             return response.json();
         };
         try {
             const created = await api('/api/tasks', { title: `Task entry ${engine}`, description: 'Local navigation fixture',
-                task_mode: 'personal', assigned_to: session.user.username, owner_user_id: session.user.id,
+                task_mode: 'personal', visibility: 'team', assigned_to: session.user.username, owner_user_id: session.user.id,
                 date: '2099-11-20', priority: 'normal' });
             const id = created.task?.id || created.data?.id || created.id;
             assert.ok(id);
@@ -181,14 +181,39 @@ async function verifyTaskEntry({ origin, session, evidence }) {
             assert.equal((saved.task || saved).priority, 'high');
             await dialog.locator('[data-dialog-edit]').click();
             await editor.locator('[name=description]').fill('Independent editor draft');
-            await page.route(`**/api/tasks/${id}/reschedule*`, route => route.fulfill({ status: 503, json: { success: false, error: 'Local schedule retry' } }), { times: 1 });
+            const schedulePath = '/api/tasks/' + id + '/reschedule';
+            const scheduleAttempts = [];
+            let committedSchedule;
+            const initialSchedule = await api('/api/tasks/' + id);
+            await page.route(url => url.pathname === schedulePath, async route => {
+                scheduleAttempts.push(route.request().postDataJSON());
+                if (scheduleAttempts.length === 1) return route.abort('failed');
+                committedSchedule = await route.fetch({ maxRetries: 0 });
+                return route.abort('failed');
+            }, { times: 2 });
             await dialog.locator('[data-dialog-schedule] [name=date]').fill('2099-11-21');
             await dialog.getByRole('button', { name: 'Перенести', exact: true }).click();
-            await dialog.getByRole('alert').waitFor();
-            assert.equal(await scheduleDate.inputValue(), '2099-11-21', 'failed schedule retains the date');
+            const checkOutcome = dialog.getByRole('button', { name: 'Перевірити результат', exact: true });
+            await checkOutcome.waitFor();
+            assert.equal(await dialog.getByRole('button', { name: 'Перенести', exact: true }).isDisabled(), true);
+            assert.equal((await api('/api/tasks/' + id)).version, initialSchedule.version, 'aborted before dispatch leaves the version unchanged');
+            assert.equal(await scheduleDate.inputValue(), '2099-11-21', 'unknown schedule retains the date');
             assert.equal(await editor.locator('[name=description]').inputValue(), 'Independent editor draft');
-            await dialog.getByRole('button', { name: 'Перенести', exact: true }).click();
+            await checkOutcome.click();
+            await dialog.getByRole('button', { name: 'Повторити ту саму дію', exact: true }).click();
+            await checkOutcome.waitFor();
+            assert.equal(committedSchedule.status(), 200, 'the second request committed before its response was lost');
+            assert.equal(scheduleAttempts.length, 2);
+            assert.deepEqual(scheduleAttempts[1], scheduleAttempts[0], 'the user retry reuses the operation and expected version');
+            const afterCommit = await api('/api/tasks/' + id);
+            assert.equal(afterCommit.version, initialSchedule.version + 1);
+            assert.equal(afterCommit.myDayOperation.id, scheduleAttempts[0].myDayOperationId);
+            await checkOutcome.click();
             await dialog.locator('time[datetime="2099-11-21"]').waitFor();
+            await checkOutcome.waitFor({ state: 'hidden' });
+            const history = (await api('/api/tasks/' + id + '/history')).history;
+            assert.equal(history.filter(event => event.meta?.idempotencyKey?.endsWith(':' + scheduleAttempts[0].myDayOperationId)).length, 1);
+            assert.equal((await api('/api/tasks/' + id)).version, initialSchedule.version + 1, 'readback must not cause a second mutation');
             assert.equal(await editor.locator('[name=description]').inputValue(), 'Independent editor draft', 'rescheduling preserves editor draft');
             await editor.locator('[name=description]').fill('Local navigation fixture');
             assert.equal(await dialog.getAttribute('data-dirty'), 'false', 'restoring original inputs clears dirty state');
@@ -228,12 +253,74 @@ async function verifyTaskEntry({ origin, session, evidence }) {
             await dialog.locator('.park-task-dialog-description').filter({ hasText: 'Saved before reload failure' }).waitFor();
             assert.equal(recoveryWrites, 1, 'reload recovery must never repeat an accepted mutation');
             page.off('request', recoveryRequest);
-            await page.route(`**/api/tasks/${id}/complete*`, route => route.fulfill({ status: 503, json: { success: false, error: 'Local QA retry' } }), { times: 1 });
+
+            const beforeLostEdit = await api('/api/tasks/' + id);
+            let committedEdit;
+            await page.route(saveUrl, async route => {
+                if (route.request().method() !== 'PUT') return route.fallback();
+                committedEdit = await route.fetch({ maxRetries: 0 });
+                return route.abort('failed');
+            });
+            await dialog.locator('[data-dialog-edit]').click();
+            await editor.locator('[name=description]').fill('Committed edit before response loss');
+            await editor.getByRole('button', { name: 'Зберегти', exact: true }).click();
+            await checkOutcome.waitFor();
+            assert.equal(committedEdit.status(), 200);
+            await page.unroute(saveUrl);
+            await checkOutcome.click();
+            await dialog.locator('.park-task-dialog-description').filter({ hasText: 'Committed edit before response loss' }).waitFor();
+            assert.equal((await api('/api/tasks/' + id)).version, beforeLostEdit.version + 1);
+
+            const { randomBytes: randomEditorBytes } = require('node:crypto');
+            const peerUsername = 'qa_task_editor_' + randomEditorBytes(6).toString('hex');
+            const peerPassword = 'Local-' + randomEditorBytes(18).toString('hex') + '-Aa9';
+            await api('/api/users', { username: peerUsername, password: peerPassword, name: 'Local concurrent editor',
+                role: 'director', businessContexts: ['event_genix'], defaultBusinessContext: 'event_genix' });
+            const peer = await api('/api/auth/login', { username: peerUsername, password: peerPassword });
+            assert.notEqual(peer.user.id, session.user.id);
+            const snapshot = await api('/api/tasks/' + id);
+            await dialog.locator('[data-dialog-edit]').click();
+            await editor.locator('[name=description]').fill('Reconciled local description');
+            await api('/api/tasks/' + id, { description: 'Concurrent change from another user', priority: 'low',
+                status: 'in_progress', version: snapshot.version }, { method: 'PUT', token: peer.token });
+            const [staleResponse] = await Promise.all([
+                page.waitForResponse(response => saveUrl(new URL(response.url())) && response.request().method() === 'PUT'),
+                editor.getByRole('button', { name: 'Зберегти', exact: true }).click()
+            ]);
+            assert.equal(staleResponse.status(), 409);
+            const stalePayload = staleResponse.request().postDataJSON();
+            assert.deepEqual(Object.keys(stalePayload).sort(), ['description', 'myDayOperationId', 'sourceSurface', 'version']);
+            assert.equal(stalePayload.version, snapshot.version);
+            assert.equal((await api('/api/tasks/' + id)).description, 'Concurrent change from another user');
+            assert.equal(await editor.locator('[name=description]').inputValue(), 'Reconciled local description');
+            await dialog.getByRole('button', { name: 'Переглянути актуальну версію' }).click();
+            await editor.getByText('Опис: Concurrent change from another user', { exact: true }).waitFor();
+            assert.equal(await editor.locator('[name=description]').inputValue(), 'Reconciled local description');
+            await editor.getByRole('button', { name: 'Зберегти', exact: true }).click();
+            await dialog.locator('.park-task-dialog-description').filter({ hasText: 'Reconciled local description' }).waitFor();
+            const resolved = await api('/api/tasks/' + id);
+            assert.equal(resolved.description, 'Reconciled local description');
+            assert.equal(resolved.priority, 'low');
+            assert.equal(resolved.status, 'in_progress');
+            assert.equal(resolved.version, snapshot.version + 2);
+
+            await page.route(`**/api/tasks/${id}/complete*`, route => route.fulfill({ status: 422, json: { success: false, error: 'Local confirmed denial' } }), { times: 1 });
             await dialog.getByRole('button', { name: 'Виконати', exact: true }).click();
             await dialog.getByRole('alert').waitFor();
             assert.equal(new URL(page.url()).pathname, '/profile');
+            assert.equal(await checkOutcome.count(), 0, 'confirmed denial is not an unknown outcome');
+            const beforeCompletion = await api('/api/tasks/' + id);
+            await page.route(url => url.pathname === '/api/tasks/' + id + '/complete', async route => {
+                assert.equal((await route.fetch({ maxRetries: 0 })).status(), 200);
+                return route.abort('failed');
+            }, { times: 1 });
             await dialog.getByRole('button', { name: 'Виконати', exact: true }).click();
+            await checkOutcome.click();
             await dialog.getByText('Виконано', { exact: true }).waitFor();
+            await checkOutcome.waitFor({ state: 'hidden' });
+            const afterCompletion = await api('/api/tasks/' + id);
+            assert.equal(afterCompletion.version, beforeCompletion.version + 1);
+            assert.equal(afterCompletion.myDayOperation.kind, 'complete');
             assert.equal(await dialog.locator('[data-dialog-complete]').count(), 0);
             await navigate(origin + '/profile?tab=myday&open=2147483647');
             await dialog.getByText('Задача недоступна або її видалено.', { exact: true }).waitFor();
@@ -252,7 +339,7 @@ async function verifyTaskEntry({ origin, session, evidence }) {
             const darTitle = `Task scope ${engine}`;
             const dar = await api('/api/tasks?businessContext=dar', { title: darTitle, description: 'Cross-context fixture',
                 task_mode: 'personal', assigned_to: session.user.username, owner_user_id: session.user.id,
-                date: '2099-11-20', priority: 'normal' });
+                date: '2099-11-20', priority: 'high' });
             const darId = dar.task?.id || dar.data?.id || dar.id;
             const scopedVerify = await api('/api/auth/verify?businessContext=dar');
             assert.equal(scopedVerify.user.activeBusinessContext, 'dar', 'canonical verify query resolves Dar membership on the server');
@@ -260,6 +347,41 @@ async function verifyTaskEntry({ origin, session, evidence }) {
             const darLink = search.results.tasks.find(task => Number(task.id) === Number(darId))?.href;
             assert.ok(darLink, 'search must return the visible Dar fixture');
             assert.equal(new URL(darLink, origin).searchParams.get('businessContext'), 'dar', 'search retains task business context');
+            const scopedPark = await api('/api/tasks?businessContext=event_genix', { title: 'Park link scope fixture ' + engine,
+                visibility: 'team', task_mode: 'work', owner_user_id: session.user.id, priority: 'high' });
+            const parkLinkId = Number(scopedPark.task.id);
+            const scopes = [
+                ['businessContext=dar', [[Number(darId), 'dar']]],
+                ['businessContext=event_genix', [[parkLinkId, 'event_genix']]],
+                ['businessContext=event_genix&businessScope=multi&businessContexts=event_genix,dar', [[parkLinkId, 'event_genix'], [Number(darId), 'dar']]],
+                ['businessContext=event_genix&businessScope=all', [[parkLinkId, 'event_genix'], [Number(darId), 'dar']]]
+            ];
+            const { taskUrl } = require('../../js/task-links');
+            for (const [query, expected] of scopes) {
+                const widget = await api('/api/dashboard/widgets/team_tasks?' + query);
+                const received = widget.data.tasks.filter(item => [parkLinkId, Number(darId)].includes(Number(item.id)));
+                assert.equal(received.length, expected.length, 'dashboard fixtures in ' + query);
+                for (const [taskId, businessContext] of expected) {
+                    const item = received.find(row => Number(row.id) === taskId);
+                    assert.ok(item, 'dashboard includes explicitly scoped fixture ' + taskId);
+                    assert.equal(new URL(taskUrl(item.id, { businessContext: item.business_context }), origin)
+                        .searchParams.get('businessContext'), businessContext);
+                }
+            }
+            const operations = await api('/api/center/operations/today?businessContext=event_genix');
+            await navigate(origin + '/center?businessContext=event_genix');
+            await page.getByRole('tab', { name: 'Зміна', exact: true }).click();
+            for (const [taskId, businessContext] of scopes.at(-1)[1]) {
+                const row = operations.openTasks.find(task => Number(task.id) === taskId);
+                assert.equal(row?.businessContext, businessContext);
+                const link = page.locator('#operationsCenter .center-ops-row').filter({ hasText: row.title })
+                    .getByRole('link', { name: 'Відкрити', exact: true });
+                await link.waitFor();
+                const url = new URL(await link.getAttribute('href'), origin);
+                assert.equal(url.searchParams.get('open'), String(taskId));
+                assert.equal(url.searchParams.get('businessContext'), businessContext);
+            }
+            console.log(`Task entry ${engine}: dashboard, search and Operations Center scopes verified.`);
             // Park is the active context before opening the Dar task in a second tab.
             await navigate(origin + href);
             const parkTitle = process.env.TASK_ENTRY_CONTEXT_ONLY === '1' ? `Task entry ${engine}` : `Task entry saved ${engine}`;
@@ -267,6 +389,11 @@ async function verifyTaskEntry({ origin, session, evidence }) {
             // Keep Park active: the new task entry must converge both tabs to Dar,
             // without the account-default verify response publishing Park again.
             await settleBootstrapReads(page);
+            const dirtyTitle = 'Unsubmitted title in the previous business';
+            const dirtyDate = '2099-11-25';
+            await dialog.locator('[data-dialog-edit]').click();
+            await dialog.locator('[name=title]').fill(dirtyTitle);
+            await dialog.locator('[data-dialog-schedule] [name=date]').fill(dirtyDate);
             const otherTab = await context.newPage();
             try {
                 await otherTab.goto(origin + darLink);
@@ -281,6 +408,25 @@ async function verifyTaskEntry({ origin, session, evidence }) {
                     })));
                     throw error;
                 });
+                const recovery = page.getByRole('dialog', { name: 'Активний бізнес змінився' });
+                await recovery.waitFor();
+                assert.equal(await recovery.getByRole('button', { name: 'Зберегти', exact: true }).count(), 0);
+                assert.equal(await page.locator('#mainApp').isVisible(), true);
+                await page.bringToFront();
+                await page.keyboard.press('Tab');
+                const nativeWarning = page.waitForEvent('dialog', { predicate: prompt => prompt.type() === 'beforeunload' });
+                await page.evaluate(() => { setTimeout(() => location.reload(), 50); });
+                await (await nativeWarning).dismiss();
+                assert.equal(await recovery.isVisible(), true, 'canceling a native reload leaves the recovery form available');
+                assert.equal(await page.locator('#mainApp').isVisible(), true, 'canceling the reload leaves the shell visible');
+                await page.keyboard.press('Escape');
+                assert.equal(await recovery.isVisible(), true, 'Escape leaves the recovery choice available');
+                await Promise.all([
+                    page.waitForEvent('framenavigated', { predicate: frame => frame === page.mainFrame()
+                        && new URL(frame.url()).searchParams.get('businessContext') === 'dar' }),
+                    recovery.getByRole('button', { name: 'Зберегти чернетку в цій вкладці та перейти' }).click()
+                ]);
+                await page.waitForLoadState('domcontentloaded');
                 await settleBootstrapReads(otherTab);
                 const generation = await otherTab.evaluate(() => localStorage.getItem('pzp_auth_session_generation'));
                 await otherTab.reload();
@@ -295,12 +441,50 @@ async function verifyTaskEntry({ origin, session, evidence }) {
                     await otherTab.screenshot({ path: path.join(evidence, `task-entry-context-reload-failure-${engine}.png`), animations: 'disabled', timeout: 5000 });
                     throw error;
                 });
-                await page.waitForURL(url => url.searchParams.get('businessContext') === 'dar');
+                await page.waitForURL(url => url.searchParams.get('businessContext') === 'dar'
+                    && !url.searchParams.has('open') && !url.searchParams.has('mode') && !url.searchParams.has('date'));
+                await page.locator('.park-task-dialog[open]').waitFor({ state: 'hidden' });
                 await settleBootstrapReads(page);
+                assert.equal(new URL(page.url()).searchParams.get('tab'), 'myday');
+                assert.equal(new URL(otherTab.url()).searchParams.get('open'), String(darId));
                 await settleBootstrapReads(otherTab);
                 assert.equal(await otherTab.evaluate(prior => localStorage.getItem('pzp_auth_session_generation') === prior, generation), true,
                     'Dar reload and shared-context convergence must not rotate generation back through Park');
             } finally { await settleBootstrapReads(otherTab); await verifyBackgroundReadback(otherTab); await otherTab.close(); }
+            await navigate(origin + href);
+            await dialog.getByRole('heading', { name: parkTitle }).waitFor();
+            assert.equal(await dialog.locator('[name=title]').inputValue(), dirtyTitle, 'Returning to the original actor/business/task restores the draft');
+            assert.equal(await dialog.locator('[data-dialog-schedule] [name=date]').inputValue(), dirtyDate, 'The date draft survives alongside the editor draft');
+            console.log(`Task entry ${engine}: native reload canceled and both drafts recovered.`);
+            await dialog.getByRole('button', { name: 'Відкинути зміни та закрити' }).click();
+            await dialog.waitFor({ state: 'hidden' });
+            await navigate(origin + href);
+            await dialog.getByRole('heading', { name: parkTitle }).waitFor();
+            await dialog.locator('[data-dialog-schedule] [name=date]').fill(dirtyDate);
+            const dateTransitionTab = await context.newPage();
+            try {
+                await dateTransitionTab.goto(origin + darLink);
+                await dateTransitionTab.locator('.park-task-dialog[open]').getByRole('heading', { name: darTitle, exact: true }).waitFor();
+                const recovery = page.getByRole('dialog', { name: 'Активний бізнес змінився' });
+                await recovery.waitFor();
+                await recovery.getByRole('button', { name: 'Відкинути чернетку та перейти' }).waitFor();
+                await page.bringToFront();
+                await page.keyboard.press('Tab');
+                const nativeWarning = page.waitForEvent('dialog', { predicate: prompt => prompt.type() === 'beforeunload' });
+                await page.evaluate(() => { setTimeout(() => location.reload(), 50); });
+                await Promise.all([page.waitForEvent('framenavigated', { predicate: frame => frame === page.mainFrame() }),
+                    nativeWarning.then(prompt => prompt.accept())]);
+                await page.waitForLoadState('domcontentloaded');
+                await page.waitForURL(url => url.searchParams.get('businessContext') === 'dar' && !url.searchParams.has('open'));
+                await recovery.waitFor({ state: 'hidden' });
+                await page.locator('#mainApp').waitFor({ state: 'visible' });
+                await dateTransitionTab.locator('.park-task-dialog[open]').getByRole('heading', { name: darTitle, exact: true }).waitFor();
+            } finally {
+                await settleBootstrapReads(dateTransitionTab);
+                await verifyBackgroundReadback(dateTransitionTab);
+                await dateTransitionTab.close();
+            }
+            console.log(`Task entry ${engine}: native reload accepted with date-only draft.`);
             const { randomBytes } = require('node:crypto');
             const deniedUsername = `task_scope_${randomBytes(6).toString('hex')}`;
             const deniedPassword = `Local-${randomBytes(18).toString('hex')}-Aa9`;
@@ -314,6 +498,23 @@ async function verifyTaskEntry({ origin, session, evidence }) {
             await navigate(origin + '/tasks');
             assert.equal(new URL(page.url()).pathname, '/tasks');
             await verifyBackgroundReadback(page);
+            // The legacy page can keep background requests open. Start the logout
+            // check from the task document, and prove its authenticated readback.
+            await page.goto(origin + href, { waitUntil: 'domcontentloaded' });
+            await dialog.getByRole('heading', { name: parkTitle }).waitFor();
+            await verifyBackgroundReadback(page);
+            await dialog.locator('[data-dialog-schedule] [name=date]').fill(dirtyDate);
+            const logoutTab = await context.newPage();
+            try {
+                await logoutTab.goto(origin + '/profile?tab=myday&businessContext=event_genix');
+                await settleBootstrapReads(logoutTab);
+                await logoutTab.locator('#logoutBtn').click();
+                await dialog.waitFor({ state: 'hidden' });
+                await page.locator('#loginForm').waitFor({ state: 'visible' });
+                assert.equal(await page.evaluate(() => AppState.currentUser), null);
+                assert.equal(await page.getByRole('dialog', { name: 'Активний бізнес змінився' }).count(), 0);
+            } finally { await logoutTab.close(); }
+            console.log(`Task entry ${engine}: shared logout closed the dirty dialog.`);
             // WebKit may emit a navigation-time access-control page error without
             // requestfailed. Require a <=100ms same-page navigation and successful
             // native browser readback; explicit CORS/network failures stay fatal.

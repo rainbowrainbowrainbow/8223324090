@@ -1,6 +1,8 @@
 'use strict';
 
 const { resolveCapability } = require('./accountAccessPolicy');
+const { loadMembershipAccess, applyMembershipAccess } = require('./businessMembership');
+const { DEFAULT_BUSINESS_CONTEXT } = require('./businessContext');
 
 async function loadStaffScheduleScope(db, user) {
     if (!resolveCapability(user, 'hr.schedule.manage').allowed) return { scope: 'read', editableStaffIds: [] };
@@ -26,6 +28,48 @@ async function assertStaffScheduleTarget(db, user, staffId) {
     return scope.scope === 'business' || scope.editableStaffIds.includes(Number(staffId));
 }
 
+function canWriteScheduleTargets(scope, staffIds) {
+    return scope?.scope === 'business' || (scope?.scope === 'team' && scope.editableStaffIds.length > 0
+        && staffIds.every(id => scope.editableStaffIds.includes(Number(id))));
+}
+
+async function loadLockedTeamScheduleScope(client, user, staffIds) {
+    const denied = { scope: 'team', editableStaffIds: [] };
+    const membership = user?.activeBusinessMembership;
+    if (membership?.businessContext !== DEFAULT_BUSINESS_CONTEXT || user.businessMembershipAccess?.invalid) return denied;
+    // Keep both the role decision and structural links stable until this transaction commits.
+    const membershipLock = await client.query(
+        `SELECT bm.user_id FROM business_memberships bm
+          JOIN businesses b ON b.id = bm.business_id AND b.organization_id = bm.organization_id
+          JOIN organization_memberships om ON om.user_id = bm.user_id AND om.organization_id = b.organization_id
+          JOIN organizations o ON o.id = b.organization_id
+         WHERE bm.user_id = $1 AND b.context_key = $2 AND bm.is_active IS TRUE AND om.is_active IS TRUE
+           AND b.status = 'active' AND o.status = 'active'
+         FOR SHARE OF bm, b, om, o`,
+        [user.id, DEFAULT_BUSINESS_CONTEXT]
+    );
+    if (membershipLock.rows.length !== 1) return denied;
+    const currentAccess = await loadMembershipAccess(client, user, DEFAULT_BUSINESS_CONTEXT);
+    if (currentAccess.invalid || !currentAccess.activeMembership) return denied;
+    const currentUser = applyMembershipAccess(user, currentAccess);
+    if (!resolveCapability(currentUser, 'hr.schedule.manage').allowed) return denied;
+    const profile = await client.query(
+        `SELECT staff_id FROM employee_profiles WHERE user_id = $1 AND is_active IS TRUE
+         ORDER BY id FOR SHARE`, [user.id]
+    );
+    const actorStaffId = Number(profile.rows[0]?.staff_id);
+    if (profile.rows.length !== 1 || !Number.isSafeInteger(actorStaffId) || actorStaffId <= 0) return denied;
+    const ids = [...new Set([actorStaffId, ...staffIds.map(Number)])].sort((a, b) => a - b);
+    const result = await client.query(
+        `SELECT id, is_active, company_structure_node_id FROM staff
+         WHERE id = ANY($1::int[]) ORDER BY id FOR UPDATE`, [ids]
+    );
+    const actor = result.rows.find(row => Number(row.id) === actorStaffId);
+    if (!actor?.is_active || !actor.company_structure_node_id) return denied;
+    return { scope: 'team', editableStaffIds: result.rows.filter(row => row.is_active
+        && row.company_structure_node_id === actor.company_structure_node_id).map(row => Number(row.id)) };
+}
+
 function createStaffScheduleScopeGuard(db) {
     return async (req, res, next) => {
         const path = String(req.path || '/').replace(/\/$/, '') || '/';
@@ -42,7 +86,12 @@ function createStaffScheduleScopeGuard(db) {
             let ids = [];
             if (path === '/schedule') ids = [req.body?.staffId ?? req.body?.staff_id];
             else if (path === '/schedule/bulk') ids = (req.body?.entries || []).map(row => row.staffId ?? row.staff_id);
-            else if (path === '/schedule/copy-week') ids = req.body?.staffIds || req.body?.staff_ids || [];
+            else if (path === '/schedule/copy-week') {
+                // The route resolves and authorizes the actual raw department targets.
+                const department = String(req.body?.department || '').trim();
+                if (department && department !== 'all' && !(req.body?.staffIds ?? req.body?.staff_ids)) return next();
+                ids = req.body?.staffIds || req.body?.staff_ids || [];
+            }
             else if (/^\/\d+\/shift-preferences$/.test(path)) ids = [path.split('/')[1]];
             else {
                 const match = path.match(/^\/schedule\/(\d+)\/(replace|replacement-clear)$/);
@@ -64,4 +113,5 @@ function createStaffScheduleScopeGuard(db) {
     };
 }
 
-module.exports = { loadStaffScheduleScope, assertStaffScheduleTarget, createStaffScheduleScopeGuard };
+module.exports = { loadStaffScheduleScope, assertStaffScheduleTarget, createStaffScheduleScopeGuard,
+    canWriteScheduleTargets, loadLockedTeamScheduleScope };

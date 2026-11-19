@@ -14,6 +14,7 @@ const {
     logTaskActionEvent
 } = require('./taskActionHistory');
 const { appendTaskBusinessScopeSql } = require('./taskBusinessScope');
+const { assertMyDayTaskOperationVersion } = require('./myDayTaskOperation');
 const {
     derivePostponementPriority,
     normalizePostponementCount,
@@ -282,6 +283,7 @@ async function applyCanonicalRescheduleMutation(query, task, patch, actor = {}, 
     if (existingEvent) {
         return { task: normalizeTaskRow(task), historyEvent: existingEvent, idempotent: true, unchanged: true };
     }
+    assertMyDayTaskOperationVersion(task, options.myDayOperation);
     const normalizedPatch = normalizePatch(patch);
     if (!Object.keys(normalizedPatch).length) {
         const err = new Error('A canonical task due or schedule change is required');
@@ -444,7 +446,10 @@ async function rescheduleTask(taskId, deadline, actor = {}, options = {}) {
             err.code = 'TASK_OWNER_STALE_WRITE';
             throw err;
         }
-        return applyCanonicalRescheduleMutation(query, task, deadlinePatch(task, deadline, options), actor, {
+        const patchOptions = options.myDayOperation
+            ? { ...options, controlMetaPatch: { ...options.controlMetaPatch, myDayOperation: options.myDayOperation } }
+            : options;
+        return applyCanonicalRescheduleMutation(query, task, deadlinePatch(task, deadline, patchOptions), actor, {
             ...options,
             meta: {
                 ...(options.meta || {}),

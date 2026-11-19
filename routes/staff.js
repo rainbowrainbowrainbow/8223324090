@@ -145,11 +145,12 @@ const {
     prepareHrFixtureQa, claimHrFixtureQa, assertHrFixtureCreate, requireHrQaEntity, registerHrQaEntity
 } = require('../services/hrFixtureQa');
 const { checkinJournalDate } = require('../services/parkStaffCheckinJournalRead');
+const { createStaffScheduleScopeGuard, canWriteScheduleTargets, loadLockedTeamScheduleScope } = require('../services/staffScheduleScope');
 const log = createLogger('Staff');
 
 // v39.8: Security — require authentication for all staff endpoints
 router.use(authenticateToken);
-router.use(require('../services/staffScheduleScope').createStaffScheduleScopeGuard(pool));
+router.use(createStaffScheduleScopeGuard(pool));
 router.use(requireLegacyBusinessSurface('staff', { parkScheduleRouter: 'staff', parkCheckinJournalRead: true }));
 router.use(require('../services/staffScheduleFieldAccess').installStaffScheduleFieldAccess);
 // Compensation snapshots now include base wages; keep the existing payroll-view boundary.
@@ -1495,7 +1496,16 @@ router.post('/schedule/bulk', requireAction('hr.schedule.manage'), async (req, r
             const orderedEntries = [...validatedEntries.entries].sort((left, right) =>
                 Number(left.staffId) - Number(right.staffId)
                 || String(left.date || '').localeCompare(String(right.date || '')));
-            await lockScheduleStaffRows(client, orderedEntries.map(entry => entry.staffId));
+            if (req.staffScheduleScope?.scope === 'team') {
+                const scope = await loadLockedTeamScheduleScope(client, req.user, bulkStaffIds);
+                if (!canWriteScheduleTargets(scope, bulkStaffIds)) {
+                    await client.query('ROLLBACK');
+                    return res.status(403).json({ success: false, code: 'schedule_team_scope_required',
+                        error: 'Зміна графіка дозволена лише для працівників вашого підтвердженого підрозділу.' });
+                }
+            } else {
+                await lockScheduleStaffRows(client, bulkStaffIds);
+            }
             const staffCards = await loadStaffScheduleabilityCards(client, bulkStaffIds);
             const previousPlans = await loadHrShiftDayPlansForStaffDates(client, orderedEntries);
             const previousScheduleEntries = await loadScheduleEntriesForUpdate(client, orderedEntries);
@@ -1607,6 +1617,10 @@ router.post('/schedule/copy-week', requireAction('hr.schedule.manage'), async (r
             });
         }
         const copyMode = staffIds.length ? 'explicit_staff_ids' : (department ? 'raw_department' : 'all');
+        const teamScoped = req.staffScheduleScope?.scope === 'team';
+        const forbidden = () => res.status(403).json({ success: false, code: 'schedule_team_scope_required',
+            error: 'Вибрана група містить працівників поза вашим підрозділом або доступ до підрозділу не підтверджено.' });
+        if (teamScoped && copyMode === 'all') return forbidden();
 
         // Build date pairs (Mon→Mon, Tue→Tue, etc.)
         const fromDates = scheduleDateSequence(normalizedFromMonday, STAFF_COPY_WEEK_DATE_COUNT);
@@ -1633,6 +1647,8 @@ router.post('/schedule/copy-week', requireAction('hr.schedule.manage'), async (r
             || normalizeScheduleDate(left.date).localeCompare(normalizeScheduleDate(right.date)));
         const sourceStaffIds = [...new Set(sourceRows.map(row => Number(row.staff_id)).filter(Number.isFinite))]
             .sort((a, b) => a - b);
+        const targetStaffIds = staffIds.length ? staffIds : sourceStaffIds;
+        if (teamScoped && !canWriteScheduleTargets(req.staffScheduleScope, targetStaffIds)) return forbidden();
         let conflicts = 0;
         if (sourceStaffIds.length) {
             const conflictResult = await pool.query(
@@ -1671,7 +1687,15 @@ router.post('/schedule/copy-week', requireAction('hr.schedule.manage'), async (r
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
-            await lockScheduleStaffRows(client, sourceStaffIds);
+            if (teamScoped) {
+                const lockedScope = await loadLockedTeamScheduleScope(client, req.user, targetStaffIds);
+                if (!canWriteScheduleTargets(lockedScope, targetStaffIds)) {
+                    await client.query('ROLLBACK');
+                    return forbidden();
+                }
+            } else {
+                await lockScheduleStaffRows(client, sourceStaffIds);
+            }
             const freshSource = await client.query(
                 `${sql}
                  ORDER BY ss.staff_id, ss.date, ss.id`,

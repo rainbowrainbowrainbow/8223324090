@@ -252,7 +252,8 @@ test('schedule Telegram notifications render all segment blocks in one message',
 test('schedule writers acquire staff locks in stable order before parent and mirror rows', () => {
     assert.match(staffScheduleMutations, /WHERE id = ANY\(\$1::int\[\]\)[^]*?ORDER BY id[^]*?FOR UPDATE/);
     assert.match(hrRoute, /lockScheduleStaffRows,[^]*?require\('\.\.\/services\/staffScheduleMutations'\)/);
-    assert.match(staffRoute, /lockScheduleStaffRows\(client, orderedEntries\.map\(entry => entry\.staffId\)\)/);
+    const bulk = staffRoute.slice(staffRoute.indexOf('const orderedEntries ='), staffRoute.indexOf('for (const e of orderedEntries)'));
+    assert.match(bulk, /loadLockedTeamScheduleScope\(client, req\.user, bulkStaffIds\)[^]*?lockScheduleStaffRows\(client, bulkStaffIds\)[^]*?loadHrShiftDayPlansForStaffDates[^]*?loadScheduleEntriesForUpdate/);
     assert.match(hrRoute, /lockScheduleStaffRows\(client, orderedStaffIds\)/);
     assert.match(hrRoute, /router\.delete\('\/shifts\/:id'[^]*?SELECT \* FROM hr_shifts WHERE id = \$1[^]*?lockScheduleStaffRows[^]*?SELECT \* FROM hr_shifts WHERE id = \$1 FOR UPDATE/);
     assert.match(staffScheduleMutations, /syncHrShiftFromScheduleEntry\(client[^]*?loadScheduleEntryForUpdate\(client, staffId, date\)/);

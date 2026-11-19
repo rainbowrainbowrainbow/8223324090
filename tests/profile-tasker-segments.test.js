@@ -24,6 +24,7 @@ function loadProfileTaskerContext({ legacyGames = false } = {}) {
     const localState = new Map();
     const sandbox = {
         console,
+        TaskLinks: require('../js/task-links'),
         addEventListener() {},
         fetch: async (url) => {
             const target = String(url || '');

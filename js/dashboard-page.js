@@ -3033,7 +3033,7 @@ const DashboardPage = (() => {
         addTriageLink(links, meta.exactHref || item?.href, 'Відкрити точний контекст', 'primary');
         addTriageLink(links, meta.leadHref, 'Лід');
         addTriageLink(links, meta.replyEscalationHref, 'Задача ескалації');
-        if (item?.taskId) addTriageLink(links, `/profile?tab=myday&open=${encodeURIComponent(item.taskId)}`, 'Задача');
+        if (item?.taskId) addTriageLink(links, meta.taskHref || TaskLinks.taskUrl(item.taskId, item), 'Задача');
         if (item?.leadId) addTriageLink(links, `/sales-funnel?lead=${encodeURIComponent(item.leadId)}`, 'Лід');
         if (item?.meta?.conversationId) addTriageLink(links, `/omni?conversation=${encodeURIComponent(item.meta.conversationId)}`, 'Комунікація');
         if (item?.bookingId && item.href) addTriageLink(links, item.href, 'Бронювання');
@@ -7512,7 +7512,7 @@ const DashboardPage = (() => {
             return { task, priority, dueAt, selected, tone: urgent ? 'urgent' : 'focus',
                 source: selected ? 'Обрано у фокус' : 'Рекомендовано',
                 title: String(task.title || 'Задача без назви'), reason,
-                href: '/profile?tab=myday&open=' + encodeURIComponent(task.id), cta: 'Відкрити задачу' };
+                href: TaskLinks.taskUrl(task.id, { businessContext: task.business_context }), cta: 'Відкрити задачу' };
         }).sort((a, b) => a.priority - b.priority
             || (a.selected && b.selected ? Number(a.task.focus_rank || 0) - Number(b.task.focus_rank || 0) : 0)
             || (a.dueAt || '9999').localeCompare(b.dueAt || '9999'));
@@ -8717,14 +8717,14 @@ ${focusButton}
             data.tasks.slice(0, 3).forEach(t => {
                 const overdue = t.is_overdue ? ' is-overdue' : '';
                 const pIcon = t.priority === 'high' ? '🔴 ' : '';
-                html += `<div class="team-task-widget-row${overdue}" onclick="window.location='/profile?tab=myday&open=${t.id}'">
+                html += `<a class="team-task-widget-row${overdue}" href="${escapeHtml(TaskLinks.taskUrl(t.id, { businessContext: t.business_context }))}">
                     <div class="team-task-widget-title">${pIcon}${escapeHtml(t.title?.slice(0, 50) || '')}</div>
                     <div class="team-task-widget-meta">
                         ${t.assigned_to ? '👤 ' + escapeHtml(t.assigned_to) : '— нікому'}
                         · ${escapeHtml(dashboardTaskDueLabel(t))}
                     </div>
                     ${renderDashboardTaskSubstitution(t)}
-                </div>`;
+                </a>`;
             });
             html += '</div>';
         }

@@ -193,3 +193,46 @@ test('a forced Maysternya route relinquishes its old cabinet before the peer rel
     const reloaded = loadTab(hub, 'peer', peer.location.href);
     assert.equal(reloaded.context.apiAuthBusinessContextHeaders()['X-Business-Context'], 'dar');
 });
+
+test('Park task intent leaves the old tab when shared context converges to Dar', () => {
+    const user = businessUser('event_genix');
+    const hub = sharedStorage(user);
+    const source = loadTab(hub, 'source', 'http://localhost/profile?tab=myday&open=52&businessContext=dar', user);
+    const peer = loadTab(hub, 'peer', 'http://localhost/profile?tab=myday&open=41&mode=edit&date=undated&businessContext=event_genix&filter=kept', user);
+    source.context.mergeApiCurrentUser(businessUser('dar'));
+    hub.flush();
+    const reloadedUrl = new URL(peer.calls.find(call => call.type === 'reload').url);
+    assert.equal(reloadedUrl.searchParams.get('businessContext'), 'dar');
+    for (const field of ['open', 'mode', 'date']) assert.equal(reloadedUrl.searchParams.has(field), false);
+    assert.equal(reloadedUrl.searchParams.get('taskContextChanged'), '1');
+    assert.equal(reloadedUrl.searchParams.get('tab'), 'myday');
+    assert.equal(reloadedUrl.searchParams.get('filter'), 'kept');
+    assert.equal(source.location.searchParams.get('open'), '52');
+});
+
+test('dirty same-actor transition keeps a recovery choice while preventing authenticated mutations', () => {
+    const user = businessUser('event_genix');
+    const hub = sharedStorage(user);
+    const source = loadTab(hub, 'source', 'http://localhost/profile?tab=myday&businessContext=dar', user);
+    const peer = loadTab(hub, 'peer', 'http://localhost/profile?tab=myday&open=18&businessContext=event_genix', user);
+    let proceed;
+    let closes = 0;
+    peer.context.document.querySelector = () => ({
+        offerSessionChange(callback) { proceed = callback; return true; },
+        endForSessionChange() { closes++; }
+    });
+    source.context.mergeApiCurrentUser(businessUser('dar'));
+    hub.flush();
+    assert.equal(typeof proceed, 'function');
+    assert.equal(peer.context.AppState.currentUser, null);
+    assert.equal(peer.context.AppState.authPermissions, null);
+    assert.equal(peer.calls.some(call => call.type === 'hide' || call.type === 'reload'), false);
+    assert.throws(() => peer.context.assertCrmBusinessWritableRequest('/api/tasks/18', 'PUT'),
+        error => error.status === 409 && error.payload?.code === 'auth_session_transition');
+
+    source.context.mergeApiCurrentUser(businessUser('dar', 'animator', 99), { allowIdentityChange: true });
+    hub.flush();
+    assert.equal(closes, 1, 'identity replacement ends recovery and forces shell invalidation');
+    assert.equal(peer.context.window.crmSharedSessionRecovery, null);
+    assert.equal(peer.calls.filter(call => call.type === 'reload').length, 1);
+});

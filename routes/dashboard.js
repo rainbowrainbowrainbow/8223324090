@@ -1373,7 +1373,7 @@ router.get('/widgets/:type', requireDashboardWidgetRevenue, allowDashboardPublic
                 const taskBusinessCondition = appendDashboardBusinessScope(params, businessScope, 't');
                 const result = await pool.query(`
                     WITH candidates AS (
-                        SELECT t.id, t.title, t.status, t.priority, t.deadline, t.category,
+                        SELECT t.id, t.title, t.status, t.priority, t.deadline, t.category, t.business_context,
                                t.owner_user_id, t.assigned_to, t.owner, t.updated_at, t.created_at,
                                t.task_mode, t.task_kind, t.visibility, t.workflow_state, t.focus_rank,
                                ${dashboardTaskTimingSelect('t')},
@@ -2127,7 +2127,7 @@ router.get('/widgets/:type', requireDashboardWidgetRevenue, allowDashboardPublic
                 const visibility = buildTaskVisibilityScope(req.user, params, 't');
                 const taskBusinessCondition = appendDashboardBusinessScope(params, businessScope, 't');
                 const result = await pool.query(`
-                    SELECT t.id, t.title, t.assigned_to, t.owner, t.owner_user_id,
+                    SELECT t.id, t.title, t.assigned_to, t.owner, t.owner_user_id, t.business_context,
                            u.name AS owner_name, u.username AS owner_username,
                            t.status, t.priority, t.deadline, t.updated_at, t.created_at,
                            ${dashboardTaskTimingSelect('t')},

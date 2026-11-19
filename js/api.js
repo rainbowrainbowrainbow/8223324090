@@ -1962,6 +1962,10 @@ function crmBusinessRequestPath(url) {
 function assertCrmBusinessWritableRequest(url, method = 'GET') {
     const normalizedMethod = String(method || 'GET').toUpperCase();
     if (!CRM_BUSINESS_MUTATING_METHODS.has(normalizedMethod)) return;
+    if (typeof window !== 'undefined' && window.crmSharedSessionRecovery) {
+        throw apiErrorFromPayload({ status: 409, code: 'auth_session_transition',
+            error: 'Активний бізнес змінився. Спочатку завершіть перехід у цій вкладці.' }, 'Session transition');
+    }
     if (!isCrmBusinessScopeReadOnly()) return;
     const path = crmBusinessRequestPath(url);
     if (CRM_BUSINESS_SCOPE_WRITE_EXEMPT_PATHS.has(path)) return;
@@ -2112,7 +2116,7 @@ async function apiFetchWithAuthRetry(url, opts = {}) {
     delete request.authUser;
     delete request.authBusinessScope;
     assertCrmBusinessWritableRequest(url, request.method || 'GET');
-    if (getActiveApiAuthTransitionMarker()) {
+    if ((typeof window !== 'undefined' && window.crmSharedSessionRecovery) || getActiveApiAuthTransitionMarker()) {
         setApiAuthSessionFailure('transient', { stage: 'request', reason: 'session-transition' });
         return null;
     }

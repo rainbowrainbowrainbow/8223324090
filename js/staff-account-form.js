@@ -36,7 +36,7 @@ const STAFF_ACCOUNT_FORM_MARKUP = `
             </section>
         </form>
         <section id="accountOnboardingReceipt" tabindex="-1" class="hr-account-receipt hidden" aria-live="polite"></section>
-        <div id="accountOnboardingStatus" tabindex="-1" class="hr-account-onboarding-status" role="alert" aria-live="assertive"></div>
+        <div id="accountOnboardingStatus" tabindex="-1" class="hr-account-onboarding-status"><span role="status"></span><span role="alert"></span></div>
         <footer id="accountOnboardingActions" class="hr-account-onboarding-actions">
             <button type="submit" form="accountOnboardingForm" id="accountOnboardingSubmit" class="hr-account-primary">Створити CRM-акаунт</button>
         </footer>
@@ -61,7 +61,8 @@ function staffAccountField(suffix) {
 function setStaffAccountFormStatus(message = '', type = 'error') {
     const status = staffAccountField('Status');
     if (!status) return;
-    status.textContent = message;
+    status.querySelector('[role="status"]').textContent = type === 'error' ? '' : message;
+    status.querySelector('[role="alert"]').textContent = type === 'error' ? message : '';
     status.dataset.type = message ? type : '';
 }
 
@@ -117,6 +118,7 @@ function hideStaffAccountForm() {
     overlay.setAttribute('aria-hidden', 'true');
     const form = staffAccountField('Form');
     form.inert = false;
+    staffAccountField('Close').disabled = false;
     form.reset();
     form.querySelectorAll('[aria-invalid="true"]').forEach(element => element.removeAttribute('aria-invalid'));
     staffAccountField('Password').type = 'password';
@@ -156,7 +158,7 @@ function bindStaffAccountForm({ getState, submit, close }) {
         void submit();
     });
     overlay.addEventListener('click', event => {
-        if (event.target === overlay) staffAccountField('Close').focus();
+        if (event.target === overlay) staffAccountField(getState()?.submitting ? 'Status' : 'Close').focus();
     });
     overlay.addEventListener('keydown', event => {
         if (event.key === 'Escape') {
@@ -165,6 +167,11 @@ function bindStaffAccountForm({ getState, submit, close }) {
             return;
         }
         if (event.key !== 'Tab') return;
+        if (getState()?.submitting) {
+            event.preventDefault();
+            staffAccountField('Status').focus();
+            return;
+        }
         const focusable = Array.from(overlay.querySelectorAll('button, input, select, a[href], summary, [tabindex="0"]')).filter(element => {
             return !element.matches(':disabled') && element.getClientRects().length
                 && !element.closest('[hidden], .hidden, [inert]');
@@ -172,10 +179,7 @@ function bindStaffAccountForm({ getState, submit, close }) {
         if (!focusable.length) return;
         const first = focusable[0];
         const last = focusable[focusable.length - 1];
-        if (getState()?.submitting && document.activeElement === staffAccountField('Status')) {
-            event.preventDefault();
-            (event.shiftKey ? last : first).focus();
-        } else if (event.shiftKey && document.activeElement === first) {
+        if (event.shiftKey && document.activeElement === first) {
             event.preventDefault();
             last.focus();
         } else if (!event.shiftKey && document.activeElement === last) {
@@ -201,11 +205,13 @@ async function confirmStaffAccountFormClose(state) {
 async function submitStaffAccountForm(state, isCurrent, request, complete) {
     const form = staffAccountField('Form');
     const submit = staffAccountField('Submit');
+    const close = staffAccountField('Close');
     const returnFocus = form.contains(document.activeElement) ? document.activeElement : staffAccountField('Username');
     state.submitting = true;
     setStaffAccountFormStatus('Зберігаємо дані та створюємо CRM-акаунт…', 'progress');
     staffAccountField('Status').focus();
     form.inert = true;
+    close.disabled = true;
     submit.disabled = true;
     try {
         const response = await request();
@@ -221,6 +227,7 @@ async function submitStaffAccountForm(state, isCurrent, request, complete) {
         if (isCurrent()) {
             state.submitting = false;
             form.inert = false;
+            close.disabled = false;
             submit.disabled = false;
             if (!form.classList.contains('hidden')) returnFocus.focus();
         }

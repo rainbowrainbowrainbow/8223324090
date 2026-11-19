@@ -17,7 +17,19 @@
         return { executor: 'Виконую', author: 'На контролі', participant: 'Спостерігаю', viewer: 'Перегляд' }[role] || '';
     }
 
-    function openTaskDialog({ taskId, load, selectDate, statusLabel, opener, onClose, mode, save, complete, reschedule }) {
+    const sessionDraftPrefix = 'crm:my-day:draft:';
+    function clearSessionDrafts() {
+        try {
+            for (let i = sessionStorage.length - 1; i >= 0; --i) {
+                const key = sessionStorage.key(i);
+                if (key?.startsWith(sessionDraftPrefix)) sessionStorage.removeItem(key);
+            }
+        } catch {}
+    }
+
+    function openTaskDialog({ taskId, load, selectDate, statusLabel, opener, onClose, mode, save, complete, reschedule, draftScope, onReconciled }) {
+        const draftKey = draftScope?.actor && draftScope?.business && Number.isSafeInteger(taskId)
+            ? sessionDraftPrefix + JSON.stringify([draftScope.actor, draftScope.business, taskId]) : null;
         const dialog = document.createElement('dialog');
         dialog.className = 'park-task-dialog';
         dialog.dataset.myDayTask = taskId;
@@ -38,6 +50,28 @@
         const escape = global.escapeHtml;
         let task, busy = false, needsRefresh = false;
         let editorDraft = null, scheduleDraft = null, editorVisible = mode === 'edit';
+        let editorConflict = null;
+        let unknownOperation = null;
+        let awaitingSessionChange = false;
+        let checkedSessionDraft = false;
+        const editorSnapshot = current => ({
+            title: current.title || '', description: current.description || '',
+            priority: global.TaskUiShared?.normalizeTaskPriority(current.priority) || 'normal'
+        });
+        const editorPatch = (baseline, values) => Object.fromEntries(Object.entries(values || {})
+            .filter(([field, value]) => Object.hasOwn(baseline, field) && value !== baseline[field]));
+        const editorSubmitBlocked = () => editorConflict && !editorConflict.current;
+        function showEditorConflict() {
+            showError(new Error('Задачу змінили після відкриття. Завантажте актуальну версію, щоб порівняти її з чернеткою.'), true);
+            if (content.querySelector('[data-dialog-review-version]')) return;
+            const review = document.createElement('button');
+            review.type = 'button';
+            review.dataset.dialogReviewVersion = '';
+            review.textContent = 'Переглянути актуальну версію';
+            review.addEventListener('click', () => { void run(null); });
+            content.prepend(review);
+            review.focus({ preventScroll: true });
+        }
         const isDirty = () => editorDraft !== null || scheduleDraft !== null;
         function syncDraftState() {
             dialog.dataset.dirty = String(isDirty());
@@ -51,7 +85,7 @@
         }
         function hideDiscard() { discard.style.visibility = 'hidden'; discard.disabled = true; }
         const beforeUnload = event => {
-            if (!isDirty() && !busy) return;
+            if (!isDirty() && !busy && !awaitingSessionChange) return;
             event.preventDefault(); event.returnValue = '';
         };
         global.addEventListener('beforeunload', beforeUnload);
@@ -64,7 +98,54 @@
             discard.disabled = busy;
             if (!busy) discard.focus();
         }
-        dialog.addEventListener('cancel', preventLoss);
+        dialog.addEventListener('cancel', event => {
+            if (awaitingSessionChange) event.preventDefault();
+            else preventLoss(event);
+        });
+        dialog.endForSessionChange = () => {
+            controller.abort();
+            global.removeEventListener('beforeunload', beforeUnload);
+            dialog.dataset.keepTaskIntent = 'true';
+            dialog.close();
+        };
+        dialog.offerSessionChange = proceed => {
+            if (!draftKey || (!isDirty() && !busy)) return false;
+            awaitingSessionChange = true;
+            controller.abort();
+            dialog.querySelector('.park-task-dialog-head form').hidden = true;
+            title.textContent = 'Активний бізнес змінився';
+            guard.style.visibility = 'hidden';
+            hideDiscard();
+            content.removeAttribute('aria-busy');
+            content.replaceChildren();
+            const status = document.createElement('p');
+            status.setAttribute('role', 'status');
+            status.textContent = 'Перейдіть до активного бізнесу. Чернетку можна залишити в цій вкладці для повернення до задачі.';
+            content.append(status);
+            function action(label, callback) {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.textContent = label;
+                button.addEventListener('click', callback);
+                content.append(button);
+                return button;
+            }
+            const finish = () => { dialog.endForSessionChange(); proceed(); };
+            const discardDraft = action(isDirty() ? 'Відкинути чернетку та перейти' : 'Перейти та перевірити результат', finish);
+            if (isDirty()) {
+                action('Зберегти чернетку в цій вкладці та перейти', () => {
+                    try {
+                        sessionStorage.setItem(draftKey, JSON.stringify({ savedAt: Date.now(), version: task.version,
+                            fields: editorPatch(editorSnapshot(task), editorDraft), scheduleDate: scheduleDraft }));
+                    } catch {
+                        status.textContent = 'Чернетку не вдалося зберегти. Спробуйте ще раз або відкиньте її.';
+                        return;
+                    }
+                    finish();
+                }).focus();
+            } else discardDraft.focus();
+            return true;
+        };
         dialog.querySelector('form').addEventListener('submit', preventLoss);
         discard.addEventListener('click', () => {
             if (busy) return;
@@ -100,18 +181,66 @@
             if (!alert) { alert = document.createElement('p'); alert.setAttribute('role', 'alert'); content.prepend(alert); }
             alert.textContent = mutation && error.name !== 'TypeError' && error.message ? error.message : errorText(error);
         }
-        async function run(action, draft = '') {
-            if (busy || (needsRefresh && action)) return;
+        function settleOperation(operation) {
+            unknownOperation = null;
+            if (operation.kind === 'editor') { editorDraft = null; editorConflict = null; editorVisible = false; }
+            if (operation.kind === 'schedule') scheduleDraft = null;
+        }
+        function showOperationRecovery(canRetry = false) {
+            const operation = unknownOperation;
+            const note = canRetry ? 'Задача ще має попередню версію. Можна повторити ту саму дію.'
+                : 'З’єднання перервалося. Перевірте, чи збережено дію, перш ніж повторювати.';
+            showError(new Error(note), true);
+            content.querySelectorAll('[data-dialog-operation-recovery]').forEach(button => button.remove());
+            const button = document.createElement('button');
+            button.type = 'button'; button.dataset.dialogOperationRecovery = '';
+            button.textContent = canRetry ? 'Повторити ту саму дію' : 'Перевірити результат';
+            button.addEventListener('click', () => { void run(operation, !canRetry); });
+            content.prepend(button);
+            button.focus({ preventScroll: true });
+        }
+        function submitOperation(kind, apply, patch = null) {
+            if (unknownOperation || awaitingSessionChange || busy || needsRefresh) return;
+            const previous = task;
+            const id = global.crypto.randomUUID();
+            void run({ id, kind, version: Number(previous.version), patch, execute: () => apply(previous, id) });
+        }
+        async function run(operation, reconcile = false) {
+            if (awaitingSessionChange || busy || (needsRefresh && operation) || (unknownOperation && unknownOperation !== operation)) return;
+            const draft = operation?.kind || '';
             busy = true;
             syncDraftState();
             hideDiscard();
             content.setAttribute('aria-busy', 'true');
             content.querySelectorAll('button, input, textarea, select').forEach(control => { control.disabled = true; });
             try {
-                if (action) {
-                    await action();
-                    if (draft === 'editor') { editorDraft = null; editorVisible = false; }
-                    if (draft === 'schedule') scheduleDraft = null;
+                if (reconcile) {
+                    await refresh();
+                    if (awaitingSessionChange || !dialog.open) return;
+                    const receipt = task.myDayOperation;
+                    if (receipt?.id === operation.id && receipt.kind === operation.kind && receipt.version === operation.version) {
+                        settleOperation(operation);
+                        render();
+                        onReconciled?.(operation.kind);
+                        content.querySelector('button')?.focus({ preventScroll: true });
+                    } else if (Number(task.version) === operation.version) {
+                        showOperationRecovery(true);
+                    } else {
+                        unknownOperation = null;
+                        if (draft === 'editor') {
+                            const current = editorSnapshot(task);
+                            editorDraft = { ...current, ...operation.patch };
+                            editorConflict = { patch: operation.patch, current };
+                            render();
+                        }
+                        showError(new Error('Версія задачі змінилася. Перевірте поточні дані перед новою дією.'), true);
+                    }
+                    return;
+                }
+                if (operation) {
+                    await operation.execute();
+                    if (awaitingSessionChange) return;
+                    settleOperation(operation);
                     // Once the server accepted a mutation, recovery must reload, not repeat it.
                     needsRefresh = true;
                 }
@@ -119,8 +248,19 @@
                 needsRefresh = false;
                 content.querySelector('button')?.focus({ preventScroll: true });
             } catch (error) {
-                if (dialog.open) {
-                    showError(error, !needsRefresh);
+                if (dialog.open && !awaitingSessionChange) {
+                    if (reconcile || (operation && !needsRefresh && (error.outcomeUnknown || error.name === 'TypeError'))) {
+                        unknownOperation = operation;
+                        showOperationRecovery();
+                        return;
+                    }
+                    if (!needsRefresh && operation === unknownOperation) unknownOperation = null;
+                    if (draft === 'editor' && error.status === 409 && !needsRefresh) {
+                        editorConflict = { patch: editorPatch(editorSnapshot(task), editorDraft) };
+                        showEditorConflict();
+                    } else if (editorSubmitBlocked() && !needsRefresh) {
+                        showEditorConflict();
+                    } else showError(error, !needsRefresh);
                     if (needsRefresh) {
                         content.querySelector('[role="alert"]').textContent = 'Зміни збережено, але не вдалося оновити задачу. Повторіть завантаження.';
                         if (!content.querySelector('[data-dialog-reload]')) {
@@ -135,10 +275,13 @@
             }
             finally {
                 busy = false;
-                syncDraftState();
+                if (!awaitingSessionChange) syncDraftState();
                 content.removeAttribute('aria-busy');
                 content.querySelectorAll('button, input, textarea, select').forEach(control => {
-                    control.disabled = needsRefresh && !control.hasAttribute('data-dialog-reload');
+                    if (awaitingSessionChange) return;
+                    control.disabled = Boolean(unknownOperation && !control.hasAttribute('data-dialog-operation-recovery')
+                        || needsRefresh && !control.hasAttribute('data-dialog-reload')
+                        || editorSubmitBlocked() && control.matches('[data-dialog-editor] button[type=submit]'));
                 });
             }
         }
@@ -147,8 +290,9 @@
             const executor = task.ownerLabel || task.owner_name || task.owner_username;
             const actions = task.drawer?.actions || {};
             const priorities = global.TaskUiShared?.TASK_PRIORITY_OPTIONS || [];
-            const priority = global.TaskUiShared?.normalizeTaskPriority(task.priority) || 'normal';
-            const editorValue = editorDraft || { title: task.title || '', description: task.description || '', priority };
+            const editorBase = editorSnapshot(task);
+            const editorValue = editorDraft || editorBase;
+            const editorLabels = { title: 'Назва', description: 'Опис', priority: 'Пріоритет' };
             title.textContent = task.title || `Задача #${taskId}`;
             const description = typeof task.description === 'string' ? task.description.trim() : '';
             content.innerHTML = `<dl class="park-task-dialog-facts">
@@ -165,6 +309,7 @@
             ${actions.edit && save ? `<form data-dialog-editor ${editorVisible ? '' : 'hidden'}>
                 <label for="my-day-edit-title">Назва</label><input id="my-day-edit-title" name="title" required value="${escape(editorValue.title)}">
                 <label for="my-day-edit-description">Опис</label><textarea id="my-day-edit-description" name="description" rows="4">${escape(editorValue.description)}</textarea>
+                ${editorConflict?.current ? `<div role="status"><p>Перевірте актуальні значення перед збереженням чернетки.</p><ul>${Object.keys(editorConflict.patch).map(field => `<li>${editorLabels[field]}: ${escape(field === 'priority' ? priorities.find(item => item.value === editorConflict.current[field])?.label || editorConflict.current[field] : editorConflict.current[field] || '—')}</li>`).join('')}</ul></div>` : ''}
                 <label for="my-day-edit-priority">Пріоритет</label><select id="my-day-edit-priority" name="priority">${priorities.map(item => `<option value="${escape(item.value)}" ${item.value === editorValue.priority ? 'selected' : ''}>${escape(item.label)}</option>`).join('')}</select>
                 <button type="submit">Зберегти</button>
             </form>` : ''}
@@ -176,17 +321,20 @@
             content.querySelector('[data-dialog-edit]')?.addEventListener('click', () => { editorVisible = true; editor.hidden = false; editor.elements.title.focus(); });
             editor?.addEventListener('input', () => {
                 const value = Object.fromEntries(new FormData(editor));
-                editorDraft = value.title === (task.title || '') && value.description === (task.description || '') && value.priority === priority ? null : value;
+                editorDraft = Object.keys(editorPatch(editorBase, value)).length ? value : null;
                 syncDraftState();
             });
             editor?.addEventListener('submit', event => {
                 event.preventDefault();
-                const patch = Object.fromEntries(new FormData(editor));
-                void run(() => save(task, patch), 'editor');
+                if (editorSubmitBlocked()) return;
+                const patch = editorPatch(editorBase, Object.fromEntries(new FormData(editor)));
+                if (!Object.keys(patch).length) return;
+                editorDraft = { ...editorBase, ...patch };
+                submitOperation('editor', (previous, id) => save(previous, patch, id), patch);
             });
             content.querySelector('[data-dialog-complete]')?.addEventListener('click', () => {
                 if (isDirty()) { preventLoss({ preventDefault() {} }); return; }
-                void run(() => complete(task));
+                submitOperation('complete', complete);
             });
             const schedule = content.querySelector('[data-dialog-schedule]');
             schedule?.addEventListener('input', () => {
@@ -195,20 +343,47 @@
             });
             schedule?.addEventListener('submit', event => {
                 event.preventDefault();
-                void run(() => reschedule(schedule.elements.date.value), 'schedule');
+                const selectedDate = schedule.elements.date.value;
+                submitOperation('schedule', (previous, id) => reschedule(selectedDate, previous, id));
             });
         }
         async function refresh() {
             const loaded = await load(controller.signal);
-            if (!dialog.open) return;
+            if (!dialog.open || awaitingSessionChange) return;
             task = loaded?.task || loaded?.data || loaded;
             if (!task?.id) throw Object.assign(new Error('Task unavailable'), { status: 401 });
+            if (editorSubmitBlocked()) {
+                editorConflict.current = editorSnapshot(task);
+                editorDraft = { ...editorConflict.current, ...editorConflict.patch };
+            }
+            if (!checkedSessionDraft && draftKey) {
+                checkedSessionDraft = true;
+                try {
+                    const stored = JSON.parse(sessionStorage.getItem(draftKey) || 'null');
+                    if (stored) sessionStorage.removeItem(draftKey);
+                    if (stored && Number.isFinite(stored.savedAt) && stored.savedAt <= Date.now()
+                        && Date.now() - stored.savedAt < 2 * 60 * 60 * 1000
+                        && (task.business_context || task.businessContext) === draftScope.business) {
+                        const current = editorSnapshot(task);
+                        const patch = editorPatch(current, stored.fields);
+                        if (task.drawer?.actions?.edit && Object.keys(patch).length) {
+                            editorVisible = true;
+                            editorDraft = { ...current, ...patch };
+                            if (Number(stored.version) !== Number(task.version)) editorConflict = { patch, current };
+                        }
+                        if (task.drawer?.actions?.reschedule && /^\d{4}-\d{2}-\d{2}$/.test(stored.scheduleDate || '')) {
+                            scheduleDraft = stored.scheduleDate;
+                        }
+                        syncDraftState();
+                    }
+                } catch {}
+            }
             render();
         }
         async function initialLoad() {
             try { await refresh(); }
             catch (error) {
-                if (!dialog.open) return;
+                if (!dialog.open || awaitingSessionChange) return;
                 content.replaceChildren();
                 showError(error);
                 const retry = document.createElement('button');
@@ -331,5 +506,5 @@
         return true;
     }
 
-    global.ProfileMyDay = Object.freeze({ preservePosition, renderCard, taskRole, roleLabel, openTaskDialog, transitionCompletion });
+    global.ProfileMyDay = Object.freeze({ preservePosition, renderCard, taskRole, roleLabel, openTaskDialog, transitionCompletion, clearSessionDrafts });
 }(window));

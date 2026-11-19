@@ -1632,6 +1632,7 @@ describe('work queue endpoint', () => {
 
         vm.runInContext(uiJs, dom.getInternalVMContext());
         dom.window.confirmModal = async () => true;
+        dom.window.TaskLinks = require('../js/task-links');
         vm.runInContext(dashboardJs, dom.getInternalVMContext());
         const DashboardPage = vm.runInContext('DashboardPage', dom.getInternalVMContext());
         await DashboardPage.init();

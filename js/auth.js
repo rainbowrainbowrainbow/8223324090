@@ -1104,6 +1104,9 @@ function logout() {
     // v9.1: Disconnect WebSocket on logout
     if (typeof ParkWS !== 'undefined') ParkWS.disconnect();
     revokeStoredRefreshToken();
+    document.querySelector('.park-task-dialog[open]')?.endForSessionChange?.();
+    window.ProfileMyDay?.clearSessionDrafts?.();
+    window.crmSharedSessionRecovery = null;
 
     AppState.currentUser = null;
     resetAuthenticatedRuntimeReady();
@@ -2284,12 +2287,21 @@ function synchronizeSharedBusinessRoute() {
     if (current.activeBusinessContext === incoming.activeBusinessContext) return;
     const url = new URL(window.location.href);
     const active = incoming.activeBusinessContext;
+    const page = url.pathname.replace(/\.html$/, '').replace(/\/$/, '');
+    const routeContext = url.searchParams.get('businessContext') || url.searchParams.get('business_context');
+    const state = { ...window.history.state };
+    if (page === '/profile' && url.searchParams.get('tab') === 'myday' && url.searchParams.has('open')
+        && routeContext !== active) {
+        for (const key of ['open', 'mode', 'date']) url.searchParams.delete(key);
+        url.searchParams.set('taskContextChanged', '1');
+        delete state.myDayTask;
+    }
     // Active cabinet storage is shared by tabs. Converge their explicit routes
     // before reloading, so Park/Dar tabs cannot repeatedly restore each other.
     if (url.pathname.replace(/\.html$/, '').replace(/\/$/, '') === '/maysternya-doli' && active !== 'maysternya_doli') url.pathname = '/';
     for (const key of ['businessContext', 'business_context', 'businessScope', 'business_scope', 'businessContexts', 'business_contexts']) url.searchParams.delete(key);
     if (active) url.searchParams.set('businessContext', active);
-    window.history.replaceState(window.history.state || {}, '', url);
+    window.history.replaceState(state, '', url);
 }
 
 function handleCrossTabAuthStorageChange(event) {
@@ -2321,9 +2333,28 @@ function handleCrossTabAuthStorageChange(event) {
             }
         }
         if (!generationChanged && !identityChanged) return;
-
+        const incoming = readAuthBootstrapStoredUser();
+        const runtimeUser = typeof AppState !== 'undefined' ? AppState.currentUser : null;
+        const sameActor = authBootstrapUsersShareIdentity(runtimeUser, incoming);
+        const generation = localStorage.getItem(AUTH_SESSION_GENERATION_KEY);
+        const previousRecovery = window.crmSharedSessionRecovery;
+        if (previousRecovery && previousRecovery.generation === generation
+            && authBootstrapUsersShareIdentity(previousRecovery, incoming)) return;
+        const contextChanged = sameActor && incoming?.activeBusinessContext
+            && runtimeUser.activeBusinessContext !== incoming.activeBusinessContext;
+        const canRetainDraft = contextChanged && incoming?.accessContext?.status === 'ready'
+            && incoming?.businessContextPolicy?.allowed?.includes(runtimeUser.activeBusinessContext);
+        const dialog = document.querySelector('.park-task-dialog[open]');
         if (generationChanged && typeof synchronizeSharedBusinessRoute === 'function') synchronizeSharedBusinessRoute();
-        crossTabSessionSyncInProgress = true;
+        const recovering = canRetainDraft && dialog?.offerSessionChange?.(() => window.location.reload());
+        if (recovering) {
+            window.crmSharedSessionRecovery = { id: incoming.id, username: incoming.username, generation };
+        } else {
+            window.crmSharedSessionRecovery = null;
+            dialog?.endForSessionChange?.();
+            if (!canRetainDraft) window.ProfileMyDay?.clearSessionDrafts?.();
+            crossTabSessionSyncInProgress = true;
+        }
         resetAuthenticatedRuntimeReady();
         if (typeof AppState !== 'undefined' && AppState?.currentUser) {
             if (typeof clearRuntimePermissionCatalog === 'function') {
@@ -2331,6 +2362,7 @@ function handleCrossTabAuthStorageChange(event) {
             }
             AppState.currentUser = null;
         }
+        if (recovering) return;
         if (typeof clearAuthenticatedPageShell === 'function') clearAuthenticatedPageShell();
         document.getElementById('mainApp')?.classList.add('hidden');
         document.getElementById('sidebarToggle')?.classList.add('hidden');
@@ -2353,6 +2385,9 @@ function handleCrossTabAuthStorageChange(event) {
     if (loginIntentInProgress) {
         crossTabLogoutInProgress = true;
         try {
+            document.querySelector('.park-task-dialog[open]')?.endForSessionChange?.();
+            window.ProfileMyDay?.clearSessionDrafts?.();
+            window.crmSharedSessionRecovery = null;
             clearAuthStorage({ preserveLoginIntent: true });
             clearPrivateClientCaches();
             showLoginScreen();

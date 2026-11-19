@@ -301,6 +301,7 @@ function taskItem(row, bucket, options = {}) {
             legacyOwner: row.owner || null,
             taskSourceType: sourceType,
             taskSourceId: sourceId,
+            taskHref: taskUrl(row.id, { businessContext: row.business_context || row.businessContext }),
 
 
 

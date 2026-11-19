@@ -295,19 +295,6 @@
                         <button type="button" id="linkCancelBtn" class="btn-page-secondary">Скасувати</button>
                     </div>
                 </div>
-            </div>
-
-            <div id="bulkResultsOverlay" class="sch-modal-overlay">
-                <div class="sch-modal">
-                    <h3 id="bulkResultsTitle">Результати створення</h3>
-                    <div id="bulkResultsBody"></div>
-                    <div class="modal-actions">
-                        <button type="button" id="bulkCopyBtn" class="btn-page-secondary">Копіювати</button>
-                        <button type="button" id="bulkCsvBtn" class="btn-page-secondary hidden">CSV</button>
-                        <button type="button" id="bulkPdfBtn" class="btn-page-secondary hidden">PDF</button>
-                        <button type="button" id="bulkCloseBtn" class="btn-page-primary">Закрити</button>
-                    </div>
-                </div>
             </div>`;
     }
 

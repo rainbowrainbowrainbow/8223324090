@@ -3,6 +3,7 @@
  */
 const router = require('express').Router();
 const crypto = require('crypto');
+const { taskUrl } = require('../js/task-links');
 const { pool } = require('../db');
 const { requireRole, authenticateToken, canUseAction, JWT_SECRET } = require('../middleware/auth');
 const {
@@ -40,6 +41,7 @@ const {
     rescheduleTask
 } = require('../services/taskExecution');
 const { undoQuickTodayReschedule } = require('../services/taskReschedule');
+const { parseMyDayTaskOperation, isMyDayTaskOperationApplied, assertMyDayTaskOperationVersion } = require('../services/myDayTaskOperation');
 const { listTaskActionHistory, logTaskActionEvent, TASK_ACTION_TYPES } = require('../services/taskActionHistory');
 const { historicalTaskWorkSql, isTerminalStatus } = require('../services/taskAutomationPolicy');
 const { normalizeTaskPayload: normalizeTaskContractPayload } = require('../services/taskContract');
@@ -338,7 +340,7 @@ function normalizeTaskControlMeta(body = {}, oldTask = {}) {
     const base = taskControlMeta(oldTask);
     const incoming = { ...parseJsonObject(body.controlMeta || body.control_meta || {}) };
     // Ignore retired flags from old clients; preserve stored metadata for other consumers.
-    for (const key of ['reportRequired', 'requiresReport', 'report_required', 'requires_report']) delete incoming[key];
+    for (const key of ['reportRequired', 'requiresReport', 'report_required', 'requires_report', 'myDayOperation']) delete incoming[key];
     const meta = { ...base, ...incoming };
 
     const rescheduleRaw = hasOwn(body, 'allowReschedule')
@@ -2920,6 +2922,7 @@ router.post('/:id/complete', async (req, res) => {
             sourceSurface: sourceSurface(req.body),
             route: 'tasks_task_complete',
             reportId: req.body?.reportId || req.body?.report_id,
+            myDayOperation: parseMyDayTaskOperation(req.body, req.user, 'complete'),
             businessScope
         });
         res.json({
@@ -2931,8 +2934,10 @@ router.post('/:id/complete', async (req, res) => {
                 canonicalField: 'tasks.status'
             }
         });
-        void refreshTaskAuthorAlerts(result.task);
-        _alertPush();
+        if (!result.idempotent) {
+            void refreshTaskAuthorAlerts(result.task);
+            _alertPush();
+        }
     } catch (err) {
         sendTaskActionError(res, err);
     }
@@ -2992,12 +2997,15 @@ router.post('/:id/reschedule', async (req, res) => {
             });
         }
         const deadline = resolveDeadline(req.body || {});
+        const myDayOperation = parseMyDayTaskOperation(req.body, req.user, 'schedule');
         const result = await rescheduleTask(req.params.id, deadline, req.user, {
             sourceSurface: sourceSurface(req.body),
             route: 'tasks_task_reschedule',
             businessScope,
             reason: req.body?.reason || 'manual_reschedule',
-            idempotencyKey: req.body?.idempotencyKey || req.body?.idempotency_key
+            myDayOperation,
+            idempotencyKey: myDayOperation ? 'my-day:' + myDayOperation.actorId + ':' + myDayOperation.id
+                : req.body?.idempotencyKey || req.body?.idempotency_key
         });
         res.json({
             success: true,
@@ -3008,7 +3016,7 @@ router.post('/:id/reschedule', async (req, res) => {
                 canonicalField: 'tasks.deadline'
             }
         });
-        _alertPush();
+        if (!result.idempotent) _alertPush();
     } catch (err) {
         sendTaskActionError(res, err);
     }
@@ -3443,6 +3451,7 @@ router.post('/', requireTaskRouteCapability('create'), async (req, res) => {
         res.json({
             success: true,
             task: normalizeTaskPayload(responseTask),
+            taskHref: taskUrl(responseTask.id, { businessContext: responseTask.business_context }),
             postCreateWarnings,
             schedule: scheduleResult ? { historyEvent: scheduleResult.historyEvent, proposals: scheduleResult.proposals || [] } : null,
             historyEvent: directCreateHistoryEvent,
@@ -3490,6 +3499,7 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
         if (!businessScope) return;
         const { id } = req.params;
         const b = req.body;
+        const myDayOperation = parseMyDayTaskOperation(b, req.user, 'editor');
         // v40: Support partial updates — merge with existing task
         const existingParams = [id];
         const visibility = buildTaskVisibilityScope(req.user, existingParams, 't');
@@ -3498,6 +3508,8 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
         if (!existing.rows.length) return res.status(404).json({ error: 'Task not found' });
         const old = existing.rows[0];
         if (!canMutateTask(req.user, old)) return res.status(403).json({ error: 'Недостатньо прав для зміни задачі' });
+        if (isMyDayTaskOperationApplied(old, myDayOperation)) return res.json({ success: true, task: normalizeTaskPayload(old) });
+        assertMyDayTaskOperationVersion(old, myDayOperation);
 
         const title = b.title || old.title;
         const description = b.description !== undefined ? b.description : old.description;
@@ -3540,7 +3552,7 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
             && normalizedComparable(b.deadline) !== normalizedComparable(old.deadline);
         const time_window_start = b.time_window_start || b.timeWindowStart || old.time_window_start;
         const time_window_end = b.time_window_end || b.timeWindowEnd || old.time_window_end;
-        const clientVersion = b.version !== undefined ? parseInt(b.version) : null;
+        const clientVersion = myDayOperation?.version ?? (b.version !== undefined ? parseInt(b.version) : null);
         if (!title || !title.trim()) return res.status(400).json({ error: 'title required' });
 
         const taskStatus = VALID_STATUSES.includes(status) ? status : 'todo';
@@ -3549,6 +3561,7 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
         const taskCategory = opsFields.category;
         const osFields = normalizeTaskOsFields({ ...b, status: taskStatus }, old);
         const controlMeta = normalizeTaskControlMeta(b, old);
+        if (myDayOperation) controlMeta.myDayOperation = myDayOperation;
         if (taskStatus !== 'done') applyUrgentPriorityDefaults(taskPriority, osFields, opsFields, controlMeta, old);
         if (taskStatus === 'done') osFields.workflow_state = 'done';
         if (taskStatus === 'done') {

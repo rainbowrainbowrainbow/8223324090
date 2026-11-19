@@ -38,7 +38,7 @@ function loadSchedule(fetchImpl, businessContext = 'event_genix', role = 'direct
         ['pzp_current_user', JSON.stringify(user)]
     ]);
     const elements = new Map();
-    for (const id of ['copyWeekBtn', 'fillWeekBtn', 'bulkCreateBtn', 'importExcelBtn', 'excelImportInput', 'exportExcelBtn', 'printBtn']) {
+    for (const id of ['copyWeekBtn', 'fillWeekBtn', 'importExcelBtn', 'excelImportInput', 'exportExcelBtn', 'printBtn']) {
         elements.set(id, { style: {}, hidden: false, disabled: false, setAttribute() {} });
     }
     const context = {

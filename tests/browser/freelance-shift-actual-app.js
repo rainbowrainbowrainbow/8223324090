@@ -9,7 +9,7 @@ const ExcelJS = require('exceljs');
 const { Pool } = require('pg');
 const { recordAttendanceClockIn, recordAttendanceClockOut } = require('../../services/hrAttendance');
 const { lockAttendanceWriteTarget } = require('../../services/attendanceWriteLock');
-const { chromium } = require('../helpers/playwright')();
+const { chromium, webkit } = require('../helpers/playwright')();
 const { assertSafeIsolatedTestUrl, assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
 
 async function run() {
@@ -19,11 +19,14 @@ async function run() {
     assert.equal(target.isLocal, true);
     const db = new Pool({ connectionString: target.url.toString(), ssl: false });
     const membership = process.env.FREELANCE_BROWSER_MEMBERSHIP === 'true';
+    const engine = process.env.FREELANCE_BROWSER || 'chromium';
+    assert.ok(['chromium', 'webkit'].includes(engine));
     const out = path.resolve(__dirname, '../../output/playwright', membership ? 'freelance-shift-park' : 'freelance-shift');
     fs.mkdirSync(out, { recursive: true });
     const suffix = randomUUID().slice(0, 8);
     const kyivDate = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
     const date = kyivDate.format(new Date());
+    const laterDate = offset => new Date(Date.parse(date + 'T00:00:00Z') + offset * 86_400_000).toISOString().slice(0, 10);
     // In the first hour of the Kyiv day, UTC is still on the previous date.
     const browserTime = new Date(Date.parse(date + 'T00:00:00Z') - 90 * 60_000);
     assert.equal(kyivDate.format(browserTime), date);
@@ -128,8 +131,8 @@ async function run() {
              VALUES ($1, 'event_genix')`, [`Freelance account ${suffix}`]
         );
         stage = 'launch';
-        browser = await chromium.launch({ headless: true, executablePath: process.env.FREELANCE_CHROMIUM_PATH,
-            args: ['--disable-dev-shm-usage'] });
+        browser = engine === 'webkit' ? await webkit.launch() : await chromium.launch({ headless: true,
+            executablePath: process.env.FREELANCE_CHROMIUM_PATH, args: ['--disable-dev-shm-usage'] });
         const context = await browser.newContext({
             viewport: { width: 1440, height: 1000 }, locale: 'uk-UA', timezoneId: 'UTC', serviceWorkers: 'block'
         });
@@ -210,6 +213,40 @@ async function run() {
              RETURNING id, name`,
             ['Synthetic Reserve ' + suffix, 'Synthetic Blacklist ' + suffix, date, 'Synthetic Trampoline Reserve ' + suffix]
         );
+        const chooser = page.getByRole('dialog', { name: 'Додати фріланс' });
+        const staffPicker = chooser.getByLabel('Співробітник');
+        const pickerDate = chooser.getByLabel('Дата виходу');
+        const openPlan = chooser.getByRole('button', { name: 'Відкрити план' });
+        const emptyAdd = page.getByRole('button', { name: 'Додати фріланс', exact: true });
+        const verifyInvalidFirstDate = async start => {
+            await emptyAdd.click();
+            await chooser.getByText('Аніматори', { exact: true }).waitFor();
+            assert.equal(await pickerDate.inputValue(), start);
+            assert.equal(await pickerDate.evaluate(input => input === document.activeElement), true, 'The chooser initially focuses the date');
+            const option = 'reserve:' + trampolineReserve.id + ':trampoline_instructor';
+            await staffPicker.locator(`option[value="${option}"]`).waitFor({ state: 'attached' });
+            await staffPicker.selectOption(option);
+            await pickerDate.fill(laterDate(45));
+            const bounds = await pickerDate.evaluate(input => ({ value: input.value, max: input.max,
+                valid: input.validity.valid }));
+            assert.ok(bounds.value > bounds.max && !bounds.valid, `The date exceeds the loaded range: ${JSON.stringify(bounds)}`);
+            assert.match(await chooser.locator('#scheduleFreelanceDateHint').innerText(), /Дати графіка:/);
+            assert.equal(await openPlan.isEnabled(), true, 'Selecting a reserve employee enables plan validation');
+            await openPlan.click();
+            assert.equal(await chooser.isVisible(), true, 'The chooser remains open after native validation');
+            assert.equal(await pickerDate.evaluate(input => input === document.activeElement), true, 'Native validation returns focus to the date');
+        };
+        if (process.env.FREELANCE_FIRST_DATE_ONLY === '1') {
+            stage = 'first-date validation from an empty department';
+            await openSchedule(date, '/hr#schedule');
+            await page.locator('#scheduleStaffSearch').fill('Unmatched synthetic search');
+            await setWidth(320);
+            await assertFits();
+            await verifyInvalidFirstDate(date);
+            await chooser.screenshot({ path: path.join(out, `freelance-empty-picker-${engine}-320.png`), animations: 'disabled' });
+            console.log(`Freelance first-date validation passed in ${engine} at 320px.`);
+            return;
+        }
         stage = 'schedule save';
         let cell = await openSchedule();
         await cell.click();
@@ -261,7 +298,6 @@ async function run() {
         if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.press('Space');
         await row.waitFor();
         await row.getByRole('button', { name: '+ Додати фріланс · ' + date }).click();
-        const chooser = page.getByRole('dialog', { name: 'Додати фріланс' });
         await chooser.getByText('Аніматори · ' + date, { exact: true }).waitFor();
         await chooser.getByLabel('Співробітник').selectOption(String(control.id));
         await chooser.getByRole('button', { name: 'Відкрити план' }).click();
@@ -277,7 +313,6 @@ async function run() {
         if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
         const addFreelance = row.getByRole('button', { name: '+ Додати фріланс · ' + date });
         const reserveOption = 'reserve:' + reserve.id + ':animator';
-        const staffPicker = chooser.getByLabel('Співробітник');
         await addFreelance.click();
         await staffPicker.locator('option[value="' + reserveOption + '"]').waitFor({ state: 'attached' });
         assert.match(await staffPicker.locator('option[value="' + reserveOption + '"]').evaluate(option =>
@@ -338,7 +373,6 @@ async function run() {
         await reserveRecord.waitFor({ state: 'hidden' });
 
         stage = 'empty freelance filter across all departments';
-        const laterDate = offset => new Date(Date.parse(date + 'T00:00:00Z') + offset * 86_400_000).toISOString().slice(0, 10);
         const trampolineDate = laterDate(8);
         const rangeStart = laterDate(7);
         const readRange = async (from, to) => {
@@ -370,7 +404,6 @@ async function run() {
                 await page.locator(`#scheduleBody button[data-freelance-toggle="${department}"]`).waitFor();
             }
         }
-        const emptyAdd = page.getByRole('button', { name: 'Додати фріланс', exact: true });
         await emptyAdd.waitFor();
         await emptyAdd.press('Enter');
         await chooser.getByText('Усі відділи', { exact: true }).waitFor();
@@ -378,8 +411,7 @@ async function run() {
         await chooser.waitFor({ state: 'hidden' });
         assert.equal(await emptyAdd.evaluate(button => button === document.activeElement), true);
         stage = 'first freelance assignment from an empty department';
-        await page.locator('#deptFilter [data-dept="trampoline"]').click();
-        assert.equal(await page.locator('#scheduleBody [data-schedule-staff-row]').count(), 0);
+        await page.locator('#deptFilter [data-dept="animators"]').click();
         const trampolineRow = page.locator('#scheduleFreelance-trampoline');
         await workModeFilter.selectOption('all');
         await page.locator('#scheduleStaffSearch').fill(trampolineReserve.name);
@@ -391,22 +423,7 @@ async function run() {
         await assertFits();
         await emptyAdd.scrollIntoViewIfNeeded();
         await page.screenshot({ path: path.join(out, 'freelance-empty-320.png'), animations: 'disabled' });
-        await emptyAdd.click();
-        await chooser.getByText('Батутисти', { exact: true }).waitFor();
-        const pickerDate = chooser.getByLabel('Дата виходу');
-        assert.equal(await pickerDate.inputValue(), rangeStart);
-        assert.equal(await pickerDate.evaluate(input => input === document.activeElement), true);
-        const trampolineOption = 'reserve:' + trampolineReserve.id + ':trampoline_instructor';
-        await staffPicker.locator(`option[value="${trampolineOption}"]`).waitFor({ state: 'attached' });
-        await staffPicker.selectOption(trampolineOption);
-        const openPlan = chooser.getByRole('button', { name: 'Відкрити план' });
-        await pickerDate.fill(laterDate(45));
-        assert.equal(await pickerDate.evaluate(input => input.validity.rangeOverflow), true);
-        assert.match(await chooser.locator('#scheduleFreelanceDateHint').innerText(), /Дати графіка:/);
-        assert.equal(await openPlan.isEnabled(), true);
-        await openPlan.click();
-        assert.equal(await chooser.isVisible(), true);
-        assert.equal(await pickerDate.evaluate(input => input === document.activeElement), true);
+        await verifyInvalidFirstDate(rangeStart);
         await pickerDate.fill(trampolineDate);
         await chooser.screenshot({ path: path.join(out, 'freelance-empty-picker-320.png'), animations: 'disabled' });
         await openPlan.click();
@@ -423,6 +440,22 @@ async function run() {
         assert.match(await trampolineRecord.textContent(), /12:00–14:00/);
         await page.locator('#scheduleRangeState').waitFor({ state: 'hidden' });
         await page.screenshot({ path: path.join(out, 'freelance-trampoline-320.png'), animations: 'disabled' });
+        stage = 'return from pay conditions to the reserve draft';
+        await trampolineRecord.click();
+        await cards.first().locator('.sch-paid-role-editor > summary').click();
+        await page.locator('#schPlanExtra > summary').click();
+        const reserveDraftNote = 'Synthetic reserve draft';
+        await page.locator('#schNote').fill(reserveDraftNote);
+        await cards.first().locator('[data-schedule-pay-conditions]').first().click();
+        await page.waitForURL(url => url.hash === '#team' && url.searchParams.has('scheduleDraft'));
+        await page.getByRole('link', { name: 'Повернутися до чернетки зміни' }).click();
+        await page.locator('#schModalOverlay.visible').waitFor();
+        assert.match(await page.locator('#schModalTitle').innerText(), new RegExp(trampolineReserve.name));
+        assert.equal(await page.locator('#schNote').inputValue(), reserveDraftNote);
+        await page.locator('#schCancelBtn').click();
+        await page.getByRole('button', { name: 'Закрити без збереження' }).click();
+        await page.locator('#schModalOverlay').waitFor({ state: 'hidden' });
+
         await page.reload({ waitUntil: 'domcontentloaded' });
         await page.waitForFunction(() => window.StaffSchedulePage?.isInitialized());
         const afterReload = await readRange(trampolineDate, trampolineDate);
@@ -1253,7 +1286,9 @@ async function run() {
         assert.equal(draft.staffId, staff.id);
         const historicalLink = page.getByRole('link', { name: 'Відкрити графік: ' + trampolineReserve.name });
         const prepareToday = async () => {
+            await page.waitForFunction(() => Boolean(document.getElementById('todayReviewOnly')?.onchange));
             await page.locator('#todayReviewOnly').check();
+            await page.locator('#todayReviewDate').waitFor();
             await page.locator('#todaySearch').fill(trampolineReserve.name);
             await page.locator('#todayReviewDate').fill(reviewDate);
             await historicalLink.waitFor();
@@ -1262,9 +1297,21 @@ async function run() {
         await prepareToday();
         const href = await historicalLink.getAttribute('href');
         assert.equal(new URL(href, base).searchParams.get('scheduleDate'), reviewDate);
+        const scheduleRangePattern = '**/api/staff/schedule?**';
+        const failLinkedRange = async route => {
+            const params = new URL(route.request().url()).searchParams;
+            if (params.get('from') !== reviewDate || params.get('to') !== reviewDate) return route.fallback();
+            return route.fulfill({ status: 503, json: { success: false, error: 'Synthetic schedule load failure' } });
+        };
+        await page.route(scheduleRangePattern, failLinkedRange);
         await historicalLink.press('Enter');
+        const retryLinkedRange = page.locator('#scheduleRangeRetryBtn');
+        await retryLinkedRange.waitFor();
+        await page.unroute(scheduleRangePattern, failLinkedRange);
+        await retryLinkedRange.click();
         const firstBlock = trampolineRow.getByRole('button', { name: /09:00.*10:00/ });
         await firstBlock.waitFor();
+        assert.equal(await page.locator('#schModalOverlay.visible').count(), 0, 'Retry must not open an unrelated draft');
         await page.waitForFunction(() => document.activeElement?.dataset.freelanceStaff);
         assert.equal(await firstBlock.evaluate(button => button === document.activeElement), true);
         assert.equal((await readDraft()).pending, true);

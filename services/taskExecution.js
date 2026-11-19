@@ -22,6 +22,7 @@ const { businessUserAccessSql } = require('./businessUserAccess');
 const { rescheduleTask: canonicalRescheduleTask } = require('./taskReschedule');
 const { postponementAttentionLevel } = require('./taskPostponementPolicy');
 const { stopActiveTimerForUser } = require('./myDayTimeTracking');
+const { isMyDayTaskOperationApplied, assertMyDayTaskOperationVersion } = require('./myDayTaskOperation');
 
 const ASSIGNABLE_TASK_ROLES = [
     'creator', 'director', 'vice_director', 'senior_manager', 'manager',
@@ -317,6 +318,9 @@ async function completeTask(taskId, actor, options = {}) {
         if (!canMutateTask(actor, task)) {
             throw forbidden('You cannot complete this task');
         }
+        const operation = options.myDayOperation;
+        if (isMyDayTaskOperationApplied(task, operation)) return { task, historyEvent: null, idempotent: true };
+        assertMyDayTaskOperationVersion(task, operation);
         const incomingReportId = parsePositiveInt(options.reportId || options.report_id);
         const existingReportId = taskCompletionReportId(task);
         const reportId = incomingReportId ? await ensureReportExists(query, incomingReportId, task.business_context) : null;
@@ -335,14 +339,15 @@ async function completeTask(taskId, actor, options = {}) {
                         'reportSubmittedAt', NOW(),
                         'reportSubmittedBy', $4::text
                     )
-                 END,
+                 END${operation ? " || jsonb_build_object('myDayOperation', $6::jsonb)" : ''},
              version = COALESCE(version, 1) + 1
          WHERE id = $1
            AND COALESCE(version, 1) = $2
            AND COALESCE(business_context, 'event_genix') = $5
            AND COALESCE(status, 'todo') NOT IN ('done','cancelled','archived')
          RETURNING *, completed_at AT TIME ZONE 'UTC' AS completed_at`,
-            [task.id, task.version || 1, reportId || null, userDisplayName(actor), task.business_context || 'event_genix']
+            [task.id, task.version || 1, reportId || null, userDisplayName(actor), task.business_context || 'event_genix',
+                ...(operation ? [JSON.stringify(operation)] : [])]
         );
         if (!result.rows.length) {
             const err = new Error('Task is already closed or cannot be completed');

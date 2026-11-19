@@ -20,7 +20,8 @@ function harness() {
         schSegmentsList: { dataset: { activeSegmentIndex: '0' } }
     };
     const state = { editingCell: { staffId: 10, date: '2026-10-03', planUpdatedAt: '2026-10-01T12:00:00Z' },
-        canManageSchedule: true, canViewStaff: true, rangeMode: 'custom', recoveryReadOnly: false, professionsLoadState: 'ready' };
+        canManageSchedule: true, canViewStaff: true, rangeMode: 'custom', recoveryReadOnly: false, professionsLoadState: 'ready',
+        scheduleLoadedRange: { from: '2026-10-01', to: '2026-10-15' }, freelanceReserveSchedule: {} };
     let assigned = null;
     const user = { id: 1, role: 'hr' };
     const scope = { mode: 'single', activeContext: 'park', selectedContexts: ['park'] };
@@ -37,7 +38,8 @@ function harness() {
         scheduleCanViewPayrollAmounts: () => true, isScheduleRecoveryReadOnly: () => false,
         scheduleCurrentRange: () => ({ start: '2026-10-01', end: '2026-10-15' }), formatDateStr: value => value,
         readSchedulePlanSegments: () => [{ clientKey: 'x', professionKey: 'animator', shiftStart: '', shiftEnd: '18:00', additionalRoles: [] }],
-        showNotification: () => {}, scheduleRangeDataReady: () => true,
+        showNotification: () => {}, scheduleRangeDataReady: () => true, canManageStaffScheduleRecord: () => true,
+        staffScheduleRequestContext: () => JSON.stringify(scope), scheduleCommittedRangeKey: () => 'fixture-range', scheduleStaffById: id => ({ id }),
         openEditModal: (staffId, date) => { state.editingCell = { staffId, date, planUpdatedAt: 'NEW' }; },
         renderSchedulePlanEditor: () => {}, toggleTimeFields: () => {}, history: { state: null, replaceState: () => {} }
     });
@@ -85,13 +87,14 @@ test('storage failure and pending save keep the user in the schedule', () => {
     assert.equal(c.navigateSchedulePayConditions({ href: '/hr' }), false);
     assert.equal(assigned(), null);
 });
-test('restoration retains the old concurrency token instead of adopting the current server version', () => {
+test('restoration retains the old concurrency token instead of adopting the current server version', async () => {
     const { c, fields, state } = harness();
     state.editingCell.cancelFreelanceSegmentIds = new Set(['17']);
     c.navigateSchedulePayConditions({ href: '/hr?employee=10' });
     const draft = c.readScheduleHrDraft('draft-token');
     fields.schNote.value = '';
-    assert.equal(c.restoreScheduleHrDraft(draft), true);
+    state.editingCell = null;
+    assert.equal(await c.restoreScheduleHrDraft(draft), true);
     assert.equal(state.editingCell.planUpdatedAt, draft.planUpdatedAt);
     assert.deepEqual(Array.from(state.editingCell.cancelFreelanceSegmentIds), ['17']);
     assert.equal(fields.schNote.value, 'Draft note');
@@ -153,7 +156,8 @@ test('a newly created server plan blocks saving a draft that originally had no p
     const { c, state } = harness();
     state.editingCell.planUpdatedAt = null;
     c.navigateSchedulePayConditions({ href: '/hr?employee=10' });
-    c.restoreScheduleHrDraft(c.readScheduleHrDraft('draft-token'));
+    state.editingCell = null;
+    assert.equal(await c.restoreScheduleHrDraft(c.readScheduleHrDraft('draft-token')), true);
     assert.equal(state.editingCell.hrDraftStale, true);
     state.editingCell.rangeKey = 'range';
     c.scheduleCommittedRangeKey = () => 'range';

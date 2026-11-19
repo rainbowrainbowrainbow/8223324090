@@ -587,7 +587,17 @@ async function _submitAlertTask(btn, alertId) {
         if (resp.ok) {
             const data = await resp.json();
             const taskId = data.task?.id || data.id || '';
-            form.innerHTML = `<div style="color:#22c55e;font-size:12px;padding:6px">✅ Задачу #${taskId} створено! <a href="/profile?tab=myday&open=${taskId}" style="color:#22c55e;text-decoration:underline">Відкрити</a></div>`;
+            const message = document.createElement('div');
+            message.style.cssText = 'color:#22c55e;font-size:12px;padding:6px';
+            message.textContent = '✅ Задачу #' + taskId + ' створено!';
+            if (typeof data.taskHref === 'string' && data.taskHref.startsWith('/profile?tab=myday&open=')) {
+                const link = document.createElement('a');
+                link.href = data.taskHref;
+                link.textContent = 'Відкрити';
+                link.style.cssText = 'color:#22c55e;text-decoration:underline';
+                message.append(' ', link);
+            }
+            form.replaceChildren(message);
             setTimeout(() => { form.parentElement.innerHTML = ''; _dismissAlert(alertId); }, 3000);
         } else { btn.disabled = false; btn.textContent = '📋 Спробувати ще'; }
     } catch { btn.disabled = false; btn.textContent = '📋 Поставити задачу'; }

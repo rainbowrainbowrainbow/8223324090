@@ -209,7 +209,7 @@
     font-size: 12px;
     font-weight: 850;
 }
-.hr-account-onboarding-status:not(:empty) {
+.hr-account-onboarding-status[data-type]:not([data-type=""]) {
     padding-top: 10px;
 }
 .hr-account-onboarding-status[data-type="progress"] {

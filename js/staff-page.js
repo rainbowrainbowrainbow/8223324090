@@ -6,7 +6,7 @@
  * Click on a cell to edit shift via modal (status, time, note).
  * v39.1: Account linking — ✅/⚠️ indicators, link modal, bulk create, Excel import.
  * API used: GET /api/staff, GET /api/staff/schedule, PUT /api/staff/schedule,
- *   GET /api/staff/link-status, POST /api/staff/:id/link, POST /api/staff/bulk-create-accounts.
+ *   GET /api/staff/link-status and POST /api/staff/:id/link.
  * State is in StaffState object (weekStart, staff[], schedule{}, activeDept).
  */
 
@@ -126,7 +126,6 @@ const StaffState = {
     focusScrollPending: false,
     linkingStaffId: null,   // v39.1: staff being linked
     selectedUserId: null,   // v39.1: selected user in link modal
-    bulkResults: null,      // v39.1: bulk create results
 };
 
 const STAFF_SCHEDULE_EXPANDED_GROUPS_STORAGE_KEY = 'pzp_staff_schedule_expanded_groups';
@@ -3206,10 +3205,13 @@ function restoreScheduleCommittedRangeUi() {
     updateScheduleHeaderMetrics();
 }
 
-function retryScheduleRangeLoad() {
+async function retryScheduleRangeLoad() {
     const retry = StaffState.rangeRetry;
-    if (!retry) return Promise.resolve(false);
-    return goToScheduleRange(retry.start, retry.end, retry.mode);
+    if (!retry) return false;
+    const loaded = await goToScheduleRange(retry.start, retry.end, retry.mode, retry.options);
+    const focus = retry.options?.freelanceFocus;
+    if (loaded && focus) return focusScheduleFreelance(focus.staffId, focus.date, { rangeLoaded: true });
+    return loaded;
 }
 
 function isScheduleCustomRangeMode() {
@@ -3469,7 +3471,7 @@ function applyScheduleReadAccess(data) {
     StaffState.canManageSchedule = false;
     StaffState.canManageStaff = false;
     StaffState.canExportSchedule = false;
-    ['copyWeekBtn', 'fillWeekBtn', 'bulkCreateBtn', 'importExcelBtn', 'excelImportInput', 'exportExcelBtn'].forEach(id => {
+    ['copyWeekBtn', 'fillWeekBtn', 'importExcelBtn', 'excelImportInput', 'exportExcelBtn'].forEach(id => {
         const control = document.getElementById(id);
         if (!control) return;
         control.hidden = true;
@@ -4532,6 +4534,16 @@ async function chooseFreelanceStaff(button) {
     document.getElementById('scheduleFreelanceDateHint').textContent = 'Дати графіка: ' + formatScheduleRangeLabel(start, end);
     const today = todayStr();
     dateInput.value = fixedDate || (today >= dateInput.min && today <= dateInput.max ? today : dateInput.min);
+    const validateDate = () => {
+        dateInput.setCustomValidity('');
+        // WebKit can omit rangeOverflow when a single day sets min and max to the same value.
+        if (!dateInput.disabled && dateInput.value && dateInput.validity.valid
+            && (dateInput.value < dateInput.min || dateInput.value > dateInput.max)) {
+            dateInput.setCustomValidity('Оберіть дату в завантаженому діапазоні графіка.');
+        }
+    };
+    dateInput.oninput = dateInput.onchange = validateDate;
+    validateDate();
     const context = staffScheduleRequestContext();
     const range = scheduleCommittedRangeKey();
     const roster = fixedDate
@@ -4560,7 +4572,9 @@ async function chooseFreelanceStaff(button) {
     const submit = event => {
         event.preventDefault();
         const candidate = candidates.get(select.value);
-        if (!isCurrent() || !candidate || !dateInput.validity.valid) return;
+        if (!isCurrent() || !candidate) return;
+        validateDate();
+        if (!dateInput.reportValidity()) return;
         const date = fixedDate || dateInput.value;
         const { staff, professionKey } = candidate;
         const reserveStaff = staffPoolStatusForSchedule(staff) === 'reserve' ? staff : null;
@@ -5099,7 +5113,7 @@ function navigateSchedulePayConditions(link) {
     if (returnUrl.pathname === '/hr') returnUrl.hash = 'schedule';
     const draft = {
         token, pending: true, owner: scheduleHrDraftContext(), createdAt: Date.now(),
-        staffId: session.staffId, date: session.date,
+        staffId: session.staffId, date: session.date, reserve: Boolean(session.reserveStaff),
         range: { from: formatDateStr(scheduleCurrentRange().start), to: formatDateStr(scheduleCurrentRange().end) }, rangeMode: StaffState.rangeMode,
         sectionDepartment: session.sectionDepartment, sectionProfessionKey: session.sectionProfessionKey,
         planUpdatedAt: session.planUpdatedAt, initialState: _staffScheduleInitialState,
@@ -5126,10 +5140,38 @@ function navigateSchedulePayConditions(link) {
     return true;
 }
 
-function restoreScheduleHrDraft(draft) {
-    if (!draft || !StaffState.canManageSchedule || StaffState.recoveryReadOnly || !scheduleRangeDataReady()) return false;
+async function restoreScheduleHrDraft(draft) {
+    if (!draft || !canManageStaffScheduleRecord(draft.staffId) || StaffState.recoveryReadOnly
+        || !scheduleRangeDataReady() || StaffState.editingCell) return false;
+    const rangeKey = scheduleCommittedRangeKey();
+    const context = staffScheduleRequestContext();
+    if (draft.owner !== scheduleHrDraftContext() || draft.date < StaffState.scheduleLoadedRange.from
+        || draft.date > StaffState.scheduleLoadedRange.to) return false;
+
+    const reserveEntry = StaffState.freelanceReserveSchedule[draft.staffId + '_' + draft.date];
+    let reserveStaff = reserveEntry ? { ...reserveEntry, id: draft.staffId } : null;
+    if (!reserveStaff && (draft.reserve || !scheduleStaffById(draft.staffId))) {
+        try {
+            const response = await staffApiFetch('/api/staff?pool=reserve');
+            const result = await parseScheduleReadResponse(response, 'Не вдалося завантажити резерв');
+            if (result.success) {
+                reserveStaff = (Array.isArray(result.data?.data) ? result.data.data : [])
+                    .find(staff => Number(staff.id) === draft.staffId && staffPoolStatusForSchedule(staff) === 'reserve') || null;
+            }
+        } catch {
+            // Leave the draft pending when the current roster cannot be confirmed.
+        }
+        if (context !== staffScheduleRequestContext() || rangeKey !== scheduleCommittedRangeKey()
+            || !scheduleRangeDataReady() || StaffState.editingCell
+            || !canManageStaffScheduleRecord(draft.staffId) || draft.owner !== scheduleHrDraftContext()) return false;
+        if (!reserveStaff) {
+            showNotification('Не вдалося відкрити чернетку резервіста. Чернетку збережено. Спробуйте повернутися ще раз.', 'warning');
+            return false;
+        }
+    }
+
     openEditModal(draft.staffId, draft.date, { department: draft.sectionDepartment,
-        professionKey: draft.sectionProfessionKey, restoreDraft: true });
+        professionKey: draft.sectionProfessionKey, reserveStaff, restoreDraft: true });
     const session = StaffState.editingCell;
     if (!session || session.staffId !== draft.staffId || session.date !== draft.date) return false;
     // Keep the version that the draft was based on; the server still rejects concurrent edits.
@@ -7751,6 +7793,10 @@ async function handleSave() {
                     if (showTime && result.data.hr_pool_status === 'reserve') {
                         StaffState.freelanceReserveSchedule[key] = result.data;
                         revealScheduleFreelanceStaff({ ...result.data, id: staffId });
+                        if (StaffState.activeDept !== 'all' && addedGroups.length === 1 && StaffState.activeDept !== addedGroups[0]) {
+                            StaffState.activeDept = addedGroups[0];
+                            renderDeptFilter();
+                        }
                     } else if (result.data.hr_pool_status === 'core' || !result.data.hr_pool_status) {
                         replaceScheduleStateEntry(previousEntry, result.data);
                     }
@@ -7895,7 +7941,8 @@ async function handleClearReplacement() {
 // WEEK NAVIGATION
 // ==========================================
 
-async function goToScheduleRange(startValue, endValue, mode = 'custom', { restoreDraft = true } = {}) {
+async function goToScheduleRange(startValue, endValue, mode = 'custom', options = {}) {
+    const { restoreDraft = true } = options;
     const validation = validateScheduleRange(startValue, endValue);
     if (!validation.ok) {
         showNotification(validation.error, 'error');
@@ -7935,7 +7982,7 @@ async function goToScheduleRange(startValue, endValue, mode = 'custom', { restor
                 return false;
             }
             StaffState.rangePending = null;
-            StaffState.rangeRetry = target;
+            StaffState.rangeRetry = { ...target, options };
             restoreScheduleCommittedRangeUi();
             setScheduleRangeLoadState('error', {
                 range: target,
@@ -7970,14 +8017,14 @@ async function goToScheduleRange(startValue, endValue, mode = 'custom', { restor
         );
         if (staffScheduleInitialized && restoreDraft) {
             const draft = readScheduleHrDraft();
-            if (draft && draft.date >= target.from && draft.date <= target.to) restoreScheduleHrDraft(draft);
+            if (draft && draft.date >= target.from && draft.date <= target.to) await restoreScheduleHrDraft(draft);
         }
         return true;
     } catch (err) {
         if (requestSeq !== staffScheduleRangeLoadSeq || controller?.signal.aborted || requestContext !== staffScheduleRequestContext() || isScheduleAbortError(err)) return false;
         console.error('goToScheduleRange error:', err);
         StaffState.rangePending = null;
-        StaffState.rangeRetry = target;
+        StaffState.rangeRetry = { ...target, options };
         restoreScheduleCommittedRangeUi();
         setScheduleRangeLoadState('error', {
             range: target,
@@ -8008,15 +8055,20 @@ async function focusScheduleFreelance(staffId, date, { rangeLoaded = false } = {
     if (!id || !targetDate || !staffScheduleInitialized) return false;
     const wrapper = document.getElementById('scheduleWrapper');
     const context = staffScheduleRequestContext();
-    const loaded = StaffState.canViewSchedule
-        && (rangeLoaded ? scheduleRangeDataReady() : await goToScheduleRange(targetDate, targetDate, 'custom', { restoreDraft: false }));
+    const dateKey = formatDateStr(targetDate);
+    const loaded = StaffState.canViewSchedule && (rangeLoaded
+        ? scheduleRangeDataReady() && StaffState.scheduleLoadedRange?.from <= dateKey && StaffState.scheduleLoadedRange?.to >= dateKey
+        : await goToScheduleRange(targetDate, targetDate, 'custom', {
+            restoreDraft: false, freelanceFocus: { staffId: id, date: dateKey }
+        }));
     if (wrapper.closest('.hr-tab-content:not(.active)') || context !== staffScheduleRequestContext()) return false;
 
-    const dateKey = formatDateStr(targetDate);
     const entry = loaded ? StaffState.freelanceReserveSchedule[`${id}_${dateKey}`] : null;
     const segment = entry && scheduleEntrySegmentsForUi(entry, entry.role_type)
         .find(item => item.workMode === 'freelance');
     if (!segment) {
+        const retryFocus = StaffState.rangeRetry?.options?.freelanceFocus;
+        if (!loaded && retryFocus?.staffId === id && retryFocus.date === dateKey) return false;
         showNotification(loaded
             ? 'Фріланс-вихід на цю дату більше недоступний або його видалено.'
             : 'Не вдалося відкрити фріланс-вихід. Перевірте доступ до графіка та спробуйте ще раз.', 'warning');
@@ -8336,14 +8388,22 @@ async function handleCopyWeek() {
     const toMonday = formatDateStr(nextMon);
     const targetEnd = formatDateStr(shiftScheduleDate(nextMon, 6));
 
-    const deptLabel = StaffState.activeDept === 'all'
-        ? 'всіх відділів'
-        : scheduleDisplayDepartmentLabel(StaffState.activeDept);
+    const department = StaffState.activeDept || 'all';
+    const teamOnly = typeof canAccess === 'function' && !canAccess('hr.schedule.scope.business');
+    const visibleStaffIds = scheduleCopyWeekVisibleStaffIds();
     const scope = {
-        department: StaffState.activeDept || 'all',
-        mode: scheduleCopyWeekModeForDepartment(StaffState.activeDept || 'all'),
-        staffIds: scheduleCopyWeekVisibleStaffIds()
+        department,
+        mode: teamOnly ? 'explicit_staff_ids' : scheduleCopyWeekModeForDepartment(department),
+        staffIds: teamOnly ? visibleStaffIds.filter(canManageStaffScheduleRecord) : visibleStaffIds
     };
+    const deptLabel = teamOnly
+        ? (department === 'all' ? 'видимих працівників вашого підрозділу'
+            : 'видимих працівників вашого підрозділу в категорії «' + scheduleDisplayDepartmentLabel(department) + '»')
+        : (department === 'all' ? 'всіх відділів' : scheduleDisplayDepartmentLabel(department));
+    if (teamOnly && !scope.staffIds.length) {
+        showNotification('У вибраній категорії немає видимих працівників, графік яких ви можете копіювати.', 'warning');
+        return;
+    }
 
     staffCopyWeekPending = true;
     const copyBtn = document.getElementById('copyWeekBtn');
@@ -8731,10 +8791,6 @@ async function fetchAllUsers() {
     }
 }
 
-function getCredentialPassword(credential) {
-    return credential?.password || credential?.oneTimePassword || '';
-}
-
 async function loadStaffAccountCreationAccess() {
     try {
         const response = await staffApiFetch('/api/users/creation-access');
@@ -9098,138 +9154,6 @@ async function refreshScheduleAccountLinks(context, rowSelector) {
 }
 
 // Bulk create accounts
-let bulkAccountRun = null;
-
-async function handleBulkCreate() {
-    const context = staffScheduleRequestContext();
-    if (bulkAccountRun?.context !== context) bulkAccountRun = null;
-    if (bulkAccountRun?.busy) return;
-
-    const unlinked = StaffState.linkStats?.unlinked || 0;
-    if (!bulkAccountRun && unlinked === 0) {
-        showNotification('Всі працівники вже мають акаунти', 'success');
-        return;
-    }
-
-    const run = bulkAccountRun ||= {
-        context, batch: null, key: crypto.randomUUID(), access: null,
-        result: { created: [], skipped: [], replayed: false }
-    };
-    const isCurrent = () => bulkAccountRun === run && context === staffScheduleRequestContext();
-    run.busy = true;
-    try {
-        if (!run.access) {
-            const access = await loadStaffAccountCreationAccess();
-            if (!access || !isCurrent()) return;
-            const detail = access.pendingMembership
-                ? 'Акаунти очікуватимуть призначення доступу до бізнесу.'
-                : `Бізнес: ${access.businessLabel}. Паролі будуть доступні для акаунтів із підтвердженим доступом.`;
-            if (!await confirmModal(`Створити акаунти для ${unlinked} працівників?\n\n${detail}`, { type: 'warning', okText: 'Створити' })
-                || !isCurrent()) return;
-            run.access = access;
-            run.result.businessLabel = access.businessLabel;
-        }
-
-        showNotification('Створюємо акаунти порціями…');
-        while (isCurrent()) {
-            const data = await submitStaffAccountCreation('/api/staff/bulk-create-accounts', {
-                activateMembership: run.access.activateMembership, batch: run.batch
-            }, run.key);
-            if (!isCurrent()) return;
-            if (!data.success) {
-                showBulkAccountRunResult(run, data.error || 'Не вдалося завершити поточну порцію.');
-                return;
-            }
-            run.result.created.push(...data.created);
-            run.result.skipped.push(...data.skipped);
-            run.result.replayed ||= data.replayed === true;
-            if (!data.nextBatch) {
-                bulkAccountRun = null;
-                showBulkAccountRunResult(run);
-                return;
-            }
-            run.batch = data.nextBatch;
-            run.key = crypto.randomUUID();
-        }
-    } catch {
-        if (isCurrent() && run.access) showBulkAccountRunResult(run, 'Не вдалося підтвердити результат поточної порції.');
-    } finally {
-        run.busy = false;
-        if (bulkAccountRun === run && !run.access) bulkAccountRun = null;
-    }
-}
-
-function showBulkAccountRunResult(run, error = '') {
-    run.result.error = error;
-    StaffState.bulkResults = run.result;
-    showBulkResults(run.result);
-    void refreshScheduleAccountLinks(run.context);
-}
-
-function showBulkResults(data) {
-    const body = document.getElementById('bulkResultsBody');
-    const created = Array.isArray(data.created) ? data.created : [];
-    const skipped = Array.isArray(data.skipped) ? data.skipped : [];
-    let html = `<p style="margin:0 0 8px;font-size:14px;font-weight:700">Створено: ${created.length} акаунтів</p>`;
-    if (data.error) {
-        html += `<p role="alert">${escapeHtml(data.error)}</p><button type="button" class="btn-page-secondary" data-bulk-accounts-resume>Повторити порцію</button>`;
-    }
-    if (data.replayed) html += '<p>Відновлені результати не містять паролів. За потреби видайте пароль повторно в керуванні акаунтом.</p>';
-    if (created.some(item => item.credential)) html += '<p>Початкові паролі показуються один раз.</p>';
-
-    if (skipped.length > 0) {
-        html += `<p style="margin:0 0 8px;font-size:12px;color:var(--gray-500)">Пропущено: ${skipped.length}</p>`;
-    }
-
-    html += `<table class="bulk-results-table">
-        <thead><tr><th>Ім'я</th><th>Логін</th><th>Пароль</th><th>Роль</th><th>CRM-доступ</th></tr></thead>
-        <tbody>`;
-
-    for (const c of created) {
-        const password = c.businessAccessReady ? getCredentialPassword(c.credential) : '';
-        const status = c.businessAccessReady ? 'Активний'
-            : c.accessState === 'pending_membership' ? 'Очікує призначення' : 'Потрібна перевірка';
-        html += `<tr>
-            <td style="font-family:inherit;font-weight:600">${escapeHtml(c.name)}</td>
-            <td>${escapeHtml(c.username)}</td>
-            <td>${escapeHtml(password)}</td>
-            <td>${escapeHtml(c.role)}</td>
-            <td>${status}</td>
-        </tr>`;
-    }
-    html += '</tbody></table>';
-    body.innerHTML = html;
-    document.getElementById('bulkCopyBtn')?.classList.toggle('hidden', !created.some(item => item.businessAccessReady && item.credential));
-    document.getElementById('bulkCsvBtn')?.classList.add('hidden');
-    document.getElementById('bulkPdfBtn')?.classList.add('hidden');
-    document.getElementById('bulkResultsOverlay')?.classList.add('visible');
-}
-
-function closeBulkResults() {
-    document.getElementById('bulkResultsOverlay')?.classList.remove('visible');
-    for (const item of StaffState.bulkResults?.created || []) item.credential = null;
-    StaffState.bulkResults = null;
-    document.getElementById('bulkResultsBody')?.replaceChildren();
-}
-
-function copyBulkResults() {
-    if (!StaffState.bulkResults) return;
-    const active = StaffState.bulkResults.created.filter(item => item.businessAccessReady && item.credential);
-    if (!active.length) return;
-    const lines = active.map(item => `CRM: ${location.origin}/\nБізнес: ${StaffState.bulkResults.businessLabel}\nЛогін: ${item.username}\nПароль: ${getCredentialPassword(item.credential)}\n`);
-    navigator.clipboard.writeText(lines.join('\n')).then(() => {
-        showNotification('Скопійовано в буфер обміну');
-    });
-}
-
-function downloadBulkCsv() {
-    showNotification('CSV експорт паролів вимкнено: one-time credentials можна тільки скопіювати зараз.', 'warning');
-}
-
-async function downloadBulkPdf() {
-    showNotification('PDF експорт паролів вимкнено: one-time credentials можна тільки скопіювати зараз.', 'warning');
-}
-
 // Excel import
 function triggerExcelImport() {
     document.getElementById('excelImportInput')?.click();
@@ -9630,7 +9554,6 @@ function syncStaffScheduleCapabilities() {
     const controls = {
         copyWeekBtn: StaffState.canManageSchedule,
         fillWeekBtn: StaffState.canManageSchedule,
-        bulkCreateBtn: StaffState.canManageStaff && isAdmin && staffScheduleHostMode !== 'hr',
         importExcelBtn: StaffState.canManageStaff && isAdmin,
         excelImportInput: StaffState.canManageStaff && isAdmin,
         exportExcelBtn: StaffState.canExportSchedule
@@ -9669,13 +9592,11 @@ function clearStaffScheduleAccessState() {
     void closeFillWeekModal(true);
     closeScheduleAccountForm({ force: true });
     closeLinkModal();
-    bulkAccountRun = null;
-    closeBulkResults();
     Object.assign(StaffState, {
         staff: [], professions: [], departments: {}, displayGroups: [], scheduleCategoryContract: null,
         schedule: {}, freelanceReserveSchedule: {}, scheduleRawEntries: [], shiftSubstitutionLabels: {}, scheduleLoadedRange: null, attendance: {}, attendanceSummary: null,
         attendanceUnavailable: true, hoursData: null, scheduleHistory: {}, shiftPreferences: {},
-        linkData: [], linkStats: null, allUsers: [], bulkResults: null,
+        linkData: [], linkStats: null, allUsers: [],
         staffingForecast: null, staffingForecastBookings: {}, staffingForecastAvailable: false,
         managerAccountability: null, rangePending: null, rangeRetry: null
     });
@@ -9911,7 +9832,10 @@ async function initStaffSchedulePage(options = {}) {
         const hasFreelanceLink = linkedFreelanceStaffId && linkedDate;
         const draft = options.skipDraftRestore || (hasFreelanceLink && !draftToken) ? null : readScheduleHrDraft(draftToken || '');
         const openLinkedFreelance = hasFreelanceLink && !draft;
-        if (openLinkedFreelance) await goToScheduleRange(linkedDate, linkedDate);
+        if (openLinkedFreelance) await goToScheduleRange(linkedDate, linkedDate, 'custom', {
+            restoreDraft: false,
+            freelanceFocus: { staffId: linkedFreelanceStaffId, date: formatDateStr(linkedDate) }
+        });
         else if (draft?.range?.from && draft?.range?.to) await goToScheduleRange(draft.range.from, draft.range.to, draft.rangeMode);
         else await goToWeek(getScheduleFocusStart(linkedDate || new Date()));
         if (initialContext !== staffScheduleRequestContext()) {
@@ -9974,7 +9898,6 @@ async function initStaffSchedulePage(options = {}) {
         document.getElementById('copyWeekBtn')?.addEventListener('click', handleCopyWeek);
 
         // View switch controls are bound by bindScheduleViewSwitchControls().
-        document.getElementById('bulkCreateBtn')?.addEventListener('click', handleBulkCreate);
         document.getElementById('importExcelBtn')?.addEventListener('click', triggerExcelImport);
         document.getElementById('excelImportInput')?.addEventListener('change', handleExcelImport);
         document.getElementById('exportExcelBtn')?.addEventListener('click', handleExcelExport);
@@ -9993,22 +9916,10 @@ async function initStaffSchedulePage(options = {}) {
         });
 
         // Bulk results modal
-        document.getElementById('bulkCloseBtn')?.addEventListener('click', closeBulkResults);
-        document.getElementById('bulkResultsBody')?.addEventListener('click', event => {
-            if (event.target.closest('[data-bulk-accounts-resume]')) void handleBulkCreate();
-        });
-        document.getElementById('bulkCopyBtn')?.addEventListener('click', copyBulkResults);
-        document.getElementById('bulkCsvBtn')?.addEventListener('click', downloadBulkCsv);
-        document.getElementById('bulkPdfBtn')?.addEventListener('click', downloadBulkPdf);
-        document.getElementById('bulkResultsOverlay')?.addEventListener('click', (e) => {
-            if (e.target === e.currentTarget) closeBulkResults();
-        });
-
         document.addEventListener('keydown', (e) => {
             if (e.key !== 'Escape' || e.defaultPrevented) return;
             if (document.getElementById('fillWeekOverlay')?.classList.contains('visible')) closeFillWeekModal(false);
             else if (document.getElementById('linkModalOverlay')?.classList.contains('visible')) closeLinkModal();
-            else if (document.getElementById('bulkResultsOverlay')?.classList.contains('visible')) closeBulkResults();
         });
 
         staffScheduleInitialized = true;
@@ -10016,7 +9927,7 @@ async function initStaffSchedulePage(options = {}) {
             await focusScheduleFreelance(linkedFreelanceStaffId, formatDateStr(linkedDate), { rangeLoaded: true });
         }
         staffScheduleAccessFingerprint = staffScheduleRequestContext();
-        restoreScheduleHrDraft(draft);
+        await restoreScheduleHrDraft(draft);
         const linkedSegment = Number(query.get('scheduleSegment'));
         if (!draft && initialFocusStaffId && linkedDate && Number.isSafeInteger(linkedSegment) && linkedSegment > 0) {
             const date = formatDateStr(linkedDate);

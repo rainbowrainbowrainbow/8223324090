@@ -1210,7 +1210,8 @@ async function apiGetScopedJson(path, options = {}) {
     try {
         const response = await fetch(url, {
             headers: getAuthHeaders(false),
-            signal: controller?.signal || externalSignal
+            signal: controller?.signal || externalSignal,
+            cache: options.cache
         });
         if (handleAuthError(response)) return null;
         const payload = await response.json().catch(() => ({}));
@@ -5108,6 +5109,32 @@ async function updateCabinetTaskFields(taskId, patch = {}, options = {}) {
     return result.task || result;
 }
 
+async function submitMyDayTaskAction(task, kind, fields, operationId) {
+    const id = normalizeCabinetTaskId(task?.id);
+    const version = Number(task?.version);
+    if (!id || !Number.isSafeInteger(version) || version < 1) {
+        throw Object.assign(new Error('Версію задачі не підтверджено. Перевірте актуальні дані.'), { status: 409 });
+    }
+    const body = { ...fields, version, sourceSurface: 'profile_my_cabinet', myDayOperationId: operationId };
+    const path = '/tasks/' + id;
+    const result = kind === 'editor' ? await apiPut(path, body)
+        : await apiPost(path + (kind === 'complete' ? '/complete' : '/reschedule'), body);
+    if (!result?.success) {
+        const status = Number(result?.status) || null;
+        throw Object.assign(new Error(result?.error || 'Не вдалося зберегти задачу.'), {
+            status, outcomeUnknown: !status || status >= 500
+        });
+    }
+    onMyDayTaskActionConfirmed(kind, id);
+    return result.task || result;
+}
+
+function onMyDayTaskActionConfirmed(kind, id) {
+    const actions = { editor: 'task_update', complete: 'task_status', schedule: 'task_reschedule' };
+    notifyTaskWidgetsChanged({ action: actions[kind], taskId: id, ...(kind === 'complete' ? { status: 'done' } : {}) });
+    void refreshMyCabinetTab({ force: true, silent: true }).catch(error => console.error('My Day projection refresh', error));
+}
+
 function cabinetTaskMoveTargets(task = {}) {
     const taskId = Number(task.id || task.taskId || task.task_id || 0);
     const dueState = getCabinetTaskDueState(task, cabinetTaskDueValue(task));
@@ -6225,6 +6252,11 @@ function focusMyDayTaskDate(due) {
 function syncMyDayTaskDialog(opener = null, { initialize = false } = {}) {
     const current = document.querySelector('.park-task-dialog[open]');
     const url = new URL(window.location.href);
+    if (initialize && isOwnProfile && activeTab === 'myday' && url.searchParams.has('taskContextChanged')) {
+        url.searchParams.delete('taskContextChanged');
+        window.history.replaceState(window.history.state, '', url);
+        showNotification('Активний бізнес змінився. Задача з попереднього бізнесу не відкрилася.', 'info');
+    }
     const rawId = url.searchParams.get('open');
     const taskId = isOwnProfile && activeTab === 'myday' && /^[1-9]\d*$/.test(rawId || '')
         ? Number(rawId) : null;
@@ -6261,12 +6293,12 @@ function syncMyDayTaskDialog(opener = null, { initialize = false } = {}) {
     else if (/^\d{4}-\d{2}-\d{2}$/.test(date || '')) focusMyDayTaskDate(date);
     window.ProfileMyDay.openTaskDialog({
         taskId, opener, mode: url.searchParams.get('mode'),
-        load: signal => apiGetScopedJson(`/tasks/${taskId}`, { signal }),
-        save: (task, patch) => updateCabinetTaskFields(taskId, patch, { task, notify: false }),
-        complete: task => setCabinetTaskStatus(taskId, 'done', { task, silent: true, allowUndo: false }),
-        reschedule: date => rescheduleCabinetTask(taskId, 'date', {
-            date, notify: false, sourceSurface: 'profile_my_cabinet'
-        }),
+        load: signal => apiGetScopedJson(`/tasks/${taskId}`, { signal, cache: 'no-store' }),
+        draftScope: { actor: AppState.currentUser?.id, business: AppState.currentUser?.activeBusinessContext },
+        save: (task, patch, operationId) => submitMyDayTaskAction(task, 'editor', patch, operationId),
+        complete: (task, operationId) => submitMyDayTaskAction(task, 'complete', {}, operationId),
+        reschedule: (date, task, operationId) => submitMyDayTaskAction(task, 'schedule', { deadline: profileDeadlineForDate(date) }, operationId),
+        onReconciled: kind => onMyDayTaskActionConfirmed(kind, taskId),
         selectDate: task => {
             const due = cabinetTaskFocusDateKey(task);
             if (!opener && due !== date) focusMyDayTaskDate(due);
@@ -6679,7 +6711,8 @@ async function handleCabinetTaskActionClick(event) {
         } else if (window.TaskDetailDrawer?.open) {
             window.TaskDetailDrawer.open(taskId, { view: 'my', mode, sourceSurface: 'profile_my_day' });
         } else {
-            window.location.href = `/profile?tab=myday&open=${encodeURIComponent(taskId)}${mode ? '&mode=edit' : ''}`;
+            const task = findCabinetTask(taskId) || {};
+            window.location.href = TaskLinks.taskUrl(taskId, { businessContext: task.business_context || task.businessContext, mode });
         }
         return;
     }
@@ -6880,11 +6913,11 @@ function showCabinetTaskCreateSuccessToast(result = {}, draft = {}, verification
         payload.actions = [
             {
                 label: 'Відкрити',
-                href: `/profile?tab=myday&open=${encodeURIComponent(taskId)}`
+                href: TaskLinks.taskUrl(taskId, { businessContext: task.business_context || task.businessContext })
             },
             {
                 label: 'Редагувати',
-                href: `/profile?tab=myday&open=${encodeURIComponent(taskId)}&mode=edit`
+                href: TaskLinks.taskUrl(taskId, { businessContext: task.business_context || task.businessContext, mode: 'edit' })
             }
         ];
     }

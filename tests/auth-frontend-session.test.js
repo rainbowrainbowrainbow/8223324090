@@ -442,6 +442,7 @@ function loadLogoutShellHarness(pathname = '/', sessionStore = new Map()) {
             }
         },
         document: {
+            querySelector: () => null,
             body: {
                 classList: bodyClasses.classList,
                 removeAttribute: name => bodyAttrs.delete(name),
@@ -1728,6 +1729,7 @@ test('cross-tab account replacement immediately covers stale private UI and relo
         clearAuthenticatedPageShell: () => calls.push('clear-shell'),
         authBootstrapUsersShareIdentity: (left, right) => left?.id === right?.id,
         document: {
+            querySelector: () => null,
             getElementById: id => {
                 if (!elements.has(id)) {
                     elements.set(id, { classList: { add: value => calls.push(['hide', id, value]) } });
@@ -1745,6 +1747,7 @@ test('cross-tab account replacement immediately covers stale private UI and relo
             + `const AUTH_LOGIN_INTENT_KEY = 'pzp_auth_login_intent';\n`
             + `let crossTabLogoutInProgress = false;\n`
             + `let crossTabSessionSyncInProgress = false;\n`
+            + extractAuthFunction('readAuthBootstrapStoredUser') + '\n'
             + extractAuthFunction('handleCrossTabAuthStorageChange'),
         context,
         { filename: 'js/auth.js' }
@@ -1779,6 +1782,8 @@ test('cross-tab cleanup does not cancel an explicit login already in flight', ()
         clearAuthStorage: options => calls.push(['clear-auth', options]),
         clearPrivateClientCaches: () => calls.push('clear-caches'),
         showLoginScreen: () => calls.push('show-login'),
+        document: { querySelector: () => null },
+        window: {},
         logout: () => calls.push('logout'),
         setTimeout: callback => {
             callback();

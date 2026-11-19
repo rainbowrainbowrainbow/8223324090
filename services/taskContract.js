@@ -44,7 +44,7 @@ function normalizeTaskPayload(row = {}, options = {}) {
     const taskKind = row.task_kind || 'action';
     const visibility = row.visibility || (taskMode === 'private' ? 'private' : 'team');
     const workflowState = row.workflow_state || workflowFromStatus(status);
-    const controlMeta = taskControlMeta(row);
+    const { myDayOperation, ...controlMeta } = taskControlMeta(row);
     const fallbackCanReschedule = !isExplicitFalse(controlMeta.canReschedule)
         && !isExplicitFalse(controlMeta.allowReschedule)
         && !isExplicitFalse(controlMeta.rescheduleAllowed);
@@ -68,6 +68,8 @@ function normalizeTaskPayload(row = {}, options = {}) {
 
     return {
         ...scheduledRow,
+        ...(myDayOperation ? { control_meta: controlMeta } : {}),
+        ...(myDayOperation && myDayOperation.actorId === Number(user?.id) ? { myDayOperation } : {}),
         ownerLabel,
         ownerState,
         ownerUserId: row.owner_user_id || null,

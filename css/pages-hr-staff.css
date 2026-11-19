@@ -7829,12 +7829,18 @@ body.dark-mode .hr-shift-multi-guard__segments span,
 
 @media (max-width: 360px) {
     .schedule-freelance-row .schedule-freelance-action {
+        max-inline-size: min(100%, max(72px, calc(100vw - var(--schedule-sticky-column-width, 178px) - 56px)));
         margin-inline: 0 auto;
     }
 }
 
-.schedule-freelance-from-staff {
-    font-size: .6875rem;
+.sch-add-freelance-btn {
+    min-block-size: 32px;
+    margin-block-end: .75rem;
+}
+
+.sch-add-freelance-btn[hidden] {
+    display: none;
 }
 
 .schedule-add-freelance {

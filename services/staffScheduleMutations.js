@@ -560,7 +560,7 @@ async function mutateStaffScheduleEntry(client, entry, options = {}) {
         const segments = entry.segments;
         const freelanceOnly = Array.isArray(segments) && segments.length > 0
             && segments.every(segment => (segment?.workMode ?? segment?.work_mode) === 'freelance');
-        const cancelFreelance = status === 'dayoff' && previousSegments.length > 0
+        const cancelFreelance = status === 'dayoff' && (previousSegments.length > 0 || entry.cancelFreelanceSegmentIds !== undefined)
             && Array.isArray(segments) && segments.length === 0;
         if (previousSegments.some(segment => segment.workMode !== 'freelance')
             || (!previousPlan && previousScheduleEntry && scheduleStatusNeedsProfession(previousScheduleEntry.status))
@@ -589,9 +589,10 @@ async function mutateStaffScheduleEntry(client, entry, options = {}) {
         ? null
         : await loadEnrichedScheduleEntry(client, upserted.id);
     const auditEntry = options.auditWithEnriched === false ? upserted : (enriched || upserted);
+    const cancelledFreelanceSegmentIds = normalizedEntry.cancelFreelanceSegmentIds;
     await recordScheduleAudit(
         client,
-        options.auditAction || 'staff_schedule_update',
+        cancelledFreelanceSegmentIds?.length ? 'staff_schedule_freelance_cancelled' : options.auditAction || 'staff_schedule_update',
         staffId,
         date,
         previous,
@@ -600,6 +601,7 @@ async function mutateStaffScheduleEntry(client, entry, options = {}) {
         {
             ...(options.sourceMetadata || {}),
             source: options.source || options.sourceMetadata?.source || 'staff.schedule',
+            ...(cancelledFreelanceSegmentIds?.length ? { cancelledFreelanceSegmentIds } : {}),
             beforePlan: previousPlan?.plan || null,
             afterPlan: hrSync.plan
         }

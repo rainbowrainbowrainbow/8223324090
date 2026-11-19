@@ -27,6 +27,7 @@ const PROTECTED_WORKFLOWS = Object.freeze({
     STAFF_DELETION_CI: 'staff-deletion-ci',
     HR_PAYROLL: 'hr-payroll',
     FREELANCE_SHIFT_BLOCKS: 'freelance-shift-blocks',
+    FREELANCE_CANCEL_424: 'freelance-cancel-424',
     FREELANCE_SCHEDULE_RELEASE: 'freelance-schedule-release-083117',
     FREELANCE_SCHEDULE_CI_RECOVERY: 'freelance-schedule-ci-recovery-083118',
     FINANCE_MANUAL_QA: 'finance-manual-qa'
@@ -704,7 +705,7 @@ function isPreparedProtectedWorkflow(kind) {
     return [PROTECTED_WORKFLOWS.HR_PAYROLL, PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA,
         PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE, PROTECTED_WORKFLOWS.STAFF_DELETION_CI,
         PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE, PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE,
-        PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS].includes(kind) || Boolean(freelanceScheduleReleaseFor(kind));
+        PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS, PROTECTED_WORKFLOWS.FREELANCE_CANCEL_424].includes(kind) || Boolean(freelanceScheduleReleaseFor(kind));
 }
 
 function isPreparedProtectedRelease(manifest) {
@@ -797,6 +798,10 @@ function validateProtectedWorkflow(workflow, changedPaths = [], redPaths = []) {
     }
     fail(Object.values(PROTECTED_WORKFLOWS).includes(workflow),
         'Unsupported protected production workflow', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_INVALID');
+    if (workflow === PROTECTED_WORKFLOWS.FREELANCE_CANCEL_424) {
+        fail(redPaths.length === 0, 'Freelance cancellation cannot change protected paths', 'PRODUCTION_BLOCK_RED_PATHS');
+        return { enabled: true, kind: workflow, protectedChangedPaths: [] };
+    }
     if (workflow === PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE) {
         fail(stableJson(redPaths) === stableJson(['routes/auth.js'])
             && MY_DAY_PROFILE_RELEASE.controllerPaths.every(file => changedPaths.includes(file)),
@@ -1149,6 +1154,12 @@ function buildManifest(facts, options = {}) {
         validateFreelanceScope(baseLiveSha, facts.live?.version, facts.releaseVersion, qaScope, migrations, maxReleaseAttempts);
         assertFreelanceRecovery(facts.freelanceRecovery);
     }
+    if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.FREELANCE_CANCEL_424) {
+        migrations.forEach((item, index) => { item.sqlHash = migrationSqlHash(facts.migrations[index].sql); });
+        validateFreelanceCancel424(baseLiveSha, facts.live?.version, facts.releaseVersion, qaScope, migrations, maxReleaseAttempts);
+        fail(facts.remoteSha === baseLiveSha && facts.live?.deploymentMetadata?.complete === true,
+            'Freelance cancellation requires matching live and remote', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
+    }
     if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA) {
         migrations.forEach((item, index) => {
             item.sqlHash = migrationSqlHash(facts.migrations[index].sql);
@@ -1159,7 +1170,7 @@ function buildManifest(facts, options = {}) {
             'Finance needs a prepared release commit newer than live', 'PRODUCTION_BLOCK_RELEASE_NOT_PREPARED');
     }
     const redMigrations = migrations.filter(item => item.red
-        && protectedWorkflow.kind !== PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA);
+        && ![PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA, PROTECTED_WORKFLOWS.FREELANCE_CANCEL_424].includes(protectedWorkflow.kind));
     fail(facts.descendsFromLive === true, 'Candidate HEAD is not a descendant of live SHA', 'PRODUCTION_BLOCK_NOT_DESCENDANT');
     fail(redMigrations.length === 0, 'Candidate includes a Red migration', 'PRODUCTION_BLOCK_RED_MIGRATION', {
         migrations: redMigrations.map(item => ({ file: item.file, reason: item.redReason }))
@@ -1346,6 +1357,13 @@ function validateManifest(manifest, options = {}) {
             && stableJson(manifest.allowedMigrationFiles) === stableJson(Object.keys(FREELANCE_SQL_HASHES)),
         'Freelance requires the exact prepared SHA and migration inventory', 'PRODUCTION_BLOCK_RELEASE_NOT_PREPARED');
     }
+    if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.FREELANCE_CANCEL_424) {
+        validateFreelanceCancel424(manifest.baseLiveSha, manifest.preparedRelease?.baseVersion, manifest.preparedRelease?.version,
+            qaScope, manifest.migrationClassifications, manifest.maxReleaseAttempts);
+        fail(manifest.preparedRelease?.sha === manifest.initialHeadSha
+            && stableJson(manifest.allowedMigrationFiles) === stableJson(['db/migrations/424_freelance_segment_cancellation.sql']),
+            'Freelance cancellation requires the exact prepared SHA and migration', 'PRODUCTION_BLOCK_RELEASE_NOT_PREPARED');
+    }
     if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA) {
         validateFinanceScope(qaScope, manifest.migrationClassifications);
         fail(JSON.stringify(manifest.allowedMigrationFiles) === JSON.stringify(Object.keys(FINANCE_MANUAL_SQL_HASHES).sort()),
@@ -1365,6 +1383,17 @@ function isNewerVersion(candidate, base) {
     const first = left.findIndex((value, index) => value !== right[index]);
     return first >= 0 && left[first] > right[first];
 }
+function validateFreelanceCancel424(base, baseVersion, version, qa, migrations, attempts) {
+    const item = migrations[0];
+    fail(base === '74e676086cee83ab33f80c60649e2696e3573d58'
+        && baseVersion === '0.84.12' && version === '0.84.13'
+        && qa.enabled === false && attempts >= 1 && attempts <= 3 && migrations.length === 1
+        && item.file === 'db/migrations/424_freelance_segment_cancellation.sql'
+        && item.kind === 'cleanup' && item.red === true && item.destructive === true
+        && item.sqlHash === '1dab0e138ed8caaf7e22ac88acb27cccfc76e5bf17665ddaa0cb0b6b0478e21e',
+    'Freelance cancellation scope or migration hash differs', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+}
+
 function validateHrPayrollScope(qa, migrations) {
     fail(qa.enabled === false && migrations.length === 1 && migrations[0].file === HR_PAYROLL_MIGRATION
         && migrations[0].kind === 'schema' && migrations[0].red === false,

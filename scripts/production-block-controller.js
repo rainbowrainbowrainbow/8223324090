@@ -525,7 +525,7 @@ function freelanceScheduleFacts(head, reviewed) {
 }
 
 function usesStandardProtectedReleaseFlow(kind) {
-    return [PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE, PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE].includes(kind)
+    return [PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE, PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE, PROTECTED_WORKFLOWS.FREELANCE_CANCEL_424].includes(kind)
         || Boolean(freelanceScheduleReleaseFor(kind));
 }
 
@@ -1247,7 +1247,7 @@ async function assertExecuteDrift(manifest, runtime) {
         fail(drift.workflowHashes?.['.github/workflows/ci.yml'] === STAFF_DELETION_CI_HASH,
             'Staff deletion CI workflow differs from the reviewed content', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
     }
-    if ([PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA, PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS]
+    if ([PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA, PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS, PROTECTED_WORKFLOWS.FREELANCE_CANCEL_424]
         .includes(manifest.allowedProtectedWorkflow?.kind)) {
         const expectedHashes = Object.fromEntries(manifest.migrationClassifications.map(item => [item.file, item.sqlHash]));
         fail(stableJson(drift.migrationHashes || {}) === stableJson(expectedHashes),

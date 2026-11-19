@@ -175,6 +175,7 @@
                         <div id="schNonWorkingWarning" class="sch-nonworking-warning" hidden>
                             Цей статус видалить усі робочі часові блоки дня.
                         </div>
+                        <button type="button" id="schAddFreelanceBtn" class="btn-page-secondary sch-add-freelance-btn" hidden>Додати фріланс</button>
                         <section id="schDayPlanEditor" class="sch-day-plan-editor" aria-labelledby="schDayPlanTitle">
                             <div class="sch-day-plan-head">
                                 <div>

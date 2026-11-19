@@ -8,6 +8,7 @@ const {
     resolveStaffProfessionAssignments,
     staffProfessionKeys
 } = require('./professions');
+const { tryLockAttendanceWriteTarget } = require('./attendanceWriteLock');
 
 // Product guardrail: a physical HR shift may contain at most 12 paid segments.
 // Raising this cap is a deliberate product decision, not a route-level override.
@@ -70,19 +71,38 @@ function isFrozenSubstitutionShift(error) {
     );
 }
 
+function mappedFreelanceScheduleError(error) {
+    if ((error?.code === '23503' && error.constraint === 'hr_freelance_segment_terms_segment_id_fkey')
+        || (error?.code === '23514' && error.constraint === 'hr_freelance_terms_profession_immutable')) {
+        return new HrShiftPlanError('FREELANCE_EXPLICIT_CANCELLATION_REQUIRED',
+            'Блок має погоджену ставку. Скористайтеся дією «Скасувати фріланс».', {}, 409);
+    }
+    if (error?.code === '23514' && error.constraint === 'hr_freelance_cancellation_after_start') {
+        return new HrShiftPlanError('FREELANCE_CANCELLATION_AFTER_START',
+            'Можна скасувати лише майбутній фріланс-блок без відмітки початку зміни.', {}, 409);
+    }
+    if (error?.code === '23514' && error.constraint === 'hr_freelance_cancellation_confirmed') {
+        return new HrShiftPlanError('FREELANCE_CANCELLATION_CONFIRMED',
+            'Фактичний час виходу вже підтверджено. Скасування в графіку недоступне.', {}, 409);
+    }
+    return null;
+}
+
 function isHrShiftPlanError(error) {
     return error instanceof HrShiftPlanError || error?.name === 'HrShiftPlanError'
         || error?.code === 'FREELANCE_PLAN_IN_USE'
         || error?.code === 'FREELANCE_MONTHLY_REPLACEMENT_UNSUPPORTED'
         || error?.code === 'FREELANCE_REASSIGNMENT_REQUIRES_NEW_AGREEMENT'
+        || Boolean(mappedFreelanceScheduleError(error))
         || isFrozenSubstitutionShift(error);
 }
 
 function hrShiftPlanErrorStatus(error) {
-    return isFrozenSubstitutionShift(error) ? 409 : error?.statusCode || error?.status || 400;
+    return isFrozenSubstitutionShift(error) || mappedFreelanceScheduleError(error) ? 409 : error?.statusCode || error?.status || 400;
 }
 
 function hrShiftPlanErrorPayload(error, extra = {}) {
+    error = mappedFreelanceScheduleError(error) || error;
     const frozenSubstitution = isFrozenSubstitutionShift(error);
     return {
         success: false,
@@ -1145,7 +1165,7 @@ function assertExpectedHrShiftPlanUpdatedAt(currentShift, input = {}, options = 
     }
     const currentUpdatedAt = hrShiftPlanUpdatedAt(currentShift);
     const requiresToken = options.requireExpectedUpdatedAt === true
-        && Object.prototype.hasOwnProperty.call(payload || {}, 'segments');
+        && (hasOwn(payload, 'segments') || hasOwn(payload, 'cancelFreelanceSegmentIds'));
 
     if (!hasExpectedValue) {
         if (requiresToken) {
@@ -1886,6 +1906,33 @@ async function preserveExistingSegmentsForMetadataUpdate(client, payload, curren
     };
 }
 
+async function cancelFreelanceSegments(client, ids, currentShift, staffId, shiftDate, plan, actor) {
+    if (ids === undefined) return;
+    if (!Array.isArray(ids) || !ids.length || ids.length > MAX_HR_SHIFT_SEGMENTS_PER_DAY
+        || ids.some(id => !['number', 'string'].includes(typeof id) || !/^[1-9]\d{0,18}$/.test(String(id))
+            || BigInt(id) > 9223372036854775807n)
+        || new Set(ids.map(String)).size !== ids.length) {
+        fail('FREELANCE_CANCELLATION_INVALID', 'Вкажіть фріланс-блоки для скасування.');
+    }
+    const before = currentShift ? await loadHrShiftSegments(client, currentShift.id) : [];
+    const activeFreelance = new Set(before.filter(segment => segment.work_mode === 'freelance').map(segment => String(segment.id)));
+    const cancelled = new Set(ids.map(String));
+    const retained = new Set(plan.segments.map(segment => String(segment.id)));
+    if (ids.some(id => !activeFreelance.has(String(id)) || retained.has(String(id)))) {
+        fail('FREELANCE_CANCELLATION_STALE', 'Фріланс-блок змінився або вже скасований. Оновіть графік.', {}, 409);
+    }
+    if (before.some(segment => !cancelled.has(String(segment.id)) && !retained.has(String(segment.id)))) {
+        fail('FREELANCE_CANCELLATION_KEEP_OTHER_BLOCKS', 'Збережіть решту блоків дня під час скасування фрілансу.', {}, 409);
+    }
+    await client.query(
+        `UPDATE hr_shift_segments
+         SET cancelled_shift_id = hr_shift_id, cancelled_staff_id = $1, cancelled_shift_date = $2::date,
+             cancelled_at = clock_timestamp(), cancelled_by = $3, hr_shift_id = NULL
+         WHERE hr_shift_id = $4 AND id = ANY($5::bigint[])`,
+        [staffId, shiftDate, actor || 'system', currentShift.id, ids]
+    );
+}
+
 async function saveHrShiftDayPlan(client, input = {}, options = {}) {
     assertDbClient(client);
     const payload = input.payload && typeof input.payload === 'object' ? input.payload : input;
@@ -1936,6 +1983,12 @@ async function saveHrShiftDayPlan(client, input = {}, options = {}) {
         fail('HR_SHIFT_PLAN_STAFF_INVALID', lockedProfessionCard.error, {
             staffId: expectedStaffId
         }, lockedProfessionCard.status || 400);
+    }
+
+    if (payload.cancelFreelanceSegmentIds !== undefined && !await tryLockAttendanceWriteTarget(client, {
+        staffId: expectedStaffId, date: normalizeShiftDate(observedShift?.shift_date ?? selector.shiftDate)
+    })) {
+        fail('FREELANCE_CANCELLATION_ATTENDANCE_BUSY', 'Табель цього працівника зараз оновлюється. Повторіть скасування.', {}, 409);
     }
 
     const currentShift = await loadHrShiftParent(client, selector, { forUpdate: true });
@@ -2016,6 +2069,9 @@ async function saveHrShiftDayPlan(client, input = {}, options = {}) {
         allowedProfessionKeys: professionCard?.allowedProfessionKeys
     });
 
+    const actor = firstDefined(options.actor, input.actor, null);
+    await cancelFreelanceSegments(client, payload.cancelFreelanceSegmentIds, currentShift, staffId, shiftDate, plan, actor);
+
     if (NON_WORKING_DAY_STATUSES.has(plan.status)) {
         if (currentShift) {
             const beforePlan = await loadHrShiftDayPlan(client, { hrShiftId: currentShift.id });
@@ -2038,7 +2094,6 @@ async function saveHrShiftDayPlan(client, input = {}, options = {}) {
         return { shift: null, plan, deletedShift: currentShift || null };
     }
 
-    const actor = firstDefined(options.actor, input.actor, null);
     const dayNote = normalizeDayNote(planPayload, currentShift, options);
     const shiftType = effectiveShiftType(plan.status, planPayload, currentShift);
     let parent;

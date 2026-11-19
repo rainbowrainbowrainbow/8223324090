@@ -55,6 +55,7 @@ test('HR navigation stores only the current tab draft and passes staff, professi
     const draft = JSON.parse(storage.get('pzp_schedule_hr_draft_v1'));
     assert.equal(draft.segments[0].shiftStart, '', 'unfinished time is retained');
     assert.equal(draft.note, 'Draft note');
+    assert.deepEqual(draft.cancelFreelanceSegmentIds, []);
     assert.equal(draft.planUpdatedAt, '2026-10-01T12:00:00Z');
     assert.equal(draft.range.from, '2026-10-01');
     assert.match(assigned(), /scheduleDraft=draft-token/);
@@ -86,11 +87,13 @@ test('storage failure and pending save keep the user in the schedule', () => {
 });
 test('restoration retains the old concurrency token instead of adopting the current server version', () => {
     const { c, fields, state } = harness();
+    state.editingCell.cancelFreelanceSegmentIds = new Set(['17']);
     c.navigateSchedulePayConditions({ href: '/hr?employee=10' });
     const draft = c.readScheduleHrDraft('draft-token');
     fields.schNote.value = '';
     assert.equal(c.restoreScheduleHrDraft(draft), true);
     assert.equal(state.editingCell.planUpdatedAt, draft.planUpdatedAt);
+    assert.deepEqual(Array.from(state.editingCell.cancelFreelanceSegmentIds), ['17']);
     assert.equal(fields.schNote.value, 'Draft note');
     assert.equal(c._staffScheduleInitialState, 'original');
     assert.equal(c.readScheduleHrDraft(), null, 'restored drafts are not auto-opened again');

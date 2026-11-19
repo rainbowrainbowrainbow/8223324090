@@ -8,6 +8,7 @@ const bcrypt = require('bcryptjs');
 const ExcelJS = require('exceljs');
 const { Pool } = require('pg');
 const { recordAttendanceClockIn, recordAttendanceClockOut } = require('../../services/hrAttendance');
+const { lockAttendanceWriteTarget } = require('../../services/attendanceWriteLock');
 const { chromium } = require('../helpers/playwright')();
 const { assertSafeIsolatedTestUrl, assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
 
@@ -232,7 +233,6 @@ async function run() {
         const toggle = page.locator('[data-freelance-toggle="animators"]');
         const row = page.locator('#scheduleFreelance-animators');
         const controlRecords = row.locator('[data-freelance-segment][data-freelance-staff="' + control.id + '"]');
-        assert.equal(await toggle.getAttribute('aria-expanded'), 'false');
         const savePlan = async () => {
             const pending = page.waitForResponse(response => new URL(response.url()).pathname === '/api/staff/schedule'
                 && response.request().method() === 'PUT');
@@ -247,11 +247,18 @@ async function run() {
             await card.locator('[data-segment-field="start"]').fill(start);
             await card.locator('[data-segment-field="end"]').fill(end);
         };
-        await page.locator('.schedule-freelance-from-staff[data-freelance-staff="' + control.id + '"][data-freelance-date="' + date + '"]').press('Enter');
+        assert.equal(await page.locator('#scheduleBody .schedule-freelance-from-staff').count(), 0);
+        assert.equal(await page.getByRole('button', { name: 'Додати фріланс', exact: true }).count(), 0);
+        const controlCell = page.locator('.sch-cell[data-staff="' + control.id + '"][data-date="' + date + '"]').first();
+        await controlCell.press('Enter');
         assert.match(await page.locator('#schModalTitle').textContent(), new RegExp(controlName + '.*' + date));
+        const editorAdd = page.getByRole('button', { name: 'Додати фріланс', exact: true });
+        assert.equal(await editorAdd.count(), 1);
+        await editorAdd.press('Space');
+        assert.equal(await cards.first().locator('[data-segment-field="start"]').evaluate(input => input === document.activeElement), true);
         await setTime(cards.first(), '12:00', '16:00');
         await savePlan();
-        await toggle.press('Space');
+        if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.press('Space');
         await row.waitFor();
         await row.getByRole('button', { name: '+ Додати фріланс · ' + date }).click();
         const chooser = page.getByRole('dialog', { name: 'Додати фріланс' });
@@ -264,7 +271,7 @@ async function run() {
         const added = await savePlan();
         const replay = await Promise.all([0, 1].map(() => request(auth, '/api/staff/schedule', { method: 'PUT', body: added })));
         assert.deepEqual(replay.map(response => response.status), [409, 409]);
-        assert.deepEqual((await controlRecords.allTextContents()).map(text => text.trim()), ['12:00–16:00', '16:00–20:00']);
+        assert.deepEqual(await controlRecords.locator('span').allTextContents(), ['12:00–16:00', '16:00–20:00']);
         stage = 'freelance reserve picker and server validation';
         await openSchedule(date, '/hr#schedule');
         if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
@@ -422,7 +429,7 @@ async function run() {
 
         stage = 'freelance across adjacent dates';
         const writePlan = (staffId, workDate, segments, extra = {}) => request(auth, '/api/staff/schedule', {
-            method: 'PUT', body: { staffId, date: workDate, status: 'working', primaryProfessionKey: segments[0].professionKey, segments, ...extra }
+            method: 'PUT', body: { staffId, date: workDate, status: 'working', primaryProfessionKey: segments[0]?.professionKey, segments, ...extra }
         });
         const firstDate = laterDate(20);
         const nextDate = laterDate(21);
@@ -462,6 +469,140 @@ async function run() {
         assert.equal(legacyConflict.status, 409);
         assert.equal((await legacyConflict.json()).code, 'HR_SHIFT_PLAN_ADJACENT_DATE_OVERLAP');
 
+        stage = 'cross-department placement and agreed cancellation';
+        const { rows: [dual] } = await db.query(
+            `INSERT INTO staff (name, department, position, role_type, secondary_professions, is_active)
+             VALUES ('Synthetic Dual Role', 'animators', 'Synthetic QA', 'animator', '["trampoline_instructor"]', true) RETURNING id`
+        );
+        const future = laterDate(7);
+        const dualPlan = [
+            { professionKey: 'animator', workMode: 'regular', shiftStart: '09:00', shiftEnd: '11:00', breakMinutes: 0 },
+            { professionKey: 'trampoline_instructor', workMode: 'freelance', shiftStart: '12:00', shiftEnd: '16:00', breakMinutes: 0 }
+        ];
+        const dualSaved = await writePlan(dual.id, future, dualPlan);
+        assert.equal(dualSaved.status, 200, await dualSaved.clone().text());
+        const dualEntry = (await dualSaved.json()).data;
+        const target = dualEntry.segments[1];
+        const agree = async (staffId, date, segmentId) => request(auth, '/api/payroll/freelance/terms', {
+            method: 'POST', body: { staffId, date, segmentId, rateUnit: 'hour', rate: '120', reason: 'Synthetic QA' }
+        });
+        assert.equal((await agree(dual.id, future, target.id)).status, 201);
+        const reserveSingle = await writePlan(reserve.id, future, [{ ...dualPlan[0], workMode: 'freelance' }], { reserveFreelance: true });
+        assert.equal(reserveSingle.status, 200, await reserveSingle.clone().text());
+        const reserveFuture = (await reserveSingle.json()).data;
+        assert.equal((await agree(reserve.id, future, reserveFuture.segments[0].id)).status, 201);
+        const reserveCancelOptions = { status: 'dayoff', primaryProfessionKey: null, reserveFreelance: true,
+            expectedUpdatedAt: reserveFuture.planUpdatedAt, cancelFreelanceSegmentIds: [reserveFuture.segments[0].id] };
+        const attendanceWriter = await db.connect();
+        try {
+            await attendanceWriter.query('BEGIN');
+            await lockAttendanceWriteTarget(attendanceWriter, { staffId: reserve.id, date: future });
+            const busy = await writePlan(reserve.id, future, [], reserveCancelOptions);
+            assert.equal(busy.status, 409);
+            assert.equal((await busy.json()).code, 'FREELANCE_CANCELLATION_ATTENDANCE_BUSY');
+        } finally {
+            await attendanceWriter.query('ROLLBACK');
+            attendanceWriter.release();
+        }
+        const cancelledReserve = await writePlan(reserve.id, future, [], reserveCancelOptions);
+        assert.equal(cancelledReserve.status, 200, await cancelledReserve.clone().text());
+        const reserveReplay = await writePlan(reserve.id, future, [], reserveCancelOptions);
+        assert.equal(reserveReplay.status, 409);
+        assert.equal((await reserveReplay.json()).code, 'HR_SHIFT_PLAN_STALE');
+        const implicit = await writePlan(dual.id, future, [], { status: 'dayoff', primaryProfessionKey: null, expectedUpdatedAt: dualEntry.planUpdatedAt });
+        assert.equal(implicit.status, 409);
+        assert.equal((await implicit.json()).code, 'FREELANCE_EXPLICIT_CANCELLATION_REQUIRED');
+        const dualBlock = page.locator(`[data-freelance-segment="${target.id}"]`);
+        for (const [route, width] of [['/staff', 1440], ['/staff', 320], ['/hr#schedule', 1440], ['/hr#schedule', 320]]) {
+            await setWidth(width);
+            await openSchedule(future, route);
+            assert.equal(await page.locator('#scheduleBody .schedule-freelance-from-staff').count(), 0);
+            await page.locator('#deptFilter [data-dept="all"]').click();
+            if (await trampolineToggle.getAttribute('aria-expanded') !== 'true') await trampolineToggle.press('Space');
+            assert.equal(await dualBlock.count(), 1);
+            assert.equal(await dualBlock.evaluate(button => button.closest('tr').id), 'scheduleFreelance-trampoline');
+            await dualBlock.press('Enter');
+            assert.equal(await page.locator('#schSegmentsList .is-active').getAttribute('data-segment-id'), String(target.id));
+            await assertFits();
+            if (width === 320) await page.screenshot({ path: path.join(out, route === '/staff' ? 'freelance-staff-editor-320.png' : 'freelance-hr-editor-320.png') });
+            await page.keyboard.press('Escape');
+            await page.locator('#schModalOverlay').waitFor({ state: 'hidden' });
+            assert.equal(await dualBlock.evaluate(button => button === document.activeElement), true);
+            await page.locator('#deptFilter [data-dept="trampoline"]').click();
+            assert.equal(await dualBlock.count(), 1);
+        }
+        await workModeFilter.selectOption('freelance');
+        assert.equal(await dualBlock.count(), 1);
+        await workModeFilter.selectOption('regular');
+        assert.equal(await dualBlock.count(), 0);
+        await page.locator('#deptFilter [data-dept="animators"]').click();
+        const dualCell = page.locator(`.sch-cell[data-staff="${dual.id}"][data-date="${future}"]`).first();
+        await dualCell.press('Enter');
+        await editorAdd.click();
+        await setTime(cards.nth(2), '16:00', '19:00');
+        await savePlan();
+        await page.getByText(/Фріланс збережено.*скиньте фільтри.*Аніматори/).waitFor();
+        const staleCancellation = await writePlan(dual.id, future, [dualEntry.segments[0]], {
+            expectedUpdatedAt: dualEntry.planUpdatedAt, cancelFreelanceSegmentIds: [target.id]
+        });
+        assert.equal(staleCancellation.status, 409);
+        assert.equal((await staleCancellation.json()).code, 'HR_SHIFT_PLAN_STALE');
+        await workModeFilter.selectOption('all');
+        await page.locator('#deptFilter [data-dept="all"]').click();
+        const addedDualBlock = page.locator(`#scheduleFreelance-animators [data-freelance-staff="${dual.id}"]`);
+        assert.equal(await addedDualBlock.count(), 1);
+        const addedDualId = await addedDualBlock.getAttribute('data-freelance-segment');
+        assert.notEqual(addedDualId, String(target.id));
+        assert.equal(await page.locator(`[data-freelance-segment="${addedDualId}"]`).count(), 1);
+        await addedDualBlock.press('Enter');
+        assert.equal(await page.locator('#schSegmentsList .is-active').getAttribute('data-segment-id'), addedDualId);
+        await page.keyboard.press('Escape');
+        await page.locator('#schModalOverlay').waitFor({ state: 'hidden' });
+        await dualBlock.click();
+        const cancelButton = cards.nth(1).getByRole('button', { name: 'Скасувати фріланс · блок 2' });
+        await cancelButton.press('Enter');
+        const confirmCancel = page.locator('.confirm-overlay[data-confirm-kind="confirm"]');
+        assert.equal(await confirmCancel.getByRole('button', { name: 'Повернутись' }).evaluate(button => button === document.activeElement), true);
+        await page.keyboard.press('Escape');
+        await confirmCancel.waitFor({ state: 'hidden' });
+        assert.equal(await cancelButton.evaluate(button => button === document.activeElement), true);
+        await cancelButton.press('Enter');
+        await confirmCancel.getByRole('button', { name: 'Скасувати фріланс' }).click();
+        const cancellation = await savePlan();
+        assert.deepEqual(cancellation.cancelFreelanceSegmentIds, [String(target.id)]);
+        await dualBlock.waitFor({ state: 'detached' });
+        const listed = (await (await request(auth, '/api/staff/schedule?from=' + future + '&to=' + future)).json()).data
+            .find(plan => plan.staff_id === dual.id);
+        assert.deepEqual(listed.segments.map(block => block.shiftStart), ['09:00', '16:00']);
+        assert.equal(String(listed.segments[0].id), String(dualEntry.segments[0].id));
+        assert.equal(String(listed.segments[1].id), addedDualId);
+        const { rows: [archived] } = await db.query(
+            `SELECT segment.id, segment.hr_shift_id, segment.cancelled_staff_id, segment.cancelled_shift_date::text,
+                    segment.cancelled_by, segment.cancelled_at, terms.rate::text
+             FROM hr_shift_segments segment JOIN hr_freelance_segment_terms terms ON terms.segment_id = segment.id
+             WHERE segment.id = $1`, [target.id]
+        );
+        assert.equal(archived.id, String(target.id));
+        assert.equal(archived.hr_shift_id, null);
+        assert.equal(archived.cancelled_staff_id, dual.id);
+        assert.equal(archived.cancelled_shift_date, future);
+        assert.match(archived.cancelled_by, /^freelance_qa_creator_/);
+        assert.ok(archived.cancelled_at instanceof Date);
+        assert.equal(archived.rate, '120.00');
+        const replayCancel = await request(auth, '/api/staff/schedule', { method: 'PUT', body: cancellation });
+        assert.equal(replayCancel.status, 409);
+        assert.equal((await replayCancel.json()).code, 'HR_SHIFT_PLAN_STALE');
+        assert.equal((await request(viewer, '/api/staff/schedule', { method: 'PUT', body: cancellation })).status, 403);
+        const noLongerActive = (await (await request(auth, `/api/payroll/freelance/day?date=${future}&staffId=${dual.id}`)).json()).data;
+        assert.ok(noLongerActive.every(day => day.segments.every(block => String(block.id) !== String(target.id))));
+        const reassigned = await writePlan(dual.id, future, [...listed.segments, dualPlan[1]], { expectedUpdatedAt: listed.planUpdatedAt });
+        assert.equal(reassigned.status, 200, await reassigned.clone().text());
+        const assignment = (await reassigned.json()).data.segments.find(block => block.professionKey === 'trampoline_instructor');
+        assert.notEqual(String(assignment.id), String(target.id));
+        console.log('Cancellation and department proof', JSON.stringify({ repeatedCellButtons: 0, editorsAt320: 2,
+            overviewDepartment: 'trampoline', scopedDepartment: 'trampoline', archivedRate: archived.rate,
+            cancelledId: target.id, reassignedId: assignment.id, preservedBlocks: listed.segments.length, replayStatus: replayCancel.status }));
+
         stage = 'freelance row edits';
         await openSchedule();
         if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
@@ -471,7 +612,7 @@ async function run() {
         await savePlan();
         const matchingTimes = row.getByText('16:00–20:00', { exact: true });
         assert.equal(await matchingTimes.count(), 2);
-        await matchingTimes.and(mixedRecord).click();
+        await mixedRecord.getByText('16:00–20:00', { exact: true }).click();
         assert.ok((await page.locator('#schModalTitle').textContent()).includes(staffName));
         await setTime(cards.nth(1), '14:00', '17:00');
         await savePlan();
@@ -500,13 +641,19 @@ async function run() {
         await page.locator('#schCancelBtn').click();
         await controlRecords.nth(1).click();
         assert.match(await page.locator('#schModalTitle').textContent(), /16:00–20:00/);
-        await cards.nth(1).getByRole('button', { name: 'Видалити блок 2' }).click();
-        await savePlan();
+        await page.locator('#schCancelBtn').click();
+        const controlPlanAtReload = (await (await request(auth, '/api/staff/schedule?from=' + date + '&to=' + date)).json())
+            .data.find(plan => plan.staff_id === control.id);
+        const removeUnagreedFixture = await writePlan(control.id, date, [controlPlanAtReload.segments[0]],
+            { expectedUpdatedAt: controlPlanAtReload.planUpdatedAt });
+        assert.equal(removeUnagreedFixture.status, 200, await removeUnagreedFixture.text());
+        await openSchedule();
+        await toggle.press('Enter');
         await controlRecords.nth(1).waitFor({ state: 'detached' });
         await controlRecords.first().click();
         await setTime(cards.first(), '23:00', '01:00');
         await savePlan();
-        await controlRecords.first().and(page.getByText('23:00–01:00', { exact: true })).click();
+        await controlRecords.first().getByText('23:00–01:00', { exact: true }).click();
         await setTime(cards.first(), '12:00', '16:00');
         await savePlan();
         await page.setViewportSize({ width: 390, height: 844 });
@@ -646,6 +793,13 @@ async function run() {
         assert.equal(controlDay.actualMinutes, 230);
         const [controlSegment] = controlDay.segments;
         assert.equal(controlSegment.confirmedMinutes, null);
+        const controlSchedule = (await (await request(auth, '/api/staff/schedule?from=' + date + '&to=' + date)).json())
+            .data.find(plan => plan.staff_id === control.id);
+        const lockedCancellation = () => writePlan(control.id, date, [], { status: 'dayoff', primaryProfessionKey: null,
+            expectedUpdatedAt: controlSchedule.planUpdatedAt, cancelFreelanceSegmentIds: [controlSegment.id] });
+        const startedCancel = await lockedCancellation();
+        assert.equal(startedCancel.status, 409);
+        assert.equal((await startedCancel.json()).code, 'FREELANCE_CANCELLATION_AFTER_START');
         assert.equal((await request(auth, '/api/payroll/freelance/terms', {
             method: 'POST', body: { staffId: control.id, date, segmentId: controlSegment.id, rateUnit: 'hour', rate: '120', reason: 'Synthetic control' }
         })).status, 201);
@@ -659,6 +813,9 @@ async function run() {
             && new URL(response.url()).pathname === '/api/payroll/freelance/attendance');
         await controlDialog.getByRole('button', { name: 'Підтвердити', exact: true }).click();
         assert.equal((await confirmed).status(), 201);
+        const confirmedCancel = await lockedCancellation();
+        assert.equal(confirmedCancel.status, 409);
+        assert.equal((await confirmedCancel.json()).code, 'FREELANCE_CANCELLATION_CONFIRMED');
         const locked = await request(auth, correctionPath, { method: 'PUT', body: { ...correction, clock_out_time: '16:05' } });
         assert.equal(locked.status, 409);
         assert.equal((await locked.json()).code, 'FREELANCE_ATTENDANCE_LOCKED');
@@ -904,12 +1061,14 @@ async function run() {
         await setWidth(320);
         await nightRecord.scrollIntoViewIfNeeded();
         await assertFits();
-        assert.equal(await nightRecord.evaluate(button => {
+        await page.screenshot({ path: path.join(out, 'schedule-freelance-overnight-320.png') });
+        const nightBounds = await nightRecord.evaluate(button => {
             const viewport = document.getElementById('scheduleWrapper').getBoundingClientRect();
             const box = button.getBoundingClientRect();
-            return box.left >= viewport.left - 1 && box.right <= viewport.right + 1;
-        }), true, 'The overnight interval and day offset must fit the visible schedule');
-        await page.screenshot({ path: path.join(out, 'schedule-freelance-overnight-320.png') });
+            return { left: box.left, right: box.right, viewportLeft: viewport.left, viewportRight: viewport.right };
+        });
+        assert.ok(nightBounds.left >= nightBounds.viewportLeft - 1 && nightBounds.right <= nightBounds.viewportRight + 1,
+            'The overnight interval and day offset must fit the visible schedule: ' + JSON.stringify(nightBounds));
         await nightRecord.press('Enter');
         assert.equal(await cards.nth(1).getByLabel('День часового блоку').inputValue(), '11');
         await page.locator('#schCancelBtn').click();

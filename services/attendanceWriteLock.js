@@ -85,6 +85,18 @@ async function lockAttendanceWriteTarget(db, value) {
     return target;
 }
 
+async function tryLockAttendanceWriteTarget(db, target) {
+    // Schedule writers may already hold the staff row. Fail promptly when an attendance writer
+    // owns either gate so the two operations cannot wait on each other.
+    const { rows: [result] } = await db.query(
+        `SELECT CASE WHEN pg_try_advisory_xact_lock_shared(hashtextextended($1, 0))
+                     THEN pg_try_advisory_xact_lock(hashtextextended($2, 0))
+                     ELSE false END AS locked`,
+        [ATTENDANCE_WRITE_MAINTENANCE_LOCK_KEY, attendanceWriteLockKey(target)]
+    );
+    return result.locked;
+}
+
 async function lockAttendanceWriteMaintenance(db) {
     if (!db || typeof db.query !== 'function') {
         throw new TypeError('Attendance maintenance lock requires a queryable transaction client');
@@ -107,5 +119,6 @@ module.exports = {
     lockAttendanceWriteTargets,
     normalizeAttendanceWriteDate,
     normalizeAttendanceWriteTarget,
-    normalizeAttendanceWriteTargets
+    normalizeAttendanceWriteTargets,
+    tryLockAttendanceWriteTarget
 };

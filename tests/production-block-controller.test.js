@@ -70,6 +70,24 @@ const HEAD_SHA = '2'.repeat(40);
 const RELEASE_SHA = '3'.repeat(40);
 const FREELANCE_BASE = '46df02047c196dfa5159e27f6cfb09fe6e907b11';
 
+test('freelance cancellation workflow pins the reviewed SQL, production base and read-only scope', () => {
+    const file = 'db/migrations/424_freelance_segment_cancellation.sql';
+    const sql = fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+    const base = '74e676086cee83ab33f80c60649e2696e3573d58';
+    const facts = { live: { commitSha: base, version: '0.84.12', deploymentMetadata: { complete: true } },
+        remoteSha: base, releaseVersion: '0.84.13', changedPaths: [file], migrations: [{ file, sql }] };
+    const options = { protectedWorkflow: 'freelance-cancel-424', maxReleaseAttempts: 3 };
+    const block = manifest(options, facts);
+    assert.equal(block.migrationClassifications[0].red, true);
+    assert.doesNotThrow(() => validateManifest(block));
+    assert.throws(() => manifest({}, facts), { code: 'PRODUCTION_BLOCK_RED_MIGRATION' });
+    assert.throws(() => manifest(options, { ...facts, migrations: [{ file, sql: sql + '\nSELECT 1;' }] }),
+        { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID' });
+    assert.throws(() => manifest(options, { ...facts, remoteSha: HEAD_SHA }), { code: 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT' });
+    assert.throws(() => manifest(options, { ...facts, changedPaths: [file, 'routes/auth.js'] }), { code: 'PRODUCTION_BLOCK_RED_PATHS' });
+    assert.throws(() => manifest(options, { ...facts, migrations: [{ file, sql }, { file: 'db/migrations/425_unknown.sql', sql }] }),
+        { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID' });
+});
 test('freelance release binds the exact base, inventory, additive SQL and both CI workflows', () => {
     const migrations = Object.keys(FREELANCE_SQL_HASHES).map(file => ({
         file, sql: fs.readFileSync(path.join(__dirname, '..', file), 'utf8')

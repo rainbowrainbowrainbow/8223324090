@@ -574,10 +574,12 @@ async function run() {
         const cancelButton = cards.nth(1).getByRole('button', { name: 'Скасувати фріланс · блок 2' });
         await cancelButton.press('Enter');
         const confirmCancel = page.locator('.confirm-overlay[data-confirm-kind="confirm"]');
-        assert.equal(await confirmCancel.getByRole('button', { name: 'Повернутись' }).evaluate(button => button === document.activeElement), true);
+        const returnButton = confirmCancel.getByRole('button', { name: 'Повернутись' });
+        await returnButton.waitFor();
+        await page.waitForFunction(button => button === document.activeElement, await returnButton.elementHandle());
         await page.keyboard.press('Escape');
         await confirmCancel.waitFor({ state: 'hidden' });
-        assert.equal(await cancelButton.evaluate(button => button === document.activeElement), true);
+        await page.waitForFunction(button => button === document.activeElement, await cancelButton.elementHandle());
         await cancelButton.press('Enter');
         await confirmCancel.getByRole('button', { name: 'Скасувати фріланс' }).click();
         const cancellation = await savePlan();

@@ -92,16 +92,17 @@ async function run() {
         const staffLoaded = page.waitForResponse(response => new URL(response.url()).pathname === '/api/hr/staff' && response.request().method() === 'GET');
         await page.goto(new URL('/hr?businessContext=park&businessScope=single#workers', base).href, { waitUntil: 'domcontentloaded' });
         const staffResponse = await staffLoaded;
-        const staffPayload = await staffResponse.json();
         if (staffResponse.status() !== 200) {
             const scopeHeaders = Object.fromEntries(Object.entries(staffResponse.request().headers()).filter(([key]) => key.startsWith('x-business')));
             console.error('Synthetic browser scope diagnostics: ' + JSON.stringify({ scopeHeaders,
                 business: await page.evaluate(() => ({ context: getCrmBusinessContext(), scope: getCrmBusinessScope() })) }));
         }
-        assert.equal(staffResponse.status(), 200, 'Staff API: ' + (staffPayload.code || staffPayload.error || 'unknown'));
-        assert.ok(staffPayload.data.some(item => Number(item.id) === staffId), 'Own synthetic staff must be returned');
+        assert.equal(staffResponse.status(), 200, 'Staff API must return success');
         await page.locator('#teamSearch').waitFor({ state: 'visible', timeout: 30000 });
-        await page.waitForFunction(() => teamLoadState.status === 'success');
+        // A subsequent navigation can evict Chromium's response body. Verify the
+        // actual UI-consumed data after its current, business-scoped load settles.
+        await page.waitForFunction(id => teamLoadState.status === 'success'
+            && teamStaff.some(item => Number(item.id) === id), staffId, { timeout: 30000 });
         await page.locator('#teamSearch').fill('Synthetic compensation browser');
         const card = page.locator(`[data-staff-id="${staffId}"]`);
         await card.locator('.hr-team-name-action').click();

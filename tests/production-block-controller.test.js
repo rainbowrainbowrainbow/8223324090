@@ -21,6 +21,7 @@ const {
     PROFILE_EMPLOYEE_AUTH_BLOB,
     MY_DAY_PROFILE_RELEASE,
     EVENTGENIX_REMEDIATION,
+    EVENTGENIX_REMEDIATION_RETRY,
     FREELANCE_SCHEDULE_RELEASE,
     FREELANCE_SCHEDULE_CI_RECOVERY,
     STAFF_DELETION_PATHS,
@@ -209,6 +210,42 @@ test('EventGenix 0.84.17 pins its reviewed CI and payload to one prepared releas
     assert.throws(() => manifest(options, { ...candidate, remoteSha: RELEASE_SHA }), { code: 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT' });
     assert.throws(() => manifest({ ...options, maxReleaseAttempts: 2 }, candidate),
         { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID' });
+});
+
+test('EventGenix retry requires the failed production SHA and CI identity', async t => {
+    const { baseSha, baseVersion, version, payloadSha, controllerPaths,
+        failedPredecessorSha, failedCiRunId } = EVENTGENIX_REMEDIATION_RETRY;
+    const options = { protectedWorkflow: 'eventgenix-remediation-08417-retry', maxReleaseAttempts: 1 };
+    const failedCi = {
+        databaseId: Number(failedCiRunId), headSha: failedPredecessorSha, headBranch: 'codex/eventgenix-production',
+        workflowName: 'CI', event: 'push', status: 'completed', conclusion: 'failure',
+        jobs: ['My Day browser interactions', 'HR and payroll PostgreSQL integration']
+            .map(name => ({ name, conclusion: 'failure' }))
+    };
+    const candidate = {
+        live: { commitSha: baseSha, version: baseVersion, deploymentMetadata: { complete: true } },
+        remoteSha: failedPredecessorSha,
+        releaseVersion: version,
+        eventGenixRemediationPayloadSha: payloadSha,
+        eventGenixRemediationFailedCi: failedCi,
+        changedPaths: ['.github/workflows/ci.yml', ...controllerPaths]
+    };
+    const value = manifest(options, candidate);
+    assert.equal(value.preparedRelease.failedPredecessorSha, failedPredecessorSha);
+    assert.equal(value.preparedRelease.failedCiRunId, failedCiRunId);
+    assert.ok(releaseCommandPlan(value).some(step => step.includes('exact-sha-runtime-artifact-run')));
+    assert.throws(() => manifest(options, { ...candidate, remoteSha: baseSha }),
+        { code: 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT' });
+    assert.throws(() => manifest(options, { ...candidate, eventGenixRemediationFailedCi: { ...failedCi, jobs: [] } }),
+        { code: 'PRODUCTION_BLOCK_CI_IDENTITY_INVALID' });
+    const file = blockFile(t, value);
+    const drift = await dryRuntime().drift(value);
+    const dryRun = changed => executeAction({ blockFile: file, confirmation: confirmationValue(value), dryRun: true },
+        dryRuntime({ async drift() { return { ...drift, eventGenixRemediationPayloadSha: payloadSha,
+            eventGenixRemediationFailedCi: failedCi, ...changed }; } }));
+    await assert.doesNotReject(dryRun({}));
+    await assert.rejects(dryRun({ eventGenixRemediationFailedCi: { ...failedCi, conclusion: 'success' } }),
+        { code: 'PRODUCTION_BLOCK_CI_IDENTITY_INVALID' });
 });
 
 test('freelance schedule release admits only its reviewed payload with read-only QA', async t => {

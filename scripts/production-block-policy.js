@@ -20,6 +20,7 @@ const PROTECTED_WORKFLOWS = Object.freeze({
     PROFILE_EMPLOYEE_RELEASE: 'profile-employee-release',
     MY_DAY_PROFILE_RELEASE: 'my-day-profile-release-083100',
     EVENTGENIX_REMEDIATION: 'eventgenix-remediation-08417',
+    EVENTGENIX_REMEDIATION_RETRY: 'eventgenix-remediation-08417-retry',
     SYS_MB_AUTH_CUTOVER: 'sys-mb-auth-cutover',
     CERTIFICATE_QA_ISOLATION: 'certificate-qa-isolation',
     CERTIFICATE_CI_GATE: 'certificate-ci-gate',
@@ -68,6 +69,12 @@ const EVENTGENIX_REMEDIATION = Object.freeze({
     version: '0.84.17',
     payloadSha: 'f9b4a86bdf70f4412d1e08dba6e9b86fbbdee0ec',
     controllerPaths: MY_DAY_PROFILE_RELEASE.controllerPaths
+});
+const EVENTGENIX_REMEDIATION_RETRY = Object.freeze({
+    ...EVENTGENIX_REMEDIATION,
+    payloadSha: 'ed65780ac52a6e856175dc46b4513c7c9699b543',
+    failedPredecessorSha: 'dfcf70eb6c3bbed01316b554ddeeea79988c915a',
+    failedCiRunId: '44724593284'
 });
 const FREELANCE_BASE = '46df02047c196dfa5159e27f6cfb09fe6e907b11';
 const FREELANCE_RECOVERY_PARENT = 'b67cbe8998e13bf762792361bad31534e36e2e88';
@@ -714,7 +721,8 @@ function isPreparedProtectedWorkflow(kind) {
         PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE, PROTECTED_WORKFLOWS.STAFF_DELETION_CI,
         PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE, PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE,
         PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS, PROTECTED_WORKFLOWS.FREELANCE_CANCEL_424,
-        PROTECTED_WORKFLOWS.EVENTGENIX_REMEDIATION].includes(kind) || Boolean(freelanceScheduleReleaseFor(kind));
+        PROTECTED_WORKFLOWS.EVENTGENIX_REMEDIATION, PROTECTED_WORKFLOWS.EVENTGENIX_REMEDIATION_RETRY]
+        .includes(kind) || Boolean(freelanceScheduleReleaseFor(kind));
 }
 
 function isPreparedProtectedRelease(manifest) {
@@ -818,7 +826,7 @@ function validateProtectedWorkflow(workflow, changedPaths = [], redPaths = []) {
         'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
         return { enabled: true, kind: workflow, protectedChangedPaths: ['routes/auth.js'] };
     }
-    if (workflow === PROTECTED_WORKFLOWS.EVENTGENIX_REMEDIATION) {
+    if (eventGenixRemediationFor(workflow)) {
         const protectedPaths = ['.github/workflows/ci.yml'];
         fail(stableJson(redPaths) === stableJson(protectedPaths)
             && EVENTGENIX_REMEDIATION.controllerPaths.every(file => changedPaths.includes(file)),
@@ -1042,17 +1050,35 @@ function assertMyDayProfileReleaseScope(base, baseVersion, version, qa, migratio
     'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
 }
 
-function assertEventGenixRemediationPayload(payloadSha) {
-    fail(payloadSha === EVENTGENIX_REMEDIATION.payloadSha,
+function eventGenixRemediationFor(workflow) {
+    if (workflow === PROTECTED_WORKFLOWS.EVENTGENIX_REMEDIATION) return EVENTGENIX_REMEDIATION;
+    if (workflow === PROTECTED_WORKFLOWS.EVENTGENIX_REMEDIATION_RETRY) return EVENTGENIX_REMEDIATION_RETRY;
+    return null;
+}
+
+function assertEventGenixRemediationPayload(payloadSha, reviewed) {
+    fail(payloadSha === reviewed.payloadSha,
         'EventGenix 0.84.17 differs from its reviewed payload', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
 }
 
-function assertEventGenixRemediationScope(base, baseVersion, version, qa, migrations, attempts) {
-    const reviewed = EVENTGENIX_REMEDIATION;
+function assertEventGenixRemediationScope(reviewed, base, baseVersion, version, qa, migrations, attempts) {
     fail(base === reviewed.baseSha && baseVersion === reviewed.baseVersion && version === reviewed.version
         && qa.enabled === false && migrations.length === 0 && attempts === 1,
     'EventGenix 0.84.17 requires its exact base and version, one attempt, and read-only QA',
     'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+}
+
+function assertEventGenixRemediationFailedCi(run, reviewed) {
+    if (!reviewed.failedCiRunId) return;
+    const failedJobs = run?.jobs?.filter(job => job.conclusion === 'failure').map(job => job.name).sort();
+    fail(String(run?.databaseId) === reviewed.failedCiRunId
+        && run.headSha === reviewed.failedPredecessorSha && run.headBranch === TARGET.branch
+        && run.workflowName === 'CI' && run.event === 'push' && run.status === 'completed'
+        && run.conclusion === 'failure' && stableJson(failedJobs || []) === stableJson([
+            'HR and payroll PostgreSQL integration', 'My Day browser interactions'
+        ]),
+    'EventGenix retry requires the reviewed failed production CI and both identified jobs',
+    'PRODUCTION_BLOCK_CI_IDENTITY_INVALID');
 }
 
 function freelanceScheduleReleaseFor(workflow) {
@@ -1148,13 +1174,16 @@ function buildManifest(facts, options = {}) {
             'My Day release requires matching and verified live and remote production',
             'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
     }
-    if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.EVENTGENIX_REMEDIATION) {
-        assertEventGenixRemediationScope(baseLiveSha, facts.live?.version, facts.releaseVersion,
+    const eventGenixRemediation = eventGenixRemediationFor(protectedWorkflow.kind);
+    if (eventGenixRemediation) {
+        assertEventGenixRemediationScope(eventGenixRemediation, baseLiveSha, facts.live?.version, facts.releaseVersion,
             qaScope, migrations, maxReleaseAttempts);
-        assertEventGenixRemediationPayload(facts.eventGenixRemediationPayloadSha);
-        fail(facts.remoteSha === baseLiveSha && facts.live?.deploymentMetadata?.complete === true,
-            'EventGenix 0.84.17 requires matching and verified live and remote production',
+        assertEventGenixRemediationPayload(facts.eventGenixRemediationPayloadSha, eventGenixRemediation);
+        fail(facts.remoteSha === (eventGenixRemediation.failedPredecessorSha || baseLiveSha)
+            && facts.live?.deploymentMetadata?.complete === true,
+            'EventGenix 0.84.17 requires its exact live and remote production SHAs',
             'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
+        assertEventGenixRemediationFailedCi(facts.eventGenixRemediationFailedCi, eventGenixRemediation);
     }
     fail(qaScope.kind !== 'finance' || protectedWorkflow.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA,
         'Finance QA scope requires the dedicated finance workflow', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
@@ -1258,8 +1287,12 @@ function buildManifest(facts, options = {}) {
                     ? { profileEmployeeAuthBlob: facts.profileEmployeeAuthBlob } : {}),
                 ...(protectedWorkflow.kind === PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE
                     ? { myDayProfilePayloadSha: facts.myDayProfilePayloadSha } : {}),
-                ...(protectedWorkflow.kind === PROTECTED_WORKFLOWS.EVENTGENIX_REMEDIATION
+                ...(eventGenixRemediation
                     ? { eventGenixRemediationPayloadSha: facts.eventGenixRemediationPayloadSha } : {}),
+                ...(eventGenixRemediation?.failedPredecessorSha ? {
+                    failedPredecessorSha: eventGenixRemediation.failedPredecessorSha,
+                    failedCiRunId: eventGenixRemediation.failedCiRunId
+                } : {}),
                 ...(freelanceSchedule ? { freelanceSchedulePayloadSha: facts.freelanceSchedulePayloadSha } : {}),
                 ...(freelanceSchedule?.failedPredecessorSha ? {
                     failedPredecessorSha: freelanceSchedule.failedPredecessorSha, failedCiRunId: freelanceSchedule.failedCiRunId
@@ -1359,10 +1392,15 @@ function validateManifest(manifest, options = {}) {
         'My Day release requires one exact prepared SHA without migrations or retries',
         'PRODUCTION_BLOCK_RELEASE_NOT_PREPARED');
     }
-    if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.EVENTGENIX_REMEDIATION) {
-        assertEventGenixRemediationScope(manifest.baseLiveSha, manifest.preparedRelease?.baseVersion,
+    const eventGenixRemediation = eventGenixRemediationFor(protectedWorkflow.kind);
+    if (eventGenixRemediation) {
+        assertEventGenixRemediationScope(eventGenixRemediation, manifest.baseLiveSha, manifest.preparedRelease?.baseVersion,
             manifest.preparedRelease?.version, qaScope, manifest.migrationClassifications, manifest.maxReleaseAttempts);
-        assertEventGenixRemediationPayload(manifest.preparedRelease?.eventGenixRemediationPayloadSha);
+        assertEventGenixRemediationPayload(manifest.preparedRelease?.eventGenixRemediationPayloadSha, eventGenixRemediation);
+        fail(manifest.preparedRelease?.failedPredecessorSha === eventGenixRemediation.failedPredecessorSha
+            && manifest.preparedRelease?.failedCiRunId === eventGenixRemediation.failedCiRunId,
+        'EventGenix release failed-CI binding differs from the reviewed scope',
+        'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
         fail(manifest.preparedRelease?.sha === manifest.initialHeadSha && manifest.allowedMigrationFiles.length === 0
             && !manifest.retryFrom && !manifest.renewalFrom,
         'EventGenix 0.84.17 requires one exact prepared SHA without migrations or retries',
@@ -1547,6 +1585,9 @@ function warningText(manifest) {
 module.exports = {
     MY_DAY_PROFILE_RELEASE,
     EVENTGENIX_REMEDIATION,
+    EVENTGENIX_REMEDIATION_RETRY,
+    eventGenixRemediationFor,
+    assertEventGenixRemediationFailedCi,
     assertEventGenixRemediationPayload,
     assertMyDayProfilePayload,
     FREELANCE_SCHEDULE_RELEASE,

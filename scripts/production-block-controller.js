@@ -23,7 +23,8 @@ const {
     assertPerformanceCiRecovery,
     assertProfileEmployeeAuthBlob,
     MY_DAY_PROFILE_RELEASE,
-    EVENTGENIX_REMEDIATION,
+    eventGenixRemediationFor,
+    assertEventGenixRemediationFailedCi,
     assertEventGenixRemediationPayload,
     freelanceScheduleReleaseFor,
     assertFreelanceSchedulePayload,
@@ -378,10 +379,11 @@ function assertPreparedProductionBase(manifest, live, remoteSha) {
         return;
     }
 
-    const freelancePredecessor = freelanceScheduleReleaseFor(manifest.allowedProtectedWorkflow?.kind)?.failedPredecessorSha;
-    if (freelancePredecessor) {
-        fail(remoteSha === freelancePredecessor || remoteSha === manifest.initialHeadSha,
-            'Freelance schedule remote differs from its reviewed predecessor or corrected SHA',
+    const reviewedPredecessor = freelanceScheduleReleaseFor(manifest.allowedProtectedWorkflow?.kind)?.failedPredecessorSha
+        || eventGenixRemediationFor(manifest.allowedProtectedWorkflow?.kind)?.failedPredecessorSha;
+    if (reviewedPredecessor) {
+        fail(remoteSha === reviewedPredecessor || remoteSha === manifest.initialHeadSha,
+            'Recovery remote differs from its reviewed predecessor or corrected SHA',
             'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
         return;
     }
@@ -512,7 +514,7 @@ function reviewedReleasePayloadSha(head, { payloadSha, controllerPaths }) {
     return payloadSha;
 }
 
-function readFreelanceScheduleFailedCi(reviewed) {
+function readReviewedFailedCi(reviewed) {
     if (!reviewed.failedCiRunId) return undefined;
     return JSON.parse(commandResult('gh', ['run', 'view', reviewed.failedCiRunId, '--json',
         'databaseId,headSha,headBranch,workflowName,event,status,conclusion,jobs']));
@@ -528,14 +530,28 @@ function freelanceScheduleFacts(head, reviewed) {
     }
     return {
         freelanceSchedulePayloadSha: reviewedReleasePayloadSha(head, reviewed),
-        freelanceScheduleFailedCi: readFreelanceScheduleFailedCi(reviewed)
+        freelanceScheduleFailedCi: readReviewedFailedCi(reviewed)
+    };
+}
+
+function eventGenixRemediationFacts(head, reviewed) {
+    if (!reviewed) return {};
+    if (reviewed.failedPredecessorSha) {
+        fail(gitIsAncestor(reviewed.failedPredecessorSha, reviewed.payloadSha)
+            && git(['rev-list', '--parents', '-n', '1', head]) === `${head} ${reviewed.payloadSha}`,
+        'EventGenix retry requires one controller commit on its corrected payload',
+        'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
+    }
+    return {
+        eventGenixRemediationPayloadSha: reviewedReleasePayloadSha(head, reviewed),
+        eventGenixRemediationFailedCi: readReviewedFailedCi(reviewed)
     };
 }
 
 function usesStandardProtectedReleaseFlow(kind) {
     return [PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE, PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE,
-        PROTECTED_WORKFLOWS.FREELANCE_CANCEL_424, PROTECTED_WORKFLOWS.EVENTGENIX_REMEDIATION].includes(kind)
-        || Boolean(freelanceScheduleReleaseFor(kind));
+        PROTECTED_WORKFLOWS.FREELANCE_CANCEL_424].includes(kind)
+        || Boolean(freelanceScheduleReleaseFor(kind) || eventGenixRemediationFor(kind));
 }
 
 function defaultRuntime() {
@@ -569,8 +585,7 @@ function defaultRuntime() {
                     profileEmployeeAuthBlob: git(['rev-parse', `${head}:routes/auth.js`])
                 } : {}),
                 ...(myDayProfile ? { myDayProfilePayloadSha: reviewedReleasePayloadSha(head, MY_DAY_PROFILE_RELEASE) } : {}),
-                ...(options.protectedWorkflow === PROTECTED_WORKFLOWS.EVENTGENIX_REMEDIATION
-                    ? { eventGenixRemediationPayloadSha: reviewedReleasePayloadSha(head, EVENTGENIX_REMEDIATION) } : {}),
+                ...eventGenixRemediationFacts(head, eventGenixRemediationFor(options.protectedWorkflow)),
                 ...freelanceScheduleFacts(head, freelanceScheduleReleaseFor(options.protectedWorkflow)),
                 workflowHashes: performanceCi ? performanceCiWorkflowHashes(paths)
                     : options.protectedWorkflow === PROTECTED_WORKFLOWS.STAFF_DELETION_CI ? staffDeletionWorkflowHashes() : undefined,
@@ -599,8 +614,7 @@ function defaultRuntime() {
                     ? { profileEmployeeAuthBlob: git(['rev-parse', `${head}:routes/auth.js`]) } : {}),
                 ...(manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE
                     ? { myDayProfilePayloadSha: reviewedReleasePayloadSha(head, MY_DAY_PROFILE_RELEASE) } : {}),
-                ...(manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.EVENTGENIX_REMEDIATION
-                    ? { eventGenixRemediationPayloadSha: reviewedReleasePayloadSha(head, EVENTGENIX_REMEDIATION) } : {}),
+                ...eventGenixRemediationFacts(head, eventGenixRemediationFor(manifest.allowedProtectedWorkflow?.kind)),
                 ...freelanceScheduleFacts(head, freelanceScheduleReleaseFor(manifest.allowedProtectedWorkflow?.kind)),
                 workflowHashes: performanceCi ? performanceCiWorkflowHashes(paths)
                     : manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.STAFF_DELETION_CI ? staffDeletionWorkflowHashes() : undefined,
@@ -709,9 +723,12 @@ function defaultRuntime() {
             }
             if (standardProtectedRelease) {
                 const reviewed = freelanceScheduleReleaseFor(workflow);
-                if (reviewed?.failedPredecessorSha) assertFreelanceScheduleFailedCi(readFreelanceScheduleFailedCi(reviewed), reviewed);
+                if (reviewed?.failedPredecessorSha) assertFreelanceScheduleFailedCi(readReviewedFailedCi(reviewed), reviewed);
+                const eventGenix = eventGenixRemediationFor(workflow);
+                if (eventGenix?.failedCiRunId) assertEventGenixRemediationFailedCi(readReviewedFailedCi(eventGenix), eventGenix);
                 await assertStandardProductionBase(manifest, workflow === PROTECTED_WORKFLOWS.FREELANCE_CANCEL_424
-                    ? '60c9f296d93a9a8ce4b8a2f374d41085c4dd32e9' : reviewed?.failedPredecessorSha || manifest.baseLiveSha);
+                    ? '60c9f296d93a9a8ce4b8a2f374d41085c4dd32e9'
+                    : reviewed?.failedPredecessorSha || eventGenix?.failedPredecessorSha || manifest.baseLiveSha);
             }
             if (needsRuntimeArtifactRun(manifest)) assertRuntimeArtifactPushPaths(remoteSha, releaseSha);
             fail(remoteProductionSha() === remoteSha,
@@ -1251,8 +1268,10 @@ async function assertExecuteDrift(manifest, runtime) {
     if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE) {
         assertMyDayProfilePayload(drift.myDayProfilePayloadSha);
     }
-    if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.EVENTGENIX_REMEDIATION) {
-        assertEventGenixRemediationPayload(drift.eventGenixRemediationPayloadSha);
+    const eventGenix = eventGenixRemediationFor(manifest.allowedProtectedWorkflow?.kind);
+    if (eventGenix) {
+        assertEventGenixRemediationPayload(drift.eventGenixRemediationPayloadSha, eventGenix);
+        assertEventGenixRemediationFailedCi(drift.eventGenixRemediationFailedCi, eventGenix);
     }
     const freelanceSchedule = freelanceScheduleReleaseFor(manifest.allowedProtectedWorkflow?.kind);
     if (freelanceSchedule) {

@@ -57,24 +57,25 @@ async function verifyTaskEntry({ origin, session, evidence }) {
                 const url = new URL(request.url());
                 if (/hermes/i.test(request.url())) hermes.push(url.pathname);
                 if (request.method() === 'GET' && ['/api/auth/verify', '/api/auth/business-profile',
-                    '/api/auth/telegram-crm', '/api/my-day/timer'].includes(url.pathname)) {
+                    '/api/auth/telegram-crm', '/api/my-day/timer', '/api/tasks/overview'].includes(url.pathname)) {
                     pendingReads.set(request, url.pathname);
                 }
             });
             page.on('requestfinished', request => pendingReads.delete(request));
             page.on('requestfailed', request => pendingReads.delete(request));
         });
-        async function settleBootstrapReads(page) {
+        async function settleBootstrapReads(page, onlyPath) {
             const pendingReads = bootstrapReads.get(page);
             if (!pendingReads) return;
+            const pendingPaths = () => [...pendingReads.values()].filter(path => !onlyPath || path === onlyPath);
             const deadline = Date.now() + 20000;
             // Keep the phase bounded and wait for a quiet tick so chained reads are included.
             while (Date.now() < deadline) {
-                const wasIdle = !pendingReads.size;
+                const wasIdle = !pendingPaths().length;
                 await new Promise(resolve => setTimeout(resolve, 25));
-                if (wasIdle && !pendingReads.size) return;
+                if (wasIdle && !pendingPaths().length) return;
             }
-            throw new Error(`Bootstrap reads did not settle on ${new URL(page.url()).pathname}: ${[...pendingReads.values()].join(', ')}`);
+            throw new Error(`Bootstrap reads did not settle on ${new URL(page.url()).pathname}: ${pendingPaths().join(', ')}`);
         }
         async function verifyBackgroundReadback(page) {
             for (const path of ['/api/my-day/timer', '/api/auth/telegram-crm']) {
@@ -501,11 +502,16 @@ async function verifyTaskEntry({ origin, session, evidence }) {
                 headers: { authorization: 'Bearer ' + deniedLogin.token }
             });
             assert.ok([403, 404].includes(deniedDetail.status), 'actor without Dar membership remains denied');
-            await navigate(origin + '/tasks');
+            const [overview] = await Promise.all([
+                page.waitForEvent('requestfinished', { predicate: request => request.method() === 'GET'
+                    && new URL(request.url()).pathname === '/api/tasks/overview' }),
+                navigate(origin + '/tasks')
+            ]);
             assert.equal(new URL(page.url()).pathname, '/tasks');
+            assert.ok((await overview.response())?.ok(), 'The bare Tasks route successfully loads its overview');
             await verifyBackgroundReadback(page);
-            // The legacy page can keep background requests open. Start the logout
-            // check from the task document, and prove its authenticated readback.
+            await settleBootstrapReads(page, '/api/tasks/overview');
+            // Start the logout check from the task document.
             await page.goto(origin + href, { waitUntil: 'domcontentloaded' });
             await dialog.getByRole('heading', { name: parkTitle }).waitFor();
             await verifyBackgroundReadback(page);

@@ -47,7 +47,8 @@ async function verifyTaskEntry({ origin, session, evidence }) {
                         tab: new URL(page.url()).pathname + new URL(page.url()).search }));
                 });
             }
-            bootstrapReads.set(page, []);
+            const pendingReads = new Map();
+            bootstrapReads.set(page, pendingReads);
             page.on('pageerror', error => errors.push({ message: error.message, at: Date.now(), page, engine }));
             page.on('framenavigated', frame => { if (frame === page.mainFrame()) navigations.push({ at: Date.now(), page }); });
             page.on('requestfailed', request => failedRequests.push({ page, at: Date.now(),
@@ -55,20 +56,25 @@ async function verifyTaskEntry({ origin, session, evidence }) {
             page.on('request', request => {
                 const url = new URL(request.url());
                 if (/hermes/i.test(request.url())) hermes.push(url.pathname);
-                if (request.method() === 'GET' && (url.pathname.startsWith('/api/auth/') || url.pathname === '/api/my-day/timer')) {
-                    bootstrapReads.get(page).push(request.response().then(response => response?.finished()).catch(() => {}));
+                if (request.method() === 'GET' && ['/api/auth/verify', '/api/auth/business-profile',
+                    '/api/auth/telegram-crm', '/api/my-day/timer'].includes(url.pathname)) {
+                    pendingReads.set(request, url.pathname);
                 }
             });
+            page.on('requestfinished', request => pendingReads.delete(request));
+            page.on('requestfailed', request => pendingReads.delete(request));
         });
         async function settleBootstrapReads(page) {
-            const reads = bootstrapReads.get(page) || [];
-            let settled = 0;
-            do {
-                settled = reads.length;
-                await Promise.all(reads.slice(0, settled));
-                // Let the completed bootstrap response start any dependent read.
-                await page.evaluate(() => Promise.resolve());
-            } while (reads.length !== settled);
+            const pendingReads = bootstrapReads.get(page);
+            if (!pendingReads) return;
+            const deadline = Date.now() + 20000;
+            // Keep the phase bounded and wait for a quiet tick so chained reads are included.
+            while (Date.now() < deadline) {
+                const wasIdle = !pendingReads.size;
+                await new Promise(resolve => setTimeout(resolve, 25));
+                if (wasIdle && !pendingReads.size) return;
+            }
+            throw new Error(`Bootstrap reads did not settle on ${new URL(page.url()).pathname}: ${[...pendingReads.values()].join(', ')}`);
         }
         async function verifyBackgroundReadback(page) {
             for (const path of ['/api/my-day/timer', '/api/auth/telegram-crm']) {
@@ -383,7 +389,7 @@ async function verifyTaskEntry({ origin, session, evidence }) {
             }
             console.log(`Task entry ${engine}: dashboard, search and Operations Center scopes verified.`);
             // Park is the active context before opening the Dar task in a second tab.
-            await navigate(origin + href);
+            await page.goto(origin + href, { waitUntil: 'domcontentloaded' });
             const parkTitle = process.env.TASK_ENTRY_CONTEXT_ONLY === '1' ? `Task entry ${engine}` : `Task entry saved ${engine}`;
             await dialog.getByRole('heading', { name: parkTitle }).waitFor();
             // Keep Park active: the new task entry must converge both tabs to Dar,

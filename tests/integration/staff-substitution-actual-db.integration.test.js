@@ -712,7 +712,8 @@ test('default services use the migrated schema for an unrelated permanent occupa
         const converted = await saveReply({...officeInput,sourceType:'task',sourceId:String(convertedTask),workDate:'2099-01-30'});
         const convertedRead = (await authRequest('GET', channelSubstitutions)).data.find(row => row.id === String(converted.id));
         assert.deepEqual(convertedRead, {kind:'meeting_action',itemId:pendingAction.id,title:'[Synthetic Park meeting] Synthetic double conversion',
-            taskId:convertedTask,id:String(converted.id),state:'active'});
+            taskId:convertedTask,taskHref:`/profile?tab=myday&open=${convertedTask}&businessContext=event_genix`,
+            id:String(converted.id),state:'active'});
         const meetingPayroll = (await require('../../services/payroll').getPayrollRangePreview(
             { month:'2099-01',from:meetingInput.workDate,to:meetingInput.workDate,staffId:staff.id },db)).staff[0];
         assert.deepEqual(meetingPayroll.lines.filter(line=>line.lineType==='staff_substitution').map(line=>line.amount),[750.37]);

@@ -90,9 +90,9 @@ function decodeCompletionHistoryCursor(value) {
     return { timestamp: timestamp.toISOString(), id };
 }
 
-function taskCabinetRowSelectSql(roles = "'{}'::text[]") {
+function taskCabinetRowSelectSql(roles = "'{}'::text[]", coAssignee = 'FALSE') {
     return `SELECT t.*, u.name AS owner_name, u.username AS owner_username, ${roles} AS viewer_roles,
-                t.completed_at AT TIME ZONE 'UTC' AS completed_at
+                ${coAssignee} AS viewer_is_co_assignee, t.completed_at AT TIME ZONE 'UTC' AS completed_at
          FROM tasks t
          LEFT JOIN users u ON u.id = t.owner_user_id`;
 }
@@ -102,7 +102,7 @@ function taskCompletionHistoryScope(user, businessScope) {
     const personalQuery = buildTaskPersonalQuery(user, params, 't');
     const ownerMatch = personalQuery.match;
     const businessCondition = appendTaskBusinessScopeSql(params, businessScope, 't');
-    return { params, ownerMatch, businessCondition, roles: personalQuery.roles };
+    return { params, ownerMatch, businessCondition, roles: personalQuery.roles, coAssignee: personalQuery.coAssignee };
 }
 
 async function queryTaskCompletionHistoryPage(queryable, options = {}) {
@@ -133,7 +133,7 @@ async function queryTaskCompletionHistoryPage(queryable, options = {}) {
     const limitParam = pageParams.length + 1;
     pageParams.push(limit + 1);
     const result = await queryable.query(
-        `${taskCabinetRowSelectSql(scope.roles)}
+        `${taskCabinetRowSelectSql(scope.roles, scope.coAssignee)}
          WHERE ${scope.ownerMatch}
            ${scope.businessCondition}
            AND COALESCE(t.status, 'todo') = 'done'

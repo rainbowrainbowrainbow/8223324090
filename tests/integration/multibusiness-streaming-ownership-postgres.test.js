@@ -69,6 +69,8 @@ test('fresh streaming access and organization owner safety with actual sockets a
                 owner_user_id INT REFERENCES users(id), assigned_to TEXT, owner TEXT, visibility TEXT DEFAULT 'team');
             CREATE TABLE task_observers (task_id INT REFERENCES tasks(id), user_id INT REFERENCES users(id),
                 PRIMARY KEY (task_id, user_id));
+            CREATE TABLE task_co_assignees (task_id INT REFERENCES tasks(id), user_id INT REFERENCES users(id),
+                PRIMARY KEY (task_id, user_id));
             CREATE TABLE bookings (id VARCHAR(50) PRIMARY KEY, business_context TEXT NOT NULL,
                 line_id TEXT, second_animator TEXT, created_by TEXT);
             CREATE TABLE chat_channels (id SERIAL PRIMARY KEY, type VARCHAR(20) DEFAULT 'general',

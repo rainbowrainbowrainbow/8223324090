@@ -143,6 +143,40 @@ test('park edition paginates all periods and disables legacy module writes', {
         const peerCabinet = await request('GET', '/api/tasks/my-cabinet?bucket=noDate', undefined, peer.token);
         assert.ok(!peerCabinet.data.tasks.some(task => task.id === legacyPrivate));
 
+        const initialVersion = Number((await pool.query('SELECT version FROM tasks WHERE id = $1', [legacyPrivate])).rows[0].version || 1);
+        const assignment = await request('PUT', `/api/tasks/${legacyPrivate}/co-assignees`, { userIds: [peer.id] }, token);
+        assert.equal(assignment.status, 200, JSON.stringify(assignment.data));
+        assert.equal(Number((await pool.query('SELECT version FROM tasks WHERE id = $1', [legacyPrivate])).rows[0].version), initialVersion + 1);
+        const stale = await request('PUT', `/api/tasks/${legacyPrivate}/co-assignees`, { userIds: [], previousUserIds: [] }, token);
+        assert.equal(stale.status, 409);
+        const coDetail = await request('GET', `/api/tasks/${legacyPrivate}`, undefined, peer.token);
+        assert.equal(coDetail.status, 200, JSON.stringify(coDetail.data));
+        assert.equal(coDetail.data.drawer.actions.complete, true);
+        assert.equal(coDetail.data.drawer.actions.save, false);
+        const coCabinet = await request('GET', '/api/tasks/my-cabinet?bucket=noDate', undefined, peer.token);
+        const coTask = coCabinet.data.tasks.find(task => task.id === legacyPrivate);
+        assert.ok(coTask, 'co-assigned private task is present in My Day');
+        assert.ok(coTask.viewerRoles.includes('executor'));
+        assert.equal(coTask.actionPermissions.canChangeStatus, true);
+        assert.equal(coTask.actionPermissions.canMutate, false);
+        const coStart = await request('PATCH', `/api/tasks/${legacyPrivate}/status`, { status: 'in_progress' }, peer.token);
+        assert.equal(coStart.status, 200, JSON.stringify(coStart.data));
+        const coReset = await request('PATCH', `/api/tasks/${legacyPrivate}/status`, { status: 'todo' }, peer.token);
+        assert.equal(coReset.status, 200, JSON.stringify(coReset.data));
+        const versioned = await request('GET', `/api/tasks/${legacyPrivate}`, undefined, peer.token);
+        const operation = { myDayOperationId: require('node:crypto').randomUUID(), version: versioned.data.version };
+        const firstCompletion = await request('POST', `/api/tasks/${legacyPrivate}/complete`, operation, peer.token);
+        assert.equal(firstCompletion.status, 200, JSON.stringify(firstCompletion.data));
+        const replay = await request('POST', `/api/tasks/${legacyPrivate}/complete`, operation, peer.token);
+        assert.equal(replay.status, 200, 'retrying the same My Day operation is idempotent');
+        const coReopen = await request('PATCH', `/api/tasks/${legacyPrivate}/status`, { status: 'todo' }, peer.token);
+        assert.equal(coReopen.status, 200, JSON.stringify(coReopen.data));
+        const coEdit = await request('PUT', `/api/tasks/${legacyPrivate}`, { title: 'Unauthorized edit' }, peer.token);
+        assert.equal(coEdit.status, 403);
+        const unassign = await request('PUT', `/api/tasks/${legacyPrivate}/co-assignees`, { userIds: [], previousUserIds: [peer.id] }, token);
+        assert.equal(unassign.status, 200, JSON.stringify(unassign.data));
+        assert.equal((await request('GET', `/api/tasks/${legacyPrivate}`, undefined, peer.token)).status, 404);
+
         const { rows: [assigned, farFuture, own, otherBusiness] } = await pool.query(`
             INSERT INTO tasks (title, date, status, visibility, task_mode, owner_user_id, created_by_user_id, business_context)
             VALUES ('Assigned to colleague', ($3::date - 1)::text, 'todo', 'team', 'work', $2, $1, 'event_genix'),

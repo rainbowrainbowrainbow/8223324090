@@ -87,6 +87,7 @@ test('canonical task selection and full list queries preserve terminal rows, sco
                 source_type text,created_at timestamp,completed_at timestamp,updated_at timestamp);
             CREATE TABLE task_dependencies(task_id integer,depends_on_task_id integer,PRIMARY KEY(task_id,depends_on_task_id));
             CREATE TABLE task_observers(task_id integer,user_id integer,access_level text,PRIMARY KEY(task_id,user_id));
+            CREATE TABLE task_co_assignees(task_id integer,user_id integer,PRIMARY KEY(task_id,user_id));
             CREATE TABLE task_logs(task_id integer,actor text);
             CREATE TABLE task_action_history(task_id integer,actor_user_id integer,actor_name_snapshot text);
             CREATE INDEX task_fixture_subtasks ON task_subtasks(task_id);

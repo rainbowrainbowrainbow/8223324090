@@ -139,6 +139,7 @@ const INVENTORY_TABLES = Object.freeze([
     'task_subtasks',
     'task_dependencies',
     'task_observers',
+    'task_co_assignees',
     'task_bundle_tasks'
 ]);
 
@@ -225,6 +226,7 @@ function buildInventorySql(options = {}) {
                 WHERE td.task_id = t.id OR td.depends_on_task_id = t.id
             `)}), 0) AS dependency_count,
             COALESCE((${optionalCountSql(tableAccess, 'task_observers', 'SELECT COUNT(*)::int FROM task_observers tob WHERE tob.task_id = t.id')}), 0) AS observer_count,
+            COALESCE((${optionalCountSql(tableAccess, 'task_co_assignees', 'SELECT COUNT(*)::int FROM task_co_assignees ca WHERE ca.task_id = t.id')}), 0) AS co_assignee_count,
             COALESCE((${optionalCountSql(tableAccess, 'task_bundle_tasks', 'SELECT COUNT(*)::int FROM task_bundle_tasks tbt WHERE tbt.task_id = t.id')}), 0) AS ai_bundle_count,
             b.id IS NOT NULL AS booking_found,
             LOWER(COALESCE(b.status, '')) AS booking_status,
@@ -289,6 +291,7 @@ function protectionReasons(row = {}, provenance = classifyProvenance(row)) {
     if (Number(row.subtask_count || 0) > 0) reasons.push('subtasks');
     if (Number(row.dependency_count || 0) > 0) reasons.push('dependencies');
     if (Number(row.observer_count || 0) > 0) reasons.push('observers');
+    if (Number(row.co_assignee_count || 0) > 0) reasons.push('co_assignees');
     if (provenance === 'human_assisted_ai') reasons.push('human_assisted_ai');
     if (provenance === 'integrations_hermes') reasons.push('integration_or_hermes');
     if (provenance === 'attendance') reasons.push('attendance');

@@ -23,7 +23,9 @@ const { createLogger } = require('../utils/logger');
 const { getPermissions } = require('../config/roles');
 const {
     buildTaskOwnerMatch,
+    buildTaskCoAssigneeMatch,
     buildTaskVisibilityScope,
+    canChangeTaskStatus,
     canManageTaskObservers,
     canMutateTask,
     canReassignTask,
@@ -36,6 +38,7 @@ const {
     getAssignableTaskOwner,
     listTaskOwnerCandidates,
     taskControlMeta,
+    updateTaskStatus,
     reassignTaskOwner,
     resolveDeadline,
     rescheduleTask
@@ -1149,6 +1152,7 @@ function taskSystemArchiveSql(alias = 't') {
             WHERE system_archive_td.task_id = ${task}.id OR system_archive_td.depends_on_task_id = ${task}.id
         )
         OR EXISTS (SELECT 1 FROM task_observers system_archive_tob WHERE system_archive_tob.task_id = ${task}.id)
+        OR EXISTS (SELECT 1 FROM task_co_assignees system_archive_ca WHERE system_archive_ca.task_id = ${task}.id)
     )`;
     return `(${task}.archived_at IS NOT NULL AND ${machineSignalSql} AND NOT (${humanProtectionSql}))`;
 }
@@ -1247,10 +1251,12 @@ router.get('/', async (req, res) => {
         }
         if (assigned_to) {
             if (/^\d+$/.test(String(assigned_to))) {
-                conditions.push(`t.owner_user_id = $${idx++}`);
+                conditions.push(`(t.owner_user_id = $${idx} OR EXISTS (SELECT 1 FROM task_co_assignees ca WHERE ca.task_id = t.id AND ca.user_id = $${idx}))`); idx++;
                 params.push(parseInt(assigned_to, 10));
             } else if (assigned_to === 'me') {
-                conditions.push(buildTaskOwnerMatch(req.user, params, 't'));
+                const ownerMatch = buildTaskOwnerMatch(req.user, params, 't');
+                const coAssigneeMatch = buildTaskCoAssigneeMatch(req.user, params, 't');
+                conditions.push(`(${ownerMatch} OR ${coAssigneeMatch})`);
                 idx = params.length + 1;
             } else {
                 conditions.push(`(t.owner_user_id IS NULL AND t.assigned_to = $${idx++})`);
@@ -1262,7 +1268,7 @@ router.get('/', async (req, res) => {
             params.push(owner);
         }
         if (owner_user_id && /^\d+$/.test(String(owner_user_id))) {
-            conditions.push(`t.owner_user_id = $${idx++}`);
+            conditions.push(`(t.owner_user_id = $${idx} OR EXISTS (SELECT 1 FROM task_co_assignees ca WHERE ca.task_id = t.id AND ca.user_id = $${idx}))`); idx++;
             params.push(parseInt(owner_user_id, 10));
         }
         if (afisha_id && /^\d+$/.test(afisha_id)) {
@@ -1431,7 +1437,9 @@ router.get('/', async (req, res) => {
         }
 
         if (dashboardFilter === 'my-overdue') {
-            conditions.push(taskKpiCanonicalOverdueSql('t'), buildTaskOwnerMatch(req.user, params, 't'));
+            const ownerMatch = buildTaskOwnerMatch(req.user, params, 't');
+            const coAssigneeMatch = buildTaskCoAssigneeMatch(req.user, params, 't');
+            conditions.push(taskKpiCanonicalOverdueSql('t'), `(${ownerMatch} OR ${coAssigneeMatch})`);
             conditions.push(`(COALESCE(t.focus_rank, 0) > 0 OR t.scheduled_start_at IS NULL OR t.scheduled_start_at <= NOW())`);
             idx = params.length + 1;
         }
@@ -1473,7 +1481,9 @@ router.get('/', async (req, res) => {
                 break;
             case 'my': {
                 const viewerId = normalizeUserId(req.user) || 0;
-                conditions.push(activeTaskSql, `(t.owner_user_id = $${idx++} OR t.created_by_user_id = $${idx++})`);
+                const coAssigneeMatch = buildTaskCoAssigneeMatch(req.user, params, 't');
+                idx = params.length + 1;
+                conditions.push(activeTaskSql, `(t.owner_user_id = $${idx++} OR t.created_by_user_id = $${idx++} OR ${coAssigneeMatch})`);
                 params.push(viewerId, viewerId);
                 break;
             }
@@ -1536,6 +1546,7 @@ router.get('/', async (req, res) => {
                 GROUP BY d.task_id
              )
              SELECT t.*, u.name AS owner_name, u.username AS owner_username,
+                    EXISTS (SELECT 1 FROM task_co_assignees viewer_ca WHERE viewer_ca.task_id = t.id AND viewer_ca.user_id = $${viewerUserIdParam}) AS viewer_is_co_assignee,
                     COALESCE((SELECT COUNT(*) FROM task_observers tob WHERE tob.task_id = t.id), 0)::int AS observer_count,
                     EXISTS (
                         SELECT 1
@@ -2450,6 +2461,8 @@ router.get('/:id', async (req, res) => {
         const result = await pool.query(
             `SELECT t.*, u.name AS owner_name, u.username AS owner_username,
                     ${standardVisibility} AS task_standard_visibility,
+                    ARRAY(SELECT ca.user_id FROM task_co_assignees ca WHERE ca.task_id = t.id) AS co_assignee_user_ids,
+                    COALESCE((SELECT json_agg(json_build_object('userId', ca.user_id, 'name', cu.name, 'username', cu.username) ORDER BY COALESCE(NULLIF(cu.name, ''), cu.username)) FROM task_co_assignees ca JOIN users cu ON cu.id = ca.user_id WHERE ca.task_id = t.id), '[]'::json) AS co_assignees,
                     COALESCE((SELECT COUNT(*) FROM task_observers tob WHERE tob.task_id = t.id), 0)::int AS observer_count,
                     EXISTS (
                         SELECT 1
@@ -2513,6 +2526,8 @@ router.get('/:id', async (req, res) => {
         if (result.rows.length === 0) return res.status(404).json({ error: 'Task not found' });
         const row = result.rows[0];
         if (!row.task_standard_visibility) {
+            row.co_assignee_user_ids = [];
+            row.co_assignees = [];
             row.observers = [];
             row.observer_count = 0;
             row.dependencies = [];
@@ -2552,6 +2567,62 @@ router.get('/:id/history', async (req, res) => {
     } catch (err) {
         log.error('Get task action history error', err);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Replace co-assignees atomically under the existing reassignment policy.
+router.put('/:id/co-assignees', requireRole('admin', 'user'), async (req, res) => {
+    let client;
+    try {
+        const businessScope = requireTaskWriteScope(req, res);
+        if (!businessScope) return;
+        const ids = req.body?.userIds;
+        if (!Array.isArray(ids) || ids.some(id => !/^[1-9]\d*$/.test(String(id)) || !Number.isSafeInteger(Number(id)) || Number(id) > 2147483647) || ids.length > 100) {
+            return res.status(400).json({ error: 'Потрібен список коректних ідентифікаторів виконавців' });
+        }
+        client = await pool.connect();
+        await client.query('BEGIN');
+        const params = [req.params.id];
+        const visibility = buildTaskVisibilityScope(req.user, params, 't');
+        const business = appendTaskBusinessScopeSql(params, businessScope, 't');
+        const found = await client.query(`SELECT t.* FROM tasks t WHERE t.id = $1 ${visibility} ${business} FOR UPDATE`, params);
+        const task = found.rows[0];
+        if (!task) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Task not found' }); }
+        if (!canMutateTask(req.user, task) || !canReassignTask(req.user, task)) {
+            await client.query('ROLLBACK');
+            return res.status(403).json({ error: 'Недостатньо прав для призначення виконавців' });
+        }
+        const uniqueIds = [...new Set(ids.map(Number))].filter(id => id !== Number(task.owner_user_id));
+        const old = await client.query('SELECT user_id FROM task_co_assignees WHERE task_id = $1 ORDER BY user_id', [task.id]);
+        const oldIds = new Set(old.rows.map(row => Number(row.user_id)));
+        if (Array.isArray(req.body.previousUserIds)) {
+            const expected = [...new Set(req.body.previousUserIds.map(Number))].sort((a, b) => a - b);
+            const actual = [...oldIds].sort((a, b) => a - b);
+            if (expected.length !== actual.length || expected.some((id, index) => id !== actual[index])) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({ error: 'Список виконавців змінився. Оновіть задачу та повторіть.' });
+            }
+        }
+        for (const id of uniqueIds) {
+            if (!oldIds.has(id)) await getAssignableTaskOwner(id, { pool: client, actor: req.user, businessContext: task.business_context });
+        }
+        await client.query('DELETE FROM task_co_assignees WHERE task_id = $1 AND NOT (user_id = ANY($2::int[]))', [task.id, uniqueIds]);
+        for (const id of uniqueIds) {
+            await client.query('INSERT INTO task_co_assignees (task_id, user_id, added_by) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING', [task.id, id, normalizeUserId(req.user)]);
+        }
+        if (oldIds.size !== uniqueIds.length || uniqueIds.some(id => !oldIds.has(id))) {
+            // Serialize assignment removal with version-checked status mutations.
+            await client.query('UPDATE tasks SET version = COALESCE(version, 1) + 1, updated_at = NOW() WHERE id = $1', [task.id]);
+        }
+        await logTaskActionEvent({ taskId: task.id, actionType: TASK_ACTION_TYPES.CO_ASSIGNEES_UPDATED, actor: req.user, sourceSurface: 'task_page', oldValue: { userIds: old.rows.map(row => row.user_id) }, newValue: { userIds: uniqueIds } }, { pool: client });
+        await client.query('COMMIT');
+        try { _alertPush(); } catch (err) { log.warn(`Task co-assignee broadcast skipped: ${err.message}`); }
+        res.json({ success: true, userIds: uniqueIds });
+    } catch (err) {
+        if (client) try { await client.query('ROLLBACK'); } catch {}
+        return sendTaskActionError(res, err);
+    } finally {
+        if (client) client.release();
     }
 });
 
@@ -3719,9 +3790,10 @@ router.patch('/:id/status', requireRole('admin', 'user'), async (req, res) => {
         const visibleParams = [id];
         const visibility = buildTaskVisibilityScope(req.user, visibleParams, 't');
         const businessCondition = appendTaskBusinessScopeSql(visibleParams, businessScope, 't');
-        const visible = await pool.query(`SELECT t.* FROM tasks t WHERE t.id = $1 ${visibility} ${businessCondition} LIMIT 1`, visibleParams);
+        const visible = await pool.query(`SELECT t.*, ARRAY(SELECT ca.user_id FROM task_co_assignees ca WHERE ca.task_id = t.id) AS co_assignee_user_ids FROM tasks t WHERE t.id = $1 ${visibility} ${businessCondition} LIMIT 1`, visibleParams);
         if (!visible.rows.length) return res.status(404).json({ error: 'Task not found' });
-        if (!canMutateTask(req.user, visible.rows[0])) return res.status(403).json({ error: 'Недостатньо прав для зміни задачі' });
+        const canEditTask = canMutateTask(req.user, visible.rows[0]);
+        if (!canEditTask && (!canChangeTaskStatus(req.user, visible.rows[0]) || !['todo', 'in_progress', 'done'].includes(status))) return res.status(403).json({ error: 'Недостатньо прав для зміни задачі' });
 
         const actor = req.user?.username || 'system';
         if (status === 'done') {
@@ -3742,6 +3814,11 @@ router.patch('/:id/status', requireRole('admin', 'user'), async (req, res) => {
                     canonicalField: 'tasks.status'
                 }
             });
+        }
+        if (!canEditTask) {
+            const result = await updateTaskStatus(id, status, req.user, { businessScope, sourceSurface: 'task_detail', route: 'tasks_status_co_assignee', allowCompletedReopen: true });
+            _alertPush();
+            return res.json({ success: true, task: normalizeTaskPayload(result.task), historyEvent: result.historyEvent });
         }
         const kleshnya = getKleshnya();
         const task = await kleshnya.updateTaskStatus(parseInt(id), status, actor, {

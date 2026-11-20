@@ -93,6 +93,7 @@ function cancelledBookingAutoArchivePredicateSql(taskAlias = 't', bookingAlias =
         AND NOT ${historicalTaskWorkSql(taskAlias)}
         AND NOT EXISTS (SELECT 1 FROM task_dependencies td WHERE td.task_id = ${taskAlias}.id OR td.depends_on_task_id = ${taskAlias}.id LIMIT 1)
         AND NOT EXISTS (SELECT 1 FROM task_observers tob WHERE tob.task_id = ${taskAlias}.id LIMIT 1)
+        AND NOT EXISTS (SELECT 1 FROM task_co_assignees ca WHERE ca.task_id = ${taskAlias}.id LIMIT 1)
     )`;
 }
 

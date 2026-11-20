@@ -489,6 +489,7 @@ async function buildTaskCabinetBucketPage(options = {}) {
     const result = await queryable.query(
         `SELECT t.*, t.completed_at AT TIME ZONE 'UTC' AS completed_at,
                 u.name AS owner_name, u.username AS owner_username, ${personalQuery.roles} AS viewer_roles,
+                ${personalQuery.coAssignee} AS viewer_is_co_assignee,
                 ${TASK_SUBSTITUTION_SELECT}
          FROM tasks t
          LEFT JOIN users u ON u.id = t.owner_user_id
@@ -571,6 +572,7 @@ async function buildTaskCabinetProjection(options = {}) {
 
     const result = await queryable.query(
         `SELECT t.*, u.name AS owner_name, u.username AS owner_username, ${personalQuery.roles} AS viewer_roles,
+                ${personalQuery.coAssignee} AS viewer_is_co_assignee,
                 ${TASK_SUBSTITUTION_SELECT}
          FROM tasks t
          LEFT JOIN users u ON u.id = t.owner_user_id
@@ -625,6 +627,7 @@ async function buildTaskCabinetProjection(options = {}) {
         : '';
     const planningResult = await queryable.query(
         `SELECT t.*, u.name AS owner_name, u.username AS owner_username, ${personalQuery.roles} AS viewer_roles,
+                ${personalQuery.coAssignee} AS viewer_is_co_assignee,
                 ${TASK_SUBSTITUTION_SELECT}
          FROM tasks t
          LEFT JOIN users u ON u.id = t.owner_user_id
@@ -678,7 +681,8 @@ async function buildTaskCabinetProjection(options = {}) {
     const completedTodayDatePlaceholder = completedTodayParams.length - 1;
     const completedTodayResult = await queryable.query(
         `SELECT t.*, t.completed_at AT TIME ZONE 'UTC' AS completed_at,
-                u.name AS owner_name, u.username AS owner_username, ${personalQuery.roles} AS viewer_roles
+                u.name AS owner_name, u.username AS owner_username, ${personalQuery.roles} AS viewer_roles,
+                ${personalQuery.coAssignee} AS viewer_is_co_assignee
          FROM tasks t
          LEFT JOIN users u ON u.id = t.owner_user_id
          WHERE ${ownMatch}

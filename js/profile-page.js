@@ -4941,9 +4941,9 @@ function renderCabinetSnoozeMenu(taskIdAttr) {
         </div>`;
 }
 
-function renderCabinetTaskPriorityControl(task = {}, taskIdAttr = '') {
+function renderCabinetTaskPriorityControl(task = {}, taskIdAttr = '', canEdit = true) {
     const selected = normalizeCabinetPriority(task.priority || 'normal');
-    return `<select class="cabinet-task-priority-select cabinet-task-priority-select--${escapeHtml(selected)}" data-cabinet-task-priority-select data-task-id="${taskIdAttr}" aria-label="Пріоритет задачі" ${taskIdAttr ? '' : 'disabled'}>
+    return `<select class="cabinet-task-priority-select cabinet-task-priority-select--${escapeHtml(selected)}" data-cabinet-task-priority-select data-task-id="${taskIdAttr}" aria-label="Пріоритет задачі" ${taskIdAttr && canEdit ? '' : 'disabled'}>
         ${CABINET_TASK_PRIORITIES.map(item => `<option value="${item.value}" ${item.value === selected ? 'selected' : ''}>${escapeHtml(item.label)}</option>`).join('')}
     </select>`;
 }
@@ -5666,6 +5666,7 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
         const taskBlocked = task.isBlocked || (Array.isArray(task.dependencies)
             && task.dependencies.some(item => item?.isOpen !== false && !['done', 'archived', 'cancelled'].includes(item?.status)));
         const blocked = taskBlocked ? 'Спочатку виконайте задачу, від якої залежить ця.' : '';
+        const canEdit = task.actionPermissions?.canMutate !== false;
         return window.ProfileMyDay.renderCard({
             id, title, status: cabinetTaskStatus(task), due: cabinetTaskFocusDateKey(task),
             priority: normalizeCabinetPriority(task.priority),
@@ -5679,7 +5680,8 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
             dueState: due.key,
             canReschedule: cabinetTaskAllowsReschedule(task),
             canMoveToToday: cabinetTaskCanMoveToToday(task, due),
-            priorityControl: renderCabinetTaskPriorityControl(task, String(id || ''))
+            canEdit,
+            priorityControl: renderCabinetTaskPriorityControl(task, String(id || ''), canEdit)
         });
     }
     const taskId = Number(task.id || task.taskId || task.task_id || 0);
@@ -5687,6 +5689,7 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
     const due = cabinetTaskDueValue(task);
     const scheduleStatus = task.scheduleStatus || task.schedule_status || task.schedule?.status || '';
     const taskStatus = task.status || 'todo';
+    const canEditTask = task.actionPermissions?.canMutate !== false;
     const priority = normalizeCabinetPriority(task.priority || 'normal');
     const attentionLevel = cabinetTaskAttentionLevel(task);
     const dueState = getCabinetTaskDueState(task, due);
@@ -5707,7 +5710,7 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
     const myDayFactsHtml = isMyDayCard ? [
         cabinetTaskVisibleBadge('viewer-role', `<span>${escapeHtml(window.TaskUiShared?.taskViewerRoleLabel(task) || '')}</span>`),
         cabinetTaskVisibleBadge('due', renderCabinetDueBadge(task, taskIdAttr, dueState, { suppressOverdueRescheduleMenu: suppressOverdueRescheduleMenu || showMyDayDetails })),
-        cabinetTaskVisibleBadge('priority', showMyDayDetails ? '' : renderCabinetTaskPriorityControl(task, taskIdAttr)),
+        cabinetTaskVisibleBadge('priority', showMyDayDetails ? '' : renderCabinetTaskPriorityControl(task, taskIdAttr, canEditTask)),
         cabinetTaskVisibleBadge('postponement', renderCabinetPostponementBadge(task)),
         suppressMoveTodayAction || showMyDayDetails ? null : cabinetTaskVisibleBadge('move-today', renderCabinetMoveTodayAction(task, taskIdAttr, dueState)),
         scheduleStatus === 'proposal' ? cabinetTaskVisibleBadge('schedule', '<span>потрібне підтвердження часу</span>') : null,
@@ -5722,7 +5725,7 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
     const metadataHtml = !isMyDayCard ? `
                     ${renderCabinetDueBadge(task, taskIdAttr, dueState)}
                     ${renderCabinetMoveTodayAction(task, taskIdAttr, dueState)}
-                    ${renderCabinetTaskPriorityControl(task, taskIdAttr)}
+                    ${renderCabinetTaskPriorityControl(task, taskIdAttr, canEditTask)}
                     ${relationLabel ? `<span class="cabinet-task-relation-badge">${escapeHtml(relationLabel)}</span>` : ''}
                     <span>${taskModeLabel(task)}</span>
                     <span>${taskKindLabel(task)}</span>
@@ -5743,7 +5746,7 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
         : '';
     const taskTitleHtml = `<div class="cabinet-task-title" title="${escapeHtml(task.title || 'Без назви')}">${aiCreatedMarker}${escapeHtml(task.title || 'Без назви')}</div>`;
     const detailToggleHtml = isMyDayCard ? renderCabinetMyDayDetailToggle(taskIdAttr, cardDetailsExpanded) : '';
-    const taskTimerActionHtml = isMyDayCard ? renderCabinetMyDayTimeTrigger(task) : '';
+    const taskTimerActionHtml = isMyDayCard && canEditTask ? renderCabinetMyDayTimeTrigger(task) : '';
     const extraCommandsHtml = options.extraCommandsHtml || '';
     const extraAttrs = options.cardAttrs || '';
     const doneIcon = '<svg class="cabinet-task-control-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m5 12 4 4L19 6"/></svg>';

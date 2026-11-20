@@ -1,7 +1,7 @@
 'use strict';
 
-const { buildTaskOwnerMatch, buildTaskObserverMatch, buildTaskVisibilityScope,
-    normalizeUserId, ownsTask, observesTask } = require('./taskPolicy');
+const { buildTaskOwnerMatch, buildTaskObserverMatch, buildTaskCoAssigneeMatch, buildTaskVisibilityScope,
+    normalizeUserId, ownsTask, observesTask, isTaskCoAssignee } = require('./taskPolicy');
 
 function buildTaskAuthorMatch(user, params, alias = 't') {
     if (!/^[a-z_][a-z0-9_]*$/i.test(alias)) throw new Error('Invalid task SQL alias');
@@ -19,8 +19,10 @@ function buildAuthoredTeamTaskMatch(user, params, alias = 't') {
 
 function buildTaskControlPredicates(user, params, alias = 't') {
     const author = buildTaskAuthorMatch(user, params, alias);
-    const owner = buildTaskOwnerMatch(user, params, alias);
-    return { author, owner, control: `((${author}) IS TRUE AND (${owner}) IS NOT TRUE)` };
+    const primaryOwner = buildTaskOwnerMatch(user, params, alias);
+    const coAssignee = buildTaskCoAssigneeMatch(user, params, alias);
+    const owner = `(${primaryOwner} OR ${coAssignee})`;
+    return { author, owner, coAssignee, control: `((${author}) IS TRUE AND (${owner}) IS NOT TRUE)` };
 }
 
 function authoredTeamTaskSql(author, alias) {
@@ -31,12 +33,13 @@ function authoredTeamTaskSql(author, alias) {
 // Callers must apply the business scope separately. Keep the existing
 // visibility predicate for workflows that mutate the selected task.
 function buildTaskPersonalQuery(user, params, alias = 't', { authorRead = true } = {}) {
-    const { author, owner, control } = buildTaskControlPredicates(user, params, alias);
+    const { author, owner, coAssignee, control } = buildTaskControlPredicates(user, params, alias);
     const participant = buildTaskObserverMatch(user, params, alias);
     const visibility = buildTaskVisibilityScope(user, params, alias);
     return {
         match: `(((${owner} OR ${author} OR ${participant}) ${visibility}) OR ${authorRead ? authoredTeamTaskSql(author, alias) : 'FALSE'})`,
         control,
+        coAssignee,
         roles: `array_remove(ARRAY[CASE WHEN ${owner} THEN 'executor' END, CASE WHEN ${author} THEN 'author' END, CASE WHEN ${participant} THEN 'participant' END], NULL)`
     };
 }
@@ -47,7 +50,7 @@ function taskViewerRoles(user, row) {
     const id = normalizeUserId(user);
     const author = id && (Number(row.created_by_user_id) === id
         || (!row.created_by_user_id && user.username && row.created_by === user.username));
-    return [ownsTask(user, row) && 'executor', author && 'author', observesTask(user, row) && 'participant'].filter(Boolean);
+    return [(ownsTask(user, row) || isTaskCoAssignee(user, row)) && 'executor', author && 'author', observesTask(user, row) && 'participant'].filter(Boolean);
 }
 
 module.exports = { buildAuthoredTeamTaskMatch, buildTaskControlPredicates, buildTaskPersonalQuery, taskViewerRoles };

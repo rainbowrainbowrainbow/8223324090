@@ -257,6 +257,7 @@ function commonSafetyPredicateSql(alias = 't') {
         AND NOT EXISTS (SELECT 1 FROM task_subtasks st WHERE st.task_id = ${alias}.id)
         AND NOT EXISTS (SELECT 1 FROM task_dependencies td WHERE td.task_id = ${alias}.id OR td.depends_on_task_id = ${alias}.id)
         AND NOT EXISTS (SELECT 1 FROM task_observers tob WHERE tob.task_id = ${alias}.id)
+        AND NOT EXISTS (SELECT 1 FROM task_co_assignees ca WHERE ca.task_id = ${alias}.id)
         AND LOWER(COALESCE(${alias}.source_type, '')) NOT LIKE '%ai%'
         AND LOWER(COALESCE(${alias}.source_module, '')) NOT LIKE '%ai%'
         AND LOWER(COALESCE(${alias}.type, '')) <> ALL(ARRAY['ai_draft', 'ai_draft_bundle'])

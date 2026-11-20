@@ -309,6 +309,10 @@ async function installFixtureRoutes(context, baseUrl, state) {
             return route.abort('blockedbyclient');
         }
         const method = request.method();
+        if (state.coAssignee && method === 'PUT' && url.pathname === '/api/tasks/42/co-assignees') {
+            state.coAssigneeIds = request.postDataJSON().userIds;
+            return json(route, { success: true, userIds: state.coAssigneeIds });
+        }
         if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
             state.mutations.push(`${method} ${url.pathname}${url.search}`);
             return route.abort('blockedbyclient');
@@ -318,7 +322,7 @@ async function installFixtureRoutes(context, baseUrl, state) {
         if (url.pathname === '/api/auth/verify') return json(route, { user: USER });
         if (url.pathname === '/api/auth/permissions') return json(route, AUTH_PERMISSIONS);
         if (url.pathname === '/api/business/profile') return json(route, { businessProfile: BUSINESS_PROFILE });
-        if (url.pathname === '/api/tasks/owners') return json(route, { success: true, users: [{ id: USER.id, name: USER.name, label: USER.name, role: USER.role }] });
+        if (url.pathname === '/api/tasks/owners') return json(route, { success: true, users: [{ id: USER.id, name: USER.name, label: USER.name, role: USER.role }, ...(state.coAssignee ? [{ id: 902, name: 'Тестовий виконавець', label: 'Тестовий виконавець', role: 'manager' }] : [])] });
         if (url.pathname === '/api/tasks/permissions') {
             const canCreateTasks = state.canCreateTasks === true;
             return json(route, {
@@ -357,7 +361,8 @@ async function installFixtureRoutes(context, baseUrl, state) {
         if (url.pathname === '/api/tasks/42/history') return json(route, { success: true, history: [] });
         if (url.pathname === '/api/tasks/42/observers') return json(route, { success: true, observers: [] });
         if (url.pathname === '/api/tasks/42/subtasks') return json(route, { success: true, subtasks: [] });
-        if (url.pathname === '/api/tasks/42') return json(route, { success: true, task: { ...TASK, substitution: state.substitution } });
+        if (url.pathname === '/api/tasks/42') return json(route, { success: true, task: { ...TASK, substitution: state.substitution,
+            ...(state.coAssignee ? { co_assignee_user_ids: state.coAssigneeIds || [], drawer: { ...TASK.drawer, actions: { ...TASK.drawer.actions, edit: true, reassign: true, manageCoAssignees: true } } } : {}) } });
         if (url.pathname === '/api/task-templates') return json(route, []);
         if (url.pathname === '/api/dashboard/alerts') return json(route, { alerts: [] });
         if (url.pathname === '/api/tasks') {
@@ -900,7 +905,7 @@ async function verifyResponsiveThemesAndMotion(page, baseUrl, state) {
 async function run() {
     const { chromium } = requirePlaywright();
     const fixture = await createStaticServer();
-    const browser = await chromium.launch({ headless: HEADLESS });
+    const browser = await chromium.launch({ headless: HEADLESS, ...(process.env.TASK_CENTER_BROWSER_EXECUTABLE ? { executablePath: process.env.TASK_CENTER_BROWSER_EXECUTABLE } : {}) });
     const substitutionOnly = process.argv.includes('--substitution-only');
     const viewport = substitutionOnly ? { width: 390, height: 844 } : { width: 1440, height: 900 };
     const context = await browser.newContext({ serviceWorkers: 'block', viewport });
@@ -917,6 +922,33 @@ async function run() {
     page.setDefaultTimeout(25000);
     page.on('pageerror', error => pageErrors.push(error.message));
     try {
+        if (process.argv.includes('--co-assignee-only')) {
+            state.coAssignee = true;
+            await page.setViewportSize({ width: 390, height: 844 });
+            await openPage(page, fixture.baseUrl, '?mode=overview');
+            await page.evaluate(() => renderTaskDetailDrawer(42));
+            const checkbox = page.locator('#taskCoAssignee902');
+            await checkbox.waitFor({ state: 'visible' });
+            const label = page.locator('label[for="taskCoAssignee902"]');
+            assert.ok((await label.boundingBox()).height >= 44, 'checkbox label has a touch-sized target');
+            await label.click();
+            assert.equal(await checkbox.isChecked(), true);
+            await checkbox.evaluate(element => { window.__coAssigneeBeforeSave = element; });
+            await page.locator('[data-task-drawer-action="manageCoAssignees"]').click();
+            await page.waitForFunction(() => {
+                const current = document.querySelector('#taskCoAssignee902');
+                return current && current !== window.__coAssigneeBeforeSave && current.checked;
+            });
+            assert.deepEqual(state.coAssigneeIds, [902]);
+            await page.locator('label[for="taskCoAssignee902"]').scrollIntoViewIfNeeded();
+            const rect = await page.locator('label[for="taskCoAssignee902"]').boundingBox();
+            assert.ok(rect && rect.y >= 0 && rect.y + rect.height <= 844, 'selected co-assignee is visible in the mobile viewport');
+            const evidence = path.join(ROOT, 'output/playwright');
+            fs.mkdirSync(evidence, { recursive: true });
+            await page.screenshot({ path: path.join(evidence, 'task-co-assignee-mobile.png'), animations: 'disabled' });
+            assert.deepEqual(pageErrors, []);
+            return;
+        }
         if (substitutionOnly) {
             state.substitution = { id: '901', state: 'active' };
             const overdueList = '?mode=overview&dashboardFilter=my-overdue';

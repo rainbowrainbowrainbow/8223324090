@@ -39,6 +39,8 @@ function summaryForAction(actionType) {
             return 'Task subtask completed';
         case TASK_ACTION_TYPES.OBSERVERS_UPDATED:
             return 'Task observers updated';
+        case TASK_ACTION_TYPES.CO_ASSIGNEES_UPDATED:
+            return 'Task co-assignees updated';
         case TASK_ACTION_TYPES.SCHEDULED:
             return 'Task scheduled';
         case TASK_ACTION_TYPES.SCHEDULE_MOVED:

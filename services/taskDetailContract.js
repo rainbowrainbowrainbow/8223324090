@@ -2,6 +2,7 @@
 
 const {
     canManageTaskObservers,
+    canChangeTaskStatus,
     canMutateTask,
     canReassignTask,
     canRescheduleTask,
@@ -61,6 +62,7 @@ function isTerminalTask(task = {}) {
 
 function taskDrawerActionContract(task = {}, user = {}) {
     const canEdit = canMutateTask(user, task);
+    const canChangeStatus = canChangeTaskStatus(user, task);
     const terminal = isTerminalTask(task);
     const review = taskRouteCapabilityDecision(user, 'review');
     const remove = taskRouteCapabilityDecision(user, 'delete');
@@ -68,8 +70,10 @@ function taskDrawerActionContract(task = {}, user = {}) {
         view: true,
         edit: canEdit,
         save: canEdit,
-        complete: canEdit && !terminal,
+        complete: canChangeStatus && !terminal,
+        changeStatus: canChangeStatus && !terminal,
         reassign: canReassignTask(user, task),
+        manageCoAssignees: canEdit && canReassignTask(user, task),
         reschedule: canRescheduleTask(user, task),
         manageObservers: canManageTaskObservers(user, task),
         manageSubtasks: canEdit,
@@ -83,8 +87,10 @@ function taskDrawerActionContract(task = {}, user = {}) {
         reasons: {
             edit: canEdit ? null : 'TASK_MUTATION_FORBIDDEN',
             save: canEdit ? null : 'TASK_MUTATION_FORBIDDEN',
-            complete: canEdit ? (terminal ? 'TASK_ALREADY_TERMINAL' : null) : 'TASK_MUTATION_FORBIDDEN',
+            complete: canChangeStatus ? (terminal ? 'TASK_ALREADY_TERMINAL' : null) : 'TASK_MUTATION_FORBIDDEN',
+            changeStatus: canChangeStatus ? (terminal ? 'TASK_ALREADY_TERMINAL' : null) : 'TASK_MUTATION_FORBIDDEN',
             reassign: actions.reassign ? null : 'TASK_REASSIGN_FORBIDDEN',
+            manageCoAssignees: actions.manageCoAssignees ? null : 'TASK_REASSIGN_FORBIDDEN',
             reschedule: actions.reschedule ? null : 'TASK_RESCHEDULE_FORBIDDEN',
             manageObservers: actions.manageObservers ? null : 'TASK_OBSERVERS_FORBIDDEN',
             manageSubtasks: canEdit ? null : 'TASK_MUTATION_FORBIDDEN',

@@ -425,6 +425,43 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
         await pool?.end();
     });
 
+    it('projects a private co-assigned task and limits the co-assignee to status changes', async () => {
+        const profile = await request('GET', '/api/auth/profile', undefined, creatorToken);
+        assert.equal(profile.status, 200);
+        const owner = profile.data.user;
+        const coAssignee = await createUser('co_assignee');
+        const outsider = await createUser('co_outsider');
+        const taskId = await createTask(owner, 'Co-assigned private task');
+        const update = await request('PUT', `/api/tasks/${taskId}/co-assignees`, { userIds: [coAssignee.id] }, creatorToken);
+        assert.equal(update.status, 200, JSON.stringify(update.data));
+        const stale = await request('PUT', `/api/tasks/${taskId}/co-assignees`, { userIds: [], previousUserIds: [] }, creatorToken);
+        assert.equal(stale.status, 409, 'a stale selection must not erase another assignment');
+        const detail = await request('GET', `/api/tasks/${taskId}`, undefined, coAssignee.token);
+        assert.equal(detail.status, 200, JSON.stringify(detail.data));
+        assert.equal(detail.data.drawer.actions.complete, true);
+        assert.equal(detail.data.drawer.actions.save, false);
+        const hidden = await request('GET', `/api/tasks/${taskId}`, undefined, outsider.token);
+        assert.equal(hidden.status, 404);
+        const projection = await buildTaskCabinetProjection({
+            pool, user: coAssignee,
+            businessScope: { mode: 'single', activeContext: 'event_genix', selectedContexts: ['event_genix'] },
+            ensurePreferences: false
+        });
+        const entry = projection.planning.all.find(task => task.id === taskId);
+        assert.ok(entry, 'the co-assigned task appears in My Day');
+        assert.ok(entry.viewerRoles.includes('executor'));
+        assert.equal(entry.actionPermissions.canChangeStatus, true);
+        assert.equal(entry.actionPermissions.canMutate, false);
+        const status = await request('PATCH', `/api/tasks/${taskId}/status`, { status: 'in_progress' }, coAssignee.token);
+        assert.equal(status.status, 200, JSON.stringify(status.data));
+        const edit = await request('PUT', `/api/tasks/${taskId}`, { title: 'Unauthorized edit' }, coAssignee.token);
+        assert.equal(edit.status, 403);
+        const removal = await request('PUT', `/api/tasks/${taskId}/co-assignees`, { userIds: [] }, creatorToken);
+        assert.equal(removal.status, 200, JSON.stringify(removal.data));
+        const afterRemoval = await request('GET', `/api/tasks/${taskId}`, undefined, coAssignee.token);
+        assert.equal(afterRemoval.status, 404);
+    });
+
     it('projects current HR deadlines for only the linked employee and selected business', async () => {
         const employee = await createUser('hr_reminder');
         const other = await createUser('other_reminder');

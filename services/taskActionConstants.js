@@ -11,6 +11,7 @@ const TASK_ACTION_TYPES = Object.freeze({
     URGENT_COMMITMENT_SET: 'task_urgent_commitment_set',
     SUBTASK_COMPLETED: 'task_subtask_completed',
     OBSERVERS_UPDATED: 'task_observers_updated',
+    CO_ASSIGNEES_UPDATED: 'task_co_assignees_updated',
     SCHEDULED: 'task_scheduled',
     SCHEDULE_MOVED: 'task_schedule_moved',
     SCHEDULE_MANUAL_OVERRIDE: 'task_schedule_manual_override',

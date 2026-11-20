@@ -145,10 +145,10 @@ for (const [context, membership] of [['event_genix', true], ['dar', true], ['crm
             assert.equal(pool.queries.length, context === 'event_genix' ? 3 : 1);
             assert.ok(pool.queries.every(item => !/catalog_definitions|catalog_items/.test(item.sql)));
             const taskQuery = pool.queries.find(item => /FROM tasks/.test(item.sql));
-            assert.deepEqual(Array.from(taskQuery.params), ['catalog_fixture', 21, 21, context]);
+            assert.deepEqual(Array.from(taskQuery.params), ['catalog_fixture', 21, 21, 21, context]);
             assert.match(taskQuery.sql, /visibility/);
             assert.match(taskQuery.sql, /owner_user_id/);
-            assert.match(taskQuery.sql, /business_context[^]*= \$4/);
+            assert.match(taskQuery.sql, /business_context[^]*= \$5/);
             assert.equal(pipeline.body.data.meta.sourceStates.designTasks, 'ready');
         });
     });

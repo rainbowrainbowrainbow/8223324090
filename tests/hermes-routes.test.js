@@ -773,7 +773,7 @@ function createHermesCreateFakePool(options = {}) {
             };
         }
 
-        if (/SELECT t\.\*, u\.name AS owner_name, u\.username AS owner_username, u\.role AS owner_role FROM tasks t LEFT JOIN users u ON u\.id = t\.owner_user_id WHERE t\.id = \$1/i.test(compact)) {
+        if (/SELECT t\.\*, u\.name AS owner_name, u\.username AS owner_username, u\.role AS owner_role.* FROM tasks t LEFT JOIN users u ON u\.id = t\.owner_user_id WHERE t\.id = \$1/i.test(compact)) {
             const id = Number(params[0]);
             if (hiddenIds.has(id)) return { rows: [], rowCount: 0 };
             const task = tasks.get(id);

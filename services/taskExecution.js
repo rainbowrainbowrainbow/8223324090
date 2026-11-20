@@ -1,6 +1,7 @@
 const { pool } = require('../db');
 const {
     buildTaskVisibilityScope,
+    canChangeTaskStatus,
     canUseTaskRouteCapability,
     canMutateTask,
     canReassignTask,
@@ -294,7 +295,8 @@ async function getVisibleTask(taskId, user, options = {}) {
     const businessCondition = businessScope ? appendTaskBusinessScopeSql(params, businessScope, 't') : '';
     const query = options.pool || pool;
     const result = await query.query(
-        `SELECT t.*, u.name AS owner_name, u.username AS owner_username, u.role AS owner_role
+        `SELECT t.*, u.name AS owner_name, u.username AS owner_username, u.role AS owner_role,
+                ARRAY(SELECT ca.user_id FROM task_co_assignees ca WHERE ca.task_id = t.id) AS co_assignee_user_ids
          FROM tasks t
          LEFT JOIN users u ON u.id = t.owner_user_id
          WHERE t.id = $1
@@ -315,7 +317,7 @@ async function getVisibleTask(taskId, user, options = {}) {
 async function completeTask(taskId, actor, options = {}) {
     return withTaskExecutionTransaction(options, async query => {
         const task = await getVisibleTask(taskId, actor, { pool: query, businessScope: options.businessScope || options.businessContext });
-        if (!canMutateTask(actor, task)) {
+        if (!canChangeTaskStatus(actor, task)) {
             throw forbidden('You cannot complete this task');
         }
         const operation = options.myDayOperation;
@@ -388,11 +390,12 @@ async function updateTaskStatus(taskId, status, actor, options = {}) {
     const targetStatus = normalizeTaskStatusForExecution(status);
     return withTaskExecutionTransaction(options, async query => {
         const task = await getVisibleTask(taskId, actor, { pool: query, businessScope: options.businessScope || options.businessContext });
-        if (!canMutateTask(actor, task)) {
+        if (!canChangeTaskStatus(actor, task)) {
             throw forbidden('You cannot update this task status');
         }
         const currentStatus = String(task.status || 'todo').trim().toLowerCase();
-        if (['done', 'completed', 'cancelled', 'canceled', 'archived'].includes(currentStatus)) {
+        const reopeningCompleted = options.allowCompletedReopen === true && currentStatus === 'done' && !task.archived_at;
+        if (['done', 'completed', 'cancelled', 'canceled', 'archived'].includes(currentStatus) && !reopeningCompleted) {
             const err = new Error('Task is already closed or cannot be updated');
             err.statusCode = 409;
             err.code = 'TASK_NOT_ACTIVE';
@@ -413,9 +416,10 @@ async function updateTaskStatus(taskId, status, actor, options = {}) {
              WHERE id = $1
                AND COALESCE(version, 1) = $3
                AND COALESCE(business_context, 'event_genix') = $4
-               AND COALESCE(status, 'todo') NOT IN ('done','cancelled','archived')
+               AND (COALESCE(status, 'todo') NOT IN ('done','cancelled','archived')
+                    OR ($5::boolean AND status = 'done' AND archived_at IS NULL))
              RETURNING *`,
-            [task.id, targetStatus, task.version || 1, task.business_context || 'event_genix']
+            [task.id, targetStatus, task.version || 1, task.business_context || 'event_genix', reopeningCompleted]
         );
         if (!result.rows.length) {
             const err = new Error('Task was changed by another user or is already closed');

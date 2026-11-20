@@ -11,7 +11,7 @@ const { getDefaultWidgets, canAccessDashboardWidget } = require('../config/roles
 const { createLogger } = require('../utils/logger');
 const { getKyivDateStr } = require('../services/booking');
 const { listControlCompletions } = require('../services/taskControlCompletionInbox');
-const { buildTaskVisibilityScope, normalizeUserId, taskOwnerState, userNameTokens } = require('../services/taskPolicy');
+const { buildTaskVisibilityScope, buildTaskCoAssigneeMatch, normalizeUserId, taskOwnerState, userNameTokens } = require('../services/taskPolicy');
 const { TASK_SUBSTITUTION_SELECT } = require('../services/taskSubstitutionReadModel');
 const { buildTaskOperationsSummary, deriveTaskIntelligence } = require('../services/taskIntelligence');
 const { getOnlineUserIds } = require('../services/websocket');
@@ -127,7 +127,8 @@ function buildOwnTaskFilter(user, params, alias = 't') {
     const legacy = tokenRefs.length
         ? `(${alias}.owner_user_id IS NULL AND (${alias}.assigned_to IN (${tokenRefs.join(',')}) OR ${alias}.owner IN (${tokenRefs.join(',')})))`
         : 'FALSE';
-    return `AND (${typed} OR ${legacy})`;
+    const coAssignee = buildTaskCoAssigneeMatch(user, params, alias);
+    return `AND (${typed} OR ${legacy} OR ${coAssignee})`;
 }
 
 function taskWidgetPayload(rows = []) {

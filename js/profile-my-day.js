@@ -446,7 +446,7 @@
     }
 
     function renderCard({ id, title, status, due, priority, mode, modeLabel, blocked, postponementBadge, substitution,
-        isAi, priorityControl, dueState, canReschedule, canMoveToToday, role, executor }) {
+        isAi, priorityControl, dueState, canReschedule, canMoveToToday, role, executor, canEdit = true }) {
         const escape = global.escapeHtml;
         const attrs = `data-task-id="${id || ''}"`;
         const control = (action, label, className, enabled = true, extra = '') => `<button type="button" class="${className}" data-cabinet-task-action="${action}" ${attrs} ${extra} ${id && enabled ? '' : 'disabled'}>${label}</button>`;
@@ -473,7 +473,7 @@
                 ${role === 'executor' ? `
                 ${control('done', `${icon('done')}<span>Виконати</span>`, 'cabinet-task-action-done park-task-done', !blocked, blocked ? `aria-describedby="park-task-blocked-${id}"` : '')}
                 ${control('reschedule-date', `${icon('calendar')}<span>Перенести</span>`, 'park-task-secondary', canReschedule, 'aria-haspopup="dialog"')}
-                ${control('edit', `${icon('edit')}<span>Редагувати</span>`, 'park-task-secondary')}
+                ${control('edit', `${icon('edit')}<span>Редагувати</span>`, 'park-task-secondary', canEdit)}
                 ` : ''}
             </div>
         </article>`;

@@ -32,7 +32,8 @@ before(async () => {
             assigned_to TEXT,owner TEXT,visibility TEXT DEFAULT 'team',business_context TEXT DEFAULT 'event_genix',status TEXT DEFAULT 'todo',
             title TEXT,description TEXT,date TEXT,deadline TIMESTAMPTZ,scheduled_start_at TIMESTAMPTZ,snoozed_until TIMESTAMPTZ,remind_at TIMESTAMPTZ);
         SELECT setval('tasks_id_seq',2000);
-        CREATE TABLE task_observers(task_id INTEGER,user_id INTEGER,PRIMARY KEY(task_id,user_id))`);
+        CREATE TABLE task_observers(task_id INTEGER,user_id INTEGER,PRIMARY KEY(task_id,user_id));
+        CREATE TABLE task_co_assignees(task_id INTEGER,user_id INTEGER,PRIMARY KEY(task_id,user_id))`);
     const migration = fs.readFileSync(path.join(__dirname, '../../db/migrations/410_telegram_crm_identity.sql'), 'utf8');
     await pool.query(migration);
     await pool.query(migration); // Migration is safe on a previously initialized schema.

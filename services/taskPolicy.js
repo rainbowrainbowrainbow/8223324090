@@ -60,6 +60,14 @@ function buildTaskObserverMatch(user, params, alias = 't') {
     )`;
 }
 
+function buildTaskCoAssigneeMatch(user, params, alias = 't') {
+    const userId = normalizeUserId(user);
+    if (!userId) return 'FALSE';
+    return `EXISTS (SELECT 1 FROM task_co_assignees task_co_scope
+        WHERE task_co_scope.task_id = ${alias}.id
+          AND task_co_scope.user_id = ${pushParam(params, userId)})`;
+}
+
 function buildTaskTeamMemberQuery(user, params, actorRef = null) {
     const userRef = actorRef || pushParam(params, normalizeUserId(user) || 0);
     const membership = user?.activeBusinessMembership;
@@ -90,8 +98,9 @@ function buildTaskVisibilityScope(user, params, alias = 't') {
     const legacyMatch = buildLegacyOwnerMatch(alias, tokenRefs);
     const typedOwnMatch = userId ? `${alias}.owner_user_id = ${pushParam(params, userId)}` : 'FALSE';
     const observerMatch = buildTaskObserverMatch(user, params, alias);
+    const coAssigneeMatch = buildTaskCoAssigneeMatch(user, params, alias);
     const ownMatch = `(${typedOwnMatch} OR ${legacyMatch})`;
-    const ownOrObserverMatch = `(${typedOwnMatch} OR ${legacyMatch} OR ${observerMatch})`;
+    const ownOrObserverMatch = `(${typedOwnMatch} OR ${legacyMatch} OR ${observerMatch} OR ${coAssigneeMatch})`;
     const privacyMatch = `(COALESCE(${alias}.visibility, 'team') = 'team' OR ${ownOrObserverMatch})`;
 
     if (perms.taskVisibility === 'all') return `AND ${privacyMatch}`;
@@ -106,6 +115,7 @@ function buildTaskVisibilityScope(user, params, alias = 't') {
             OR ${alias}.owner_user_id IN (${departmentUsers})
             OR ${legacyMatch}
             OR ${observerMatch}
+            OR ${coAssigneeMatch}
         )`;
     }
 
@@ -133,13 +143,25 @@ function observesTask(user, task = {}) {
     });
 }
 
+function isTaskCoAssignee(user, task = {}) {
+    const id = normalizeUserId(user);
+    if (!id) return false;
+    if (task.viewer_is_co_assignee === true || task.viewerIsCoAssignee === true) return true;
+    const ids = task.co_assignee_user_ids || task.coAssigneeUserIds || [];
+    return Array.isArray(ids) && ids.some(value => Number(value) === id);
+}
+
+function canChangeTaskStatus(user, task = {}) {
+    return canMutateTask(user, task) || isTaskCoAssignee(user, task);
+}
+
 function canViewTask(user, task = {}) {
     const perms = getPermissions(user);
     const privateVisibility = ['private', 'me_only'].includes(String(task.visibility || '').trim());
-    if (privateVisibility && !ownsTask(user, task) && !observesTask(user, task)) return false;
+    if (privateVisibility && !ownsTask(user, task) && !observesTask(user, task) && !isTaskCoAssignee(user, task)) return false;
     if (perms.taskVisibility === 'all') return true;
     if (perms.taskVisibility === 'department') return true;
-    return ownsTask(user, task) || observesTask(user, task);
+    return ownsTask(user, task) || observesTask(user, task) || isTaskCoAssignee(user, task);
 }
 
 function canMutateTask(user, task = {}) {
@@ -251,6 +273,7 @@ module.exports = {
     TASK_ROUTE_CAPABILITY_ROLES,
     TASK_ROUTE_CAPABILITY_REASON_CODES,
     buildTaskObserverMatch,
+    buildTaskCoAssigneeMatch,
     buildTaskOwnerMatch,
     buildTaskTeamMemberQuery,
     buildTaskVisibilityScope,
@@ -258,12 +281,14 @@ module.exports = {
     canManageTaskObservers,
     canViewTask,
     canMutateTask,
+    canChangeTaskStatus,
     canReassignTask,
     canRescheduleTask,
     canUseTaskRouteCapability,
     isPrivateTaskVisibility,
     normalizeUserId,
     observesTask,
+    isTaskCoAssignee,
     ownsTask,
     taskOwnerState,
     privateTaskHandoffNeedsConfirmation,

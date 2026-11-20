@@ -105,6 +105,7 @@ test('customer and lead domains enforce business membership and related-record o
                 owner_user_id INT REFERENCES users(id), owner TEXT, assigned_to TEXT, created_by TEXT, deleted_at TIMESTAMP,
                 visibility TEXT DEFAULT 'team', created_at TIMESTAMP DEFAULT NOW());
             CREATE TABLE task_observers (task_id INT REFERENCES tasks(id), user_id INT REFERENCES users(id));
+            CREATE TABLE task_co_assignees (task_id INT REFERENCES tasks(id), user_id INT REFERENCES users(id));
             CREATE TABLE conversations (id SERIAL PRIMARY KEY, business_context TEXT NOT NULL, channel TEXT, customer_id INT REFERENCES customers(id),
                 customer_name TEXT, customer_phone TEXT, status TEXT DEFAULT 'open', assigned_to INT, unread_count INT DEFAULT 0,
                 last_message_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW(), last_inbound_at TIMESTAMP,

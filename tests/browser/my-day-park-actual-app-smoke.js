@@ -45,7 +45,7 @@ async function run() {
     }
     const browserName = process.env.MY_DAY_BROWSER || 'chromium';
     assert.ok(['chromium', 'webkit'].includes(browserName), 'MY_DAY_BROWSER must be chromium or webkit');
-    const browser = await requirePlaywright()[browserName].launch();
+    const browser = await requirePlaywright()[browserName].launch(process.env.TASK_CENTER_BROWSER_EXECUTABLE ? { executablePath: process.env.TASK_CENTER_BROWSER_EXECUTABLE } : {});
     const evidence = path.resolve(__dirname, '../../output/qa');
     fs.mkdirSync(evidence, { recursive: true });
     try {
@@ -71,6 +71,38 @@ async function run() {
         }
         const page = await context.newPage();
         page.setDefaultTimeout(20000);
+        if (process.env.MY_DAY_CO_ASSIGNEE_ONLY === '1') {
+            const fixture = new Pool({ connectionString: process.env.DATABASE_URL, ssl: false });
+            const unique = require('node:crypto').randomBytes(6).toString('hex');
+            let ownerId, taskId;
+            try {
+                ownerId = (await fixture.query(`INSERT INTO users (username, name, password_hash, role)
+                    VALUES ($1, 'Тестовий відповідальний', 'unused-browser-fixture', 'manager') RETURNING id`, [`co_owner_${unique}`])).rows[0].id;
+                taskId = (await fixture.query(`INSERT INTO tasks (title, status, task_mode, visibility, owner_user_id, created_by_user_id, business_context, date)
+                    VALUES ($1, 'todo', 'work', 'private', $2, $2, 'event_genix', (NOW() AT TIME ZONE 'Europe/Kyiv')::date::text) RETURNING id`, [`Спільна задача ${unique}`, ownerId])).rows[0].id;
+                await fixture.query('INSERT INTO task_co_assignees (task_id, user_id, added_by) VALUES ($1, $2, $2)', [taskId, session.user.id]);
+                await page.goto(origin + '/profile');
+                const card = page.locator(`.park-task-card[data-task-id="${taskId}"]`);
+                await card.waitFor({ state: 'visible', timeout: 60000 });
+                assert.equal(await card.locator('[data-cabinet-task-action="done"]').isEnabled(), true);
+                assert.equal(await card.locator('[data-cabinet-task-action="edit"]').isDisabled(), true);
+                assert.equal(await card.locator('[data-cabinet-task-priority-select]').isDisabled(), true);
+                await card.scrollIntoViewIfNeeded();
+                await page.screenshot({ path: path.join(evidence, 'my-day-co-assignee-mobile.png'), animations: 'disabled' });
+                await card.locator('[data-cabinet-task-action="done"]').click();
+                await page.waitForFunction(id => !document.querySelector(`.park-task-card[data-task-id="${id}"]`), taskId);
+                assert.equal((await fixture.query('SELECT status FROM tasks WHERE id = $1', [taskId])).rows[0].status, 'done');
+                await page.getByRole('button', { name: 'Скасувати', exact: true }).click();
+                await card.waitFor({ state: 'visible' });
+                assert.equal((await fixture.query('SELECT status FROM tasks WHERE id = $1', [taskId])).rows[0].status, 'todo');
+            } finally {
+                if (taskId) await fixture.query('DELETE FROM tasks WHERE id = $1', [taskId]);
+                if (ownerId) await fixture.query('DELETE FROM users WHERE id = $1', [ownerId]);
+                await fixture.end();
+                await context.close();
+            }
+            return;
+        }
         const pageErrors = [];
         const taskBoot = [];
         const gameRequests = [];

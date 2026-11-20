@@ -1197,7 +1197,7 @@ function isTaskDelegatedByCurrentUser(task = {}) {
 }
 
 function isTaskInMyWorkspace(task = {}) {
-    return isTaskOwnedByCurrentUser(task) || isTaskCreatedByCurrentUser(task);
+    return isTaskOwnedByCurrentUser(task) || task.viewerIsCoAssignee === true || task.viewer_is_co_assignee === true || isTaskCreatedByCurrentUser(task);
 }
 
 function isSelfCreatedPersonalTask(task = {}) {
@@ -1237,6 +1237,9 @@ function getTaskAssignmentView(task = {}) {
     const ownedByMe = isTaskOwnedByCurrentUser(task);
     const createdByMe = isTaskCreatedByCurrentUser(task);
     const hasTypedOwner = !!taskOwnerUserId(task);
+    if (task.viewerIsCoAssignee === true || task.viewer_is_co_assignee === true) {
+        return { tone: 'incoming', label: 'Співвиконавець', title: 'Ви призначені співвиконавцем цієї задачі' };
+    }
     if (isSelfCreatedPersonalTask(task)) {
         return {
             tone: 'self-personal',
@@ -5587,6 +5590,10 @@ function applyTaskDetailActionPermissions(task = {}) {
         assignee.setAttribute('aria-disabled', allowed ? 'false' : 'true');
         assignee.title = allowed ? '' : taskPermissionReasonLabel(reasons.reassign);
     }
+    overlay.querySelectorAll('[data-co-assignee]').forEach(control => {
+        control.disabled = actions.manageCoAssignees !== true;
+        control.setAttribute('aria-disabled', control.disabled ? 'true' : 'false');
+    });
     if (actions.manageObservers !== true) {
         overlay.querySelectorAll('#_tdObservers, [data-task-drawer-action="manageObservers"]').forEach(control => {
             control.disabled = true;
@@ -5669,6 +5676,18 @@ async function renderTaskDetailDrawer(taskId) {
             const label = s.label || s.name || s.username || ('User #' + s.id);
             return `<option value="${s.id}"${selected}>${escapeHtml(label)}${s.role ? ' (' + escapeHtml(s.role) + ')' : ''}</option>`;
         }).join('');
+        const coAssigneeIds = new Set((t.co_assignee_user_ids || []).map(Number));
+        const coAssigneeCandidates = [..._assigneeList];
+        (t.co_assignees || []).forEach(person => {
+            if (!coAssigneeCandidates.some(candidate => Number(candidate.id) === Number(person.userId))) {
+                coAssigneeCandidates.push({ id: person.userId, name: person.name, username: person.username });
+            }
+        });
+        const coAssigneeHtml = coAssigneeCandidates.filter(s => taskOwnerUserId(t) !== Number(s.id)).map(s => {
+            const id = Number(s.id);
+            const label = s.label || s.name || s.username || ('User #' + id);
+            return `<label for="taskCoAssignee${id}" style="display:flex;align-items:center;gap:8px;min-height:44px"><input id="taskCoAssignee${id}" name="coAssignee" type="checkbox" data-co-assignee value="${id}" ${coAssigneeIds.has(id) ? 'checked' : ''}><span>${escapeHtml(label)}</span></label>`;
+        }).join('');
         const currentObserverIds = new Set((Array.isArray(t.observers) ? t.observers : [])
             .map(item => Number(item.userId || item.user_id || item.id || 0))
             .filter(Boolean));
@@ -5696,6 +5715,7 @@ async function renderTaskDetailDrawer(taskId) {
         const canDeleteTaskDetail = drawerActions.delete === true;
 
         overlay.dataset.taskVersion = t.version || 1;
+        overlay.dataset.coAssigneeIds = JSON.stringify([...coAssigneeIds]);
         overlay.innerHTML = `<div style="background:var(--white,#fff);border-radius:16px;max-width:520px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
             <div style="padding:16px 20px;border-bottom:1px solid var(--gray-100);display:flex;align-items:center;gap:12px">
                 <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${statusColor}"></span>
@@ -5783,6 +5803,13 @@ async function renderTaskDetailDrawer(taskId) {
                 ${renderTaskDetailContext(t)}
                 ${renderTaskDetailSource(t)}
                 ${renderBanquetDepositTaskPanel(t, depositProjection, { label: _lbl, input: _inp })}
+                <fieldset style="border:1px solid var(--gray-200);border-radius:10px;padding:10px;min-width:0">
+                    <legend style="font-weight:700;font-size:13px">Співвиконавці</legend>
+                    <p style="font-size:12px;color:var(--gray-500)">Обрані люди бачать задачу та можуть змінювати її стан.</p>
+                    <div style="max-height:180px;overflow-y:auto">${coAssigneeHtml || 'Немає доступних виконавців'}</div>
+                    <button type="button" data-task-drawer-action="manageCoAssignees" onclick="saveTaskCoAssignees(${t.id})" style="margin-top:8px;min-height:44px;padding:8px">Зберегти виконавців</button>
+                </fieldset>
+                ${drawerActions.changeStatus && !canSaveTaskDetail ? `<div><button type="button" style="min-height:44px" onclick="quickChangeStatus(${t.id}, 'in_progress')">Взяти в роботу</button> <button type="button" style="min-height:44px" onclick="quickChangeStatus(${t.id}, 'todo')">До виконання</button></div>` : ''}
                 <div style="border:1px solid var(--gray-100);border-radius:10px;padding:10px;background:rgba(20,184,166,0.06)">
                     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px">
                         <div>
@@ -5851,6 +5878,7 @@ function historyActionTitle(actionType) {
         task_owner_reassigned: 'Відповідального змінено',
         task_rescheduled: 'Задачу переплановано',
         task_observers_updated: 'Спостерігачів оновлено',
+        task_co_assignees_updated: 'Співвиконавців оновлено',
         task_scheduled: 'Задачу заплановано',
         task_schedule_moved: 'Розклад перенесено',
         task_schedule_manual_override: 'Ручний розклад',
@@ -6100,6 +6128,27 @@ async function saveTaskDetail(taskId) {
     } catch (err) { showNotification('Помилка: ' + err.message, 'error'); }
 }
 window.saveTaskDetail = saveTaskDetail;
+
+async function saveTaskCoAssignees(taskId) {
+    const userIds = [...document.querySelectorAll('#taskDetailOverlay [data-co-assignee]:checked')].map(input => Number(input.value));
+    try {
+        const previousUserIds = JSON.parse(document.getElementById('taskDetailOverlay')?.dataset.coAssigneeIds || '[]');
+        const res = await taskApiFetchWithAuth(`/api/tasks/${taskId}/co-assignees`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userIds, previousUserIds })
+        });
+        if (!res) return;
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            showNotification(data.error || 'Не вдалося зберегти виконавців', 'error');
+            return;
+        }
+        showNotification('Виконавців збережено');
+        notifyTaskWidgetsChanged({ action: 'update', taskId });
+        await renderTaskDetailDrawer(taskId);
+        await loadAllTasks();
+    } catch (err) { showNotification('Помилка збереження виконавців', 'error'); }
+}
+window.saveTaskCoAssignees = saveTaskCoAssignees;
 
 async function quickChangeStatus(taskId, newStatus) {
     if (newStatus === 'done') {

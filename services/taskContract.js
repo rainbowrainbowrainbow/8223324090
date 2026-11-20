@@ -6,6 +6,8 @@
  */
 const {
     canMutateTask,
+    canChangeTaskStatus,
+    isTaskCoAssignee,
     canReassignTask,
     canRescheduleTask,
     taskOwnerState
@@ -56,6 +58,7 @@ function normalizeTaskPayload(row = {}, options = {}) {
     const canMutate = user && !authorReadOnly ? canMutateTask(user, row) : false;
     const actionPermissions = user ? {
         canMutate,
+        canChangeStatus: !authorReadOnly && canChangeTaskStatus(user, row),
         canSplit: canUseTaskWriteRoutes && canMutate,
         canReassign: !authorReadOnly && canReassignTask(user, row),
         canReschedule: !authorReadOnly && canRescheduleTask(user, row),
@@ -79,6 +82,7 @@ function normalizeTaskPayload(row = {}, options = {}) {
         visibility,
         observerCount: Number(row.observer_count || 0),
         viewerIsObserver: row.viewer_is_observer === true,
+        viewerIsCoAssignee: Boolean(user && isTaskCoAssignee(user, row)),
         viewerObserverAccessLevel: row.viewer_observer_access_level || null,
         observers: Array.isArray(row.observers) ? row.observers : [],
         observerUserIds: Array.isArray(row.observers) ? row.observers.map(item => item.userId || item.user_id).filter(Boolean) : [],

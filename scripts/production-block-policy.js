@@ -21,6 +21,7 @@ const PROTECTED_WORKFLOWS = Object.freeze({
     MY_DAY_PROFILE_RELEASE: 'my-day-profile-release-083100',
     EVENTGENIX_REMEDIATION: 'eventgenix-remediation-08417',
     EVENTGENIX_REMEDIATION_RETRY: 'eventgenix-remediation-08417-retry',
+    EVENTGENIX_REMEDIATION_HR_RETRY: 'eventgenix-remediation-08417-hr-retry',
     SYS_MB_AUTH_CUTOVER: 'sys-mb-auth-cutover',
     CERTIFICATE_QA_ISOLATION: 'certificate-qa-isolation',
     CERTIFICATE_CI_GATE: 'certificate-ci-gate',
@@ -74,7 +75,16 @@ const EVENTGENIX_REMEDIATION_RETRY = Object.freeze({
     ...EVENTGENIX_REMEDIATION,
     payloadSha: 'ed65780ac52a6e856175dc46b4513c7c9699b543',
     failedPredecessorSha: 'dfcf70eb6c3bbed01316b554ddeeea79988c915a',
-    failedCiRunId: '44724593284'
+    failedCiRunId: '44724593284',
+    failedJobs: Object.freeze(['HR and payroll PostgreSQL integration', 'My Day browser interactions'])
+});
+const EVENTGENIX_REMEDIATION_HR_RETRY = Object.freeze({
+    ...EVENTGENIX_REMEDIATION,
+    payloadSha: '3469923e9bed7ce29c0080206f1e4c03b7d049ce',
+    failedPredecessorSha: '001c381e97fe3f2bab5d6da30300ba5d160db3b3',
+    failedCiRunId: '44780086004',
+    failedJobs: Object.freeze(['HR and payroll PostgreSQL integration']),
+    controllerPaths: Object.freeze(['scripts/production-block-policy.js', 'tests/production-block-controller.test.js'])
 });
 const FREELANCE_BASE = '46df02047c196dfa5159e27f6cfb09fe6e907b11';
 const FREELANCE_RECOVERY_PARENT = 'b67cbe8998e13bf762792361bad31534e36e2e88';
@@ -720,9 +730,8 @@ function isPreparedProtectedWorkflow(kind) {
     return [PROTECTED_WORKFLOWS.HR_PAYROLL, PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA,
         PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE, PROTECTED_WORKFLOWS.STAFF_DELETION_CI,
         PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE, PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE,
-        PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS, PROTECTED_WORKFLOWS.FREELANCE_CANCEL_424,
-        PROTECTED_WORKFLOWS.EVENTGENIX_REMEDIATION, PROTECTED_WORKFLOWS.EVENTGENIX_REMEDIATION_RETRY]
-        .includes(kind) || Boolean(freelanceScheduleReleaseFor(kind));
+        PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS, PROTECTED_WORKFLOWS.FREELANCE_CANCEL_424]
+        .includes(kind) || Boolean(freelanceScheduleReleaseFor(kind) || eventGenixRemediationFor(kind));
 }
 
 function isPreparedProtectedRelease(manifest) {
@@ -826,10 +835,11 @@ function validateProtectedWorkflow(workflow, changedPaths = [], redPaths = []) {
         'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
         return { enabled: true, kind: workflow, protectedChangedPaths: ['routes/auth.js'] };
     }
-    if (eventGenixRemediationFor(workflow)) {
+    const eventGenixRemediation = eventGenixRemediationFor(workflow);
+    if (eventGenixRemediation) {
         const protectedPaths = ['.github/workflows/ci.yml'];
         fail(stableJson(redPaths) === stableJson(protectedPaths)
-            && EVENTGENIX_REMEDIATION.controllerPaths.every(file => changedPaths.includes(file)),
+            && eventGenixRemediation.controllerPaths.every(file => changedPaths.includes(file)),
         'EventGenix 0.84.17 requires its scoped controller and reviewed CI workflow',
         'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
         return { enabled: true, kind: workflow, protectedChangedPaths: protectedPaths };
@@ -1053,6 +1063,7 @@ function assertMyDayProfileReleaseScope(base, baseVersion, version, qa, migratio
 function eventGenixRemediationFor(workflow) {
     if (workflow === PROTECTED_WORKFLOWS.EVENTGENIX_REMEDIATION) return EVENTGENIX_REMEDIATION;
     if (workflow === PROTECTED_WORKFLOWS.EVENTGENIX_REMEDIATION_RETRY) return EVENTGENIX_REMEDIATION_RETRY;
+    if (workflow === PROTECTED_WORKFLOWS.EVENTGENIX_REMEDIATION_HR_RETRY) return EVENTGENIX_REMEDIATION_HR_RETRY;
     return null;
 }
 
@@ -1074,10 +1085,8 @@ function assertEventGenixRemediationFailedCi(run, reviewed) {
     fail(String(run?.databaseId) === reviewed.failedCiRunId
         && run.headSha === reviewed.failedPredecessorSha && run.headBranch === TARGET.branch
         && run.workflowName === 'CI' && run.event === 'push' && run.status === 'completed'
-        && run.conclusion === 'failure' && stableJson(failedJobs || []) === stableJson([
-            'HR and payroll PostgreSQL integration', 'My Day browser interactions'
-        ]),
-    'EventGenix retry requires the reviewed failed production CI and both identified jobs',
+        && run.conclusion === 'failure' && stableJson(failedJobs || []) === stableJson(reviewed.failedJobs),
+    'EventGenix retry requires the reviewed failed production CI and its exact failed jobs',
     'PRODUCTION_BLOCK_CI_IDENTITY_INVALID');
 }
 
@@ -1586,6 +1595,7 @@ module.exports = {
     MY_DAY_PROFILE_RELEASE,
     EVENTGENIX_REMEDIATION,
     EVENTGENIX_REMEDIATION_RETRY,
+    EVENTGENIX_REMEDIATION_HR_RETRY,
     eventGenixRemediationFor,
     assertEventGenixRemediationFailedCi,
     assertEventGenixRemediationPayload,

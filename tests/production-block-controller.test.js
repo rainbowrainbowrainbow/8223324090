@@ -22,6 +22,7 @@ const {
     MY_DAY_PROFILE_RELEASE,
     EVENTGENIX_REMEDIATION,
     EVENTGENIX_REMEDIATION_RETRY,
+    EVENTGENIX_REMEDIATION_HR_RETRY,
     FREELANCE_SCHEDULE_RELEASE,
     FREELANCE_SCHEDULE_CI_RECOVERY,
     STAFF_DELETION_PATHS,
@@ -246,6 +247,33 @@ test('EventGenix retry requires the failed production SHA and CI identity', asyn
     await assert.doesNotReject(dryRun({}));
     await assert.rejects(dryRun({ eventGenixRemediationFailedCi: { ...failedCi, conclusion: 'success' } }),
         { code: 'PRODUCTION_BLOCK_CI_IDENTITY_INVALID' });
+});
+
+test('EventGenix HR retry accepts only its exact predecessor with one failed HR job', () => {
+    const { baseSha, baseVersion, version, payloadSha, controllerPaths,
+        failedPredecessorSha, failedCiRunId } = EVENTGENIX_REMEDIATION_HR_RETRY;
+    const options = { protectedWorkflow: 'eventgenix-remediation-08417-hr-retry', maxReleaseAttempts: 1 };
+    const failedCi = {
+        databaseId: Number(failedCiRunId), headSha: failedPredecessorSha, headBranch: 'codex/eventgenix-production',
+        workflowName: 'CI', event: 'push', status: 'completed', conclusion: 'failure',
+        jobs: [{ name: 'HR and payroll PostgreSQL integration', conclusion: 'failure' },
+            { name: 'My Day browser interactions', conclusion: 'success' }]
+    };
+    const candidate = {
+        live: { commitSha: baseSha, version: baseVersion, deploymentMetadata: { complete: true } },
+        remoteSha: failedPredecessorSha,
+        releaseVersion: version,
+        eventGenixRemediationPayloadSha: payloadSha,
+        eventGenixRemediationFailedCi: failedCi,
+        changedPaths: ['.github/workflows/ci.yml', ...controllerPaths]
+    };
+    const value = manifest(options, candidate);
+    assert.equal(value.preparedRelease.failedPredecessorSha, failedPredecessorSha);
+    assert.equal(value.preparedRelease.failedCiRunId, failedCiRunId);
+    assert.ok(releaseCommandPlan(value).some(step => step.includes('exact-sha-runtime-artifact-run')));
+    assert.throws(() => manifest(options, { ...candidate,
+        eventGenixRemediationFailedCi: { ...failedCi, jobs: failedCi.jobs.map(job => ({ ...job, conclusion: 'failure' })) } }),
+    { code: 'PRODUCTION_BLOCK_CI_IDENTITY_INVALID' });
 });
 
 test('freelance schedule release admits only its reviewed payload with read-only QA', async t => {

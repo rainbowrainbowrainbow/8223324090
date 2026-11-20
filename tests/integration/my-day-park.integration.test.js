@@ -164,15 +164,35 @@ test('park edition paginates all periods and disables legacy module writes', {
         const coReset = await request('PATCH', `/api/tasks/${legacyPrivate}/status`, { status: 'todo' }, peer.token);
         assert.equal(coReset.status, 200, JSON.stringify(coReset.data));
         const versioned = await request('GET', `/api/tasks/${legacyPrivate}`, undefined, peer.token);
-        const operation = { myDayOperationId: require('node:crypto').randomUUID(), version: versioned.data.version };
+        const operation = { myDayOperationId: require('node:crypto').randomUUID(), version: versioned.data.version, sourceSurface: 'profile_my_cabinet' };
         const firstCompletion = await request('POST', `/api/tasks/${legacyPrivate}/complete`, operation, peer.token);
         assert.equal(firstCompletion.status, 200, JSON.stringify(firstCompletion.data));
         const replay = await request('POST', `/api/tasks/${legacyPrivate}/complete`, operation, peer.token);
         assert.equal(replay.status, 200, 'retrying the same My Day operation is idempotent');
+        const crossSurfaceReplay = await request('PATCH', `/api/tasks/${legacyPrivate}/status`, { status: 'done' }, peer.token);
+        assert.equal(crossSurfaceReplay.status, 409);
+        const readDurableCompletions = async () => (await pool.query(`
+            SELECT actor_user_id, source_surface FROM task_action_history
+            WHERE task_id=$1 AND action_type='task_completed' ORDER BY id`, [legacyPrivate])).rows;
+        assert.deepEqual(await readDurableCompletions(), [
+            { actor_user_id: peer.id, source_surface: 'profile_my_cabinet' }
+        ]);
+        const persisted = await request('GET', `/api/tasks/${legacyPrivate}`, undefined, peer.token);
+        assert.equal(persisted.data.version, versioned.data.version + 1);
+        assert.equal(persisted.data.drawer.actions.complete, false);
+        assert.equal(persisted.data.drawer.actions.save, false);
         const coReopen = await request('PATCH', `/api/tasks/${legacyPrivate}/status`, { status: 'todo' }, peer.token);
         assert.equal(coReopen.status, 200, JSON.stringify(coReopen.data));
         const coEdit = await request('PUT', `/api/tasks/${legacyPrivate}`, { title: 'Unauthorized edit' }, peer.token);
         assert.equal(coEdit.status, 403);
+        const observedCompletion = await request('POST', `/api/tasks/${legacyPrivate}/complete`, {}, observer.token);
+        assert.equal(observedCompletion.status, 403);
+        const crmCompletion = await request('PATCH', `/api/tasks/${legacyPrivate}/status`, { status: 'done' }, peer.token);
+        assert.equal(crmCompletion.status, 200, JSON.stringify(crmCompletion.data));
+        assert.deepEqual(await readDurableCompletions(), [
+            { actor_user_id: peer.id, source_surface: 'profile_my_cabinet' },
+            { actor_user_id: peer.id, source_surface: 'task_detail' }
+        ]);
         const unassign = await request('PUT', `/api/tasks/${legacyPrivate}/co-assignees`, { userIds: [], previousUserIds: [peer.id] }, token);
         assert.equal(unassign.status, 200, JSON.stringify(unassign.data));
         assert.equal((await request('GET', `/api/tasks/${legacyPrivate}`, undefined, peer.token)).status, 404);

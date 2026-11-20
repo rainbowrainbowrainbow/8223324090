@@ -5,7 +5,7 @@ const { taskUrl } = require('../js/task-links');
 const crypto = require('node:crypto');
 const { audit, failure, transaction } = require('./telegramCrmIdentity');
 const { buildTaskPersonalQuery, taskViewerRoles } = require('./taskPersonalScope');
-const { canUseTaskRouteCapability, canMutateTask, canReassignTask, canRescheduleTask } = require('./taskPolicy');
+const { canUseTaskRouteCapability, canChangeTaskStatus, canReassignTask, canRescheduleTask } = require('./taskPolicy');
 const { getAssignableTaskOwner, listTaskOwnerCandidates, completeTask, reassignTaskOwner,
     rescheduleTask, assertPrivateTaskHandoffConfirmed } = require('./taskExecution');
 const { taskKpiWorkloadDateSql } = require('./taskPerformancePolicy');
@@ -198,20 +198,24 @@ function createTelegramCrmTasks(options) {
         const params = [taskId];
         const personal = buildTaskPersonalQuery(actor, params);
         const business = pushTaskBusinessScopeCondition(params, scope, 't');
+        const actorIdRef = params.push(actor.id);
         const { rows: [row] } = await pool.query(`SELECT
             CASE
-                WHEN t.owner_user_id IS NULL THEN 'no_assignee'
+                WHEN recipient.user_id IS NULL THEN 'no_assignee'
                 WHEN NOT COALESCE(s.mode IN ('read','write'), false) THEN 'disabled'
                 WHEN b.verified_at IS NULL OR u.is_active IS FALSE THEN 'binding_unavailable'
                 ELSE COALESCE(delivery.status, 'not_recorded')
             END AS status
             FROM tasks t
-            LEFT JOIN users u ON u.id=t.owner_user_id
-            LEFT JOIN telegram_crm_bindings b ON b.user_id=t.owner_user_id AND b.pilot_enabled
+            CROSS JOIN LATERAL (SELECT
+                CASE WHEN ${personal.coAssignee} THEN $${actorIdRef}::int ELSE t.owner_user_id END AS user_id
+            ) recipient
+            LEFT JOIN users u ON u.id=recipient.user_id
+            LEFT JOIN telegram_crm_bindings b ON b.user_id=recipient.user_id AND b.pilot_enabled
             LEFT JOIN telegram_crm_settings s ON s.singleton
             LEFT JOIN LATERAL (
-                SELECT status FROM telegram_crm_assignment_outbox o
-                WHERE o.task_id=t.id AND o.owner_user_id=t.owner_user_id
+                SELECT status FROM telegram_crm_delivery_outbox o
+                WHERE o.task_id=t.id AND o.owner_user_id=recipient.user_id AND o.event_kind='assignment'
                     AND o.binding_version=b.version
                 ORDER BY o.id DESC LIMIT 1
             ) delivery ON true
@@ -277,11 +281,12 @@ function createTelegramCrmTasks(options) {
         const personal = buildTaskPersonalQuery(actor, params, 't', { authorRead: false });
         const business = pushTaskBusinessScopeCondition(params, scope, 't');
         const task = (await client.query(
-            `SELECT t.* FROM tasks t WHERE t.id=$1 AND ${personal.match} AND ${business}${lock ? ' FOR UPDATE' : ''}`,
+            `SELECT t.*, ${personal.coAssignee} AS viewer_is_co_assignee
+             FROM tasks t WHERE t.id=$1 AND ${personal.match} AND ${business}${lock ? ' FOR UPDATE' : ''}`,
             params
         )).rows[0];
         if (!task) throw failure(404, 'TASK_NOT_VISIBLE', 'Ця задача більше недоступна.');
-        const permitted = { complete: canMutateTask, reschedule: canRescheduleTask, reassign: canReassignTask };
+        const permitted = { complete: canChangeTaskStatus, reschedule: canRescheduleTask, reassign: canReassignTask };
         if (!permitted[payload.action](actor, task)) {
             throw failure(403, 'TASK_ACTION_FORBIDDEN', 'Недостатньо прав для цієї зміни.');
         }

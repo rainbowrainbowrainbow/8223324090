@@ -12,7 +12,7 @@ const { assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
 const { applyPilot, PILOT } = require('../../scripts/telegram-crm-pilot');
 const enabled = process.env.RUN_TELEGRAM_CRM_FULLSTACK === 'true';
 const check = (name, fn) => test(name, { skip: !enabled }, fn);
-let pool, jwt, owner, peer, business, voiceCreator;
+let pool, jwt, owner, peer, business, voiceCreator, secondCo;
 const telegram = String(randomInt(900000000000, 910000000000));
 let peerTelegram = String(randomInt(920000000000, 930000000000));
 let nextUpdate = 100;
@@ -125,6 +125,9 @@ check('canonical task writer, actual membership checks and concurrent confirms s
     assert.equal(event.task.id, task.id);
     assert.equal(event.task.title, task.title);
     assert.equal(event.task.description, task.description || null);
+    assert.equal(event.kind, 'assignment');
+    assert.equal(event.task.creatorName, owner.name || owner.username);
+    assert.equal(event.task.assignerName, owner.name || owner.username);
     assert.equal(event.task.deadline, '2099-11-05T12:00:00.000Z');
     assert.equal(event.telegramId, peerTelegram);
     assert.equal(event.bindingVersion, '2');
@@ -139,7 +142,7 @@ check('canonical task writer, actual membership checks and concurrent confirms s
     for (let i = 0; i < 2; i++) {
         assert.equal((await notifications(`/${event.id}/result`, accepted)).data.status, 'sent');
     }
-    const delivery = (await pool.query('SELECT status, telegram_message_id FROM telegram_crm_assignment_outbox WHERE id=$1', [event.id])).rows[0];
+    const delivery = (await pool.query('SELECT status, telegram_message_id FROM telegram_crm_delivery_outbox WHERE id=$1', [event.id])).rows[0];
     assert.deepEqual(delivery, { status: 'sent', telegram_message_id: '123456' });
     const diagnostic = await bot(`/tasks?notificationTaskId=${task.id}&businessContext=event_genix`, undefined, peerTelegram);
     assert.equal(diagnostic.status, 200, JSON.stringify(diagnostic.data));
@@ -161,6 +164,62 @@ check('canonical task writer, actual membership checks and concurrent confirms s
     const inbox = await request('GET', '/api/tasks/control-completions?businessContext=event_genix', undefined, jwt);
     assert.equal(inbox.status, 200);
     assert.equal(inbox.data.alerts.filter(alert => alert.eventKey.startsWith(`${task.id}:`)).length, 1);
+    const oldWorker = await notifications('/claim', { leaseId: randomUUID() });
+    assert.equal(oldWorker.data.event, null, 'old workers must not claim completion events');
+    const completedLease = randomUUID();
+    const completionNotice = (await notifications('/claim', {
+        leaseId: completedLease, completionEvents: true
+    })).data.event;
+    assert.equal(completionNotice.kind, 'completion');
+    assert.equal(completionNotice.taskId, task.id);
+    assert.equal(completionNotice.telegramId, telegram);
+    assert.equal(completionNotice.task.executorName, peer.name);
+    assert.deepEqual((await notifications('/claim', {
+        leaseId: completedLease, completionEvents: true
+    })).data.event, completionNotice);
+    assert.equal((await notifications(`/${completionNotice.id}/result`, {
+        leaseId: completedLease, status: 'sent', messageId: 123457
+    })).data.status, 'sent');
+    // A reopened task must not generate a stale completion, and rolled-back
+    // writes must not leave an event behind.
+    await pool.query("UPDATE tasks SET status='todo', completed_at=NULL WHERE id=$1", [task.id]);
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await client.query("UPDATE tasks SET status='done', completed_at=NOW() AT TIME ZONE 'UTC' WHERE id=$1", [task.id]);
+        await client.query('ROLLBACK');
+    } finally { client.release(); }
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM telegram_crm_delivery_outbox WHERE task_id=$1 AND event_kind='completion'", [task.id])).rows[0].n, 1);
+    await pool.query("UPDATE tasks SET status='done', completed_at=NOW() AT TIME ZONE 'UTC' WHERE id=$1", [task.id]);
+    await pool.query("UPDATE tasks SET status='todo', completed_at=NULL WHERE id=$1", [task.id]);
+    assert.equal((await notifications('/claim', { leaseId: randomUUID(), completionEvents: true })).data.processed, true);
+    assert.equal((await pool.query("SELECT reason FROM telegram_crm_delivery_outbox WHERE task_id=$1 AND event_kind='completion' ORDER BY id DESC LIMIT 1", [task.id])).rows[0].reason, 'completion_inactive');
+});
+
+check('reassignment identifies the actor rather than the original task author', async () => {
+    const payload = { title: 'Disposable reassignment actor', businessContext: 'event_genix' };
+    const created = await request('POST', '/api/tasks', { ...payload, ownerUserId: owner.id }, jwt);
+    assert.ok([200, 201].includes(created.status), JSON.stringify(created.data));
+    const taskId = created.data.task.id;
+    // Model an existing task whose author is a different confirmed person.
+    await pool.query('UPDATE tasks SET created_by_user_id=$2, created_by=$3 WHERE id=$1', [taskId, peer.id, peer.username]);
+    const direct = await request('PUT', `/api/tasks/${taskId}`, { ...payload, ownerUserId: peer.id }, jwt);
+    assert.equal(direct.status, 200, JSON.stringify(direct.data));
+    const directEvent = (await notifications('/claim', { leaseId: randomUUID() })).data.event;
+    assert.equal(directEvent.taskId, taskId);
+    assert.equal(directEvent.task.creatorName, peer.name);
+    assert.equal(directEvent.task.assignerName, owner.name || owner.username);
+    assert.equal((await notifications(`/${directEvent.id}/result`, {
+        leaseId: directEvent.leaseId, status: 'sent', messageId: 123458
+    })).data.status, 'sent');
+    const canonical = await request('POST', `/api/tasks/${taskId}/reassign`, { ownerUserId: owner.id }, jwt);
+    assert.equal(canonical.status, 200, JSON.stringify(canonical.data));
+    const canonicalEvent = (await notifications('/claim', { leaseId: randomUUID() })).data.event;
+    assert.equal(canonicalEvent.taskId, taskId);
+    assert.equal(canonicalEvent.task.assignerName, owner.name || owner.username);
+    assert.equal((await notifications(`/${canonicalEvent.id}/result`, {
+        leaseId: canonicalEvent.leaseId, status: 'sent', messageId: 123459
+    })).data.status, 'sent');
 });
 
 check('four confirmed participants can create for every peer with current business and identity checks', async () => {
@@ -252,7 +311,7 @@ check('four confirmed participants can create for every peer with current busine
         assert.equal((await bot(`/tasks?notificationTaskId=${unlinkedTask}&businessContext=event_genix`,
             undefined, participants[0].telegram)).data.status, 'binding_unavailable');
         const expectNoHistoricalEvent = async () => {
-            const { rowCount } = await pool.query('SELECT 1 FROM telegram_crm_assignment_outbox WHERE task_id=$1', [unlinkedTask]);
+            const { rowCount } = await pool.query('SELECT 1 FROM telegram_crm_delivery_outbox WHERE task_id=$1', [unlinkedTask]);
             assert.equal(rowCount, 0);
         };
         await expectNoHistoricalEvent();
@@ -292,6 +351,119 @@ check('four confirmed participants can create for every peer with current busine
             [business.id,peer.id,original]);
     }
     voiceCreator = participants[1];
+    secondCo = participants[3];
+});
+
+check('co-assignees receive assignments and the author sees the person who completed the task', async () => {
+    const created = await request('POST', '/api/tasks', {
+        title: 'Disposable co-assignee notification', businessContext: 'event_genix', ownerUserId: peer.id
+    }, jwt);
+    assert.ok([200, 201].includes(created.status), JSON.stringify(created.data));
+    const taskId = created.data.task.id;
+    const added = await request('PUT', `/api/tasks/${taskId}/co-assignees`, {
+        userIds: [voiceCreator.user.id, secondCo.user.id], businessContext: 'event_genix'
+    }, jwt);
+    assert.equal(added.status, 200, JSON.stringify(added.data));
+    // The 419 API reads this relation without an event-kind predicate.
+    const legacyRows = await pool.query(`SELECT id, owner_user_id FROM telegram_crm_assignment_outbox
+        WHERE task_id=$1 ORDER BY id FOR UPDATE SKIP LOCKED`, [taskId]);
+    assert.deepEqual(legacyRows.rows.map(row => row.owner_user_id), [peer.id]);
+    assert.equal((await request('PUT', `/api/tasks/${taskId}/co-assignees`, {
+        userIds: [voiceCreator.user.id, secondCo.user.id], businessContext: 'event_genix'
+    }, jwt)).status, 200);
+    const notificationStatus = async sender => (await bot(
+        `/tasks?notificationTaskId=${taskId}&businessContext=event_genix`, undefined, sender
+    )).data.status;
+    assert.equal(await notificationStatus(voiceCreator.telegram), 'pending');
+    const destinations = [];
+    for (let index = 0; index < 3; index++) {
+        const event = (await notifications('/claim', { leaseId: randomUUID(), completionEvents: true })).data.event;
+        assert.equal(event.taskId, taskId);
+        assert.equal(event.kind, 'assignment');
+        destinations.push(event.telegramId);
+        assert.equal(event.task.assignerName, owner.name || owner.username);
+        assert.equal((await notifications(`/${event.id}/result`, {
+            leaseId: event.leaseId,
+            ...(event.telegramId === secondCo.telegram
+                ? { status: 'blocked', reason: 'bot_blocked' }
+                : { status: 'sent', messageId: 500000 + nextUpdate++ })
+        })).data.status, event.telegramId === secondCo.telegram ? 'blocked' : 'sent');
+    }
+    assert.deepEqual(destinations.sort(), [peerTelegram, voiceCreator.telegram, secondCo.telegram].sort());
+    assert.equal(await notificationStatus(peerTelegram), 'sent');
+    assert.equal(await notificationStatus(voiceCreator.telegram), 'sent');
+    assert.equal(await notificationStatus(secondCo.telegram), 'blocked');
+    assert.equal((await notifications('/claim', { leaseId: randomUUID(), completionEvents: true })).data.event, null);
+
+    const command = { taskId, businessContext: 'event_genix' };
+    const previewAction = (action, sender, fields = {}) => bot('/tasks/preview', {
+        ...command, action, ...fields, sourceUpdateId: String(nextUpdate++)
+    }, sender);
+    assert.equal((await previewAction('reschedule', voiceCreator.telegram, { date: '2099-12-14' })).status, 403);
+    assert.equal((await previewAction('reassign', voiceCreator.telegram, { ownerUserId: secondCo.user.id })).status, 403);
+    assert.equal((await previewAction('complete', voiceCreator.telegram, { businessContext: 'dar' })).status, 403);
+    assert.equal((await request('PUT', `/api/tasks/${taskId}`, { title: 'Forbidden fixture edit' }, voiceCreator.token)).status, 403);
+
+    const staged = await previewAction('complete', voiceCreator.telegram);
+    assert.equal(staged.status, 201, JSON.stringify(staged.data));
+    assert.ok(staged.data.task.viewerRoles.includes('executor'));
+    const confirms = await Promise.all(Array.from({ length: 2 }, () => bot(
+        `/operations/${staged.data.operationId}/confirm`, { confirmed: true }, voiceCreator.telegram
+    )));
+    assert.deepEqual(confirms.map(reply => reply.status), [200, 200]);
+    for (const reply of confirms) assert.deepEqual(reply.data.receipt, { changeAction: 'complete', taskId });
+    assert.deepEqual(confirms.map(reply => reply.data.replay).sort(), [false, true]);
+    assert.equal((await previewAction('complete', voiceCreator.telegram)).status, 409);
+    const completed = await pool.query(`SELECT actor_user_id, source_surface FROM task_action_history
+        WHERE task_id=$1 AND action_type='task_completed'`, [taskId]);
+    assert.deepEqual(completed.rows, [{ actor_user_id: voiceCreator.user.id, source_surface: 'hermes' }]);
+    const durable = await pool.query(`SELECT owner_user_id, status FROM tasks WHERE id=$1`, [taskId]);
+    assert.deepEqual(durable.rows, [{ owner_user_id: peer.id, status: 'done' }]);
+    assert.equal((await pool.query(`SELECT id FROM telegram_crm_assignment_outbox
+        WHERE task_id=$1 AND status IN ('pending', 'retry')`, [taskId])).rowCount, 0);
+    assert.equal((await pool.query(`SELECT id FROM telegram_crm_delivery_outbox
+        WHERE task_id=$1 AND event_kind='completion'`, [taskId])).rowCount, 1);
+    const report = (await notifications('/claim', { leaseId: randomUUID(), completionEvents: true })).data.event;
+    assert.equal(report.kind, 'completion');
+    assert.equal(report.taskId, taskId);
+    assert.equal(report.telegramId, telegram);
+    assert.equal(report.task.executorName, voiceCreator.user.name);
+    assert.equal((await notifications(`/${report.id}/result`, {
+        leaseId: report.leaseId, status: 'sent', messageId: 500000 + nextUpdate++
+    })).data.status, 'sent');
+
+    const another = await request('POST', '/api/tasks', {
+        title: 'Disposable revoked co-assignee', businessContext: 'event_genix', ownerUserId: owner.id
+    }, jwt);
+    assert.ok([200, 201].includes(another.status), JSON.stringify(another.data));
+    const anotherId = another.data.task.id;
+    const primary = (await notifications('/claim', { leaseId: randomUUID(), completionEvents: true })).data.event;
+    assert.equal(primary.taskId, anotherId);
+    assert.equal((await notifications(`/${primary.id}/result`, {
+        leaseId: primary.leaseId, status: 'sent', messageId: 500000 + nextUpdate++
+    })).data.status, 'sent');
+    assert.equal((await request('PUT', `/api/tasks/${anotherId}/co-assignees`, {
+        userIds: [voiceCreator.user.id], businessContext: 'event_genix'
+    }, jwt)).status, 200);
+    const revocable = await previewAction('complete', voiceCreator.telegram, { taskId: anotherId });
+    assert.equal(revocable.status, 201, JSON.stringify(revocable.data));
+    assert.equal((await request('PUT', `/api/tasks/${anotherId}/co-assignees`, {
+        userIds: [], businessContext: 'event_genix'
+    }, jwt)).status, 200);
+    assert.ok([403, 404].includes((await bot(`/operations/${revocable.data.operationId}/confirm`,
+        { confirmed: true }, voiceCreator.telegram)).status));
+    const revoked = await pool.query(`SELECT status, reason FROM telegram_crm_delivery_outbox
+        WHERE task_id=$1 AND owner_user_id=$2 AND assignment_role='co'`, [anotherId, voiceCreator.user.id]);
+    assert.deepEqual(revoked.rows, [{ status: 'cancelled', reason: 'assignment_changed' }]);
+    assert.equal((await request('PUT', `/api/tasks/${anotherId}/co-assignees`, {
+        userIds: [voiceCreator.user.id], businessContext: 'event_genix'
+    }, jwt)).status, 200);
+    const readded = (await notifications('/claim', { leaseId: randomUUID(), completionEvents: true })).data.event;
+    assert.equal(readded.taskId, anotherId);
+    assert.equal(readded.telegramId, voiceCreator.telegram);
+    assert.equal((await notifications(`/${readded.id}/result`, {
+        leaseId: readded.leaseId, status: 'sent', messageId: 500000 + nextUpdate++
+    })).data.status, 'sent');
 });
 
 check('CRM task writes persist a distinct assignment on A to B to A, retry and cancel stale work', async () => {
@@ -300,7 +472,7 @@ check('CRM task writes persist a distinct assignment on A to B to A, retry and c
     assert.ok([200, 201].includes(create.status), JSON.stringify(create.data));
     const taskId = create.data.task.id;
     const events = async () => (await pool.query(
-        'SELECT id, owner_user_id, status, attempts, reason FROM telegram_crm_assignment_outbox WHERE task_id=$1 ORDER BY id',
+        'SELECT id, owner_user_id, status, attempts, reason FROM telegram_crm_delivery_outbox WHERE task_id=$1 ORDER BY id',
         [taskId]
     )).rows;
     assert.deepEqual((await events()).map(row => row.owner_user_id), [peer.id]);
@@ -323,7 +495,7 @@ check('CRM task writes persist a distinct assignment on A to B to A, retry and c
         status: 'retry', reason: 'rate_limited', retryAfterSeconds: 1, leaseId: event.leaseId
     })).data.status, 'retry');
     assert.equal((await start()).event, null);
-    await pool.query('UPDATE telegram_crm_assignment_outbox SET available_at=NOW() WHERE id=$1', [event.id]);
+    await pool.query('UPDATE telegram_crm_delivery_outbox SET available_at=NOW() WHERE id=$1', [event.id]);
     const { event: retry } = await start();
     assert.equal(retry.id, event.id);
     assert.notEqual(retry.leaseId, event.leaseId);
@@ -339,9 +511,17 @@ check('CRM task writes persist a distinct assignment on A to B to A, retry and c
     const completed = await request('PUT', `/api/tasks/${another.data.task.id}`, { ...payload, ownerUserId: peer.id, status: 'done' }, jwt);
     assert.equal(completed.status, 200, JSON.stringify(completed.data));
     assert.equal((await start()).processed, true);
-    const result = (await pool.query('SELECT status, reason FROM telegram_crm_assignment_outbox WHERE task_id=$1',
+    const result = (await pool.query("SELECT status, reason FROM telegram_crm_delivery_outbox WHERE task_id=$1 AND event_kind='assignment'",
         [another.data.task.id])).rows[0];
     assert.deepEqual(result, { status: 'cancelled', reason: 'assignment_inactive' });
+
+    // Finish this fixture's completion before starting the companion consumer's queue.
+    const report = (await notifications('/claim', { leaseId: randomUUID(), completionEvents: true })).data.event;
+    assert.equal(report.taskId, another.data.task.id);
+    assert.equal(report.kind, 'completion');
+    assert.equal((await notifications(`/${report.id}/result`, {
+        leaseId: report.leaseId, status: 'sent', messageId: 500000 + nextUpdate++
+    })).data.status, 'sent');
 });
 
 test('newly confirmed recipient receives CRM and bot voice assignments without another inbound message', {
@@ -382,7 +562,7 @@ test('newly confirmed recipient receives CRM and bot voice assignments without a
         morningWithTasks: true, emptyMorningSilent: true
     });
     const { rows } = await pool.query(`SELECT task_id, status, reason, telegram_message_id
-        FROM telegram_crm_assignment_outbox WHERE task_id=ANY($1::int[]) ORDER BY id`,
+        FROM telegram_crm_delivery_outbox WHERE task_id=ANY($1::int[]) ORDER BY id`,
     [[invalidated.data.task.id, id, voiceTaskId]]);
     assert.deepEqual(rows, [
         { task_id: invalidated.data.task.id, status: 'cancelled', reason: 'binding_unavailable', telegram_message_id: null },
@@ -568,14 +748,14 @@ check('trusted update time prevents delayed requests from crossing a new identit
     }, jwt);
     assert.ok([200, 201].includes(created.status), JSON.stringify(created.data));
     const taskId = created.data.task.id;
-    const priority = await pool.query(`UPDATE telegram_crm_assignment_outbox
+    const priority = await pool.query(`UPDATE telegram_crm_delivery_outbox
         SET available_at='epoch' WHERE task_id=$1 AND status='pending'`, [taskId]);
     assert.equal(priority.rowCount, 1);
     assert.equal((await request('POST','/api/auth/telegram-crm/disconnect',{password:process.env.TEST_PASS},jwt)).status,200);
     assert.equal((await notifications('/recipients')).data.recipients.some(row => row.userId === owner.id), false);
     const next = await notifications('/claim', { leaseId: randomUUID() });
     assert.deepEqual(next.data, { success: true, event: null, processed: true });
-    const event = (await pool.query('SELECT status, reason FROM telegram_crm_assignment_outbox WHERE task_id=$1', [taskId])).rows[0];
+    const event = (await pool.query('SELECT status, reason FROM telegram_crm_delivery_outbox WHERE task_id=$1', [taskId])).rows[0];
     assert.deepEqual(event, { status: 'cancelled', reason: 'binding_unavailable' });
     assert.equal((await bot(`/operations/${draft.data.operationId}/confirm`,{confirmed:true})).status,403);
     assert.equal((await bot('/tasks')).status,403);

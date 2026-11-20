@@ -78,7 +78,7 @@ function createTelegramCrmRouters(options = {}) {
     bot.get('/notifications/recipients', endpoint(() => notifications.recipients()));
     bot.get('/notifications/health', endpoint(() => notifications.health()));
     bot.post('/notifications/heartbeat', endpoint(req => notifications.heartbeat(req.body)));
-    bot.post('/notifications/claim', endpoint(req => notifications.claim(req.body?.leaseId)));
+    bot.post('/notifications/claim', endpoint(req => notifications.claim(req.body?.leaseId, req.body?.completionEvents === true)));
     bot.post('/notifications/:id/result', endpoint(req => notifications.finish(req.params.id, req.body)));
     bot.use((req, res, next) => {
         try {

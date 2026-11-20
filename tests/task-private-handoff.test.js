@@ -64,6 +64,9 @@ function createReassignPool(options = {}) {
                     }]
                 };
             }
+            if (compact === "SELECT set_config('eventgenix.task_assigner_id', '', true)") {
+                return { rows: [{ set_config: '' }] };
+            }
             throw new Error(`Unexpected task handoff query: ${compact}`);
         }
     };

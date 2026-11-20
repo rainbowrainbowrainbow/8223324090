@@ -509,9 +509,11 @@ async function reassignTaskOwner(taskId, ownerUserId, actor, options = {}) {
              WHERE id = $1
                AND COALESCE(version, 1) = $4
                AND COALESCE(business_context, 'event_genix') = $5
+               AND (SELECT set_config('eventgenix.task_assigner_id', COALESCE($6::text, ''), true)) IS NOT NULL
              RETURNING *`,
-            [task.id, owner.id, owner.label, task.version || 1, task.business_context || 'event_genix']
+            [task.id, owner.id, owner.label, task.version || 1, task.business_context || 'event_genix', normalizeUserId(actor) || null]
         );
+        await query.query("SELECT set_config('eventgenix.task_assigner_id', '', true)");
         if (!result.rows.length) {
             const err = new Error('Task was changed by another user');
             err.statusCode = 409;

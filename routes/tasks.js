@@ -3700,8 +3700,12 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
             whereClause += ` AND COALESCE(version,1)=$${++paramIdx}`;
         }
 
+        values.push(normalizeUserId(req.user) || null);
+        const assignmentActorIndex = ++paramIdx;
         const result = await pool.query(
-            `UPDATE tasks SET ${setClauses.join(', ')} ${whereClause} RETURNING *`,
+            `UPDATE tasks SET ${setClauses.join(', ')} ${whereClause}
+             AND (SELECT set_config('eventgenix.task_assigner_id', COALESCE($${assignmentActorIndex}::text, ''), true)) IS NOT NULL
+             RETURNING *`,
             values
         );
 

@@ -72,6 +72,7 @@ async function run() {
         const page = await context.newPage();
         page.setDefaultTimeout(20000);
         if (process.env.MY_DAY_CO_ASSIGNEE_ONLY === '1') {
+            page.setDefaultTimeout(60000);
             const fixture = new Pool({ connectionString: process.env.DATABASE_URL, ssl: false });
             const unique = require('node:crypto').randomBytes(6).toString('hex');
             let ownerId, taskId;
@@ -81,20 +82,41 @@ async function run() {
                 taskId = (await fixture.query(`INSERT INTO tasks (title, status, task_mode, visibility, owner_user_id, created_by_user_id, business_context, date)
                     VALUES ($1, 'todo', 'work', 'private', $2, $2, 'event_genix', (NOW() AT TIME ZONE 'Europe/Kyiv')::date::text) RETURNING id`, [`Спільна задача ${unique}`, ownerId])).rows[0].id;
                 await fixture.query('INSERT INTO task_co_assignees (task_id, user_id, added_by) VALUES ($1, $2, $2)', [taskId, session.user.id]);
-                await page.goto(origin + '/profile');
+                await page.goto(origin + '/profile?tab=myday', { waitUntil: 'domcontentloaded', timeout: 60000 });
                 const card = page.locator(`.park-task-card[data-task-id="${taskId}"]`);
                 await card.waitFor({ state: 'visible', timeout: 60000 });
-                assert.equal(await card.locator('[data-cabinet-task-action="done"]').isEnabled(), true);
+                const parkDone = card.locator('[data-cabinet-task-action="done"]');
+                assert.equal(await parkDone.isEnabled(), true);
                 assert.equal(await card.locator('[data-cabinet-task-action="edit"]').isDisabled(), true);
                 assert.equal(await card.locator('[data-cabinet-task-priority-select]').isDisabled(), true);
                 await card.scrollIntoViewIfNeeded();
-                await page.screenshot({ path: path.join(evidence, 'my-day-co-assignee-mobile.png'), animations: 'disabled' });
-                await card.locator('[data-cabinet-task-action="done"]').click();
+                await page.screenshot({ path: path.join(evidence, `my-day-co-assignee-mobile-${browserName}.png`), animations: 'disabled' });
+                const isCompletion = response => new URL(response.url()).pathname === `/api/tasks/${taskId}/complete`;
+                const [parkCompletion] = await Promise.all([page.waitForResponse(isCompletion), parkDone.click({ noWaitAfter: true })]);
+                assert.equal(parkCompletion.ok(), true);
                 await page.waitForFunction(id => !document.querySelector(`.park-task-card[data-task-id="${id}"]`), taskId);
                 assert.equal((await fixture.query('SELECT status FROM tasks WHERE id = $1', [taskId])).rows[0].status, 'done');
-                await page.getByRole('button', { name: 'Скасувати', exact: true }).click();
+                await page.getByRole('button', { name: 'Скасувати', exact: true }).click({ noWaitAfter: true });
                 await card.waitFor({ state: 'visible' });
                 assert.equal((await fixture.query('SELECT status FROM tasks WHERE id = $1', [taskId])).rows[0].status, 'todo');
+
+                await page.goto(origin + '/tasks?queue=my', { waitUntil: 'domcontentloaded' });
+                const crmCard = page.locator(`.task-card[data-task-id="${taskId}"]`).first();
+                await crmCard.locator('.task-card-title').click({ noWaitAfter: true });
+                const dialog = page.locator('.park-task-dialog[open]');
+                const done = dialog.getByRole('button', { name: 'Виконати', exact: true });
+                await done.waitFor({ state: 'visible' });
+                assert.equal(await dialog.locator('[data-dialog-edit], [data-dialog-editor]').count(), 0);
+                const size = await done.boundingBox();
+                assert.ok(size?.width >= 24 && size?.height >= 24);
+                await page.screenshot({ path: path.join(evidence, `crm-co-assignee-mobile-${browserName}.png`), animations: 'disabled' });
+                const [completion] = await Promise.all([page.waitForResponse(isCompletion), done.click({ noWaitAfter: true })]);
+                assert.equal(completion.ok(), true);
+                assert.equal((await fixture.query('SELECT status FROM tasks WHERE id = $1', [taskId])).rows[0].status, 'done');
+                console.log(`${browserName}: completed a private co-assigned task from My Day and the CRM task list at 390px.`);
+            } catch (error) {
+                await page.screenshot({ path: path.join(evidence, `co-assignee-failure-${browserName}.png`), timeout: 5000 }).catch(() => {});
+                throw error;
             } finally {
                 if (taskId) await fixture.query('DELETE FROM tasks WHERE id = $1', [taskId]);
                 if (ownerId) await fixture.query('DELETE FROM users WHERE id = $1', [ownerId]);

@@ -377,6 +377,10 @@ function createFakePool() {
                 return { rows: [], rowCount: 0 };
             }
 
+            if (/^SELECT set_config\('eventgenix\.task_assigner_id', '', true\)/i.test(text.trim())) {
+                return { rows: [{ set_config: '' }] };
+            }
+
             if (/UPDATE tasks/i.test(text) && /SET owner_user_id =/i.test(text) && /RETURNING \*/i.test(text)) {
                 return { rows: [{
                     id: params[0],
@@ -1274,6 +1278,8 @@ describe('work queue endpoint', () => {
         const ownerUpdate = queries.find(q => /UPDATE tasks/i.test(q.text) && /SET owner_user_id =/i.test(q.text));
         assert.ok(ownerUpdate, 'task reassignment must update typed owner field');
         assert.deepEqual(ownerUpdate.params.slice(0, 3), [1, 30, 'New Owner']);
+        assert.equal(ownerUpdate.params[5], 20);
+        assert.ok(queries.some(q => /^SELECT set_config\('eventgenix\.task_assigner_id', '', true\)/i.test(q.text.trim())));
         historyInsert = queries.find(q => /INSERT INTO task_action_history/i.test(q.text) && q.params[1] === 'task_owner_reassigned');
         assert.ok(historyInsert, 'task reassignment must leave durable task action history');
         assert.deepEqual(JSON.parse(historyInsert.params[6]), { ownerUserId: 30, assignedTo: 'New Owner', owner: null });

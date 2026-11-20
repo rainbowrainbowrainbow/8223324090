@@ -1210,6 +1210,9 @@ function createHermesCreateFakePool(options = {}) {
         if (compact.startsWith('SELECT 1 FROM telegram_crm_assignment_outbox')) {
             return { rows: [], rowCount: 0 };
         }
+        if (compact === "SELECT set_config('eventgenix.task_assigner_id', '', true)") {
+            return { rows: [{ set_config: '' }], rowCount: 1 };
+        }
         throw new Error(`Unexpected create fake query: ${compact}`);
     }
 

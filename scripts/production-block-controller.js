@@ -23,6 +23,8 @@ const {
     assertPerformanceCiRecovery,
     assertProfileEmployeeAuthBlob,
     MY_DAY_PROFILE_RELEASE,
+    EVENTGENIX_REMEDIATION,
+    assertEventGenixRemediationPayload,
     freelanceScheduleReleaseFor,
     assertFreelanceSchedulePayload,
     assertFreelanceScheduleFailedCi,
@@ -531,7 +533,8 @@ function freelanceScheduleFacts(head, reviewed) {
 }
 
 function usesStandardProtectedReleaseFlow(kind) {
-    return [PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE, PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE, PROTECTED_WORKFLOWS.FREELANCE_CANCEL_424].includes(kind)
+    return [PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE, PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE,
+        PROTECTED_WORKFLOWS.FREELANCE_CANCEL_424, PROTECTED_WORKFLOWS.EVENTGENIX_REMEDIATION].includes(kind)
         || Boolean(freelanceScheduleReleaseFor(kind));
 }
 
@@ -566,6 +569,8 @@ function defaultRuntime() {
                     profileEmployeeAuthBlob: git(['rev-parse', `${head}:routes/auth.js`])
                 } : {}),
                 ...(myDayProfile ? { myDayProfilePayloadSha: reviewedReleasePayloadSha(head, MY_DAY_PROFILE_RELEASE) } : {}),
+                ...(options.protectedWorkflow === PROTECTED_WORKFLOWS.EVENTGENIX_REMEDIATION
+                    ? { eventGenixRemediationPayloadSha: reviewedReleasePayloadSha(head, EVENTGENIX_REMEDIATION) } : {}),
                 ...freelanceScheduleFacts(head, freelanceScheduleReleaseFor(options.protectedWorkflow)),
                 workflowHashes: performanceCi ? performanceCiWorkflowHashes(paths)
                     : options.protectedWorkflow === PROTECTED_WORKFLOWS.STAFF_DELETION_CI ? staffDeletionWorkflowHashes() : undefined,
@@ -594,6 +599,8 @@ function defaultRuntime() {
                     ? { profileEmployeeAuthBlob: git(['rev-parse', `${head}:routes/auth.js`]) } : {}),
                 ...(manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE
                     ? { myDayProfilePayloadSha: reviewedReleasePayloadSha(head, MY_DAY_PROFILE_RELEASE) } : {}),
+                ...(manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.EVENTGENIX_REMEDIATION
+                    ? { eventGenixRemediationPayloadSha: reviewedReleasePayloadSha(head, EVENTGENIX_REMEDIATION) } : {}),
                 ...freelanceScheduleFacts(head, freelanceScheduleReleaseFor(manifest.allowedProtectedWorkflow?.kind)),
                 workflowHashes: performanceCi ? performanceCiWorkflowHashes(paths)
                     : manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.STAFF_DELETION_CI ? staffDeletionWorkflowHashes() : undefined,
@@ -1243,6 +1250,9 @@ async function assertExecuteDrift(manifest, runtime) {
     }
     if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE) {
         assertMyDayProfilePayload(drift.myDayProfilePayloadSha);
+    }
+    if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.EVENTGENIX_REMEDIATION) {
+        assertEventGenixRemediationPayload(drift.eventGenixRemediationPayloadSha);
     }
     const freelanceSchedule = freelanceScheduleReleaseFor(manifest.allowedProtectedWorkflow?.kind);
     if (freelanceSchedule) {

@@ -20,6 +20,7 @@ const {
     PROFILE_EMPLOYEE_RELEASE_PATHS,
     PROFILE_EMPLOYEE_AUTH_BLOB,
     MY_DAY_PROFILE_RELEASE,
+    EVENTGENIX_REMEDIATION,
     FREELANCE_SCHEDULE_RELEASE,
     FREELANCE_SCHEDULE_CI_RECOVERY,
     STAFF_DELETION_PATHS,
@@ -181,6 +182,32 @@ test('My Day profile release pins the reviewed payload and exact SHA with both C
         { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID' });
     assert.throws(() => manifest(options, { ...candidate, remoteSha: RELEASE_SHA }), { code: 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT' });
     assert.throws(() => manifest(options, { ...candidate, releaseVersion: '0.83.101' }),
+        { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID' });
+});
+
+test('EventGenix 0.84.17 pins its reviewed CI and payload to one prepared release', async t => {
+    const { baseSha, baseVersion, version, payloadSha, controllerPaths } = EVENTGENIX_REMEDIATION;
+    const options = { protectedWorkflow: 'eventgenix-remediation-08417', maxReleaseAttempts: 1 };
+    const candidate = {
+        live: { commitSha: baseSha, version: baseVersion, deploymentMetadata: { complete: true } },
+        remoteSha: baseSha,
+        releaseVersion: version,
+        eventGenixRemediationPayloadSha: payloadSha,
+        changedPaths: ['.github/workflows/ci.yml', ...controllerPaths]
+    };
+    const value = manifest(options, candidate);
+    const file = blockFile(t, value);
+    const exactDrift = await dryRuntime().drift(value);
+    const dryRun = drift => executeAction({ blockFile: file, confirmation: confirmationValue(value), dryRun: true },
+        dryRuntime({ async drift() { return { ...exactDrift, eventGenixRemediationPayloadSha: payloadSha, ...drift }; } }));
+    await assert.doesNotReject(dryRun({}));
+    assert.ok(releaseCommandPlan(value).some(step => step.includes('exact-sha-runtime-artifact-run')));
+    await assert.rejects(dryRun({ head: RELEASE_SHA }), { code: 'PRODUCTION_BLOCK_SHA_DRIFT' });
+    await assert.rejects(dryRun({ eventGenixRemediationPayloadSha: RELEASE_SHA }), { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT' });
+    assert.throws(() => manifest(options, { ...candidate, changedPaths: [...candidate.changedPaths, 'routes/auth.js'] }),
+        { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID' });
+    assert.throws(() => manifest(options, { ...candidate, remoteSha: RELEASE_SHA }), { code: 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT' });
+    assert.throws(() => manifest({ ...options, maxReleaseAttempts: 2 }, candidate),
         { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID' });
 });
 

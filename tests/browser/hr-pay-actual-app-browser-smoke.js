@@ -330,6 +330,10 @@ async function run() {
                 const disclosure = page.getByRole('button', { name: 'Дії графіка' });
                 if (await disclosure.getAttribute('aria-expanded') === 'false') await disclosure.click();
             }
+            // The embedded HR entry can stay on the same document between viewports.
+            const conflictText = 'У цільовому тижні вже є';
+            await page.waitForFunction(text => [...document.querySelectorAll('#toastContainer .toast.error')]
+                .every(toast => !toast.textContent.includes(text)), conflictText);
             const preview = page.waitForResponse(response => new URL(response.url()).pathname === copyApiPath
                 && response.request().method() === 'POST' && response.request().postDataJSON()?.dryRun === true);
             await page.locator('#copyWeekBtn').click();
@@ -339,7 +343,7 @@ async function run() {
             assert.equal(request.fromMonday, previewRequest.fromMonday);
             assert.deepEqual(request.staffIds, [staffId]);
             assert.ok((await response.json()).conflicts > 0, 'the canonical target conflict is shown in either schedule entry');
-            await page.getByText(/У цільовому тижні вже є/).waitFor();
+            await page.locator('#toastContainer .toast.error').filter({ hasText: conflictText }).waitFor();
             assert.equal(await page.locator('.confirm-overlay[data-confirm-kind="confirm"]').count(), 0);
             await page.screenshot({ path: path.join(output, `copy-week-${entry === '/staff' ? 'staff' : 'hr'}-${width}.png`) });
         }

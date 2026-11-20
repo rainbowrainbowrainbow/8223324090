@@ -151,9 +151,28 @@
         showNotification('Зміну рівня збережено', 'success');
         await refreshEmployee(staffId);
     }
+    async function reviewLevel(staffId, data) {
+        if (!editable() || !data.currentLevel) return;
+        const entry = data.currentLevel, verification = entry.snapshot?.verification;
+        const result = await formModal('Перевірка рівня', [
+            note('level', `${entry.snapshot?.level?.title || 'Рівень'} · з ${entry.effective_from}`),
+            choice('state', 'Статус рівня', [['unknown', 'Невідомо'], ['temporary', 'Тимчасовий рівень'], ['confirmed', 'Рівень перевірено']],
+                verification?.state || 'unknown'),
+            { key: 'source', label: 'Джерело рішення', required: true, defaultValue: verification?.source || '' },
+            { ...reasonField, defaultValue: verification?.reason || '' }
+        ], { ...modalOptions, okText: 'Зберегти перевірку' });
+        if (!result) return;
+        sameEmployee(staffId);
+        await request(`/staff/${staffId}/payroll-rules/qualification`, { method: 'POST', body: {
+            action: 'review_level', professionKey: data.professionKey, expectedEventId: entry.id,
+            expectedDecidedAt: verification?.decidedAt || null, review: result
+        } });
+        showNotification('Перевірку рівня збережено', 'success');
+        await refreshEmployee(staffId);
+    }
     async function componentBase(staffId, key, data) {
         if (!editable()) return;
-        const label = { own_bookings: 'Власні оформлення', other_bookings: 'Оформлення інших менеджерів', manual: 'Інша ручна база' }[key];
+        const label = new Map(window.HrPayRules.commissionBases).get(key);
         const period = await formModal(`Період бази · ${label}`, [{ key: 'month', label: 'Місяць', type: 'month', required: true, defaultValue: data.asOfDate.slice(0, 7) }], { ...modalOptions, okText: 'Відкрити базу' });
         if (!period) return;
         const workspace = await request(`/staff/${staffId}/payroll-rules?` + new URLSearchParams({ professionKey: data.professionKey, asOfDate: period.month + '-01' }));
@@ -196,6 +215,43 @@
         showNotification('Умови вакансії застосовано працівнику', 'success');
         await refreshEmployee(staffId);
     }
+    async function reviewMonthlyPay(staffId, data) {
+        if (!editable()) return;
+        const period = await formModal('Погодження місячного розрахунку', [
+            { key: 'month', label: 'Розрахунковий місяць', type: 'month', required: true, defaultValue: data.asOfDate.slice(0, 7) }
+        ], { ...modalOptions, okText: 'Переглянути рішення' });
+        if (!period) return;
+        const path = `/staff/${staffId}/payroll-rules`;
+        const requests = await request(path + '?' + new URLSearchParams({ view: 'monthly_reviews', month: period.month, professionKey: data.professionKey }));
+        if (!requests.length) {
+            showNotification('Для цієї професії в обраному місяці немає рішень для погодження', 'info');
+            return;
+        }
+        const byFingerprint = new Map(requests.map(item => [item.fingerprint, item]));
+        const result = await formModal('Погодження розрахунку', [
+            choice('fingerprint', 'Рішення', requests.map((item, index) => [
+                item.fingerprint,
+                `${requests.length > 1 ? (index + 1) + '. ' : ''}${item.kind === 'leave' ? 'Відсутність' : 'Календарна частка'}`
+            ]), requests[0].fingerprint),
+            { key: 'reviewDetails', type: 'dynamicNote', announce: true, render: values => {
+                const item = byFingerprint.get(values.fingerprint);
+                if (!item) return '';
+                const decision = item.kind === 'leave' ? 'Зберегти календарну суму за відсутності' : 'Оплатити календарну частку місяця';
+                return [decision, item.componentLabel || item.componentId || 'Основна оплата',
+                    `Період ${item.from} — ${item.to}`,
+                    ...(item.leaveDates.length ? [`Дати відсутності ${item.leaveDates.join(', ')}`] : [])].join('\n');
+            } },
+            reasonField
+        ], { ...modalOptions, okText: 'Погодити розрахунок' });
+        if (!result) return;
+        sameEmployee(staffId);
+        const selected = byFingerprint.get(result.fingerprint);
+        if (!selected) return;
+        await request(path + '/component-input', { method: 'PUT', body: { action: 'approve_monthly_review', month: period.month, professionKey: data.professionKey,
+            fingerprint: selected.fingerprint, decision: selected.decision, reason: result.reason } });
+        showNotification('Рішення місячного розрахунку збережено', 'success');
+        await refreshEmployee(staffId);
+    }
     async function employee(professionKey) {
         return perform(async () => {
             const staffId = Number(activeEditStaffId()), asOfDate = staffPayrollConditionsDate();
@@ -203,21 +259,42 @@
             if (Number(activeEditStaffId()) !== staffId) return;
             const history = data.history.map(entry => `${entry.effective_from} · ${entry.snapshot?.level?.title || 'Рівень'} · ${entry.created_by} · ${entry.reason}`);
             const current = data.currentLevel?.snapshot?.level?.title || 'не задано';
+            const verification = data.currentLevel?.snapshot?.verification;
+            const readiness = data.readiness;
+            const basisLabels = new Map(window.HrPayRules.commissionBases);
+            const admission = { primary: 'Основна професія', approved: 'Погоджено', unassigned: 'Професію не призначено',
+                inactive: 'Призначення неактивне' }[readiness?.admission] || 'Потребує перевірки';
             const canEdit = hrCanUsePayrollAction('manage_payroll_rules');
             const actions = [['close', 'Закрити'], ...(canEdit ? [['change', 'Обрати / змінити рівень'], ['add_level', 'Додати рівень професії'],
-                ['own_bookings', 'База відсотка: власні оформлення'], ['other_bookings', 'База відсотка: інші менеджери'], ['manual', 'Інша ручна база відсотка'],
+                ...(data.currentLevel ? [['review_level', 'Перевірити рівень']] : []),
+                ...window.HrPayRules.commissionBases,
+                ['monthly_review', 'Погодити неповний місяць або відсутність'],
                 ['vacancy', 'Застосувати умови вакансії'], ['default', 'Типові умови компанії для професії']] : [])];
             const result = await formModal(`Рівень і відсотки · ${professionTitle(professionKey) || professionKey}`, [
+                ...(readiness ? [
+                    note('rateReadiness', readiness.rateAvailable ? `Ставка доступна · ${readiness.rateSource || 'чинні умови'}` : 'Ставка відсутня. Оберіть профіль оплати.'),
+                    note('admissionReadiness', `Допуск до роботи · ${admission}`),
+                    note('calculationReadiness', readiness.missingBases.length
+                        ? `Для розрахунку підтвердьте бази за місяць · ${readiness.missingBases.map(key => basisLabels.get(key)).join(', ')}`
+                        : 'Готовність до виплати перевіряється в місячному розрахунку.'),
+                    ...readiness.assumptions.map(item => note('assumption_' + item.condition,
+                        window.HrPayRules.describeReview(item.condition, item) + '. Перевірте умови профілю.'))
+                ] : []),
                 note('currentLevel', `Поточний рівень на ${asOfDate}: ${current}.`),
+                ...(verification ? [note('levelVerification', window.HrPayRules.describeReview('Рівень', verification))] : []),
+                ...Object.entries(data.componentInputs || {}).map(([key, input]) => note('base_' + key,
+                    `${basisLabels.get(key)} · ${input.confirmed ? 'Підтверджено' : 'Чернетка, підтвердьте суму'} · версія ${input.version} · ${input.author} · ${input.reason}`)),
                 note('default', `Типовий шаблон: ${summary(data.defaultTemplate?.template)}`),
                 note('history', `Історія рівнів:\n${history.length ? history.join('\n') : 'Змін рівня ще немає.'}`),
                 choice('action', 'Дія', actions, 'close')
             ], { ...modalOptions, okText: 'Продовжити' });
             if (!result || result.action === 'close') return;
             if (result.action === 'change') return changeLevel(staffId, professionKey, data);
+            if (result.action === 'review_level') return reviewLevel(staffId, data);
             if (result.action === 'add_level') return addLevel(professionKey, data.levels);
             if (result.action === 'default') return companyDefault(professionKey, data.defaultTemplate, data.levels);
             if (result.action === 'vacancy') return applyVacancy(staffId, professionKey);
+            if (result.action === 'monthly_review') return reviewMonthlyPay(staffId, data);
             return componentBase(staffId, result.action, data);
         });
     }

@@ -37,6 +37,14 @@ async function run() {
             isDefaultForProfession: true, status: 'active', rateUnit: 'day', defaultRate: 600, effectiveFrom: '2020-01-01', payRules: rules }, actor, { db });
         const menuProfile = await profiles.createPayrollProfile({ title: 'Synthetic menu level 400', professionKey: profession, profileKind: 'shared',
             status: 'active', rateUnit: 'day', defaultRate: 400, effectiveFrom: '2020-01-01', payRules: { schemaVersion: 1, daily: { mode: 'per_exit' } } }, actor, { db });
+        const reviewProfession = profession + '_review';
+        await db.query('INSERT INTO hr_professions(key,title,department) VALUES($1,$2,$3)', [reviewProfession, 'Synthetic monthly review', 'Аніматори']);
+        const reviewStaffId = Number((await db.query(`INSERT INTO staff(name,department,position,role_type,hourly_rate,rate_unit,is_active,hire_date)
+            VALUES('Synthetic monthly review browser','animators','Synthetic',$1,30000,'month',true,$2::date) RETURNING id`,
+        [reviewProfession, month + '-10'])).rows[0].id);
+        await profiles.createPayrollProfile({ title: 'Synthetic monthly review browser', professionKey: reviewProfession,
+            profileKind: 'shared', isDefaultForProfession: true, status: 'active', rateUnit: 'month',
+            defaultRate: 30000, effectiveFrom: month + '-10', payRules: { schemaVersion: 1, monthly: { mode: 'fixed' } } }, actor, { db });
         const vacancyId = Number((await db.query(`INSERT INTO job_vacancies(title,role_type,department,business_context,compensation_template)
             VALUES('Synthetic compensation vacancy',$1,'animators','event_genix',$2::jsonb) RETURNING id`, [profession,
             JSON.stringify({ schemaVersion: 1, rateUnit: 'month', defaultRate: 19000, payRules: { schemaVersion: 1, monthly: { mode: 'fixed' } } })])).rows[0].id);
@@ -147,6 +155,14 @@ async function run() {
         const promoted = page.waitForResponse(response => response.url().includes('/payroll-rules/qualification') && response.request().method() === 'POST');
         await submit(); assert.equal((await promoted).status(), 200);
         assert.equal((await db.query('SELECT COUNT(*)::int AS count FROM hr_staff_qualification_events WHERE staff_id=$1', [staffId])).rows[0].count, 1);
+        stage = 'review existing qualification';
+        await workspace('review_level');
+        await select('state', 'temporary'); await fill('source', 'Synthetic training record'); await fill('reason', 'Confirm the initial level later');
+        const reviewed = page.waitForResponse(response => response.url().includes('/payroll-rules/qualification') && response.request().method() === 'POST');
+        await submit(); assert.equal((await reviewed).status(), 200);
+        const events = (await db.query('SELECT snapshot FROM hr_staff_qualification_events WHERE staff_id=$1', [staffId])).rows;
+        assert.equal(events.length, 1);
+        assert.equal(events[0].snapshot.verification.state, 'temporary');
         }
         const editedProfileId = accessPending ? profile.id : menuProfile.id;
         stage = 'fixed monthly form and mobile';
@@ -166,6 +182,64 @@ async function run() {
         const version = (await db.query('SELECT rate_unit,default_rate,pay_rules FROM payroll_profile_versions WHERE profile_id=$1 ORDER BY version_number DESC LIMIT 1', [editedProfileId])).rows[0];
         assert.equal(version.rate_unit, 'month'); assert.equal(Number(version.default_rate), 19000); assert.equal(version.pay_rules.monthly.mode, 'fixed');
         if (!accessPending) {
+        stage = 'draft with weekday norm';
+        await page.locator('#editCloseTop').click();
+        await page.locator('#staffEditModal').waitFor({ state: 'hidden' });
+        await page.goto(new URL('/hr?businessContext=park&businessScope=single#profiles', base).href, { waitUntil: 'domcontentloaded' });
+        await page.setViewportSize({ width: 1440, height: 1000 });
+        await page.locator('#btnRefreshPayrollProfiles').click();
+        await page.locator('#btnNewPayrollProfile').click();
+        await fill('title', 'Synthetic weekday draft');
+        await select('professionKey', profession); await select('rateUnit', 'day'); await fill('defaultRate', 500);
+        await fill('weekendRate', 600); await select('payRuleSelection', 'configured');
+        await select('payDayMode', 'proportional'); await fill('payDayHours', 8);
+        await select('payDayNormSchedule', 'weekday'); await fill('payDayNorm7', 600);
+        await page.waitForFunction(() => !document.querySelector('.toast'), null, { timeout: 12000 });
+        await activeModal().locator('#fm_payDayNorm7').scrollIntoViewIfNeeded();
+        await activeModal().screenshot({ path: path.join(out, 'weekday-norm-desktop.png') });
+        await page.setViewportSize({ width: 390, height: 844 });
+        await activeModal().locator('#fm_payDayNorm7').scrollIntoViewIfNeeded();
+        assert.ok(await activeModal().evaluate(el => el.scrollWidth <= window.innerWidth + 1));
+        await activeModal().screenshot({ path: path.join(out, 'weekday-norm-mobile.png') });
+        await select('status', 'draft'); await fill('changeReason', 'Synthetic weekday draft with separate Sunday norm');
+        const draftSaved = page.waitForResponse(response => new URL(response.url()).pathname === '/api/hr/payroll-profiles'
+            && response.request().method() === 'POST');
+        await submit(); assert.equal((await draftSaved).status(), 201);
+        const draft = (await db.query("SELECT id,status FROM payroll_profiles WHERE title='Synthetic weekday draft'")).rows[0];
+        assert.equal(draft.status, 'draft');
+        await activeModal().waitFor({ state: 'hidden' });
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await page.locator('#btnRefreshPayrollProfiles').click();
+        await page.locator(`[data-profile-select="${draft.id}"]`).click();
+        assert.equal(await page.locator('#payrollProfileVersionForm input[name="defaultRate"]').inputValue(), '500');
+        const activate = page.locator(`[data-profile-action="activate"][data-profile-id="${draft.id}"]`);
+        await activate.click();
+        await fill('reason', 'Synthetic draft activation approved');
+        const activated = page.waitForResponse(response => response.url().includes(`/payroll-profiles/${draft.id}/versions`)
+            && response.request().method() === 'POST');
+        await submit(); assert.equal((await activated).status(), 201);
+        const liveDraft = (await db.query(`SELECT p.status,v.activated_at,v.pay_rules FROM payroll_profiles p
+            JOIN payroll_profile_versions v ON v.profile_id=p.id WHERE p.id=$1`, [draft.id])).rows[0];
+        assert.equal(liveDraft.status, 'active');
+        assert.ok(liveDraft.activated_at);
+        assert.deepEqual(liveDraft.pay_rules.daily.fullDayMinutesByWeekday, [{ isoWeekday: 7, minutes: 600 }]);
+
+        stage = 'approve calendar share';
+        await page.goto(new URL('/hr?businessContext=park&businessScope=single#workers', base).href, { waitUntil: 'domcontentloaded' });
+        await page.locator('#teamSearch').fill('Synthetic monthly review browser');
+        await page.locator(`[data-staff-id="${reviewStaffId}"] .hr-team-name-action`).click();
+        await page.locator('#staffProfileTabPayroll').click();
+        await workspace('monthly_review');
+        await fill('month', month); await submit();
+        await fill('reason', 'Synthetic calendar share confirmed by browser workflow');
+        assert.match(await activeModal().locator('#fm_reviewDetails').textContent(), new RegExp(month + '-10'));
+        await screenshot('monthly-review-mobile');
+        const decisionSaved = page.waitForResponse(response => response.url().includes('/payroll-rules/component-input')
+            && response.request().method() === 'PUT');
+        await submit(); assert.equal((await decisionSaved).status(), 200);
+        const decision = (await db.query('SELECT review FROM hr_payroll_monthly_reviews WHERE staff_id=$1', [reviewStaffId])).rows[0]?.review;
+        assert.equal(decision?.decision, 'calendar_days');
+
         stage = 'vacancy pay template';
         await page.setViewportSize({ width: 1440, height: 1000 });
         await page.locator('#editCloseTop').click();
@@ -198,8 +272,8 @@ async function run() {
         }
         assert.equal(errors.length, 0, errors.join('\n'));
         fs.writeFileSync(path.join(out, 'result.json'), JSON.stringify({ status: accessPending ? 'ACCESS_BLOCKED_UI_PARTIAL' : 'PASS', membershipMode: auth.user.membershipMode,
-            screenshots: accessPending ? ['fixed-month-desktop', 'fixed-month-mobile'] : ['company-default-desktop', 'commission-base-desktop', 'level-transition-desktop', 'fixed-month-desktop', 'fixed-month-mobile', 'vacancy-month-desktop', 'reviewed-hire-desktop'],
-            checks: accessPending ? ['expected rule workspace 403', 'real employee navigation', 'fixed monthly save', 'mobile overflow and keyboard'] : ['real employee navigation', 'scoped company default', 'manual own/other bases', 'level create/promotion', 'fixed monthly save', 'mobile overflow and keyboard', 'vacancy template save', 'reviewed vacancy hire with immutable personal copy'],
+            screenshots: accessPending ? ['fixed-month-desktop', 'fixed-month-mobile'] : ['company-default-desktop', 'commission-base-desktop', 'level-transition-desktop', 'fixed-month-desktop', 'fixed-month-mobile', 'weekday-norm-desktop', 'weekday-norm-mobile', 'monthly-review-mobile', 'vacancy-month-desktop', 'reviewed-hire-desktop'],
+            checks: accessPending ? ['expected rule workspace 403', 'real employee navigation', 'fixed monthly save', 'mobile overflow and keyboard'] : ['real employee navigation', 'scoped company default', 'manual own/other bases', 'level create/promotion and verification', 'fixed monthly save', 'mobile overflow and keyboard', 'weekday norm draft reload and activation', 'monthly review approval', 'vacancy template save', 'reviewed vacancy hire with immutable personal copy'],
             productionWrites: 0 }, null, 2));
         console.log(accessPending ? 'Partial actual-app browser checks completed; full rule workspace remains blocked by the unchanged access map.' : 'Configurable compensation actual-app browser journey PASS (membership mode).');
     } catch (error) {

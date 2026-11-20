@@ -2087,7 +2087,7 @@ function formModal(title, fields, options = {}) {
                 return `<div class="form-modal-note" data-fm-field-wrap="${escAttr(f.key)}" style="margin-bottom:10px;padding:10px 12px;border:1px solid rgba(59,130,246,0.24);border-radius:10px;background:rgba(59,130,246,0.08);font-size:13px;line-height:1.4;color:var(--text-secondary,#666);">${note}</div>`;
             }
             if (f.type === 'dynamicNote') {
-                return `<div id="${id}" class="form-modal-note form-modal-dynamic-note" data-fm-field-wrap="${escAttr(f.key)}" data-dynamic-note="${f.key}" style="margin-bottom:10px;padding:10px 12px;border:1px solid rgba(16,185,129,0.24);border-radius:10px;background:rgba(16,185,129,0.08);font-size:13px;line-height:1.45;color:var(--text-secondary,#666);"></div>`;
+                return `<div id="${id}" class="form-modal-note form-modal-dynamic-note" data-fm-field-wrap="${escAttr(f.key)}" data-dynamic-note="${f.key}"${f.announce ? ' role="status"' : ''} style="margin-bottom:10px;padding:10px 12px;border:1px solid rgba(16,185,129,0.24);border-radius:10px;background:rgba(16,185,129,0.08);font-size:13px;line-height:1.45;color:var(--text-secondary,#666);"></div>`;
             }
             if (f.type === 'presetButtons' && Array.isArray(f.presets)) {
                 const buttons = f.presets.map((preset, index) => {
@@ -2114,7 +2114,10 @@ function formModal(title, fields, options = {}) {
                 ? `<div class="confirm-actions"><button type="button" class="confirm-btn" data-fm-password-toggle aria-controls="${id}" aria-pressed="false">👁 Показати пароль</button></div>`
                 : '';
             const inputStyle = initialPassword ? baseStyle + 'padding-inline-end:50px;' : baseStyle;
-            const input = `<input type="${inputType}" id="${id}" data-key="${f.key}" class="fm-field" value="${defVal}" placeholder="${ph}" style="${inputStyle}"${initialPassword ? ' autocomplete="new-password"' : ''}>`;
+            const numericAttributes = inputType === 'number' ? ['min', 'max', 'step']
+                .filter(attribute => Number.isFinite(f[attribute]))
+                .map(attribute => ` ${attribute}="${f[attribute]}"`).join('') : '';
+            const input = `<input type="${inputType}" id="${id}" data-key="${f.key}" class="fm-field" value="${defVal}" placeholder="${ph}" style="${inputStyle}"${numericAttributes}${initialPassword ? ' autocomplete="new-password"' : ''}>`;
             const field = initialPassword
                 ? `<div class="password-visibility-field">${input}<button type="button" class="password-visibility-toggle" data-fm-password-toggle aria-label="Показати пароль" aria-controls="${id}" aria-pressed="false">
                     <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6Z"/><circle cx="12" cy="12" r="2.5"/><path class="password-eye-closed" d="M3 3l18 18"/></svg>

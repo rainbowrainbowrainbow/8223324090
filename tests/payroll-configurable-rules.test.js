@@ -72,6 +72,54 @@ test('daily overtime is opt-in, calculated once above the full-day norm and sepa
     assert.equal(result.overtimeAmount, 180);
 });
 
+test('the canonical working date selects each proportional denominator and preserves captured norms', () => {
+    const cases = [
+        ['2026-11-20', 500, 480, 240, 250, 'default'],
+        ['2026-11-22', 600, 600, 300, 300, 'weekday'],
+        ['2026-11-20', 504, 540, 270, 252, 'default'],
+        ['2026-11-22', 616, 660, 330, 308, 'weekday']
+    ];
+    for (const [workDate, rate, norm, actualMinutes, expected, source] of cases) {
+        const payRules = { schemaVersion: 1, daily: { mode: 'proportional',
+            fullDayMinutes: rate > 500 && rate !== 600 ? 540 : 480,
+            fullDayMinutesByWeekday: [{ isoWeekday: 7, minutes: rate === 616 ? 660 : 600 }] } };
+        const result = calculateConfiguredRate(terms('day', rate, payRules), { workDate, actualMinutes });
+        assert.deepEqual([result.amount, result.paidMinutes, result.dailyNorm.minutes, result.dailyNorm.source], [expected, actualMinutes, norm, source]);
+        assert.equal(calculateConfiguredRate(terms('day', rate, payRules), { workDate, actualMinutes: norm + 60 }).amount, rate);
+        const overtimeRules = { ...payRules, daily: { ...payRules.daily, overtime: 'hourly_150' } };
+        assert.equal(calculateConfiguredRate(terms('day', rate, overtimeRules), { workDate, actualMinutes: norm + 60 }).overtimeAmount,
+            Math.round(60 / norm * rate * 1.5));
+    }
+    const legacy = { schemaVersion: 1, daily: { mode: 'proportional', fullDayMinutes: 480 } };
+    assert.equal(calculateConfiguredRate(terms('day', 600, legacy), { workDate: '2026-11-22', actualMinutes: 300 }).amount, 375);
+    const editedRules = { ...legacy, daily: { ...legacy.daily, fullDayMinutesByWeekday: [{ isoWeekday: 7, minutes: 720 }] } };
+    const frozen = { ...terms('day', 600, editedRules), dailyNorm: { minutes: 600, source: 'weekday', isoWeekday: 7 } };
+    assert.equal(calculateConfiguredRate(frozen, { workDate: '2026-11-22', actualMinutes: 300 }).amount, 300);
+    assert.throws(() => calculateConfiguredRate(terms('day', 600, editedRules), { workDate: '2026-02-29', actualMinutes: 300 }),
+        { code: 'PAYROLL_RULES_INVALID' });
+    for (const invalid of [[{ isoWeekday: 0, minutes: 480 }], [{ isoWeekday: 7, minutes: 0 }],
+        [{ isoWeekday: 7, minutes: 1441 }], [{ isoWeekday: 7, minutes: 480.1 }],
+        [{ isoWeekday: 7, minutes: 480 }, { isoWeekday: 7, minutes: 600 }]]) {
+        assert.throws(() => normalizePayRules({ ...legacy, daily: { ...legacy.daily, fullDayMinutesByWeekday: invalid } }, 'day'),
+            { code: 'PAYROLL_RULES_INVALID' });
+    }
+});
+
+test('fixed pay keeps leave and partial-month approvals independent', () => {
+    const context = { effectiveFrom: '2026-11-16', leaveReviewRequired: true };
+    const leave = { kind: 'leave', decision: 'retain_calendar_amount', reason: 'Synthetic leave decision' };
+    const partial = { kind: 'partial_month', decision: 'calendar_days', reason: 'Synthetic first month' };
+    const pending = monthPay('2026-11', context);
+    assert.deepEqual(pending.blockingIssues.map(issue => issue.code),
+        ['PAYROLL_FIXED_LEAVE_REVIEW_REQUIRED', 'PAYROLL_FIXED_PARTIAL_MONTH_REVIEW_REQUIRED']);
+    const one = monthPay('2026-11', { ...context, monthlyReview: request =>
+        request.kind === 'partial_month' ? { approval: partial } : { request } });
+    assert.equal(one.blockingIssues[0].code, 'PAYROLL_FIXED_LEAVE_REVIEW_REQUIRED');
+    const done = monthPay('2026-11', { ...context, monthlyReview: request => ({ approval: request.kind === 'leave' ? leave : partial }) });
+    assert.deepEqual(done.monthlyReviews, [leave, partial]);
+    assert.equal(done.amount, 9500);
+});
+
 test('monthly advertising is independent from daily earnings and own/other commission bases stay distinct', () => {
     const payRules = { schemaVersion: 1, daily: { mode: 'per_exit' }, note: 'Tips are not included', components: [
         { id: 'advertising', title: 'Advertising', kind: 'monthly', amount: 3500, monthly: { mode: 'fixed' } },

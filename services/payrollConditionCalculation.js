@@ -1,13 +1,14 @@
 'use strict';
 
+const { createHash } = require('node:crypto');
 const { CONDITION_RULE_VERSION } = require('./hrPayrollConditions');
-const { calculateConfiguredRate, calculateConfiguredComponents } = require('./payrollRules');
+const { calculateConfiguredRate, calculateConfiguredComponents, resolveDailyNorm, conditionAssumptions } = require('./payrollRules');
 const money = value => Math.round(value);
 const positive = value => Math.max(0, Number(value) || 0);
 function calculateConditionSnapshots(metrics, overtimeMultiplier) {
     const baseLines = [], additionalLines = [], overtimeLines = [], professionRateSummary = [];
     const blockingIssues = [...(metrics.payrollBlockingIssues || [])];
-    const groups = new Map(), componentGroups = new Map();
+    const groups = new Map(), componentGroups = new Map(), assumptions = new Map();
     const overlapsRequestedRange = group => [...group.dates].some(date =>
         (!metrics.periodFrom || date >= metrics.periodFrom) && (!metrics.periodTo || date <= metrics.periodTo));
     const problem = (code, message, details = {}) => blockingIssues.push({ code, message, severity: 'error', ...details });
@@ -26,6 +27,20 @@ function calculateConditionSnapshots(metrics, overtimeMultiplier) {
         group.terms = { ...group.terms,
             effectiveFrom: ranges.map(range => range.effectiveFrom).filter(Boolean).sort()[0] || null,
             effectiveTo: ranges.some(range => !range.effectiveTo) ? null : ranges.map(range => range.effectiveTo).sort().at(-1) };
+    }
+    function monthlyReview(group) {
+        if (!metrics.monthlyReviewScope) return undefined;
+        return ({ kind, decision, month, from, to }) => {
+            const versions = [...group.versionBounds.keys()].sort();
+            const leaveDates = kind === 'leave' ? [...group.leaveDates.keys()].filter(date => date >= from && date <= to).sort() : [];
+            const request = { ...metrics.monthlyReviewScope, professionKey: group.professionKey,
+                month, from, to, kind, decision, componentId: group.componentId || null, leaveDates };
+            const fingerprint = createHash('sha256').update(JSON.stringify([request, group.additional,
+                group.signature, versions, leaveDates.map(date => group.leaveDates.get(date))])).digest('hex');
+            request.fingerprint = fingerprint;
+            if (group.componentId) request.componentLabel = group.terms.payRules.components[0].title;
+            return { request, approval: metrics.monthlyReviewApprovals?.get(fingerprint) };
+        };
     }
     for (const day of metrics.conditionDays || []) {
         if (day.configurationConflict) {
@@ -66,13 +81,26 @@ function calculateConditionSnapshots(metrics, overtimeMultiplier) {
             }
             // Notes and independently calculated components cannot split the
             // base contract into artificial partial-month contracts.
+            const daily = terms.rateUnit === 'day' ? terms.payRules?.daily : null;
+            if ((!metrics.periodFrom || day.date >= metrics.periodFrom) && (!metrics.periodTo || day.date <= metrics.periodTo)) {
+                for (const item of conditionAssumptions(terms.payRules)) {
+                    const impact = item.condition === 'commission' && !terms.payRules.components?.some(component => component.kind === 'percent')
+                        ? 'commission_omitted' : 'uses_current_value';
+                    assumptions.set(`${allocation.professionKey}:${terms.profileVersionId}:${item.condition}`, {
+                        ...item, impact, professionKey: allocation.professionKey, profileVersionId: terms.profileVersionId
+                    });
+                }
+            }
+            const dailyNorm = terms.dailyNorm || resolveDailyNorm(terms.payRules, terms.rateUnit, day.date);
             const baseRules = terms.payRules ? { schemaVersion: terms.payRules.schemaVersion,
-                policy: terms.rateUnit === 'month' ? terms.payRules.monthly : terms.rateUnit === 'day' ? terms.payRules.daily : null } : null;
+                policy: terms.rateUnit === 'month' ? terms.payRules.monthly
+                    : daily && { mode: daily.mode, timeBasis: daily.timeBasis, overtime: daily.overtime, minutes: dailyNorm?.minutes } } : null;
             const signature = JSON.stringify([terms.rateUnit, terms.rate, terms.rateUnit === 'month' && !terms.payRules ? terms.monthlyNorm : null, baseRules]);
             const key = `${additional ? 'additional' : 'base'}:${allocation.professionKey}:${terms.rateUnit === 'month' ? day.date.slice(0, 7) : day.date}${terms.rateUnit === 'month' && terms.payRules ? ':' + signature : ''}`;
             if (!groups.has(key)) groups.set(key, { terms, additional, professionKey: allocation.professionKey,
                 date: day.date, minutes: 0, minutesByShare: new Map(), overtime: 0,
-                plannedByDate: new Map(), paidDays: new Map(), dates: new Set(), versionBounds: new Map(), signature, conflict: false, refs: [], leaveReviewRequired: false });
+                plannedByDate: new Map(), paidDays: new Map(), dates: new Set(), versionBounds: new Map(), signature,
+                conflict: false, refs: [], leaveDates: new Map() });
             const group = groups.get(key);
             if (group.signature !== signature) {
                 group.conflict = true;
@@ -85,7 +113,7 @@ function calculateConditionSnapshots(metrics, overtimeMultiplier) {
             group.plannedByDate.set(day.date, (group.plannedByDate.get(day.date) || 0) + planned);
             group.paidDays.set(day.date, day.worked ? (day.paidPlannedFactor ?? 1) : 0);
             group.dates.add(day.date);
-            group.leaveReviewRequired ||= day.leaveReviewRequired === true;
+            if (day.leaveReviewRequired) group.leaveDates.set(day.date, day.leaveReviewEvidence || true);
             // Newer captures can carry a closed effective range while older captures
             // of the same immutable version still carry its former open end.
             if (terms.payRules) captureBounds(group, terms);
@@ -100,13 +128,14 @@ function calculateConditionSnapshots(metrics, overtimeMultiplier) {
                 if (!componentGroups.has(componentKey)) componentGroups.set(componentKey, { ...group,
                     componentId: component.id, signature: componentSignature,
                     terms: { ...terms, payRules: { ...terms.payRules, components: [component] } },
-                    plannedByDate: new Map(), paidDays: new Map(), dates: new Set(), versionBounds: new Map(), refs: [], profileVersions: new Set() });
+                    plannedByDate: new Map(), paidDays: new Map(), dates: new Set(), versionBounds: new Map(),
+                    refs: [], profileVersions: new Set(), leaveDates: new Map() });
                 const componentGroup = componentGroups.get(componentKey);
                 componentGroup.plannedByDate.set(day.date, (componentGroup.plannedByDate.get(day.date) || 0) + planned);
                 componentGroup.paidDays.set(day.date, day.worked ? (day.paidPlannedFactor ?? 1) : 0);
                 componentGroup.dates.add(day.date);
                 componentGroup.profileVersions.add(`${terms.profileId}:${terms.profileVersionId}`);
-                componentGroup.leaveReviewRequired ||= day.leaveReviewRequired === true;
+                if (day.leaveReviewRequired) componentGroup.leaveDates.set(day.date, day.leaveReviewEvidence || true);
                 componentGroup.refs.push(group.refs.at(-1));
                 // Identical components retained across base-rate versions form one
                 // entitlement. A changed component creates separate reviewed terms.
@@ -160,6 +189,8 @@ function calculateConditionSnapshots(metrics, overtimeMultiplier) {
             exceptionReason: terms.exception?.reason || null, exceptionAuthor: terms.exception?.createdBy || null,
             appliedRule: terms.appliedRule, ruleVersion: terms.ruleVersion, formula, refs: group.refs,
             ...(terms.payRules ? { payRules: terms.payRules } : {}),
+            ...(configured?.dailyNorm ? { dailyNorm: configured.dailyNorm, paidMinutes: configured.paidMinutes } : {}),
+            ...(configured?.monthlyReviews ? { monthlyReviews: configured.monthlyReviews } : {}),
             ...(group.additional && terms.rateUnit === 'hour' ? { rateShares: [...group.minutesByShare].map(([share, minutes]) => ({ share, minutes })) } : {}) };
         const item = { group: overtime ? 'overtime' : group.additional ? 'additional' : 'base', lineType: type,
             label: `${group.additional ? 'Додаткова оплата' : 'Основна оплата'}: ${group.professionKey}`,
@@ -181,18 +212,20 @@ function calculateConditionSnapshots(metrics, overtimeMultiplier) {
         const terms = group.terms;
         if (terms.payRules) {
             try {
-                const context = { ...monthPeriod(group),
+                const context = { ...monthPeriod(group), workDate: group.date,
                     actualMinutes: group.minutes, overtimeMinutes: group.overtime,
                     paidPlannedMinutes: [...group.plannedByDate.values()].reduce((sum, value) => sum + value, 0),
                     paidDays: [...group.paidDays.values()].reduce((sum, value) => sum + value, 0),
-                    hireDate: metrics.hireDate, terminationDate: metrics.terminationDate, leaveReviewRequired: group.leaveReviewRequired };
+                    hireDate: metrics.hireDate, terminationDate: metrics.terminationDate,
+                    leaveReviewRequired: group.leaveDates.size > 0, leaveDates: [...group.leaveDates.keys()], monthlyReview: monthlyReview(group) };
                 const result = calculateConfiguredRate(boundedTerms(group), context);
-                for (const issue of result.blockingIssues) problem(issue.code, issue.message, { professionKey: group.professionKey, date: group.date });
+                for (const issue of result.blockingIssues) problem(issue.code, issue.message, { ...issue, professionKey: group.professionKey, date: group.date });
                 if (!result.blockingIssues.length) {
                     const share = group.additional && terms.rateUnit === 'hour'
                         ? [...group.minutesByShare].reduce((sum, [factor, value]) => sum + value * factor, 0) / (group.minutes || 1) : 1;
                     addLine(group, result.quantity || 0, terms.rate, result.formula, false, share,
-                        { amount: money(result.amount * share) });
+                        { amount: money(result.amount * share),
+                            dailyNorm: result.dailyNorm, paidMinutes: result.paidMinutes, monthlyReviews: result.monthlyReviews });
                     if (result.overtimeAmount) addLine(group, 1, result.overtimeAmount,
                         `Понаднормова оплата: ${result.overtimeAmount}`, true, 1, { amount: result.overtimeAmount });
                 }
@@ -233,7 +266,7 @@ function calculateConditionSnapshots(metrics, overtimeMultiplier) {
                 paidPlannedMinutes: [...group.plannedByDate.values()].reduce((sum, value) => sum + value, 0),
                 paidDays: [...group.paidDays.values()].reduce((sum, value) => sum + value, 0),
                 hireDate: metrics.hireDate, terminationDate: metrics.terminationDate,
-                leaveReviewRequired: group.leaveReviewRequired,
+                leaveReviewRequired: group.leaveDates.size > 0, leaveDates: [...group.leaveDates.keys()], monthlyReview: monthlyReview(group),
                 componentInputs: metrics.componentInputsByMonth?.[group.date.slice(0, 7)] || metrics.componentInputs
             });
             for (const issue of result.blockingIssues) problem(issue.code, issue.message, { ...issue, professionKey: group.professionKey });
@@ -252,7 +285,7 @@ function calculateConditionSnapshots(metrics, overtimeMultiplier) {
         baseLines, additionalLines, overtimeLines, baseAmount: sum(baseLines),
         additionalAmount: sum(additionalLines), overtimeAmount: sum(overtimeLines),
         totalAmount: sum(baseLines) + sum(additionalLines) + sum(overtimeLines), professionRateSummary,
-        allocationIssues: [...(metrics.allocationIssues || []), ...blockingIssues], blockingIssues,
+        allocationIssues: [...(metrics.allocationIssues || []), ...blockingIssues], blockingIssues, conditionAssumptions: [...assumptions.values()],
         reconciliation: { ...(metrics.reconciliation || {}), blockingIssues,
             warnings: [...(metrics.reconciliation?.warnings || []), ...blockingIssues] } };
 }

@@ -461,6 +461,16 @@ rejects even descendant SHA drift. Execute does not bump or commit another versi
 Only read-only production QA is permitted; synthetic mutation tests run in isolated
 PostgreSQL. See `docs/HR_PAY_PROTECTED_RELEASE.md` for remaining readiness gates.
 
+The `payroll-425-426` protected workflow permits one separately owner-approved
+production attempt for the reviewed commission-basis constraint replacement
+and empty monthly-review table. Prepare the next patch from matching live and
+production-ref SHAs and use `--protected-workflow payroll-425-426
+--qa-scope none --max-release-attempts 1`. The manifest binds the exact
+candidate and both SQL hashes. Before Railway upload, the controller requires
+the exact production push's HR/payroll CI jobs and Runtime artifact smoke.
+Keep the widened constraint and the review table during recovery. Use a
+compatible forward release if records already use the new schema.
+
 The `performance-ci-release` protected workflow is exclusive to the reviewed
 CI follow-up from production `8e5c312d` to the prepared `0.83.23` patch. It pins
 the exact file inventory and canonical-LF hashes of the two workflow files.

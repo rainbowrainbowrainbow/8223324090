@@ -5,6 +5,17 @@
     const select = (key, label, entries, defaultValue, hiddenWhen) => ({ key, label, type: 'select', options: options(entries), defaultValue, hiddenWhen });
     const unit = (values, version) => values.rateUnit || version.rateUnit || version.rate_unit || 'hour';
     const previousRules = version => version.payRules || version.pay_rules || null;
+    const weekdays = ['Понеділок', 'Вівторок', 'Середа', 'Четвер', 'П’ятниця', 'Субота', 'Неділя'];
+    const commissionBases = [
+        ['own_orders', 'Власні замовлення'],
+        ['own_banquets', 'Власні банкети'],
+        ['other_manager_banquets', 'Банкети інших менеджерів'],
+        ['own_bookings', 'Власні оформлення (попередня база)'],
+        ['other_bookings', 'Оформлення інших менеджерів (попередня база)'],
+        ['manual', 'Інша погоджена ручна база']
+    ];
+    const reviewLabels = { rate: 'Ставка', daily_norm: 'Денна норма', monthly_norm: 'Місячна норма', commission: 'Комісія' };
+    const reviewStates = { unknown: 'Невідомо', temporary: 'Тимчасово', confirmed: 'Підтверджено' };
     function monthlyFields(prefix, policy, visible) {
         return [
             select(prefix + 'Mode', 'Як рахувати місячну суму', [
@@ -25,15 +36,24 @@
         version ||= {};
         const rules = previousRules(version);
         const isNew = values => !allowLegacy || values.payRuleSelection === 'configured';
+        const proportional = values => isNew(values) && unit(values, version) === 'day' && values.payDayMode === 'proportional';
+        const weekdayMinutes = new Map(rules?.daily?.fullDayMinutesByWeekday?.map(entry => [entry.isoWeekday, entry.minutes]));
         const result = [
             { key: 'payRuleExplanation', type: 'note', text: 'Для фіксованого окладу повна місячна сума не залежить від кількості виходів. Для пропорційної оплати потрібні норма й оплачуваний час або дні. Неповний місяць прийняття чи зміни умов налаштовується окремо.' },
             ...(allowLegacy ? [select('payRuleSelection', 'Правила розрахунку', [['legacy', 'Зберегти попередній спосіб'], ['configured', 'Налаштувати спосіб і компоненти']], rules ? 'configured' : 'legacy')] : []),
             ...monthlyFields('payMonth', rules?.monthly, values => isNew(values) && unit(values, version) === 'month'),
             select('payDayMode', 'Неповна денна зміна', [['per_exit', 'Повна ставка за вихід'], ['proportional', 'Зменшувати пропорційно часу']], rules?.daily?.mode || 'per_exit', values => !isNew(values) || unit(values, version) !== 'day'),
             { key: 'payDayHours', label: 'Оплачувана тривалість повного дня, годин', type: 'number', defaultValue: rules?.daily?.fullDayMinutes ? rules.daily.fullDayMinutes / 60 : '',
-                hint: 'Тривалість після неоплачуваних перерв. Наприклад: 9, 10 або 11 годин.', hiddenWhen: values => !isNew(values) || unit(values, version) !== 'day' || values.payDayMode !== 'proportional' },
+                hint: 'Тривалість після неоплачуваних перерв. Наприклад: 9, 10 або 11 годин.', hiddenWhen: values => !proportional(values) },
+            select('payDayNormSchedule', 'Графік норми повного дня', [['default', 'Одна норма на всі дні'], ['weekday', 'Окремі норми за днями тижня']],
+                weekdayMinutes.size ? 'weekday' : 'default', values => !proportional(values)),
+            { key: 'payDayNormHint', type: 'note', text: 'Порожнє поле застосовує базову норму. Введіть від 1 до 1440 цілих хвилин.',
+                hiddenWhen: values => !proportional(values) || values.payDayNormSchedule !== 'weekday' },
+            ...weekdays.map((label, index) => ({ key: 'payDayNorm' + (index + 1), label: label + ', хвилин',
+                type: 'number', min: 1, max: 1440, step: 1, defaultValue: weekdayMinutes.get(index + 1) ?? '',
+                hiddenWhen: values => !proportional(values) || values.payDayNormSchedule !== 'weekday' })),
             select('payDayBasis', 'Який час оплачувати', [['actual', 'Фактичний час після перерв'], ['paid_planned', 'Оплачуваний плановий час']], rules?.daily?.timeBasis || 'actual', values => !isNew(values) || unit(values, version) !== 'day' || values.payDayMode !== 'proportional'),
-            select('payDayOvertime', 'Робота довше повного дня', [['cap', 'Денна база обмежена однією ставкою'], ['hourly_150', 'Окрема доплата 150% за час понад норму']], rules?.daily?.overtime || 'cap', values => !isNew(values) || unit(values, version) !== 'day' || values.payDayMode !== 'proportional'),
+            select('payDayOvertime', 'Робота довше повного дня', [['cap', 'Не більше денної ставки'], ['hourly_150', 'Доплата 150% понад норму']], rules?.daily?.overtime || 'cap', values => !proportional(values)),
             { key: 'payRuleNote', label: 'Примітка до оплати', defaultValue: rules?.note || '', hint: 'Наприклад: чайові не входять до ставки й нарахування в CRM.', hiddenWhen: values => !isNew(values) }
         ];
         if (includeComponents) {
@@ -49,9 +69,27 @@
                     { key: prefix + 'Amount', label: 'Місячна доплата, грн', type: 'number', defaultValue: component?.amount ?? '', hiddenWhen: values => !visible(values) || values[prefix + 'Kind'] !== 'monthly' },
                     ...monthlyFields(prefix + 'Month', component?.monthly, values => visible(values) && values[prefix + 'Kind'] === 'monthly'),
                     { key: prefix + 'Percent', label: 'Відсоток, %', type: 'number', defaultValue: component?.percent ?? '', hiddenWhen: values => !visible(values) || values[prefix + 'Kind'] !== 'percent' },
-                    select(prefix + 'Basis', 'База відсотка', [['own_bookings', 'Власні оформлення'], ['other_bookings', 'Оформлення інших менеджерів'], ['manual', 'Інша погоджена ручна база']], component?.basisKey || 'own_bookings', values => !visible(values) || values[prefix + 'Kind'] !== 'percent')
+                    select(prefix + 'Basis', 'База відсотка', commissionBases, component?.basisKey || 'own_orders', values => !visible(values) || values[prefix + 'Kind'] !== 'percent')
                 );
             });
+        }
+        const reviewVisibility = {
+            rate: isNew, commission: isNew, daily_norm: proportional,
+            monthly_norm: values => isNew(values) && unit(values, version) === 'month' && values.payMonthMode !== 'fixed'
+        };
+        result.push(select('payReviewVisibility', 'Джерела та перевірка умов', [['hide', 'Приховати поля'], ['show', 'Відкрити поля']],
+            Object.keys(rules?.conditionReviews || {}).length ? 'show' : 'hide', values => !isNew(values)));
+        for (const [key, label] of Object.entries(reviewLabels)) {
+            const prefix = 'payReview_' + key;
+            const review = rules?.conditionReviews?.[key];
+            const hidden = values => values.payReviewVisibility !== 'show' || !reviewVisibility[key](values);
+            const detailsHidden = values => hidden(values) || values[prefix] === 'none';
+            result.push(
+                select(prefix, `${label} · статус перевірки`, [['none', 'Без окремої позначки'], ...Object.entries(reviewStates)],
+                    review?.state || 'none', hidden),
+                { key: prefix + 'Source', label: `${label} · джерело`, defaultValue: review?.source || '', hiddenWhen: detailsHidden },
+                { key: prefix + 'Reason', label: `${label} · причина`, defaultValue: review?.reason || '', hiddenWhen: detailsHidden }
+            );
         }
         // Store no IDs in editable labels. The server remains the validation authority.
         return result;
@@ -92,6 +130,15 @@
                 result.daily.fullDayMinutes = Math.round(positive(values, 'payDayHours', 24) * 60);
                 result.daily.timeBasis = values.payDayBasis || 'actual';
                 result.daily.overtime = values.payDayOvertime || 'cap';
+                if (values.payDayNormSchedule) {
+                    result.daily.fullDayMinutesByWeekday = values.payDayNormSchedule !== 'weekday' ? [] : weekdays.flatMap((_, index) => {
+                        const isoWeekday = index + 1, key = 'payDayNorm' + isoWeekday;
+                        if (values[key] == null || values[key] === '') return [];
+                        const minutes = positive(values, key, 1440);
+                        if (!Number.isInteger(minutes)) invalid(key, 'Вкажіть цілу кількість хвилин.');
+                        return [{ isoWeekday, minutes }];
+                    });
+                }
             }
         }
         if (!includeComponents) result.components = structuredClone(previousRules(version)?.components || []);
@@ -110,6 +157,23 @@
                     basisKey: values[prefix + 'Basis'] || 'own_bookings', source: 'manual_confirmed' });
             });
         }
+        if (values.payReviewVisibility === 'show') {
+            const reviews = {};
+            for (const key of Object.keys(reviewLabels)) {
+                if (key === 'daily_norm' && result.daily?.mode !== 'proportional') continue;
+                if (key === 'monthly_norm' && !result.monthly?.norm) continue;
+                const prefix = 'payReview_' + key, state = values[prefix];
+                if (!state) continue;
+                if (state === 'none') { reviews[key] = null; continue; }
+                const source = String(values[prefix + 'Source'] || '').trim();
+                const reason = String(values[prefix + 'Reason'] || '').trim();
+                if (!source) invalid(prefix + 'Source', 'Вкажіть джерело умови.');
+                if (!reason) invalid(prefix + 'Reason', 'Вкажіть причину рішення.');
+                const prior = previousRules(version)?.conditionReviews?.[key];
+                reviews[key] = prior?.state === state && prior.source === source && prior.reason === reason ? prior : { state, source, reason };
+            }
+            if (Object.keys(reviews).length) result.conditionReviews = reviews;
+        }
         return result;
     }
     function validate(values, version, settings) {
@@ -120,7 +184,17 @@
         if (!rules) return 'Попередні правила розрахунку';
         const base = rules.monthly ? ({ fixed: 'Фіксований місячний оклад', norm_minutes: 'Місячна ставка пропорційно часу', norm_days: 'Місячна ставка пропорційно дням' }[rules.monthly.mode])
             : rules.daily ? (rules.daily.mode === 'proportional' ? `Денна ставка пропорційно часу; повний день ${rules.daily.fullDayMinutes / 60} год` : 'Повна ставка за вихід') : 'Погодинна оплата';
-        return base + (rules.components?.length ? ` · додаткових компонентів: ${rules.components.length}` : '');
+        const overrides = rules.daily?.fullDayMinutesByWeekday || [];
+        return base + (overrides.length ? ' · ' + overrides.map(({ isoWeekday, minutes }) =>
+            `${weekdays[isoWeekday - 1]} — ${minutes} хв`).join(', ') : '')
+            + (rules.components?.length ? ` · додаткових компонентів: ${rules.components.length}` : '');
     }
-    root.HrPayRules = { fields, collect, validate, describe };
+    function describeReview(key, review, rules) {
+        if (key === 'commission' && review.state === 'confirmed' && rules
+            && !rules.components?.some(component => component.kind === 'percent')) {
+            return `Відсутність комісії підтверджено · ${review.source} · ${review.reason}`;
+        }
+        return `${reviewLabels[key] || key} · ${reviewStates[review.state] || review.state} · ${review.source} · ${review.reason}`;
+    }
+    root.HrPayRules = { fields, collect, validate, describe, describeReview, commissionBases };
 })(typeof window === 'undefined' ? globalThis : window);

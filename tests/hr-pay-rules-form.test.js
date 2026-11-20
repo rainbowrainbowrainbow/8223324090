@@ -12,6 +12,21 @@ vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../js/hr-pay-rules.js')
 const form = sandbox.window.HrPayRules;
 function defaults(version) { return Object.fromEntries(form.fields(version).map(field => [field.key, field.defaultValue ?? ''])); }
 
+test('form preserves saved weekday minutes, supports explicit reset and represents an unknown commission without a zero percent', () => {
+    const version = { rateUnit: 'day', payRules: { schemaVersion: 1,
+        daily: { mode: 'proportional', fullDayMinutes: 480, fullDayMinutesByWeekday: [{ isoWeekday: 7, minutes: 600 }] } } };
+    const values = { ...defaults(version), rateUnit: 'day' };
+    assert.equal(values.payDayNorm7, 600);
+    assert.deepEqual(normalizePayRules(structuredClone(form.collect(values, version)), 'day').daily.fullDayMinutesByWeekday, [{ isoWeekday: 7, minutes: 600 }]);
+    assert.equal(form.validate({ ...values, payDayNorm7: '600.1' }, version).key, 'payDayNorm7');
+    const change = { ...values, payDayNormSchedule: 'default', payReviewVisibility: 'show', payReview_commission: 'unknown',
+        payReview_commissionSource: 'Synthetic initial history', payReview_commissionReason: 'Waiting for a verified percentage' };
+    const rules = normalizePayRules(structuredClone(form.collect(change, version)), 'day');
+    assert.deepEqual(rules.daily.fullDayMinutesByWeekday, []);
+    assert.equal(rules.conditionReviews.commission.state, 'unknown');
+    assert.deepEqual(rules.components, []);
+});
+
 test('employee form submits explicit fixed/month/day policy choices accepted by the canonical server', () => {
     const version = { rateUnit: 'month', payRules: { schemaVersion: 1, monthly: { mode: 'fixed' } } };
     const values = { ...defaults(version), rateUnit: 'month', payRuleSelection: 'configured' };

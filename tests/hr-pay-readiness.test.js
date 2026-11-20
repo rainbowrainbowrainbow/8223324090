@@ -62,6 +62,22 @@ test('monthly additional terms require the confirmed norm without inheriting bas
         monthlyNormSource:'approved_schedule',monthlyNormMonth:'2026-10'}}];
     assert.deepEqual(extra(input).findings,[]);
 });
+test('configured monthly modes use their own rules and expose review states without provenance text', () => {
+    const config = profile('month');
+    const version = config.versions[0];
+    version.payRules = { schemaVersion: 1, monthly: { mode: 'fixed', partialMonth: 'review' }, conditionReviews: {
+        commission: { state: 'unknown', source: 'Private source', reason: 'Private reason' }
+    } };
+    const input = fixture({ profiles: [config], rates: [] });
+    assert.deepEqual(extra(input).findings, ['condition_commission_unknown']);
+    assert.doesNotMatch(JSON.stringify(buildHrPayReadiness(input)), /Private/);
+    for (const [mode, value] of [['norm_minutes', 9600], ['norm_days', 22]]) {
+        version.payRules.monthly = { mode, norm: { month: '2026-10', value, confirmed: false, source: 'Synthetic norm' } };
+        assert.ok(extra(input).findings.includes('monthly_norm_unconfirmed'));
+        version.payRules.monthly.norm.confirmed = true;
+        assert.ok(!extra(input).findings.includes('monthly_norm_unconfirmed'));
+    }
+});
 test('base exception with conflicting unit is distinguished from missing rate', () => {
     const input=fixture({exceptions:[{staffId:1,professionKey:'reception',workDate:'2026-10-03',purpose:'base_replacement',state:'active',rate:400,rateUnit:'day'}]});
     assert.deepEqual(buildHrPayReadiness(input).rows[0].findings,['rate_unit_conflict']);

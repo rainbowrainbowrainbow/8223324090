@@ -1385,7 +1385,8 @@ function resolveSimultaneousAdditionalRate(allocation = {}) {
 function compactAllocationIssues(issues = []) {
     const seen = new Set();
     return issues.filter(issue => {
-        const key = `${issue.date || ''}:${issue.code || ''}:${issue.professionKey || ''}`;
+        const key = issue.monthlyReview?.fingerprint
+            || `${issue.date || ''}:${issue.code || ''}:${issue.professionKey || ''}:${issue.componentId || issue.basisKey || ''}`;
         if (seen.has(key)) return false;
         seen.add(key);
         return true;
@@ -1687,7 +1688,7 @@ async function loadPayrollAttendanceMetrics(options = {}, db = pool) {
         }
         if (!bucket.conditionDays) bucket.conditionDays = [];
         bucket.conditionDays.push({ date, attendanceRef, snapshot: compensationSnapshot, worked,
-            ...(leavePolicy.required ? { leaveReviewRequired: true } : {}),
+            ...(leavePolicy.required ? { leaveReviewRequired: true, leaveReviewEvidence: [status, leavePolicy.policy, attendanceRef] } : {}),
             ...(businessContext ? { businessContext } : {}),
             paidPlannedMinutes: Math.round(plannedMinutes * leavePolicy.paidPlannedFactor),
             paidPlannedFactor: leavePolicy.paidPlannedFactor });
@@ -4052,10 +4053,22 @@ async function buildPayrollContext(month, options = {}, db = pool) {
         from: periodOptions.from || monthBounds.from,
         to: periodOptions.to || monthBounds.to
     }, db);
-    const hasCommissionRules = [...payrollProfileContext.profilesById.values()].some(profile =>
-        profile.versions.some(version => version.payRules?.components?.some(component => component.kind === 'percent')));
+    const rules = [...payrollProfileContext.profilesById.values()].flatMap(profile => profile.versions.map(version => version.payRules).filter(Boolean));
+    for (const metrics of timeMap.values()) {
+        for (const day of metrics.conditionDays || []) {
+            for (const allocation of day.snapshot?.compensationAllocations || []) {
+                if (allocation.conditions?.payRules) rules.push(allocation.conditions.payRules);
+            }
+        }
+    }
+    const hasCommissionRules = rules.some(rule => rule.components?.some(component => component.kind === 'percent'));
     const componentInputMap = hasCommissionRules && staffIds.length
         ? await require('./hrCompensationRules').loadComponentInputs({ businessContext: 'event_genix', month: normalizedMonth, staffIds }, { db })
+        : new Map();
+    const hasMonthlyReview = hasCommissionRules || rules.some(rule => rule.monthly?.mode === 'fixed'
+        || rule.components?.some(component => component.monthly?.mode === 'fixed'));
+    const monthlyReviewMap = hasMonthlyReview && staffIds.length
+        ? await require('./hrCompensationRules').loadMonthlyReviews(normalizedMonth, staffIds, db)
         : new Map();
     const kpiAuditSnapshotMap = includeMonthlyAdjustments && !periodOptions.staffId
         ? await fetchPayrollKpiAuditSnapshots(normalizedMonth, staffIds, db)
@@ -4080,6 +4093,7 @@ async function buildPayrollContext(month, options = {}, db = pool) {
         professionRateMap,
         payrollProfileContext,
         componentInputMap,
+        monthlyReviewMap,
         kpiAuditSnapshotMap
     };
 }
@@ -4221,6 +4235,7 @@ function rowFromCalculation(staff, calculation, metrics, report) {
         allocation_issues: calculation.professionPay?.allocationIssues || [],
         payrollBlockingIssues: calculation.blockingIssues || calculation.professionPay?.blockingIssues || [],
         payroll_blocking_issues: calculation.blockingIssues || calculation.professionPay?.blockingIssues || [],
+        conditionAssumptions: calculation.professionPay?.conditionAssumptions || [],
         baseProfessionAllocations: metrics.baseProfessionAllocations || metrics.professionAllocations || [],
         additionalProfessionAllocations: metrics.additionalProfessionAllocations || [],
         compensationMinutes: metrics.compensationMinutes ?? metrics.totalMinutes ?? 0,
@@ -4269,6 +4284,9 @@ function buildPayrollRowsFromContext(context) {
             periodFrom: context.period.from,
             periodTo: context.period.to,
             componentInputs: context.componentInputMap?.get(staff.id) || {},
+            monthlyReviewScope: businessContexts.every(company => company === 'event_genix')
+                ? { businessContext: 'event_genix', staffId: staff.id } : null,
+            monthlyReviewApprovals: context.monthlyReviewMap?.get(staff.id),
             periodIncome,
             periodIncomeBusinessContext: incomeBusinessContext,
             periodIncomeSource: incomeBusinessContext ? 'finance_transactions.recognition_date' : null,

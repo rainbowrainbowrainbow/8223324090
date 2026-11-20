@@ -107,6 +107,29 @@ test('two short blocks share one daily norm and a monthly supplement is paid onc
     assert.deepEqual(result.blockingIssues, []);
 });
 
+test('an additional profession uses its own dated norm while the base uses the captured fallback norm', () => {
+    const date = '2026-11-22';
+    const f = fixture('day', 500, { schemaVersion: 1, daily: { mode: 'proportional', fullDayMinutes: 480 } });
+    const extra = { ...f.profile, id: 2, professionKey: 'wardrobe', versions: [{ ...f.version, id: 21, profileId: 2, defaultRate: 600,
+        payRules: { schemaVersion: 1, daily: { mode: 'proportional', fullDayMinutes: 540,
+            fullDayMinutesByWeekday: [{ isoWeekday: 7, minutes: 600 }] } } }] };
+    f.context.profilesById.set(extra.id, extra);
+    f.context.defaultProfilesByProfession.set(extra.professionKey, extra);
+    const context = { staff: new Map([[7, f.staff]]), profiles: f.context, rates: new Map(), exceptions: new Map(), schemes: [] };
+    const base = resolvePayrollConditions(context, 7, 'animator', date);
+    const additional = resolvePayrollConditions(context, 7, 'wardrobe', date, 'additional');
+    const result = calculateConditionSnapshots({ periodFrom: date, periodTo: date, conditionDays: [{
+        date, worked: true, snapshot: { schemaVersion: 2, state: 'final', compensationAllocations: [
+            { allocationType: 'base', professionKey: 'animator', actualMinutes: 240, conditions: base },
+            { allocationType: 'simultaneous_additional', professionKey: 'wardrobe', actualMinutes: 300, conditions: additional }
+        ] }
+    }] }, 1.5);
+    assert.deepEqual(result.blockingIssues, []);
+    assert.equal(result.baseAmount, 250);
+    assert.equal(result.additionalAmount, 300);
+    assert.equal(result.additionalLines[0].meta.dailyNorm.source, 'weekday');
+});
+
 test('new fixed profile cannot silently overwrite old frozen attendance or create approved mixed historical pay', () => {
     const f = fixture();
     const old = { date: '2026-11-03', worked: true, paidPlannedFactor: 1,

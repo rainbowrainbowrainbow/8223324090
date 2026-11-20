@@ -117,7 +117,7 @@ async function readDatabaseInputs(client, date) {
         const profiles = await select('payroll_profiles', `SELECT id, profession_key, profile_kind, status, is_default_for_profession
             FROM payroll_profiles ORDER BY id`);
         const versions = await select('payroll_profile_versions', `SELECT id, profile_id, version_number, rate_unit, default_rate,
-            effective_from::text, effective_to::text FROM payroll_profile_versions ORDER BY effective_from, version_number, id`);
+            effective_from::text, effective_to::text, pay_rules FROM payroll_profile_versions ORDER BY effective_from, version_number, id`);
         const dayRates = await select('payroll_profile_day_rates', `SELECT profile_version_id, iso_weekday, rate FROM payroll_profile_day_rates`);
         for (const profile of profiles) profile.versions = versions.filter(row => Number(row.profile_id) === Number(profile.id))
             .map(row => ({ ...row, dayRates: dayRates.filter(day => Number(day.profile_version_id) === Number(row.id)) }));

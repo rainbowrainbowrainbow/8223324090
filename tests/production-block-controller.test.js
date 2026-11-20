@@ -73,6 +73,66 @@ const HEAD_SHA = '2'.repeat(40);
 const RELEASE_SHA = '3'.repeat(40);
 const FREELANCE_BASE = '46df02047c196dfa5159e27f6cfb09fe6e907b11';
 
+function payrollSchemaFacts() {
+    const changedPaths = [
+        'db/migrations/425_payroll_commission_basis_keys.sql',
+        'db/migrations/426_payroll_monthly_reviews.sql'
+    ];
+    return {
+        live: { commitSha: LIVE_SHA, sourceBranch: 'codex/eventgenix-production',
+            version: '0.84.17', deploymentMetadata: { complete: true } },
+        remoteSha: LIVE_SHA,
+        releaseVersion: '0.84.18',
+        changedPaths,
+        migrations: changedPaths.map(file => ({ file, sql: fs.readFileSync(path.join(__dirname, '..', file), 'utf8') }))
+    };
+}
+
+const PAYROLL_SCHEMA_OPTIONS = { protectedWorkflow: 'payroll-425-426', maxReleaseAttempts: 1 };
+
+test('payroll schema release binds the exact two migrations and a converged production base', () => {
+    const scope = payrollSchemaFacts();
+    const value = manifest(PAYROLL_SCHEMA_OPTIONS, scope);
+    assert.doesNotThrow(() => validateManifest(value));
+    assert.deepEqual(value.migrationClassifications.map(item => [item.number, item.red]), [[425, true], [426, false]]);
+    assert.doesNotThrow(() => assertPreparedProductionBase(value, scope.live, LIVE_SHA));
+    assert.throws(() => assertPreparedProductionBase(value, scope.live, RELEASE_SHA),
+        { code: 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT' });
+    assert.throws(() => manifest({}, scope), { code: 'PRODUCTION_BLOCK_RED_MIGRATION' });
+    assert.throws(() => manifest(PAYROLL_SCHEMA_OPTIONS, { ...scope, remoteSha: RELEASE_SHA }),
+        { code: 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT' });
+    assert.throws(() => manifest(PAYROLL_SCHEMA_OPTIONS, { ...scope, releaseVersion: '0.84.17' }),
+        { code: 'PRODUCTION_BLOCK_RELEASE_NOT_PREPARED' });
+    assert.throws(() => manifest({ ...PAYROLL_SCHEMA_OPTIONS, maxReleaseAttempts: 2 }, scope),
+        { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID' });
+    assert.throws(() => manifest(PAYROLL_SCHEMA_OPTIONS, { ...scope, changedPaths: [...scope.changedPaths, 'routes/payroll.js'] }),
+        { code: 'PRODUCTION_BLOCK_RED_PATHS' });
+    assert.throws(() => manifest(PAYROLL_SCHEMA_OPTIONS, { ...scope, changedPaths: [...scope.changedPaths, 'db/migrations/427_extra.sql'] }),
+        { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID' });
+    for (const migration of scope.migrations) {
+        const migrations = scope.migrations.map(item => item === migration ? { ...item, sql: item.sql + '\nSELECT 1;' } : item);
+        assert.throws(() => manifest(PAYROLL_SCHEMA_OPTIONS, { ...scope, migrations }),
+            { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID' });
+    }
+    const tampered = { ...value, allowedMigrationFiles: [value.allowedMigrationFiles[0]] };
+    tampered.manifestHash = manifestHash(tampered);
+    assert.throws(() => validateManifest(tampered), { code: 'PRODUCTION_BLOCK_RELEASE_NOT_PREPARED' });
+});
+
+test('payroll schema execute checks the exact SHA and SQL before any write', async t => {
+    const value = manifest(PAYROLL_SCHEMA_OPTIONS, payrollSchemaFacts());
+    const options = { blockFile: blockFile(t, value), confirmation: confirmationValue(value), dryRun: true };
+    const runtime = dryRuntime();
+    assert.equal((await executeAction(options, runtime)).success, true);
+    const normalDrift = await runtime.drift(value);
+    await assert.rejects(executeAction(options, dryRuntime({
+        async drift() { return { ...normalDrift, head: RELEASE_SHA }; }
+    })), { code: 'PRODUCTION_BLOCK_SHA_DRIFT' });
+    await assert.rejects(executeAction(options, dryRuntime({
+        async drift() { return { ...normalDrift, migrationHashes: {} }; }
+    })), { code: 'PRODUCTION_BLOCK_MIGRATION_HASH_DRIFT' });
+});
+
 test('freelance cancellation workflow pins the reviewed SQL, production base and read-only scope', () => {
     const file = 'db/migrations/424_freelance_segment_cancellation.sql';
     const sql = fs.readFileSync(path.join(__dirname, '..', file), 'utf8');

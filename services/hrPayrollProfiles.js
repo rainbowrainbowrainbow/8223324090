@@ -1,7 +1,7 @@
 'use strict';
 
 const { pool } = require('../db');
-const { normalizePayRules } = require('./payrollRules');
+const { normalizePayRules, resolveDailyNorm, bindConditionReviews, preserveDailyNormOverrides } = require('./payrollRules');
 const {
     normalizeProfessionKey,
     staffProfessionKeys,
@@ -18,6 +18,7 @@ const {
 } = require('./payroll');
 const {
     assertPayrollPeriodOpen,
+    lockPayrollPeriodMutation,
     payrollMonthRange
 } = require('./hrPayrollPeriod');
 const { scheduleableStaffWhere } = require('./staffOperationalFilters');
@@ -288,9 +289,10 @@ function normalizeVersionPayload(payload = {}, fallback = {}, options = {}) {
         throw payrollProfileError('effectiveTo must be on or after effectiveFrom', 400, 'PAYROLL_PROFILE_DATE_RANGE_INVALID');
     }
     const dayRateSource = payload.dayRates ?? payload.day_rates ?? fallback.dayRates ?? fallback.day_rates ?? [];
+    const fallbackRules = fallback.payRules ?? fallback.pay_rules;
     const rulesSource = Object.hasOwn(payload, 'payRules') ? payload.payRules
-        : Object.hasOwn(payload, 'pay_rules') ? payload.pay_rules : fallback.payRules ?? fallback.pay_rules;
-    const payRules = normalizePayRules(rulesSource, rateUnit);
+        : Object.hasOwn(payload, 'pay_rules') ? payload.pay_rules : fallbackRules;
+    const payRules = normalizePayRules(preserveDailyNormOverrides(rulesSource, fallbackRules, rateUnit), rateUnit);
     return {
         rateUnit,
         defaultRate,
@@ -366,7 +368,7 @@ function latestVersion(versions = []) {
 function normalizeProfile(row, extras = {}) {
     if (!row) return null;
     const versions = extras.versions || [];
-    const current = extras.currentVersion === undefined
+    const current = row.status === 'draft' ? null : extras.currentVersion === undefined
         ? currentVersionForDate(versions, extras.asOfDate || todayKyivDate())
         : extras.currentVersion;
     const latest = extras.latestVersion === undefined ? latestVersion(versions) : extras.latestVersion;
@@ -578,10 +580,10 @@ async function loadVersionsForProfiles(db, profileIds = [], options = {}) {
     const grouped = new Map(ids.map(id => [id, []]));
     if (!ids.length) return grouped;
     const result = await db.query(
-        `SELECT *
+        `SELECT *, effective_from::text AS effective_from, effective_to::text AS effective_to
          FROM payroll_profile_versions
          WHERE profile_id = ANY($1::bigint[])
-         ORDER BY profile_id, version_number ASC, effective_from ASC${options.forUpdate ? ' FOR UPDATE' : ''}`,
+         ORDER BY profile_id, version_number ASC, payroll_profile_versions.effective_from ASC${options.forUpdate ? ' FOR UPDATE' : ''}`,
         [ids]
     );
     const rows = safeRows(result);
@@ -746,18 +748,22 @@ async function insertVersion(db, profile, payload, actor, options = {}) {
         throw payrollProfileError('archived profile cannot receive new versions', 409, 'PAYROLL_PROFILE_ARCHIVED');
     }
     const existingResult = await db.query(
-        `SELECT *
+        `SELECT *, effective_from::text AS effective_from, effective_to::text AS effective_to
          FROM payroll_profile_versions
          WHERE profile_id = $1
-         ORDER BY version_number DESC, effective_from DESC
+         ORDER BY version_number DESC, payroll_profile_versions.effective_from DESC
          FOR UPDATE`,
         [profile.id]
     );
     const existingRows = safeRows(existingResult);
     const latestRow = existingRows[0] || null;
+    if (profile.status === 'draft' && latestRow) {
+        throw payrollProfileError('activate the saved draft before adding versions', 409, 'PAYROLL_PROFILE_DRAFT_EXISTS');
+    }
+    const previousRules = options.replacePayRules ? null : latestRow?.pay_rules;
     const normalized = normalizeVersionPayload(payload, {
         ...(options.fallback || {}),
-        ...(latestRow?.pay_rules ? { payRules: latestRow.pay_rules } : {})
+        ...(previousRules ? { payRules: previousRules } : {})
     }, { reasonRequired: options.reasonRequired === true });
     if (latestRow && compareDates(normalized.effectiveFrom, latestRow.effective_from) <= 0) {
         throw payrollProfileError(
@@ -779,12 +785,15 @@ async function insertVersion(db, profile, payload, actor, options = {}) {
 
     const nextVersionNumber = latestRow ? Number(latestRow.version_number) + 1 : 1;
     const createdBy = actorUsername(actor);
+    bindConditionReviews(normalized, previousRules, createdBy);
     const inserted = await db.query(
         `INSERT INTO payroll_profile_versions
             (profile_id, version_number, rate_unit, default_rate, effective_from, effective_to,
              change_reason, created_by, activated_by, activated_at, pay_rules)
-         VALUES ($1, $2, $3, $4, $5::date, $6::date, $7, $8, $8, NOW(), $9::jsonb)
-         RETURNING *`,
+         VALUES ($1, $2, $3, $4, $5::date, $6::date, $7, $8::varchar,
+                 CASE WHEN $10::boolean THEN NULL ELSE $8::varchar END,
+                 CASE WHEN $10::boolean THEN NULL ELSE NOW() END, $9::jsonb)
+         RETURNING *, effective_from::text AS effective_from, effective_to::text AS effective_to`,
         [
             profile.id,
             nextVersionNumber,
@@ -794,7 +803,8 @@ async function insertVersion(db, profile, payload, actor, options = {}) {
             normalized.effectiveTo,
             normalized.changeReason,
             createdBy,
-            normalized.payRules ? JSON.stringify(normalized.payRules) : null
+            normalized.payRules ? JSON.stringify(normalized.payRules) : null,
+            profile.status === 'draft'
         ]
     );
     const version = safeRows(inserted)[0];
@@ -804,18 +814,6 @@ async function insertVersion(db, profile, payload, actor, options = {}) {
                 (profile_version_id, rate_unit, iso_weekday, rate, created_by, updated_by)
              VALUES ($1, $2, $3, $4, $5, $5)`,
             [version.id, normalized.rateUnit, dayRate.isoWeekday, dayRate.rate, createdBy]
-        );
-    }
-    if (profile.status === 'draft') {
-        await db.query(
-            `UPDATE payroll_profiles
-             SET status = 'active',
-                 activated_by = COALESCE(activated_by, $2),
-                 activated_at = COALESCE(activated_at, NOW()),
-                 updated_by = $2,
-                 updated_at = NOW()
-             WHERE id = $1`,
-            [profile.id, createdBy]
         );
     }
     const dayRates = await loadDayRatesForVersionIds(db, [version.id]);
@@ -891,7 +889,7 @@ async function resolveProfileVersion(db, profileId, payload = {}, options = {}) 
     const explicitVersionId = payload.sourceVersionId ?? payload.source_version_id ?? payload.versionId ?? payload.version_id;
     if (explicitVersionId) {
         const result = await db.query(
-            `SELECT *
+            `SELECT *, effective_from::text AS effective_from, effective_to::text AS effective_to
              FROM payroll_profile_versions
              WHERE id = $1 AND profile_id = $2${options.forShare ? ' FOR SHARE' : ''}`,
             [numberId(explicitVersionId, 'versionId'), profileId]
@@ -915,8 +913,9 @@ async function resolveProfileVersion(db, profileId, payload = {}, options = {}) 
 async function createPayrollProfileClone(sourceProfileId, payload = {}, actor = null, options = {}) {
     return withTransaction(options, async db => {
         const source = await loadProfile(db, sourceProfileId, { asOfDate: payload.asOfDate || payload.as_of_date || todayKyivDate() });
-        if (source.status === 'archived') {
-            throw payrollProfileError('archived profile cannot be cloned', 409, 'PAYROLL_PROFILE_ARCHIVED');
+        if (source.status !== 'active') {
+            throw payrollProfileError('only active profiles can be cloned', 409,
+                source.status === 'archived' ? 'PAYROLL_PROFILE_ARCHIVED' : 'PAYROLL_PROFILE_DRAFT_REQUIRED');
         }
         const sourceVersion = await resolveProfileVersion(db, source.id, payload, { forShare: true });
         const profileKind = normalizeProfileKind(payload.profileKind ?? payload.profile_kind, 'personal');
@@ -999,18 +998,85 @@ async function createPayrollProfileClone(sourceProfileId, payload = {}, actor = 
     });
 }
 
+async function updateDraftVersion(db, latest, payload, actor) {
+    if (Number(payload.expectedVersionId) !== latest.id
+        || payload.expectedDraftUpdatedAt !== new Date(latest.updatedAt).toISOString()) {
+        throw payrollProfileError('draft version has changed', 409, 'PAYROLL_PROFILE_DRAFT_STALE');
+    }
+    const edited = normalizeVersionPayload(payload, latest, { reasonRequired: true });
+    const author = actorUsername(actor);
+    bindConditionReviews(edited, latest.payRules, author);
+    // Day rates reference the version and its unit. They can be replaced only
+    // while the profile is a draft and cannot have payroll assignments.
+    await db.query('DELETE FROM payroll_profile_day_rates WHERE profile_version_id=$1', [latest.id]);
+    const updated = await db.query(`UPDATE payroll_profile_versions SET rate_unit=$2, default_rate=$3,
+        effective_from=$4::date, effective_to=$5::date, change_reason=$6, pay_rules=$7::jsonb,
+        updated_at=GREATEST(NOW(),updated_at + interval '1 millisecond') WHERE id=$1
+        RETURNING *, effective_from::text AS effective_from, effective_to::text AS effective_to`,
+    [latest.id, edited.rateUnit, edited.defaultRate, edited.effectiveFrom, edited.effectiveTo, edited.changeReason,
+        edited.payRules ? JSON.stringify(edited.payRules) : null]);
+    for (const { isoWeekday, rate } of edited.dayRates) {
+        await db.query(`INSERT INTO payroll_profile_day_rates (profile_version_id,rate_unit,iso_weekday,rate,created_by,updated_by)
+            VALUES ($1,$2,$3,$4,$5,$5)`, [latest.id, edited.rateUnit, isoWeekday, rate, author]);
+    }
+    const dayRates = await loadDayRatesForVersionIds(db, [latest.id]);
+    return normalizeProfileVersion(updated.rows[0], dayRates.get(latest.id) || []);
+}
+
 async function createPayrollProfileVersion(profileId, payload = {}, actor = null, options = {}) {
     return withTransaction(options, async db => {
         const before = await loadProfile(db, profileId, { forUpdate: true, forUpdateVersions: true });
-        const version = await insertVersion(db, before, payload, actor, { reasonRequired: true });
+        const editingDraft = before.status === 'draft' && before.latestVersion;
+        const version = editingDraft ? await updateDraftVersion(db, before.latestVersion, payload, actor)
+            : await insertVersion(db, before, payload, actor, { reasonRequired: true });
         const after = await loadProfile(db, profileId);
-        await insertHrAudit(db, 'payroll_profile_version_create', before.ownerStaffId, actor, {
+        await insertHrAudit(db, editingDraft ? 'payroll_profile_draft_update' : 'payroll_profile_version_create', before.ownerStaffId, actor, {
             reason: mutationReason(payload, { required: true }),
             before,
             after,
             version
         });
         return { profile: after, version };
+    });
+}
+
+async function activatePayrollProfile(profileId, payload = {}, actor = null, options = {}) {
+    const expectedVersionId = numberId(payload.expectedVersionId, 'expectedVersionId');
+    const reason = mutationReason(payload, { required: true });
+    const effectiveFrom = normalizeDate(payload.effectiveFrom, 'effectiveFrom', { required: true });
+    return withTransaction(options, async db => {
+        await lockPayrollPeriodMutation(monthFromDate(effectiveFrom), db);
+        const before = await loadProfile(db, profileId, { forUpdate: true, forUpdateVersions: true });
+        const version = before.latestVersion;
+        if (version?.id !== expectedVersionId || version.effectiveFrom !== effectiveFrom) {
+            throw payrollProfileError('draft version has changed', 409, 'PAYROLL_PROFILE_DRAFT_STALE');
+        }
+        if (before.status === 'active' && version.activatedAt) return before;
+        if (payload.expectedDraftUpdatedAt !== new Date(version.updatedAt).toISOString()) {
+            throw payrollProfileError('draft version has changed', 409, 'PAYROLL_PROFILE_DRAFT_STALE');
+        }
+        if (before.status !== 'draft' || before.versions.length !== 1) {
+            throw payrollProfileError('profile has no activatable draft', 409, 'PAYROLL_PROFILE_DRAFT_REQUIRED');
+        }
+        normalizeVersionPayload(version);
+        if (version.effectiveFrom < todayKyivDate()) {
+            throw payrollProfileError('draft effective date has passed', 409, 'PAYROLL_PROFILE_DRAFT_DATE_PASSED');
+        }
+        await assertPayrollPeriodOpen(monthFromDate(version.effectiveFrom), db);
+        await assertProfessionExists(db, before.professionKey);
+        if (before.ownerStaffId) {
+            const owner = await loadStaffOrThrow(db, before.ownerStaffId);
+            if (owner.is_active === false || !await staffHasProfession(db, before.ownerStaffId, before.professionKey)) {
+                throw payrollProfileError('draft owner must still belong to the profession', 409, 'PAYROLL_PROFILE_DRAFT_OWNER_INVALID');
+            }
+        }
+        const author = actorUsername(actor);
+        await db.query('UPDATE payroll_profile_versions SET activated_by=$2, activated_at=NOW(), updated_at=NOW() WHERE id=$1', [version.id, author]);
+        await db.query(`UPDATE payroll_profiles SET status='active', activated_by=$2, activated_at=NOW(),
+            updated_by=$2, updated_at=NOW() WHERE id=$1`, [before.id, author]);
+        const after = await loadProfile(db, before.id);
+        await insertHrAudit(db, 'payroll_profile_activate', before.ownerStaffId, actor, { reason, before, after });
+        return after;
     });
 }
 
@@ -1121,7 +1187,7 @@ async function syncPayrollProfileFromBase(profileId, payload = {}, actor = null,
             effectiveFrom: payload.effectiveFrom ?? payload.effective_from,
             effectiveTo: payload.effectiveTo ?? payload.effective_to ?? null,
             changeReason: mutationReason(payload, { required: true })
-        }, actor, { reasonRequired: true });
+        }, actor, { reasonRequired: true, replacePayRules: fieldSelected(selected, 'pay_rules') });
         const after = await loadProfile(db, personal.id);
         await insertHrAudit(db, 'payroll_profile_sync_from_base', personal.ownerStaffId, actor, {
             reason: mutationReason(payload, { required: true }),
@@ -1561,6 +1627,7 @@ function simulateProfileAmount(profile, payload = {}) {
         const byDate = new Map(days.map(day => [day.date, day]));
         const breakdown = [];
         const blockingIssues = [];
+        const assumptions = new Map();
         for (const month of [...new Set(datesInRange(period.from, period.to).map(day => day.slice(0, 7)))]) {
             const selectedDates = datesInRange(period.from, period.to).filter(day => day.startsWith(month));
             const conditionDays = selectedDates.map(workDate => {
@@ -1570,22 +1637,29 @@ function simulateProfileAmount(profile, payload = {}) {
                     snapshot: { schemaVersion: 2, state: 'final', compensationAllocations: [{ allocationType: 'base', professionKey,
                         actualMinutes: (source?.minutes || 0) + (source?.overtimeMinutes || 0),
                         plannedMinutes: source?.minutes || 0, overtimeMinutes: source?.overtimeMinutes || 0,
-                        conditions: { ...resolution, ruleVersion: CONDITION_RULE_VERSION } }] } };
+                        conditions: { ...resolution, workDate,
+                            dailyNorm: resolveDailyNorm(resolution.payRules, resolution.rateUnit, workDate),
+                            ruleVersion: CONDITION_RULE_VERSION } }] } };
             });
             const result = calculateProfessionPay(staff, null, { periodFrom: selectedDates[0], periodTo: selectedDates.at(-1), conditionDays,
                 componentInputs: payload.componentInputsByMonth?.[month] || payload.componentInputs }, new Map(), context);
             blockingIssues.push(...result.blockingIssues);
+            for (const item of result.conditionAssumptions || []) {
+                assumptions.set(`${item.profileVersionId}:${item.condition}`, item);
+            }
             breakdown.push(...[...result.baseLines, ...result.additionalLines, ...result.overtimeLines].map(item => ({
                 date: item.workDate || item.meta?.workDate || selectedDates[0], hours: item.minutes ? item.minutes / 60 : 0,
                 overtimeHours: 0, rate: item.rate, rateUnit: item.rateUnit || 'month', amount: item.amount,
                 baseAmount: item.group === 'overtime' ? 0 : item.amount, overtimeAmount: item.group === 'overtime' ? item.amount : 0,
-                formula: item.formula || item.meta?.formula, profileId: item.profileId || item.meta?.profileId,
+                formula: item.formula || item.meta?.formula, dailyNorm: item.meta?.dailyNorm, paidMinutes: item.meta?.paidMinutes,
+                profileId: item.profileId || item.meta?.profileId,
                 profileVersionId: item.profileVersionId || item.meta?.profileVersionId, source: item.source,
                 componentId: item.componentId || null
             })));
         }
         return { profile: { id: profile.id, title: profile.title }, period, professionKey,
             total: breakdown.reduce((sum, item) => sum + item.amount, 0), breakdown, blockingIssues,
+            conditionAssumptions: [...assumptions.values()],
             ready: blockingIssues.length === 0 };
     }
     let monthPaid = false;
@@ -1819,12 +1893,22 @@ async function forecastPayrollProfiles(options = {}, serviceOptions = {}) {
         applyProfileOverrideToContext(profileContext, options.profileOverride.profile, options.profileOverride.version);
     }
     const componentInputsByStaff = new Map(staffIds.map(id => [id, {}]));
-    const hasPercent = [...profileContext.profilesById.values()].some(profile =>
-        profile.versions.some(version => version.payRules?.components?.some(component => component.kind === 'percent')));
-    if (hasPercent && staffIds.length) {
+    const monthlyReviewsByStaff = new Map(staffIds.map(id => [id, new Map()]));
+    const rules = [...profileContext.profilesById.values()].flatMap(profile => profile.versions.map(version => version.payRules).filter(Boolean));
+    const hasPercent = rules.some(rule => rule.components?.some(component => component.kind === 'percent'));
+    const hasMonthlyReview = hasPercent || rules.some(rule => rule.monthly?.mode === 'fixed'
+        || rule.components?.some(component => component.monthly?.mode === 'fixed'));
+    if (hasMonthlyReview && staffIds.length) {
+        const { loadComponentInputs, loadMonthlyReviews } = require('./hrCompensationRules');
         for (const month of [...new Set(datesInRange(period.from, period.to).map(date => date.slice(0, 7)))]) {
-            const inputs = await require('./hrCompensationRules').loadComponentInputs({ businessContext: 'event_genix', month, staffIds }, { db });
-            for (const id of staffIds) componentInputsByStaff.get(id)[month] = inputs.get(id) || {};
+            if (hasPercent) {
+                const inputs = await loadComponentInputs({ businessContext: 'event_genix', month, staffIds }, { db });
+                for (const id of staffIds) componentInputsByStaff.get(id)[month] = inputs.get(id) || {};
+            }
+            const reviews = await loadMonthlyReviews(month, staffIds, db);
+            for (const [id, approvals] of reviews) {
+                for (const [fingerprint, approval] of approvals) monthlyReviewsByStaff.get(id).set(fingerprint, approval);
+            }
         }
     }
     const professionFilter = normalizeProfessionKey(options.professionKey || options.profession_key);
@@ -1840,6 +1924,10 @@ async function forecastPayrollProfiles(options = {}, serviceOptions = {}) {
         metrics.periodFrom = period.from;
         metrics.periodTo = period.to;
         metrics.componentInputsByMonth = componentInputsByStaff.get(staffId);
+        if (hasMonthlyReview && (metrics.businessContexts || []).every(company => company === 'event_genix')) {
+            metrics.monthlyReviewScope = { businessContext: 'event_genix', staffId };
+            metrics.monthlyReviewApprovals = monthlyReviewsByStaff.get(staffId);
+        }
         if (planned) {
             const conditions = (metrics.attendanceDays || []).map(day => ({ date: day.date, worked: day.actualMinutes > 0,
                 paidPlannedFactor: 1, snapshot: { schemaVersion: 2, state: 'final', compensationAllocations: [{
@@ -1889,6 +1977,7 @@ async function forecastPayrollProfiles(options = {}, serviceOptions = {}) {
             overtime_pay: Math.round(pay.overtimeAmount || 0),
             total_salary: Math.round(pay.totalAmount || 0),
             blocking_issues: pay.blockingIssues || [],
+            condition_assumptions: pay.conditionAssumptions || [],
             profession_rate_summary: pay.professionRateSummary || [],
             allocation_issues: pay.allocationIssues || [],
             reconciliation: pay.reconciliation || metrics.reconciliation
@@ -1930,6 +2019,7 @@ async function forecastPayrollProfiles(options = {}, serviceOptions = {}) {
                 actual_hours: Number(metrics.hoursWorked || 0),
                 actual_salary: Math.round(pay.totalAmount || 0),
                 blocking_issues: pay.blockingIssues || [],
+                condition_assumptions: pay.conditionAssumptions || [],
                 profession_rate_summary: pay.professionRateSummary || [],
                 allocation_issues: pay.allocationIssues || [],
                 reconciliation: pay.reconciliation || metrics.reconciliation
@@ -2635,6 +2725,7 @@ module.exports = {
     createPayrollProfile,
     createPayrollProfileClone,
     createPayrollProfileVersion,
+    activatePayrollProfile,
     diagnosePayrollProfiles,
     forecastPayrollProfiles,
     getPayrollProfile,

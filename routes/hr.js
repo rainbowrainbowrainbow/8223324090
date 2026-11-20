@@ -185,6 +185,7 @@ const {
     createPayrollProfile,
     createPayrollProfileClone,
     createPayrollProfileVersion,
+    activatePayrollProfile,
     diagnosePayrollProfiles,
     forecastPayrollProfiles,
     getPayrollProfile,
@@ -4356,11 +4357,14 @@ router.get('/payroll-rules/levels', requirePayrollView,
 router.post('/payroll-rules/levels', requirePayrollRules,
     compensationRuleHandler('createQualificationLevel', req => req.body));
 router.get('/staff/:id/payroll-rules', requirePayrollView,
-    compensationRuleHandler('staffRuleWorkspace', req => ({ ...req.query, staffId: req.params.id })));
+    (req, res) => compensationRuleHandler(req.query.view === 'monthly_reviews' ? 'listMonthlyReviewRequests' : 'staffRuleWorkspace',
+        req => ({ ...req.query, staffId: req.params.id }))(req, res));
 router.post('/staff/:id/payroll-rules/qualification', requirePayrollRules,
-    compensationRuleHandler('changeQualificationLevel', req => ({ ...req.body, staffId: req.params.id })));
+    (req, res) => compensationRuleHandler(req.body?.action === 'review_level' ? 'reviewQualification' : 'changeQualificationLevel',
+        req => ({ ...req.body, staffId: req.params.id }))(req, res));
 router.put('/staff/:id/payroll-rules/component-input', requirePayrollRules,
-    compensationRuleHandler('saveComponentInput', req => ({ ...req.body, staffId: req.params.id })));
+    (req, res) => compensationRuleHandler(req.body?.action === 'approve_monthly_review' ? 'approveMonthlyReview' : 'saveComponentInput',
+        req => ({ ...req.body, staffId: req.params.id }))(req, res));
 router.get('/vacancies/:id/payroll-template', requirePayrollView,
     compensationRuleHandler('vacancyTemplate', req => ({ ...req.query, vacancyId: req.params.id })));
 router.put('/vacancies/:id/payroll-template', requirePayrollRules,
@@ -4444,7 +4448,8 @@ router.post('/payroll-profiles/:id/clone', requirePayrollRules, async (req, res)
 
 router.post('/payroll-profiles/:id/versions', requirePayrollRules, async (req, res) => {
     try {
-        const data = await createPayrollProfileVersion(req.params.id, req.body, payrollProfileActor(req));
+        const operation = req.body?.action === 'activate_draft' ? activatePayrollProfile : createPayrollProfileVersion;
+        const data = await operation(req.params.id, req.body, payrollProfileActor(req));
         res.status(201).json({ success: true, data });
     } catch (err) {
         sendPayrollProfileFailure(res, err, 'POST /hr/payroll-profiles/:id/versions error');

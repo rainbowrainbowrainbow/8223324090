@@ -2,7 +2,8 @@
 
 const { pool } = require('../db');
 const { createHash } = require('node:crypto');
-const { normalizePayRules } = require('./payrollRules');
+const { normalizePayRules, normalizeConditionReview, bindConditionReviews, conditionAssumptions,
+    preserveDailyNormOverrides, COMMISSION_BASIS_KEYS } = require('./payrollRules');
 const { normalizeBusinessContext, DEFAULT_BUSINESS_CONTEXT } = require('./businessContext');
 const { normalizeProfessionKey, staffProfessionKeys } = require('./professions');
 const { lockPayrollPeriodMutation, assertPayrollPeriodOpen } = require('./hrPayrollPeriod');
@@ -42,7 +43,7 @@ function amount(value, nullable = false) {
     if (typeof value === 'boolean' || !Number.isFinite(parsed) || parsed < 0 || parsed > 9999999999.99) throw failure('HR_PAY_AMOUNT_INVALID', 'Некоректна сума');
     return Math.round(parsed * 100) / 100;
 }
-function normalizeCompensationTemplate(value) {
+function normalizeCompensationTemplate(value, previousRules = null) {
     if (value == null) return null;
     if (typeof value !== 'object' || Array.isArray(value) || value.schemaVersion !== 1) throw failure('HR_PAY_TEMPLATE_INVALID', 'Непідтримуваний шаблон оплати');
     const rateUnit = value.rateUnit;
@@ -50,7 +51,7 @@ function normalizeCompensationTemplate(value) {
     const defaultRate = amount(value.defaultRate, true), salaryFrom = amount(value.salaryFrom, true), salaryTo = amount(value.salaryTo, true);
     if (defaultRate === 0 || salaryFrom === 0 || salaryTo === 0 || (salaryFrom != null && salaryTo != null && salaryFrom > salaryTo)) throw failure('HR_PAY_TEMPLATE_RANGE_INVALID', 'Перевірте ставку та діапазон');
     if (defaultRate == null && salaryFrom == null && salaryTo == null) throw failure('HR_PAY_TEMPLATE_AMOUNT_REQUIRED', 'Вкажіть ставку або зарплатний діапазон');
-    const rules = normalizePayRules(value.payRules, rateUnit);
+    const rules = normalizePayRules(preserveDailyNormOverrides(value.payRules, previousRules, rateUnit), rateUnit);
     if (!rules) throw failure('HR_PAY_TEMPLATE_RULES_REQUIRED', 'Для нового шаблону оберіть явні правила оплати');
     const dayRates = Array.isArray(value.dayRates) ? value.dayRates : [];
     if (dayRates.length > 7 || (rateUnit === 'month' && dayRates.length)) throw failure('HR_PAY_TEMPLATE_DAY_RATES_INVALID', 'Перевірте ставки за днями тижня');
@@ -90,12 +91,14 @@ async function assertProfession(db, professionKey) {
     const result = await db.query('SELECT key FROM hr_professions WHERE key=$1 AND is_active=true', [professionKey]);
     if (!result.rows.length) throw failure('HR_PAY_PROFESSION_INVALID', 'Професія неактивна або відсутня', 404);
 }
-async function loadScopedStaff(db, staffId, businessContext) {
+async function loadScopedStaff(db, staffId, businessContext, { allowInactive = false } = {}) {
     // The canonical staff/profile namespace is currently Park-owned. Do not infer
     // that another business owns these rows merely because its request has an ID.
     if (businessContext !== DEFAULT_BUSINESS_CONTEXT) throw failure('HR_PAY_STAFF_SCOPE_UNAVAILABLE', 'Кадровий payroll-простір цієї компанії ще не підтримує ці записи', 409);
     const result = await db.query('SELECT * FROM staff WHERE id=$1 FOR UPDATE', [positiveId(staffId)]);
-    if (!result.rows[0] || result.rows[0].is_active === false) throw failure('HR_PAY_STAFF_UNAVAILABLE', 'Активного працівника не знайдено', 404);
+    if (!result.rows[0] || (!allowInactive && result.rows[0].is_active === false)) {
+        throw failure('HR_PAY_STAFF_UNAVAILABLE', 'Працівника не знайдено', 404);
+    }
     return result.rows[0];
 }
 async function assertMutableFrom(db, staffId, effectiveFrom) {
@@ -121,15 +124,17 @@ async function listRuleDefaults(input, options = {}) {
 }
 async function saveRuleDefault(input, actor, options = {}) {
     const businessContext = scope(input.businessContext), professionKey = normalizeProfessionKey(input.professionKey);
-    const effectiveFrom = day(input.effectiveFrom), template = normalizeCompensationTemplate(input.template);
+    const effectiveFrom = day(input.effectiveFrom);
     const reason = requiredText(input.reason, 'Причина'), author = actorName(actor);
-    if (!template) throw failure('HR_PAY_TEMPLATE_REQUIRED', 'Потрібен шаблон оплати');
     return transaction(options, async db => {
         await assertProfession(db, professionKey);
         await db.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`hr-pay-default:${businessContext}:${professionKey}`]);
-        const last = await db.query('SELECT effective_from::text FROM hr_payroll_rule_defaults WHERE business_context=$1 AND profession_key=$2 ORDER BY effective_from DESC LIMIT 1', [businessContext, professionKey]);
+        const last = await db.query('SELECT effective_from::text, template FROM hr_payroll_rule_defaults WHERE business_context=$1 AND profession_key=$2 ORDER BY effective_from DESC LIMIT 1', [businessContext, professionKey]);
         if (last.rows[0]?.effective_from >= effectiveFrom) throw failure('HR_PAY_DEFAULT_APPEND_ONLY', 'Нова версія має починатися пізніше за попередню', 409);
+        const template = normalizeCompensationTemplate(input.template, last.rows[0]?.template?.payRules);
+        if (!template) throw failure('HR_PAY_TEMPLATE_REQUIRED', 'Потрібен шаблон оплати');
         if (template.levelId) await loadLevel(db, template.levelId, businessContext, professionKey);
+        bindConditionReviews(template, last.rows[0]?.template?.payRules, author);
         const result = await db.query(`INSERT INTO hr_payroll_rule_defaults (business_context,profession_key,effective_from,template,reason,created_by)
             VALUES ($1,$2,$3::date,$4::jsonb,$5,$6) RETURNING *`, [businessContext, professionKey, effectiveFrom, JSON.stringify(template), reason, author]);
         await audit(db, 'pay_rule_default_create', null, author, { businessContext, professionKey, effectiveFrom, template, reason });
@@ -210,6 +215,28 @@ async function changeQualificationLevel(input, actor, options = {}) {
     });
 }
 
+async function reviewQualification(input, actor, options = {}) {
+    const businessContext = scope(input.businessContext), staffId = positiveId(input.staffId);
+    const professionKey = normalizeProfessionKey(input.professionKey), expectedEventId = positiveId(input.expectedEventId);
+    const author = actorName(actor);
+    const { state, source, reason } = normalizeConditionReview(input.review);
+    return transaction(options, async db => {
+        await loadScopedStaff(db, staffId, businessContext);
+        const history = await qualificationHistory({ businessContext, staffId, professionKey }, { db });
+        const current = history.find(entry => Number(entry.id) === expectedEventId);
+        if (!current || (input.expectedDecidedAt || null) !== (current.snapshot?.verification?.decidedAt || null)) {
+            throw failure('HR_PAY_LEVEL_STALE', 'Рівень або його перевірка вже змінилися. Оновіть картку.', 409);
+        }
+        const verification = { state, source, reason, author, decidedAt: new Date().toISOString(), levelId: Number(current.level_id) };
+        const result = await db.query(`UPDATE hr_staff_qualification_events
+            SET snapshot=jsonb_set(snapshot,'{verification}',$2::jsonb,true) WHERE id=$1
+            RETURNING *,effective_from::text AS effective_from`, [expectedEventId, JSON.stringify(verification)]);
+        await audit(db, 'staff_qualification_review', staffId, author, { businessContext, eventId: expectedEventId,
+            previous: current.snapshot?.verification || null, verification });
+        return result.rows[0];
+    });
+}
+
 async function loadComponentInputs(input, options = {}) {
     const businessContext = scope(input.businessContext), periodMonth = month(input.month);
     const ids = [...new Set((input.staffIds || [input.staffId]).map(positiveId))];
@@ -225,7 +252,7 @@ async function saveComponentInput(input, actor, options = {}) {
     const businessContext = scope(input.businessContext), periodMonth = month(input.month), staffId = positiveId(input.staffId);
     const basisKey = input.basisKey, base = amount(input.amount), reason = requiredText(input.reason, 'Пояснення бази'), author = actorName(actor);
     const expectedVersion = Number(input.expectedVersion);
-    if (!['own_bookings', 'other_bookings', 'manual'].includes(basisKey) || !Number.isInteger(expectedVersion) || expectedVersion < 0) throw failure('HR_PAY_COMPONENT_INPUT_INVALID', 'Перевірте базу і версію');
+    if (!COMMISSION_BASIS_KEYS.has(basisKey) || !Number.isInteger(expectedVersion) || expectedVersion < 0) throw failure('HR_PAY_COMPONENT_INPUT_INVALID', 'Перевірте базу і версію');
     return transaction(options, async db => {
         await lockPayrollPeriodMutation(periodMonth, db);
         await loadScopedStaff(db, staffId, businessContext);
@@ -262,11 +289,13 @@ async function vacancyTemplate(input, options = {}) {
 }
 async function saveVacancyTemplate(input, actor, options = {}) {
     const businessContext = scope(input.businessContext), vacancyId = positiveId(input.vacancyId);
-    const template = normalizeCompensationTemplate(input.template), author = actorName(actor), reason = requiredText(input.reason, 'Причина');
+    const author = actorName(actor), reason = requiredText(input.reason, 'Причина');
     return transaction(options, async db => {
         const before = await vacancyTemplate({ businessContext, vacancyId, effectiveFrom: day(input.effectiveFrom) }, { db, forUpdate: true });
         if (input.expectedTemplateHash !== before.templateHash) throw failure('HR_PAY_VACANCY_TEMPLATE_STALE', 'Умови вакансії вже змінилися. Оновіть дані.', 409);
+        const template = normalizeCompensationTemplate(input.template, before.template?.payRules);
         if (template?.levelId) await loadLevel(db, template.levelId, businessContext, before.professionKey);
+        if (template) bindConditionReviews(template, before.template?.payRules, author);
         await db.query('UPDATE job_vacancies SET compensation_template=$3::jsonb WHERE id=$1 AND business_context=$2', [vacancyId, businessContext, template ? JSON.stringify(template) : null]);
         await audit(db, 'vacancy_compensation_template', null, author, { businessContext, vacancyId, template, reason, previousSource: before.source });
         return vacancyTemplate({ businessContext, vacancyId, effectiveFrom: input.effectiveFrom }, { db });
@@ -315,6 +344,65 @@ async function applyVacancyTemplate(input, actor, options = {}) {
     });
 }
 
+async function loadMonthlyReviews(periodMonth, staffIds, db) {
+    const result = await db.query(`SELECT staff_id, fingerprint, review, reason, created_by, created_at
+        FROM hr_payroll_monthly_reviews WHERE business_context=$1 AND period_month=$2 AND staff_id=ANY($3::int[])`,
+    [DEFAULT_BUSINESS_CONTEXT, periodMonth, staffIds]);
+    const byStaff = new Map();
+    for (const row of result.rows) {
+        const staffId = Number(row.staff_id);
+        if (!byStaff.has(staffId)) byStaff.set(staffId, new Map());
+        byStaff.get(staffId).set(row.fingerprint, { ...row.review, reason: row.reason, author: row.created_by, decidedAt: row.created_at });
+    }
+    return byStaff;
+}
+
+async function listMonthlyReviewRequests(input, options = {}) {
+    const db = options.db || pool, staffId = positiveId(input.staffId);
+    const businessContext = scope(input.businessContext), periodMonth = month(input.month);
+    if (businessContext !== DEFAULT_BUSINESS_CONTEXT) throw failure('HR_PAY_STAFF_SCOPE_UNAVAILABLE', 'Кадрові дані цієї компанії недоступні', 409);
+    const { getEmployeePayrollPreview, getPayrollRangePreview } = require('./payroll');
+    const monthly = await getEmployeePayrollPreview(staffId, periodMonth, db);
+    if (!monthly) throw failure('HR_PAY_STAFF_UNAVAILABLE', 'Працівника не знайдено в цьому періоді', 404);
+    if (monthly.businessContexts.some(company => company !== businessContext)) {
+        throw failure('HR_PAY_MONTH_REVIEW_SCOPE_CONFLICT', 'Місячний розрахунок містить дані іншої компанії', 409);
+    }
+    const advance = await getPayrollRangePreview({ month: periodMonth, staffId, from: periodMonth + '-01', to: periodMonth + '-15' }, db);
+    const byFingerprint = new Map();
+    for (const issue of [...(monthly.payrollBlockingIssues || []), ...(advance.staff?.[0]?.payrollBlockingIssues || [])]) {
+        const request = issue.monthlyReview;
+        if (request?.businessContext === businessContext && (!input.professionKey || request.professionKey === input.professionKey)) {
+            byFingerprint.set(request.fingerprint, { ...request, message: issue.message });
+        }
+    }
+    return [...byFingerprint.values()];
+}
+
+async function approveMonthlyReview(input, actor, options = {}) {
+    const businessContext = scope(input.businessContext), staffId = positiveId(input.staffId), periodMonth = month(input.month);
+    const reason = requiredText(input.reason, 'Причина'), author = actorName(actor);
+    const fingerprint = String(input.fingerprint || '');
+    if (!/^[0-9a-f]{64}$/.test(fingerprint)) throw failure('HR_PAY_MONTH_REVIEW_INVALID', 'Оберіть розрахунок для погодження');
+    return transaction(options, async db => {
+        await lockPayrollPeriodMutation(periodMonth, db);
+        await assertPayrollPeriodOpen(periodMonth, db);
+        await loadScopedStaff(db, staffId, businessContext, { allowInactive: true });
+        const existing = (await loadMonthlyReviews(periodMonth, [staffId], db)).get(staffId)?.get(fingerprint);
+        if (existing) return existing;
+        const request = (await listMonthlyReviewRequests(input, { db })).find(review => review.fingerprint === fingerprint);
+        if (!request || request.decision !== input.decision) {
+            throw failure('HR_PAY_MONTH_REVIEW_STALE', 'Розрахунок змінився. Відкрийте його повторно.', 409);
+        }
+        const saved = await db.query(`INSERT INTO hr_payroll_monthly_reviews
+            (business_context,staff_id,profession_key,period_month,fingerprint,review,reason,created_by)
+            VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8) RETURNING created_at`,
+        [businessContext, staffId, request.professionKey, periodMonth, fingerprint, JSON.stringify(request), reason, author]);
+        const approval = { ...request, reason, author, decidedAt: saved.rows[0].created_at };
+        await audit(db, 'payroll_monthly_review_approve', staffId, author, approval);
+        return approval;
+    });
+}
+
 async function staffRuleWorkspace(input, options = {}) {
     const db = options.db || pool, businessContext = scope(input.businessContext), staffId = positiveId(input.staffId);
     if (businessContext !== DEFAULT_BUSINESS_CONTEXT) throw failure('HR_PAY_STAFF_SCOPE_UNAVAILABLE', 'Кадрові дані цієї компанії недоступні', 409);
@@ -324,21 +412,35 @@ async function staffRuleWorkspace(input, options = {}) {
     const professionKey = normalizeProfessionKey(input.professionKey || staff.role_type);
     if (!staffProfessionKeys(staff).includes(professionKey)) throw failure('HR_PAY_STAFF_PROFESSION_INVALID', 'Професія не призначена працівнику');
     const asOfDate = day(input.asOfDate);
-    const [defaults, levels, history, inputs, assignments] = await Promise.all([
+    const { loadPayrollConditionContext, resolvePayrollConditions } = require('./hrPayrollConditions');
+    const [defaults, levels, history, inputs, assignments, conditionsContext] = await Promise.all([
         listRuleDefaults({ businessContext, asOfDate }, { db }),
         listQualificationLevels({ businessContext, professionKey }, { db }),
         qualificationHistory({ businessContext, staffId, professionKey }, { db }),
         loadComponentInputs({ businessContext, month: asOfDate.slice(0, 7), staffId }, { db }),
-        require('./hrPayrollProfiles').listStaffPayrollProfileAssignments(staffId, { db, includePast: true })
+        require('./hrPayrollProfiles').listStaffPayrollProfileAssignments(staffId, { db, includePast: true }),
+        loadPayrollConditionContext(db, [staffId], { from: asOfDate, to: asOfDate })
     ]);
+    const primary = normalizeProfessionKey(staff.role_type) === professionKey;
+    const conditions = resolvePayrollConditions(conditionsContext, staffId, professionKey, asOfDate, primary ? 'base_replacement' : 'additional');
+    const role = conditionsContext.assignments.get(`${staffId}:${professionKey}`);
+    const componentInputs = inputs.get(staffId);
+    const missingBases = [...new Set((conditions.payRules?.components || [])
+        .filter(component => component.kind === 'percent' && !componentInputs?.[component.basisKey]?.confirmed)
+        .map(component => component.basisKey))];
     return { businessContext, staffId, professionKey, asOfDate,
         defaultTemplate: defaults.find(entry => entry.profession_key === professionKey) || null,
         levels, history, currentLevel: history.find(entry => entry.effective_from <= asOfDate) || null,
-        componentInputs: inputs.get(staffId), assignments: assignments.assignments };
+        componentInputs, assignments: assignments.assignments,
+        readiness: { rateAvailable: conditions.rate > 0, rateSource: conditions.profileTitle || conditions.rateSource,
+            admission: primary ? 'primary' : !role ? 'unassigned' : role.status !== 'active' ? 'inactive' : role.admission_status,
+            assumptions: conditionAssumptions(conditions.payRules), missingBases } };
 }
 
 module.exports = { normalizeCompensationTemplate, listRuleDefaults, saveRuleDefault, listQualificationLevels,
     createQualificationLevel, qualificationHistory, changeQualificationLevel, loadComponentInputs, saveComponentInput,
+    reviewQualification,
+    loadMonthlyReviews, listMonthlyReviewRequests, approveMonthlyReview,
     vacancyTemplate, saveVacancyTemplate, applyVacancyTemplate,
     staffRuleWorkspace,
     scope, loadScopedStaff, assertMutableFrom, applyProfile, transaction };

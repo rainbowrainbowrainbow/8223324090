@@ -1,6 +1,7 @@
 'use strict';
 
 const { resolvePayrollConditions, exceptionKey } = require('./hrPayrollConditions');
+const { conditionAssumptions } = require('./payrollRules');
 
 function activeOnDate(row, date) {
     const from = row.effectiveFrom ?? row.effective_from;
@@ -21,6 +22,7 @@ function buildProfileContext(profiles, assignments, date) {
             defaultRate: Number(version.defaultRate ?? version.default_rate),
             effectiveFrom: version.effectiveFrom ?? version.effective_from,
             effectiveTo: version.effectiveTo ?? version.effective_to,
+            payRules: version.payRules ?? version.pay_rules ?? null,
             dayRates: new Map((version.dayRates || version.day_rates || []).map(day =>
                 [Number(day.isoWeekday ?? day.iso_weekday), Number(day.rate)]))
         }))
@@ -115,7 +117,14 @@ function buildHrPayReadiness({ staff = [], professions = [], profiles = [], assi
                     else unverified.push('effective_rate_unverified');
                 }
                 if (!resolution.applies && !legacyRatesAvailable) unverified.push('legacy_rate_unverified');
-                if (effectiveUnit === 'month') {
+                for (const assumption of conditionAssumptions(resolution.payRules)) {
+                    findings.push(`condition_${assumption.condition}_${assumption.state}`);
+                }
+                const monthlyPolicy = resolution.payRules?.monthly;
+                if (effectiveUnit === 'month' && monthlyPolicy) {
+                    if (monthlyPolicy.mode !== 'fixed' && (!monthlyPolicy.norm?.confirmed
+                        || monthlyPolicy.norm.month !== date.slice(0, 7))) findings.push('monthly_norm_unconfirmed');
+                } else if (effectiveUnit === 'month') {
                     const norm = resolution.monthlyNorm;
                     if (!schemesAvailable) unverified.push('monthly_norm_unverified');
                     else if (!norm.monthlyNormConfirmed || !norm.monthlyNormSource || !(norm.monthlyNormMinutes > 0)

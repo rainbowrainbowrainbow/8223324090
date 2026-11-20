@@ -410,6 +410,10 @@ async function assertStandardProductionBase(manifest, expectedRemote) {
     fail(live.commitSha === manifest.baseLiveSha && live.sourceBranch === manifest.allowedBranch
         && live.deploymentMetadata?.complete === true,
         'Live production changed after release preparation', 'PRODUCTION_BLOCK_LIVE_BASE_DRIFT');
+    if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.PAYROLL_425_426) {
+        fail(live.version === manifest.preparedRelease.baseVersion,
+            'Live version changed after payroll release preparation', 'PRODUCTION_BLOCK_LIVE_BASE_DRIFT');
+    }
     fail(remoteProductionSha() === expectedRemote,
         'Remote production does not match the expected release stage', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
 }
@@ -550,7 +554,7 @@ function eventGenixRemediationFacts(head, reviewed) {
 
 function usesStandardProtectedReleaseFlow(kind) {
     return [PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE, PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE,
-        PROTECTED_WORKFLOWS.FREELANCE_CANCEL_424].includes(kind)
+        PROTECTED_WORKFLOWS.FREELANCE_CANCEL_424, PROTECTED_WORKFLOWS.PAYROLL_425_426].includes(kind)
         || Boolean(freelanceScheduleReleaseFor(kind) || eventGenixRemediationFor(kind));
 }
 
@@ -654,7 +658,10 @@ function defaultRuntime() {
             };
         },
         async preflightExecution(manifest) {
-            if (isPreparedProtectedRelease(manifest)) {
+            if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.PAYROLL_425_426) {
+                await assertStandardProductionBase(manifest, manifest.baseLiveSha);
+                assertRuntimeArtifactPushPaths(manifest.baseLiveSha, manifest.initialHeadSha);
+            } else if (isPreparedProtectedRelease(manifest)) {
                 assertPreparedProductionBase(manifest, await liveVersion(), remoteProductionSha());
             }
             if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE) {
@@ -741,6 +748,7 @@ function defaultRuntime() {
                 writeBlockFile(blockFile, manifest);
             }
             const { run: exact, evidence: ci } = waitForProductionCi(releaseSha);
+            if (workflow === PROTECTED_WORKFLOWS.PAYROLL_425_426) assertHrPayrollCiResult(ci, releaseSha);
             if (protectedRelease && !standardProtectedRelease) {
                 if (manifest.allowedProtectedWorkflow.kind === PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE) {
                     const { evidence: artifact } = waitForProductionCi(releaseSha, 'runtime-artifact.yml', 'Runtime artifact smoke');
@@ -1286,7 +1294,8 @@ async function assertExecuteDrift(manifest, runtime) {
         fail(drift.workflowHashes?.['.github/workflows/ci.yml'] === STAFF_DELETION_CI_HASH,
             'Staff deletion CI workflow differs from the reviewed content', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
     }
-    if ([PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA, PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS, PROTECTED_WORKFLOWS.FREELANCE_CANCEL_424]
+    if ([PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA, PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS,
+        PROTECTED_WORKFLOWS.FREELANCE_CANCEL_424, PROTECTED_WORKFLOWS.PAYROLL_425_426]
         .includes(manifest.allowedProtectedWorkflow?.kind)) {
         const expectedHashes = Object.fromEntries(manifest.migrationClassifications.map(item => [item.file, item.sqlHash]));
         fail(stableJson(drift.migrationHashes || {}) === stableJson(expectedHashes),

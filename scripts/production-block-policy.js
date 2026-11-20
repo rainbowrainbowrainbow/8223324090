@@ -31,10 +31,25 @@ const PROTECTED_WORKFLOWS = Object.freeze({
     HR_PAYROLL: 'hr-payroll',
     FREELANCE_SHIFT_BLOCKS: 'freelance-shift-blocks',
     FREELANCE_CANCEL_424: 'freelance-cancel-424',
+    PAYROLL_425_426: 'payroll-425-426',
     FREELANCE_SCHEDULE_RELEASE: 'freelance-schedule-release-083117',
     FREELANCE_SCHEDULE_CI_RECOVERY: 'freelance-schedule-ci-recovery-083118',
     FINANCE_MANUAL_QA: 'finance-manual-qa'
 });
+const PAYROLL_425_426_SQL = Object.freeze([
+    {
+        file: 'db/migrations/425_payroll_commission_basis_keys.sql',
+        kind: 'cleanup',
+        red: true,
+        sqlHash: '653dd3645bc642009b5a3bab62cf1b6a1b5929a5ea54834cbfd64a2c636bf4aa'
+    },
+    {
+        file: 'db/migrations/426_payroll_monthly_reviews.sql',
+        kind: 'schema',
+        red: false,
+        sqlHash: '70e9e3e2b2a3578013601a98f15a9fc7e73250214ed07f326544cb8840c529f2'
+    }
+]);
 const FREELANCE_SCHEDULE_RELEASE = Object.freeze({
     baseSha: '566c4efedef069d595fbd43071b6eb3adf68c0bf',
     baseVersion: '0.83.116',
@@ -730,7 +745,8 @@ function isPreparedProtectedWorkflow(kind) {
     return [PROTECTED_WORKFLOWS.HR_PAYROLL, PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA,
         PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE, PROTECTED_WORKFLOWS.STAFF_DELETION_CI,
         PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE, PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE,
-        PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS, PROTECTED_WORKFLOWS.FREELANCE_CANCEL_424]
+        PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS, PROTECTED_WORKFLOWS.FREELANCE_CANCEL_424,
+        PROTECTED_WORKFLOWS.PAYROLL_425_426]
         .includes(kind) || Boolean(freelanceScheduleReleaseFor(kind) || eventGenixRemediationFor(kind));
 }
 
@@ -826,6 +842,14 @@ function validateProtectedWorkflow(workflow, changedPaths = [], redPaths = []) {
         'Unsupported protected production workflow', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_INVALID');
     if (workflow === PROTECTED_WORKFLOWS.FREELANCE_CANCEL_424) {
         fail(redPaths.length === 0, 'Freelance cancellation cannot change protected paths', 'PRODUCTION_BLOCK_RED_PATHS');
+        return { enabled: true, kind: workflow, protectedChangedPaths: [] };
+    }
+    if (workflow === PROTECTED_WORKFLOWS.PAYROLL_425_426) {
+        fail(redPaths.length === 0, 'Payroll schema release cannot change other protected paths', 'PRODUCTION_BLOCK_RED_PATHS');
+        fail(stableJson(normalizePathList(changedPaths).filter(file => file.startsWith('db/migrations/')))
+            === stableJson(PAYROLL_425_426_SQL.map(item => item.file)),
+        'Payroll schema release requires exactly the two reviewed migration files',
+        'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
         return { enabled: true, kind: workflow, protectedChangedPaths: [] };
     }
     if (workflow === PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE) {
@@ -1250,7 +1274,16 @@ function buildManifest(facts, options = {}) {
         fail(isNewerVersion(facts.releaseVersion, facts.live?.version),
             'Finance needs a prepared release commit newer than live', 'PRODUCTION_BLOCK_RELEASE_NOT_PREPARED');
     }
+    if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.PAYROLL_425_426) {
+        migrations.forEach((item, index) => { item.sqlHash = migrationSqlHash(facts.migrations[index].sql); });
+        validatePayroll425426(facts.live?.version, facts.releaseVersion, qaScope, migrations, maxReleaseAttempts);
+        fail(facts.remoteSha === baseLiveSha && facts.live?.sourceBranch === TARGET.branch
+            && facts.live?.deploymentMetadata?.complete === true,
+        'Payroll schema release requires the production ref and live artifact to match',
+        'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
+    }
     const redMigrations = migrations.filter(item => item.red
+        && !(protectedWorkflow.kind === PROTECTED_WORKFLOWS.PAYROLL_425_426 && item.file === PAYROLL_425_426_SQL[0].file)
         && ![PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA, PROTECTED_WORKFLOWS.FREELANCE_CANCEL_424].includes(protectedWorkflow.kind));
     fail(facts.descendsFromLive === true, 'Candidate HEAD is not a descendant of live SHA', 'PRODUCTION_BLOCK_NOT_DESCENDANT');
     fail(redMigrations.length === 0, 'Candidate includes a Red migration', 'PRODUCTION_BLOCK_RED_MIGRATION', {
@@ -1286,6 +1319,8 @@ function buildManifest(facts, options = {}) {
                 ? { compatibleBinaryRequired: true, preserveFreelanceHistory: true } : {}),
             ...(protectedWorkflow.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA
                 ? { compatibleBinaryRequired: true, pre381RollbackProhibited: true, preserveJournalEvidence: true } : {}),
+            ...(protectedWorkflow.kind === PROTECTED_WORKFLOWS.PAYROLL_425_426
+                ? { compatibleBinaryRequired: true, preservePayrollSchema: true } : {}),
             migrations: Object.fromEntries(migrations.map(item => [item.file, item.rollback || 'No automatic rollback documented']))
         },
         changedPaths: changed,
@@ -1465,6 +1500,16 @@ function validateManifest(manifest, options = {}) {
             && stableJson(manifest.allowedMigrationFiles) === stableJson(['db/migrations/424_freelance_segment_cancellation.sql']),
             'Freelance cancellation requires the exact prepared SHA and migration', 'PRODUCTION_BLOCK_RELEASE_NOT_PREPARED');
     }
+    if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.PAYROLL_425_426) {
+        validatePayroll425426(manifest.preparedRelease?.baseVersion, manifest.preparedRelease?.version,
+            qaScope, manifest.migrationClassifications, manifest.maxReleaseAttempts);
+        fail(SHA_PATTERN.test(manifest.baseLiveSha) && SHA_PATTERN.test(manifest.initialHeadSha)
+            && manifest.baseLiveSha !== manifest.initialHeadSha && manifest.preparedRelease?.sha === manifest.initialHeadSha
+            && stableJson(manifest.allowedMigrationFiles) === stableJson(PAYROLL_425_426_SQL.map(item => item.file))
+            && !manifest.retryFrom && !manifest.renewalFrom,
+        'Payroll schema release requires its exact prepared candidate and migration inventory',
+        'PRODUCTION_BLOCK_RELEASE_NOT_PREPARED');
+    }
     if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA) {
         validateFinanceScope(qaScope, manifest.migrationClassifications);
         fail(JSON.stringify(manifest.allowedMigrationFiles) === JSON.stringify(Object.keys(FINANCE_MANUAL_SQL_HASHES).sort()),
@@ -1476,6 +1521,20 @@ function validateManifest(manifest, options = {}) {
             'Finance release attempt budget must be 1-3', 'PRODUCTION_BLOCK_ATTEMPTS_INVALID');
     }
     return manifest;
+}
+
+function validatePayroll425426(baseVersion, version, qa, migrations, attempts) {
+    const base = /^(\d+\.\d+\.)(\d+)$/.exec(baseVersion);
+    fail(base && Number.isSafeInteger(Number(base[2]) + 1)
+        && version === base[1] + (Number(base[2]) + 1),
+    'Payroll schema release requires the next prepared patch after live', 'PRODUCTION_BLOCK_RELEASE_NOT_PREPARED');
+    fail(qa.enabled === false && attempts === 1 && Array.isArray(migrations)
+        && migrations.length === PAYROLL_425_426_SQL.length && PAYROLL_425_426_SQL.every(expected => {
+            const item = migrations.find(migration => migration.file === expected.file);
+            return item?.sqlHash === expected.sqlHash && item.kind === expected.kind
+                && item.red === expected.red && item.destructive === expected.red;
+        }), 'Payroll schema release permits one attempt with only the reviewed SQL and read-only QA',
+    'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
 }
 
 function isNewerVersion(candidate, base) {

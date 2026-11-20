@@ -10,6 +10,8 @@ const profiles = require('../../services/hrPayrollProfiles');
 const rules = require('../../services/hrCompensationRules');
 const { loadPayrollProfileContext, calculateProfessionPay, buildCanonicalPayrollInstallmentPreview } = require('../../services/payroll');
 const { resolvePayrollConditions, loadPayrollConditionContext } = require('../../services/hrPayrollConditions');
+const { buildAttendanceCompensationPlanSnapshot, allocateAttendanceToSegments, finalizeAttendanceCompensationSnapshot } = require('../../services/hrAttendance');
+const { calculateConditionSnapshots } = require('../../services/payrollConditionCalculation');
 const { authRequest, request } = require('../helpers');
 
 const enabled = process.env.RUN_PAYROLL_PROFILES_INTEGRATION === 'true';
@@ -55,6 +57,98 @@ describe('configurable compensation on disposable PostgreSQL', { skip: !enabled,
         assert.deepEqual(settlement.blockers, []);
     });
 
+    test('draft conditions survive reload and edit without assignment until the exact revision is activated', async () => {
+        const key = 'draft_' + process.pid;
+        await db.query('INSERT INTO hr_professions(key,title,department) VALUES ($1,$2,$3)', [key, 'Synthetic draft', 'qa']);
+        const id = Number((await db.query(`INSERT INTO staff(name,department,position,role_type,hourly_rate,rate_unit,is_active,hire_date)
+            VALUES('Synthetic draft worker','qa','Synthetic',$1,75,'hour',true,'2198-01-01') RETURNING id`, [key])).rows[0].id);
+        const payRules = { ...daily, daily: { ...daily.daily, fullDayMinutes: 480,
+            fullDayMinutesByWeekday: [{ isoWeekday: 7, minutes: 600 }] },
+            conditionReviews: { commission: { state: 'unknown', source: 'Synthetic interview', reason: 'Percent is awaiting confirmation' } } };
+        const initial = await profiles.createPayrollProfile({ title: 'Saved draft', professionKey: key, ownerStaffId: id,
+            profileKind: 'personal', status: 'draft', effectiveFrom: '2198-11-01', rateUnit: 'day',
+            defaultRate: 500, dayRates: [{ isoWeekday: 7, rate: 600 }], payRules }, actor, { db });
+        const loaded = await profiles.getPayrollProfile(initial.id, { db, asOfDate: '2198-11-22' });
+        assert.equal(loaded.status, 'draft');
+        assert.equal(loaded.currentVersion, null);
+        assert.equal(loaded.latestVersion.defaultRate, 500);
+        assert.equal(loaded.latestVersion.activatedAt, null);
+        assert.equal(loaded.latestVersion.payRules.conditionReviews.commission.author, actor.username);
+        assert.equal(loaded.latestVersion.payRules.daily.fullDayMinutesByWeekday[0].minutes, 600);
+        const assignment = { professionKey: key, profileId: initial.id, effectiveFrom: '2198-11-01', assignmentKind: 'explicit' };
+        await assert.rejects(profiles.saveStaffPayrollProfileAssignments(id, { assignments: [assignment], reason: 'Synthetic assignment' }, actor, { db }));
+        const oldRevision = { expectedVersionId: loaded.latestVersion.id, expectedDraftUpdatedAt: loaded.latestVersion.updatedAt.toISOString(),
+            effectiveFrom: '2198-11-01', reason: 'Synthetic approval' };
+        const edited = await profiles.createPayrollProfileVersion(initial.id, { ...oldRevision, defaultRate: 504,
+            changeReason: 'Synthetic correction', payRules: { ...daily, daily: { ...daily.daily, fullDayMinutes: 540 } } }, actor, { db });
+        assert.equal(edited.profile.status, 'draft');
+        assert.equal(edited.version.payRules.daily.fullDayMinutesByWeekday[0].minutes, 600);
+        assert.equal(edited.version.payRules.conditionReviews.commission.state, 'unknown');
+        await assert.rejects(profiles.activatePayrollProfile(initial.id, oldRevision, actor, { db }), { code: 'PAYROLL_PROFILE_DRAFT_STALE' });
+        const activation = { ...oldRevision, expectedDraftUpdatedAt: edited.version.updatedAt.toISOString() };
+        const active = await profiles.activatePayrollProfile(initial.id, activation, actor, { db });
+        assert.equal(active.status, 'active');
+        assert.equal(active.latestVersion.defaultRate, 504);
+        assert.equal(active.latestVersion.id, loaded.latestVersion.id);
+        await profiles.activatePayrollProfile(initial.id, activation, actor, { db });
+        assert.equal((await db.query("SELECT count(*)::int AS n FROM hr_audit_log WHERE staff_id=$1 AND action='payroll_profile_activate'", [id])).rows[0].n, 1);
+        const cleared = await profiles.createPayrollProfileVersion(initial.id, { rateUnit: 'day', defaultRate: 504,
+            effectiveFrom: '2198-12-01', changeReason: 'Synthetic explicit reset', payRules: { ...daily, daily: { ...daily.daily, fullDayMinutesByWeekday: [] } } }, actor, { db });
+        assert.deepEqual(cleared.version.payRules.daily.fullDayMinutesByWeekday, []);
+    });
+
+    test('approval applies a single calendar fraction to salary, supplement and three distinct commission bases', async () => {
+        const key = 'review_' + process.pid, month = '2198-11';
+        await db.query('INSERT INTO hr_professions(key,title,department) VALUES($1,$2,$3)', [key, 'Synthetic monthly review', 'qa']);
+        const staff = await db.query(`INSERT INTO staff(name,department,position,role_type,hourly_rate,rate_unit,is_active,hire_date)
+            VALUES('Synthetic reviewed month','qa','Synthetic',$1,30000,'month',true,'2198-11-10') RETURNING id`, [key]);
+        const id = Number(staff.rows[0].id);
+        const payRules = { schemaVersion: 1, monthly: { mode: 'fixed' }, components: [
+            { id: 'ads', title: 'Synthetic advertising', kind: 'monthly', amount: 3000, monthly: { mode: 'fixed' } },
+            { id: 'orders', title: 'Synthetic own orders', kind: 'percent', percent: 3, basisKey: 'own_orders' },
+            { id: 'banquets', title: 'Synthetic own banquets', kind: 'percent', percent: 3, basisKey: 'own_banquets' },
+            { id: 'other', title: 'Synthetic other manager banquets', kind: 'percent', percent: 1, basisKey: 'other_manager_banquets' }
+        ] };
+        const profile = await profiles.createPayrollProfile({ title: 'Synthetic monthly review', professionKey: key, profileKind: 'shared',
+            isDefaultForProfession: true, rateUnit: 'month', defaultRate: 30000, effectiveFrom: month + '-01', payRules }, actor, { db });
+        const sales = [['own_orders', 10000], ['own_banquets', 20000], ['other_manager_banquets', 30000]];
+        for (const [basisKey] of sales) {
+            await rules.saveComponentInput({ businessContext: context, staffId: id, month, basisKey, amount: 0,
+                expectedVersion: 0, confirmed: false, reason: 'Synthetic unconfirmed zero' }, actor, { db });
+        }
+        const withUnconfirmedBases = await buildCanonicalPayrollInstallmentPreview({ month, staffId: id }, db);
+        assert.deepEqual([...new Set(withUnconfirmedBases.blockers.filter(issue => issue.code === 'PAYROLL_COMMISSION_BASE_REQUIRED')
+            .map(issue => issue.basisKey))].sort(), sales.map(([key]) => key).sort());
+        for (const [basisKey, amount] of sales) {
+            await rules.saveComponentInput({ businessContext: context, staffId: id, month, basisKey, amount,
+                expectedVersion: 1, confirmed: true, reason: 'Confirmed synthetic sales' }, actor, { db });
+        }
+        const url = `/api/hr/staff/${id}/payroll-rules`;
+        const awaiting = await authRequest('GET', url + `?businessContext=park&view=monthly_reviews&month=${month}&professionKey=${key}`);
+        assert.equal(awaiting.status, 200, JSON.stringify(awaiting.data));
+        const reviews = awaiting.data.data;
+        assert.equal(reviews.length, 5);
+        assert.ok(reviews.every(review => review.from === month + '-10' && review.to === month + '-30'));
+        const before = await buildCanonicalPayrollInstallmentPreview({ month, staffId: id }, db);
+        assert.ok(before.blockers.some(issue => issue.code === 'PAYROLL_FIXED_PARTIAL_MONTH_REVIEW_REQUIRED'));
+        for (const review of reviews) {
+            const response = await authRequest('PUT', url + '/component-input', { businessContext: 'park',
+                action: 'approve_monthly_review', month, professionKey: key, fingerprint: review.fingerprint,
+                decision: review.decision, reason: 'Approved synthetic calendar allocation' });
+            assert.equal(response.status, 200, JSON.stringify(response.data));
+        }
+        const done = await buildCanonicalPayrollInstallmentPreview({ month, staffId: id }, db);
+        assert.deepEqual(done.blockers, []);
+        assert.equal(done.monthlyNetAmount, 23940);
+        assert.equal(done.advanceAmount, 6840);
+        assert.equal(done.finalAmount, 17100);
+        await profiles.createPayrollProfileVersion(profile.id, { rateUnit: 'month', defaultRate: 33000,
+            effectiveFrom: month + '-16', changeReason: 'Synthetic change invalidates earlier decisions', payRules }, actor, { db });
+        const changed = await rules.listMonthlyReviewRequests({ staffId: id, month, businessContext: context }, { db });
+        assert.ok(changed.length > 0);
+        assert.ok(changed.every(review => !reviews.some(old => old.fingerprint === review.fingerprint)));
+    });
+
     test('database-loaded installment ranges preserve base continuity across independent component versions', async () => {
         const key = 'continuity_' + process.pid;
         await db.query('INSERT INTO hr_professions(key,title,department) VALUES($1,$2,$3)', [key, 'Synthetic continuity', 'qa']);
@@ -90,6 +184,32 @@ describe('configurable compensation on disposable PostgreSQL', { skip: !enabled,
         assert.deepEqual(settlement.blockers, []);
     });
 
+    test('recorded absence needs a separate fixed-pay decision and the approved amount reaches both installments', async () => {
+        const key = 'leave_review_' + process.pid, month = '2198-11', leaveDate = month + '-12';
+        await db.query('INSERT INTO hr_professions(key,title,department) VALUES($1,$2,$3)', [key, 'Synthetic leave review', 'qa']);
+        const id = Number((await db.query(`INSERT INTO staff(name,department,position,role_type,hourly_rate,rate_unit,is_active,hire_date)
+            VALUES('Synthetic leave review worker','qa','Synthetic',$1,30000,'month',true,'2198-01-01') RETURNING id`, [key])).rows[0].id);
+        await profiles.createPayrollProfile({ title: 'Synthetic leave review', professionKey: key, profileKind: 'shared',
+            isDefaultForProfession: true, rateUnit: 'month', defaultRate: 30000, effectiveFrom: '2198-01-01', payRules: fixed }, actor, { db });
+        const plan = await buildAttendanceCompensationPlanSnapshot(db, { staffId: id, recordDate: leaveDate, plan: { primaryProfessionKey: key } });
+        const snapshot = finalizeAttendanceCompensationSnapshot(plan, { actualMinutes: 0 });
+        await db.query(`INSERT INTO hr_time_records(staff_id,record_date,status,business_context,compensation_snapshot)
+            VALUES($1,$2::date,'unpaid',$3,$4::jsonb)`,
+        [id, leaveDate, context, JSON.stringify({ ...snapshot, leavePolicy: 'unpaid_v1' })]);
+        const input = { staffId: id, professionKey: key, businessContext: context, month };
+        const awaiting = await rules.listMonthlyReviewRequests(input, { db });
+        assert.equal(awaiting.length, 1);
+        assert.equal(awaiting[0].kind, 'leave');
+        assert.deepEqual(awaiting[0].leaveDates, [leaveDate]);
+        const pending = await buildCanonicalPayrollInstallmentPreview({ staffId: id, month }, db);
+        assert.ok(pending.blockers.some(issue => issue.code === 'PAYROLL_FIXED_LEAVE_REVIEW_REQUIRED'));
+        await rules.approveMonthlyReview({ ...input, fingerprint: awaiting[0].fingerprint,
+            decision: 'retain_calendar_amount', reason: 'Synthetic decision to retain the fixed calendar amount' }, actor, { db });
+        const result = await buildCanonicalPayrollInstallmentPreview({ staffId: id, month }, db);
+        assert.deepEqual(result.blockers, []);
+        assert.deepEqual([result.monthlyNetAmount, result.advanceAmount, result.finalAmount], [30000, 15000, 15000]);
+    });
+
     test('forecast uses planned net minutes, merges same-date blocks and loads separate manual commission bases', async () => {
         const key = 'plan_' + process.pid;
         await db.query('INSERT INTO hr_professions(key,title,department) VALUES($1,$2,$3)', [key, 'Synthetic daily forecast', 'qa']);
@@ -97,7 +217,9 @@ describe('configurable compensation on disposable PostgreSQL', { skip: !enabled,
             VALUES('Synthetic daily forecast','qa','Synthetic',$1,600,'day',true,'2198-01-01') RETURNING id`, [key])).rows[0].id);
         const planProfile = await profiles.createPayrollProfile({ title: 'Synthetic daily forecast', professionKey: key, profileKind: 'shared',
             isDefaultForProfession: true, status: 'active', rateUnit: 'day', defaultRate: 600, effectiveFrom: '2198-01-01', payRules: {
-                ...daily, components: [{ id: 'ads', title: 'Synthetic advertising', kind: 'monthly', amount: 3500,
+                ...daily, daily: { ...daily.daily, fullDayMinutes: 480,
+                    fullDayMinutesByWeekday: [1, 2, 3, 4, 5, 6, 7].map(isoWeekday => ({ isoWeekday, minutes: 600 })) },
+                components: [{ id: 'ads', title: 'Synthetic advertising', kind: 'monthly', amount: 3500,
                     monthly: { mode: 'fixed', partialMonth: 'calendar_days' } },
                 { id: 'own', title: 'Synthetic own', kind: 'percent', percent: 4, basisKey: 'own_bookings' },
                 { id: 'other', title: 'Synthetic other', kind: 'percent', percent: 1, basisKey: 'other_bookings' }]
@@ -129,6 +251,38 @@ describe('configurable compensation on disposable PostgreSQL', { skip: !enabled,
         assert.ok(missing.rows[0].blocking_issues.some(issue => issue.code === 'PAYROLL_COMMISSION_BASE_REQUIRED'));
     });
 
+    test('night shift captures the working-day override and excludes the break after midnight', async () => {
+        const key = 'night_' + process.pid, workDate = '2198-11-04';
+        const weekday = new Date(workDate + 'T00:00:00Z').getUTCDay() || 7;
+        await db.query('INSERT INTO hr_professions(key,title,department) VALUES($1,$2,$3)', [key, 'Synthetic night shift', 'qa']);
+        const id = Number((await db.query(`INSERT INTO staff(name,department,position,role_type,hourly_rate,rate_unit,is_active,hire_date)
+            VALUES('Synthetic night worker','qa','Synthetic',$1,500,'day',true,'2198-01-01') RETURNING id`, [key])).rows[0].id);
+        const profile = await profiles.createPayrollProfile({ title: 'Synthetic overnight', professionKey: key, profileKind: 'shared',
+            isDefaultForProfession: true, rateUnit: 'day', defaultRate: 500, effectiveFrom: '2198-01-01',
+            dayRates: [{ isoWeekday: weekday, rate: 600 }], payRules: { ...daily, daily: { ...daily.daily,
+                fullDayMinutes: 480, fullDayMinutesByWeekday: [{ isoWeekday: weekday, minutes: 600 }] } } }, actor, { db });
+        const plan = { primaryProfessionKey: key, segments: [
+            { id: 1, professionKey: key, shiftStart: '22:00', shiftEnd: '00:00', startDayOffset: 0, endDayOffset: 1 },
+            { id: 2, professionKey: key, shiftStart: '00:00', shiftEnd: '04:00', startDayOffset: 1, endDayOffset: 1, breakMinutes: 60 }
+        ] };
+        const planned = await buildAttendanceCompensationPlanSnapshot(db, { staffId: id, recordDate: workDate, plan });
+        assert.equal(planned.state, 'planned');
+        assert.deepEqual(planned.compensationAllocations.map(item => item.conditions.dailyNorm),
+            Array(2).fill({ minutes: 600, source: 'weekday', isoWeekday: weekday }));
+        const physical = allocateAttendanceToSegments({ recordDate: workDate, clockIn: workDate + 'T22:00:00+02:00',
+            clockOut: '2198-11-05T04:00:00+02:00', actualMinutes: 300, ...plan });
+        const snapshot = finalizeAttendanceCompensationSnapshot(planned, physical);
+        assert.equal(snapshot.state, 'final');
+        assert.equal(snapshot.totals.physicalMinutes, 300);
+        await profiles.createPayrollProfileVersion(profile.id, { rateUnit: 'day', defaultRate: 700, effectiveFrom: '2198-11-05',
+            changeReason: 'Synthetic later version' }, actor, { db });
+        const pay = calculateConditionSnapshots({ periodFrom: workDate, periodTo: workDate,
+            conditionDays: [{ date: workDate, worked: true, snapshot }] }, 1.5);
+        assert.deepEqual(pay.blockingIssues, []);
+        assert.equal(pay.baseAmount, 300);
+        assert.equal(pay.baseLines[0].meta.dailyNorm.minutes, 600);
+    });
+
     test('profile rules round trip through create, clone, append and frozen condition resolution', async () => {
         firstProfile = await profiles.createPayrollProfile({ title: 'Synthetic fixed month', professionKey: profession,
             profileKind: 'shared', isDefaultForProfession: true, status: 'active', rateUnit: 'month', defaultRate: 19000,
@@ -146,6 +300,22 @@ describe('configurable compensation on disposable PostgreSQL', { skip: !enabled,
         assert.deepEqual(pay.blockingIssues, []);
         const conditions = resolvePayrollConditions(await loadPayrollConditionContext(db, [otherStaffId], { from: '2198-02-03', to: '2198-02-03' }), otherStaffId, profession, '2198-02-03');
         assert.deepEqual(conditions.payRules.monthly, fixed.monthly);
+    });
+
+    test('sync explicitly replaces personal weekday norms with the source profile rules', async () => {
+        const source = await profiles.createPayrollProfile({ title: 'Synthetic source without weekday overrides', professionKey: profession,
+            profileKind: 'shared', rateUnit: 'day', defaultRate: 500, effectiveFrom: '2198-01-01', payRules: daily }, actor, { db });
+        const { profile: personal } = await profiles.createPayrollProfileClone(source.id, { ownerStaffId: otherStaffId,
+            profileKind: 'personal', effectiveFrom: '2198-01-01', sourceDate: '2198-01-01', reason: 'Synthetic clone' }, actor, { db });
+        await profiles.createPayrollProfileVersion(personal.id, { rateUnit: 'day', defaultRate: 500,
+            effectiveFrom: '2198-02-01', changeReason: 'Synthetic personal override',
+            payRules: { ...daily, daily: { ...daily.daily, fullDayMinutesByWeekday: [{ isoWeekday: 7, minutes: 660 }] } } }, actor, { db });
+        const synced = await profiles.syncPayrollProfileFromBase(personal.id, {
+            sourceDate: '2198-02-01', personalDate: '2198-02-01', effectiveFrom: '2198-03-01',
+            selectedChanges: ['pay_rules'], apply: true, reason: 'Use source rules exactly'
+        }, actor, { db });
+        assert.equal(synced.profile.latestVersion.payRules.daily.fullDayMinutesByWeekday, undefined);
+        assert.equal(synced.profile.latestVersion.payRules.daily.fullDayMinutes, 600);
     });
 
     test('company/profession defaults are scoped, dated and never open a foreign legacy staff namespace', async () => {
@@ -191,17 +361,25 @@ describe('configurable compensation on disposable PostgreSQL', { skip: !enabled,
         const input = { businessContext: context, vacancyId: vacancy.id, effectiveFrom: '2199-01-01' };
         const inherited = await rules.vacancyTemplate(input, { db });
         assert.equal(inherited.source.type, 'company_profession_default');
+        const vacancyRules = { ...daily, daily: { ...daily.daily, fullDayMinutes: 480,
+            fullDayMinutesByWeekday: [{ isoWeekday: 7, minutes: 600 }] } };
         const saved = await rules.saveVacancyTemplate({ ...input, expectedTemplateHash: inherited.templateHash, reason: 'Synthetic vacancy range',
-            template: { schemaVersion: 1, rateUnit: 'month', salaryFrom: 10000, salaryTo: 20000, payRules: fixed } }, actor, { db });
+            template: { schemaVersion: 1, rateUnit: 'day', salaryFrom: 500, salaryTo: 700, payRules: vacancyRules } }, actor, { db });
         await assert.rejects(rules.applyVacancyTemplate({ ...input, staffId: otherStaffId, reason: 'Synthetic apply', expectedTemplateHash: saved.templateHash }, actor, { db }), error => error.code === 'HR_PAY_VACANCY_RATE_SELECTION_REQUIRED');
-        const applied = await rules.applyVacancyTemplate({ ...input, staffId: otherStaffId, selectedRate: 15000,
+        const applied = await rules.applyVacancyTemplate({ ...input, staffId: otherStaffId, selectedRate: 600,
             reason: 'Synthetic selected amount', expectedTemplateHash: saved.templateHash, payDecision: 'replace' }, actor, { db });
-        assert.equal(applied.profile.latestVersion.defaultRate, 15000);
+        assert.equal(applied.profile.latestVersion.defaultRate, 600);
         assert.equal(applied.profile.templateOrigin.type, 'vacancy');
-        await rules.saveVacancyTemplate({ ...input, expectedTemplateHash: saved.templateHash, reason: 'Synthetic later vacancy edit',
-            template: { schemaVersion: 1, rateUnit: 'month', defaultRate: 17000, payRules: fixed } }, actor, { db });
+        const edited = await rules.saveVacancyTemplate({ ...input, expectedTemplateHash: saved.templateHash, reason: 'Synthetic later vacancy edit',
+            template: { schemaVersion: 1, rateUnit: 'day', defaultRate: 650, payRules: daily } }, actor, { db });
+        assert.equal(edited.template.payRules.daily.fullDayMinutesByWeekday[0].minutes, 600);
+        const replaced = await rules.saveVacancyTemplate({ ...input, expectedTemplateHash: edited.templateHash, reason: 'Synthetic Sunday norm change',
+            template: { ...edited.template, payRules: { ...vacancyRules, daily: { ...vacancyRules.daily,
+                fullDayMinutesByWeekday: [{ isoWeekday: 7, minutes: 660 }] } } } }, actor, { db });
+        assert.notEqual(replaced.templateHash, edited.templateHash);
         const unchanged = await profiles.getPayrollProfile(applied.profile.id, { db, asOfDate: '2199-01-01' });
-        assert.equal(unchanged.currentVersion.defaultRate, 15000);
+        assert.equal(unchanged.currentVersion.defaultRate, 600);
+        assert.equal(unchanged.currentVersion.payRules.daily.fullDayMinutesByWeekday[0].minutes, 600);
         await assert.rejects(rules.vacancyTemplate({ ...input, businessContext: 'dar' }, { db }), error => error.code === 'HR_PAY_VACANCY_UNAVAILABLE');
     });
 

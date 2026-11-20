@@ -1,5 +1,7 @@
 'use strict';
 
+const { resolveDailyNorm } = require('./payrollRules');
+
 const { createHash } = require('node:crypto');
 const { normalizeAttendanceWriteDate, lockAttendanceWriteTarget } = require('./attendanceWriteLock');
 const { lockPayrollPeriodMutation, assertPayrollPeriodOpen } = require('./hrPayrollPeriod');
@@ -93,6 +95,7 @@ function resolvePayrollConditions(context, staffId, professionKey, date, purpose
     return { ...result, effectiveFrom: result.exception ? date : starts.at(-1) || null,
         effectiveTo: result.exception ? date : ends[0] || null,
         ruleVersion: CONDITION_RULE_VERSION, purpose, workDate: date, professionKey,
+        dailyNorm: resolveDailyNorm(result.payRules, result.rateUnit, date),
         schemeType: scheme?.schemeType || null };
 }
 function payrollRateBlocker(conditions) {

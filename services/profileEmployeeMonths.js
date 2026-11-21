@@ -5,6 +5,7 @@ const { loadPayrollPeriodLock } = require('./hrPayrollPeriod');
 const { getEmployeePayrollPreview } = require('./payroll');
 const { loadPayrollSettlementReadModels } = require('./payrollSettlement');
 const { taskWorkloadDateSql } = require('./taskCabinetProjection');
+const { TASK_ACTION_TYPES } = require('./taskActionConstants');
 const { taskKpiCompletionJoinSql, taskKpiPrimaryOwnerSql, taskKpiEligibleSql, taskKpiCompletedSql } = require('./taskPerformancePolicy');
 
 const kyivDate = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
@@ -244,11 +245,15 @@ async function loadDailyTaskResults(db, userId, scope, today) {
                  OR COALESCE(t.visibility, 'team') = 'me_only'
                  OR COALESCE(t.category, '') = 'personal'
              ) AS personal) classified
-             ${taskKpiCompletionJoinSql()}
-             WHERE COALESCE(t.business_context, 'event_genix') = $2
-               AND ${taskKpiCompletedSql()}
+             LEFT JOIN LATERAL (
+                 SELECT h.actor_user_id FROM task_action_history h
+                 WHERE h.task_id = t.id AND h.action_type = $5
+                 ORDER BY h.created_at DESC, h.id DESC LIMIT 1
+             ) completion ON true
+             WHERE t.owner_user_id = $1 AND t.business_context = $2
+               AND t.status = 'done'
                AND ${completedAt} >= ${from} AND ${completedAt} < ${through}
-               AND completion.actor_user_id = $1
+               AND COALESCE(completion.actor_user_id, t.owner_user_id) = $1
              GROUP BY 1
          ), overdue AS (
              SELECT COUNT(*)::int AS count
@@ -262,7 +267,7 @@ async function loadDailyTaskResults(db, userId, scope, today) {
                 COALESCE(completed.personal, 0)::int AS personal, overdue.count AS overdue
          FROM days CROSS JOIN overdue LEFT JOIN completed ON completed.date = days.date
          ORDER BY days.date`,
-        [userId, scope.activeContext, start, today]
+        [userId, scope.activeContext, start, today, TASK_ACTION_TYPES.COMPLETED]
     );
     return {
         days: rows.map(({ date, work, personal }) => ({ date, work, personal })),

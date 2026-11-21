@@ -101,7 +101,9 @@ test('results compare Kyiv calendar months using linked staff and typed task own
     const results = await loadEmployeeResults({ async query(sql, params) {
         const current = params[1] === '2024-01-01';
         if (sql.includes('WITH days AS')) {
-            assert.deepEqual(params, [7, 'event_genix', '2024-01-26', '2024-02-01']);
+            assert.deepEqual(params, [7, 'event_genix', '2024-01-26', '2024-02-01', 'task_completed']);
+            assert.match(sql, /t\.owner_user_id = \$1 AND t\.business_context = \$2/);
+            assert.match(sql, /COALESCE\(completion\.actor_user_id, t\.owner_user_id\) = \$1/);
             return { rows: [
                 { date: '2024-01-31', work: 0, personal: 1, overdue: 3 },
                 { date: '2024-02-01', work: 2, personal: 0, overdue: 3 }

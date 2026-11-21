@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.84.19",
+  "version": "0.84.20",
   "eventGenix": {
-    "releaseLabel": "Кілька виконавців задач"
+    "releaseLabel": "Завершення задач і Telegram-сповіщення"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

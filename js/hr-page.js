@@ -13727,7 +13727,7 @@ function resetStaffProfileLazyState(staffId) {
     }
     resetStaffAccountAccess();
     const conditionsDate = document.getElementById('editPayrollConditionsDate');
-    if (conditionsDate) conditionsDate.value = todayStr();
+    if (conditionsDate) conditionsDate.value = hrTodayKyivDate();
     staffProfileLoadedTabs = new Set();
     staffProfileTabLoadPromises = new Map();
     staffProfileTabLoadSeq = new Map();
@@ -17017,7 +17017,7 @@ function payrollProfileCurrentVersion(profile = {}, date = todayStr()) {
 }
 
 function staffPayrollConditionsDate() {
-    return document.getElementById('editPayrollConditionsDate')?.value || todayStr();
+    return document.getElementById('editPayrollConditionsDate')?.value || hrTodayKyivDate();
 }
 
 function payrollProfilePaymentHint(unit) {
@@ -17780,7 +17780,7 @@ async function createPayrollProfileFromCatalog() {
         { key: 'weekdayRate', label: 'Пн–Пт override', type: 'number', placeholder: 'порожньо = default' },
         { key: 'weekendRate', label: 'Сб–Нд override', type: 'number', placeholder: 'порожньо = default' },
         ...(window.HrPayRules?.fields({ rateUnit: 'hour' }) || []),
-        { key: 'effectiveFrom', label: 'Дата початку', type: 'date', required: true, defaultValue: todayStr() },
+        { key: 'effectiveFrom', label: 'Дата початку', type: 'date', required: true, defaultValue: hrTodayKyivDate() },
         { key: 'status', label: 'Як зберегти профіль', type: 'select', options: [
             { value: 'active', label: 'Активувати з обраної дати' },
             { value: 'draft', label: 'Зберегти чернетку' }

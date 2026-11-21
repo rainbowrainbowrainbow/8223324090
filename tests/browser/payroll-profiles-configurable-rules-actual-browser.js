@@ -71,7 +71,7 @@ async function run() {
         assert.equal(workspaceAccess.status, accessPending ? 403 : 200, 'Exact rule operation mapping controls access');
         const launch = fs.existsSync(chromium.executablePath()) ? {} : { channel: 'msedge' };
         browser = await chromium.launch({ headless: true, ...launch });
-        const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: 'uk-UA' });
+        const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: 'uk-UA', timezoneId: 'UTC' });
         // Match the existing onboarding fixture: payroll checks never exercise
         // third-party telemetry, but still fail on every application page error.
         await context.route('https://www.clarity.ms/**', route => route.fulfill({ status: 200, contentType: 'application/javascript', body: '' }));
@@ -84,6 +84,8 @@ async function run() {
             if (auth.refreshToken) localStorage.setItem('pzp_refresh_token', auth.refreshToken);
         }, auth);
         const page = await context.newPage();
+        // Model the previous evening in UTC while the business is already on `date` in Kyiv.
+        await page.clock.setFixedTime(new Date(Date.parse(`${date}T00:00:00Z`) - 60 * 60 * 1000));
         const errors = [];
         page.on('pageerror', error => { errors.push(error.message); console.error('[pay-rules-browser] ' + error.stack); });
         const activeModal = () => page.locator('.confirm-overlay:not(.confirm-exit)').last();
@@ -116,6 +118,8 @@ async function run() {
         await card.locator('.hr-team-name-action').click();
         await page.locator('#staffProfileTabPayroll').click();
         await page.locator('[data-staff-payroll-profile-action="rules-workspace"]').waitFor();
+        assert.equal(await page.locator('#editPayrollConditionsDate').inputValue(), date,
+            'Payroll opens on the Kyiv date even when the browser is still on the previous UTC day');
         const workspace = async action => {
             await page.locator('[data-staff-payroll-profile-action="rules-workspace"]').click();
             await select('action', action);
@@ -189,6 +193,8 @@ async function run() {
         await page.setViewportSize({ width: 1440, height: 1000 });
         await page.locator('#btnRefreshPayrollProfiles').click();
         await page.locator('#btnNewPayrollProfile').click();
+        assert.equal(await activeModal().locator('#fm_effectiveFrom').inputValue(), date,
+            'A new payroll profile defaults to the current Kyiv date');
         await fill('title', 'Synthetic weekday draft');
         await select('professionKey', profession); await select('rateUnit', 'day'); await fill('defaultRate', 500);
         await fill('weekendRate', 600); await select('payRuleSelection', 'configured');
@@ -217,7 +223,9 @@ async function run() {
         await fill('reason', 'Synthetic draft activation approved');
         const activated = page.waitForResponse(response => response.url().includes(`/payroll-profiles/${draft.id}/versions`)
             && response.request().method() === 'POST');
-        await submit(); assert.equal((await activated).status(), 201);
+        await submit();
+        const activation = await activated;
+        assert.equal(activation.status(), 201, activation.ok() ? undefined : (await activation.json()).code);
         const liveDraft = (await db.query(`SELECT p.status,v.activated_at,v.pay_rules FROM payroll_profiles p
             JOIN payroll_profile_versions v ON v.profile_id=p.id WHERE p.id=$1`, [draft.id])).rows[0];
         assert.equal(liveDraft.status, 'active');

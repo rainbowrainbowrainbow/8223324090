@@ -412,9 +412,10 @@ async function assertStandardProductionBase(manifest, expectedRemote) {
     fail(live.commitSha === manifest.baseLiveSha && live.sourceBranch === manifest.allowedBranch
         && live.deploymentMetadata?.complete === true,
         'Live production changed after release preparation', 'PRODUCTION_BLOCK_LIVE_BASE_DRIFT');
-    if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.PAYROLL_425_426) {
+    const workflow = manifest.allowedProtectedWorkflow?.kind;
+    if (workflow === PROTECTED_WORKFLOWS.PAYROLL_425_426 || taskKpi08421ReleaseFor(workflow)) {
         fail(live.version === manifest.preparedRelease.baseVersion,
-            'Live version changed after payroll release preparation', 'PRODUCTION_BLOCK_LIVE_BASE_DRIFT');
+            'Live version changed after protected release preparation', 'PRODUCTION_BLOCK_LIVE_BASE_DRIFT');
     }
     fail(remoteProductionSha() === expectedRemote,
         'Remote production does not match the expected release stage', 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');

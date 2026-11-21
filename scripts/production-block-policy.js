@@ -20,7 +20,7 @@ const PROTECTED_WORKFLOWS = Object.freeze({
     PROFILE_EMPLOYEE_RELEASE: 'profile-employee-release',
     MY_DAY_PROFILE_RELEASE: 'my-day-profile-release-083100',
     TASK_KPI_08421: 'task-kpi-release-08421',
-    TASK_KPI_08421_RECOVERY: 'task-kpi-recovery-08421',
+    TASK_KPI_08422_RECOVERY: 'task-kpi-recovery-08422',
     EVENTGENIX_REMEDIATION: 'eventgenix-remediation-08417',
     EVENTGENIX_REMEDIATION_RETRY: 'eventgenix-remediation-08417-retry',
     EVENTGENIX_REMEDIATION_HR_RETRY: 'eventgenix-remediation-08417-hr-retry',
@@ -86,9 +86,10 @@ const TASK_KPI_08421 = Object.freeze({
         'db/migrations/431_staff_substitution_freelance_link.sql': '1f43bf4377ff6d687d1ef794e986cb60d66ab81067869c26c547c59901be256b'
     })
 });
-const TASK_KPI_08421_RECOVERY = Object.freeze({
+const TASK_KPI_08422_RECOVERY = Object.freeze({
     ...TASK_KPI_08421,
-    payloadSha: '87dd3a04598c7ddb7f0ccf5d57369d42c83d3fa6',
+    version: '0.84.22',
+    payloadSha: '869d15bbd76e041c6e17e95c8a0d7a40dea55067',
     failedPredecessorSha: '416f1095a88166a976c839d60c05e4a930480bc6',
     failedCiRunId: '44957263660',
     failedJobs: Object.freeze(['HR and payroll PostgreSQL integration', 'My Day PostgreSQL integration', 'My Day browser interactions'])
@@ -96,7 +97,7 @@ const TASK_KPI_08421_RECOVERY = Object.freeze({
 
 function taskKpi08421ReleaseFor(workflow) {
     if (workflow === PROTECTED_WORKFLOWS.TASK_KPI_08421) return TASK_KPI_08421;
-    if (workflow === PROTECTED_WORKFLOWS.TASK_KPI_08421_RECOVERY) return TASK_KPI_08421_RECOVERY;
+    if (workflow === PROTECTED_WORKFLOWS.TASK_KPI_08422_RECOVERY) return TASK_KPI_08422_RECOVERY;
     return null;
 }
 

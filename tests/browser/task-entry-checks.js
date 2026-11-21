@@ -47,27 +47,48 @@ async function verifyTaskEntry({ origin, session, evidence }) {
                         tab: new URL(page.url()).pathname + new URL(page.url()).search }));
                 });
             }
-            const reads = { pending: new Map(), lastActivity: Date.now() };
+            const reads = { pending: new Map(), lastActivity: Date.now(), navigation: null };
             bootstrapReads.set(page, reads);
             page.on('pageerror', error => errors.push({ message: error.message, at: Date.now(), page, engine }));
-            page.on('framenavigated', frame => { if (frame === page.mainFrame()) navigations.push({ at: Date.now(), page }); });
+            page.on('framenavigated', frame => {
+                if (frame !== page.mainFrame()) return;
+                navigations.push({ at: Date.now(), page });
+                const navigation = reads.navigation;
+                if (navigation?.url !== withoutFragment(frame.url())) return;
+                reads.navigation = null;
+                // A committed document replacement can leave no terminal event for
+                // a cancelled read from the previous document. Keep new reads pending.
+                for (const request of navigation.previousReads) finishRead(request);
+            });
             page.on('requestfailed', request => failedRequests.push({ page, at: Date.now(),
                 path: new URL(request.url()).pathname, reason: request.failure()?.errorText || '' }));
             page.on('request', request => {
                 const url = new URL(request.url());
                 if (/hermes/i.test(request.url())) hermes.push(url.pathname);
+                if (request.isNavigationRequest() && url.origin === origin) {
+                    let frame;
+                    try { frame = request.frame(); } catch { return; }
+                    if (frame === page.mainFrame()) {
+                        reads.navigation = { request, url: withoutFragment(url.href), previousReads: [...reads.pending.keys()] };
+                    }
+                    return;
+                }
                 const accept = request.headers().accept || '';
                 if (request.method() === 'GET' && url.origin === origin && url.pathname.startsWith('/api/')
                     && request.resourceType() !== 'eventsource' && !accept.includes('text/event-stream')) {
-                    reads.pending.set(request, url.pathname);
+                    reads.pending.set(request, { path: url.pathname, document: new URL(page.url()).pathname });
                     reads.lastActivity = Date.now();
                 }
             });
+            function withoutFragment(url) { return url.split('#', 1)[0]; }
             function finishRead(request) {
                 if (reads.pending.delete(request)) reads.lastActivity = Date.now();
             }
             page.on('requestfinished', finishRead);
-            page.on('requestfailed', finishRead);
+            page.on('requestfailed', request => {
+                if (reads.navigation?.request === request) reads.navigation = null;
+                finishRead(request);
+            });
         });
         async function settleBootstrapReads(page) {
             const reads = bootstrapReads.get(page);
@@ -79,13 +100,15 @@ async function verifyTaskEntry({ origin, session, evidence }) {
                 if (!reads.pending.size && Date.now() - Math.max(startedAt, reads.lastActivity) >= 100) return;
                 await new Promise(resolve => setTimeout(resolve, 25));
             }
-            throw new Error(`Bootstrap reads did not settle on ${new URL(page.url()).pathname}: ${[...reads.pending.values()].join(', ')}`);
+            const pending = [...reads.pending.values()].map(({ path, document }) => `${path} (started on ${document})`);
+            throw new Error(`Bootstrap reads did not settle on ${new URL(page.url()).pathname}: ${pending.join(', ')}`);
         }
         async function verifyBackgroundReadback(page) {
             for (const path of ['/api/my-day/timer', '/api/auth/telegram-crm']) {
                 const ok = await page.evaluate(async path => {
                     const response = await fetch(path, { headers: { Authorization: `Bearer ${getStoredAuthToken()}`,
                         ...apiAuthBusinessContextHeaders() } });
+                    await response.arrayBuffer();
                     return response.ok;
                 }, path);
                 assert.equal(ok, true, `Stable document must successfully read ${path}`);

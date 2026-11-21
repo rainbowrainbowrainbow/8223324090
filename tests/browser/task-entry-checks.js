@@ -47,8 +47,8 @@ async function verifyTaskEntry({ origin, session, evidence }) {
                         tab: new URL(page.url()).pathname + new URL(page.url()).search }));
                 });
             }
-            const pendingReads = new Map();
-            bootstrapReads.set(page, pendingReads);
+            const reads = { pending: new Map(), lastActivity: Date.now() };
+            bootstrapReads.set(page, reads);
             page.on('pageerror', error => errors.push({ message: error.message, at: Date.now(), page, engine }));
             page.on('framenavigated', frame => { if (frame === page.mainFrame()) navigations.push({ at: Date.now(), page }); });
             page.on('requestfailed', request => failedRequests.push({ page, at: Date.now(),
@@ -56,26 +56,30 @@ async function verifyTaskEntry({ origin, session, evidence }) {
             page.on('request', request => {
                 const url = new URL(request.url());
                 if (/hermes/i.test(request.url())) hermes.push(url.pathname);
-                if (request.method() === 'GET' && ['/api/auth/verify', '/api/auth/business-profile',
-                    '/api/auth/telegram-crm', '/api/my-day/timer', '/api/tasks/overview'].includes(url.pathname)) {
-                    pendingReads.set(request, url.pathname);
+                const accept = request.headers().accept || '';
+                if (request.method() === 'GET' && url.origin === origin && url.pathname.startsWith('/api/')
+                    && request.resourceType() !== 'eventsource' && !accept.includes('text/event-stream')) {
+                    reads.pending.set(request, url.pathname);
+                    reads.lastActivity = Date.now();
                 }
             });
-            page.on('requestfinished', request => pendingReads.delete(request));
-            page.on('requestfailed', request => pendingReads.delete(request));
-        });
-        async function settleBootstrapReads(page, onlyPath) {
-            const pendingReads = bootstrapReads.get(page);
-            if (!pendingReads) return;
-            const pendingPaths = () => [...pendingReads.values()].filter(path => !onlyPath || path === onlyPath);
-            const deadline = Date.now() + 20000;
-            // Keep the phase bounded and wait for a quiet tick so chained reads are included.
-            while (Date.now() < deadline) {
-                const wasIdle = !pendingPaths().length;
-                await new Promise(resolve => setTimeout(resolve, 25));
-                if (wasIdle && !pendingPaths().length) return;
+            function finishRead(request) {
+                if (reads.pending.delete(request)) reads.lastActivity = Date.now();
             }
-            throw new Error(`Bootstrap reads did not settle on ${new URL(page.url()).pathname}: ${pendingPaths().join(', ')}`);
+            page.on('requestfinished', finishRead);
+            page.on('requestfailed', finishRead);
+        });
+        async function settleBootstrapReads(page) {
+            const reads = bootstrapReads.get(page);
+            if (!reads) return;
+            const startedAt = Date.now();
+            const deadline = startedAt + 20000;
+            // Let finite same-origin reads finish before intentionally replacing a document.
+            while (Date.now() < deadline) {
+                if (!reads.pending.size && Date.now() - Math.max(startedAt, reads.lastActivity) >= 100) return;
+                await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            throw new Error(`Bootstrap reads did not settle on ${new URL(page.url()).pathname}: ${[...reads.pending.values()].join(', ')}`);
         }
         async function verifyBackgroundReadback(page) {
             for (const path of ['/api/my-day/timer', '/api/auth/telegram-crm']) {
@@ -90,8 +94,8 @@ async function verifyTaskEntry({ origin, session, evidence }) {
         }
         const page = await context.newPage();
         page.setDefaultTimeout(20000);
-        const navigate = async url => { await settleBootstrapReads(page); return page.goto(url); };
-        const reload = async () => { await settleBootstrapReads(page); return page.reload(); };
+        const navigate = async url => { await settleBootstrapReads(page); return page.goto(url, { waitUntil: 'domcontentloaded' }); };
+        const reload = async () => { await settleBootstrapReads(page); return page.reload({ waitUntil: 'domcontentloaded' }); };
         const api = async (endpoint, body, options = {}) => {
             const response = await fetch(origin + endpoint, { method: options.method || (body ? 'POST' : 'GET'), headers: {
                 authorization: 'Bearer ' + (options.token || session.token), 'content-type': 'application/json'
@@ -390,6 +394,7 @@ async function verifyTaskEntry({ origin, session, evidence }) {
             }
             console.log(`Task entry ${engine}: dashboard, search and Operations Center scopes verified.`);
             // Park is the active context before opening the Dar task in a second tab.
+            await settleBootstrapReads(page);
             await page.goto(origin + href, { waitUntil: 'domcontentloaded' });
             const parkTitle = process.env.TASK_ENTRY_CONTEXT_ONLY === '1' ? `Task entry ${engine}` : `Task entry saved ${engine}`;
             await dialog.getByRole('heading', { name: parkTitle }).waitFor();
@@ -403,7 +408,7 @@ async function verifyTaskEntry({ origin, session, evidence }) {
             await dialog.locator('[data-dialog-schedule] [name=date]').fill(dirtyDate);
             const otherTab = await context.newPage();
             try {
-                await otherTab.goto(origin + darLink);
+                await otherTab.goto(origin + darLink, { waitUntil: 'domcontentloaded' });
                 await otherTab.locator('.park-task-dialog[open]').getByRole('heading', { name: darTitle, exact: true }).waitFor().catch(async error => {
                     await otherTab.screenshot({ path: path.join(evidence, `task-entry-context-failure-${engine}.png`), animations: 'disabled' });
                     console.log('Local context diagnostic:', await otherTab.evaluate(() => ({
@@ -421,6 +426,7 @@ async function verifyTaskEntry({ origin, session, evidence }) {
                 assert.equal(await page.locator('#mainApp').isVisible(), true);
                 await page.bringToFront();
                 await page.keyboard.press('Tab');
+                await settleBootstrapReads(page);
                 const nativeWarning = page.waitForEvent('dialog', { predicate: prompt => prompt.type() === 'beforeunload' });
                 await page.evaluate(() => { setTimeout(() => location.reload(), 50); });
                 await (await nativeWarning).dismiss();
@@ -428,6 +434,7 @@ async function verifyTaskEntry({ origin, session, evidence }) {
                 assert.equal(await page.locator('#mainApp').isVisible(), true, 'canceling the reload leaves the shell visible');
                 await page.keyboard.press('Escape');
                 assert.equal(await recovery.isVisible(), true, 'Escape leaves the recovery choice available');
+                await settleBootstrapReads(page);
                 await Promise.all([
                     page.waitForEvent('framenavigated', { predicate: frame => frame === page.mainFrame()
                         && new URL(frame.url()).searchParams.get('businessContext') === 'dar' }),
@@ -436,7 +443,7 @@ async function verifyTaskEntry({ origin, session, evidence }) {
                 await page.waitForLoadState('domcontentloaded');
                 await settleBootstrapReads(otherTab);
                 const generation = await otherTab.evaluate(() => localStorage.getItem('pzp_auth_session_generation'));
-                await otherTab.reload();
+                await otherTab.reload({ waitUntil: 'domcontentloaded' });
                 await otherTab.locator('.park-task-dialog[open]').getByRole('heading', { name: darTitle, exact: true }).waitFor().catch(async error => {
                     console.log('Local context reload diagnostic:', await otherTab.evaluate(() => ({
                         path: location.pathname + location.search,
@@ -470,13 +477,14 @@ async function verifyTaskEntry({ origin, session, evidence }) {
             await dialog.locator('[data-dialog-schedule] [name=date]').fill(dirtyDate);
             const dateTransitionTab = await context.newPage();
             try {
-                await dateTransitionTab.goto(origin + darLink);
+                await dateTransitionTab.goto(origin + darLink, { waitUntil: 'domcontentloaded' });
                 await dateTransitionTab.locator('.park-task-dialog[open]').getByRole('heading', { name: darTitle, exact: true }).waitFor();
                 const recovery = page.getByRole('dialog', { name: 'Активний бізнес змінився' });
                 await recovery.waitFor();
                 await recovery.getByRole('button', { name: 'Відкинути чернетку та перейти' }).waitFor();
                 await page.bringToFront();
                 await page.keyboard.press('Tab');
+                await settleBootstrapReads(page);
                 const nativeWarning = page.waitForEvent('dialog', { predicate: prompt => prompt.type() === 'beforeunload' });
                 await page.evaluate(() => { setTimeout(() => location.reload(), 50); });
                 await Promise.all([page.waitForEvent('framenavigated', { predicate: frame => frame === page.mainFrame() }),
@@ -510,7 +518,7 @@ async function verifyTaskEntry({ origin, session, evidence }) {
             assert.equal(new URL(page.url()).pathname, '/tasks');
             assert.ok((await overview.response())?.ok(), 'The bare Tasks route successfully loads its overview');
             await verifyBackgroundReadback(page);
-            await settleBootstrapReads(page, '/api/tasks/overview');
+            await settleBootstrapReads(page);
             // Start the logout check from the task document.
             await page.goto(origin + href, { waitUntil: 'domcontentloaded' });
             await dialog.getByRole('heading', { name: parkTitle }).waitFor();
@@ -518,8 +526,8 @@ async function verifyTaskEntry({ origin, session, evidence }) {
             await dialog.locator('[data-dialog-schedule] [name=date]').fill(dirtyDate);
             const logoutTab = await context.newPage();
             try {
-                await logoutTab.goto(origin + '/profile?tab=myday&businessContext=event_genix');
-                await settleBootstrapReads(logoutTab);
+                await logoutTab.goto(origin + '/profile?tab=myday&businessContext=event_genix', { waitUntil: 'domcontentloaded' });
+                await Promise.all([settleBootstrapReads(page), settleBootstrapReads(logoutTab)]);
                 await logoutTab.locator('#logoutBtn').click();
                 await dialog.waitFor({ state: 'hidden' });
                 await page.locator('#loginForm').waitFor({ state: 'visible' });
@@ -542,6 +550,9 @@ async function verifyTaskEntry({ origin, session, evidence }) {
             console.log(process.env.TASK_ENTRY_CONTEXT_ONLY === '1'
                 ? `Task entry context ${engine}: concurrent Park/Dar tabs, scoped search, stable generation on reload, and denied foreign-business actor.`
                 : `Task entry ${engine}: legacy aliases, real login, reload/history, independent editor/schedule drafts, tab/invalidation guards, save recovery, reschedule/completion, scoped Dar link, responsive dialog, no Hermes.`);
+        } catch (error) {
+            await page.screenshot({ path: path.join(evidence, `task-entry-failure-${engine}.png`), timeout: 5000 }).catch(() => {});
+            throw error;
         } finally { await context.close(); await browser.close(); }
     }
 }

@@ -429,7 +429,9 @@ async function runActor(browser, pool, actor, existingAccountId) {
         await captureSupplement('hr-edit');
         await page.locator('#editCloseTop').click();
         await profile.waitFor({ state: 'hidden' });
-        const card = page.locator('.hr-team-card').filter({ hasText: name });
+        const card = page.locator('.hr-team-card').filter({
+            has: page.getByRole('button', { name: `Відкрити профіль: ${name}`, exact: true })
+        });
         await card.getByRole('button', { name: /відкрити/i }).click();
         await page.waitForFunction(expected => document.getElementById('editStaffPosition').value === expected, updatedPosition);
         assert.equal(await profile.locator('#editStaffFamilyName').inputValue(), 'QA');
@@ -618,7 +620,9 @@ async function runActor(browser, pool, actor, existingAccountId) {
             assert.equal((await pool.query('SELECT phone FROM staff WHERE id = $1', [otherStaff.id])).rows[0].phone, '+380009998877');
             await page.locator('#editCloseTop').click();
 
-            const otherCard = page.locator('.hr-team-card').filter({ hasText: otherStaff.name });
+            const otherCard = page.locator('.hr-team-card').filter({
+                has: page.getByRole('button', { name: `Відкрити профіль: ${otherStaff.name}`, exact: true })
+            });
             await otherCard.getByRole('button', { name: /дії:/i }).click();
             await otherCard.getByRole('menuitem', { name: /прив.язати crm/i }).click();
             await page.locator('.account-link-modal select').selectOption(String(existingAccountId));

@@ -403,7 +403,19 @@ async function verifyTaskEntry({ origin, session, evidence }) {
                 }
             }
             const operations = await api('/api/center/operations/today?businessContext=event_genix');
-            await navigate(origin + '/center?businessContext=event_genix');
+            // The Center starts its Reports iframe even while the Operations tab is active.
+            // Observe its bootstrap before leaving so a delayed iframe cannot start reads during navigation.
+            const reportPaths = ['/api/reports', '/api/reports/drafts', '/api/reports/summary',
+                '/api/reports/accountants', '/api/reports/submitters', '/api/reports/hashtags',
+                '/api/reports/workflow-settings'];
+            const reportReads = reportPaths.map(path => page.waitForEvent('requestfinished', {
+                predicate: request => {
+                    const url = new URL(request.url());
+                    return request.method() === 'GET' && url.origin === origin && url.pathname === path;
+                }
+            }));
+            const reportsReady = Promise.all(reportReads);
+            await Promise.all([navigate(origin + '/center?businessContext=event_genix'), reportsReady]);
             await page.getByRole('tab', { name: 'Зміна', exact: true }).click();
             for (const [taskId, businessContext] of scopes.at(-1)[1]) {
                 const row = operations.openTasks.find(task => Number(task.id) === taskId);

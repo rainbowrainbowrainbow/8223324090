@@ -7,6 +7,7 @@ const { TASK_ACTION_TYPES, logTaskActionEvent } = require('./taskActionHistory')
 const { replaceTaskClassification } = require('./myDayTaxonomy');
 const { MY_DAY_TASK_AI_MODEL, compactString } = require('./myDayTaskOpenAIClient');
 const { getAssignableTaskOwner } = require('./taskExecution');
+const { normalizeCreationCoAssignees, validateCreationCoAssignees, saveCreationCoAssignees } = require('./taskCreationCoAssignees');
 const { recordTaskAiDraftTelemetry, taskAiHistoryTelemetryMetadata } = require('./taskAiDraftTelemetry');
 const { normalizeDraftItems } = require('./taskAiDraftItems');
 const {
@@ -396,7 +397,9 @@ async function findBundleReplay(client, { userId, idempotencyKey, businessScope 
 
 async function fetchBundleTasks(client, bundleId) {
     const result = await client.query(
-        `SELECT t.*, bt.task_index AS bundle_task_index, bt.user_edited AS bundle_user_edited
+        `SELECT t.*, bt.task_index AS bundle_task_index, bt.user_edited AS bundle_user_edited,
+                ARRAY(SELECT ca.user_id FROM task_co_assignees ca
+                    WHERE ca.task_id = t.id ORDER BY ca.user_id) AS co_assignee_user_ids
          FROM task_bundle_tasks bt
          JOIN tasks t ON t.id = bt.task_id
          WHERE bt.bundle_id = $1
@@ -568,10 +571,12 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
 
     const bundleTitle = normalizeBundleTitle(input.bundleTitle || input.bundle_title || input.proposal?.bundleTitle);
     const bundleId = bundleIdForToken(tokenPayload, submittedProposalHash);
+    const coAssigneeUserIds = normalizeCreationCoAssignees(input.coAssigneeUserIds);
     const requestHash = hashCommitRequest({
         bundleId,
         bundleTitle,
         tasks,
+        ...(coAssigneeUserIds.length && { coAssigneeUserIds }),
         acceptedTaskMask,
         rejectedTaskMask,
         acceptedFieldMasks: acceptedTaskMask.map(index => ({ proposalIndex: index, fields: acceptedFieldMasks.get(index) || [] })),
@@ -652,7 +657,9 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
                     id: userId,
                     label: ownerLabel || actorLabel
                 }
-                : await resolveOwner(requestedOwnerId, { pool: client, actor: input.user });
+                : await resolveOwner(requestedOwnerId, { pool: client, actor: input.user, businessContext });
+            const additionalOwners = coAssigneeUserIds.filter(id => id !== requestedOwnerId);
+            await validateCreationCoAssignees(client, additionalOwners, input.user, businessContext, resolveOwner);
             const task = await createTaskImpl({
                 businessContext,
                 title: finalTask.title,
@@ -688,6 +695,8 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
                 skipHermesOutbox: true,
                 afterCommit
             });
+            await saveCreationCoAssignees(client, task, additionalOwners, input.user,
+                input.sourceSurface || AI_DRAFT_BUNDLE_COMMIT_SOURCE_SURFACE);
 
             const classification = input.omitClassification ? null : await replaceTaskClassification(client, {
                 userId,

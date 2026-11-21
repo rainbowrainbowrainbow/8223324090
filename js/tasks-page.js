@@ -1915,6 +1915,7 @@ function applyPermissionsUI(perms) {
         templatesTab.style.display = canCreate ? '' : 'none';
     }
     syncTaskSurfaceVisibility();
+    renderTaskCreateCoAssignees();
 }
 
 // ==========================================
@@ -3813,8 +3814,27 @@ function _renderAssigneeSelect() {
     const sel = document.getElementById('taskAssignedTo');
     if (!sel) return;
     _ensureCurrentUserInAssignees();
+    const selected = sel.value;
     sel.innerHTML = '<option value="">Оберіть людину</option>' +
         _assigneeList.map(s => `<option value="${s.id}">${escapeHtml(s.label || s.name || s.username || ('User #' + s.id))}${s.role ? ' (' + escapeHtml(s.role) + ')' : ''}</option>`).join('');
+    sel.value = selected;
+    renderTaskCreateCoAssignees();
+}
+
+function renderTaskCreateCoAssignees() {
+    const fieldset = document.getElementById('taskCreateCoAssignees');
+    if (!fieldset) return;
+    const list = fieldset.querySelector('[data-task-create-co-assignee-options]');
+    const checked = new Set([...list.querySelectorAll('input:checked')].map(input => Number(input.value)));
+    const allowed = userPermissions?.canAssignAnyone === true || ['all', 'department'].includes(userPermissions?.taskVisibility);
+    const primary = Number(resolveQuickAddOwnerUserId());
+    const people = allowed ? _assigneeList.filter(person => Number(person.id) > 0 && Number(person.id) !== primary) : [];
+    fieldset.hidden = people.length === 0;
+    list.innerHTML = people.map(person => {
+        const id = Number(person.id);
+        const label = escapeHtml(person.label || person.name || person.username || `User #${id}`);
+        return `<label for="taskCreateCoAssignee${id}" style="display:flex;align-items:center;gap:8px;min-height:44px;overflow-wrap:anywhere"><input id="taskCreateCoAssignee${id}" type="checkbox" value="${id}" ${checked.has(id) ? 'checked' : ''}>${label}</label>`;
+    }).join('');
 }
 
 function setTaskAssigneeMode(mode = 'self') {
@@ -3842,6 +3862,7 @@ function setTaskAssigneeMode(mode = 'self') {
         select.removeAttribute('tabindex');
         if (select.value && String(select.value) === String(currentUserId() || '')) select.value = '';
     }
+    renderTaskCreateCoAssignees();
 }
 
 function dateForDuePreset(preset = taskDuePreset) {
@@ -3892,6 +3913,7 @@ function readTaskComposerDraft() {
         taskType: document.getElementById('taskType')?.value || 'human',
         deadlineTime: document.getElementById('taskDeadlineTime')?.value || '',
         ownerUserId: resolveQuickAddOwnerUserId(),
+        coAssigneeUserIds: [...document.querySelectorAll('#taskCreateCoAssignees:not([hidden]) input:checked')].map(input => Number(input.value)),
         assigneeMode: taskAssigneeMode,
         mode: 'simple',
         structuralMode: 'simple',
@@ -4118,6 +4140,7 @@ function buildTaskCreatePayload(draft = {}) {
         }
     };
     if (draft.ownerUserId) data.ownerUserId = draft.ownerUserId;
+    if (draft.coAssigneeUserIds?.length) data.coAssigneeUserIds = draft.coAssigneeUserIds;
     if (dueDate) {
         data.date = dueDate;
         data.schedule = {
@@ -4152,6 +4175,7 @@ function resetTaskComposerAfterCreate() {
     if (title) title.value = '';
     const description = document.getElementById('taskDescription');
     if (description) description.value = '';
+    document.querySelectorAll('#taskCreateCoAssignees input:checked').forEach(input => { input.checked = false; });
     taskComposerAiImpactIds = [];
     window.TaskAiDraft?.clear?.(document.getElementById('quickAdd'));
     if (document.getElementById('taskDeadlineTime')) document.getElementById('taskDeadlineTime').value = '';
@@ -4196,6 +4220,7 @@ function toggleTaskComposerDetails(force) {
 function setupTaskComposer() {
     _renderAssigneeSelect();
     setTaskAssigneeMode('self');
+    document.getElementById('taskAssignedTo')?.addEventListener('change', renderTaskCreateCoAssignees);
     const dateInput = document.getElementById('taskScheduleDate');
     if (dateInput && !dateInput.value) dateInput.value = getTodayStr();
     setTaskDuePreset('today', { expand: false });
@@ -4228,7 +4253,8 @@ function setupTaskComposer() {
             applyField: applyTaskAiDraftField,
             focusField: focusTaskAiDraftField,
             requestSubmit: () => document.getElementById('addTaskBtn')?.click(),
-            commitBundle: window.TaskCreate?.commitAiDraftBundle
+            commitBundle: window.TaskCreate?.commitAiDraftBundle,
+            readCoAssignees: () => readTaskComposerDraft().coAssigneeUserIds
         });
     }
 }
@@ -4342,6 +4368,7 @@ async function addTask() {
             window.TaskAiDraft?.setCommitPending?.(composer, true);
             const result = await window.TaskCreate.commitAiDraftBundle({
                 ...aiCommitPayload,
+                coAssigneeUserIds: mainDraft.coAssigneeUserIds,
                 sourceSurface: 'tasks_quick_composer'
             });
             window.TaskAiDraft?.setCommitPending?.(composer, false);
@@ -4366,6 +4393,7 @@ async function addTask() {
             window.TaskAiDraft?.setCommitPending?.(composer, true);
             const result = await window.TaskCreate.commitAiDraft({
                 ...aiCommitPayload,
+                coAssigneeUserIds: mainDraft.coAssigneeUserIds,
                 finalDraft: {
                     ...mainDraft,
                     ...(aiCommitPayload.finalDraft || {}),
@@ -5731,6 +5759,7 @@ async function renderTaskDetailDrawer(taskId) {
                         <option value="todo" ${t.status==='todo'?'selected':''}>📋 До виконання</option>
                         <option value="in_progress" ${t.status==='in_progress'?'selected':''}>▶ В роботі</option>
                         <option value="done" ${t.status==='done'?'selected':''}>✅ Виконано</option>
+                        ${t.status === 'cancelled' ? '<option value="cancelled" selected>Скасовано</option>' : ''}
                     </select></div>
                     <div style="flex:1"><label ${_lbl}>Пріоритет</label><select id="_tdPriority" ${_inp} style="width:100%;padding:8px;border:1px solid var(--gray-200);border-radius:8px;font-size:14px;font-family:inherit">
                         <option value="low" ${t.priority==='low'?'selected':''}>Низький</option>
@@ -5835,6 +5864,7 @@ async function renderTaskDetailDrawer(taskId) {
             <div style="padding:12px 20px;border-top:1px solid var(--gray-100);display:flex;gap:8px;flex-wrap:wrap">
                 <button data-task-drawer-action="save" onclick="saveTaskDetail(${t.id})" ${canSaveTaskDetail ? '' : 'disabled'} style="flex:2;min-width:120px;padding:10px;border:none;border-radius:10px;background:linear-gradient(135deg,#10B981,#059669);color:#fff;font-weight:700;cursor:pointer;font-family:inherit;font-size:13px">💾 Зберегти</button>
                 <button data-task-drawer-action="complete" onclick="taskDetailComplete(${t.id})" ${t.status === 'done' || !canCompleteTaskDetail ? 'disabled' : ''} style="flex:1;min-width:110px;padding:10px;border:1px solid var(--gray-200);border-radius:10px;background:#10B981;color:#fff;cursor:pointer;font-family:inherit;font-size:13px">Done</button>
+                ${drawerActions.cancel ? '<button type="button" class="btn btn-secondary" data-task-drawer-action="cancel">Скасувати задачу</button>' : ''}
                 <button data-task-drawer-action="reassign" onclick="taskDetailReassign(${t.id})" ${canReassignTaskDetail ? '' : 'disabled'} style="flex:1;min-width:110px;padding:10px;border:1px solid var(--gray-200);border-radius:10px;background:#2563EB;color:#fff;cursor:pointer;font-family:inherit;font-size:13px">Reassign</button>
                 <button data-task-drawer-action="reschedule" onclick="taskDetailReschedule(${t.id})" ${canRescheduleTaskDetail ? '' : 'disabled'} style="flex:1;min-width:110px;padding:10px;border:1px solid var(--gray-200);border-radius:10px;background:#F59E0B;color:#fff;cursor:pointer;font-family:inherit;font-size:13px">Reschedule</button>
                 <button data-task-drawer-action="review" onclick="taskDetailReview(${t.id})" ${canReviewTaskDetail ? '' : 'disabled'} style="flex:1;min-width:110px;padding:10px;border:1px solid var(--gray-200);border-radius:10px;background:#7C3AED;color:#fff;cursor:pointer;font-family:inherit;font-size:13px">\u041e\u0446\u0456\u043d\u0438\u0442\u0438</button>
@@ -5843,6 +5873,32 @@ async function renderTaskDetailDrawer(taskId) {
             </div>
         </div>`;
         document.getElementById('_tdCategory')?.addEventListener('change', syncDetailSubcategoryVisibility);
+        overlay.querySelector('[data-task-drawer-action="cancel"]')?.addEventListener('click', async event => {
+            const button = event.currentTarget;
+            button.disabled = true;
+            try {
+                if (!await confirmTaskUiAction('Скасувати цю задачу? Виконавці побачать її в історії.', {
+                    type: 'warning', okText: 'Скасувати задачу'
+                })) return;
+                const response = await taskApiFetchWithAuth(`/api/tasks/${t.id}/cancel`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sourceSurface: 'task_page' })
+                });
+                if (!response?.ok) {
+                    const data = await response?.json().catch(() => ({}));
+                    throw new Error(data?.error || 'Не вдалося скасувати задачу');
+                }
+                await closeTaskDetailOverlay(true);
+                showNotification('Задачу скасовано');
+                notifyTaskWidgetsChanged({ action: 'cancel', taskId: t.id });
+                await loadAllTasks();
+            } catch (error) {
+                showNotification(error.message, 'error');
+            } finally {
+                button.disabled = false;
+            }
+        });
         document.querySelectorAll('[data-detail-schedule-slot]').forEach(btn => {
             btn.addEventListener('click', () => {
                 document.querySelectorAll('[data-detail-schedule-slot]').forEach(slotBtn => {
@@ -5875,6 +5931,7 @@ function historyActionTitle(actionType) {
     if (window.ActionHistoryView) return window.ActionHistoryView.titleFor(actionType, 'task');
     const labels = {
         task_completed: 'Задачу виконано',
+        task_cancelled: 'Задачу скасовано',
         task_owner_reassigned: 'Відповідального змінено',
         task_rescheduled: 'Задачу переплановано',
         task_observers_updated: 'Спостерігачів оновлено',

@@ -671,6 +671,21 @@ async function buildTaskCabinetProjection(options = {}) {
     const completedHistorySourceRowsRaw = Array.isArray(completedHistoryPage.sourceRows)
         ? completedHistoryPage.sourceRows
         : [];
+    const { rows: cancelledHistory } = await queryable.query(
+        `SELECT t.id, t.title, t.status, event.created_at AS "cancelledAt"
+         FROM tasks t
+         JOIN LATERAL (
+             SELECT h.created_at
+             FROM task_action_history h
+             WHERE h.task_id = t.id AND h.action_type = 'task_cancelled'
+             ORDER BY h.id DESC LIMIT 1
+         ) event ON TRUE
+         WHERE ${ownMatch} ${ownBusinessCondition}
+           AND t.status = 'cancelled' AND 'executor' = ANY(${personalQuery.roles})
+         ORDER BY event.created_at DESC, t.id DESC
+         LIMIT $${ownParams.length + 1}`,
+        [...ownParams, completedHistoryLimit]
+    );
     const completedTodayRowLimit = normalizeTaskCabinetBucketLimit(
         options.completedTodayLimit,
         DEFAULT_TASK_CABINET_COMPLETED_TODAY_LIMIT
@@ -872,6 +887,7 @@ async function buildTaskCabinetProjection(options = {}) {
         inbox: buckets.inbox,
         completedTodayTasks,
         completedHistory,
+        cancelledHistory,
         all: rows,
         planning,
         preferences: prefs,

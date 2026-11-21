@@ -110,7 +110,7 @@ export function createEmployeeRenderers({ escapeHtml, profileEmployeeDateText, p
                 <div><dt>Прострочені</dt><dd><strong>${overdue}</strong><span>Відкриті задачі</span></dd></div>
             </dl>
             <figure class="profile-results-chart">
-                <figcaption>Виконано за останні 7 днів</figcaption>
+                <figcaption>Фактично завершено за останні 7 днів</figcaption>
                 <ul class="profile-results-chart-legend">
                     <li class="profile-results-work">Робочі</li>
                     <li class="profile-results-personal">Особисті</li>
@@ -148,7 +148,9 @@ export function createEmployeeRenderers({ escapeHtml, profileEmployeeDateText, p
             ['Запізнення', period => period.attendance.late],
             ['Хвилини запізнення', period => period.attendance.lateMinutes],
             ['Завершені пункти професійних чеклістів', period => period.checklistCompleted],
-            ['Завершені курси', period => period.coursesCompleted.length]
+            ['Завершені курси', period => period.coursesCompleted.length],
+            ['Зараховано основному виконавцю', period => period.tasks?.completed ?? 0],
+            ['Фактично завершені робочі задачі', period => period.tasks?.actuallyCompleted ?? 0]
         ];
         const courses = current.coursesCompleted.map(course => [course.title, profileEmployeeDateText(course.date)]);
         const admission = { approved: 'Допущено', pending: 'Очікує допуску', blocked: 'Допуск заблоковано', restricted: 'Обмежений допуск' };
@@ -170,7 +172,7 @@ export function createEmployeeRenderers({ escapeHtml, profileEmployeeDateText, p
         return `
             ${data.dailyTasks?.days?.length >= 2 ? renderDailyTaskResults(data.dailyTasks) : ''}
             <details class="profile-employee-comparison">
-                <summary>Відвідуваність і професійний розвиток</summary>
+                <summary>Відвідуваність, професійний розвиток і задачі</summary>
                 <table>
                     <caption>Порівняння з попереднім місяцем</caption>
                     <thead><tr><th scope="col">Показник</th><th scope="col">${escapeHtml(dateLabel(current))}</th><th scope="col">${escapeHtml(dateLabel(previous))}</th></tr></thead>

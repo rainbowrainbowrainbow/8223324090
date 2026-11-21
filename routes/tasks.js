@@ -5,6 +5,7 @@ const router = require('express').Router();
 const crypto = require('crypto');
 const { taskUrl } = require('../js/task-links');
 const { pool } = require('../db');
+const { normalizeCreationCoAssignees, validateCreationCoAssignees, saveCreationCoAssignees } = require('../services/taskCreationCoAssignees');
 const { requireRole, authenticateToken, canUseAction, JWT_SECRET } = require('../middleware/auth');
 const {
     installRevenueResponseShaper,
@@ -34,6 +35,7 @@ const {
 } = require('../services/taskPolicy');
 const {
     completeTask,
+    cancelTask,
     assertPrivateTaskHandoffConfirmed,
     getAssignableTaskOwner,
     listTaskOwnerCandidates,
@@ -161,6 +163,14 @@ function emitTaskAssignedToOwner(task, actor, options = {}) {
         source: 'routes/tasks',
         ...options
     });
+}
+
+function emitTaskCreationAssignments(task, actor, source) {
+    const options = { assignmentEvent: 'created', source };
+    emitTaskAssignedToOwner(task, actor, options);
+    for (const recipientUserId of task.co_assignee_user_ids || []) {
+        emitTaskAssignedToOwner(task, actor, { ...options, recipientUserId });
+    }
 }
 
 // Lazy require to avoid circular dependency
@@ -838,6 +848,7 @@ function directTaskCreateRequestHashPayload(fields = {}) {
         priority: fields.priority || 'normal',
         assignedTo: String(fields.assigned_to || fields.assignedTo || '').trim(),
         ownerUserId: Number(fields.owner_user_id || fields.ownerUserId || 0) || null,
+        ...(fields.coAssigneeUserIds?.length ? { coAssigneeUserIds: fields.coAssigneeUserIds } : {}),
         owner: String(fields.owner || '').trim(),
         taskType: fields.task_type || fields.taskType || 'human',
         deadline: fields.deadline || null,
@@ -891,7 +902,8 @@ async function findDirectTaskCreateReplay(query, { userId, idempotencyKey, busin
                 h.action_type AS idempotency_action_type,
                 h.meta_json AS idempotency_meta_json,
                 h.created_at AS idempotency_created_at,
-                t.*
+                t.*,
+                ARRAY(SELECT ca.user_id FROM task_co_assignees ca WHERE ca.task_id = t.id ORDER BY ca.user_id) AS co_assignee_user_ids
          FROM task_action_history h
          JOIN tasks t ON t.id = h.task_id
          WHERE h.action_type = $1
@@ -1088,6 +1100,7 @@ async function buildTaskAiDraftCommit(req, res) {
         omitClassification,
         proposalToken: body.proposalToken || body.proposal_token,
         finalDraft: taskAiFinalDraftFromBody(body),
+        coAssigneeUserIds: body.coAssigneeUserIds ?? body.co_assignee_user_ids,
         acceptedFieldMask: body.acceptedFieldMask || body.accepted_field_mask || body.acceptedFields || body.accepted_fields || [],
         editedFieldMask: body.editedFieldMask || body.edited_field_mask || body.editedFields || body.edited_fields || [],
         idempotencyKey: idempotencyKeyFromRequest(req),
@@ -1175,6 +1188,7 @@ async function buildTaskAiDraftBundleCommit(req, res) {
         baseDraftFingerprint: body.baseDraftFingerprint || body.base_draft_fingerprint,
         bundleTitle: body.bundleTitle || body.bundle_title,
         tasks: taskAiBundleTasksFromBody(body),
+        coAssigneeUserIds: body.coAssigneeUserIds ?? body.co_assignee_user_ids,
         acceptedTaskMask: body.acceptedTaskMask || body.accepted_task_mask || body.acceptedTasks || body.accepted_tasks || [],
         rejectedTaskMask: body.rejectedTaskMask || body.rejected_task_mask || body.rejectedTasks || body.rejected_tasks || [],
         acceptedFieldMasks: body.acceptedFieldMasks || body.accepted_field_masks || body.acceptedTaskFieldMasks || body.accepted_task_field_masks || [],
@@ -2060,10 +2074,7 @@ router.post('/ai-draft/commit', requireTaskRouteCapability('create'), async (req
         if (!result) return;
         if (!result.replayed) {
             try {
-                emitTaskAssignedToOwner(result.task, req.user, {
-                    assignmentEvent: 'created',
-                    source: 'routes/tasks.ai_draft_commit'
-                });
+                emitTaskCreationAssignments(result.task, req.user, 'routes/tasks.ai_draft_commit');
             } catch (err) {
                 log.error(`Task AI draft assignment event error: ${err.message}`);
             }
@@ -2103,10 +2114,7 @@ router.post('/ai-draft/bundle/commit', requireTaskRouteCapability('create'), asy
         if (!result.replayed) {
             for (const task of result.tasks || []) {
                 try {
-                    emitTaskAssignedToOwner(task, req.user, {
-                        assignmentEvent: 'created',
-                        source: 'routes/tasks.ai_draft_bundle_commit'
-                    });
+                    emitTaskCreationAssignments(task, req.user, 'routes/tasks.ai_draft_bundle_commit');
                 } catch (err) {
                     log.error(`Task AI draft bundle assignment event error: ${err.message}`);
                 }
@@ -2591,6 +2599,10 @@ router.put('/:id/co-assignees', requireRole('admin', 'user'), async (req, res) =
         if (!canMutateTask(req.user, task) || !canReassignTask(req.user, task)) {
             await client.query('ROLLBACK');
             return res.status(403).json({ error: 'Недостатньо прав для призначення виконавців' });
+        }
+        if (task.status === 'cancelled') {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ code: 'TASK_NOT_ACTIVE', error: 'Задачу скасовано' });
         }
         const uniqueIds = [...new Set(ids.map(Number))].filter(id => id !== Number(task.owner_user_id));
         const old = await client.query('SELECT user_id FROM task_co_assignees WHERE task_id = $1 ORDER BY user_id', [task.id]);
@@ -3254,6 +3266,7 @@ router.post('/', requireTaskRouteCapability('create'), async (req, res) => {
         const typedOwner = await resolveTypedTaskOwner(b, req.user);
         const assigned_to = typedOwner?.assignedToSnapshot || b.assigned_to || b.assignedTo;
         const owner_user_id = typedOwner?.ownerUserId || null;
+        const coAssigneeUserIds = normalizeCreationCoAssignees(b.coAssigneeUserIds ?? b.co_assignee_user_ids, owner_user_id);
         const owner = b.owner;
         const type = b.type;
         const template_id = b.template_id || b.templateId;
@@ -3305,6 +3318,7 @@ router.post('/', requireTaskRouteCapability('create'), async (req, res) => {
                 priority: taskPriority,
                 assigned_to,
                 owner_user_id,
+                coAssigneeUserIds,
                 owner,
                 task_type: VALID_TASK_TYPES.includes(task_type) ? task_type : 'human',
                 deadline,
@@ -3348,13 +3362,25 @@ router.post('/', requireTaskRouteCapability('create'), async (req, res) => {
             postCreateWarnings.push(warning);
             log.error(`Task create post-step failed after task #${task?.id || 'unknown'} [${step}]`, err);
         };
+        const optionalCreateStep = async (name, perform) => {
+            if (transactionStarted) await query.query('SAVEPOINT task_create_optional');
+            try {
+                await perform();
+            } catch (error) {
+                if (transactionStarted) await query.query('ROLLBACK TO SAVEPOINT task_create_optional');
+                recordPostCreateWarning(name, error);
+            }
+            if (transactionStarted) await query.query('RELEASE SAVEPOINT task_create_optional');
+        };
         let directCreateHistoryEvent = null;
         try {
-            if (directIdempotencyKey) {
+            if (directIdempotencyKey || coAssigneeUserIds.length) {
                 client = await pool.connect();
                 query = client;
                 await client.query('BEGIN');
                 transactionStarted = true;
+            }
+            if (directIdempotencyKey) {
                 await client.query('SELECT pg_advisory_xact_lock(hashtext($1)::bigint)', [
                     `task_create_idempotency:${actorUserId}:${businessContext}:${directIdempotencyKey}`
                 ]);
@@ -3410,6 +3436,7 @@ router.post('/', requireTaskRouteCapability('create'), async (req, res) => {
                 });
             }
 
+            await validateCreationCoAssignees(query, coAssigneeUserIds, req.user, businessContext);
             task = await kleshnya.createTask({
                 businessContext,
                 title, description, date,
@@ -3445,11 +3472,12 @@ router.post('/', requireTaskRouteCapability('create'), async (req, res) => {
                 ...osFields
             }, {
                 pool: query,
-                afterCommit: directIdempotencyKey ? afterCommit : undefined
+                afterCommit: transactionStarted ? afterCommit : undefined
             });
             responseTask = task;
+            await saveCreationCoAssignees(query, task, coAssigneeUserIds, req.user, sourceSurface(b, 'task_page'));
             if (!task.duplicateSkipped && hasSchedulePayload(b)) {
-                try {
+                await optionalCreateStep('schedule', async () => {
                     scheduleResult = await scheduleTask(task.id, { ...b, date }, req.user, {
                         pool: query,
                         sourceSurface: sourceSurface(b, 'task_page'),
@@ -3458,15 +3486,10 @@ router.post('/', requireTaskRouteCapability('create'), async (req, res) => {
                     });
                     Object.assign(task, scheduleResult.task);
                     responseTask = scheduleResult.task;
-                } catch (err) {
-                    recordPostCreateWarning('schedule', err);
-                }
+                });
             }
-            try {
-                await createTaskDependencyRows(task.id, dependency_ids, { pool: query });
-            } catch (err) {
-                recordPostCreateWarning('dependencies', err);
-            }
+            await optionalCreateStep('dependencies', () => createTaskDependencyRows(task.id, dependency_ids, { pool: query }));
+            if (coAssigneeUserIds.length) responseTask.co_assignee_user_ids = coAssigneeUserIds;
             if (directIdempotencyKey) {
                 directCreateHistoryEvent = await logTaskActionEvent({
                     taskId: task.id,
@@ -3514,7 +3537,7 @@ router.post('/', requireTaskRouteCapability('create'), async (req, res) => {
             }
         }
         try {
-            emitTaskAssignedToOwner(task, req.user, { assignmentEvent: 'created', source: 'routes/tasks.create' });
+            emitTaskCreationAssignments(task, req.user, 'routes/tasks.create');
         } catch (err) {
             recordPostCreateWarning('assignment_event', err);
         }
@@ -3557,6 +3580,9 @@ router.post('/', requireTaskRouteCapability('create'), async (req, res) => {
                 existingStatus: err.task?.status || null
             });
         }
+        if (['TASK_OWNER_NOT_ASSIGNABLE', 'TASK_REASSIGN_FORBIDDEN', 'TASK_CO_ASSIGNEES_INVALID'].includes(err.code)) {
+            return sendTaskActionError(res, err);
+        }
         log.error('Create error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
@@ -3579,6 +3605,7 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
         if (!existing.rows.length) return res.status(404).json({ error: 'Task not found' });
         const old = existing.rows[0];
         if (!canMutateTask(req.user, old)) return res.status(403).json({ error: 'Недостатньо прав для зміни задачі' });
+        if (old.status === 'cancelled') return res.status(409).json({ code: 'TASK_NOT_ACTIVE', error: 'Задачу скасовано' });
         if (isMyDayTaskOperationApplied(old, myDayOperation)) return res.json({ success: true, task: normalizeTaskPayload(old) });
         assertMyDayTaskOperationVersion(old, myDayOperation);
 
@@ -3692,7 +3719,7 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
         values.push(id);
         let whereClause = `WHERE id=$${paramIdx}`;
         values.push(activeTaskBusinessContext(old.business_context));
-        whereClause += ` AND COALESCE(business_context, 'event_genix')=$${++paramIdx}`;
+        whereClause += ` AND COALESCE(business_context, 'event_genix')=$${++paramIdx} AND status IS DISTINCT FROM 'cancelled'`;
 
         // Optimistic locking: check version if client provides it
         if (clientVersion !== null) {
@@ -3716,6 +3743,7 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
             if (existing.rows.length === 0) {
                 return res.status(404).json({ error: 'Task not found' });
             }
+            if (existing.rows[0].status === 'cancelled') return res.status(409).json({ code: 'TASK_NOT_ACTIVE', error: 'Задачу скасовано' });
             return res.status(409).json({
                 error: 'Задачу було змінено іншим користувачем',
                 conflict: true,
@@ -3878,6 +3906,22 @@ router.patch('/:id/status', requireRole('admin', 'user'), async (req, res) => {
     }
 });
 
+router.post('/:id/cancel', async (req, res) => {
+    try {
+        const businessScope = requireTaskWriteScope(req, res);
+        if (!businessScope) return;
+        const cancelled = await cancelTask(req.params.id, req.user, {
+            businessScope, sourceSurface: sourceSurface(req.body, 'task_page')
+        });
+        if (!cancelled.unchanged) {
+            try { _alertPush(); } catch (err) { log.warn(`Task cancellation broadcast skipped: ${err.message}`); }
+        }
+        return res.json({ success: true, ...cancelled });
+    } catch (error) {
+        return sendTaskActionError(res, error);
+    }
+});
+
 // POST /api/tasks/:id/review — review/score a completed task (manager+)
 router.post('/:id/review', requireTaskRouteCapability('review'), async (req, res) => {
     try {
@@ -3986,7 +4030,7 @@ router.post('/bulk', requireRole('admin', 'user'), async (req, res) => {
                      archived_at = COALESCE(t.archived_at, NOW()),
                      archive_reason = COALESCE(t.archive_reason, 'manual_bulk'),
                      updated_at = NOW()
-                 WHERE t.id = ANY($1::int[]) ${visibility} ${businessCondition} AND COALESCE(t.status, 'todo') NOT IN ('archived')`,
+                 WHERE t.id = ANY($1::int[]) ${visibility} ${businessCondition} AND COALESCE(t.status, 'todo') NOT IN ('archived','cancelled')`,
                 params
             );
         } else if (action === 'restore') {
@@ -4006,7 +4050,7 @@ router.post('/bulk', requireRole('admin', 'user'), async (req, res) => {
             result = await pool.query(
                 `UPDATE tasks t SET status = 'done', workflow_state = 'done', completed_at = NOW() AT TIME ZONE 'UTC', updated_at = NOW()
                  WHERE t.id = ANY($1::int[]) ${visibility} ${businessCondition}
-                   AND COALESCE(t.status, 'todo') NOT IN ('done','archived')`,
+                   AND COALESCE(t.status, 'todo') NOT IN ('done','archived','cancelled')`,
                 params
             );
         } else if (action === 'assign' && assignTo) {
@@ -4023,6 +4067,7 @@ router.post('/bulk', requireRole('admin', 'user'), async (req, res) => {
             result = await pool.query(
                 `UPDATE tasks t SET owner_user_id = $${params.length + 1}, assigned_to = $${params.length + 2}, updated_at = NOW()
                  WHERE t.id = ANY($1::int[]) ${visibility} ${businessCondition}
+                   AND t.status IS DISTINCT FROM 'cancelled'
                    AND (
                        t.owner_user_id IS DISTINCT FROM $${params.length + 1}
                        OR COALESCE(t.assigned_to, '') IS DISTINCT FROM COALESCE($${params.length + 2}, '')

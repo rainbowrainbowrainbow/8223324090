@@ -65,7 +65,8 @@ test('client validation blocks invalid and overlapping paid plans before save', 
     assert.match(page, /paidRoles\.length > 1/);
     assert.match(page, /Перетворити на одночасні ролі/);
     assert.match(page, /function normalizeSchedulePaidRoleSegments/);
-    assert.match(page, /Оплачуваний інтервал має повністю бути в межах основного фізичного блоку/);
+    assert.match(page, /Початок оплати має бути в межах основного фізичного блоку/);
+    assert.match(page, /Завершення оплати має бути в межах основного фізичного блоку/);
     assert.match(page, /HR_SHIFT_PAID_ROLE_RATE_REQUIRED/);
     assert.match(page, /rateSource === 'staff_profession_rates\.hourly_rate'/);
     assert.match(page, /STAFF_SCHEDULE_PAYROLL_READ_ROLES/);
@@ -85,6 +86,32 @@ test('client validation blocks invalid and overlapping paid plans before save', 
     assert.match(page, /понад два блоки/);
     assert.match(hrPage, /HR_SHIFT_SEGMENT_BREAK_EXCEEDS_DURATION/);
     assert.match(hrPage, /HR_SHIFT_PLAN_AMBIGUOUS_POST_MIDNIGHT_SEGMENT/);
+});
+
+test('paid time errors identify the entered boundary and preserve valid overnight splitting', () => {
+    const source = (start, next) => page.slice(page.indexOf(`function ${start}(`), page.indexOf(`function ${next}(`));
+    const normalize = vm.runInNewContext([
+        source('scheduleTimeToMinutes', 'normalizeSchedulePlanTime'),
+        source('scheduleSegmentAbsoluteBounds', 'applySchedulePaidPeriod'),
+        source('normalizeSchedulePaidRoleSegments', 'buildScheduleOverlapConversionSegments'),
+        'normalizeSchedulePaidRoleSegments'
+    ].join('\n'), { scheduleSegmentClientKey: () => 'split' });
+    const plan = (intervalStart, intervalEnd, shiftStart = '15:30', shiftEnd = '20:00') => normalize([{
+        shiftStart, shiftEnd, breakMinutes: 0,
+        additionalRoles: [{ professionKey: 'second_role', compensationMode: 'paid_hourly', intervalStart, intervalEnd }]
+    }]);
+    assert.deepEqual(Array.from(plan('15:00', '17:00').errors, row => row.field), ['paid-start']);
+    assert.deepEqual(Array.from(plan('15:30', '20:30').errors, row => row.field), ['paid-end']);
+    assert.deepEqual(Array.from(plan('17:00', '16:00').errors, row => row.field), ['paid-start', 'paid-end']);
+    const daytime = plan('15:30', '17:00').segments;
+    assert.deepEqual(Array.from(daytime, segment => [segment.shiftStart, segment.shiftEnd]), [
+        ['15:30', '17:00'], ['17:00', '20:00']
+    ]);
+    const overnight = plan('23:00', '01:00', '22:00', '03:00').segments;
+    assert.deepEqual(Array.from(overnight, segment => [segment.shiftStart, segment.shiftEnd]), [
+        ['22:00', '23:00'], ['23:00', '01:00'], ['01:00', '03:00']
+    ]);
+    assert.deepEqual(Array.from(plan('23:00', '03:30', '22:00', '03:00').errors, row => row.field), ['paid-end']);
 });
 
 test('physical summary merges overlap before applying one break per physical interval', () => {
@@ -134,6 +161,41 @@ test('single save keeps an optimistic plan version and handles stale conflicts w
     assert.match(page, /await offerStaleSchedulePlanRefresh\(editingSession\)/);
     assert.match(page, /if \(shouldRefresh && scheduleModalSessionIsCurrent\(session\)\) await refreshStaleScheduleModalPlan\(session\)/);
     assert.match(page, /await refreshStaleScheduleModalPlan\(session\)/);
+});
+
+test('rejected freelance cancellation restores only removed blocks and the automatic day status', () => {
+    const status = { value: 'dayoff' };
+    let currentSegments = [];
+    let restored;
+    const restore = vm.runInNewContext(page.slice(
+        page.indexOf('function restoreStagedFreelanceBlocks('),
+        page.indexOf('function bindSchedulePlanEditor(')
+    ) + '\nrestoreStagedFreelanceBlocks', {
+        document: { getElementById: id => id === 'schStatus' ? status : { value: 'animator' } },
+        readSchedulePlanSegments: () => currentSegments.slice(),
+        scheduleEntrySegmentsForUi: () => [],
+        renderSchedulePlanEditor: (_scope, segments) => { restored = Array.from(segments); },
+        toggleTimeFields: () => {}
+    });
+    const rejected = { id: '8', clientKey: 'freelance-8', workMode: 'freelance' };
+    const session = {
+        statusBeforeFreelanceCancellation: 'working',
+        cancelFreelanceSegmentIds: new Set([rejected.id]),
+        freelanceCancellationDraft: new Map([[rejected.id, { segment: rejected, index: 0 }]])
+    };
+    restore(session);
+    assert.equal(status.value, 'working');
+    assert.deepEqual(restored, [rejected]);
+    assert.equal(session.cancelFreelanceSegmentIds.size, 0);
+
+    const edited = { id: '9', clientKey: 'regular-9', shiftStart: '15:30' };
+    currentSegments = [edited];
+    status.value = 'remote';
+    session.cancelFreelanceSegmentIds.add(rejected.id);
+    session.freelanceCancellationDraft.set(rejected.id, { segment: rejected, index: 0, before: edited.clientKey });
+    restore(session);
+    assert.deepEqual(restored, [rejected, edited]);
+    assert.equal(status.value, 'remote');
 });
 
 test('cells, role sections, export and print use segments instead of envelope duration', () => {

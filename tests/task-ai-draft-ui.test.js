@@ -560,6 +560,7 @@ test('AI draft composer renders interactive task bundle review without single-ta
             <button type="button" data-task-ai-draft-preview>AI</button>
             <div data-task-ai-draft-status></div>
             <div data-task-ai-draft-review hidden></div>
+            <fieldset><legend>Співвиконавці</legend><div data-task-create-co-assignee-options></div></fieldset>
         </div>
     </body>`, {
         runScripts: 'outside-only',
@@ -622,6 +623,7 @@ test('AI draft composer renders interactive task bundle review without single-ta
 
     const root = window.document.getElementById('composer');
     window.TaskAiDraft.bindComposer(root, {
+        readCoAssignees: () => [9],
         readDraft: () => ({
             title: 'CRM + Hermes rollout',
             description: 'split it',
@@ -643,6 +645,7 @@ test('AI draft composer renders interactive task bundle review without single-ta
     assert.match(root.textContent, /AI .*2/);
     assert.match(root.textContent, /dependencies/);
     assert.match(root.textContent, /2 всього/);
+    assert.match(root.textContent, /додано до кожної підтвердженої задачі/);
     assert.equal(root.querySelectorAll('[data-task-ai-bundle-editor]').length, 0, 'bundle starts in compact scan mode');
     root.querySelector('[data-task-ai-bundle-edit]').click();
     assert.ok(root.querySelector('.task-ai-bundle-field-states'));
@@ -661,6 +664,7 @@ test('AI draft composer renders interactive task bundle review without single-ta
     root.querySelector('[data-task-ai-bundle-accept]').click();
     assert.equal(root.querySelector('[data-task-ai-draft-submit-intent]').disabled, false);
     assert.equal(window.TaskAiDraft.bundlePayloadFor(root).tasks.length, 2);
+    assert.deepEqual(Array.from(window.TaskAiDraft.bundlePayloadFor(root).coAssigneeUserIds), [9]);
     assert.equal(window.TaskAiDraft.commitPayloadFor(root).commitType, 'bundle');
     assert.equal(window.TaskAiDraft.commitPayloadFor(root).tasks[0].scheduleDate, '2026-08-18');
     assert.equal(window.TaskAiDraft.commitPayloadFor(root).tasks[1].scheduleDate, '2026-08-18');

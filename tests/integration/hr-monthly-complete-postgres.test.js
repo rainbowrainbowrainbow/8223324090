@@ -9,7 +9,7 @@ const crypto = require('node:crypto');
 const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const { loadParkHrMonthlyReport } = require('../../services/parkHrMonthlyReportRead');
-const { taskKpiEligibleSql, taskKpiMachineSignalSql } = require('../../services/taskPerformancePolicy');
+const taskPerformancePolicy = require('../../services/taskPerformancePolicy');
 const { assertSafeTestDatabaseUrl, assertSafeIsolatedTestUrl } = require('../../scripts/test-db-safety');
 
 // This query is behind an intentionally closed legacy HTTP lane. Execute its
@@ -17,13 +17,13 @@ const { assertSafeTestDatabaseUrl, assertSafeIsolatedTestUrl } = require('../../
 function legacyMonthlyTaskSql() {
     const source = fs.readFileSync(path.resolve(__dirname, '../../routes/hr.js'), 'utf8');
     const monthly = source.slice(source.indexOf("router.get('/report/monthly'"));
-    const detail = monthly.match(/const taskDetailSql = `([\s\S]*?)`;/)?.[1];
-    const overdue = monthly.match(/const taskOverdueSql = `([\s\S]*?)`;/)?.[1];
     const query = monthly.match(/const taskKpiRows = await pool\.query\(\s*`([\s\S]*?)`,/)?.[1];
-    assert.ok(detail && overdue && query, 'Locate the actual monthly task query, not a test copy');
-    const scope = { taskKpiEligibleSql, taskKpiMachineSignalSql };
-    scope.taskDetailSql = vm.runInNewContext('`' + detail + '`', scope);
-    scope.taskOverdueSql = vm.runInNewContext('`' + overdue + '`', scope);
+    assert.ok(query, 'Locate the actual monthly task query, not a test copy');
+    const scope = { ...taskPerformancePolicy };
+    for (const match of monthly.slice(0, monthly.indexOf('const taskKpiRows')).matchAll(/const (\w+) = `([\s\S]*?)`;/g)) {
+        const [, name, template] = match;
+        scope[name] = vm.runInNewContext('`' + template + '`', scope);
+    }
     const sql = vm.runInNewContext('`' + query + '`', scope);
     assert.match(sql.trim(), /^SELECT\b/);
     assert.doesNotMatch(sql, /\b(?:INSERT|UPDATE|DELETE|TRUNCATE)\b/i);
@@ -37,7 +37,7 @@ test('actual PostgreSQL monthly reports classify complete with done/completed an
     assertSafeIsolatedTestUrl(process.env.TEST_URL);
     const db = new Pool({ connectionString: process.env.TEST_DATABASE_URL, max: 4 });
     const output = process.env.HR_MONTHLY_COMPLETE_EVIDENCE;
-    const result = { environment: 'LOCAL / SYNTHETIC / REAL POSTGRESQL', baseSha: 'c6fe83a5360c2e981efc7c94f190ffd420b19028',
+    const result = { environment: 'LOCAL / SYNTHETIC / REAL POSTGRESQL', baseSha: process.env.HR_MONTHLY_COMPLETE_BASE_SHA || null,
         period: { dateFrom: '2026-09-01', dateTo: '2026-09-30' }, blocks: [], fixtures: [], http: [], browser: null };
     const actors = {};
     const password = crypto.randomBytes(18).toString('hex');
@@ -128,6 +128,7 @@ test('actual PostgreSQL monthly reports classify complete with done/completed an
         result.http.push({ route: '/api/hr/report/monthly?month=2026-09', status: http.status, reportAccess: http.body.reportAccess });
         const expectedTotals = Object.fromEntries(['assigned','done','overdue'].map(k => ['tasks_' + k, fixtures.filter(f => f.expected[k]).length]));
         for (const [label, row] of [['park-service', service], ['legacy-exact-query-not-http', legacy], ['membership-http', http.body.data.find(r => Number(r.staff_id) === staffIds[0]).task_kpi]]) {
+            assert.equal(Number(row.tasks_actually_completed), 0, 'Legacy completions without an actor do not imply an actual finisher');
             const observed = fixtures.map(f => {
                 const actual = Object.fromEntries(['assigned','done','overdue'].map(k => [k, row['tasks_' + k + '_details'].some(t => Number(t.id) === f.id)]));
                 return { key: f.key, id: f.id, expected: f.expected, actual, status: JSON.stringify(actual) === JSON.stringify(f.expected) ? 'PASS' : 'FAIL' };
@@ -136,8 +137,10 @@ test('actual PostgreSQL monthly reports classify complete with done/completed an
         }
         for (const route of ['/api/hr/role-assignments/report', '/api/staff/link-status']) {
             const adjunct = await request(route, auth.token);
-            result.http.push({ route, status: adjunct.status, code: adjunct.body.code });
-            assert.equal(adjunct.status, 403); assert.equal(adjunct.body.code, 'staff_not_migrated');
+            const anonymous = await request(route);
+            result.http.push({ route, status: adjunct.status, anonymousStatus: anonymous.status });
+            assert.equal(adjunct.status, 200, route);
+            assert.equal(anonymous.status, 401, route);
         }
         assert.deepEqual(result.blocks.map(b => b.actualTotals), result.blocks.map(b => b.expectedTotals));
         assert.equal(result.blocks.flatMap(b => b.observed).filter(r => r.status === 'FAIL').length, 0, 'Counter and every detail-list membership agree for complete and all existing rules');

@@ -2,6 +2,8 @@
 
 const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
+const { readFileSync } = require('node:fs');
+const path = require('node:path');
 const { test } = require('node:test');
 const { Pool } = require('pg');
 const { assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
@@ -18,6 +20,74 @@ const {
     agreeFreelanceSegmentTerms, confirmFreelanceAttendance, insertFreelanceRateVersion,
     listFreelanceSettlement, listFreelanceWorkDay, prepareFreelanceReassignment, writeFreelanceMovement
 } = require('../../services/hrFreelanceWork');
+
+test('cancellation distinguishes a next-day block from an open clock-in for the preceding plan day', {
+    skip: process.env.RUN_FREELANCE_SHIFT_INTEGRATION !== 'true'
+}, async () => {
+    const target = assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL);
+    assert.equal(target.isLocal, true);
+    const db = new Pool({ connectionString: target.url.toString(), ssl: false });
+    const client = await db.connect();
+    try {
+        await client.query('BEGIN');
+        const { rows: [{ date }] } = await client.query(
+            "SELECT ((clock_timestamp() AT TIME ZONE 'Europe/Kyiv')::date + 1)::text AS date");
+        const profession = 'qa_freelance_cancel_overnight';
+        await client.query("INSERT INTO hr_professions (key, title, department) VALUES ($1, 'QA Role', 'QA')", [profession]);
+        const { rows: [staff] } = await client.query(
+            "INSERT INTO staff (name, department, position, role_type) VALUES ('QA Night Cancellation', 'QA', 'QA', $1) RETURNING id",
+            [profession]);
+        const saved = await saveHrShiftDayPlan(client, {
+            staffId: staff.id, shiftDate: date, payload: { primaryProfessionKey: profession, segments: [
+                { professionKey: profession, shiftStart: '21:00', shiftEnd: '23:00', startDayOffset: 0, endDayOffset: 0 },
+                { professionKey: profession, shiftStart: '01:00', shiftEnd: '03:00', startDayOffset: 1, endDayOffset: 1, workMode: 'freelance' }
+            ] }
+        });
+        const [regular, freelance] = saved.plan.segments;
+        const { rows: [attendance] } = await client.query(`INSERT INTO hr_time_records
+            (staff_id, record_date, clock_in, status, business_context)
+            VALUES ($1, $2, ($2::date + time '21:00') AT TIME ZONE 'Europe/Kyiv', 'present', 'event_genix')
+            RETURNING id, clock_in`, [staff.id, date]);
+        const cancel = () => client.query(`UPDATE hr_shift_segments
+            SET cancelled_shift_id = hr_shift_id, cancelled_staff_id = $1, cancelled_shift_date = $2,
+                cancelled_at = clock_timestamp(), cancelled_by = 'qa', hr_shift_id = NULL
+            WHERE id = $3`, [staff.id, date, freelance.id]);
+
+        await client.query('SAVEPOINT original_cancellation_trigger');
+        await client.query(readFileSync(path.join(__dirname, '../../db/migrations/424_freelance_segment_cancellation.sql'), 'utf8'));
+        await assert.rejects(cancel(), { constraint: 'hr_freelance_cancellation_after_start' });
+        await client.query('ROLLBACK TO SAVEPOINT original_cancellation_trigger');
+
+        await client.query('SAVEPOINT overlapping_fact');
+        await client.query(`UPDATE hr_time_records SET clock_out = ($2::date + 1 + time '02:00')
+            AT TIME ZONE 'Europe/Kyiv' WHERE id = $1`, [attendance.id, date]);
+        await assert.rejects(cancel(), { constraint: 'hr_freelance_cancellation_after_start' });
+        await client.query('ROLLBACK TO SAVEPOINT overlapping_fact');
+
+        assert.equal((await cancel()).rowCount, 1);
+        assert.deepEqual((await loadHrShiftDayPlan(client, { staffId: staff.id, shiftDate: date }))
+            .plan.segments.map(segment => segment.id), [regular.id]);
+        assert.deepEqual((await client.query('SELECT clock_in FROM hr_time_records WHERE id = $1', [attendance.id])).rows,
+            [{ clock_in: attendance.clock_in }]);
+        const { id: archivedId, ...replacement } = freelance;
+        const reassign = segment => saveHrShiftDayPlan(client, {
+            staffId: staff.id, shiftDate: date,
+            payload: { primaryProfessionKey: profession, segments: [regular, segment] }
+        });
+        await assert.rejects(reassign({ ...replacement, shiftEnd: '03:15' }), { code: 'FREELANCE_PLAN_IN_USE' });
+        const { plan } = await reassign(replacement);
+        assert.equal(plan.segments[0].id, regular.id);
+        assert.notEqual(plan.segments[1].id, archivedId);
+        const { rows: [archived] } = await client.query(
+            'SELECT hr_shift_id, cancelled_staff_id FROM hr_shift_segments WHERE id = $1', [archivedId]
+        );
+        assert.deepEqual(archived, { hr_shift_id: null, cancelled_staff_id: staff.id });
+    } finally {
+        await client.query('ROLLBACK');
+        client.release();
+        await db.end();
+    }
+});
 
 test('mixed shift mode survives PostgreSQL reload and cannot enter payroll before confirmation', {
     skip: process.env.RUN_FREELANCE_SHIFT_INTEGRATION !== 'true'
@@ -248,9 +318,10 @@ test('mixed shift mode survives PostgreSQL reload and cannot enter payroll befor
         await client.query('ROLLBACK TO SAVEPOINT edit_freelance_payment');
 
         await client.query('SAVEPOINT delete_confirmed_block');
-        await assert.rejects(client.query('DELETE FROM hr_shift_segments WHERE id = $1', [freelanceId]), {
-            code: '23503'
-        });
+        await assert.rejects(client.query('DELETE FROM hr_shift_segments WHERE id = $1', [freelanceId]),
+            error => ['23503', '23001'].includes(error.code)
+                && ['hr_freelance_segment_terms_segment_id_fkey', 'hr_freelance_confirmed_blocks_segment_id_fkey']
+                    .includes(error.constraint));
         await client.query('ROLLBACK TO SAVEPOINT delete_confirmed_block');
     } finally {
         if (client) {
@@ -384,7 +455,7 @@ test('monthly terms permit an extra block but reject replacing planned regular w
     }
 });
 
-test('overnight fact deducts tracked breaks once and protects the confirmed allocation', {
+test('overnight work deducts the corrected break once and settles the confirmed freelance block in two payments', {
     skip: process.env.RUN_FREELANCE_SHIFT_INTEGRATION !== 'true'
 }, async () => {
     const target = assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL);
@@ -469,6 +540,32 @@ test('overnight fact deducts tracked breaks once and protects the confirmed allo
         assert.equal(confirmed.attendanceState, 'confirmed');
         assert.equal(confirmed.actualMinutes, 220);
         assert.equal(confirmed.segments[1].confirmedMinutes, 115);
+        assert.equal(result.blocks[1].amount, 230);
+
+        const { rows: [category] } = await client.query(
+            `INSERT INTO finance_categories (name, type, business_context)
+             VALUES ('Overnight freelance expense QA', 'expense', 'event_genix') RETURNING id`
+        );
+        const { rows: [account] } = await client.query(
+            `INSERT INTO finance_accounts (name, business_context)
+             VALUES ('Overnight freelance account QA', 'event_genix') RETURNING id`
+        );
+        const payment = {
+            segmentId: freelance.id, paymentDate: date, categoryId: category.id, accountId: account.id,
+            amount: 80, paymentMethod: 'cash', reason: 'Synthetic overnight advance',
+            idempotencyKey: `freelance-night-advance-${process.pid}`
+        };
+        const settlement = async () => (await listFreelanceSettlement(client, date))
+            .find(row => row.segment_id === freelance.id);
+        await writeFreelanceMovement(client, payment, 'qa');
+        assert.deepEqual(await settlement().then(({ status, paid, outstanding }) => [status, paid, outstanding]),
+            ['partially_paid', 80, 150]);
+        await writeFreelanceMovement(client, {
+            ...payment, amount: 150, reason: 'Synthetic overnight final payment',
+            idempotencyKey: `freelance-night-final-${process.pid}`
+        }, 'qa');
+        assert.deepEqual(await settlement().then(({ status, paid, outstanding }) => [status, paid, outstanding]),
+            ['paid', 230, 0]);
     } finally {
         await client.query('ROLLBACK');
         client.release();

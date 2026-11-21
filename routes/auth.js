@@ -37,7 +37,10 @@ const {
     taskKpiActiveWorkSql,
     taskKpiCanonicalOverdueSql,
     taskKpiCompletedSql,
+    taskKpiCompletionJoinSql,
+    taskKpiDaySql,
     taskKpiEligibleSql,
+    taskKpiPrimaryOwnerSql,
     taskKpiWorkloadDateSql
 } = require('../services/taskPerformancePolicy');
 const { logTaskActionEvent, TASK_ACTION_TYPES } = require('../services/taskActionHistory');
@@ -548,6 +551,10 @@ router.get('/profile', authenticateToken, async (req, res) => {
         const completedUnitWeekAgoRef = `$${completedUnitParams.length + 2}`;
         const completedUnitTwoWeeksAgoRef = `$${completedUnitParams.length + 3}`;
         completedUnitParams.push(today, weekAgo.toISOString(), twoWeeksAgo.toISOString());
+        const completedUnitUserRef = `$${completedUnitParams.push(user.id)}`;
+        const primaryCompletion = `(CASE WHEN completion.new_value_json ? 'ownerUserId'
+            THEN ${taskKpiPrimaryOwnerSql('tasks')} = ${completedUnitUserRef} ELSE ${ownerScope.match} END)`;
+        const creditedCompletion = `${taskKpiEligibleSql('tasks')} AND ${taskKpiCompletedSql('tasks')} AND ${primaryCompletion}`;
 
         const results = await Promise.allSettled([
             // 0: Points (current month)
@@ -845,28 +852,27 @@ router.get('/profile', authenticateToken, async (req, res) => {
             // 27: Completed tasks
             pool.query(
                 `SELECT
-                    COUNT(*) FILTER (WHERE ${taskKpiEligibleSql('tasks')} AND ${taskKpiCompletedSql('tasks')})::int AS parent_done_total,
+                    COUNT(*) FILTER (WHERE ${creditedCompletion})::int AS parent_done_total,
+                    COUNT(*) FILTER (WHERE ${taskKpiEligibleSql('tasks')} AND ${taskKpiCompletedSql('tasks')}
+                        AND completion.actor_user_id = ${completedUnitUserRef})::int AS actual_done_total,
                     COUNT(*) FILTER (
-                        WHERE ${taskKpiEligibleSql('tasks')}
-                          AND ${taskKpiCompletedSql('tasks')}
-                          AND tasks.completed_at IS NOT NULL
-                          AND DATE(tasks.completed_at AT TIME ZONE 'Europe/Kyiv') = ${completedUnitTodayRef}::date
+                        WHERE ${creditedCompletion}
+                          AND ${taskKpiDaySql('tasks.completed_at')} = ${completedUnitTodayRef}::date
                     )::int AS parent_done_today,
                     COUNT(*) FILTER (
-                        WHERE ${taskKpiEligibleSql('tasks')}
-                          AND ${taskKpiCompletedSql('tasks')}
+                        WHERE ${creditedCompletion}
                           AND tasks.completed_at IS NOT NULL
                           AND tasks.completed_at >= ${completedUnitWeekAgoRef}
                     )::int AS parent_done_this_week,
                     COUNT(*) FILTER (
-                        WHERE ${taskKpiEligibleSql('tasks')}
-                          AND ${taskKpiCompletedSql('tasks')}
+                        WHERE ${creditedCompletion}
                           AND tasks.completed_at IS NOT NULL
                           AND tasks.completed_at >= ${completedUnitTwoWeeksAgoRef}
                           AND tasks.completed_at < ${completedUnitWeekAgoRef}
                     )::int AS parent_done_last_week
-                 FROM tasks
-                 WHERE ${ownerWhere}`,
+                 FROM tasks ${taskKpiCompletionJoinSql('tasks')}
+                 WHERE ${ownerBusinessCondition}
+                   AND (${primaryCompletion} OR completion.actor_user_id = ${completedUnitUserRef})`,
                 completedUnitParams
             )
         ]);
@@ -898,10 +904,11 @@ router.get('/profile', authenticateToken, async (req, res) => {
         }
         const completedUnitR = get(27);
         const completedUnits = completedUnitR?.rows?.[0] || {};
-        const parentDoneTotal = Number(completedUnits.parent_done_total || tasks.done || 0);
+        const parentDoneTotal = Number(completedUnits.parent_done_total ?? tasks.done ?? 0);
         tasks.parentDone = parentDoneTotal;
         tasks.completedParentTasks = parentDoneTotal;
         tasks.completedUnits = parentDoneTotal;
+        tasks.actuallyCompleted = Number(completedUnits.actual_done_total || 0);
         tasks.completedMetricContract = 'completed_units = completed_tasks';
         tasks.done = tasks.completedUnits;
         tasks.total = tasks.assigned + tasks.in_progress + tasks.done;

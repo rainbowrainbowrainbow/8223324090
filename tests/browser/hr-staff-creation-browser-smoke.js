@@ -268,6 +268,68 @@ async function runActor(browser, pool, actor, existingAccountId) {
         await captureSupplement('hr-create');
 
         const createCardSubmit = dialog.getByRole('button', { name: 'Створити картку', exact: true });
+        if (actor.role === 'creator') {
+            const catalogTestName = name + ' Catalog';
+            await dialog.locator('[name="given_name"]').fill(catalogTestName.slice(3));
+            const secondTab = await context.newPage();
+            try {
+                await secondTab.goto(new URL('/hr?tab=team', target).href);
+                await secondTab.waitForFunction(() => typeof crmApiFetch === 'function');
+                const profession = await secondTab.evaluate(async () => {
+                    const result = await crmApiFetch('/api/hr/professions');
+                    return result.data.find(item => item.key === 'animator');
+                });
+                async function setDepartment(nextDepartment) {
+                    const result = await secondTab.evaluate(({ id, nextDepartment }) =>
+                        crmApiFetch(`/api/hr/professions/${id}/department`, {
+                            method: 'PATCH', body: { department: nextDepartment }
+                        }), { id: profession.id, nextDepartment });
+                    assert.equal(result.success, true, result.error);
+                }
+                await setDepartment('QA Hiring');
+                try {
+                    const [conflict] = await Promise.all([
+                        waitForResponse(page, 'POST', '/api/staff'), createCardSubmit.click()
+                    ]);
+                    assert.equal(conflict.status(), 409);
+                    assert.equal((await conflict.json()).code, 'STAFF_CREATION_CATALOG_STALE');
+                    await dialog.getByText(/Довідник оновлено/).waitFor();
+                    assert.equal(await dialog.locator('[name="given_name"]').inputValue(), catalogTestName.slice(3));
+                    assert.equal(await position.inputValue(), '');
+                    assert.equal(await createCardSubmit.isDisabled(), true);
+                    assert.equal((await pool.query('SELECT id FROM staff WHERE name = $1', [catalogTestName])).rowCount, 0);
+                    await position.selectOption('animator');
+                    assert.equal(await schedulePlacement.innerText(), placementText);
+                    const [created] = await Promise.all([
+                        waitForResponse(page, 'POST', '/api/staff'), createCardSubmit.click()
+                    ]);
+                    assert.equal(created.status(), 200);
+                    const { data: catalogStaff } = await created.json();
+                    assert.deepEqual((await pool.query('SELECT id, department FROM staff WHERE name = $1', [catalogTestName])).rows,
+                        [{ id: catalogStaff.id, department: 'QA Hiring' }]);
+                    const schedule = await page.evaluate(() => crmApiFetch('/api/staff'));
+                    assert.equal(schedule.data.find(row => row.id === catalogStaff.id).display_group_label, 'Аніматори');
+                    await page.locator('#staffEditModal').waitFor({ state: 'visible' });
+                    await page.evaluate(() => closeHrEditableModal('staffEditModal', true));
+                    await page.locator('#staffEditModal').waitFor({ state: 'hidden' });
+                    await createButton.click();
+                    await department.selectOption({ label: 'QA Hiring' });
+                    await position.selectOption('animator');
+                    assert.equal(await schedulePlacement.innerText(), placementText);
+                } finally {
+                    await setDepartment(profession.department);
+                }
+                await page.keyboard.press('Escape');
+                await dialog.waitFor({ state: 'hidden' });
+                await createButton.click();
+                await dialog.locator('[name="family_name"]').fill('QA');
+                await dialog.locator('[name="given_name"]').fill(name.slice(3));
+                await department.selectOption({ label: 'Аніматори' });
+                await position.selectOption('animator');
+            } finally {
+                await secondTab.close();
+            }
+        }
         await createCardSubmit.scrollIntoViewIfNeeded();
         await captureSupplement('hr-submit');
         const loseResponse = actor.label === 'mobile';
@@ -276,6 +338,11 @@ async function runActor(browser, pool, actor, existingAccountId) {
                 if (route.request().method() !== 'POST') return route.continue();
                 const committed = await route.fetch();
                 assert.equal(committed.status(), 200);
+                const replay = await route.fetch();
+                assert.equal(replay.status(), 200);
+                const receipt = await replay.json();
+                assert.equal(receipt.replayed, true);
+                assert.equal(receipt.data.id, (await committed.json()).data.id);
                 await route.abort('failed');
             });
         }

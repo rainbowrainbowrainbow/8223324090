@@ -818,7 +818,7 @@ test('task AI draft commit route is explicit, atomic, idempotent, and emits side
 
     assert.match(routeBlock, /buildTaskAiDraftCommit/);
     assert.match(routeBlock, /if \(!result\.replayed\)/);
-    assert.ok(routeBlock.indexOf('const result = await buildTaskAiDraftCommit') < routeBlock.indexOf('emitTaskAssignedToOwner'));
+    assert.ok(routeBlock.indexOf('const result = await buildTaskAiDraftCommit') < routeBlock.indexOf('emitTaskCreationAssignments'));
     assert.ok(routeBlock.indexOf('const result = await buildTaskAiDraftCommit') < routeBlock.indexOf('notifyTaskAssignment'));
     assert.match(routeBlock, /notificationTiming: 'after_commit'/);
     assert.match(service, /SELECT pg_advisory_xact_lock\(hashtext\(\$1\)::bigint\)/);
@@ -1461,7 +1461,7 @@ test('task AI draft bundle route uses atomic endpoint and side effects after com
 
     assert.match(routeBlock, /buildTaskAiDraftBundleCommit/);
     assert.match(routeBlock, /if \(!result\.replayed\)/);
-    assert.ok(routeBlock.indexOf('const result = await buildTaskAiDraftBundleCommit') < routeBlock.indexOf('emitTaskAssignedToOwner'));
+    assert.ok(routeBlock.indexOf('const result = await buildTaskAiDraftBundleCommit') < routeBlock.indexOf('emitTaskCreationAssignments'));
     assert.ok(routeBlock.indexOf('const result = await buildTaskAiDraftBundleCommit') < routeBlock.indexOf('notifyTaskAssignment'));
     assert.match(routeBlock, /notificationTiming: 'after_commit'/);
     assert.match(service, /SELECT pg_advisory_xact_lock\(hashtext\(\$1\)::bigint\)/);

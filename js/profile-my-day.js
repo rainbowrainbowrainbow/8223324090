@@ -27,7 +27,7 @@
         } catch {}
     }
 
-    function openTaskDialog({ taskId, load, selectDate, statusLabel, opener, onClose, mode, save, complete, reschedule, draftScope, onReconciled }) {
+    function openTaskDialog({ taskId, load, selectDate, statusLabel, opener, onClose, mode, save, complete, cancel, reschedule, draftScope, onReconciled }) {
         const draftKey = draftScope?.actor && draftScope?.business && Number.isSafeInteger(taskId)
             ? sessionDraftPrefix + JSON.stringify([draftScope.actor, draftScope.business, taskId]) : null;
         const dialog = document.createElement('dialog');
@@ -218,7 +218,8 @@
                     await refresh();
                     if (awaitingSessionChange || !dialog.open) return;
                     const receipt = task.myDayOperation;
-                    if (receipt?.id === operation.id && receipt.kind === operation.kind && receipt.version === operation.version) {
+                    if ((operation.kind === 'cancel' && task.status === 'cancelled')
+                        || (receipt?.id === operation.id && receipt.kind === operation.kind && receipt.version === operation.version)) {
                         settleOperation(operation);
                         render();
                         onReconciled?.(operation.kind);
@@ -305,6 +306,7 @@
             <div class="park-task-dialog-buttons">
                 ${actions.edit && save ? '<button type="button" data-dialog-edit>Редагувати</button>' : ''}
                 ${actions.complete && complete ? '<button type="button" data-dialog-complete>Виконати</button>' : ''}
+                ${actions.cancel && cancel ? '<button type="button" data-dialog-cancel-task>Скасувати задачу</button>' : ''}
             </div>
             ${actions.edit && save ? `<form data-dialog-editor ${editorVisible ? '' : 'hidden'}>
                 <label for="my-day-edit-title">Назва</label><input id="my-day-edit-title" name="title" required value="${escape(editorValue.title)}">
@@ -335,6 +337,14 @@
             content.querySelector('[data-dialog-complete]')?.addEventListener('click', () => {
                 if (isDirty()) { preventLoss({ preventDefault() {} }); return; }
                 submitOperation('complete', complete);
+            });
+            content.querySelector('[data-dialog-cancel-task]')?.addEventListener('click', async () => {
+                if (isDirty()) { preventLoss({ preventDefault() {} }); return; }
+                const confirmed = await global.confirmModal?.('Скасувати цю задачу? Виконавці побачать її в історії.', {
+                    type: 'warning', okText: 'Скасувати задачу', cancelText: 'Залишити задачу',
+                    initialFocus: '.confirm-cancel', container: dialog
+                });
+                if (confirmed && dialog.open) submitOperation('cancel', cancel);
             });
             const schedule = content.querySelector('[data-dialog-schedule]');
             schedule?.addEventListener('input', () => {

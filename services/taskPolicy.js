@@ -178,6 +178,17 @@ function canReassignTask(user, task = {}) {
     return perms.canAssignAnyone === true || perms.taskVisibility === 'all' || perms.taskVisibility === 'department';
 }
 
+function isTaskAuthor(user, task = {}) {
+    const id = normalizeUserId(user);
+    if (!id || user?.is_active === false || user?.isActive === false || user?.role === 'guest') return false;
+    const authorId = task.created_by_user_id ?? task.createdByUserId;
+    return authorId == null ? Boolean(user.username && task.created_by === user.username) : Number(authorId) === id;
+}
+
+function canCancelTask(user, task = {}) {
+    return isTaskAuthor(user, task) || (canMutateTask(user, task) && canReassignTask(user, task));
+}
+
 function taskVisibilityValue(task = {}) {
     return String(task.visibility || task.taskVisibility || '').trim().toLowerCase();
 }
@@ -282,6 +293,7 @@ module.exports = {
     canViewTask,
     canMutateTask,
     canChangeTaskStatus,
+    canCancelTask,
     canReassignTask,
     canRescheduleTask,
     canUseTaskRouteCapability,

@@ -5,7 +5,7 @@ const { loadPayrollPeriodLock } = require('./hrPayrollPeriod');
 const { getEmployeePayrollPreview } = require('./payroll');
 const { loadPayrollSettlementReadModels } = require('./payrollSettlement');
 const { taskWorkloadDateSql } = require('./taskCabinetProjection');
-const { TASK_ACTION_TYPES } = require('./taskActionConstants');
+const { taskKpiCompletionJoinSql, taskKpiPrimaryOwnerSql, taskKpiEligibleSql, taskKpiCompletedSql } = require('./taskPerformancePolicy');
 
 const kyivDate = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
 
@@ -158,10 +158,16 @@ async function loadResultPeriod(db, staffId, userId, scope, range) {
     const [attendance, tasks, checklists, training] = await Promise.all([
         loadEmployeeAttendance(db, staffId, range),
         db.query(
-            `SELECT COUNT(*) FILTER (WHERE t.status = 'done' AND ${within(completed)})::int AS completed,
+            `SELECT COUNT(*) FILTER (WHERE ${taskKpiCompletedSql()} AND ${within(completed)}
+                       AND ${taskKpiPrimaryOwnerSql()} = $1)::int AS completed,
+                    COUNT(*) FILTER (WHERE ${taskKpiCompletedSql()} AND ${within(completed)}
+                       AND completion.actor_user_id = $1)::int AS "actuallyCompleted",
                     COUNT(*) FILTER (WHERE ${within(deadline)} AND ${deadline} < NOW()
-                       AND (t.status <> 'done' OR ${completed} > ${deadline}))::int AS overdue
-             FROM tasks t WHERE t.owner_user_id = $1 AND t.business_context = $4
+                       AND ${taskKpiPrimaryOwnerSql()} = $1
+                       AND (NOT ${taskKpiCompletedSql()} OR ${completed} > ${deadline}))::int AS overdue
+             FROM tasks t ${taskKpiCompletionJoinSql()}
+             WHERE COALESCE(t.business_context, 'event_genix') = $4
+                AND ${taskKpiEligibleSql()}
                 AND COALESCE(t.task_mode, 'work') = 'work'
                 AND COALESCE(t.visibility, 'team') = 'team'
                 AND COALESCE(t.workflow_state, '') NOT IN ('archived', 'cancelled')
@@ -238,15 +244,11 @@ async function loadDailyTaskResults(db, userId, scope, today) {
                  OR COALESCE(t.visibility, 'team') = 'me_only'
                  OR COALESCE(t.category, '') = 'personal'
              ) AS personal) classified
-             LEFT JOIN LATERAL (
-                 SELECT h.actor_user_id FROM task_action_history h
-                 WHERE h.task_id = t.id AND h.action_type = $5
-                 ORDER BY h.created_at DESC, h.id DESC LIMIT 1
-             ) completion ON true
-             WHERE t.owner_user_id = $1 AND t.business_context = $2
-               AND t.status = 'done'
+             ${taskKpiCompletionJoinSql()}
+             WHERE COALESCE(t.business_context, 'event_genix') = $2
+               AND ${taskKpiCompletedSql()}
                AND ${completedAt} >= ${from} AND ${completedAt} < ${through}
-               AND COALESCE(completion.actor_user_id, t.owner_user_id) = $1
+               AND completion.actor_user_id = $1
              GROUP BY 1
          ), overdue AS (
              SELECT COUNT(*)::int AS count
@@ -260,7 +262,7 @@ async function loadDailyTaskResults(db, userId, scope, today) {
                 COALESCE(completed.personal, 0)::int AS personal, overdue.count AS overdue
          FROM days CROSS JOIN overdue LEFT JOIN completed ON completed.date = days.date
          ORDER BY days.date`,
-        [userId, scope.activeContext, start, today, TASK_ACTION_TYPES.COMPLETED]
+        [userId, scope.activeContext, start, today]
     );
     return {
         days: rows.map(({ date, work, personal }) => ({ date, work, personal })),

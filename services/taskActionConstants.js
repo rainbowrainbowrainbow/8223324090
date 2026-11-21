@@ -3,6 +3,7 @@
 const TASK_ACTION_TYPES = Object.freeze({
     ACKNOWLEDGED: 'task_acknowledged',
     COMPLETED: 'task_completed',
+    CANCELLED: 'task_cancelled',
     OWNER_REASSIGNED: 'task_owner_reassigned',
     RESCHEDULED: 'task_rescheduled',
     STATUS_CHANGED: 'task_status_changed',

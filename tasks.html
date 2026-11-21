@@ -966,6 +966,22 @@
             min-height: 16px !important;
             padding: 0 !important;
         }
+        #taskCreateCoAssignees {
+            min-inline-size: 0;
+            margin: 0;
+        }
+        [data-task-create-co-assignee-options] {
+            max-block-size: 180px;
+            overflow: auto;
+        }
+        #taskCreateCoAssignees input[type="checkbox"] {
+            flex: 0 0 18px;
+            inline-size: 18px;
+            block-size: 18px;
+            min-block-size: 18px;
+            padding: 0;
+            margin: 0;
+        }
         .task-composer-group select,
         .task-composer-group input {
             min-height: 40px !important;
@@ -1920,6 +1936,10 @@
                     <div class="task-ai-draft-review-host" data-task-ai-draft-review hidden></div>
                 </div>
                 <div class="task-composer-details" id="taskComposerDetails" hidden>
+                    <fieldset id="taskCreateCoAssignees" hidden>
+                        <legend>Співвиконавці</legend>
+                        <div data-task-create-co-assignee-options></div>
+                    </fieldset>
                     <div class="task-composer-group">
                         <span class="task-composer-label">Основне</span>
                         <select id="taskSubcategory" class="hidden" aria-label="Підкатегорія"></select>

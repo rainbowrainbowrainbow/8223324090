@@ -34,7 +34,8 @@ async function withHrRouter(run) {
             } else if (normalized.includes('FROM tasks t')) {
                 assert.match(normalized, /t\.business_context = 'event_genix'/);
                 assert.match(normalized, /JOIN employee_profiles ep/);
-                rows = [{ staff_id: 9701, tasks_assigned: 2, tasks_done: 1, tasks_overdue: 0,
+                assert.match(normalized, /completion\.actor_user_id = ep\.user_id .+ AS tasks_actually_completed/);
+                rows = [{ staff_id: 9701, tasks_assigned: 2, tasks_done: 1, tasks_actually_completed: 2, tasks_overdue: 0,
                     tasks_assigned_details: [{ id: 91, title: 'Synthetic task', compensation: 'PRIVATE' }],
                     tasks_done_details: [{ id: 91, title: 'Synthetic task' }],
                     compensation: { estimated_salary: 12345 } }];
@@ -134,7 +135,7 @@ test('Park monthly report uses exact GET, current membership and non-payroll pro
             assert.equal(response.body.data[0].attendance_rate, 50);
             assert.equal(response.body.data[0].attendance_details.scheduled.length, 2);
             assert.deepEqual(response.body.data[0].task_kpi, {
-                tasks_assigned: 2, tasks_done: 1, tasks_overdue: 0,
+                tasks_assigned: 2, tasks_done: 1, tasks_actually_completed: 2, tasks_overdue: 0,
                 tasks_assigned_details: [{ id: 91, title: 'Synthetic task' }],
                 tasks_done_details: [{ id: 91, title: 'Synthetic task' }], tasks_overdue_details: []
             });

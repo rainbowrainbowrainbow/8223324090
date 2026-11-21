@@ -2790,8 +2790,9 @@ test('task create post steps degrade to warnings after the row is created', () =
     const source = fs.readFileSync(path.join(ROOT, 'routes', 'tasks.js'), 'utf8');
 
     assert.match(source, /const postCreateWarnings = \[\]/);
-    assert.match(source, /recordPostCreateWarning\('schedule'/);
-    assert.match(source, /recordPostCreateWarning\('dependencies'/);
+    assert.match(source, /optionalCreateStep\('schedule'/);
+    assert.match(source, /optionalCreateStep\('dependencies'/);
+    assert.match(source, /ROLLBACK TO SAVEPOINT[\s\S]*recordPostCreateWarning\(name, error\)/);
     assert.match(source, /postCreateWarnings,/);
     assert.match(source, /postCreateWarningCount: postCreateWarnings\.length/);
 });
@@ -2856,14 +2857,14 @@ test('My Day level 3 recommendation renders only permission-approved actions', (
     assert.doesNotMatch(allActions, /Розбити на кроки/);
     assert.match(allActions, /Змінити виконавця/);
     assert.match(allActions, /Перепланувати/);
-    assert.match(allActions, /Скасувати задачу/);
+    assert.match(allActions, /Архівувати задачу/);
 
     const restricted = ctx.renderCabinetPostponementExplanation({
         ...base,
         actionPermissions: { canSplit: false, canReassign: false, canReschedule: true, canArchive: false }
     });
     assert.match(restricted, /Перепланувати/);
-    assert.doesNotMatch(restricted, /Розбити на кроки|Змінити виконавця|Скасувати задачу/);
+    assert.doesNotMatch(restricted, /Розбити на кроки|Змінити виконавця|Архівувати задачу/);
 
     const nonCritical = ctx.renderCabinetPostponementExplanation({ ...base, postponementCount: 2 });
     assert.doesNotMatch(nonCritical, /cabinet-postponement-decision|data-cabinet-postponement-action/);
@@ -2924,7 +2925,7 @@ test('My Day reassign retries only after shared private handoff confirmation', a
     assert.equal(calls[1].body.confirmPrivateHandoff, true);
 });
 
-test('My Day cancel action requires confirmation and archives without DELETE', async () => {
+test('My Day archive action requires confirmation and archives without DELETE', async () => {
     const ctx = loadProfileTaskerContext();
     const calls = [];
     let confirmation = '';
@@ -2933,7 +2934,7 @@ test('My Day cancel action requires confirmation and archives without DELETE', a
     ctx.apiDelete = async () => { throw new Error('DELETE must not be called'); };
 
     await ctx.archiveCabinetPostponementTask(302);
-    assert.match(confirmation, /переміщена в архів/);
+    assert.match(confirmation, /Архівувати задачу/);
     assert.match(confirmation, /можна буде відновити/);
     assert.equal(calls.length, 1);
     assert.equal(calls[0].path, '/tasks/bulk');

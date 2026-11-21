@@ -101,7 +101,7 @@ test('results compare Kyiv calendar months using linked staff and typed task own
     const results = await loadEmployeeResults({ async query(sql, params) {
         const current = params[1] === '2024-01-01';
         if (sql.includes('WITH days AS')) {
-            assert.deepEqual(params, [7, 'event_genix', '2024-01-26', '2024-02-01', 'task_completed']);
+            assert.deepEqual(params, [7, 'event_genix', '2024-01-26', '2024-02-01']);
             return { rows: [
                 { date: '2024-01-31', work: 0, personal: 1, overdue: 3 },
                 { date: '2024-02-01', work: 2, personal: 0, overdue: 3 }
@@ -111,9 +111,10 @@ test('results compare Kyiv calendar months using linked staff and typed task own
             assert.deepEqual(params, current
                 ? [7, '2024-01-01', '2024-02-01', 'event_genix']
                 : [7, '2023-12-01', '2024-01-01', 'event_genix']);
-            assert.match(sql, /owner_user_id = \$1/);
+            assert.match(sql, /new_value_json \? 'ownerUserId'[\s\S]*ELSE t\.owner_user_id END = \$1/);
+            assert.match(sql, /completion\.actor_user_id = \$1/);
             assert.match(sql, /Europe\/Kyiv/);
-            return { rows: [{ completed: current ? 5 : 2, overdue: 1 }] };
+            return { rows: [{ completed: current ? 5 : 2, actuallyCompleted: current ? 6 : 1, overdue: 1 }] };
         }
         assert.equal(params[0], 3);
         if (sql.includes('FROM staff_substitutions')) {
@@ -135,6 +136,7 @@ test('results compare Kyiv calendar months using linked staff and typed task own
         daysRecorded: 4, present: 3, absent: 1, measuredArrivals: 2, onTime: 1, late: 1, lateMinutes: 5
     });
     assert.equal(results.previous.tasks.completed, 2);
+    assert.equal(results.current.tasks.actuallyCompleted, 6);
     assert.deepEqual(results.substitutions, [{ id:'91', date:'2024-01-08', role:'original', state:'completed', partial:true }]);
     assert.deepEqual(results.dailyTasks, {
         days: [

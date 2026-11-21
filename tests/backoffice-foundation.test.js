@@ -83,7 +83,10 @@ describe('backoffice foundation v1 contracts', () => {
         assert.match(hrRoute, /router\.put\('\/staff\/:id\/pool-status'/);
         assert.match(hrRoute, /hr_pool_status = \$1::text/);
         assert.match(hrRoute, /CASE WHEN \$1::text = 'blacklisted'/);
-        assert.match(hrRoute, /FROM tasks t[\s\S]*JOIN employee_profiles ep ON ep\.user_id = t\.owner_user_id/);
+        assert.match(hrRoute, /taskKpiPrimaryOwnerSql\('t'\)\} AS credit_user_id/);
+        assert.match(hrRoute, /completion\.actor_user_id AS executor_user_id/);
+        assert.match(hrRoute, /FROM task_scope t\s+JOIN employee_profiles ep ON ep\.user_id = t\.credit_user_id/);
+        assert.match(hrRoute, /FROM task_scope t\s+JOIN employee_profiles ep ON ep\.user_id = t\.executor_user_id/);
         assert.match(hrRoute, /task_kpi/);
         assert.doesNotMatch(hrRoute, /new TaskEngine|TaskEngineV2|taskAnalyticsV2/);
     });

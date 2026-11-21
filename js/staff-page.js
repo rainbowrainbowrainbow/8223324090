@@ -3741,7 +3741,11 @@ async function saveScheduleEntry(staffId, date, shiftStart, shiftEnd, status, no
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
     });
-    return await res.json();
+    const result = await res.json();
+    if (result?.success !== true && dayPlan?.cancelFreelanceSegmentIds?.length) {
+        return { ...result, httpStatus: res.status };
+    }
+    return result;
 }
 
 async function fetchScheduleHistory(staffId, date, options = {}) {
@@ -5118,6 +5122,9 @@ function navigateSchedulePayConditions(link) {
         sectionDepartment: session.sectionDepartment, sectionProfessionKey: session.sectionProfessionKey,
         planUpdatedAt: session.planUpdatedAt, initialState: _staffScheduleInitialState,
         cancelFreelanceSegmentIds: Array.from(session.cancelFreelanceSegmentIds || []),
+        freelanceCancellationDraft: Array.from(session.freelanceCancellationDraft || []),
+        freelanceCancellationUnknown: session.freelanceCancellationUnknown === true,
+        statusBeforeFreelanceCancellation: session.statusBeforeFreelanceCancellation,
         status: document.getElementById('schStatus')?.value || 'working',
         note: document.getElementById('schNote')?.value || '',
         primaryProfessionKey: document.getElementById('schPrimaryProfession')?.value || '',
@@ -5179,6 +5186,14 @@ async function restoreScheduleHrDraft(draft) {
     session.planUpdatedAt = draft.planUpdatedAt;
     session.draftToken = draft.token;
     session.cancelFreelanceSegmentIds = new Set(Array.isArray(draft.cancelFreelanceSegmentIds) ? draft.cancelFreelanceSegmentIds : []);
+    session.freelanceCancellationDraft = new Map(
+        Array.isArray(draft.freelanceCancellationDraft) ? draft.freelanceCancellationDraft : []);
+    session.freelanceCancellationUnknown = draft.freelanceCancellationUnknown === true;
+    session.statusBeforeFreelanceCancellation = draft.statusBeforeFreelanceCancellation;
+    if (!Object.hasOwn(draft, 'statusBeforeFreelanceCancellation') && draft.status === 'dayoff'
+        && !draft.segments?.length && session.cancelFreelanceSegmentIds.size) {
+        session.statusBeforeFreelanceCancellation = session.entry?.status;
+    }
     document.getElementById('schStatus').value = draft.status;
     document.getElementById('schNote').value = draft.note;
     renderSchedulePlanEditor('schedule', draft.segments, { primaryProfessionKey: draft.primaryProfessionKey, activeIndex: draft.activeIndex });
@@ -5835,8 +5850,9 @@ function schedulePaidIntervalBounds(segment, role) {
     const relativeStart = segmentBounds.start - dayStart;
     const start = dayStart + rawStart + (rawStart < relativeStart ? 1440 : 0);
     let end = dayStart + rawEnd + (rawEnd < relativeStart ? 1440 : 0);
+    const endOnSegmentDay = end;
     if (end <= start) end += 24 * 60;
-    return { start, end, segmentBounds };
+    return { start, end, endOnSegmentDay, segmentBounds };
 }
 
 function scheduleMinutesToTime(minutes) {
@@ -5895,11 +5911,18 @@ function normalizeSchedulePaidRoleSegments(segments = []) {
         if (!bounds
             || bounds.start < bounds.segmentBounds.start
             || bounds.end > bounds.segmentBounds.end) {
-            errors.push({
-                index,
-                field: 'paid-start',
-                message: 'Оплачуваний інтервал має повністю бути в межах основного фізичного блоку.'
-            });
+            const startOutside = bounds && bounds.start >= bounds.segmentBounds.end;
+            const endOutside = bounds && bounds.endOnSegmentDay > bounds.segmentBounds.end;
+            if (startOutside) {
+                errors.push({ index, field: 'paid-start', message: 'Початок оплати має бути в межах основного фізичного блоку.' });
+            }
+            if (endOutside) {
+                errors.push({ index, field: 'paid-end', message: 'Завершення оплати має бути в межах основного фізичного блоку.' });
+            }
+            if (!startOutside && !endOutside) {
+                const message = 'Вкажіть оплачуваний інтервал у межах блоку, де завершення пізніше за початок.';
+                errors.push({ index, field: 'paid-start', message }, { index, field: 'paid-end', message });
+            }
             normalized.push(segment);
             return;
         }
@@ -6720,12 +6743,42 @@ async function stageFreelanceCancellation(segment, primaryProfessionKey) {
     const segments = readSchedulePlanSegments('schedule');
     const index = segments.findIndex(item => String(item.id) === String(segment.id));
     if (index < 0) return;
-    session.cancelFreelanceSegmentIds.add(String(segment.id));
+    const id = String(segment.id);
+    const status = document.getElementById('schStatus');
+    session.cancelFreelanceSegmentIds.add(id);
+    session.freelanceCancellationDraft.set(id, {
+        segment: segments[index], index, before: segments[index + 1]?.clientKey
+    });
     segments.splice(index, 1);
-    if (!segments.length) document.getElementById('schStatus').value = 'dayoff';
+    if (!segments.length) {
+        session.statusBeforeFreelanceCancellation = status.value;
+        status.value = 'dayoff';
+    }
     renderSchedulePlanEditor('schedule', segments, { primaryProfessionKey, activeIndex: index });
     toggleTimeFields();
     document.getElementById('schSaveBtn')?.focus();
+}
+
+function restoreStagedFreelanceBlocks(session) {
+    const status = document.getElementById('schStatus');
+    const statusToRestore = status.value === 'dayoff' ? session.statusBeforeFreelanceCancellation : null;
+    const segments = statusToRestore ? [] : readSchedulePlanSegments('schedule');
+    const primaryProfessionKey = document.getElementById('schPrimaryProfession')?.value;
+    const original = scheduleEntrySegmentsForUi(session.entry);
+    for (const id of [...session.cancelFreelanceSegmentIds].reverse()) {
+        const originalIndex = original.findIndex(segment => String(segment.id) === id);
+        const saved = session.freelanceCancellationDraft.get(id)
+            || (originalIndex < 0 ? null : { segment: original[originalIndex], index: originalIndex });
+        if (!saved) continue;
+        const next = saved.before ? segments.findIndex(segment => segment.clientKey === saved.before) : -1;
+        segments.splice(next < 0 ? saved.index : next, 0, saved.segment);
+    }
+    if (statusToRestore) status.value = statusToRestore;
+    session.statusBeforeFreelanceCancellation = null;
+    session.freelanceCancellationDraft.clear();
+    session.cancelFreelanceSegmentIds.clear();
+    renderSchedulePlanEditor('schedule', segments, { primaryProfessionKey });
+    toggleTimeFields();
 }
 
 function bindSchedulePlanEditor(scope) {
@@ -7271,6 +7324,8 @@ function openEditModal(staffId, date, options = {}) {
         shiftPreferencesLoadFailed: false,
         planUpdatedAt: scheduleEntryPlanUpdatedAt(entry),
         cancelFreelanceSegmentIds: new Set(),
+        freelanceCancellationDraft: new Map(),
+        statusBeforeFreelanceCancellation: null,
         staleConflict: null
     };
 
@@ -7409,6 +7464,9 @@ async function refreshStaleScheduleModalPlan(session) {
     }
     session.entry = freshEntry;
     session.cancelFreelanceSegmentIds.clear();
+    session.freelanceCancellationDraft.clear();
+    session.statusBeforeFreelanceCancellation = null;
+    session.freelanceCancellationUnknown = false;
     session.planUpdatedAt = scheduleEntryPlanUpdatedAt(freshEntry);
     session.staleConflict = null;
     session.hrDraftStale = false;
@@ -7712,6 +7770,29 @@ async function offerStaleSchedulePlanRefresh(session) {
     if (shouldRefresh && scheduleModalSessionIsCurrent(session)) await refreshStaleScheduleModalPlan(session);
 }
 
+async function reconcileFreelanceCancellation(session) {
+    const { staffId, date } = session;
+    const result = await fetchSchedule(date, date);
+    if (!scheduleModalSessionIsCurrent(session)) return;
+    if (!result.success) {
+        showNotification('Не вдалося звірити графік. Натисніть «Зберегти», щоб повторити перевірку.', 'error');
+        return;
+    }
+    const key = `${staffId}_${date}`;
+    const entry = result.freelanceReserveSchedule[key] || result.schedule[key];
+    session.freelanceCancellationUnknown = false;
+    if (scheduleEntryPlanUpdatedAt(entry) === session.planUpdatedAt) {
+        showNotification('Перевірено: план дня без змін. Можна повторити збереження.', 'info');
+        return;
+    }
+    const active = new Set(scheduleEntrySegmentsForUi(entry).map(segment => String(segment.id)));
+    const removed = [...session.cancelFreelanceSegmentIds].every(id => !active.has(id));
+    session.hrDraftStale = true;
+    showNotification(removed ? 'У поточному графіку цих фріланс-блоків уже немає.'
+        : 'План змінився. Перевірте актуальну версію перед збереженням.', 'info');
+    await offerStaleSchedulePlanRefresh(session);
+}
+
 async function handleSave() {
     if (!StaffState.editingCell || !scheduleRangeDataReady()
         || StaffState.editingCell.rangeKey !== scheduleCommittedRangeKey()) {
@@ -7719,6 +7800,15 @@ async function handleSave() {
         return;
     }
     const editingSession = StaffState.editingCell;
+    if (editingSession.freelanceCancellationUnknown) {
+        if (!beginScheduleModalMutation(editingSession)) return;
+        try {
+            await reconcileFreelanceCancellation(editingSession);
+        } finally {
+            finishScheduleModalMutation(editingSession);
+        }
+        return;
+    }
     if (editingSession.hrDraftStale) {
         showNotification('План змінився під час переходу в HR. Вашу чернетку не перезаписано.', 'error');
         await offerStaleSchedulePlanRefresh(editingSession);
@@ -7780,6 +7870,9 @@ async function handleSave() {
                 additionalRoles: (segment.additionalRoles || []).map(role => ({ ...role })),
                 additionalProfessionKeys: segment.additionalProfessionKeys
             }))
+        }).catch(error => {
+            if (!editingSession.cancelFreelanceSegmentIds.size) throw error;
+            return { success: false, httpStatus: 0 };
         });
         if (result.success) {
             const addedFreelance = validation.segments.filter(segment => segment.workMode === 'freelance' && !segment.id);
@@ -7824,6 +7917,20 @@ async function handleSave() {
             editingSession.staleConflict = result.details || {};
             showNotification('Цей план уже змінив інший менеджер. Ваші поля не перезаписані.', 'error');
             await offerStaleSchedulePlanRefresh(editingSession);
+        } else if (editingSession.cancelFreelanceSegmentIds.size && scheduleModalSessionIsCurrent(editingSession)) {
+            if (!result.httpStatus || result.httpStatus >= 500 || [408, 429].includes(result.httpStatus)) {
+                editingSession.freelanceCancellationUnknown = true;
+                await reconcileFreelanceCancellation(editingSession);
+            } else if (result.code === 'FREELANCE_CANCELLATION_ATTENDANCE_BUSY') {
+                const undo = await confirmModal(scheduleableStaffErrorMessage(result), {
+                    okText: 'Прибрати скасування', cancelText: 'Залишити для повтору'
+                });
+                if (undo && scheduleModalSessionIsCurrent(editingSession)) restoreStagedFreelanceBlocks(editingSession);
+            } else {
+                restoreStagedFreelanceBlocks(editingSession);
+                showNotification(scheduleableStaffErrorMessage(result, 'Помилка збереження'), 'error');
+                document.getElementById('schStatus')?.focus();
+            }
         } else {
             showNotification(scheduleableStaffErrorMessage(result, 'Помилка збереження'), 'error');
         }
@@ -9858,7 +9965,10 @@ async function initStaffSchedulePage(options = {}) {
         document.getElementById('schReplaceBtn')?.addEventListener('click', handleReplaceSchedule);
         document.getElementById('schClearReplacementBtn')?.addEventListener('click', handleClearReplacement);
         document.getElementById('schCancelBtn')?.addEventListener('click', () => closeEditModal(false));
-        document.getElementById('schStatus')?.addEventListener('change', toggleTimeFields);
+        document.getElementById('schStatus')?.addEventListener('change', () => {
+            if (StaffState.editingCell) StaffState.editingCell.statusBeforeFreelanceCancellation = null;
+            toggleTimeFields();
+        });
         bindSchedulePlanEditor('schedule');
         document.getElementById('schShiftPreferencePanel')?.addEventListener('click', event => {
             const button = event.target.closest('[data-shift-pref-start][data-shift-pref-end]');

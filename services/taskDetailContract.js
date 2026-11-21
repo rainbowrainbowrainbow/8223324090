@@ -3,11 +3,13 @@
 const {
     canManageTaskObservers,
     canChangeTaskStatus,
+    canCancelTask,
     canMutateTask,
     canReassignTask,
     canRescheduleTask,
     taskRouteCapabilityDecision
 } = require('./taskPolicy');
+const { isTerminalOrArchived } = require('./taskAutomationPolicy');
 
 const SOURCE_LABELS = Object.freeze({
     booking: 'Бронювання',
@@ -61,7 +63,8 @@ function isTerminalTask(task = {}) {
 }
 
 function taskDrawerActionContract(task = {}, user = {}) {
-    const canEdit = canMutateTask(user, task);
+    const cancelled = String(task.status || '').trim() === 'cancelled';
+    const canEdit = !cancelled && canMutateTask(user, task);
     const canChangeStatus = canChangeTaskStatus(user, task);
     const terminal = isTerminalTask(task);
     const review = taskRouteCapabilityDecision(user, 'review');
@@ -71,10 +74,11 @@ function taskDrawerActionContract(task = {}, user = {}) {
         edit: canEdit,
         save: canEdit,
         complete: canChangeStatus && !terminal,
+        cancel: canCancelTask(user, task) && !isTerminalOrArchived(task),
         changeStatus: canChangeStatus && !terminal,
-        reassign: canReassignTask(user, task),
+        reassign: !cancelled && canReassignTask(user, task),
         manageCoAssignees: canEdit && canReassignTask(user, task),
-        reschedule: canRescheduleTask(user, task),
+        reschedule: !cancelled && canRescheduleTask(user, task),
         manageObservers: canManageTaskObservers(user, task),
         manageSubtasks: canEdit,
         review: review.allowed && String(task.status || '').trim() === 'done',
@@ -121,7 +125,7 @@ function withTaskDrawerContract(task = {}, user = {}, { authorReadOnly = false }
     const actionContract = taskDrawerActionContract(task, user);
     if (authorReadOnly) {
         for (const action of Object.keys(actionContract.actions)) {
-            if (action === 'view') continue;
+            if (action === 'view' || action === 'cancel') continue;
             actionContract.actions[action] = false;
             actionContract.reasons[action] = 'TASK_MUTATION_FORBIDDEN';
         }

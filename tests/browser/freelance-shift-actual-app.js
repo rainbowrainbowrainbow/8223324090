@@ -12,6 +12,32 @@ const { lockAttendanceWriteTarget } = require('../../services/attendanceWriteLoc
 const { chromium, webkit } = require('../helpers/playwright')();
 const { assertSafeIsolatedTestUrl, assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
 
+async function rejectCancellationInEditor(page, segmentId, screenshotPath) {
+    const note = page.locator('#schNote');
+    if (!await note.isVisible()) await page.locator('#schPlanExtra > summary').click();
+    const memo = 'Synthetic note retained after rejection';
+    await note.fill(memo);
+    const reject = route => route.request().method() !== 'PUT' ? route.continue()
+        : route.fulfill({ status: 409, json: {
+            success: false, code: 'FREELANCE_CANCELLATION_AFTER_START', error: 'Synthetic cancellation refusal'
+        } });
+    await page.route('**/api/staff/schedule', reject);
+    const card = page.locator(`#schSegmentsList [data-segment-id="${segmentId}"]`);
+    try {
+        await card.getByRole('button', { name: /Скасувати фріланс · блок/ }).press('Enter');
+        await page.locator('.confirm-overlay[data-confirm-kind="confirm"]')
+            .getByRole('button', { name: 'Скасувати фріланс' }).click();
+        await page.locator('#schSaveBtn').click();
+        await card.waitFor();
+        assert.equal(await note.inputValue(), memo);
+        await page.waitForFunction(() => document.activeElement?.id === 'schStatus');
+        await page.screenshot({ path: screenshotPath });
+        return memo;
+    } finally {
+        await page.unroute('**/api/staff/schedule', reject);
+    }
+}
+
 async function run() {
     assert.equal(process.env.RUN_FREELANCE_SHIFT_BROWSER, 'true');
     const base = assertSafeIsolatedTestUrl(process.env.TEST_URL);
@@ -198,6 +224,64 @@ async function run() {
             });
             return cell;
         };
+        if (process.env.EG_FREELANCE_CANCELLATION_ONLY === '1') {
+            stage = 'focused cancellation and recovery';
+            const future = laterDate(7);
+            const scheduleUrl = '/api/staff/schedule';
+            const body = { staffId: staff.id, date: future, status: 'working', primaryProfessionKey: 'animator' };
+            const initial = await request(auth, scheduleUrl, { method: 'PUT', body: { ...body, segments: [
+                { workMode: 'regular', professionKey: 'animator', shiftStart: '09:00', shiftEnd: '11:00' },
+                { workMode: 'freelance', professionKey: 'animator', shiftStart: '14:00', shiftEnd: '17:00' },
+                { workMode: 'freelance', professionKey: 'animator', shiftStart: '18:00', shiftEnd: '19:00' }
+            ] } });
+            assert.equal(initial.status, 200, await initial.clone().text());
+            const { data: entry } = await initial.json();
+            const [regular, freelance, laterFreelance] = entry.segments;
+            const terms = await request(auth, '/api/payroll/freelance/terms', { method: 'POST', body: {
+                staffId: staff.id, date: future, segmentId: freelance.id, rateUnit: 'hour', rate: '120', reason: 'Synthetic QA'
+            } });
+            assert.equal(terms.status, 201, await terms.clone().text());
+            for (const [route, width] of [['/staff', 1440], ['/hr#schedule', 320]]) {
+                await setWidth(width);
+                await (await openSchedule(future, route)).press('Enter');
+                const memo = await rejectCancellationInEditor(page, freelance.id,
+                    path.join(out, `freelance-cancellation-rejected-draft-${width}.png`));
+                const [saved] = await Promise.all([
+                    page.waitForResponse(response => new URL(response.url()).pathname === scheduleUrl && response.request().method() === 'PUT'),
+                    page.locator('#schSaveBtn').click()
+                ]);
+                assert.equal(saved.status(), 200, await saved.text());
+                assert.equal(saved.request().postDataJSON().cancelFreelanceSegmentIds, undefined);
+                assert.equal(saved.request().postDataJSON().note, memo);
+                await page.locator('#schModalOverlay').waitFor({ state: 'hidden' });
+            }
+            const getPlan = async () => (await (await request(auth, `${scheduleUrl}?from=${future}&to=${future}`)).json())
+                .data.find(plan => plan.staff_id === staff.id);
+            await db.query(`INSERT INTO hr_time_records (staff_id, record_date, clock_in, status, business_context)
+                VALUES ($1, $2, ($2::date + time '09:00') AT TIME ZONE 'Europe/Kyiv', 'present', 'event_genix')`,
+            [staff.id, future]);
+            const current = await getPlan();
+            const cancelled = await request(auth, scheduleUrl, { method: 'PUT', body: { ...body,
+                expectedUpdatedAt: current.planUpdatedAt, segments: [regular, laterFreelance], cancelFreelanceSegmentIds: [freelance.id]
+            } });
+            assert.equal(cancelled.status, 200, await cancelled.clone().text());
+            const remaining = await getPlan();
+            assert.deepEqual(remaining.segments.map(segment => String(segment.id)), [String(regular.id), String(laterFreelance.id)]);
+            assert.equal((await db.query('SELECT clock_in FROM hr_time_records WHERE staff_id = $1 AND record_date = $2',
+                [staff.id, future])).rows[0].clock_in instanceof Date, true);
+            const { id: previousId, ...cancelledSlot } = freelance;
+            const reassign = segments => request(auth, scheduleUrl, { method: 'PUT',
+                body: { ...body, expectedUpdatedAt: remaining.planUpdatedAt, segments: [regular, laterFreelance, ...segments] } });
+            const differentSlot = await reassign([{ ...cancelledSlot, shiftEnd: '18:00' }]);
+            assert.equal(differentSlot.status, 409);
+            assert.equal((await differentSlot.json()).code, 'FREELANCE_PLAN_IN_USE');
+            const restored = await reassign([cancelledSlot]);
+            assert.equal(restored.status, 200, await restored.clone().text());
+            const { data: restoredPlan } = await restored.json();
+            assert.notEqual(String(restoredPlan.segments[1].id), String(previousId));
+            console.log('Focused cancellation, reassignment and draft recovery passed on both schedule entries');
+            return;
+        }
         const controlName = 'Synthetic 230-minute freelance ' + suffix;
         const { rows: [control] } = await db.query(
             `INSERT INTO staff (name, department, position, role_type, rate_unit, hourly_rate, is_active)
@@ -530,6 +614,77 @@ async function run() {
             method: 'POST', body: { staffId, date, segmentId, rateUnit: 'hour', rate: '120', reason: 'Synthetic QA' }
         });
         assert.equal((await agree(dual.id, future, target.id)).status, 201);
+
+        stage = 'paid interval errors and schedule accessibility';
+        const paidDate = laterDate(8);
+        const paidPlan = await writePlan(dual.id, paidDate, [{
+            ...dualPlan[0], shiftStart: '15:30', shiftEnd: '20:00'
+        }]);
+        assert.equal(paidPlan.status, 200, await paidPlan.clone().text());
+        await page.route('**/api/hr/staff/*/payroll-conditions?*', route =>
+            new URL(route.request().url()).searchParams.get('purpose') !== 'additional' ? route.continue()
+                : route.fulfill({ status: 200, json: {
+                    success: true, data: { available: true, conditions: { rate: 120, rateUnit: 'hour' } }
+                } }));
+        for (const [route, width] of [['/staff', 1440], ['/hr#schedule', 390]]) {
+            await setWidth(width);
+            await openSchedule(paidDate, route);
+            await page.locator(`.sch-cell[data-staff="${dual.id}"][data-date="${paidDate}"]`).first().press('Enter');
+            const paidCard = cards.first();
+            await paidCard.locator('.sch-paid-role-editor > summary').press('Enter');
+            await paidCard.locator('[data-segment-field="paid-profession"]').selectOption('trampoline_instructor');
+            const paidStart = paidCard.locator('[data-segment-field="paid-start"]');
+            const paidEnd = paidCard.locator('[data-segment-field="paid-end"]');
+            const hint = await paidEnd.getAttribute('aria-describedby');
+            const saveButton = page.locator('#schSaveBtn');
+            const expectInvalidOnly = async (field, other, message) => {
+                assert.equal(await field.getAttribute('aria-invalid'), 'true');
+                assert.equal(await other.getAttribute('aria-invalid'), null);
+                const ids = (await field.getAttribute('aria-describedby')).split(/\s+/);
+                assert.ok(ids.includes(hint));
+                assert.equal(await paidCard.locator(`[id="${ids.find(id => id !== hint)}"]`).textContent(), message);
+                assert.equal(await saveButton.isDisabled(), true);
+            };
+            await paidEnd.fill('17:00');
+            await paidStart.fill('15:00');
+            await expectInvalidOnly(paidStart, paidEnd, 'Початок оплати має бути в межах основного фізичного блоку.');
+            await paidStart.fill('15:30');
+            await paidEnd.fill('20:30');
+            await expectInvalidOnly(paidEnd, paidStart, 'Завершення оплати має бути в межах основного фізичного блоку.');
+            await paidEnd.evaluate(field => field.scrollIntoView({ block: 'center' }));
+            await page.screenshot({ path: path.join(out, `paid-interval-end-error-${width}.png`) });
+            await paidEnd.fill('17:00');
+            assert.equal(await paidEnd.getAttribute('aria-invalid'), null);
+            assert.equal(await paidEnd.getAttribute('aria-describedby'), hint);
+            await saveButton.waitFor({ state: 'visible' });
+            await page.waitForFunction(() => !document.getElementById('schSaveBtn').disabled);
+            if (width === 1440) {
+                assert.match(await page.locator('#schPlanSummary').innerText(), /4 год 30 хв\s+Фізичний час/);
+                await page.locator('#schAddSegmentBtn').click();
+                const separate = cards.nth(1);
+                await separate.locator('[data-segment-field="profession"]').selectOption('trampoline_instructor');
+                await separate.locator('[data-segment-field="start"]').fill('14:00');
+                await separate.locator('[data-segment-field="end"]').fill('15:30');
+                await separate.locator('[data-segment-field="break"]').fill('0');
+                assert.match(await page.locator('#schPlanSummary').innerText(), /6 год\s+Фізичний час/);
+            } else {
+                await paidCard.locator('[data-segment-field="start"]').fill('22:00');
+                await paidCard.locator('[data-segment-field="end"]').fill('03:00');
+                await paidCard.locator('[data-segment-field="day"]').selectOption('01');
+                await paidStart.fill('23:00');
+                await paidEnd.fill('03:30');
+                await expectInvalidOnly(paidEnd, paidStart, 'Завершення оплати має бути в межах основного фізичного блоку.');
+                await paidEnd.fill('01:00');
+                await page.waitForFunction(() => !document.getElementById('schSaveBtn').disabled);
+            }
+            await page.locator('#schCancelBtn').click();
+            if (await page.locator('.confirm-overlay[data-confirm-kind="confirm"]').isVisible()) {
+                await page.locator('.confirm-overlay[data-confirm-kind="confirm"] .confirm-ok').click();
+            }
+            await page.locator('#schModalOverlay').waitFor({ state: 'hidden' });
+        }
+        await page.unroute('**/api/hr/staff/*/payroll-conditions?*');
+        stage = 'cross-department placement and agreed cancellation';
         const reserveSingle = await writePlan(reserve.id, future, [{ ...dualPlan[0], workMode: 'freelance' }], { reserveFreelance: true });
         assert.equal(reserveSingle.status, 200, await reserveSingle.clone().text());
         const reserveFuture = (await reserveSingle.json()).data;
@@ -613,6 +768,16 @@ async function run() {
         await page.keyboard.press('Escape');
         await confirmCancel.waitFor({ state: 'hidden' });
         await page.waitForFunction(button => button === document.activeElement, await cancelButton.elementHandle());
+        const memo = await rejectCancellationInEditor(page, target.id,
+            path.join(out, 'freelance-cancellation-rejected-draft.png'));
+        const noteOnly = await savePlan();
+        assert.equal(noteOnly.cancelFreelanceSegmentIds, undefined);
+        assert.equal(noteOnly.note, memo);
+        await db.query(`INSERT INTO hr_time_records
+            (staff_id, record_date, clock_in, status, business_context)
+            VALUES ($1, $2, ($2::date + time '09:00') AT TIME ZONE 'Europe/Kyiv', 'present', 'event_genix')`,
+        [dual.id, future]);
+        await dualBlock.click();
         await cancelButton.press('Enter');
         await confirmCancel.getByRole('button', { name: 'Скасувати фріланс' }).click();
         const cancellation = await savePlan();
@@ -623,6 +788,8 @@ async function run() {
         assert.deepEqual(listed.segments.map(block => block.shiftStart), ['09:00', '16:00']);
         assert.equal(String(listed.segments[0].id), String(dualEntry.segments[0].id));
         assert.equal(String(listed.segments[1].id), addedDualId);
+        assert.equal((await db.query('SELECT clock_in FROM hr_time_records WHERE staff_id = $1 AND record_date = $2',
+            [dual.id, future])).rows[0].clock_in instanceof Date, true);
         const { rows: [archived] } = await db.query(
             `SELECT segment.id, segment.hr_shift_id, segment.cancelled_staff_id, segment.cancelled_shift_date::text,
                     segment.cancelled_by, segment.cancelled_at, terms.rate::text

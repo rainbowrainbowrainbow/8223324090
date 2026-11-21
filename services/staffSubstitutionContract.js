@@ -127,10 +127,16 @@ function normalizeInput(raw = {}) {
     const sourceSlots = { afisha: ['primary', 'second', 'single:primary','single:second','first:primary','first:second','second:primary','second:second'], booking: ['primary', 'second'], hr_shift: ['primary', 'partial'] };
     const sourceId = sourceType === 'standalone' ? text(raw.sourceId, 'ідентифікатор роботи', 100)
         : ['booking', 'education_lesson'].includes(sourceType) ? text(raw.sourceId, 'бронювання', 50) : String(integer(raw.sourceId, 'джерело', 1));
+    const freelanceSegmentId = raw.freelanceSegmentId == null || raw.freelanceSegmentId === ''
+        ? null : String(integer(raw.freelanceSegmentId, 'фріланс-блок', 1));
+    if (freelanceSegmentId && (sourceType !== 'hr_shift' || raw.slotKey !== 'partial')) {
+        fail('SUBSTITUTION_FREELANCE_LINK_UNSUPPORTED', 'Фріланс-блок можна пов’язати лише з частковою підміною зміни.');
+    }
     return { sourceType, sourceId,
         slotKey: choice(raw.slotKey || 'primary', sourceSlots[sourceType] || ['primary'], 'слот'), workDate, staffId, originalStaffId,
         professionKey, payUnit, payMode, originalTreatment, startsAt, endsAt, breakMinutes, plannedMinutes,
         ...(breakStartTime && { breakStartTime }),
+        ...(freelanceSegmentId && { freelanceSegmentId }),
         shiftUnitsMilli: payUnit === 'shift' ? decimalUnits(raw.shiftUnits, 3, 'кількість змін') : null,
         workload: text(raw.workload, 'обсяг роботи', 1000), reason: text(raw.reason, 'причина'),
         rateMode, rateMinor: rateMode === 'individual' ? decimalUnits(raw.rate, 2, 'ставка') : null,
@@ -197,6 +203,7 @@ function preview(input, context) {
             replacementCalculatedMinor: calculatedMinor
         } }),
         effects, ...(context.payImpact && { payImpact: context.payImpact }), warnings, blockers,
+        ...(context.freelanceLink && { freelanceLink: context.freelanceLink }),
         evidence: context.evidence, available: blockers.length === 0 };
     return { ...result, fingerprint: fingerprint(result) };
 }

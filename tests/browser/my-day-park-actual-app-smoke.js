@@ -490,14 +490,21 @@ async function run() {
 
         const resultsFixtures = new Pool({ connectionString: process.env.DATABASE_URL, ssl: false });
         try {
-            await resultsFixtures.query(`UPDATE tasks
+            await resultsFixtures.query(`WITH moved AS (UPDATE tasks
                 SET status = 'done', workflow_state = 'done',
                     completed_at = (date_trunc('day', NOW() AT TIME ZONE 'Europe/Kyiv') - INTERVAL '1 day' + INTERVAL '12 hours')
                         AT TIME ZONE 'Europe/Kyiv' AT TIME ZONE 'UTC'
-                WHERE id = $1`, [id]);
-            await resultsFixtures.query(`UPDATE tasks
+                WHERE id = $1 RETURNING id, completed_at)
+                UPDATE task_action_history h SET created_at = moved.completed_at AT TIME ZONE 'UTC'
+                FROM moved WHERE h.task_id = moved.id AND h.action_type = 'task_completed'
+                  AND h.id = (SELECT MAX(id) FROM task_action_history
+                      WHERE task_id = moved.id AND action_type = 'task_completed')`, [id]);
+            await resultsFixtures.query(`WITH finished AS (UPDATE tasks
                 SET status = 'done', workflow_state = 'done', completed_at = NOW() AT TIME ZONE 'UTC'
-                WHERE id = $1`, [personalTaskId]);
+                WHERE id = $1 RETURNING id, completed_at)
+                INSERT INTO task_action_history (task_id, action_type, actor_user_id, created_at)
+                SELECT id, 'task_completed', $2, completed_at AT TIME ZONE 'UTC' FROM finished`,
+            [personalTaskId, session.user.id]);
         } finally {
             await resultsFixtures.end();
         }
@@ -569,9 +576,13 @@ async function run() {
         await authoredTask.waitFor();
         const completedFixtures = new Pool({ connectionString: process.env.DATABASE_URL, ssl: false });
         try {
-            await completedFixtures.query(`UPDATE tasks
+            await completedFixtures.query(`WITH finished AS (UPDATE tasks
                 SET status = 'done', workflow_state = 'done', completed_at = NOW() AT TIME ZONE 'UTC'
-                WHERE title = $1 AND created_by_user_id = $2`, [assignedTitle, session.user.id]);
+                WHERE title = $1 AND created_by_user_id = $2 RETURNING id, owner_user_id, completed_at)
+                INSERT INTO task_action_history (task_id, action_type, actor_user_id, actor_name_snapshot, new_value_json, created_at)
+                SELECT id, 'task_completed', owner_user_id, 'Олена Тестова',
+                    jsonb_build_object('status', 'done', 'ownerUserId', owner_user_id), completed_at AT TIME ZONE 'UTC'
+                FROM finished`, [assignedTitle, session.user.id]);
         } finally {
             await completedFixtures.end();
         }
@@ -609,7 +620,7 @@ async function run() {
         const completionAlert = page.locator('#alertsPanel').getByRole('link', { name: `Завершено: ${assignedTitle}` });
         await completionAlert.waitFor();
         const infoAlert = completionAlert.locator('xpath=ancestor::*[@data-alert-id][1]');
-        await infoAlert.getByText('На контролі · Для ознайомлення').waitFor();
+        await infoAlert.getByText('Виконав(ла): Олена Тестова', { exact: true }).waitFor();
         assert.equal(await infoAlert.getByRole('button', { name: /Підтвердити|Створити/ }).count(), 0);
         await infoAlert.screenshot({ path: path.join(evidence, 'profile-control-completion-notification-320.png'), animations: 'disabled' });
         const secondDevice = await browser.newContext({ serviceWorkers: 'block' });

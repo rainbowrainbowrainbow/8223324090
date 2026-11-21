@@ -422,6 +422,7 @@
                     </div>
                 </div>
                 ${activeCount === 1 ? '<p class="task-ai-bundle-warning">Залишилась 1 задача. Скасуйте bundle і створіть її через звичайну single-task форму — bundle потребує щонайменше дві окремі задачі.</p>' : ''}
+                ${state.config?.readCoAssignees && root.querySelector('fieldset:not([hidden]) [data-task-create-co-assignee-options], fieldset:not([hidden]) [data-cabinet-create-co-assignee-options]') ? '<p class="task-ai-bundle-review-note">Вибраних у формі співвиконавців буде додано до кожної підтвердженої задачі.</p>' : ''}
                 <div class="task-ai-bundle-list">
                     ${tasks.map((task, index) => renderBundleTaskCard(task, index, preview, state)).join('')}
                 </div>
@@ -875,6 +876,7 @@
                 fields: editedBundleFieldMask(task)
             })),
             idempotencyKey: state.idempotencyKey || randomId('bundle_commit'),
+            coAssigneeUserIds: state.config?.readCoAssignees?.() || [],
             sourceSurface: state.config?.sourceSurface || root.dataset.sourceSurface || 'task_ai_draft',
             commitType: 'bundle'
         };

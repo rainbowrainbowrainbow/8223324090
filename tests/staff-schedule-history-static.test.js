@@ -20,6 +20,21 @@ const staffCss = fs.readFileSync('css/pages-hr-staff.css', 'utf8');
 const staffScheduleBrowserSmoke = fs.readFileSync('tests/browser/staff-schedule-custom-range-browser-smoke.js', 'utf8');
 const liveStaffScheduleSmoke = fs.readFileSync('scripts/live-staff-schedule-smoke.js', 'utf8');
 
+it('records the current placement for standard and custom hiring roles', () => {
+    const professions = [
+        { key: 'cook', department: 'Кухня' },
+        { key: 'qa_linked', department: 'Кухня', structure_node_id: 'qa_kitchen' },
+        { key: 'qa_unlinked', department: 'Кухня' },
+        { key: 'qa_unknown', department: 'Інший відділ' }
+    ];
+    const context = staffDisplayGroups.staffDisplayGroupContextFromCompanyStructure({
+        nodes: [{ id: 'qa_kitchen', title: 'Кухня', displayGroup: 'cafe' }]
+    }, { professions });
+    assert.deepEqual(professions.map(profession =>
+        staffDisplayGroups.professionSchedulePlacement(profession, context).groupLabel
+    ), ['Кафе', 'Кафе', 'Адміністрація', 'Адміністрація']);
+});
+
 const STAFF_SCHEDULE_CATEGORY_FIXTURES = Object.freeze([
     Object.freeze({
         id: 9701,

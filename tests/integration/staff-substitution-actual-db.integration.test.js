@@ -1460,16 +1460,19 @@ test('Park transfers and restores simultaneous shift roles and pays the actual w
     }
 });
 
-test('Park carries rated roles and a dated break across midnight and checks both animator calendars', { skip: !enabled }, async () => {
+test('Park links a partial overnight substitution to independently settled freelance work', { skip: !enabled }, async () => {
     assert.equal(assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL).isLocal, true);
     assert.equal(process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER, 'true');
     const db = new Pool({ connectionString: process.env.TEST_DATABASE_URL, ssl: false });
     const service = createSubstitutionService({ pool: db });
     const actor = { id:1, username:'substitution_qa_operator', role:'creator' };
-    const workDate = '2099-02-21';
-    const nextDate = '2099-02-22';
-    const { loadHrShiftDayPlan } = require('../../services/hrShiftSegments');
+    const workDate = '2026-11-12';
+    const nextDate = '2026-11-13';
+    const { loadHrShiftDayPlan, saveHrShiftDayPlan } = require('../../services/hrShiftSegments');
     const { recordAttendanceClockIn, recordAttendanceClockOut } = require('../../services/hrAttendance');
+    const { recordAttendanceBreak } = require('../../services/hrAttendanceBreaks');
+    const { confirmFreelanceAttendance, insertFreelanceRateVersion, listFreelanceSettlement, writeFreelanceMovement }
+        = require('../../services/hrFreelanceWork');
     const { getPayrollRangePreview } = require('../../services/payroll');
     try {
         const workers = (await db.query(`INSERT INTO staff
@@ -1477,6 +1480,29 @@ test('Park carries rated roles and a dated break across midnight and checks both
             SELECT name,'reception','["manager","animator"]','admin','Synthetic night',true,100,'hour','core',false
             FROM unnest($1::text[]) name RETURNING id`, [[`Original ${randomUUID()}`, `Replacement ${randomUUID()}`]])).rows;
         const [original, replacement] = workers;
+        const { rows: [freelancer] } = await db.query(`INSERT INTO staff (name,department,position,role_type,hourly_rate)
+            VALUES ($1,'admin','Synthetic freelance','reception',120) RETURNING id`, [`Freelancer ${randomUUID()}`]);
+        const freelanceClient = await db.connect();
+        let freelance;
+        try {
+            await freelanceClient.query('BEGIN');
+            await insertFreelanceRateVersion(freelanceClient, {
+                professionKey: 'reception', staffId: freelancer.id, rateUnit: 'hour', rate: '120', effectiveFrom: workDate
+            }, actor.username);
+            const { plan } = await saveHrShiftDayPlan(freelanceClient, {
+                staffId: freelancer.id, shiftDate: workDate, payload: {
+                    primaryProfessionKey: 'reception', segments: [{ professionKey: 'reception', shiftStart: '22:00',
+                        shiftEnd: '02:00', breakMinutes: 30, workMode: 'freelance' }]
+                }
+            });
+            [freelance] = plan.segments;
+            await freelanceClient.query('COMMIT');
+        } catch (error) {
+            await freelanceClient.query('ROLLBACK');
+            throw error;
+        } finally {
+            freelanceClient.release();
+        }
         const workerIds = workers.map(worker => worker.id);
         await db.query(`INSERT INTO staff_role_assignments
             (staff_id,profession_key,is_primary,status,admission_status,internship_status,created_by,updated_by)
@@ -1493,6 +1519,7 @@ test('Park carries rated roles and a dated break across midnight and checks both
             VALUES ($1,'manager','paid_hourly',1,'simultaneous-profession-pay-v1'),($1,'animator','unpaid',NULL,NULL)`, [segment.id]);
 
         const input = { sourceType:'hr_shift', sourceId:String(shift.id), slotKey:'partial', workDate,
+            freelanceSegmentId: freelance.id,
             staffId:replacement.id, originalStaffId:original.id, professionKey:'reception',
             startsAt:`${workDate}T23:00:00+02:00`, endsAt:`${nextDate}T02:00:00+02:00`, breakStartTime:'01:45',
             payUnit:'hour', payMode:'replace_base', originalTreatment:'transfer_unworked_scope',
@@ -1513,6 +1540,7 @@ test('Park carries rated roles and a dated break across midnight and checks both
         await db.query("UPDATE bookings SET status='cancelled' WHERE id=$1", [bookingId]);
         const quote = await preview();
         assert.deepEqual(quote.blockers, []);
+        assert.equal(quote.freelanceLink.id, freelance.id);
         assert.equal(quote.input.plannedMinutes, 165);
         assert.deepEqual(quote.evidence.source.breakAllocation, { startDate:nextDate, startTime:'01:45', endDate:nextDate,
             endTime:'02:15', totalMinutes:30, beforeMinutes:0, replacementMinutes:15, afterMinutes:15 });
@@ -1529,6 +1557,7 @@ test('Park carries rated roles and a dated break across midnight and checks both
         assert.equal(await plans(replacement.id,workDate), undefined);
 
         const completedScope = await save(await preview());
+        assert.equal(completedScope.freelanceSegmentId, freelance.id);
         const client = await db.connect();
         try {
             await client.query('BEGIN');
@@ -1545,8 +1574,49 @@ test('Park carries rated roles and a dated break across midnight and checks both
         await service.mutate('event_genix', actor, 'complete', { expectedVersion:1, requestKey:randomUUID(),
             reason:'Synthetic completion', workConfirmed:true, workEvidence:'Synthetic overnight attendance', actualMinutes:165,
             attendanceId:choices.attendanceId, baseAllocationIndices:[choices.allocations[0].index] }, completedScope.id);
-        const payroll = await getPayrollRangePreview({ month:'2099-02', from:workDate, to:workDate, staffId:replacement.id }, db);
+        const payroll = await getPayrollRangePreview({ month:workDate.slice(0, 7), from:workDate, to:workDate, staffId:replacement.id }, db);
         assert.equal(payroll.staff[0].netAmount, 1210);
+
+        const finance = await db.connect();
+        try {
+            await finance.query('BEGIN');
+            const { rows: [fact] } = await finance.query(`INSERT INTO hr_time_records
+                (staff_id, record_date, clock_in, clock_out, status, business_context, total_worked_minutes, break_intervals)
+                VALUES ($1, $2, $3, $4, 'present', 'event_genix', 250, $5::jsonb)
+                RETURNING id, updated_at::text AS version`, [freelancer.id, workDate, `${workDate}T22:00:00+02:00`,
+                `${nextDate}T02:10:00+02:00`, JSON.stringify([{ startedAt: `${workDate}T23:45:00+02:00`, endedAt: null }])]);
+            const corrected = await recordAttendanceBreak(finance, {
+                recordId: fact.id, staffId: freelancer.id, recordDate: workDate, businessContext: 'event_genix',
+                action: 'confirm', version: fact.version, endedAt: `${nextDate}T00:15:00+02:00`,
+                reason: 'Synthetic night break reconciliation', performedBy: actor.username
+            });
+            const confirmed = await confirmFreelanceAttendance(finance, {
+                staffId: freelancer.id, date: workDate, attendanceId: fact.id, recordVersion: corrected.record_version,
+                allocations: [{ segmentId: completedScope.freelanceSegmentId, minutes: 220 }],
+                allocationReason: 'Synthetic actual hours corrected by ten minutes'
+            }, actor.username);
+            assert.equal(confirmed.blocks[0].amount, 440);
+            const { rows: [category] } = await finance.query(`INSERT INTO finance_categories (name,type,business_context)
+                VALUES ($1,'expense','event_genix') RETURNING id`, [`Synthetic expense ${randomUUID()}`]);
+            const { rows: [account] } = await finance.query(`INSERT INTO finance_accounts (name,business_context)
+                VALUES ($1,'event_genix') RETURNING id`, [`Synthetic cash ${randomUUID()}`]);
+            const payment = { segmentId: freelance.id, paymentDate: workDate, categoryId: category.id,
+                accountId: account.id, paymentMethod: 'cash' };
+            const status = async () => {
+                const { paid, outstanding } = (await listFreelanceSettlement(finance, workDate))
+                    .find(row => row.segment_id === freelance.id);
+                return [paid, outstanding];
+            };
+            await writeFreelanceMovement(finance, { ...payment, amount: 80, reason: 'Synthetic advance',
+                idempotencyKey: randomUUID() }, actor.username);
+            assert.deepEqual(await status(), [80, 360]);
+            await writeFreelanceMovement(finance, { ...payment, amount: 360, reason: 'Synthetic final payment',
+                idempotencyKey: randomUUID() }, actor.username);
+            assert.deepEqual(await status(), [440, 0]);
+        } finally {
+            await finance.query('ROLLBACK');
+            finance.release();
+        }
     } finally {
         await db.end();
     }

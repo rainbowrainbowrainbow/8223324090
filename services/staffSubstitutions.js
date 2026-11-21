@@ -6,6 +6,7 @@ const { acquirePayrollPeriodMutationLock, lockPayrollPeriodMutation, assertPayro
 const { lockScheduleStaffRows } = require('./staffScheduleMutations');
 const { lockAttendanceWriteTargets } = require('./attendanceWriteLock');
 const { matchesSubstitutionBaseAllocation } = require('./staffSubstitutionShift');
+const { findFreelanceLink } = require('./staffSubstitutionFreelanceLink');
 
 function actorName(actor) {
     return contract.text(actor?.username, 'автор', 100);
@@ -14,6 +15,7 @@ function actorName(actor) {
 function mapRow(row) {
     return { id: String(row.id), version: row.version, state: row.state, input: row.input_json,
         quote: row.quote_json, completion: row.completion_json, createdBy: row.created_by,
+        ...(row.freelance_segment_id && { freelanceSegmentId: String(row.freelance_segment_id) }),
         createdAt: row.created_at, updatedAt: row.updated_at };
 }
 
@@ -30,14 +32,18 @@ function createSubstitutionService(dependencies = {}) {
         return result.rows[0];
     }
 
-    async function prepare(client, business, actor, raw, current = null) {
+    async function prepare(client, business, actor, raw, current = null, options = {}) {
         const input = contract.normalizeInput(raw);
         const source = await sources.loadScope(client, business, actor, input, current);
+        const freelanceLink = current?.source_snapshot?.freelanceLink
+            || await findFreelanceLink(client, business, input, current, options);
+        if (freelanceLink) source.freelanceLink = freelanceLink;
         const effectiveInput = source.breakAllocation ? {
             ...input, breakMinutes: source.breakAllocation.replacementMinutes,
             plannedMinutes: input.plannedMinutes + input.breakMinutes - source.breakAllocation.replacementMinutes
         } : input;
         const context = await loadContext(client, business, actor, effectiveInput, source, current);
+        if (freelanceLink) context.freelanceLink = freelanceLink;
         return { quote: contract.preview(effectiveInput, context), source };
     }
 
@@ -148,7 +154,8 @@ function createSubstitutionService(dependencies = {}) {
             if (!input || action !== 'create' && !observed) contract.fail('SUBSTITUTION_NOT_FOUND', 'Підміну не знайдено', 404);
             if (observed && (input.staffId !== observed.input_json.staffId || input.originalStaffId !== observed.input_json.originalStaffId
                 || input.workDate !== observed.input_json.workDate || input.sourceType !== observed.source_type
-                || input.sourceId !== observed.source_id || input.slotKey !== observed.slot_key)) {
+                || input.sourceId !== observed.source_id || input.slotKey !== observed.slot_key
+                || (input.freelanceSegmentId || null) !== (observed.freelance_segment_id || null))) {
                 contract.fail('SUBSTITUTION_SCOPE_CHANGED', 'Для іншого працівника, дати або джерела скасуйте підміну й створіть нову', 409);
             }
             const month = input.workDate.slice(0, 7);
@@ -189,16 +196,17 @@ function createSubstitutionService(dependencies = {}) {
             let afterCommit;
             const reason = action === 'create' || action === 'revise' ? input.reason : contract.text(payload.reason, 'причина');
             if (action === 'create' || action === 'revise') {
-                const prepared = await prepare(client, business, actor, payload.input, current);
+                const prepared = await prepare(client, business, actor, payload.input, current, { lock: true });
                 if (prepared.quote.fingerprint !== payload.previewFingerprint) contract.fail('SUBSTITUTION_PREVIEW_STALE', 'Умови змінилися; повторіть попередній розрахунок', 409);
                 if (!prepared.quote.available) contract.fail('SUBSTITUTION_BLOCKED', 'Підміна має невирішені обмеження', 409, prepared.quote.blockers);
                 if (payload.effectsAcknowledged !== true) contract.fail('SUBSTITUTION_ACK_REQUIRED', 'Підтвердьте наслідки для обох працівників');
                 if (action === 'create') {
                     const result = await client.query(`INSERT INTO staff_substitutions
-                        (business_context,staff_id,original_staff_id,work_date,source_type,source_id,slot_key,state,version,input_json,quote_json,source_snapshot,created_by)
-                        VALUES($1,$2,$3,$4,$5,$6,$7,'active',1,$8::jsonb,$9::jsonb,$10::jsonb,$11) RETURNING *`,
+                        (business_context,staff_id,original_staff_id,work_date,source_type,source_id,slot_key,state,version,input_json,quote_json,source_snapshot,created_by,freelance_segment_id)
+                        VALUES($1,$2,$3,$4,$5,$6,$7,'active',1,$8::jsonb,$9::jsonb,$10::jsonb,$11,$12) RETURNING *`,
                     [business,input.staffId,input.originalStaffId,input.workDate,input.sourceType,input.sourceId,input.slotKey,
-                        JSON.stringify(prepared.quote.input),JSON.stringify(prepared.quote),JSON.stringify(prepared.source),author]);
+                        JSON.stringify(prepared.quote.input),JSON.stringify(prepared.quote),JSON.stringify(prepared.source),author,
+                        input.freelanceSegmentId || null]);
                     next = result.rows[0];
                     await client.query("SELECT set_config('eventgenix.substitution_command',$1,true)", [String(next.id)]);
                     const assignmentResult = await sources.applyAssignment(client, business, actor, next, prepared.source);
@@ -232,6 +240,9 @@ function createSubstitutionService(dependencies = {}) {
             return response;
         } catch (error) {
             await client.query('ROLLBACK').catch(() => {});
+            if (error.constraint === 'idx_staff_substitutions_live_freelance_link') {
+                contract.fail('SUBSTITUTION_FREELANCE_LINK_STALE', 'Фріланс-блок уже пов’язано з іншою підміною.', 409);
+            }
             if (error.constraint === 'staff_substitution_onboarding_alias_guard') {
                 contract.fail('SUBSTITUTION_USE_ONBOARDING_SOURCE', 'Для наставництва й пов’язаних задач діє одне призначення підміни.', 409);
             }

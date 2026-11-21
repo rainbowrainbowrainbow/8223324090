@@ -85,8 +85,15 @@ async function listControlCompletions(db, user, scope, { cursor, summary = false
     }
     // Cast microseconds to text before serializing JSON, which uses JS numbers.
     const page = summary ? "'[]'::json" : `COALESCE((SELECT json_agg(p ORDER BY p.completed_at DESC, p.task_id DESC)
-        FROM (SELECT task_id, title, business_context, completed_at, micros::text AS micros, read_at
-              FROM keyed ${condition} ORDER BY completed_at DESC, task_id DESC LIMIT ${PAGE_SIZE + 1}) p), '[]'::json)`;
+        FROM (SELECT selected.*, completion.actor_name_snapshot AS executor_name
+              FROM (SELECT task_id, title, business_context, completed_at, micros::text AS micros, read_at
+                    FROM keyed ${condition} ORDER BY completed_at DESC, task_id DESC LIMIT ${PAGE_SIZE + 1}) selected
+              LEFT JOIN LATERAL (
+                  SELECT h.actor_name_snapshot FROM task_action_history h
+                  WHERE h.task_id = selected.task_id AND h.action_type = 'task_completed'
+                    AND h.created_at = selected.completed_at AT TIME ZONE 'UTC'
+                  ORDER BY h.id DESC LIMIT 1
+              ) completion ON TRUE) p), '[]'::json)`;
     const { rows: [result] } = await db.query(`${sql}
         SELECT (SELECT COUNT(*)::int FROM keyed WHERE read_at IS NULL) AS unread, ${page} AS page`, params);
     const alerts = result.page.slice(0, PAGE_SIZE).map(event => ({
@@ -96,7 +103,7 @@ async function listControlCompletions(db, user, scope, { cursor, summary = false
         level: 'info',
         icon: '✓',
         title: `Завершено: ${event.title || 'Задача без назви'}`,
-        message: 'На контролі · Для ознайомлення',
+        message: event.executor_name ? `Виконав(ла): ${event.executor_name}` : 'Виконавця не зафіксовано',
         link: taskUrl(event.task_id, { businessContext: event.business_context }),
         read: Boolean(event.read_at)
     }));

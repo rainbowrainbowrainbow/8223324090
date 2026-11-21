@@ -19,6 +19,11 @@ const LEGACY_DUPLICATES = new Map([
 ]);
 
 const LEGACY_GAPS = new Set([55, 56, 57, 58, 59, 69, 70, 84, 85]);
+const RESERVED_MIGRATIONS = new Map([
+    [428, '428_telegram_control_completion.sql'],
+    [429, '429_freelance_cancellation_block_attendance.sql'],
+    [430, '430_task_cancellation_delivery.sql']
+]);
 const VERBOSE = process.argv.includes('--verbose');
 
 function rel(file) {
@@ -159,13 +164,20 @@ const missing = [];
 for (let n = numbers[0]; n <= numbers[numbers.length - 1]; n += 1) {
     if (!byNumber.has(n)) missing.push(n);
 }
-const unexpectedMissing = missing.filter(n => !LEGACY_GAPS.has(n));
+const unexpectedMissing = missing.filter(n => !LEGACY_GAPS.has(n) && !RESERVED_MIGRATIONS.has(n));
 if (unexpectedMissing.length > 0) {
     failures.push(`missing migration numbers must be documented: ${unexpectedMissing.map(n => String(n).padStart(3, '0')).join(', ')}`);
 }
 const legacyMissing = missing.filter(n => LEGACY_GAPS.has(n));
 if (legacyMissing.length > 0) {
     warnings.push(`known legacy gaps: ${legacyMissing.map(n => String(n).padStart(3, '0')).join(', ')}`);
+}
+for (const [number, reservedFile] of RESERVED_MIGRATIONS) {
+    if (missing.includes(number)) {
+        warnings.push(`reserved migration pending: ${reservedFile}`);
+    } else if (byNumber.has(number) && !byNumber.get(number).includes(reservedFile)) {
+        failures.push(`migration number ${number} is reserved for ${reservedFile}`);
+    }
 }
 
 console.log(`Migration governance check: ${files.length} SQL files, range ${String(numbers[0]).padStart(3, '0')}-${String(numbers[numbers.length - 1]).padStart(3, '0')}.`);

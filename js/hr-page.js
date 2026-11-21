@@ -6928,11 +6928,14 @@ function bindHrStaffCreation() {
         matching.sort((a, b) => a.title.localeCompare(b.title, 'uk'))
             .forEach(job => position.add(new Option(professionDisplayTitle(job.key, job.title), job.key)));
         position.disabled = !matching.length;
-        submit.disabled = !matching.length;
+        submit.disabled = !position.value;
         showSchedulePlacement();
     };
     department.addEventListener('change', showPositions);
-    position.addEventListener('change', showSchedulePlacement);
+    position.addEventListener('change', () => {
+        showSchedulePlacement();
+        submit.disabled = saving || !position.value;
+    });
     form.elements.phone.addEventListener('blur', event => {
         const input = event.currentTarget;
         const value = input.value.trim();
@@ -6963,29 +6966,18 @@ function bindHrStaffCreation() {
             }
         }
     };
-    button.addEventListener('click', async () => {
-        if (saving || button.hidden || dialog.open) return;
-        const context = teamAccessContext();
-        const opening = Symbol();
-        dialogOpening = opening;
-        form.reset();
+    const refreshCreationCatalog = async (isCurrent, previousJob = null) => {
         status.textContent = 'Завантаження професій…';
         submit.disabled = true;
         jobs = [];
         department.replaceChildren(new Option('Оберіть відділ', ''));
         department.disabled = true;
         showPositions();
-        openContext = context;
-        dialog.showModal();
-        const recovery = await recoverStaffCreation('staff');
-        if (!dialog.open || dialogOpening !== opening || context !== teamAccessContext()) return;
-        if (recovery?.result?.data?.id) {
-            recovery.acknowledge();
-            await openCreatedStaff(recovery.result, context);
-            return;
-        }
-        const catalog = await ensureProfessionsLoaded({ silent: true }).catch(() => []);
-        if (!dialog.open || dialogOpening !== opening || context !== teamAccessContext()) return;
+        const pending = professionCatalogPending;
+        if (pending?.context === salaryAccessContext()) await pending.promise.catch(() => {});
+        if (!isCurrent()) return;
+        const catalog = await ensureProfessionsLoaded({ silent: true, force: true }).catch(() => []);
+        if (!isCurrent()) return;
         jobs = catalog.flatMap(item => {
             const title = item.title || item.label || item.name;
             const departmentValue = String(item.department || '').trim();
@@ -6995,13 +6987,44 @@ function bindHrStaffCreation() {
                 title,
                 departmentValue,
                 departmentKey: professionDepartmentKey(departmentValue),
+                structureNodeId: item.structureNodeId || null,
                 schedulePlacement: item.schedulePlacement
             }];
         });
         const departments = professionDepartmentOptions(jobs.map(job => job.departmentValue));
         departments.forEach(([key, label]) => department.add(new Option(label, key)));
         department.disabled = !departments.length;
-        status.textContent = departments.length ? '' : 'Немає доступних посад із відділами. Перевірте довідник професій.';
+        if (previousJob) {
+            department.value = jobs.find(job => job.key === previousJob.key)?.departmentKey || '';
+            showPositions();
+            (position.disabled ? department : position).focus();
+        }
+        status.textContent = departments.length
+            ? (previousJob ? 'Довідник оновлено. Оберіть актуальну посаду. Решту полів збережено.' : '')
+            : (professionCatalogLoadError || 'Немає доступних посад із відділами. Перевірте довідник професій.');
+    };
+    button.addEventListener('click', async () => {
+        if (saving || button.hidden || dialog.open) return;
+        const context = teamAccessContext();
+        const opening = Symbol();
+        const isCurrent = () => context === teamAccessContext() && dialog.open && dialogOpening === opening;
+        dialogOpening = opening;
+        form.reset();
+        status.textContent = 'Завантаження професій…';
+        placement.textContent = '';
+        department.disabled = true;
+        position.disabled = true;
+        submit.disabled = true;
+        openContext = context;
+        dialog.showModal();
+        const recovery = await recoverStaffCreation('staff');
+        if (!isCurrent()) return;
+        if (recovery?.result?.data?.id) {
+            recovery.acknowledge();
+            await openCreatedStaff(recovery.result, context);
+            return;
+        }
+        await refreshCreationCatalog(isCurrent);
     });
     cancel?.addEventListener('click', () => dialog.close());
     dialog.addEventListener('cancel', event => {
@@ -7019,7 +7042,13 @@ function bindHrStaffCreation() {
         }
         body.department = job.departmentValue;
         body.position = job.title;
-        body.role_type = job.key;        const context = openContext;
+        body.role_type = job.key;
+        body.professionCatalogSelection = {
+            structureNodeId: job.structureNodeId,
+            groupLabel: job.schedulePlacement?.groupLabel || '',
+            subgroupLabel: job.schedulePlacement?.subgroupLabel || ''
+        };
+        const context = openContext;
         saving = true;
         submit.disabled = true;
         if (cancel) cancel.disabled = true;
@@ -7029,6 +7058,10 @@ function bindHrStaffCreation() {
             const isCurrent = () => context === teamAccessContext() && dialog.open && dialogOpening === opening;
             const { result, acknowledge } = await submitStaffCreation('staff', body, isCurrent);
             if (!isCurrent()) return;
+            if (result?.code === 'STAFF_CREATION_CATALOG_STALE') {
+                await refreshCreationCatalog(isCurrent, job);
+                return;
+            }
             if (!result?.success || !result.data?.id) {
                 status.textContent = result?.error || 'Не вдалося підтвердити результат збереження.';
                 submit.disabled = false;
@@ -19307,6 +19340,7 @@ function renderKpiEmployeeItem(row = {}, itemIndex = 0, groupIndex = 0) {
                     <span>Задачі</span>
                     <strong>${taskDoneRate !== null ? kpiSignal(`${taskDoneRate}%`, toneForPercent(taskDoneRate, 85, 65)) : '<span class="kpi-muted">даних ще немає</span>'}</strong>
                     <small>${taskDone}/${taskAssigned} виконано · ${num(row.task_kpi?.tasks_overdue)} простр.${taskExcluded ? ` · ${taskExcluded} системних виключено` : ''}</small>
+                    <small>Фактично завершено: ${num(row.task_kpi?.tasks_actually_completed)}</small>
                 </section>
                 <section class="hr-payroll-detail-card">
                     <span>Внесок</span>

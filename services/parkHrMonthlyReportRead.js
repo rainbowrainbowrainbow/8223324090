@@ -4,7 +4,10 @@ const { resolveCapability } = require('./accountAccessPolicy');
 const { reportAttendanceByStaff } = require('./hrMonthlyReportDetails');
 const { hasCurrentParkScheduleMembership, parkStaffScheduleRoutePath } = require('./parkStaffScheduleAccess');
 const { scheduleableStaffWhere } = require('./staffOperationalFilters');
-const { taskKpiEligibleSql } = require('./taskPerformancePolicy');
+const {
+    taskKpiEligibleSql, taskKpiCompletedSql, taskKpiCompletionJoinSql,
+    taskKpiPrimaryOwnerSql, taskKpiDaySql
+} = require('./taskPerformancePolicy');
 
 function isParkHrMonthlyReportRoute(req) {
     return req.method === 'GET' && parkStaffScheduleRoutePath(req) === '/report/monthly';
@@ -67,7 +70,7 @@ function projectParkHrMonthlyReport(payload) {
             attendance_details: projectParkReportDetails(row?.attendance_details,
                 PARK_ATTENDANCE_DETAIL_TYPES, PARK_ATTENDANCE_DETAIL_FIELDS),
             task_kpi: row?.task_kpi == null ? null : {
-                ...pick(row.task_kpi, ['tasks_assigned', 'tasks_done', 'tasks_overdue']),
+                ...pick(row.task_kpi, ['tasks_assigned', 'tasks_done', 'tasks_overdue', 'tasks_actually_completed']),
                 ...projectParkReportDetails(row.task_kpi,
                     ['tasks_assigned_details', 'tasks_done_details', 'tasks_overdue_details'], PARK_TASK_DETAIL_FIELDS)
             }
@@ -87,7 +90,10 @@ async function loadParkHrMonthlyReport(pool, { dateFrom, dateTo }) {
         'id', t.id, 'title', t.title, 'status', t.status,
         'source_type', t.source_type,
         'created_at', t.created_at, 'deadline', t.deadline, 'completed_at', t.completed_at)`;
-    const taskOverdueSql = `${taskKpiEligibleSql('t')}
+    const credited = `ep.user_id = ${taskKpiPrimaryOwnerSql()}`;
+    const creditEligible = `${credited} AND ${taskKpiEligibleSql()}`;
+    const completedInPeriod = `${taskKpiDaySql('t.completed_at')} BETWEEN $1::date AND $2::date`;
+    const taskOverdueSql = `${creditEligible}
         AND COALESCE(t.status, 'todo') NOT IN ('done', 'completed', 'complete', 'archived', 'cancelled')
         AND t.deadline IS NOT NULL AND t.deadline < NOW()`;
     const [shifts, records, tasks] = await Promise.all([
@@ -106,22 +112,22 @@ async function loadParkHrMonthlyReport(pool, { dateFrom, dateTo }) {
             WHERE tr.record_date BETWEEN $1::date AND $2::date
                 AND tr.business_context = 'event_genix' AND tr.staff_id = ANY($3::int[])`, params),
         pool.query(`SELECT ep.staff_id,
-                COUNT(t.id) FILTER (WHERE ${taskKpiEligibleSql('t')})::int AS tasks_assigned,
-                COUNT(t.id) FILTER (WHERE ${taskKpiEligibleSql('t')}
-                    AND COALESCE(t.status, 'todo') IN ('done', 'completed', 'complete'))::int AS tasks_done,
+                COUNT(t.id) FILTER (WHERE ${creditEligible})::int AS tasks_assigned,
+                COUNT(t.id) FILTER (WHERE ${creditEligible} AND ${taskKpiCompletedSql()})::int AS tasks_done,
+                COUNT(t.id) FILTER (WHERE ${taskKpiEligibleSql()} AND ${taskKpiCompletedSql()}
+                    AND completion.actor_user_id = ep.user_id AND ${completedInPeriod})::int AS tasks_actually_completed,
                 COUNT(t.id) FILTER (WHERE ${taskOverdueSql})::int AS tasks_overdue,
                 COALESCE(jsonb_agg(${taskDetailSql} ORDER BY t.id)
-                    FILTER (WHERE ${taskKpiEligibleSql('t')}), '[]'::jsonb) AS tasks_assigned_details,
+                    FILTER (WHERE ${creditEligible}), '[]'::jsonb) AS tasks_assigned_details,
                 COALESCE(jsonb_agg(${taskDetailSql} ORDER BY t.id)
-                    FILTER (WHERE ${taskKpiEligibleSql('t')}
-                        AND COALESCE(t.status, 'todo') IN ('done', 'completed', 'complete')), '[]'::jsonb) AS tasks_done_details,
+                    FILTER (WHERE ${creditEligible} AND ${taskKpiCompletedSql()}), '[]'::jsonb) AS tasks_done_details,
                 COALESCE(jsonb_agg(${taskDetailSql} ORDER BY t.id)
                     FILTER (WHERE ${taskOverdueSql}), '[]'::jsonb) AS tasks_overdue_details
-            FROM tasks t
-            JOIN employee_profiles ep ON ep.user_id = t.owner_user_id AND ep.is_active IS TRUE
+            FROM tasks t ${taskKpiCompletionJoinSql()}
+            JOIN employee_profiles ep ON ep.is_active IS TRUE AND
+                (${credited} OR ep.user_id = completion.actor_user_id)
             WHERE t.business_context = 'event_genix' AND ep.staff_id = ANY($3::int[])
-                AND (t.created_at::date BETWEEN $1::date AND $2::date
-                    OR t.completed_at::date BETWEEN $1::date AND $2::date)
+                AND (t.created_at::date BETWEEN $1::date AND $2::date OR ${completedInPeriod})
             GROUP BY ep.staff_id`, params)
     ]);
 
@@ -129,6 +135,7 @@ async function loadParkHrMonthlyReport(pool, { dateFrom, dateTo }) {
     const taskMap = new Map(tasks.rows.map(row => [Number(row.staff_id), {
         tasks_assigned: Number(row.tasks_assigned) || 0,
         tasks_done: Number(row.tasks_done) || 0,
+        tasks_actually_completed: Number(row.tasks_actually_completed) || 0,
         tasks_overdue: Number(row.tasks_overdue) || 0,
         tasks_assigned_details: row.tasks_assigned_details || [],
         tasks_done_details: row.tasks_done_details || [],
@@ -137,7 +144,7 @@ async function loadParkHrMonthlyReport(pool, { dateFrom, dateTo }) {
     return staff.rows.map(row => {
         const id = Number(row.id);
         const item = attendanceMap.get(id);
-        const task = taskMap.get(id) || { tasks_assigned: 0, tasks_done: 0,
+        const task = taskMap.get(id) || { tasks_assigned: 0, tasks_done: 0, tasks_actually_completed: 0,
             tasks_overdue: 0, tasks_assigned_details: [], tasks_done_details: [], tasks_overdue_details: [] };
         return {
             staff_id: id, staff_name: row.name, role_type: row.role_type,

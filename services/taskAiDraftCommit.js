@@ -8,6 +8,7 @@ const { replaceTaskClassification } = require('./myDayTaxonomy');
 const { normalizeDraftItems } = require('./taskAiDraftItems');
 const { MY_DAY_TASK_AI_MODEL, compactString } = require('./myDayTaskOpenAIClient');
 const { getAssignableTaskOwner } = require('./taskExecution');
+const { normalizeCreationCoAssignees, validateCreationCoAssignees, saveCreationCoAssignees } = require('./taskCreationCoAssignees');
 const { recordTaskAiDraftTelemetry, taskAiHistoryTelemetryMetadata } = require('./taskAiDraftTelemetry');
 const {
     TASK_AI_DRAFT_CONTRACT_VERSION,
@@ -322,7 +323,8 @@ async function findCommittedReplay(client, { userId, idempotencyKey, businessSco
         businessSql = ` AND COALESCE(t.business_context, 'event_genix') = $${params.length}`;
     }
     const result = await client.query(
-        `SELECT h.*, t.*
+        `SELECT h.*, t.*, ARRAY(SELECT ca.user_id FROM task_co_assignees ca
+             WHERE ca.task_id = t.id ORDER BY ca.user_id) AS co_assignee_user_ids
          FROM task_action_history h
          JOIN tasks t ON t.id = h.task_id
          WHERE h.action_type = $1
@@ -375,6 +377,7 @@ async function commitTaskAiDraft(input = {}, options = {}) {
         defaultOwnerUserId: userId
     });
     const impactSelection = normalizeTaskDraftImpactSelection(finalDraft.impactIds, input.activeImpacts || input.impacts || []);
+    const coAssigneeUserIds = normalizeCreationCoAssignees(input.coAssigneeUserIds, finalDraft.ownerUserId);
     finalDraft.impactIds = impactSelection.impactIds;
     assertReviewedScheduleAndPriorityMatchProposal({
         finalDraft,
@@ -393,6 +396,7 @@ async function commitTaskAiDraft(input = {}, options = {}) {
     });
     const requestHash = hashCommitRequest({
         finalDraft,
+        ...(coAssigneeUserIds.length && { coAssigneeUserIds }),
         acceptedFieldMask,
         editedFieldMask,
         rejectedImpactIds: impactSelection.rejectedImpactIds,
@@ -441,13 +445,15 @@ async function commitTaskAiDraft(input = {}, options = {}) {
         const ownerLabel = legacyTaskTextRef(input.user?.username || input.user?.name, null);
         const sourceId = legacyTaskTextRef(tokenPayload.proposalId || tokenPayload.proposalHash, null);
         const resolveOwner = options.getAssignableTaskOwnerImpl || getAssignableTaskOwner;
+        const businessContext = input.businessScope?.businessContext || input.businessScope?.business_context || 'event_genix';
         const requestedOwnerId = Number(finalDraft.ownerUserId || userId);
         const ownerRecord = requestedOwnerId === userId
             ? {
                 id: userId,
                 label: ownerLabel || actorLabel
             }
-            : await resolveOwner(requestedOwnerId, { pool: client, actor: input.user });
+            : await resolveOwner(requestedOwnerId, { pool: client, actor: input.user, businessContext });
+        await validateCreationCoAssignees(client, coAssigneeUserIds, input.user, businessContext, resolveOwner);
         const task = await createTaskImpl({
             businessContext: input.businessScope?.businessContext || input.businessScope?.business_context || undefined,
             title: finalDraft.title,
@@ -485,6 +491,8 @@ async function commitTaskAiDraft(input = {}, options = {}) {
             skipHermesOutbox: true,
             afterCommit
         });
+        await saveCreationCoAssignees(client, task, coAssigneeUserIds, input.user,
+            input.sourceSurface || AI_DRAFT_COMMIT_SOURCE_SURFACE);
 
         const classification = input.omitClassification ? null : await replaceTaskClassification(client, {
             userId,

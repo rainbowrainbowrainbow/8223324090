@@ -23,6 +23,8 @@ function summaryForAction(actionType) {
             return 'Task acknowledged';
         case TASK_ACTION_TYPES.COMPLETED:
             return 'Task completed';
+        case TASK_ACTION_TYPES.CANCELLED:
+            return 'Task cancelled';
         case TASK_ACTION_TYPES.OWNER_REASSIGNED:
             return 'Task owner reassigned';
         case TASK_ACTION_TYPES.RESCHEDULED:

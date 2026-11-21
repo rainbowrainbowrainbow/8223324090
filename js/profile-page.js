@@ -4139,6 +4139,7 @@ function renderCabinetCompletionDetails() {
     const todayTasks = cabinetCompletedTodayTasksList();
     const historyState = cabinetCompletionHistoryState();
     const history = historyState.items;
+    const cancelledTasks = activeTab === 'history' ? cabinetList('cancelledHistory') : [];
     const tasks = activeTab === 'history' ? history : todayTasks;
     const visibleCount = cabinetCompletionVisibleCount(tasks.length);
     const visibleTasks = tasks.slice(0, visibleCount);
@@ -4175,7 +4176,13 @@ function renderCabinetCompletionDetails() {
             </div>
             ${visibleTasks.length
                 ? rows
-                : `<div class="cabinet-completion-empty">${escapeHtml(empty)}</div>`}
+                : cancelledTasks.length ? '' : `<div class="cabinet-completion-empty">${escapeHtml(empty)}</div>`}
+            ${cancelledTasks.length ? `<div class="cabinet-completion-day-divider">Нещодавно скасовані</div>
+                ${cancelledTasks.map(task => `<div class="park-completed-row"><button type="button" class="cabinet-completion-row"
+                    data-cabinet-task-action="open" data-task-id="${normalizeCabinetTaskId(task.id)}">
+                    <span class="cabinet-completion-row-main"><b>${escapeHtml(task.title || 'Без назви')}</b>
+                    <small>Скасовано</small></span>
+                </button></div>`).join('')}` : ''}
             ${historyError ? `<div class="cabinet-completion-error" role="status">${escapeHtml(historyError)}</div>` : ''}
             ${historyLoading ? '<div class="cabinet-completion-loading" role="status">Завантажуємо історію…</div>' : ''}
             ${showFooter ? `<button type="button" class="cabinet-completion-all" data-cabinet-completion-all="true" ${historyLoading ? 'disabled aria-busy="true"' : ''}>${escapeHtml(historyError ? 'Повторити' : footerLabel)}</button>` : ''}
@@ -4662,9 +4669,59 @@ function cabinetTaskCreateSignature(draft = {}) {
         duePreset: String(draft.duePreset || '').trim(),
         scheduleDate: String(draft.scheduleDate || '').trim(),
         sourceType: String(draft.sourceType || '').trim(),
+        coAssigneeUserIds: (draft.coAssigneeUserIds || []).slice().sort((a, b) => a - b),
         impactIds: Array.isArray(draft.impactIds) ? draft.impactIds.map(Number).filter(Number.isInteger).sort((a, b) => a - b) : [],
         allowReschedule: draft.allowReschedule !== false
     });
+}
+
+function readCabinetCreateCoAssignees(form) {
+    const fieldset = form?.querySelector('#cabinetCreateCoAssignees');
+    return fieldset && !fieldset.hidden ? [...fieldset.querySelectorAll('input:checked')].map(input => Number(input.value)) : [];
+}
+
+function bindCabinetCreateCoAssignees(form) {
+    const fieldset = form?.querySelector('#cabinetCreateCoAssignees');
+    if (!fieldset || fieldset.dataset.bound) return;
+    fieldset.dataset.bound = 'true';
+    const options = fieldset.querySelector('[data-cabinet-create-co-assignee-options]');
+    const visibility = form.querySelector('#cabinetTaskVisibility');
+    const mode = form.querySelector('#cabinetTaskMode');
+    const syncVisibility = () => {
+        fieldset.hidden = !options.childElementCount || visibility.value !== 'team' || mode.value !== 'work';
+    };
+    let loaded = false;
+    const load = async () => {
+        if (loaded) return;
+        loaded = true;
+        try {
+            const access = await apiGetScopedJson('/tasks/permissions');
+            const permissions = access?.permissions;
+            if (!permissions?.canAssignAnyone && !['all', 'department'].includes(permissions?.taskVisibility)) return;
+            const data = await apiGetScopedJson('/tasks/owners');
+            if (!form.isConnected) return;
+            const current = AppState.currentUser || {};
+            const self = Number(current.id || current.user_id);
+            options.innerHTML = (data?.users || []).filter(person => Number(person.id) > 0 && Number(person.id) !== self)
+                .map(person => {
+                    const id = Number(person.id);
+                    const label = escapeHtml(person.label || person.name || person.username || String(id));
+                    return `<label for="cabinetCreateCoAssignee${id}" style="display:flex;align-items:center;gap:8px;min-height:44px;overflow-wrap:anywhere">
+                        <input id="cabinetCreateCoAssignee${id}" type="checkbox" value="${id}"> ${label}</label>`;
+                }).join('');
+            syncVisibility();
+        } catch (error) {
+            loaded = false;
+        }
+    };
+    visibility.addEventListener('change', syncVisibility);
+    mode.addEventListener('change', syncVisibility);
+    const details = form.querySelector('.park-composer-options');
+    details?.addEventListener('toggle', () => { if (details.open) void load(); });
+    form.querySelector('[data-cabinet-composer-toggle]')?.addEventListener('click', () => {
+        if (cabinetTaskComposerExpanded) void load();
+    });
+    if (details?.open || (!details && cabinetTaskComposerExpanded)) void load();
 }
 
 function cabinetTaskCreateRetryBlockMessage(signature = '') {
@@ -5130,8 +5187,9 @@ async function submitMyDayTaskAction(task, kind, fields, operationId) {
 }
 
 function onMyDayTaskActionConfirmed(kind, id) {
-    const actions = { editor: 'task_update', complete: 'task_status', schedule: 'task_reschedule' };
-    notifyTaskWidgetsChanged({ action: actions[kind], taskId: id, ...(kind === 'complete' ? { status: 'done' } : {}) });
+    const actions = { editor: 'task_update', complete: 'task_status', cancel: 'task_status', schedule: 'task_reschedule' };
+    const status = { complete: 'done', cancel: 'cancelled' }[kind];
+    notifyTaskWidgetsChanged({ action: actions[kind], taskId: id, ...(status && { status }) });
     void refreshMyCabinetTab({ force: true, silent: true }).catch(error => console.error('My Day projection refresh', error));
 }
 
@@ -5367,7 +5425,7 @@ function renderCabinetPostponementActions(task = {}) {
     const definitions = [
         permissions.canReassign && ['reassign', 'Змінити виконавця', 'Передати задачу іншому доступному виконавцю'],
         permissions.canReschedule && ['reschedule', 'Перепланувати', 'Обрати нову дату через канонічний reschedule flow'],
-        permissions.canArchive && ['archive', 'Скасувати задачу', 'Перемістити в архів із можливістю відновлення']
+        permissions.canArchive && ['archive', 'Архівувати задачу', 'Перемістити в архів із можливістю відновлення']
     ].filter(Boolean);
     const actions = taskId && definitions.length
         ? '<div class="cabinet-postponement-actions" aria-label="Рекомендовані дії">'
@@ -5505,7 +5563,7 @@ async function reassignCabinetPostponementTask(taskId, task = {}) {
 
 async function archiveCabinetPostponementTask(taskId) {
     if (typeof confirmModal !== 'function') throw new Error('Підтвердження архівування тимчасово недоступне.');
-    const confirmed = await confirmModal('Скасувати задачу? Вона буде переміщена в архів, і її можна буде відновити.', {
+    const confirmed = await confirmModal('Архівувати задачу? Її можна буде відновити.', {
         type: 'danger',
         okText: 'Перемістити в архів',
         cancelText: 'Залишити задачу'
@@ -5898,6 +5956,10 @@ function renderCabinetTaskComposer(options = {}) {
                         <span>Дозволити перенесення</span>
                     </label>
                 </div>
+                <fieldset id="cabinetCreateCoAssignees" hidden>
+                    <legend>Співвиконавці</legend>
+                    <div data-cabinet-create-co-assignee-options></div>
+                </fieldset>
             </div>
             ${simple ? '</details>' : ''}
         </form>`;
@@ -6300,6 +6362,13 @@ function syncMyDayTaskDialog(opener = null, { initialize = false } = {}) {
         draftScope: { actor: AppState.currentUser?.id, business: AppState.currentUser?.activeBusinessContext },
         save: (task, patch, operationId) => submitMyDayTaskAction(task, 'editor', patch, operationId),
         complete: (task, operationId) => submitMyDayTaskAction(task, 'complete', {}, operationId),
+        cancel: async () => {
+            const result = await apiPost(`/tasks/${taskId}/cancel`, { sourceSurface: 'profile_my_cabinet' });
+            if (!result?.success) throw Object.assign(new Error(result?.error || 'Не вдалося скасувати задачу.'), {
+                outcomeUnknown: !result || Number(result.status) >= 500
+            });
+            onMyDayTaskActionConfirmed('cancel', taskId);
+        },
         reschedule: (date, task, operationId) => submitMyDayTaskAction(task, 'schedule', { deadline: profileDeadlineForDate(date) }, operationId),
         onReconciled: kind => onMyDayTaskActionConfirmed(kind, taskId),
         selectDate: task => {
@@ -7133,6 +7202,7 @@ async function createCabinetTask(event) {
     const title = String(input?.value || '').trim();
     const composer = document.getElementById('cabinetTaskComposer');
     const aiCommitPayload = window.TaskAiDraft?.commitPayloadFor?.(composer);
+    const coAssigneeUserIds = readCabinetCreateCoAssignees(composer);
     const titleError = !aiCommitPayload ? validateCabinetPlainTaskTitle(title) : '';
     if (titleError) {
         input?.focus();
@@ -7144,6 +7214,7 @@ async function createCabinetTask(event) {
         title,
         description: document.getElementById('cabinetTaskDetails')?.value.trim() || '',
         ownerUserId: current.id || current.user_id,
+        ...(coAssigneeUserIds.length && { coAssigneeUserIds }),
         category: document.getElementById('cabinetTaskCategory')?.value || cabinetCreateDefaultsForSegment(myTasksSegment, selectedMode).category,
         priority: readCabinetCreatePriority(),
         taskType: 'human',
@@ -7176,6 +7247,7 @@ async function createCabinetTask(event) {
             try {
                 bundleResult = await window.TaskCreate.commitAiDraftBundle({
                     ...aiCommitPayload,
+                    coAssigneeUserIds,
                     sourceSurface: 'profile_my_cabinet'
                 });
             } finally {
@@ -7260,6 +7332,7 @@ async function createCabinetTask(event) {
         try {
             result = await window.TaskCreate.commitAiDraft({
                 ...aiCommitPayload,
+                coAssigneeUserIds,
                 finalDraft: {
                     ...draft,
                     ...(aiCommitPayload.finalDraft || {}),
@@ -7801,6 +7874,7 @@ function attachProfileListeners() {
     bindCabinetTaskDragDrop();
 
     const composer = document.getElementById('cabinetTaskComposer');
+    bindCabinetCreateCoAssignees(composer);
     if (window.TaskAiDraft && activeTab === 'myday' && composer && !composer.hasAttribute('data-cabinet-composer-simple')) {
         window.TaskAiDraft.bindComposer(composer, {
             sourceModule: 'profile_my_cabinet',
@@ -7810,7 +7884,8 @@ function attachProfileListeners() {
             applyField: applyCabinetAiDraftField,
             focusField: focusCabinetAiDraftField,
             requestSubmit: () => composer?.requestSubmit?.(),
-            commitBundle: window.TaskCreate?.commitAiDraftBundle
+            commitBundle: window.TaskCreate?.commitAiDraftBundle,
+            readCoAssignees: () => readCabinetCreateCoAssignees(composer)
         });
     }
 

@@ -56,8 +56,11 @@ const {
     normalizeProfessionKey,
     normalizeSecondaryProfessions,
     staffProfessionKeys,
+    loadProfessionWorkspaceCatalog,
     loadAssignedStaffProfessionKeys
 } = require('../services/professions');
+const { hasCurrentParkScheduleMembership } = require('../services/parkStaffScheduleAccess');
+const { loadParkProfessionDepartmentOverrides, applyParkProfessionDepartment } = require('../services/parkProfessionDepartments');
 const {
     loadHrShiftDayPlan,
     loadHrShiftDayPlansForStaffDates,
@@ -2259,6 +2262,27 @@ router.get('/creation-operations/:key', requireStaffCreation, async (req, res) =
     }
 });
 
+async function validateStaffCreationCatalog(client, req, fields, selection) {
+    // Use the same lock as the Park override writer, including on first insert.
+    await client.query('SELECT id FROM hr_professions WHERE key = $1 FOR NO KEY UPDATE', [fields.primaryProfession]);
+    await client.query("SELECT key FROM settings WHERE key = 'hr_company_structure' FOR SHARE");
+    const catalog = await loadProfessionWorkspaceCatalog(client);
+    let profession = catalog.items.find(item => item.key === fields.primaryProfession && item.isActive !== false && item.is_active !== false);
+    if (profession && hasCurrentParkScheduleMembership(req)) {
+        const { organizationId } = req.user.activeBusinessMembership;
+        const departments = await loadParkProfessionDepartmentOverrides(client, organizationId, profession.id || null);
+        profession = applyParkProfessionDepartment(profession, departments, catalog.displayGroupContext);
+    }
+    if (!profession || profession.department?.trim() !== fields.department || profession.title?.trim() !== fields.position
+        || (profession.structureNodeId || null) !== selection?.structureNodeId
+        || (profession.schedulePlacement?.groupLabel || '') !== selection?.groupLabel
+        || (profession.schedulePlacement?.subgroupLabel || '') !== selection?.subgroupLabel) {
+        throw Object.assign(new Error('Посада або її група в графіку змінилася. Перевірте актуальний вибір.'), {
+            statusCode: 409, code: 'STAFF_CREATION_CATALOG_STALE'
+        });
+    }
+}
+
 router.post('/', requireStaffCreation, async (req, res) => {
     let client;
     try {
@@ -2272,7 +2296,9 @@ router.post('/', requireStaffCreation, async (req, res) => {
             primaryProfession: normalizeProfessionKey(role_type || roleType),
             secondaryProfessions: normalizeSecondaryProfessions(secondary_professions ?? secondaryProfessions, role_type || roleType)
         };
-        const operation = describeStaffCreationOperation(req, 'staff', fields);
+        const catalogSelection = req.body.professionCatalogSelection;
+        const operation = describeStaffCreationOperation(req, 'staff',
+            catalogSelection === undefined ? fields : { ...fields, professionCatalogSelection: catalogSelection });
         client = await pool.connect();
         await client.query('BEGIN');
         const qa = await prepareHrFixtureQa(client, req, 'create', fields.name);
@@ -2289,6 +2315,7 @@ router.post('/', requireStaffCreation, async (req, res) => {
             await client.query('COMMIT');
             return res.json({ success: true, data: { id: saved.staff_id }, replayed: true });
         }
+        if (catalogSelection !== undefined) await validateStaffCreationCatalog(client, req, fields, catalogSelection);
         await validateNewStaffProfessions(client, fields.primaryProfession, fields.secondaryProfessions);
         await requireDistinctStaffConfirmation(client, fields);
         await claimHrFixtureQa(client, qa, req);

@@ -25,6 +25,8 @@ const { isProtectedSystemAccount } = require('../services/accountOnboarding');
 const {
     DEFAULT_BUSINESS_CONTEXT,
     businessContextFromRequest,
+    pushBusinessScopeCondition,
+    requireBusinessScope,
     requireWritableBusinessScope,
     resolveBusinessScope
 } = require('../services/businessContext');
@@ -72,8 +74,12 @@ const { assertAttendanceBreakBounds, recordAttendanceBreak } = require('../servi
 const { listTaskOwnerCandidates } = require('../services/taskExecution');
 const {
     TASK_PERFORMANCE_POLICY_VERSION,
+    taskKpiCompletedSql,
+    taskKpiCompletionJoinSql,
+    taskKpiDaySql,
     taskKpiEligibleSql,
-    taskKpiMachineSignalSql
+    taskKpiMachineSignalSql,
+    taskKpiPrimaryOwnerSql
 } = require('../services/taskPerformancePolicy');
 const {
     ONBOARDING_TASK_SOURCE_TYPE,
@@ -2988,8 +2994,11 @@ async function loadPayrollCalculation(monthValue, db = pool, periodOptions = {})
     };
 }
 
-async function loadKpiSnapshot(monthValue, db = pool) {
+async function loadKpiSnapshot(monthValue, businessScope, db = pool) {
     const month = normalizePayrollMonth(monthValue);
+    const params = [month];
+    const taskBusiness = pushBusinessScopeCondition(params, businessScope, 't');
+    const completionDay = taskKpiDaySql('t.completed_at');
     const result = await db.query(`
         WITH params AS (
             SELECT $1::varchar(7) AS month,
@@ -3021,12 +3030,33 @@ async function loadKpiSnapshot(monthValue, db = pool) {
             JOIN params p ON tr.record_date >= p.date_from AND tr.record_date <= p.date_to
             GROUP BY tr.staff_id
         ),
+        task_scope AS (
+            SELECT t.*, ${taskKpiPrimaryOwnerSql('t')} AS credit_user_id,
+                   completion.actor_user_id AS executor_user_id,
+                   ${completionDay} AS completion_day
+            FROM tasks t
+            ${taskKpiCompletionJoinSql('t')}
+            CROSS JOIN params p
+            WHERE ${taskBusiness} AND (
+                ${taskKpiDaySql('t.created_at')} BETWEEN p.date_from AND p.date_to
+                OR ${completionDay} BETWEEN p.date_from AND p.date_to
+            )
+        ),
+        actual_task_stats AS (
+            SELECT ep.staff_id, COUNT(*)::int AS tasks_actually_completed
+            FROM task_scope t
+            JOIN employee_profiles ep ON ep.user_id = t.executor_user_id AND ep.is_active = true
+            CROSS JOIN params p
+            WHERE ${taskKpiCompletedSql('t')} AND ${taskKpiEligibleSql('t')}
+              AND t.completion_day BETWEEN p.date_from AND p.date_to
+            GROUP BY ep.staff_id
+        ),
         task_stats AS (
             SELECT ep.staff_id,
                    COUNT(t.id) FILTER (WHERE ${taskKpiEligibleSql('t')})::int AS tasks_assigned,
                    COUNT(t.id) FILTER (
                        WHERE ${taskKpiEligibleSql('t')}
-                         AND COALESCE(t.status, 'todo') IN ('done', 'completed')
+                         AND ${taskKpiCompletedSql('t')}
                    )::int AS tasks_done,
                    COUNT(t.id) FILTER (
                        WHERE ${taskKpiEligibleSql('t')}
@@ -3046,13 +3076,9 @@ async function loadKpiSnapshot(monthValue, db = pool) {
                        WHERE NOT ${taskKpiEligibleSql('t')}
                          AND NOT ${taskKpiMachineSignalSql('t')}
                    )::int AS tasks_ambiguous_excluded
-            FROM tasks t
-            JOIN employee_profiles ep ON ep.user_id = t.owner_user_id AND ep.is_active = true
-            JOIN params p ON (
-                t.created_at::date BETWEEN p.date_from AND p.date_to
-                OR t.completed_at::date BETWEEN p.date_from AND p.date_to
-            )
-            WHERE t.owner_user_id IS NOT NULL
+            FROM task_scope t
+            JOIN employee_profiles ep ON ep.user_id = t.credit_user_id AND ep.is_active = true
+            CROSS JOIN params p
             GROUP BY ep.staff_id
         ),
         onboarding_stats AS (
@@ -3098,6 +3124,7 @@ async function loadKpiSnapshot(monthValue, db = pool) {
                    ROUND(COALESCE(ts.total_overtime_minutes, 0) / 60.0, 1)::numeric AS total_overtime_hours,
                    COALESCE(tks.tasks_assigned, 0)::int AS tasks_assigned,
                    COALESCE(tks.tasks_done, 0)::int AS tasks_done,
+                   COALESCE(actual.tasks_actually_completed, 0)::int AS tasks_actually_completed,
                    COALESCE(tks.tasks_overdue, 0)::int AS tasks_overdue,
                    COALESCE(tks.tasks_machine_accepted, 0)::int AS tasks_machine_accepted,
                    COALESCE(tks.tasks_machine_excluded, 0)::int AS tasks_machine_excluded,
@@ -3114,6 +3141,7 @@ async function loadKpiSnapshot(monthValue, db = pool) {
             LEFT JOIN shift_stats ss ON ss.staff_id = s.id
             LEFT JOIN time_stats ts ON ts.staff_id = s.id
             LEFT JOIN task_stats tks ON tks.staff_id = s.id
+            LEFT JOIN actual_task_stats actual ON actual.staff_id = s.id
             LEFT JOIN onboarding_stats os ON os.staff_id = s.id
             LEFT JOIN contribution_stats cs ON cs.staff_id = s.id
         ),
@@ -3138,7 +3166,7 @@ async function loadKpiSnapshot(monthValue, db = pool) {
                ), 0)::int AS kpi_score
         FROM scored
         ORDER BY kpi_score DESC, staff_name
-    `, [month]);
+    `, params);
     const staffDisplayGroupContext = await loadStaffDisplayGroupContext(db);
     const structureNodeById = staffDisplayGroupContext?.structureNodeById || new Map();
     const data = result.rows.map(row => ({
@@ -3161,6 +3189,7 @@ async function loadKpiSnapshot(monthValue, db = pool) {
         task_kpi: {
             tasks_assigned: Number(row.tasks_assigned || 0),
             tasks_done: Number(row.tasks_done || 0),
+            tasks_actually_completed: Number(row.tasks_actually_completed || 0),
             tasks_overdue: Number(row.tasks_overdue || 0),
             tasks_machine_accepted: Number(row.tasks_machine_accepted || 0),
             tasks_machine_excluded: Number(row.tasks_machine_excluded || 0),
@@ -7421,46 +7450,48 @@ router.get('/report/monthly', async (req, res) => {
             'id', t.id, 'title', t.title, 'status', t.status,
             'source_type', t.source_type,
             'created_at', t.created_at, 'deadline', t.deadline, 'completed_at', t.completed_at)`;
-        const taskOverdueSql = `${taskKpiEligibleSql('t')}
+        const credited = `ep.user_id = ${taskKpiPrimaryOwnerSql()}`;
+        const creditEligible = `${credited} AND ${taskKpiEligibleSql()}`;
+        const completedInPeriod = `${taskKpiDaySql('t.completed_at')} BETWEEN $1::date AND $2::date`;
+        const taskOverdueSql = `${creditEligible}
             AND COALESCE(t.status, 'todo') NOT IN ('done', 'completed', 'complete', 'archived', 'cancelled')
             AND t.deadline IS NOT NULL AND t.deadline < NOW()`;
         let taskKpiUnavailable = false;
         const taskKpiRows = await pool.query(
             `SELECT ep.staff_id,
-                    COUNT(t.id) FILTER (WHERE ${taskKpiEligibleSql('t')})::int AS tasks_assigned,
+                    COUNT(t.id) FILTER (WHERE ${creditEligible})::int AS tasks_assigned,
                     COUNT(t.id) FILTER (
-                        WHERE ${taskKpiEligibleSql('t')}
-                          AND COALESCE(t.status, 'todo') IN ('done', 'completed', 'complete')
+                        WHERE ${creditEligible} AND ${taskKpiCompletedSql()}
                     )::int AS tasks_done,
+                    COUNT(t.id) FILTER (WHERE ${taskKpiEligibleSql()} AND ${taskKpiCompletedSql()}
+                        AND completion.actor_user_id = ep.user_id AND ${completedInPeriod})::int AS tasks_actually_completed,
                     COUNT(t.id) FILTER (
                          WHERE ${taskOverdueSql}
                     )::int AS tasks_overdue,
                     COUNT(t.id) FILTER (
-                        WHERE ${taskKpiEligibleSql('t')}
+                        WHERE ${creditEligible}
                           AND ${taskKpiMachineSignalSql('t')}
                     )::int AS tasks_machine_accepted,
                     COUNT(t.id) FILTER (
-                        WHERE NOT ${taskKpiEligibleSql('t')}
+                        WHERE ${credited} AND NOT ${taskKpiEligibleSql('t')}
                           AND ${taskKpiMachineSignalSql('t')}
                     )::int AS tasks_machine_excluded,
                      COALESCE(jsonb_agg(${taskDetailSql} ORDER BY t.id)
-                         FILTER (WHERE ${taskKpiEligibleSql('t')}), '[]'::jsonb) AS tasks_assigned_details,
+                         FILTER (WHERE ${creditEligible}), '[]'::jsonb) AS tasks_assigned_details,
                      COALESCE(jsonb_agg(${taskDetailSql} ORDER BY t.id)
-                         FILTER (WHERE ${taskKpiEligibleSql('t')}
-                             AND COALESCE(t.status, 'todo') IN ('done', 'completed', 'complete')), '[]'::jsonb) AS tasks_done_details,
+                         FILTER (WHERE ${creditEligible} AND ${taskKpiCompletedSql()}), '[]'::jsonb) AS tasks_done_details,
                      COALESCE(jsonb_agg(${taskDetailSql} ORDER BY t.id)
                          FILTER (WHERE ${taskOverdueSql}), '[]'::jsonb) AS tasks_overdue_details,
                      COUNT(t.id) FILTER (
-                         WHERE NOT ${taskKpiEligibleSql('t')}
+                         WHERE ${credited} AND NOT ${taskKpiEligibleSql('t')}
                            AND NOT ${taskKpiMachineSignalSql('t')}
                     )::int AS tasks_ambiguous_excluded
-             FROM tasks t
-             JOIN employee_profiles ep ON ep.user_id = t.owner_user_id AND ep.is_active = true
-             WHERE t.owner_user_id IS NOT NULL
-               AND t.business_context = 'event_genix'
+             FROM tasks t ${taskKpiCompletionJoinSql()}
+             JOIN employee_profiles ep ON ep.is_active = true AND
+                (${credited} OR ep.user_id = completion.actor_user_id)
+             WHERE t.business_context = 'event_genix'
                AND (
-                    t.created_at::date BETWEEN $1::date AND $2::date
-                    OR t.completed_at::date BETWEEN $1::date AND $2::date
+                    t.created_at::date BETWEEN $1::date AND $2::date OR ${completedInPeriod}
                )
              GROUP BY ep.staff_id`,
             [dateFrom, dateTo]
@@ -7475,6 +7506,7 @@ router.get('/report/monthly', async (req, res) => {
             taskKpiMap[r.staff_id] = {
                 tasks_assigned: parseInt(r.tasks_assigned) || 0,
                 tasks_done: parseInt(r.tasks_done) || 0,
+                tasks_actually_completed: parseInt(r.tasks_actually_completed) || 0,
                 tasks_overdue: parseInt(r.tasks_overdue) || 0,
                 tasks_assigned_details: r.tasks_assigned_details || [],
                 tasks_done_details: r.tasks_done_details || [],
@@ -7495,7 +7527,7 @@ router.get('/report/monthly', async (req, res) => {
             const rate = parseFloat(st.hourly_rate) || 0;
             const rateUnit = staffRateUnit(st);
             const taskKpi = taskKpiUnavailable ? null : taskKpiMap[st.id] || {
-                tasks_assigned: 0, tasks_done: 0, tasks_overdue: 0,
+                tasks_assigned: 0, tasks_done: 0, tasks_overdue: 0, tasks_actually_completed: 0,
                 tasks_assigned_details: [], tasks_done_details: [], tasks_overdue_details: []
             };
             const payrollMetrics = payrollAttendanceMetrics.get(Number(st.id)) || {
@@ -7575,7 +7607,9 @@ router.get('/report/monthly', async (req, res) => {
 // GET /api/hr/kpi — single backend-owned KPI snapshot
 router.get('/kpi', async (req, res) => {
     try {
-        const snapshot = await loadKpiSnapshot(req.query.month);
+        const scope = resolveBusinessScope(req);
+        if (!requireBusinessScope(req, res, scope)) return;
+        const snapshot = await loadKpiSnapshot(req.query.month, scope);
         res.json({ success: true, ...snapshot });
     } catch (err) {
         log.error('GET /hr/kpi error', err);

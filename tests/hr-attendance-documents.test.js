@@ -448,30 +448,46 @@ test('CI runs a 300 dpi anonymized generated-only visual guard', () => {
     assert.match(workflow, /audit:hr-attendance-documents:visual:ci/);
 });
 
-test('short-month snapshot keeps 31-column geometry metadata and long names fail preflight', async () => {
+test('short-month snapshot keeps 31-column geometry metadata', () => {
     const february = referenceSnapshot('month_grid', { month: '2026-02' });
     assert.equal(february.daysInMonth, 28);
+});
 
-    const settings = normalizeDocumentRequest(request('month_grid', {
-        month: '2026-02',
-        categoryIds: ['waiter']
-    }));
-    const longNameSnapshot = buildHrAttendanceDocumentSnapshotFromRows(settings, {
-        staffRows: [{
-            id: 91,
-            name: 'Ш'.repeat(200),
+test('both layouts preserve long names and paginate whole variable-height rows', async () => {
+    const fullName = 'Синтетичний-Подвійний Олександр Олександрович';
+    const longWord = 'Ш'.repeat(200);
+    for (const template of ['arrival_inout', 'month_grid']) {
+        const settings = normalizeDocumentRequest(request(template, { categoryIds: ['waiter'] }));
+        const names = Array.from({ length: 22 }, (_, index) => index % 2 ? longWord : `${fullName} ${index}`);
+        const staffRows = names.map((name, index) => ({
+            id: index + 1,
+            name,
             role_type: 'waiter',
             secondary_professions: [],
             position: 'Офіціант',
-            unique_person_key: 'long-name',
+            unique_person_key: `long-name-${index}`,
             user_id: null
-        }],
-        assignmentRows: []
-    }, { now: new Date('2026-07-16T12:00:00.000Z') });
-    await assert.rejects(
-        buildHrAttendanceDocumentPdfBuffer(longNameSnapshot),
-        error => error.code === 'HR_ATTENDANCE_DOCUMENT_TEXT_OVERFLOW'
-    );
+        }));
+        const snapshot = buildHrAttendanceDocumentSnapshotFromRows(settings, { staffRows, assignmentRows: [] },
+            { now: new Date('2026-07-16T12:00:00.000Z') });
+        const pages = paginateHrAttendanceDocument(snapshot);
+        const segments = pages.flatMap(page => page.segments);
+        let count = 0;
+        assert.ok(pages.length > 1);
+        for (const segment of segments) {
+            assert.equal(segment.startIndex, count);
+            assert.equal(segment.continued, count > 0);
+            segment.rows.forEach((row, index) => {
+                const name = segment.employees[index].name;
+                assert.ok(row.lines.length > 1);
+                assert.equal(row.lines.join(name === longWord ? '' : ' '), name);
+            });
+            count += segment.rows.length;
+        }
+        assert.equal(count, names.length);
+        const pdf = await buildHrAttendanceDocumentPdfBuffer(snapshot);
+        assert.equal(pdfPageCount(pdf), pages.length, 'rendered PDF must not add overflow pages');
+    }
 });
 
 test('retired attendance PDF generation is absent from the HR router', () => {

@@ -53,4 +53,4 @@ function taskViewerRoles(user, row) {
     return [(ownsTask(user, row) || isTaskCoAssignee(user, row)) && 'executor', author && 'author', observesTask(user, row) && 'participant'].filter(Boolean);
 }
 
-module.exports = { buildAuthoredTeamTaskMatch, buildTaskControlPredicates, buildTaskPersonalQuery, taskViewerRoles };
+module.exports = { buildTaskAuthorMatch, buildAuthoredTeamTaskMatch, buildTaskControlPredicates, buildTaskPersonalQuery, taskViewerRoles };

@@ -241,8 +241,9 @@ describe('operations flow static contracts', () => {
 
         assert.match(tasksRoute, /function taskAssigneeChanged/);
         assert.match(tasksRoute, /function emitTaskAssignedToOwner/);
-        assert.match(taskNotifications, /sendToUser\(String\(ownerUserId\), 'task:assigned'/);
-        assert.match(taskNotifications, /canonicalField: 'tasks\.owner_user_id'/);
+        assert.match(taskNotifications, /recipientUserId = normalizeNotificationUserId\(options\.recipientUserId\) \|\| ownerUserId/);
+        assert.match(taskNotifications, /sendToUser\(String\(recipientUserId\), 'task:assigned'/);
+        assert.match(taskNotifications, /canonicalField: options\.recipientUserId \? 'task_co_assignees\.user_id' : 'tasks\.owner_user_id'/);
         assert.match(kleshnya, /emitTaskAssignedToOwner\(task/);
         assert.match(workQueueRoute, /emitTaskAssignedToOwner\(result\.task/);
         assert.match(tasksRoute, /router\.post\('\/:id\/reassign'[\s\S]*notifyTaskAssignment\(result\.task/);

@@ -164,6 +164,8 @@ check('canonical task writer, actual membership checks and concurrent confirms s
     const inbox = await request('GET', '/api/tasks/control-completions?businessContext=event_genix', undefined, jwt);
     assert.equal(inbox.status, 200);
     assert.equal(inbox.data.alerts.filter(alert => alert.eventKey.startsWith(`${task.id}:`)).length, 1);
+    assert.equal(inbox.data.alerts.find(alert => alert.eventKey.startsWith(`${task.id}:`)).message,
+        `Виконав(ла): ${peer.name}`);
     const oldWorker = await notifications('/claim', { leaseId: randomUUID() });
     assert.equal(oldWorker.data.event, null, 'old workers must not claim completion events');
     const completedLease = randomUUID();
@@ -355,15 +357,20 @@ check('four confirmed participants can create for every peer with current busine
 });
 
 check('co-assignees receive assignments and the author sees the person who completed the task', async () => {
-    const created = await request('POST', '/api/tasks', {
-        title: 'Disposable co-assignee notification', businessContext: 'event_genix', ownerUserId: peer.id
-    }, jwt);
+    const creation = {
+        title: 'Disposable co-assignee notification', businessContext: 'event_genix', ownerUserId: peer.id,
+        coAssigneeUserIds: [peer.id, voiceCreator.user.id, secondCo.user.id, voiceCreator.user.id],
+        idempotencyKey: 'co-assignee-create-' + randomUUID()
+    };
+    const created = await request('POST', '/api/tasks', creation, jwt);
     assert.ok([200, 201].includes(created.status), JSON.stringify(created.data));
     const taskId = created.data.task.id;
-    const added = await request('PUT', `/api/tasks/${taskId}/co-assignees`, {
-        userIds: [voiceCreator.user.id, secondCo.user.id], businessContext: 'event_genix'
-    }, jwt);
-    assert.equal(added.status, 200, JSON.stringify(added.data));
+    assert.equal((await request('GET', `/api/tasks/${taskId}`, undefined, voiceCreator.token)).status, 200);
+    const replay = await request('POST', '/api/tasks', { ...creation, coAssigneeUserIds: [secondCo.user.id, voiceCreator.user.id] }, jwt);
+    assert.equal(replay.status, 200, JSON.stringify(replay.data));
+    assert.equal(replay.data.replayed, true);
+    assert.equal(replay.data.task.id, taskId);
+    assert.equal((await request('POST', '/api/tasks', { ...creation, coAssigneeUserIds: [secondCo.user.id] }, jwt)).status, 409);
     // The 419 API reads this relation without an event-kind predicate.
     const legacyRows = await pool.query(`SELECT id, owner_user_id FROM telegram_crm_assignment_outbox
         WHERE task_id=$1 ORDER BY id FOR UPDATE SKIP LOCKED`, [taskId]);
@@ -614,6 +621,102 @@ check('Telegram personal creation stays self-only and team tasks remain team-vis
     }
 });
 
+check('cancellation is author-controlled, idempotent, and appears in performer history', async () => {
+    const created = await request('POST', '/api/tasks', {
+        title: 'Disposable cancelled task',
+        businessContext: 'event_genix',
+        ownerUserId: peer.id,
+        coAssigneeUserIds: [voiceCreator.user.id]
+    }, jwt);
+    assert.ok([200, 201].includes(created.status), JSON.stringify(created.data));
+    const taskId = created.data.task.id;
+    const path = `/api/tasks/${taskId}/cancel`;
+    const payload = { businessContext: 'event_genix', sourceSurface: 'task_page' };
+    assert.equal((await request('POST', path, payload, voiceCreator.token)).status, 403);
+    const deliveries = new Map();
+    const acknowledge = (event, messageId) => notifications(`/${event.id}/result`, {
+        leaseId: event.leaseId, status: 'sent', messageId
+    });
+    for (let i = 0; i < 20 && deliveries.size < 2; i += 1) {
+        const claim = await notifications('/claim', { leaseId: randomUUID() });
+        assert.equal(claim.status, 200, JSON.stringify(claim.data));
+        const event = claim.data.event;
+        if (!event && claim.data.processed) continue;
+        assert.ok(event, 'expected two assignment deliveries');
+        if (event.taskId === taskId) deliveries.set(event.telegramId, event);
+        else assert.equal((await acknowledge(event, 800 + i)).data.status, 'sent');
+    }
+    assert.equal(deliveries.size, 2);
+    assert.equal((await acknowledge(deliveries.get(peerTelegram), 901)).data.status, 'sent');
+    await pool.query(`INSERT INTO my_day_time_entries (user_id, task_id, started_at, source)
+        VALUES ($1, $2, NOW() - INTERVAL '10 minutes', 'timer')`, [peer.id, taskId]);
+    const cancelled = await Promise.all([request('POST', path, payload, jwt), request('POST', path, payload, jwt)]);
+    assert.deepEqual(cancelled.map(result => result.status), [200, 200], JSON.stringify(cancelled));
+    assert.deepEqual(cancelled.map(result => Boolean(result.data.unchanged)).sort(), [false, true]);
+    assert.equal((await acknowledge(deliveries.get(voiceCreator.telegram), 902)).data.status, 'sent');
+    assert.equal((await notifications('/claim', { leaseId: randomUUID() })).data.event, null);
+    const editedMessageIds = [];
+    for (let i = 0; i < 2; i += 1) {
+        const claim = await notifications('/claim', { leaseId: randomUUID(), cancellationEvents: true });
+        assert.equal(claim.status, 200, JSON.stringify(claim.data));
+        const event = claim.data.event;
+        assert.equal(event.kind, 'cancellation');
+        assert.equal(event.taskId, taskId);
+        editedMessageIds.push(event.messageId);
+        assert.equal((await acknowledge(event, event.messageId)).data.status, 'sent');
+    }
+    assert.deepEqual(editedMessageIds.sort(), [901, 902]);
+    assert.equal((await notifications('/claim', { leaseId: randomUUID(), cancellationEvents: true })).data.event, null);
+    const { rows: [record] } = await pool.query(`SELECT
+        (SELECT COUNT(*)::int FROM task_action_history WHERE task_id = $1 AND action_type = 'task_cancelled') AS events,
+        (SELECT ended_at FROM my_day_time_entries WHERE task_id = $1) AS ended_at`, [taskId]);
+    assert.equal(record.events, 1);
+    assert.ok(record.ended_at);
+    const cabinet = await request('GET', '/api/tasks/my-cabinet', undefined, voiceCreator.token);
+    assert.equal(cabinet.status, 200, JSON.stringify(cabinet.data));
+    assert.ok(cabinet.data.cancelledHistory.some(task => task.id === taskId && task.status === 'cancelled'));
+    assert.ok(!cabinet.data.completedHistory.some(task => task.id === taskId));
+    assert.equal((await request('PUT', `/api/tasks/${taskId}`, { ...payload, status: 'todo' }, jwt)).status, 409);
+});
+
+check('KPI credits the completion-time primary owner and separately counts the actual finisher in Kyiv', async () => {
+    const actor = voiceCreator.user;
+    const staffIds = new Map();
+    for (const user of [peer, actor, secondCo.user]) {
+        const { rows: [staff] } = await pool.query(`INSERT INTO staff
+            (name, department, position) VALUES ($1, 'fixture', 'fixture') RETURNING id`, [user.name]);
+        await pool.query(`INSERT INTO employee_profiles (user_id, staff_id, full_name)
+            VALUES ($1, $2, $3)`, [user.id, staff.id, user.name]);
+        staffIds.set(user.id, staff.id);
+    }
+    for (const context of ['event_genix', 'dar']) {
+        const { rows: [task] } = await pool.query(`INSERT INTO tasks
+            (title, business_context, status, workflow_state, created_by, created_by_user_id,
+             owner_user_id, created_at, completed_at, suppress_initial_telegram_assignment)
+            VALUES ('Isolated KPI boundary fixture', $1, 'done', 'done', $2, $3, $4,
+                '2098-02-20 09:00:00', '2098-02-28 22:05:00', TRUE) RETURNING id`,
+        [context, owner.username, owner.id, peer.id]);
+        await pool.query(`INSERT INTO task_action_history
+            (task_id, action_type, actor_user_id, actor_name_snapshot, new_value_json, created_at)
+            VALUES ($1, 'task_completed', $2, $3, jsonb_build_object('status', 'done', 'ownerUserId', $4::int),
+                '2098-02-28T22:05:00Z')`, [task.id, actor.id, actor.name, peer.id]);
+        await pool.query('UPDATE tasks SET owner_user_id = $2 WHERE id = $1', [task.id, secondCo.user.id]);
+    }
+    const kpi = await request('GET', '/api/hr/report/monthly?month=2098-03&businessContext=event_genix', undefined, jwt);
+    assert.equal(kpi.status, 200, JSON.stringify(kpi.data));
+    const kpiFor = user => kpi.data.data.find(row => row.staff_id === staffIds.get(user.id)).task_kpi;
+    assert.equal(kpiFor(peer).tasks_done, 1);
+    assert.equal(kpiFor(peer).tasks_actually_completed, 0);
+    assert.equal(kpiFor(actor).tasks_done, 0);
+    assert.equal(kpiFor(actor).tasks_actually_completed, 1);
+    assert.equal(kpiFor(secondCo.user).tasks_done, 0);
+    const profile = await request('GET', '/api/auth/profile/me/results?month=2098-03&businessContext=event_genix',
+        undefined, voiceCreator.token);
+    assert.equal(profile.status, 200, JSON.stringify(profile.data));
+    assert.equal(profile.data.current.tasks.completed, 0);
+    assert.equal(profile.data.current.tasks.actuallyCompleted, 1);
+});
+
 check('date-focused bot list matches My Day dates, snoozing and paginated personal scope', async () => {
     const today = (await pool.query("SELECT (NOW() AT TIME ZONE 'Europe/Kyiv')::date::text AS day")).rows[0].day;
     const ids = [];
@@ -786,6 +889,121 @@ check('bounded pilot seeding is repeatable, unverified and preserves notificatio
         const notifications=await client.query('SELECT telegram_chat_id FROM users WHERE id=ANY($1::int[])',[PILOT.map(row=>row.id)]);
         assert.ok(notifications.rows.every(row=>String(row.telegram_chat_id)==='999999999'));
     } finally {await client.query('ROLLBACK');client.release();}
+});
+
+check('signed AI commits keep selected co-assignees through single and bundle creation and retry', async () => {
+    const { createProposalToken, draftFingerprint, proposalHash, activeImpactCatalogVersion }
+        = require('../../services/taskAiDraftPreview');
+    const draft = { title: 'Synthetic AI task for assignment' };
+    const confidence = { overall: 0.95, title: 0.95, description: 0.95, impacts: 0.95, subtasks: 0.95, mode: 0.95 };
+    const signed = (proposal, userId = owner.id) => ({
+        proposalToken: createProposalToken({ userId, businessScope: { businessContext: 'event_genix' },
+            fingerprint: draftFingerprint(draft), proposal, catalogVersion: activeImpactCatalogVersion([]),
+            draftSnapshot: draft, secret: process.env.JWT_SECRET }),
+        proposalHash: proposalHash(proposal), draftFingerprint: draftFingerprint(draft), proposal,
+        idempotencyKey: randomUUID(), businessContext: 'event_genix', sourceSurface: 'profile_my_cabinet'
+    });
+    const single = { decision: 'single_task', action: 'apply', mode: 'simple', title: draft.title,
+        description: '', impactIds: [], subtasks: [], priority: null, scheduleDate: null, confidence };
+    const singlePath = '/api/tasks/ai-draft/commit';
+    const sendSingle = (body, token = jwt) => request('POST', singlePath, body, token);
+    const singleBody = { ...signed(single), finalDraft: draft, acceptedFieldMask: ['title'],
+        coAssigneeUserIds: [peer.id, voiceCreator.user.id, owner.id, peer.id] };
+    const one = await sendSingle(singleBody);
+    assert.equal(one.status, 200, JSON.stringify(one.data));
+    assert.deepEqual(one.data.task.co_assignee_user_ids, [peer.id, voiceCreator.user.id].sort((a, b) => a - b));
+    const replay = await sendSingle({ ...singleBody, coAssigneeUserIds: [voiceCreator.user.id, peer.id] });
+    assert.equal(replay.data.replayed, true, JSON.stringify(replay.data));
+    assert.equal((await sendSingle({ ...singleBody, coAssigneeUserIds: [peer.id] })).status, 409);
+    const restricted = await sendSingle({ ...singleBody, ...signed(single, voiceCreator.user.id) }, voiceCreator.token);
+    assert.equal(restricted.status, 403, JSON.stringify(restricted.data));
+
+    const proposedTask = title => ({ title, description: 'Synthetic bundle assignment', impactIds: [], subtasks: [],
+        priority: null, scheduleDate: null, ownerSuggestion: null, confidence });
+    const bundle = { decision: 'task_bundle', action: 'apply', mode: 'simple', bundleTitle: 'Synthetic assignment bundle',
+        tasks: [proposedTask('Synthetic bundle assignment one'), proposedTask('Synthetic bundle assignment two')], confidence };
+    const bundleBody = { ...signed(bundle), bundleTitle: bundle.bundleTitle,
+        tasks: bundle.tasks.map((task, proposalIndex) => ({ proposalIndex, title: task.title, description: task.description })),
+        acceptedTaskMask: [0, 1],
+        acceptedFieldMasks: [0, 1].map(proposalIndex => ({ proposalIndex, fields: ['title', 'description'] })),
+        coAssigneeUserIds: [peer.id] };
+    const bundlePath = '/api/tasks/ai-draft/bundle/commit';
+    const two = await request('POST', bundlePath, bundleBody, jwt);
+    assert.equal(two.status, 200, JSON.stringify(two.data));
+    assert.deepEqual(two.data.tasks.map(task => task.co_assignee_user_ids), [[peer.id], [peer.id]]);
+    assert.equal((await request('POST', bundlePath, bundleBody, jwt)).data.replayed, true);
+    const ids = [one.data.task.id, ...two.data.tasks.map(task => task.id)];
+    const { rows } = await pool.query(`SELECT task_id, owner_user_id FROM telegram_crm_delivery_outbox
+        WHERE task_id = ANY($1::int[]) AND event_kind = 'assignment' AND assignment_role = 'co'
+        ORDER BY task_id, owner_user_id`, [ids]);
+    assert.equal(rows.length, 4);
+    assert.equal(rows.filter(row => row.owner_user_id === peer.id).length, 3);
+});
+
+test('mobile CRM creates co-assignees and cancels from My Day', {
+    skip: !enabled || !process.env.CRM_PILOT_BROWSER_MODULE
+}, async () => {
+    const { chromium } = require(process.env.CRM_PILOT_BROWSER_MODULE);
+    const login = await request('POST', '/api/auth/login', { username: process.env.TEST_USER, password: process.env.TEST_PASS });
+    assert.equal(login.status, 200);
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const context = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
+        await context.addInitScript(session => {
+            localStorage.setItem('pzp_token', session.token);
+            localStorage.setItem('pzp_access_token', session.token);
+            localStorage.setItem('pzp_current_user', JSON.stringify(session.user));
+            localStorage.setItem('pzp_refresh_token', session.refreshToken);
+            localStorage.setItem('pzp_crm_business_context', 'event_genix');
+            localStorage.setItem('pzp_dark_mode', 'false');
+        }, login.data);
+        await context.route('https://**/*', route => route.abort());
+        const page = await context.newPage();
+        const createResponse = () => page.waitForResponse(response => new URL(response.url()).pathname === '/api/tasks'
+            && response.request().method() === 'POST');
+        await page.goto(BASE_URL + '/tasks');
+        await page.locator('#taskTitle').fill('Synthetic browser task with co-assignee');
+        await page.locator('#taskDetailsToggle').click();
+        await page.locator(`#taskCreateCoAssignee${peer.id}`).check();
+        if (process.env.CRM_PILOT_SCREENSHOTS) {
+            await page.screenshot({ path: join(process.env.CRM_PILOT_SCREENSHOTS, 'task-create-co-assignee-390.png') });
+        }
+        const taskCenterCreate = createResponse();
+        await page.locator('#addTaskBtn').click();
+        const centerResponse = await taskCenterCreate;
+        assert.ok(centerResponse.ok(), await centerResponse.text());
+        assert.deepEqual((await centerResponse.json()).postCreateWarnings, []);
+        assert.deepEqual(centerResponse.request().postDataJSON().coAssigneeUserIds, [peer.id]);
+
+        await page.goto(BASE_URL + '/profile?tab=myday');
+        await page.locator('.park-composer > summary').click();
+        await page.locator('#cabinetTaskTitle').fill('Synthetic My Day with co-assignee');
+        const disclosure = page.locator('.park-composer-options > summary');
+        if (await disclosure.count()) await disclosure.click();
+        else await page.locator('[data-cabinet-composer-toggle]').first().click();
+        await page.locator(`#cabinetCreateCoAssignee${peer.id}`).check();
+        const cabinetCreate = createResponse();
+        await page.locator('[data-cabinet-create-action="plain"]').click();
+        const cabinetResponse = await cabinetCreate;
+        assert.ok(cabinetResponse.ok(), await cabinetResponse.text());
+        assert.deepEqual((await cabinetResponse.json()).postCreateWarnings, []);
+        assert.deepEqual(cabinetResponse.request().postDataJSON().coAssigneeUserIds, [peer.id]);
+        const taskId = (await cabinetResponse.json()).task.id;
+        await page.getByRole('button', { name: 'Synthetic My Day with co-assignee', exact: true }).click();
+        await page.locator('[data-dialog-cancel-task]').click();
+        await page.locator('.confirm-overlay[data-confirm-kind="confirm"]')
+            .getByRole('button', { name: 'Скасувати задачу', exact: true }).click();
+        const dialog = page.locator('.park-task-dialog[open]');
+        await dialog.getByText('Скасовано', { exact: true }).waitFor();
+        const cancelled = await request('GET', `/api/tasks/${taskId}`, undefined, jwt);
+        assert.equal(cancelled.status, 200, JSON.stringify(cancelled.data));
+        assert.equal(cancelled.data.status, 'cancelled');
+        if (process.env.CRM_PILOT_SCREENSHOTS) {
+            await page.screenshot({ path: join(process.env.CRM_PILOT_SCREENSHOTS, 'my-day-cancelled-390.png') });
+        }
+    } finally {
+        await browser.close();
+    }
 });
 
 test('actual profile browser reconnects Telegram with password and explicit account confirmation', {skip:!enabled || !process.env.CRM_PILOT_BROWSER_MODULE}, async()=>{

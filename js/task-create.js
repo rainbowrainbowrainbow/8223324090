@@ -201,6 +201,7 @@
         };
 
         if (draft.ownerUserId || draft.owner_user_id) data.ownerUserId = draft.ownerUserId || draft.owner_user_id;
+        if (draft.coAssigneeUserIds?.length) data.coAssigneeUserIds = draft.coAssigneeUserIds;
         if (draft.sourceId || draft.source_id) data.source_id = draft.sourceId || draft.source_id;
         if (draft.sourceSurface || draft.source_surface || options.sourceSurface) {
             data.source_surface = draft.sourceSurface || draft.source_surface || options.sourceSurface;

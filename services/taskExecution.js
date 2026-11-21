@@ -1,6 +1,7 @@
 const { pool } = require('../db');
 const {
     buildTaskVisibilityScope,
+    canCancelTask,
     canChangeTaskStatus,
     canUseTaskRouteCapability,
     canMutateTask,
@@ -19,6 +20,8 @@ const {
     logTaskActionEvent
 } = require('./taskActionHistory');
 const { appendTaskBusinessScopeSql } = require('./taskBusinessScope');
+const { buildTaskAuthorMatch } = require('./taskPersonalScope');
+const { isTerminalOrArchived } = require('./taskAutomationPolicy');
 const { businessUserAccessSql } = require('./businessUserAccess');
 const { rescheduleTask: canonicalRescheduleTask } = require('./taskReschedule');
 const { postponementAttentionLevel } = require('./taskPostponementPolicy');
@@ -377,6 +380,37 @@ async function completeTask(taskId, actor, options = {}) {
     });
 }
 
+async function cancelTask(taskId, actor, options = {}) {
+    const id = parsePositiveInt(taskId);
+    if (!id) {
+        throw Object.assign(new Error('Потрібен коректний номер задачі'), { code: 'INVALID_TASK_ID', statusCode: 400 });
+    }
+    return withTaskExecutionTransaction(options, async query => {
+        const params = [id];
+        const visible = buildTaskVisibilityScope(actor, params, 't').replace(/^AND\s+/, '');
+        const authored = buildTaskAuthorMatch(actor, params, 't');
+        const business = appendTaskBusinessScopeSql(params, options.businessScope, 't');
+        const { rows: [task] } = await query.query(`SELECT t.* FROM tasks t
+            WHERE t.id = $1 AND ((${visible}) OR (${authored})) ${business} FOR UPDATE`, params);
+        if (!task) throw Object.assign(new Error('Задачу не знайдено'), { code: 'TASK_NOT_FOUND', statusCode: 404 });
+        if (!canCancelTask(actor, task)) throw forbidden('Недостатньо прав для скасування задачі', 'TASK_CANCEL_FORBIDDEN');
+        if (task.status === 'cancelled') return { id: task.id, status: task.status, version: task.version, unchanged: true };
+        if (isTerminalOrArchived(task)) {
+            throw Object.assign(new Error('Скасувати можна лише відкриту задачу'), { code: 'TASK_NOT_ACTIVE', statusCode: 409 });
+        }
+        const { rows: [updated] } = await query.query(`UPDATE tasks SET status = 'cancelled',
+            workflow_state = 'archived', schedule_status = 'cancelled', updated_at = NOW(),
+            version = COALESCE(version, 1) + 1 WHERE id = $1 RETURNING id, status, version`, [task.id]);
+        await query.query(`UPDATE my_day_time_entries
+            SET ended_at = GREATEST(clock_timestamp(), started_at + INTERVAL '1 millisecond'), updated_at = NOW()
+            WHERE task_id = $1 AND ended_at IS NULL`, [task.id]);
+        const historyEvent = await logTaskActionEvent({ taskId: task.id, actor,
+            actionType: TASK_ACTION_TYPES.CANCELLED, sourceSurface: sourceSurface(options.sourceSurface),
+            oldValue: { status: task.status }, newValue: { status: updated.status } }, { pool: query });
+        return { ...updated, historyEvent };
+    });
+}
+
 function normalizeTaskStatusForExecution(status) {
     const normalized = String(status || '').trim().toLowerCase();
     if (['todo', 'in_progress'].includes(normalized)) return normalized;
@@ -489,6 +523,9 @@ async function reassignTaskOwner(taskId, ownerUserId, actor, options = {}) {
         if (!canReassignTask(actor, task)) {
             throw forbidden('You cannot reassign this task');
         }
+        if (task.status === 'cancelled') {
+            throw Object.assign(new Error('Задачу скасовано'), { code: 'TASK_NOT_ACTIVE', statusCode: 409 });
+        }
         const owner = await getAssignableTaskOwner(ownerUserId, {
             pool: query, actor, businessContext: task.business_context,
             telegramCrmPeerAssignment: options.telegramCrmPeerAssignment === true
@@ -550,6 +587,7 @@ module.exports = {
     ASSIGNABLE_TASK_ROLES,
     assertPrivateTaskHandoffConfirmed,
     completeTask,
+    cancelTask,
     getAssignableTaskOwner,
     getVisibleTask,
     listTaskOwnerCandidates,

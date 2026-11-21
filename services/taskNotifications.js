@@ -60,25 +60,26 @@ function taskNotificationId(task = {}, ownerUserId, assignmentEvent) {
 
 function emitTaskAssignedToOwner(task = {}, actor = {}, options = {}) {
     const ownerUserId = taskOwnerUserId(task);
+    const recipientUserId = normalizeNotificationUserId(options.recipientUserId) || ownerUserId;
     const actorId = actorUserId(actor);
     const skipActor = options.skipActor !== false;
     const assignmentEvent = options.assignmentEvent || options.reason || 'assigned';
 
-    if (!ownerUserId) return { sent: false, reason: 'no_owner_user_id' };
-    if (skipActor && actorId && String(ownerUserId) === String(actorId)) {
+    if (!recipientUserId) return { sent: false, reason: 'no_owner_user_id' };
+    if (skipActor && actorId && String(recipientUserId) === String(actorId)) {
         return { sent: false, reason: 'actor_is_owner' };
     }
 
     try {
         const { sendToUser } = require('./websocket');
-        const notificationId = options.notificationId || taskNotificationId(task, ownerUserId, assignmentEvent);
-        sendToUser(String(ownerUserId), 'task:assigned', {
+        const notificationId = options.notificationId || taskNotificationId(task, recipientUserId, assignmentEvent);
+        sendToUser(String(recipientUserId), 'task:assigned', {
             notificationId,
             assignmentEvent,
             task: taskPayload(task),
             actor: actorPayload(actor),
             meta: {
-                canonicalField: 'tasks.owner_user_id',
+                canonicalField: options.recipientUserId ? 'task_co_assignees.user_id' : 'tasks.owner_user_id',
                 source: options.source || 'tasks',
                 sound: 'task-new'
             }

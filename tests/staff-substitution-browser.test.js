@@ -21,6 +21,8 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
     const registrations=[];
     let workCorrection;
     let workAvailable = true;
+    const freelanceLink = { id: '77', staffId: 4, staffName: 'Синтетична виконавиця',
+        professionKey: 'reception', startsAt: '2099-01-23T20:00:00Z', endsAt: '2099-01-24T00:00:00Z' };
     const entry={id:'21',state:'completed',input:{staffId:2,originalStaffId:3,professionKey:'reception',
         sourceType:'hr_shift',workDate:'2099-01-13',workload:'Підмінити адміністратора на рецепції',payUnit:'hour',
         startsAt:'2099-01-13T08:00:00.000Z',endsAt:'2099-01-13T10:00:00.000Z'},
@@ -95,6 +97,10 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
             if (url.pathname.endsWith('/21/work-correction-options')) {
                 return res.end(JSON.stringify({success:true,data:{staffId:Number(url.searchParams.get('staffId')),
                     attendanceId:19,allocationIndex:0,actualMinutes:95,allocationFingerprint:'verified-synthetic-segment'}}));
+            }
+            if (url.pathname.endsWith('/freelance-links')) {
+                assert.equal(url.searchParams.get('sourceId'), '42');
+                return res.end(JSON.stringify({ success: true, data: [freelanceLink] }));
             }
             if(url.pathname.endsWith('/sources')) {
                 const booking = url.searchParams.get('sourceType') === 'booking';
@@ -185,7 +191,8 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
                     payImpact.originalReference = { rateUnit:'month', rateMinor:3000000 };
                     payImpact.fixedOriginal = { rateUnit:'month', plannedBeforeMinor:150300, plannedAfterMinor:114100, estimatedMinor:36200 };
                 }
-                return res.end(JSON.stringify({success:true,data:contract.preview(input,{blockers:[],commitments:[],payImpact,evidence:{source}})}));
+                return res.end(JSON.stringify({success:true,data:contract.preview(input,{blockers:[],commitments:[],payImpact,
+                    freelanceLink: input.freelanceSegmentId ? freelanceLink : null, evidence:{source}})}));
             }
             commands.push(payload);
             commandBusinesses.push(url.searchParams.get('businessContext'));
@@ -232,6 +239,7 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
             if (partial) {
                 await active().locator('[data-key="sourceId"]').selectOption('42');
                 await active().getByRole('button',{name:'Умови оплати',exact:true}).click();
+                if (nightBreak) await active().getByLabel('Пов’язаний фріланс-блок (окрема оплата)').selectOption('77');
                 await active().locator('[data-key="startTime"]').fill(night ? '23:00' : withBreak ? '12:00' : '10:00');
                 await active().locator('[data-key="endTime"]').fill(night ? '02:00' : withBreak ? '14:00' : '12:00');
                 if (night) assert.equal(await active().locator('[data-key="endDate"]').inputValue(), nightBreak ? '2099-01-24' : '2099-01-22');
@@ -283,6 +291,10 @@ test('shared substitution form: desktop/mobile clicks, explicit pay choice and s
             }
             await active().getByRole('button',{name:'Попередній розрахунок'}).click();
             await page.getByRole('button',{name:'Погоджую наслідки та зберігаю'}).waitFor();
+            if (nightBreak) {
+                assert.match(await page.getByRole('region', { name: 'Підсумок погодження' }).innerText(),
+                    /Фріланс-блок №77: Синтетична виконавиця\. Оплата окремо\./i);
+            }
             if (name === 'mobile') {
                 assert.ok(await page.getByText(/У графіку заміненого працівника залишиться: 09:00–10:00, 12:00–14:00/).isVisible());
                 assert.ok(await page.getByText(/Було у заміненого: 09:00–14:00/).isVisible());
@@ -613,7 +625,8 @@ test('Park channel substitution disclosure responds to keyboard and discards a s
         await page.waitForFunction(() => window.pendingChecks.length === 2);
         await page.evaluate(() => {
             window.pendingChecks[0].resolve([{title:'Старий канал',id:'77',kind:'chat_task',state:'active'}]);
-            window.pendingChecks[1].resolve([{title:'Синтетичне доручення <img>',id:'78',kind:'meeting_action',state:'completed',taskId:9}]);
+            window.pendingChecks[1].resolve([{title:'Синтетичне доручення <img>',id:'78',kind:'meeting_action',
+                state:'completed',taskId:9,taskHref:'/profile?tab=myday&open=9'}]);
         });
         const linked = page.getByRole('link',{name:/Синтетичне доручення <img>/});
         await linked.waitFor();

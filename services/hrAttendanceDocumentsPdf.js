@@ -120,71 +120,90 @@ function bodyGeometry(templateId) {
     };
 }
 
-function segmentHeight(templateId, employeeCount) {
-    const layout = templateId === 'arrival_inout' ? DAILY_LAYOUT : MONTH_LAYOUT;
-    return layout.categoryHeight + (layout.employeeHeight * employeeCount);
+function employeeNameLayout(doc, snapshot, name) {
+    const daily = snapshot.templateId === 'arrival_inout';
+    const layout = daily ? DAILY_LAYOUT : MONTH_LAYOUT;
+    const width = daily ? 245 : layout.nameWidth - 6;
+    const top = daily ? 7 : 5;
+    const bottom = daily ? 1 : 0;
+    const font = daily ? 'FormBlack' : 'FormBold';
+    const maxSize = snapshot.settings.fontPreset.values[daily ? 'dailyEmployee' : 'monthlyEmployee'];
+    const minSize = daily ? 12 : 7;
+    doc.font(font);
+    for (let size = maxSize; size >= minSize; size -= 0.5) {
+        doc.fontSize(size);
+        if (doc.widthOfString(name) <= width) {
+            return { font, width, top, size, lines: [name], height: layout.employeeHeight };
+        }
+    }
+    doc.fontSize(minSize);
+    const lineHeight = doc.currentLineHeight(true);
+    const lines = [];
+    let line = '';
+    const segmenter = new Intl.Segmenter('uk', { granularity: 'grapheme' });
+    for (const word of name.split(' ')) {
+        const next = line ? `${line} ${word}` : word;
+        if (doc.widthOfString(next) <= width) {
+            line = next;
+            continue;
+        }
+        if (line) lines.push(line);
+        line = word;
+        if (doc.widthOfString(word) <= width) continue;
+        line = '';
+        for (const { segment } of segmenter.segment(word)) {
+            if (line && doc.widthOfString(line + segment) > width) {
+                lines.push(line);
+                line = '';
+            }
+            line += segment;
+        }
+    }
+    if (line) lines.push(line);
+    return { font, width, top, size: minSize, lines, lineHeight,
+        height: Math.max(layout.employeeHeight, top + lines.length * lineHeight + bottom) };
 }
 
 function newPlanPage(templateId, lane = null) {
     return { templateId, lane, segments: [], usedHeight: 0 };
 }
 
-function paginateCategory(page, pages, category, templateId, capacity, lane) {
-    const layout = templateId === 'arrival_inout' ? DAILY_LAYOUT : MONTH_LAYOUT;
+function paginateCategory(page, pages, category, rows, categoryHeight, capacity, lane) {
     const employees = category.employees || [];
-    const wholeHeight = segmentHeight(templateId, employees.length);
-    const remaining = capacity - page.usedHeight;
-
-    if (wholeHeight <= remaining) {
-        page.segments.push({ category, employees, startIndex: 0, continued: false });
+    const wholeHeight = rows.reduce((height, row) => height + row.height, categoryHeight);
+    const nextPage = () => {
+        page = newPlanPage(page.templateId, lane);
+        pages.push(page);
+    };
+    if (wholeHeight <= capacity) {
+        if (wholeHeight > capacity - page.usedHeight) nextPage();
+        page.segments.push({ category, employees, rows, startIndex: 0, continued: false });
         page.usedHeight += wholeHeight;
         return page;
     }
 
-    if (wholeHeight <= capacity && page.segments.length) {
-        page = newPlanPage(templateId, lane);
-        pages.push(page);
-        page.segments.push({ category, employees, startIndex: 0, continued: false });
-        page.usedHeight = wholeHeight;
-        return page;
-    }
-
-    if (!employees.length) {
-        if (page.segments.length) {
-            page = newPlanPage(templateId, lane);
-            pages.push(page);
-        }
-        page.segments.push({ category, employees: [], startIndex: 0, continued: false });
-        page.usedHeight = layout.categoryHeight;
-        return page;
-    }
-
     let startIndex = 0;
-    let continued = false;
     while (startIndex < employees.length) {
-        let available = capacity - page.usedHeight;
-        let fit = Math.floor((available - layout.categoryHeight) / layout.employeeHeight);
-        if (fit < 1) {
-            page = newPlanPage(templateId, lane);
-            pages.push(page);
-            available = capacity;
-            fit = Math.floor((available - layout.categoryHeight) / layout.employeeHeight);
+        const firstRowHeight = rows[startIndex].height;
+        if (categoryHeight + firstRowHeight > capacity) {
+            throw pdfError('Page cannot fit one employee row', 'HR_ATTENDANCE_DOCUMENT_LAYOUT_ERROR');
         }
-        if (fit < 1) throw pdfError('Page cannot fit one employee row', 'HR_ATTENDANCE_DOCUMENT_LAYOUT_ERROR');
-        const chunk = employees.slice(startIndex, startIndex + fit);
-        page.segments.push({ category, employees: chunk, startIndex, continued });
-        page.usedHeight += segmentHeight(templateId, chunk.length);
-        startIndex += chunk.length;
-        continued = true;
-        if (startIndex < employees.length) {
-            page = newPlanPage(templateId, lane);
-            pages.push(page);
+        if (categoryHeight + firstRowHeight > capacity - page.usedHeight) nextPage();
+        let height = categoryHeight;
+        let endIndex = startIndex;
+        while (endIndex < rows.length && height + rows[endIndex].height <= capacity - page.usedHeight) {
+            height += rows[endIndex].height;
+            endIndex += 1;
         }
+        page.segments.push({ category, employees: employees.slice(startIndex, endIndex),
+            rows: rows.slice(startIndex, endIndex), startIndex, continued: startIndex > 0 });
+        page.usedHeight += height;
+        startIndex = endIndex;
     }
     return page;
 }
 
-function paginateHrAttendanceDocument(snapshot) {
+function paginateWithFontMetrics(snapshot, doc) {
     const templateId = snapshot?.templateId;
     if (!['arrival_inout', 'month_grid'].includes(templateId)) {
         throw pdfError('Unsupported attendance document template', 'HR_ATTENDANCE_DOCUMENT_INVALID_SNAPSHOT', 400);
@@ -203,13 +222,33 @@ function paginateHrAttendanceDocument(snapshot) {
         }
         currentLane = lane;
         if (templateId === 'month_grid' && page.lane === null) page.lane = lane;
-        page = paginateCategory(page, pages, category, templateId, capacity, lane);
+        const rows = (category.employees || []).map(employee => employeeNameLayout(doc, snapshot, employee.name));
+        const { categoryHeight } = templateId === 'arrival_inout' ? DAILY_LAYOUT : MONTH_LAYOUT;
+        page = paginateCategory(page, pages, category, rows, categoryHeight, capacity, lane);
     }
     if (pages.length > 1 && pages[pages.length - 1].segments.length === 0) pages.pop();
     return Object.freeze(pages.map(item => Object.freeze({
         ...item,
         segments: Object.freeze(item.segments.map(segment => Object.freeze(segment)))
     })));
+}
+
+function paginateHrAttendanceDocument(snapshot) {
+    const PDFDocument = require('pdfkit');
+    const doc = new PDFDocument({ autoFirstPage: false });
+    registerFonts(doc);
+    try {
+        return paginateWithFontMetrics(snapshot, doc);
+    } finally {
+        doc.end();
+    }
+}
+
+function drawEmployeeName(doc, row, x, y) {
+    doc.font(row.font).fontSize(row.size).fillColor(COLORS.ink);
+    row.lines.forEach((line, index) => {
+        doc.text(line, x, y + row.top + index * (row.lineHeight ?? 0), { width: row.width, lineBreak: false });
+    });
 }
 
 function setStroke(doc, width = 0.55, color = COLORS.ink) {
@@ -423,22 +462,13 @@ function drawDailyBody(doc, snapshot, planPage, page) {
         y += DAILY_LAYOUT.categoryHeight;
         segment.employees.forEach((employee, index) => {
             const globalIndex = segment.startIndex + index;
-            doc.rect(x, y, width, DAILY_LAYOUT.employeeHeight)
+            const row = segment.rows[index];
+            doc.rect(x, y, width, row.height)
                 .fillAndStroke(globalIndex % 2 ? COLORS.zebra : COLORS.paper, COLORS.ink);
-            drawTextFit(doc, employee.name, {
-                x: x + 4,
-                y: y + 7,
-                width: 245,
-                height: DAILY_LAYOUT.employeeHeight - 8,
-                font: 'FormBlack',
-                maxSize: snapshot.settings.fontPreset.values.dailyEmployee,
-                minSize: 12,
-                field: 'employeeName',
-                categoryId: segment.category.id
-            });
-            drawDailyTime(doc, 'Прихід', employee.attendance?.clockIn, x + 250, y, 145, DAILY_LAYOUT.employeeHeight, snapshot);
-            drawDailyTime(doc, 'Уход', employee.attendance?.clockOut, x + 385, y, 145, DAILY_LAYOUT.employeeHeight, snapshot);
-            y += DAILY_LAYOUT.employeeHeight;
+            drawEmployeeName(doc, row, x + 4, y);
+            drawDailyTime(doc, 'Прихід', employee.attendance?.clockIn, x + 250, y, 145, row.height, snapshot);
+            drawDailyTime(doc, 'Уход', employee.attendance?.clockOut, x + 385, y, 145, row.height, snapshot);
+            y += row.height;
         });
     }
 }
@@ -471,26 +501,17 @@ function drawWeeklySeparators(doc, x, y, height, dayWidth) {
     setStroke(doc);
 }
 
-function drawMonthEmployeeRow(doc, snapshot, employee, rowIndex, page, y, grid) {
+function drawMonthEmployeeRow(doc, snapshot, row, rowIndex, y, grid) {
     const fill = rowIndex % 2 ? COLORS.zebra : COLORS.paper;
-    doc.rect(grid.x, y, MONTH_LAYOUT.nameWidth, MONTH_LAYOUT.employeeHeight).fillAndStroke(fill, COLORS.ink);
-    drawTextFit(doc, employee.name, {
-        x: grid.x + 3,
-        y: y + 5,
-        width: MONTH_LAYOUT.nameWidth - 6,
-        height: MONTH_LAYOUT.employeeHeight - 5,
-        font: 'FormBold',
-        maxSize: snapshot.settings.fontPreset.values.monthlyEmployee,
-        minSize: 7,
-        field: 'employeeName'
-    });
+    doc.rect(grid.x, y, MONTH_LAYOUT.nameWidth, row.height).fillAndStroke(fill, COLORS.ink);
+    drawEmployeeName(doc, row, grid.x + 3, y);
     for (let day = 1; day <= 31; day += 1) {
         const dayX = grid.x + MONTH_LAYOUT.nameWidth + ((day - 1) * grid.dayWidth);
         const inactive = day > snapshot.daysInMonth;
-        doc.rect(dayX, y, grid.dayWidth, MONTH_LAYOUT.employeeHeight)
+        doc.rect(dayX, y, grid.dayWidth, row.height)
             .fillAndStroke(inactive ? COLORS.inactiveDay : fill, COLORS.ink);
     }
-    drawWeeklySeparators(doc, grid.x, y, MONTH_LAYOUT.employeeHeight, grid.dayWidth);
+    drawWeeklySeparators(doc, grid.x, y, row.height, grid.dayWidth);
 }
 
 function drawMonthBody(doc, snapshot, planPage, page) {
@@ -512,9 +533,9 @@ function drawMonthBody(doc, snapshot, planPage, page) {
             categoryId: segment.category.id
         });
         y += MONTH_LAYOUT.categoryHeight;
-        segment.employees.forEach((employee, index) => {
-            drawMonthEmployeeRow(doc, snapshot, employee, segment.startIndex + index, page, y, grid);
-            y += MONTH_LAYOUT.employeeHeight;
+        segment.rows.forEach((row, index) => {
+            drawMonthEmployeeRow(doc, snapshot, row, segment.startIndex + index, y, grid);
+            y += row.height;
         });
     }
 }
@@ -562,7 +583,6 @@ async function buildHrAttendanceDocumentPdfBuffer(snapshot) {
     if (!snapshot || snapshot.contractVersion !== CONTRACT_VERSION) {
         throw pdfError('Invalid attendance document snapshot', 'HR_ATTENDANCE_DOCUMENT_INVALID_SNAPSHOT', 400);
     }
-    const pages = paginateHrAttendanceDocument(snapshot);
     const deterministicMetadataDate = new Date(`${snapshot.rosterDate}T00:00:00.000Z`);
     const PDFDocument = require('pdfkit');
     return new Promise((resolve, reject) => {
@@ -586,6 +606,7 @@ async function buildHrAttendanceDocumentPdfBuffer(snapshot) {
         doc.on('error', reject);
         try {
             registerFonts(doc);
+            const pages = paginateWithFontMetrics(snapshot, doc);
             pages.forEach((planPage, index) => {
                 doc.addPage({
                     size: 'A4',

@@ -72,14 +72,14 @@ function isFrozenSubstitutionShift(error) {
 }
 
 function mappedFreelanceScheduleError(error) {
-    if ((error?.code === '23503' && error.constraint === 'hr_freelance_segment_terms_segment_id_fkey')
+    if ((['23503', '23001'].includes(error?.code) && error.constraint === 'hr_freelance_segment_terms_segment_id_fkey')
         || (error?.code === '23514' && error.constraint === 'hr_freelance_terms_profession_immutable')) {
         return new HrShiftPlanError('FREELANCE_EXPLICIT_CANCELLATION_REQUIRED',
             'Блок має погоджену ставку. Скористайтеся дією «Скасувати фріланс».', {}, 409);
     }
     if (error?.code === '23514' && error.constraint === 'hr_freelance_cancellation_after_start') {
         return new HrShiftPlanError('FREELANCE_CANCELLATION_AFTER_START',
-            'Можна скасувати лише майбутній фріланс-блок без відмітки початку зміни.', {}, 409);
+            'Фріланс-блок уже почався або перетинається із зафіксованим часом роботи.', {}, 409);
     }
     if (error?.code === '23514' && error.constraint === 'hr_freelance_cancellation_confirmed') {
         return new HrShiftPlanError('FREELANCE_CANCELLATION_CONFIRMED',

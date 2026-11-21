@@ -33,6 +33,10 @@ Known legacy migration-history issues:
 
 These legacy issues are documented baseline, not a pattern to repeat.
 
+Migration 428 adds the Telegram delivery queue used by 430. HR migration 429
+guards freelance cancellations and 431 links substitutions to freelance
+records. The HR migrations can run independently of 428 and 430.
+
 ## Ownership Rules Going Forward
 
 New durable schema changes belong in `db/migrations/`.

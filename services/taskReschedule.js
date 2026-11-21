@@ -322,7 +322,7 @@ async function applyCanonicalRescheduleMutation(query, task, patch, actor = {}, 
            AND COALESCE(version, 1) = ${versionRef}
            AND COALESCE(business_context, 'event_genix') = ${businessRef}
            AND COALESCE(status, 'todo') NOT IN ('done','completed','cancelled','canceled','archived','resolved','closed')
-         RETURNING *`,
+         RETURNING *, deadline AT TIME ZONE 'UTC' AS deadline`,
         values
     );
     if (!result.rows.length) {

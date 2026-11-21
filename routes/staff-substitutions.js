@@ -59,6 +59,8 @@ router.get('/catalog', handle(async req => {
 router.get('/', handle(req => service.list(req.substitutionBusiness, req.query)));
 router.get('/sources', requireAction('hr.schedule.manage'), handle(req => require('../services/staffSubstitutionSources')
     .listScopes(pool,req.substitutionBusiness,req.user,req.query)));
+router.get('/freelance-links', requireAction('hr.schedule.manage'), handle(req =>
+    require('../services/staffSubstitutionFreelanceLink').listFreelanceLinks(pool, req.substitutionBusiness, req.query.sourceId)));
 router.get('/teacher-rates', handle(req => {
     if (req.substitutionBusiness !== education.DAR) fail('SUBSTITUTION_BUSINESS_UNSUPPORTED', 'Ставки викладачів доступні в кабінеті Дару', 403);
     return education.listRates(pool, req.query.staffId);

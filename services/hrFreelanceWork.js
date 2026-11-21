@@ -3,6 +3,7 @@
 const { createHash } = require('node:crypto');
 const { DEFAULT_BUSINESS_CONTEXT } = require('./businessContext');
 const { assertPayrollPeriodOpen, lockPayrollPeriodMutation } = require('./hrPayrollPeriod');
+const { tryLockAttendanceWriteTarget } = require('./attendanceWriteLock');
 
 function freelanceError(code, message, status = 400) {
     return Object.assign(new Error(message), { code, status, statusCode: status });
@@ -179,12 +180,17 @@ function normalizeAllocations(entries, segments, actualMinutes) {
 }
 
 function planSignature(segments = []) {
-    return JSON.stringify(segments.map(segment => [
-        String(segment.id), segment.workMode || 'regular', segment.professionKey,
-        segment.shiftStart, segment.shiftEnd, segment.breakMinutes || 0,
-        segment.startDayOffset ?? 0,
-        segment.endDayOffset ?? Number(segment.shiftEnd < segment.shiftStart)
-    ]).sort((left, right) => left[0].localeCompare(right[0])));
+    const { normalizeShiftTime } = require('./hrShiftSegments');
+    return JSON.stringify(segments.map(segment => {
+        const start = normalizeShiftTime(segment.shiftStart);
+        const end = normalizeShiftTime(segment.shiftEnd);
+        return [
+            String(segment.id), segment.workMode || 'regular', segment.professionKey,
+            start, end, segment.breakMinutes || 0,
+            segment.startDayOffset ?? 0,
+            segment.endDayOffset ?? Number(end < start)
+        ];
+    }).sort((left, right) => left[0].localeCompare(right[0])));
 }
 
 async function assertFreelancePlanEditable(client, { staffId, date, before, after }) {
@@ -203,6 +209,44 @@ async function assertFreelancePlanEditable(client, { staffId, date, before, afte
         [staffId, date, DEFAULT_BUSINESS_CONTEXT]
     );
     if (attendance.rows[0]?.started) {
+        const added = resolved.filter(segment => segment.id == null);
+        const [replacement] = added;
+        if (added.length === 1 && replacement.workMode === 'freelance'
+            && planSignature(before) === planSignature(resolved.filter(segment => segment.id != null))
+            && await tryLockAttendanceWriteTarget(client, { staffId, date })) {
+            const { rows: [slot] } = await client.query(
+                `WITH cancelled_slot AS (
+                     SELECT (cancelled_shift_date + planned_start + COALESCE(start_day_offset, 0) * INTERVAL '1 day')
+                                AT TIME ZONE 'Europe/Kyiv' AS starts_at,
+                            (cancelled_shift_date + planned_end
+                                + COALESCE(end_day_offset, (planned_end < planned_start)::int) * INTERVAL '1 day')
+                                AT TIME ZONE 'Europe/Kyiv' AS ends_at
+                     FROM hr_shift_segments
+                     WHERE cancelled_staff_id = $1 AND cancelled_shift_date = $2::date
+                       AND hr_shift_id IS NULL AND profession_key = $4
+                       AND planned_start = $5::time AND planned_end = $6::time AND break_minutes = $7
+                       AND COALESCE(start_day_offset, 0) = $8
+                       AND COALESCE(end_day_offset, (planned_end < planned_start)::int) = $9
+                 )
+                 SELECT EXISTS (
+                     SELECT 1 FROM cancelled_slot slot
+                     WHERE slot.starts_at > clock_timestamp()
+                       AND NOT EXISTS (
+                           SELECT 1 FROM hr_time_records record
+                           LEFT JOIN hr_freelance_attendance_confirmations confirmation ON confirmation.attendance_id = record.id
+                           WHERE record.staff_id = $1 AND record.record_date = $2::date
+                             AND record.business_context = $3
+                             AND (confirmation.attendance_id IS NOT NULL
+                                 OR (record.status IS DISTINCT FROM 'arrival_cancelled' AND record.clock_in < slot.ends_at
+                                     AND record.clock_out > slot.starts_at AND record.clock_out > record.clock_in))
+                       )
+                 ) AS available`,
+                [staffId, date, DEFAULT_BUSINESS_CONTEXT, replacement.professionKey, replacement.shiftStart,
+                    replacement.shiftEnd, replacement.breakMinutes || 0, replacement.startDayOffset ?? 0,
+                    replacement.endDayOffset ?? Number(replacement.shiftEnd < replacement.shiftStart)]
+            );
+            if (slot?.available) return;
+        }
         throw freelanceError('FREELANCE_PLAN_IN_USE',
             'Працівник уже відмітив початок зміни. Фактичний час звіряється в HR за зафіксованим планом.', 409);
     }

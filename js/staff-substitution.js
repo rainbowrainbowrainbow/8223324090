@@ -241,6 +241,11 @@
             }
         }
         const partialShift = first.sourceType === 'hr_shift' && first.slotKey === 'partial';
+        const freelanceLinks = partialShift
+            ? await request('GET', `/freelance-links?${new URLSearchParams({ sourceId: first.sourceId })}`) : [];
+        const formatWorkTime = new Intl.DateTimeFormat('uk-UA', {
+            timeZone: 'Europe/Kyiv', dateStyle: 'short', timeStyle: 'short'
+        });
         const terms = await formModal('Людина на заміну · умови', [
             ...(first.sourceType === 'booking' ? [{type:'note',text:'Звичайна оплата заміненого працівника зберігається. Заміна основної оплати виконавця потребує завершеного сегмента обліку з тим самим часом, що й бронювання.'}] : []),
             ...(education ? [{ type: 'note', text: 'Оплата за підміну одного заняття нараховується викладачу в Дарі.' }] : []),
@@ -248,6 +253,14 @@
             field('startTime', education ? 'Початок заняття' : 'Початок (для погодинної або заміни основної оплати обов’язково)', source?.startTime || '', 'time', education),
             field('endDate', 'Дата завершення', source?.endDate || first.workDate, 'date'),
             field('endTime', 'Завершення', source?.endTime || '', 'time', education),
+            ...(freelanceLinks.length ? [{
+                key: 'freelanceSegmentId', label: 'Пов’язаний фріланс-блок (окрема оплата)', type: 'select',
+                options: [{ value: '', label: 'Без фріланс-блоку' }, ...freelanceLinks.map(item => ({
+                    value: item.id,
+                    label: `${item.staffName} · ${formatWorkTime.format(new Date(item.startsAt))} — ${formatWorkTime.format(new Date(item.endsAt))}`
+                }))],
+                required: false
+            }] : []),
             ...(partialShift && (!source || source.breakMinutes > 0) ? [
                 { type: 'note', text: 'Якщо передаєте частину сегмента з однією перервою, вкажіть її підтверджений початок. Тривалість CRM візьме з графіка.' },
                 field('breakStartTime', 'Початок підтвердженої перерви', '', 'time', false)
@@ -316,8 +329,10 @@
             ? `${source.title} · ${first.workDate}\n${first.slotKey === 'second' ? 'Другий аніматор' : 'Основний аніматор'}\n` : '';
         const editedPay = payOverrideSummary(quote);
         const breakSummary = breakPlanSummary(quote);
+        const freelanceSummary = quote.freelanceLink
+            ? `Пов’язаний фріланс-блок №${quote.freelanceLink.id}: ${quote.freelanceLink.staffName}. Оплата окремо.\n` : '';
         const planPayLabel = roleSummary ? 'Оплата підміни за основною роллю' : 'Оплата підміни за планом';
-        const confirmed = await confirmModal(`${assignmentSummary}${planPayLabel}: ${money(quote.estimateMinor)}\n`
+        const confirmed = await confirmModal(`${assignmentSummary}${planPayLabel}: ${money(quote.estimateMinor)}\n${freelanceSummary}`
             + (roleSummary ? `${roleSummary}\n\n` : '') + `${quote.effects.replacement}\n${quote.effects.original}\n`
             + quote.warnings.map(warning => warning.message).join('\n') + beforeSchedule + scheduleEffect
             + (breakSummary ? `\n${breakSummary}` : '') + originalWorkload + (payImpact ? `\n${payImpact}` : '')
@@ -365,6 +380,9 @@
             input.originalStaffId ? `Кого замінили: ${personLabel(people,input.originalStaffId)}` : 'Кого замінили: окрема робота',
             `Роль: ${profession} · Джерело: ${source}`,
             `Час роботи: ${interval}`,
+            quote.freelanceLink
+                ? `Пов’язаний фріланс-блок №${quote.freelanceLink.id}: ${quote.freelanceLink.staffName}. Оплата окремо.`
+                : null,
             rate ? `Зафіксована ставка: ${money(rate.rateMinor)} ${unit}` : null,
             Number.isInteger(completion?.actualMinutes) ? `Підтверджено: ${completion.actualMinutes} хв` : null
         ].filter(Boolean).join('\n');

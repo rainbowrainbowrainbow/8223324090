@@ -5,6 +5,20 @@ const { resolveBusinessScope } = require('./businessContext');
 const { hasCurrentParkScheduleMembership } = require('./parkStaffScheduleAccess');
 const { professionSchedulePlacement } = require('./staffDisplayGroups');
 
+async function loadParkProfessionDepartmentOverrides(db, organizationId, professionId = null) {
+    const { rows } = await db.query(
+        'SELECT profession_id, department FROM park_profession_departments WHERE organization_id = $1 AND ($2::integer IS NULL OR profession_id = $2)',
+        [organizationId, professionId]
+    );
+    return new Map(rows.map(row => [Number(row.profession_id), row.department]));
+}
+
+function applyParkProfessionDepartment(profession, departments, displayGroupContext) {
+    if (!departments.has(Number(profession.id))) return profession;
+    const overridden = { ...profession, department: departments.get(Number(profession.id)) };
+    return { ...overridden, schedulePlacement: professionSchedulePlacement(overridden, displayGroupContext) };
+}
+
 function parkProfessionDepartments(db) {
     return async (req, res, next) => {
         const edit = req.method === 'PATCH' && /^\/professions\/([1-9]\d*)\/department$/.exec(req.path);
@@ -35,10 +49,12 @@ function parkProfessionDepartments(db) {
                       AND bm.is_active AND om.is_active AND b.status = 'active' AND o.status = 'active'
                       AND b.context_key = 'event_genix' AND b.access_mode = 'membership'
                     FOR SHARE OF bm, om, b, o
+                ), profession AS (
+                    SELECT id FROM hr_professions WHERE id = $4 AND is_active FOR NO KEY UPDATE
                 )
                 INSERT INTO park_profession_departments (organization_id, profession_id, department)
                 SELECT eligible.organization_id, p.id, $5 FROM eligible
-                JOIN hr_professions p ON p.id = $4 AND p.is_active
+                CROSS JOIN profession p
                 ON CONFLICT (organization_id, profession_id) DO UPDATE
                 SET department = EXCLUDED.department, updated_at = clock_timestamp()
                 RETURNING profession_id AS id, department`, [businessId, organizationId, req.user.id, id, department.trim()]);
@@ -52,21 +68,12 @@ function parkProfessionDepartments(db) {
                     return send(payload);
                 }
                 try {
-                    const { rows } = await db.query(
-                        'SELECT profession_id, department FROM park_profession_departments WHERE organization_id = $1',
-                        [organizationId]
-                    );
-                    const departments = new Map(rows.map(row => [Number(row.profession_id), row.department]));
+                    const departments = await loadParkProfessionDepartmentOverrides(db, organizationId);
                     const withDepartment = row => departments.has(Number(row.id))
                         ? { ...row, department: departments.get(Number(row.id)) } : row;
                     if (catalog) {
-                        const data = payload.data.map(row => {
-                            const profession = withDepartment(row);
-                            return profession === row ? row : {
-                                ...profession,
-                                schedulePlacement: professionSchedulePlacement(profession, res.locals.professionDisplayGroupContext)
-                            };
-                        });
+                        const data = payload.data.map(row => applyParkProfessionDepartment(
+                            row, departments, res.locals.professionDisplayGroupContext));
                         return send({ ...payload, data });
                     }
                     const profession = withDepartment(payload.data.profession);
@@ -85,4 +92,4 @@ function parkProfessionDepartments(db) {
     };
 }
 
-module.exports = { parkProfessionDepartments };
+module.exports = { parkProfessionDepartments, loadParkProfessionDepartmentOverrides, applyParkProfessionDepartment };

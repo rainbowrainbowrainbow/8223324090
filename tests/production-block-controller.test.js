@@ -20,6 +20,7 @@ const {
     PROFILE_EMPLOYEE_RELEASE_PATHS,
     PROFILE_EMPLOYEE_AUTH_BLOB,
     MY_DAY_PROFILE_RELEASE,
+    TASK_KPI_08421,
     EVENTGENIX_REMEDIATION,
     EVENTGENIX_REMEDIATION_RETRY,
     EVENTGENIX_REMEDIATION_HR_RETRY,
@@ -89,6 +90,58 @@ function payrollSchemaFacts() {
 }
 
 const PAYROLL_SCHEMA_OPTIONS = { protectedWorkflow: 'payroll-425-426', maxReleaseAttempts: 1 };
+
+const TASK_KPI_OPTIONS = { protectedWorkflow: 'task-kpi-release-08421', maxReleaseAttempts: 1 };
+
+function taskKpiReleaseFacts() {
+    const reviewed = TASK_KPI_08421;
+    const files = Object.keys(reviewed.migrationHashes);
+    return {
+        live: { commitSha: reviewed.baseSha, version: reviewed.baseVersion,
+            sourceBranch: 'codex/eventgenix-production', deploymentMetadata: { complete: true } },
+        remoteSha: reviewed.baseSha,
+        releaseVersion: reviewed.version,
+        taskKpi08421PayloadSha: reviewed.payloadSha,
+        changedPaths: ['routes/auth.js', ...reviewed.controllerPaths, ...files],
+        migrations: files.map(file => ({ file, sql: fs.readFileSync(path.join(__dirname, '..', file), 'utf8') }))
+    };
+}
+
+test('task KPI release permits only the reviewed production base, payload and three schema migrations', () => {
+    const scope = taskKpiReleaseFacts();
+    const value = manifest(TASK_KPI_OPTIONS, scope);
+    assert.doesNotThrow(() => validateManifest(value));
+    assert.deepEqual(value.allowedProtectedWorkflow.protectedChangedPaths, ['routes/auth.js']);
+    assert.deepEqual(value.allowedMigrationFiles, Object.keys(TASK_KPI_08421.migrationHashes));
+    assert.throws(() => manifest({}, scope), { code: 'PRODUCTION_BLOCK_RED_PATHS' });
+    assert.throws(() => manifest(TASK_KPI_OPTIONS, { ...scope, remoteSha: RELEASE_SHA }),
+        { code: 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT' });
+    assert.throws(() => manifest(TASK_KPI_OPTIONS, { ...scope, taskKpi08421PayloadSha: HEAD_SHA }),
+        { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID' });
+    assert.throws(() => manifest({ ...TASK_KPI_OPTIONS, maxReleaseAttempts: 2 }, scope),
+        { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID' });
+    assert.throws(() => manifest(TASK_KPI_OPTIONS, { ...scope, changedPaths: [...scope.changedPaths, 'middleware/auth.js'] }),
+        { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID' });
+    for (const changed of scope.migrations) {
+        const migrations = scope.migrations.map(item => item === changed ? { ...item, sql: item.sql + '\nSELECT 1;' } : item);
+        assert.throws(() => manifest(TASK_KPI_OPTIONS, { ...scope, migrations }),
+            { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID' });
+    }
+});
+
+test('task KPI execution rejects drift in the prepared SHA, reviewed payload or migration SQL', async t => {
+    const value = manifest(TASK_KPI_OPTIONS, taskKpiReleaseFacts());
+    const options = { blockFile: blockFile(t, value), confirmation: confirmationValue(value), dryRun: true };
+    const drift = { ...(await dryRuntime().drift(value)), taskKpi08421PayloadSha: TASK_KPI_08421.payloadSha };
+    assert.equal((await executeAction(options, dryRuntime({ async drift() { return drift; } }))).success, true);
+    for (const [change, code] of [
+        [{ head: RELEASE_SHA }, 'PRODUCTION_BLOCK_SHA_DRIFT'],
+        [{ taskKpi08421PayloadSha: RELEASE_SHA }, 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT'],
+        [{ migrationHashes: {} }, 'PRODUCTION_BLOCK_MIGRATION_HASH_DRIFT']
+    ]) {
+        await assert.rejects(executeAction(options, dryRuntime({ async drift() { return { ...drift, ...change }; } })), { code });
+    }
+});
 
 test('payroll schema release binds the exact two migrations and a converged production base', () => {
     const scope = payrollSchemaFacts();

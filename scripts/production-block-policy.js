@@ -19,6 +19,7 @@ const SENSITIVE_KEY = /(secret|token|password|database.?url|authorization|cookie
 const PROTECTED_WORKFLOWS = Object.freeze({
     PROFILE_EMPLOYEE_RELEASE: 'profile-employee-release',
     MY_DAY_PROFILE_RELEASE: 'my-day-profile-release-083100',
+    TASK_KPI_08421: 'task-kpi-release-08421',
     EVENTGENIX_REMEDIATION: 'eventgenix-remediation-08417',
     EVENTGENIX_REMEDIATION_RETRY: 'eventgenix-remediation-08417-retry',
     EVENTGENIX_REMEDIATION_HR_RETRY: 'eventgenix-remediation-08417-hr-retry',
@@ -67,6 +68,22 @@ const FREELANCE_SCHEDULE_CI_RECOVERY = Object.freeze({
     payloadSha: '2b573190e4f573b77125b4451652f422153e48bf',
     failedPredecessorSha: 'd58f7aaa00da96ed911def84f5c5360aedf7b1f8',
     failedCiRunId: '44208720357'
+});
+const TASK_KPI_08421 = Object.freeze({
+    baseSha: '6012f1ccacb2f80a6354dd70fbe51bbd6cb83e16',
+    baseVersion: '0.84.20',
+    version: '0.84.21',
+    payloadSha: '9d309347f91f0984d00f578a5ee9e04c096794e0',
+    controllerPaths: Object.freeze([
+        'scripts/production-block-controller.js',
+        'scripts/production-block-policy.js',
+        'tests/production-block-controller.test.js'
+    ]),
+    migrationHashes: Object.freeze({
+        'db/migrations/429_freelance_cancellation_block_attendance.sql': 'e80603e759b95e6971a2df1b94435252130d54ea76ee532652dff2715c3b8d1f',
+        'db/migrations/430_task_cancellation_delivery.sql': '0ff806ab975aa8470559e1f907ce10179309b410814b36b9e4d43337dbc5f51b',
+        'db/migrations/431_staff_substitution_freelance_link.sql': '1f43bf4377ff6d687d1ef794e986cb60d66ab81067869c26c547c59901be256b'
+    })
 });
 const MY_DAY_PROFILE_RELEASE = Object.freeze({
     baseSha: '125b01b21d1b62ec8d82449115044933d855503c',
@@ -745,6 +762,7 @@ function isPreparedProtectedWorkflow(kind) {
     return [PROTECTED_WORKFLOWS.HR_PAYROLL, PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA,
         PROTECTED_WORKFLOWS.PERFORMANCE_CI_RELEASE, PROTECTED_WORKFLOWS.STAFF_DELETION_CI,
         PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE, PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE,
+        PROTECTED_WORKFLOWS.TASK_KPI_08421,
         PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS, PROTECTED_WORKFLOWS.FREELANCE_CANCEL_424,
         PROTECTED_WORKFLOWS.PAYROLL_425_426]
         .includes(kind) || Boolean(freelanceScheduleReleaseFor(kind) || eventGenixRemediationFor(kind));
@@ -840,6 +858,15 @@ function validateProtectedWorkflow(workflow, changedPaths = [], redPaths = []) {
     }
     fail(Object.values(PROTECTED_WORKFLOWS).includes(workflow),
         'Unsupported protected production workflow', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_INVALID');
+    if (workflow === PROTECTED_WORKFLOWS.TASK_KPI_08421) {
+        fail(stableJson(redPaths) === stableJson(['routes/auth.js'])
+            && TASK_KPI_08421.controllerPaths.every(file => changedPaths.includes(file))
+            && stableJson(normalizePathList(changedPaths.filter(file => file.startsWith('db/migrations/'))))
+                === stableJson(Object.keys(TASK_KPI_08421.migrationHashes)),
+        'Task KPI release must match the protected route, controller and migration inventory',
+        'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+        return { enabled: true, kind: workflow, protectedChangedPaths: ['routes/auth.js'] };
+    }
     if (workflow === PROTECTED_WORKFLOWS.FREELANCE_CANCEL_424) {
         fail(redPaths.length === 0, 'Freelance cancellation cannot change protected paths', 'PRODUCTION_BLOCK_RED_PATHS');
         return { enabled: true, kind: workflow, protectedChangedPaths: [] };
@@ -1155,6 +1182,18 @@ function validateMinorReleaseBump(bump) {
     return bump;
 }
 
+function assertTaskKpi08421Scope({ baseSha, baseVersion, version, payloadSha, qaScope, migrations, attempts }) {
+    fail(baseSha === TASK_KPI_08421.baseSha && baseVersion === TASK_KPI_08421.baseVersion
+        && version === TASK_KPI_08421.version && payloadSha === TASK_KPI_08421.payloadSha
+        && qaScope.enabled === false && attempts === 1
+        && migrations.every(item => item.kind === 'schema' && !item.red)
+        && migrations.length === Object.keys(TASK_KPI_08421.migrationHashes).length
+        && stableJson(Object.fromEntries(migrations.map(item => [item.file, item.sqlHash])))
+            === stableJson(TASK_KPI_08421.migrationHashes),
+    'Task KPI release base, payload, migration contents, QA or attempt scope differs',
+    'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
+}
+
 function buildManifest(facts, options = {}) {
     const now = options.now instanceof Date ? options.now : new Date(options.now || Date.now());
     const validityMinutes = Number(options.validityMinutes || 360);
@@ -1180,6 +1219,16 @@ function buildManifest(facts, options = {}) {
             to: parts[0] + '.' + (Number(parts[1]) + 1) + '.0' });
     }
     const maxReleaseAttempts = Number(options.maxReleaseAttempts || DEFAULT_MAX_ATTEMPTS);
+    if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.TASK_KPI_08421) {
+        migrations.forEach((item, index) => { item.sqlHash = migrationSqlHash(facts.migrations[index].sql); });
+        assertTaskKpi08421Scope({ baseSha: baseLiveSha, baseVersion: facts.live?.version,
+            version: facts.releaseVersion, payloadSha: facts.taskKpi08421PayloadSha,
+            qaScope, migrations, attempts: maxReleaseAttempts });
+        fail(facts.remoteSha === baseLiveSha && facts.live?.sourceBranch === TARGET.branch
+            && facts.live?.deploymentMetadata?.complete === true,
+        'Task KPI release requires verified live and remote production at its exact base',
+        'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
+    }
     if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE) {
         assertProfileEmployeeReleaseScope(baseLiveSha, facts.live?.version, facts.releaseVersion,
             qaScope, migrations, maxReleaseAttempts);
@@ -1327,6 +1376,8 @@ function buildManifest(facts, options = {}) {
         ...(isPreparedProtectedWorkflow(protectedWorkflow.kind) ? {
             preparedRelease: {
                 sha: head, version: facts.releaseVersion, baseVersion: facts.live.version,
+                ...(protectedWorkflow.kind === PROTECTED_WORKFLOWS.TASK_KPI_08421
+                    ? { taskKpi08421PayloadSha: facts.taskKpi08421PayloadSha } : {}),
                 ...(protectedWorkflow.kind === PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE
                     ? { profileEmployeeAuthBlob: facts.profileEmployeeAuthBlob } : {}),
                 ...(protectedWorkflow.kind === PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE
@@ -1404,6 +1455,16 @@ function validateManifest(manifest, options = {}) {
     );
     fail(JSON.stringify(validatedProtectedWorkflow) === JSON.stringify(protectedWorkflow),
         'Protected workflow envelope differs from candidate paths', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
+    if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.TASK_KPI_08421) {
+        assertTaskKpi08421Scope({ baseSha: manifest.baseLiveSha, baseVersion: manifest.preparedRelease?.baseVersion,
+            version: manifest.preparedRelease?.version, payloadSha: manifest.preparedRelease?.taskKpi08421PayloadSha,
+            qaScope, migrations: manifest.migrationClassifications, attempts: manifest.maxReleaseAttempts });
+        fail(manifest.preparedRelease?.sha === manifest.initialHeadSha
+            && stableJson(manifest.allowedMigrationFiles) === stableJson(Object.keys(TASK_KPI_08421.migrationHashes))
+            && !manifest.retryFrom && !manifest.renewalFrom,
+        'Task KPI release requires one exact prepared SHA and migration inventory',
+        'PRODUCTION_BLOCK_RELEASE_NOT_PREPARED');
+    }
     if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE) {
         assertProfileEmployeeReleaseScope(manifest.baseLiveSha, manifest.preparedRelease?.baseVersion,
             manifest.preparedRelease?.version, qaScope, manifest.migrationClassifications, manifest.maxReleaseAttempts);
@@ -1652,6 +1713,7 @@ function warningText(manifest) {
 
 module.exports = {
     MY_DAY_PROFILE_RELEASE,
+    TASK_KPI_08421,
     EVENTGENIX_REMEDIATION,
     EVENTGENIX_REMEDIATION_RETRY,
     EVENTGENIX_REMEDIATION_HR_RETRY,

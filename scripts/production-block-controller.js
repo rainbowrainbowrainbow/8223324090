@@ -23,6 +23,7 @@ const {
     assertPerformanceCiRecovery,
     assertProfileEmployeeAuthBlob,
     MY_DAY_PROFILE_RELEASE,
+    TASK_KPI_08421,
     eventGenixRemediationFor,
     assertEventGenixRemediationFailedCi,
     assertEventGenixRemediationPayload,
@@ -554,7 +555,8 @@ function eventGenixRemediationFacts(head, reviewed) {
 
 function usesStandardProtectedReleaseFlow(kind) {
     return [PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE, PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE,
-        PROTECTED_WORKFLOWS.FREELANCE_CANCEL_424, PROTECTED_WORKFLOWS.PAYROLL_425_426].includes(kind)
+        PROTECTED_WORKFLOWS.FREELANCE_CANCEL_424, PROTECTED_WORKFLOWS.PAYROLL_425_426,
+        PROTECTED_WORKFLOWS.TASK_KPI_08421].includes(kind)
         || Boolean(freelanceScheduleReleaseFor(kind) || eventGenixRemediationFor(kind));
 }
 
@@ -589,6 +591,8 @@ function defaultRuntime() {
                     profileEmployeeAuthBlob: git(['rev-parse', `${head}:routes/auth.js`])
                 } : {}),
                 ...(myDayProfile ? { myDayProfilePayloadSha: reviewedReleasePayloadSha(head, MY_DAY_PROFILE_RELEASE) } : {}),
+                ...(options.protectedWorkflow === PROTECTED_WORKFLOWS.TASK_KPI_08421
+                    ? { taskKpi08421PayloadSha: reviewedReleasePayloadSha(head, TASK_KPI_08421) } : {}),
                 ...eventGenixRemediationFacts(head, eventGenixRemediationFor(options.protectedWorkflow)),
                 ...freelanceScheduleFacts(head, freelanceScheduleReleaseFor(options.protectedWorkflow)),
                 workflowHashes: performanceCi ? performanceCiWorkflowHashes(paths)
@@ -618,6 +622,8 @@ function defaultRuntime() {
                     ? { profileEmployeeAuthBlob: git(['rev-parse', `${head}:routes/auth.js`]) } : {}),
                 ...(manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE
                     ? { myDayProfilePayloadSha: reviewedReleasePayloadSha(head, MY_DAY_PROFILE_RELEASE) } : {}),
+                ...(manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.TASK_KPI_08421
+                    ? { taskKpi08421PayloadSha: reviewedReleasePayloadSha(head, TASK_KPI_08421) } : {}),
                 ...eventGenixRemediationFacts(head, eventGenixRemediationFor(manifest.allowedProtectedWorkflow?.kind)),
                 ...freelanceScheduleFacts(head, freelanceScheduleReleaseFor(manifest.allowedProtectedWorkflow?.kind)),
                 workflowHashes: performanceCi ? performanceCiWorkflowHashes(paths)
@@ -1276,6 +1282,10 @@ async function assertExecuteDrift(manifest, runtime) {
     if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE) {
         assertMyDayProfilePayload(drift.myDayProfilePayloadSha);
     }
+    if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.TASK_KPI_08421) {
+        fail(drift.taskKpi08421PayloadSha === TASK_KPI_08421.payloadSha,
+            'Task KPI release differs from its reviewed payload', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
+    }
     const eventGenix = eventGenixRemediationFor(manifest.allowedProtectedWorkflow?.kind);
     if (eventGenix) {
         assertEventGenixRemediationPayload(drift.eventGenixRemediationPayloadSha, eventGenix);
@@ -1295,7 +1305,8 @@ async function assertExecuteDrift(manifest, runtime) {
             'Staff deletion CI workflow differs from the reviewed content', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
     }
     if ([PROTECTED_WORKFLOWS.FINANCE_MANUAL_QA, PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS,
-        PROTECTED_WORKFLOWS.FREELANCE_CANCEL_424, PROTECTED_WORKFLOWS.PAYROLL_425_426]
+        PROTECTED_WORKFLOWS.FREELANCE_CANCEL_424, PROTECTED_WORKFLOWS.PAYROLL_425_426,
+        PROTECTED_WORKFLOWS.TASK_KPI_08421]
         .includes(manifest.allowedProtectedWorkflow?.kind)) {
         const expectedHashes = Object.fromEntries(manifest.migrationClassifications.map(item => [item.file, item.sqlHash]));
         fail(stableJson(drift.migrationHashes || {}) === stableJson(expectedHashes),

@@ -21,6 +21,7 @@ const {
     PROFILE_EMPLOYEE_AUTH_BLOB,
     MY_DAY_PROFILE_RELEASE,
     TASK_KPI_08421,
+    taskKpi08421ReleaseFor,
     EVENTGENIX_REMEDIATION,
     EVENTGENIX_REMEDIATION_RETRY,
     EVENTGENIX_REMEDIATION_HR_RETRY,
@@ -141,6 +142,35 @@ test('task KPI execution rejects drift in the prepared SHA, reviewed payload or 
     ]) {
         await assert.rejects(executeAction(options, dryRuntime({ async drift() { return { ...drift, ...change }; } })), { code });
     }
+});
+
+test('task KPI recovery requires the exact failed push and preserves protected scope', async t => {
+    const workflow = 'task-kpi-recovery-08421';
+    const reviewed = taskKpi08421ReleaseFor(workflow);
+    const options = { protectedWorkflow: workflow, maxReleaseAttempts: 1 };
+    const failedRun = {
+        databaseId: Number(reviewed.failedCiRunId), headSha: reviewed.failedPredecessorSha,
+        headBranch: 'codex/eventgenix-production', workflowName: 'CI', event: 'push',
+        status: 'completed', conclusion: 'failure',
+        jobs: reviewed.failedJobs.map(name => ({ name, conclusion: 'failure' }))
+    };
+    const scope = { ...taskKpiReleaseFacts(), remoteSha: reviewed.failedPredecessorSha,
+        taskKpi08421PayloadSha: reviewed.payloadSha, taskKpi08421FailedCi: failedRun };
+    const value = manifest(options, scope);
+    assert.doesNotThrow(() => validateManifest(value));
+    assert.equal(value.preparedRelease.failedPredecessorSha, reviewed.failedPredecessorSha);
+    assert.equal(value.preparedRelease.failedCiRunId, reviewed.failedCiRunId);
+    assert.throws(() => manifest(options, { ...scope, remoteSha: reviewed.baseSha }),
+        { code: 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT' });
+    assert.throws(() => manifest(options, { ...scope, taskKpi08421FailedCi: { ...failedRun, jobs: [] } }),
+        { code: 'PRODUCTION_BLOCK_CI_IDENTITY_INVALID' });
+
+    const execution = { blockFile: blockFile(t, value), confirmation: confirmationValue(value), dryRun: true };
+    const drift = { ...(await dryRuntime().drift(value)), taskKpi08421PayloadSha: reviewed.payloadSha, taskKpi08421FailedCi: failedRun };
+    assert.equal((await executeAction(execution, dryRuntime({ async drift() { return drift; } }))).success, true);
+    await assert.rejects(executeAction(execution, dryRuntime({
+        async drift() { return { ...drift, taskKpi08421FailedCi: { ...failedRun, databaseId: 1 } }; }
+    })), { code: 'PRODUCTION_BLOCK_CI_IDENTITY_INVALID' });
 });
 
 test('payroll schema release binds the exact two migrations and a converged production base', () => {

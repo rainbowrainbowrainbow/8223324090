@@ -1311,15 +1311,15 @@
 
                 <!-- Tab: Finance (embedded iframe) -->
                 <div class="center-tab-panel hidden" id="tabFinance" role="tabpanel" aria-label="Фінанси">
-                    <iframe src="/finance?embed=1" class="center-embed-frame" title="Фінанси"></iframe>
+                    <iframe data-embed-src="/finance?embed=1" class="center-embed-frame" title="Фінанси"></iframe>
                 </div>
                 <!-- Tab: Reports (embedded iframe) -->
                 <div class="center-tab-panel hidden" id="tabReports" role="tabpanel" aria-label="Звіти">
-                    <iframe src="/reports?embed=1" class="center-embed-frame" title="Звіти"></iframe>
+                    <iframe data-embed-src="/reports?embed=1" class="center-embed-frame" title="Звіти"></iframe>
                 </div>
                 <!-- Tab: Analytics (embedded iframe) -->
                 <div class="center-tab-panel hidden" id="tabAnalytics" role="tabpanel" aria-label="Аналітика">
-                    <iframe src="/analytics?embed=1" class="center-embed-frame" title="Аналітика"></iframe>
+                    <iframe data-embed-src="/analytics?embed=1" class="center-embed-frame" title="Аналітика"></iframe>
                 </div>
                 <div class="center-tab-panel hidden" id="tabTickets" role="tabpanel" aria-label="Квитки">
                     <div class="ticket-catalog-toolbar">
@@ -1712,6 +1712,9 @@
             if (reportsPanel) reportsPanel.classList.toggle('hidden', tab !== 'reports');
             if (analyticsPanel) analyticsPanel.classList.toggle('hidden', tab !== 'analytics');
             if (ticketsPanel) ticketsPanel.classList.toggle('hidden', tab !== 'tickets');
+            const embeddedPanel = { finance: financePanel, reports: reportsPanel, analytics: analyticsPanel }[tab];
+            const frame = embeddedPanel?.querySelector('iframe[data-embed-src]:not([src])');
+            if (frame) frame.src = frame.dataset.embedSrc;
             window.dispatchEvent(new CustomEvent('center:tab-change', { detail: { tab } }));
         }
 

@@ -35,7 +35,7 @@ function createClockOutDb(existing, options = {}) {
         async query(sql, params = []) {
             const text = String(sql).replace(/\s+/g, ' ').trim();
             calls.push({ text, params });
-            if (text.startsWith('SELECT * FROM hr_time_records')) return { rows: [existing] };
+            if (text.startsWith('SELECT *, updated_at::text AS record_version FROM hr_time_records')) return { rows: [existing] };
             if (text.includes('FROM hr_audit_log')) {
                 if (Array.isArray(options.auditRows)) return { rows: options.auditRows };
                 const planSource = options.auditPlanSource || HR_ATTENDANCE_PLAN_SOURCES.HR_SHIFT;
@@ -112,7 +112,7 @@ test('an explicit night shift keeps its original record date and scopes the lock
 test('a stale close request cannot end a replacement arrival', async () => {
     const db = {
         async query(sql) {
-            assert.match(sql, /^SELECT \* FROM hr_time_records/);
+            assert.match(sql, /^SELECT \*, updated_at::text AS record_version FROM hr_time_records/);
             return { rows: [baseRecord] };
         }
     };

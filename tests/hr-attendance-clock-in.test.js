@@ -17,7 +17,7 @@ function createClockInDb(options = {}) {
         async query(sql, params = []) {
             const text = String(sql).replace(/\s+/g, ' ').trim();
             calls.push({ text, params });
-            if (text.startsWith('SELECT * FROM hr_time_records')) {
+            if (text.startsWith('SELECT *, updated_at::text AS record_version FROM hr_time_records')) {
                 return { rows: options.existing ? [options.existing] : [] };
             }
             if (text.includes('FROM hr_shifts hs')) return { rows: options.shiftRows || [] };

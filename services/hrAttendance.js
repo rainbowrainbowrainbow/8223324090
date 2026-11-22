@@ -22,6 +22,20 @@ const HR_TODAY_MANUAL_ARRIVAL_SQL = `tr.clock_in IS NOT NULL AND tr.clock_out IS
       AND a.details->>'clock_in' = to_char(tr.clock_in AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
       AND a.details->>'source' = 'hr_today' AND a.details->>'method' = 'manual'
 )`;
+// The audit and the attendance update share the transaction timestamp.
+const HR_TODAY_MANUAL_DEPARTURE_SQL = `
+    SELECT a.details FROM hr_audit_log a
+    WHERE tr.clock_in IS NOT NULL AND tr.clock_out IS NOT NULL AND NOT COALESCE(tr.auto_closed, FALSE)
+      AND a.staff_id = tr.staff_id AND a.action = 'clock_out' AND a.created_at = tr.updated_at
+      AND a.details->>'record_id' = tr.id::text
+      AND a.details->>'clock_out' = to_char(tr.clock_out AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+      AND a.details->>'source' = 'hr_today' AND a.details->>'method' = 'manual'
+      AND (a.details ? 'before_close' OR tr.corrected_at IS NULL)
+      AND NOT EXISTS (
+          SELECT 1 FROM staff_checkins sc
+          WHERE sc.staff_id = tr.staff_id AND sc.date = tr.record_date AND sc.check_out IS NOT NULL
+      )
+    ORDER BY a.id DESC LIMIT 1`;
 const KYIV_TIME_ZONE = 'Europe/Kyiv';
 const HR_ATTENDANCE_GRACE_MINUTES = Object.freeze({
     late: 5,
@@ -811,7 +825,7 @@ async function recordAttendanceClockIn(db, input = {}) {
     }
 
     const existingResult = await db.query(
-        'SELECT * FROM hr_time_records WHERE staff_id = $1 AND record_date = $2 FOR UPDATE',
+        'SELECT *, updated_at::text AS record_version FROM hr_time_records WHERE staff_id = $1 AND record_date = $2 FOR UPDATE',
         [staffId, recordDate]
     );
     const existing = existingResult.rows?.[0] || null;
@@ -864,7 +878,7 @@ async function recordAttendanceClockIn(db, input = {}) {
                 compensation_snapshot = $9::jsonb,
                 notes = COALESCE($10, notes),
                 updated_at = NOW()
-             WHERE id = $11 RETURNING *`,
+             WHERE id = $11 RETURNING *, updated_at::text AS record_version`,
             [
                 clockIn,
                 fields.plannedStart,
@@ -885,7 +899,7 @@ async function recordAttendanceClockIn(db, input = {}) {
                 (business_context, staff_id, record_date, clock_in, planned_start, planned_end,
                  late_minutes, status, ip_address, user_agent, compensation_snapshot, notes)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12)
-             RETURNING *`,
+             RETURNING *, updated_at::text AS record_version`,
             [
                 businessContext,
                 staffId,
@@ -1519,21 +1533,7 @@ async function cancelAttendanceClockIn(db, { staffId, recordId, recordDate, cloc
             'Цей прихід уже змінився або його не можна скасувати. Оновіть дані.', 409);
     }
 
-    const month = recordDate.slice(0, 7);
-    const { rows: [usage] } = await db.query(
-        `SELECT EXISTS (
-             SELECT 1 FROM payroll_reports pr
-             WHERE pr.staff_id = $1 AND pr.period_month = $2 AND pr.voided_at IS NULL
-               AND (pr.status IN ('approved', 'paid') OR EXISTS (
-                   SELECT 1 FROM payroll_installments pi
-                   WHERE pi.payroll_report_id = pr.id AND pi.workflow_status = 'approved'
-               ))
-         ) OR EXISTS (
-             SELECT 1 FROM costing_management_links WHERE hr_time_record_id = $3
-         ) AS protected`,
-        [staffId, month, recordId]
-    );
-    if (usage.protected) {
+    if (await isAttendanceAlreadyAccounted(db, staffId, recordDate, recordId)) {
         throw attendanceMutationError('ATTENDANCE_ARRIVAL_ALREADY_ACCOUNTED',
             'Прихід не можна скасувати, бо за цей період є погоджені нарахування або пов’язаний облік.', 409);
     }
@@ -1555,6 +1555,85 @@ async function cancelAttendanceClockIn(db, { staffId, recordId, recordDate, cloc
             late_minutes: record.late_minutes, compensation_snapshot_before: snapshot, source: 'hr_today'
         }), ip || null]
     );
+}
+
+async function isAttendanceAlreadyAccounted(db, staffId, recordDate, recordId) {
+    const { rows: [usage] } = await db.query(
+        `SELECT EXISTS (
+             SELECT 1 FROM payroll_reports pr
+             WHERE pr.staff_id = $1 AND pr.period_month = $2 AND pr.voided_at IS NULL
+               AND (pr.status IN ('approved', 'paid') OR EXISTS (
+                   SELECT 1 FROM payroll_installments pi
+                   WHERE pi.payroll_report_id = pr.id AND pi.workflow_status = 'approved'
+               ))
+         ) OR EXISTS (
+             SELECT 1 FROM costing_management_links WHERE hr_time_record_id = $3
+         ) AS protected`,
+        [staffId, recordDate.slice(0, 7), recordId]
+    );
+    return usage.protected;
+}
+
+async function cancelAttendanceClockOut(db, { staffId, recordId, recordDate, version, businessContext, performedBy, ip }) {
+    const { rows: [record] } = await db.query(
+        `SELECT tr.*, (${HR_TODAY_MANUAL_DEPARTURE_SQL}) AS close_audit
+         FROM hr_time_records tr
+         WHERE tr.id = $1 AND tr.staff_id = $2 AND tr.record_date = $3
+           AND COALESCE(tr.business_context, 'event_genix') = $4 AND tr.updated_at::text = $5
+         FOR UPDATE OF tr`,
+        [recordId, staffId, recordDate, businessContext, version]
+    );
+    const close = record?.close_audit;
+    const unavailable = () => attendanceMutationError('ATTENDANCE_DEPARTURE_NOT_CANCELLABLE',
+        'Завершення зміни вже змінилося або його не можна скасувати. Оновіть дані.', 409);
+    if (!close) throw unavailable();
+    await require('./hrFreelanceWork').assertFreelanceAttendanceEditable(db, recordId);
+    if (await isAttendanceAlreadyAccounted(db, staffId, recordDate, recordId)) {
+        throw attendanceMutationError('ATTENDANCE_DEPARTURE_ALREADY_ACCOUNTED',
+            'Завершення зміни не можна скасувати, бо за цей період є погоджені нарахування або пов’язаний облік.', 409);
+    }
+
+    let before = close.before_close;
+    if (!before) {
+        // Older closures can recover the original plan captured with the exact arrival.
+        const { rows: [arrival] } = await db.query(
+            `SELECT a.details->>'status' AS status, a.details->>'late_minutes' AS late_minutes,
+                    s.details->'compensationSnapshot' AS compensation_snapshot
+             FROM hr_audit_log a
+             JOIN hr_audit_log s ON s.staff_id = a.staff_id AND s.created_at = a.created_at
+               AND s.action = 'compensation_snapshot_created' AND s.details->>'trigger' = 'clock_in'
+               AND s.details->>'recordId' = a.details->>'record_id'
+             WHERE a.staff_id = $1 AND a.action = 'clock_in'
+               AND a.details->>'record_id' = $2 AND a.details->>'clock_in' = $3
+             ORDER BY a.id DESC LIMIT 1`,
+            [staffId, String(recordId), timestampAuditValue(record.clock_in)]
+        );
+        if (!arrival && !parseAttendanceCompensationSnapshot(record.compensation_snapshot)?.legacyBaseOnly) {
+            throw unavailable();
+        }
+        before = arrival || {
+            status: record.late_minutes > 0 ? 'late' : 'present',
+            late_minutes: record.late_minutes,
+            compensation_snapshot: null
+        };
+    }
+    const { rows: [written] } = await db.query(
+        `UPDATE hr_time_records SET clock_out = NULL, auto_closed = FALSE,
+             total_worked_minutes = 0, early_leave_minutes = 0, overtime_minutes = 0,
+             status = $2, late_minutes = $3, compensation_snapshot = $4::jsonb, updated_at = NOW()
+         WHERE id = $1 RETURNING *, updated_at::text AS record_version`,
+        [recordId, before.status, before.late_minutes,
+            before.compensation_snapshot ? JSON.stringify(before.compensation_snapshot) : null]
+    );
+    await db.query(
+        `INSERT INTO hr_audit_log (action, staff_id, performed_by, details, ip_address)
+         VALUES ('clock_out_cancelled', $1, $2, $3, $4)`,
+        [staffId, performedBy, JSON.stringify({
+            record_id: recordId, record_date: recordDate, clock_out: timestampAuditValue(record.clock_out),
+            old_status: record.status, status: before.status, source: 'hr_today'
+        }), ip || null]
+    );
+    return decorateAttendanceRecord({ ...written, plan_source: close.plan_source });
 }
 
 const TERMINAL_ATTENDANCE_STATUSES = new Set([
@@ -1742,10 +1821,10 @@ async function recordAttendanceClockOut(db, input = {}) {
     }
 
     const existingResult = input.recordId === undefined
-        ? await db.query('SELECT * FROM hr_time_records WHERE staff_id = $1 AND record_date = $2 FOR UPDATE',
+        ? await db.query('SELECT *, updated_at::text AS record_version FROM hr_time_records WHERE staff_id = $1 AND record_date = $2 FOR UPDATE',
             [staffId, recordDate])
         : await db.query(
-            `SELECT * FROM hr_time_records WHERE staff_id = $1 AND record_date = $2
+            `SELECT *, updated_at::text AS record_version FROM hr_time_records WHERE staff_id = $1 AND record_date = $2
                AND id = $3 AND COALESCE(business_context, 'event_genix') = $4 FOR UPDATE`,
             [staffId, recordDate, input.recordId, normalizeBusinessContext(input.businessContext)]
         );
@@ -1761,6 +1840,10 @@ async function recordAttendanceClockOut(db, input = {}) {
         && timestampAuditValue(input.expectedClockIn) !== timestampAuditValue(record.clock_in)) {
         throw attendanceMutationError('ATTENDANCE_ARRIVAL_CHANGED',
             'Прихід змінився. Оновіть дані перед завершенням зміни.', 409);
+    }
+    if (!record.clock_out && input.expectedVersion !== undefined && input.expectedVersion !== record.record_version) {
+        throw attendanceMutationError('ATTENDANCE_DEPARTURE_STALE',
+            'Запис змінився. Оновіть дані перед завершенням зміни.', 409);
     }
     const initialPlanSource = await loadInitialAttendancePlanSource(db, record);
     const storedCompensationSnapshot = parseAttendanceCompensationSnapshot(record.compensation_snapshot);
@@ -1857,7 +1940,7 @@ async function recordAttendanceClockOut(db, input = {}) {
             clock_out = $1, total_worked_minutes = $2, late_minutes = $3, auto_closed = FALSE,
             early_leave_minutes = $4, overtime_minutes = $5, status = $6,
             compensation_snapshot = $7::jsonb, updated_at = NOW()
-         WHERE id = $8 RETURNING *`,
+         WHERE id = $8 RETURNING *, updated_at::text AS record_version`,
         [
             clockOut,
             payroll.totalWorkedMinutes,
@@ -1896,7 +1979,12 @@ async function recordAttendanceClockOut(db, input = {}) {
         method,
         source,
         ...(input.actualTime !== undefined && { time_mode: 'chosen' }),
-        plan_source: initialPlanSource
+        plan_source: initialPlanSource,
+        ...(source === 'hr_today' && method === 'manual' ? { before_close: {
+            status: record.status,
+            late_minutes: record.late_minutes,
+            compensation_snapshot: storedCompensationSnapshot
+        } } : {})
     };
     await db.query(
         `INSERT INTO hr_audit_log (action, staff_id, performed_by, details, ip_address)
@@ -1989,7 +2077,9 @@ module.exports = {
     plannedShiftWorkedMinutes,
     recordAttendanceClockIn,
     cancelAttendanceClockIn,
+    cancelAttendanceClockOut,
     HR_TODAY_MANUAL_ARRIVAL_SQL,
+    HR_TODAY_MANUAL_DEPARTURE_SQL,
     CANCELLED_ARRIVAL_STATUS,
     recordAttendanceClockOut,
     recordAttendanceStatus,

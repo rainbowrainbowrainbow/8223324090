@@ -161,6 +161,21 @@
                         </div>
                     </form>
                 </dialog>
+                <dialog id="hrTodayCancelDepartureDialog" class="hr-today-clock-dialog"
+                    aria-labelledby="hrTodayCancelDepartureTitle"
+                    aria-describedby="hrTodayCancelDepartureStaff hrTodayCancelDepartureMessage">
+                    <form method="dialog">
+                        <header>
+                            <h2 id="hrTodayCancelDepartureTitle">Скасувати завершення зміни?</h2>
+                            <p id="hrTodayCancelDepartureStaff"></p>
+                        </header>
+                        <p id="hrTodayCancelDepartureMessage">Зміна знову буде активною. Час приходу та перерви збережуться.</p>
+                        <div class="hr-today-clock-footer">
+                            <button type="submit" value="keep" class="btn-page-secondary" autofocus>Залишити завершеною</button>
+                            <button type="submit" value="reopen" class="btn-page-primary">Відкрити зміну</button>
+                        </div>
+                    </form>
+                </dialog>
                 <dialog id="hrTodayBreakDialog" class="hr-today-clock-dialog" aria-labelledby="hrTodayBreakTitle">
                     <form>
                         <header>

@@ -130,6 +130,18 @@ test('staff account operations enforce Park ownership and payroll/operation perm
         assert.equal((await attendance(lead, correction, { staff_id: ownArrival, notes: marker }, 'PUT')).status, 400);
         assert.deepEqual((await pool.query('SELECT id, clock_in, clock_out, updated_at FROM hr_time_records WHERE id=$1',
             [outsideRecord.id])).rows, [outsideRecord]);
+        const closed = await attendance(owner, 'clock-out', target);
+        assert.equal(closed.status, 200);
+        assert.equal(closed.data.data.can_cancel_departure, true);
+        const undo = { ...target, action: 'cancel', record_version: closed.data.data.record_version };
+        const deniedUndo = await attendance(lead, 'clock-out', undo);
+        assert.equal(deniedUndo.status, 403);
+        assert.equal(deniedUndo.data.code, 'ATTENDANCE_STAFF_SCOPE_DENIED');
+        const reopened = await attendance(owner, 'clock-out', undo);
+        assert.equal(reopened.status, 200);
+        assert.equal(reopened.data.data.id, outsideRecord.id);
+        assert.equal(reopened.data.data.clock_in, target.clock_in);
+        assert.equal(reopened.data.data.clock_out, null);
         await pool.query('UPDATE staff SET is_active=false WHERE id = ANY($1::int[])', [[ownArrival, outsideArrival]]);
 
         const transfer = await pool.connect();

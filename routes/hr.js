@@ -62,8 +62,10 @@ const {
     hydrateAttendanceRecords,
     parseAttendanceCompensationSnapshot,
     cancelAttendanceClockIn,
+    cancelAttendanceClockOut,
     CANCELLED_ARRIVAL_STATUS,
     HR_TODAY_MANUAL_ARRIVAL_SQL,
+    HR_TODAY_MANUAL_DEPARTURE_SQL,
     recordAttendanceClockIn,
     recordAttendanceClockOut,
     recordAttendanceStatus,
@@ -6412,6 +6414,7 @@ router.get('/today', async (req, res) => {
 
         const records = await pool.query(
             `SELECT tr.*, (${HR_TODAY_MANUAL_ARRIVAL_SQL}) AS can_cancel_arrival, tr.updated_at::text AS record_version
+                 ${historical ? '' : `, EXISTS (${HR_TODAY_MANUAL_DEPARTURE_SQL}) AS can_cancel_departure`}
              FROM hr_time_records tr WHERE record_date = $1 AND status IS DISTINCT FROM $2
              ${historical ? "AND COALESCE(tr.business_context, 'event_genix') = $3" : ''}`,
             historical ? [today, CANCELLED_ARRIVAL_STATUS, context] : [today, CANCELLED_ARRIVAL_STATUS]
@@ -6457,6 +6460,8 @@ router.get('/today', async (req, res) => {
                     id: record.id,
                     record_version: record.record_version,
                     can_cancel_arrival: record.can_cancel_arrival && !record.break_intervals?.length,
+                    can_cancel_departure: !historical && record.can_cancel_departure === true
+                        && (record.business_context ?? 'event_genix') === context,
                     ...((record.business_context ?? 'event_genix') === context
                         ? { break_intervals: record.break_intervals || [] } : {}),
                     clock_in: record.clock_in,
@@ -6914,6 +6919,8 @@ router.post('/clock-in/cancel', requireHrManage, async (req, res) => {
 
 // POST /api/hr/clock-out
 router.post('/clock-out', requireHrManage, async (req, res) => {
+    if (req.body?.action === 'cancel') return cancelHrClockOut(req, res);
+
     const staffId = Number(req.body?.staff_id);
     if (!Number.isSafeInteger(staffId) || staffId <= 0 || staffId > 2147483647) {
         return res.status(400).json({ success: false, error: 'Потрібен staff_id' });
@@ -6962,6 +6969,7 @@ router.post('/clock-out', requireHrManage, async (req, res) => {
             ...(recordId ? { recordId, businessContext } : {}),
             actualTime,
             expectedClockIn: req.body.clock_in,
+            expectedVersion: req.body.record_version,
             settlementMode: settlement_mode || settlementMode,
             performedBy: req.user?.username || 'manual',
             method: 'manual',
@@ -6971,7 +6979,11 @@ router.post('/clock-out', requireHrManage, async (req, res) => {
         await client.query('COMMIT');
         res.json({
             success: true,
-            data: clockOutResult.record,
+            data: clockOutResult.record && {
+                ...clockOutResult.record,
+                can_cancel_departure: !clockOutResult.alreadyClockedOut && recordDate === today
+                    && (clockOutResult.record.business_context ?? 'event_genix') === businessContext
+            },
             alreadyClockedOut: clockOutResult.alreadyClockedOut,
             planSource: clockOutResult.planSource
         });
@@ -6980,7 +6992,7 @@ router.post('/clock-out', requireHrManage, async (req, res) => {
         if (sendAttendanceScopeFailure(res, err)) return;
         log.error('POST /hr/clock-out error', err);
         if (['ATTENDANCE_CLOCK_IN_REQUIRED', 'ATTENDANCE_ARRIVAL_CHANGED', 'ATTENDANCE_EXIT_BEFORE_ARRIVAL',
-            'ATTENDANCE_BREAK_OUTSIDE_SHIFT'].includes(err?.code)) {
+            'ATTENDANCE_BREAK_OUTSIDE_SHIFT', 'ATTENDANCE_DEPARTURE_STALE'].includes(err?.code)) {
             return res.status(err.statusCode || 400).json({ success: false, code: err.code, error: err.message });
         }
         if (sendHrMutationFailure(res, err)) return;
@@ -6989,6 +7001,46 @@ router.post('/clock-out', requireHrManage, async (req, res) => {
         client.release();
     }
 });
+
+async function cancelHrClockOut(req, res) {
+    const staffId = parsePositiveSafeInteger(req.body?.staff_id);
+    const recordId = parsePositiveSafeInteger(req.body?.record_id);
+    const version = req.body?.record_version;
+    if (!staffId || staffId > 2147483647 || !recordId || recordId > 2147483647
+        || typeof version !== 'string' || !version || version.length > 64) {
+        return res.status(400).json({ success: false, error: 'Потрібна чинна відмітка завершення зміни' });
+    }
+    const today = todayKyiv();
+    const month = today.slice(0, 7);
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await lockPayrollPeriodMutation(month, client);
+        await acquirePayrollPeriodMutationLock(client, month);
+        await assertPayrollPeriodOpen(month, client);
+        await lockAttendanceWriteTarget(client, { staffId, date: today });
+        const businessContext = hrBusinessContextFromRequest(req);
+        await assertAttendanceStaffScope(client, req, staffId, businessContext);
+        const data = await cancelAttendanceClockOut(client, {
+            staffId, recordId, recordDate: today, version,
+            businessContext,
+            performedBy: req.user?.username || 'manual',
+            ip: req.ip
+        });
+        await client.query('COMMIT');
+        return res.json({ success: true, data });
+    } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        if (sendAttendanceScopeFailure(res, error)) return;
+        if (error.statusCode === 409 || error.statusCode === 423) {
+            return res.status(error.statusCode).json({ success: false, code: error.code, error: error.message });
+        }
+        log.error('POST /hr/clock-out cancellation error', error);
+        return res.status(500).json({ success: false, error: 'Не вдалося скасувати завершення зміни' });
+    } finally {
+        client.release();
+    }
+}
 
 // POST /api/hr/mark-absent — mark sick/vacation/day_off
 router.post('/mark-absent', requireHrManage, async (req, res) => {

@@ -3107,6 +3107,8 @@ function renderToday(data) {
         const staffId = Number(item.staff_id);
         const pending = todayClockPending.has(staffId);
         const canCancel = !recoveryReadOnly && !historical && canManageHrSchedule() && onShift && rec.can_cancel_arrival === true;
+        const canCancelDeparture = !recoveryReadOnly && !historical && canManageHrSchedule()
+            && rec?.can_cancel_departure === true && rec.record_version;
         const canReview = !recoveryReadOnly && canManageHrSchedule() && rec?.id && rec.clock_in
             && (todayFilters.reviewOnly || (rec.auto_closed && awaitingDeparture));
         const canManageBreak = !recoveryReadOnly && canManageHrSchedule() && rec?.id && rec.clock_in
@@ -3144,6 +3146,9 @@ function renderToday(data) {
                 ${canReview ? `<button type="button" class="btn-page-secondary" onclick="openCorrectionModal(${staffId})">Звірити зміну</button>` : ''}
                 ${canCancel ? `<button type="button" class="hr-today-cancel-arrival" ${pending ? 'disabled' : ''}
                     onclick="handleClock(${staffId}, 'cancel')">Скасувати прихід</button>` : ''}
+                ${canCancelDeparture ? `<button type="button" class="btn-page-secondary hr-today-cancel-departure"
+                    aria-haspopup="dialog" ${pending ? 'disabled' : ''}
+                    onclick="handleClock(${staffId}, 'cancel-out')">Скасувати завершення</button>` : ''}
             </div>
         </div>`;
     };
@@ -3162,10 +3167,10 @@ function renderToday(data) {
 }
 
 function focusTodayClockControl(row, previousButton) {
-    const control = ['hr-today-cancel-arrival', 'hr-today-pick-time', 'hr-clock-btn']
+    const control = ['hr-today-cancel-arrival', 'hr-today-cancel-departure', 'hr-today-pick-time', 'hr-clock-btn']
         .find(className => previousButton?.classList.contains(className));
     const preferred = `.${control || 'hr-clock-btn'}:not(:disabled)`;
-    (row?.querySelector(preferred) || row?.querySelector('.hr-clock-btn:not(:disabled)') || row)
+    (row?.querySelector(preferred) || row?.querySelector('.hr-clock-btn:not(:disabled), .hr-today-cancel-departure:not(:disabled)') || row)
         ?.focus({ preventScroll: true });
 }
 
@@ -3336,15 +3341,33 @@ async function handleTodayBreak(staffId, action, form = null, showError = messag
     }
 }
 
+function confirmTodayCancelDeparture(name) {
+    const dialog = document.getElementById('hrTodayCancelDepartureDialog');
+    if (!dialog || dialog.open) return false;
+    document.getElementById('hrTodayCancelDepartureStaff').textContent = name;
+    dialog.returnValue = '';
+    dialog.showModal();
+    return new Promise(resolve => {
+        dialog.addEventListener('close', () => {
+            const confirmed = dialog.returnValue === 'reopen';
+            dialog.returnValue = '';
+            resolve(confirmed);
+        }, { once: true });
+    });
+}
+
 async function handleClock(staffId, action, manual = null) {
     if (isTodayRecoveryReadOnly() || todayClockPending.has(staffId)
         || !todayClockDateAllowed(action, todayData?.date)) return;
     const todayItem = todayData?.data?.find(item => Number(item.staff_id) === Number(staffId));
     if (!todayItem) return;
     const onShift = isTodayItemAwaitingDeparture(todayItem);
-    if ((action === 'in') === onShift) return;
+    const cancelOut = action === 'cancel-out';
+    if (!cancelOut && (action === 'in') === onShift) return;
     const showError = manual?.showError || (message => showNotification(message, 'error'));
     if (action === 'cancel' && (!canManageHrSchedule() || todayItem.record?.can_cancel_arrival !== true)) return;
+    if (cancelOut && (!canManageHrSchedule() || todayItem.record?.can_cancel_departure !== true
+        || !todayItem.record.record_version)) return;
     const canStartToday = todayItem.is_reserve
         ? todayItem.shift?.segments?.some(segment => (segment.workMode ?? segment.work_mode) === 'freelance')
         : isHrScheduleableStaffForDate(todayItem, todayData.date || hrTodayKyivDate());
@@ -3363,7 +3386,7 @@ async function handleClock(staffId, action, manual = null) {
     todayClockPending.add(staffId);
     try {
         const body = { staff_id: staffId };
-        if (action !== 'cancel' && date) body.date = todayReviewDate ? actionDate : date;
+        if (action !== 'cancel' && !cancelOut && date) body.date = todayReviewDate ? actionDate : date;
         if (manual) body.time = manual.time;
         let endpoint = '/clock-in';
         if (action === 'out') {
@@ -3372,6 +3395,7 @@ async function handleClock(staffId, action, manual = null) {
             endpoint = '/clock-out';
             body.settlement_mode = 'scheduled_shift';
             body.clock_in = clockIn;
+            body.record_version = todayItem.record.record_version;
             if (todayReviewDate) body.record_id = todayItem.record.id;
         } else if (action === 'cancel') {
             const message = `Скасувати прихід для ${name}?\nПрацівник більше не відображатиметься на зміні. Прихід можна буде відмітити знову.`;
@@ -3379,6 +3403,12 @@ async function handleClock(staffId, action, manual = null) {
             endpoint = '/clock-in/cancel';
             body.record_id = todayItem.record.id;
             body.clock_in = clockIn;
+        } else if (cancelOut) {
+            if (!await confirmTodayCancelDeparture(name)) return;
+            endpoint = '/clock-out';
+            body.action = 'cancel';
+            body.record_id = todayItem.record.id;
+            body.record_version = todayItem.record.record_version;
         }
         if (context !== teamAccessContext() || date !== todayData?.date || actionDate !== hrTodayKyivDate()
             || isTodayRecoveryReadOnly()) return;
@@ -3388,6 +3418,9 @@ async function handleClock(staffId, action, manual = null) {
         if (context !== teamAccessContext() || date !== todayData?.date) return;
         if (!result?.success) {
             showError(hrScheduleableStaffErrorMessage(result, 'Не вдалося зберегти відмітку'));
+            if (['ATTENDANCE_DEPARTURE_NOT_CANCELLABLE', 'ATTENDANCE_DEPARTURE_STALE'].includes(result?.code)) {
+                await loadToday({ keepOnError: true });
+            }
             return;
         }
         // Invalidate earlier reads and show the committed response before the refresh.
@@ -3399,7 +3432,8 @@ async function handleClock(staffId, action, manual = null) {
         };
         saved = true;
         const actual = fmtTimeFromISO(action === 'out' ? result.data?.clock_out : result.data?.clock_in);
-        const message = action === 'cancel' ? 'Прихід скасовано'
+        const message = cancelOut ? 'Зміну знову відкрито'
+            : action === 'cancel' ? 'Прихід скасовано'
             : action === 'out' ? (actual ? `Зміну завершено о ${actual}` : 'Зміну завершено')
                 : (actual ? `Зміну почато о ${actual}` : 'Зміну почато');
         showNotification(message, 'success');

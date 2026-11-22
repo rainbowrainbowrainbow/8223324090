@@ -5,6 +5,8 @@ const assert = require('node:assert/strict');
 const { Pool } = require('pg');
 const { assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
 const {
+    cancelAttendanceClockOut,
+    HR_TODAY_MANUAL_DEPARTURE_SQL,
     recordAttendanceClockIn,
     recordAttendanceClockOut,
     recordAttendanceStatus
@@ -12,6 +14,108 @@ const {
 
 const enabled = process.env.RUN_HR_ATTENDANCE_COMPENSATION_INTEGRATION === 'true';
 const FIXTURE_DATE = '2026-07-22';
+
+test('undoing a manual departure restores the same shift and allows a fresh close', { skip: !enabled }, async () => {
+    const testDb = requireIsolatedDatabase();
+    const pool = new Pool({
+        connectionString: testDb.url.toString(),
+        ssl: testDb.isLocal ? false : { rejectUnauthorized: false },
+        max: 1
+    });
+    const client = await pool.connect();
+    try {
+        const { rows: [{ id: staffId }] } = await client.query(
+            `INSERT INTO staff (name, department, position, role_type, is_active, hourly_rate)
+             VALUES ('Fictional Undo Departure', 'admin', 'Disposable fixture', 'wardrobe', true, 100)
+             RETURNING id`
+        );
+        const input = { staffId, recordDate: FIXTURE_DATE, businessContext: 'event_genix',
+            performedBy: 'isolated_test', source: 'hr_today', method: 'manual' };
+        const breaks = [{ startedAt: '2026-07-22T10:00:00.000Z', endedAt: '2026-07-22T10:15:00.000Z' }];
+        await client.query('BEGIN');
+        const { record: arrived } = await recordAttendanceClockIn(client, { ...input, now: '2026-07-22T08:00:00Z' });
+        await client.query('UPDATE hr_time_records SET break_intervals = $2::jsonb WHERE id = $1',
+            [arrived.id, JSON.stringify(breaks)]);
+        await client.query('COMMIT');
+        const target = { ...input, recordId: arrived.id };
+        const readEligibility = async () => (await client.query(
+            `SELECT EXISTS (${HR_TODAY_MANUAL_DEPARTURE_SQL}) AS eligible FROM hr_time_records tr WHERE tr.id = $1`,
+            [arrived.id]
+        )).rows[0].eligible;
+        const close = async (expectedVersion, now) => {
+            await client.query('BEGIN');
+            const result = await recordAttendanceClockOut(client, { ...target, expectedVersion, now });
+            await client.query('COMMIT');
+            return result.record;
+        };
+        const closed = await close(arrived.record_version, '2026-07-22T15:00:00Z');
+        assert.equal(await readEligibility(), true);
+        assert.ok(closed.total_worked_minutes > 0);
+        assert.equal(closed.compensation_snapshot.finalizedAt, '2026-07-22T15:00:00.000Z');
+        const undo = { ...target, version: closed.record_version };
+        await client.query('BEGIN');
+        await client.query(
+            "INSERT INTO staff_checkins (staff_id, date, check_out) VALUES ($1, $2, '2026-07-22T15:00:00Z')",
+            [staffId, FIXTURE_DATE]
+        );
+        assert.equal(await readEligibility(), false);
+        await assert.rejects(cancelAttendanceClockOut(client, undo), { code: 'ATTENDANCE_DEPARTURE_NOT_CANCELLABLE' });
+        await client.query('ROLLBACK');
+        await client.query('BEGIN');
+        await client.query(
+            "INSERT INTO payroll_reports (staff_id, period_month, status) VALUES ($1, $2, 'approved')",
+            [staffId, FIXTURE_DATE.slice(0, 7)]
+        );
+        await assert.rejects(cancelAttendanceClockOut(client, undo), { code: 'ATTENDANCE_DEPARTURE_ALREADY_ACCOUNTED' });
+        await client.query('ROLLBACK');
+
+        await client.query('BEGIN');
+        await assert.rejects(cancelAttendanceClockOut(client, { ...undo, version: 'stale' }),
+            { code: 'ATTENDANCE_DEPARTURE_NOT_CANCELLABLE' });
+        await assert.rejects(cancelAttendanceClockOut(client, { ...undo, businessContext: 'dar' }),
+            { code: 'ATTENDANCE_DEPARTURE_NOT_CANCELLABLE' });
+        const reopened = await cancelAttendanceClockOut(client, undo);
+        await client.query('COMMIT');
+        assert.equal(reopened.id, arrived.id);
+        assert.deepEqual(reopened.clock_in, arrived.clock_in);
+        assert.deepEqual(reopened.break_intervals, breaks);
+        assert.equal(reopened.clock_out, null);
+        assert.equal(reopened.total_worked_minutes, 0);
+        assert.equal(reopened.early_leave_minutes, 0);
+        assert.equal(reopened.overtime_minutes, 0);
+        assert.deepEqual(reopened.compensation_snapshot, arrived.compensation_snapshot);
+        assert.equal(await readEligibility(), false);
+        await client.query('BEGIN');
+        await assert.rejects(recordAttendanceClockOut(client, {
+            ...target, expectedVersion: arrived.record_version, now: '2026-07-22T15:00:00Z'
+        }), { code: 'ATTENDANCE_DEPARTURE_STALE' });
+        await client.query('ROLLBACK');
+
+        const closedAgain = await close(reopened.record_version, '2026-07-22T17:00:00Z');
+        assert.ok(closedAgain.total_worked_minutes > closed.total_worked_minutes);
+        await client.query('BEGIN');
+        await assert.rejects(cancelAttendanceClockOut(client, undo),
+            { code: 'ATTENDANCE_DEPARTURE_NOT_CANCELLABLE' });
+        // Simulate a departure written by the earlier app, before the audit kept the prior snapshot.
+        await client.query(
+            `UPDATE hr_audit_log SET details = details - 'before_close'
+             WHERE staff_id = $1 AND action = 'clock_out' AND created_at::text = $2`,
+            [staffId, closedAgain.record_version]
+        );
+        const legacyReopened = await cancelAttendanceClockOut(client, { ...target, version: closedAgain.record_version });
+        assert.deepEqual(legacyReopened.compensation_snapshot, arrived.compensation_snapshot);
+        const { rows: audit } = await client.query(
+            "SELECT details->>'clock_out' AS clock_out FROM hr_audit_log WHERE staff_id = $1 AND action = 'clock_out_cancelled' ORDER BY id",
+            [staffId]
+        );
+        assert.deepEqual(audit.map(row => row.clock_out), ['2026-07-22T15:00:00.000Z', '2026-07-22T17:00:00.000Z']);
+        await client.query('COMMIT');
+    } finally {
+        await client.query('ROLLBACK').catch(() => {});
+        client.release();
+        await pool.end();
+    }
+});
 
 function requireIsolatedDatabase() {
     assert.equal(enabled, true, 'set RUN_HR_ATTENDANCE_COMPENSATION_INTEGRATION=true');

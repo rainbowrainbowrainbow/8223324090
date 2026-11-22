@@ -654,12 +654,19 @@ async function assertAttendanceTransitions(page) {
             if (requestPath === '/clock-in') {
                 row.record = { id: row.staff_id, status: row.shift ? 'present' : 'manual_review',
                     clock_in: body.time ? '2026-07-16T06:12:00.000Z' : new Date().toISOString(),
-                    clock_out: null, can_cancel_arrival: true };
+                    clock_out: null, record_version: 'arrived', can_cancel_arrival: true };
             } else if (requestPath === '/clock-in/cancel') {
                 if (body.record_id !== row.record.id || body.clock_in !== row.record.clock_in) throw new Error('Wrong arrival');
                 row.record = null;
+            } else if (requestPath === '/clock-out' && body.action === 'cancel') {
+                if (body.record_id !== row.record.id || body.record_version !== row.record.record_version) {
+                    throw new Error('Wrong departure');
+                }
+                row.record = { ...row.record, clock_out: null, total_worked_minutes: 0,
+                    record_version: 'reopened', can_cancel_departure: false };
             } else if (requestPath === '/clock-out') {
-                row.record = { ...row.record, clock_out: new Date().toISOString(), total_worked_minutes: 60 };
+                row.record = { ...row.record, clock_out: new Date().toISOString(), total_worked_minutes: 60,
+                    record_version: 'closed', can_cancel_arrival: false, can_cancel_departure: true };
             } else throw new Error(`Unexpected API: ${requestPath}`);
             return { success: true, data: structuredClone(row.record) };
         };
@@ -773,6 +780,47 @@ async function assertAttendanceTransitions(page) {
         return [time, settlement_mode, clock_in];
     }), ['14:15', 'scheduled_shift', '2026-07-16T06:12:00.000Z']);
     assert.equal(await scheduled.locator('.hr-today-pick-time').count(), 0);
+
+    await page.setViewportSize({ width: 320, height: 740 });
+    const cancelDeparture = scheduled.getByRole('button', { name: 'Скасувати завершення' });
+    const undoDialog = page.getByRole('dialog', { name: 'Скасувати завершення зміни?' });
+    const keep = undoDialog.getByRole('button', { name: 'Залишити завершеною' });
+    const countBeforeUndo = (await writes()).length;
+    const undoTarget = await cancelDeparture.boundingBox();
+    assert.ok(undoTarget.width >= 44 && undoTarget.height >= 44);
+    assert.equal(await list.evaluate(node => node.scrollWidth <= node.clientWidth), true);
+    await cancelDeparture.click();
+    assert.match(await undoDialog.getAttribute('aria-describedby'), /\bhrTodayCancelDepartureStaff\b/);
+    assert.equal(await keep.evaluate(button => document.activeElement === button), true);
+    const undoPanel = await undoDialog.boundingBox();
+    assert.ok(undoPanel.x === 0 && undoPanel.width === 320 && Math.abs(undoPanel.y + undoPanel.height - 740) <= 1);
+    assert.equal(await undoDialog.evaluate(node => node.scrollWidth <= node.clientWidth), true);
+    for (const button of await undoDialog.getByRole('button').all()) {
+        const bounds = await button.boundingBox();
+        assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= 320 && bounds.height >= 44);
+        assert.equal(await button.evaluate(node => node.scrollWidth <= node.clientWidth), true);
+    }
+    await page.screenshot({ path: path.join(OUTPUT_DIR, 'cancel-departure-mobile.png') });
+    await page.keyboard.press('Escape');
+    await undoDialog.waitFor({ state: 'hidden' });
+    await cancelDeparture.and(page.locator(':focus')).waitFor({ timeout: 3000 });
+    await cancelDeparture.click();
+    await keep.click();
+    await undoDialog.waitFor({ state: 'hidden' });
+    assert.equal((await writes()).length, countBeforeUndo);
+    await cancelDeparture.click();
+    await undoDialog.getByRole('button', { name: 'Відкрити зміну' }).click();
+    await scheduled.getByRole('button', { name: 'Завершити зміну' }).waitFor();
+    await primary(scheduled).and(page.locator(':focus')).waitFor({ timeout: 3000 });
+    assert.deepEqual((await writes()).slice(countBeforeUndo), ['/clock-out']);
+    assert.equal(await page.evaluate(() => attendanceFixture.writeBodies.at(-1).action), 'cancel');
+    assert.match(await scheduled.textContent(), /Початок зміни: 09:12/);
+    assert.equal(await page.locator('#todayOnShiftMetric').textContent(), '1');
+    await list.screenshot({ path: path.join(OUTPUT_DIR, 'reopened-departure-mobile.png') });
+    await primary(scheduled).click();
+    await page.getByRole('dialog', { name: /Завершити зміну/ }).getByRole('button', { name: 'Завершити' }).click();
+    await cancelDeparture.waitFor();
+    assert.equal(await page.evaluate(() => attendanceFixture.writeBodies.at(-1).record_version), 'reopened');
 
     const search = page.locator('#todaySearch');
     for (const [query, groups] of [['Тестова за графіком', ['Сьогодні за графіком']],
@@ -893,7 +941,7 @@ async function run() {
         await departure.waitFor({ state: 'hidden' });
         assert.deepEqual(await page.evaluate(() => window.__hrTodayBrowserSmoke.requests().find(call => call.path === '/clock-out')?.body),
             { staff_id: 17, date: '2026-07-16', time: '01:30', settlement_mode: 'scheduled_shift',
-                clock_in: '2026-07-15T19:00:00.000Z', record_id: 17 });
+                clock_in: '2026-07-15T19:00:00.000Z', record_version: 'review-v1', record_id: 17 });
         console.log('HR Today metrics browser smoke passed');
     } catch (err) {
         fs.mkdirSync(OUTPUT_DIR, { recursive: true });

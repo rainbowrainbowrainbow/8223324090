@@ -118,7 +118,12 @@ function createTelegramCrmRouters(options = {}) {
     }, 201));
     bot.get('/operations/:id', endpoint(req => tasks.operation(req.telegramSenderId, requestId(req.params.id))));
     bot.post('/operations/:id/confirm', endpoint(req => tasks.commit(req.telegramSenderId, requestId(req.params.id), req.body?.confirmed)));
-    bot.post('/operations/:id/cancel', endpoint(req => tasks.cancel(req.telegramSenderId, requestId(req.params.id))));
+    bot.post('/operations/:id/cancel', endpoint(req => {
+        const id = requestId(req.params.id);
+        return req.body?.undoCreate === true
+            ? tasks.undoCreate(req.telegramSenderId, id, req.telegramEventAt)
+            : tasks.cancel(req.telegramSenderId, id);
+    }));
 
     return { account, bot, identity };
 }

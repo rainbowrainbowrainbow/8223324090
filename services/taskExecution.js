@@ -394,13 +394,26 @@ async function cancelTask(taskId, actor, options = {}) {
             WHERE t.id = $1 AND ((${visible}) OR (${authored})) ${business} FOR UPDATE`, params);
         if (!task) throw Object.assign(new Error('Задачу не знайдено'), { code: 'TASK_NOT_FOUND', statusCode: 404 });
         if (!canCancelTask(actor, task)) throw forbidden('Недостатньо прав для скасування задачі', 'TASK_CANCEL_FORBIDDEN');
+        const undo = options.undoCreate;
+        if (undo && (task.version !== undo.version || task.status !== 'todo'
+            || task.workflow_state !== 'todo' || Number(task.created_by_user_id) !== Number(actor.id))) {
+            throw Object.assign(new Error('Задачу вже змінили або почали виконувати'), { code: 'TASK_STALE_WRITE', statusCode: 409 });
+        }
+        if (undo && (await query.query('SELECT 1 FROM my_day_time_entries WHERE task_id=$1 LIMIT 1', [task.id])).rowCount) {
+            throw Object.assign(new Error('На задачу вже записано час'), { code: 'TASK_STALE_WRITE', statusCode: 409 });
+        }
         if (task.status === 'cancelled') return { id: task.id, status: task.status, version: task.version, unchanged: true };
         if (isTerminalOrArchived(task)) {
             throw Object.assign(new Error('Скасувати можна лише відкриту задачу'), { code: 'TASK_NOT_ACTIVE', statusCode: 409 });
         }
         const { rows: [updated] } = await query.query(`UPDATE tasks SET status = 'cancelled',
             workflow_state = 'archived', schedule_status = 'cancelled', updated_at = NOW(),
-            version = COALESCE(version, 1) + 1 WHERE id = $1 RETURNING id, status, version`, [task.id]);
+            version = COALESCE(version, 1) + 1
+            WHERE id = $1 AND ($2::timestamptz IS NULL OR clock_timestamp() < $2::timestamptz)
+            RETURNING id, status, version`, [task.id, undo?.until ?? null]);
+        if (!updated) {
+            throw Object.assign(new Error('30 секунд на швидке скасування минули'), { code: 'TELEGRAM_UNDO_EXPIRED', statusCode: 410 });
+        }
         await query.query(`UPDATE my_day_time_entries
             SET ended_at = GREATEST(clock_timestamp(), started_at + INTERVAL '1 millisecond'), updated_at = NOW()
             WHERE task_id = $1 AND ended_at IS NULL`, [task.id]);

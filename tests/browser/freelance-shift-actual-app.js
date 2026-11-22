@@ -540,8 +540,10 @@ async function run() {
                     && res.request().method() === 'PUT');
                 await managerPage.locator('#schSaveBtn').click();
                 const savedResponse = await savedByManager;
-                assert.equal(savedResponse.status(), 200, await savedResponse.text());
+                const savedBody = await savedResponse.text();
+                assert.equal(savedResponse.status(), 200, savedBody);
                 assert.equal(savedResponse.request().postDataJSON().reserveFreelance, true);
+                const managerPlan = JSON.parse(savedBody).data;
                 await managerPage.reload();
                 await managerPage.locator('#deptFilter [data-dept="animators"]').click();
                 await searchRoster.fill('');
@@ -549,7 +551,6 @@ async function run() {
                 if (await managerToggle.getAttribute('aria-expanded') !== 'true') await managerToggle.click();
                 await managerPage.locator(`[data-freelance-staff="${reserve.id}"][data-freelance-date="${managerDate}"]`)
                     .filter({ hasText: '18:00–19:00' }).waitFor({ state: 'visible' });
-                const managerPlan = (await savedResponse.json()).data;
                 const cleanup = await request(manager, '/api/staff/schedule', { method: 'PUT',
                     body: { staffId: reserve.id, date: managerDate, reserveFreelance: true,
                         status: 'dayoff', segments: [], expectedUpdatedAt: managerPlan.planUpdatedAt } });

@@ -51,13 +51,23 @@ async def verify_voice_assignment(client, path, creator, recipient, recipient_us
     assert {creator, recipient} <= roster.keys()
 
     messages = []
+    keyboards = {}
+    edits = []
 
     async def send_message(actor, text, **kwargs):
         message_id = 51000 + len(messages)
         messages.append((actor, text, message_id))
+        keyboards[message_id] = kwargs.get("reply_markup")
         return SimpleNamespace(message_id=message_id)
 
-    bot = SimpleNamespace(send_message=send_message)
+    async def edit_message_text(*, chat_id, message_id, text, **_kwargs):
+        edits.append((chat_id, message_id, text))
+        return True
+
+    bot = SimpleNamespace(
+        send_message=send_message, edit_message_text=edit_message_text,
+        answer_callback_query=AsyncMock(),
+    )
     update = Update.model_validate({"update_id": 810000, "message": {
         "message_id": 8100, "date": int(datetime.now(KYIV).timestamp()),
         "chat": {"id": creator, "type": "private"},
@@ -88,12 +98,44 @@ async def verify_voice_assignment(client, path, creator, recipient, recipient_us
     operation = await client.request(creator, f"/operations/{state['lastOperationId']}")
     assert operation["state"] == "committed"
     task_id = operation["receipt"]["task"]["id"]
-    assert any("Задача створена" in text for actor, text, _ in messages if actor == creator)
+    receipt_text, receipt_id = next(
+        (text, message_id) for actor, text, message_id in messages
+        if actor == creator and "Задача створена" in text
+    )
+    assert "Увага!" in receipt_text
+    button = keyboards[receipt_id].inline_keyboard[-1][0]
+    assert button.text == "Скасувати задачу"
     await process_assignments(lane, bot)
     await process_assignments(lane, bot)
     received = [(text, message_id) for actor, text, message_id in messages if actor == recipient]
     assert len(received) == 1 and title in received[0][0] and f"/tasks?open={task_id}" in received[0][0]
-    return task_id, received[0][1]
+    message_id = received[0][1]
+    sent_count = len(messages)
+    callback = Update.model_validate({"update_id": 810001, "callback_query": {
+        "id": "fixture-undo", "chat_instance": "fixture",
+        "from": {"id": creator, "is_bot": False, "first_name": "Fixture"},
+        "message": {
+            "message_id": receipt_id, "date": int(datetime.now(KYIV).timestamp()),
+            "chat": {"id": creator, "type": "private"},
+        },
+        "data": button.callback_data,
+    }})
+    assert lane.enqueue(callback)
+    workers = [asyncio.create_task(lane.worker(bot)), asyncio.create_task(lane.edit_receipts(bot))]
+    try:
+        async with asyncio.timeout(12):
+            while not edits:
+                await asyncio.sleep(0.02)
+    finally:
+        for worker in workers:
+            worker.cancel()
+        await asyncio.gather(*workers, return_exceptions=True)
+    assert edits == [(creator, receipt_id, "✅ <b>Задачу скасовано в CRM</b>")]
+    await process_assignments(lane, bot)
+    await process_assignments(lane, bot)
+    assert edits[1:] == [(recipient, message_id, "❌ <b>Задачу скасовано</b>")]
+    assert len(messages) == sent_count
+    return task_id, message_id
 
 
 async def main(base_url, user_id, actor, task_id, creator):
@@ -179,8 +221,84 @@ async def main(base_url, user_id, actor, task_id, creator):
     print(json.dumps({"sent": len(sent), "messageId": 50001, "restarted": True,
                       "deliveryCommandConfirmed": expect_delivery_command, "morningWithTasks": True,
                       "emptyMorningSilent": True, "voiceTaskId": voice_task_id,
-                      "voiceMessageId": voice_message_id}))
+                      "voiceMessageId": voice_message_id, "editedOriginalAssignment": True}))
+
+
+async def multi_assignee_probe(base_url, creator, primary, primary_user, co, co_user):
+    target = urlsplit(base_url)
+    assert target.scheme == "http" and target.hostname == "127.0.0.1" and target.port
+    creator, primary, primary_user, co, co_user = map(int, (creator, primary, primary_user, co, co_user))
+    with patch.dict(sys.modules, {"fcntl": ModuleType("fcntl")} if os.name == "nt" else {}):
+        from d_brain.bot.crm_lane import CrmLane
+
+    async with httpx.AsyncClient() as local:
+        async def forward(req):
+            return await local.request(req.method, base_url + req.url.raw_path.decode(), content=req.content,
+                                       headers={k: v for k, v in req.headers.items() if k != "host"})
+
+        client = CrmClient("https://notification-fixture.invalid", "isolated-telegram-crm-fixture-only",
+                           transport=httpx.MockTransport(forward))
+        with TemporaryDirectory() as folder:
+            cfg = SimpleNamespace(runtime_dir=Path(folder), crm_enabled=False,
+                                  deepgram_api_key="fixture", deepgram_language="uk")
+            lane = open_local_fixture(CrmLane, cfg, notes_owner_id=None)
+            lane.client = client
+            lane.flow = CrmFlow(client, composer=SimpleNamespace(compose=AsyncMock()),
+                                checkpoint=lane.store.checkpoint_state, store=lane.store)
+            roster = await sync_recipients(lane)
+            assert {creator, primary, co} <= roster.keys()
+            sent = []
+
+            async def send_message(chat, text, **kwargs):
+                message_id = 52000 + len(sent)
+                sent.append((chat, text, message_id))
+                return SimpleNamespace(message_id=message_id)
+
+            fake = SimpleNamespace(send_message=send_message)
+            tasks = []
+            for idx, kind in enumerate(("text", "voice"), 1):
+                title = f"Disposable multi-assignee {kind}"
+                command = f"Створи задачу: {title}"
+                lane.flow.composer.compose.return_value = {"draft": {
+                    "title": title, "ownerUserId": primary_user, "coAssigneeUserIds": [co_user],
+                    "taskMode": "work", "businessContext": "event_genix", "priority": "normal",
+                }}
+                incoming = {"text": command} if kind == "text" else {
+                    "voice": {"file_id":"multi-voice", "file_unique_id":"multi-voice", "duration":3}
+                }
+                update = Update.model_validate({"update_id": 830000 + idx, "message": {
+                    "message_id": 8300 + idx, "date": int(datetime.now(KYIV).timestamp()),
+                    "chat": {"id": creator, "type": "private"},
+                    "from": {"id": creator, "is_bot": False, "first_name": "Fixture"}, **incoming,
+                }})
+                with patch("d_brain.services.telegram_media.download_media", AsyncMock(return_value=b"isolated")), patch(
+                    "d_brain.services.transcription.DeepgramTranscriber.transcribe", AsyncMock(return_value=command),
+                ) as transcribe:
+                    assert lane.enqueue(update) and lane.enqueue(update)
+                    worker = asyncio.create_task(lane.worker(fake, creator))
+                    try:
+                        async with asyncio.timeout(20):
+                            while lane.store.next(creator):
+                                await asyncio.sleep(0.02)
+                    finally:
+                        worker.cancel()
+                        await asyncio.gather(worker, return_exceptions=True)
+                    assert transcribe.await_count == (kind == "voice")
+                operation = lane.store.state(creator)["lastOperationId"]
+                proof = (await client.request(creator, f"/operations/{operation}"))["receipt"]["task"]
+                assert proof["ownerUserId"] == primary_user and [p["id"] for p in proof["coAssignees"]] == [co_user]
+                assert any(chat == creator and title in text and "Співвиконавці" in text for chat,text,_ in sent)
+                await process_assignments(lane, fake)
+                await process_assignments(lane, fake)
+                unique = [(chat, message) for chat,text,message in sent if title in text and chat != creator]
+                assert sorted(chat for chat,_ in unique) == sorted([primary, co])
+                tasks.append({"id":proof["id"], "accepted":len(unique)})
+            assert tasks[0]["id"] != tasks[1]["id"]
+    print(json.dumps({"tasks": tasks}))
 
 
 if __name__ == "__main__":
-    asyncio.run(main(*sys.argv[1:]))
+    if sys.argv[1] == "--multi":
+        asyncio.run(multi_assignee_probe(*sys.argv[2:]))
+    else:
+        asyncio.run(main(*sys.argv[1:]))

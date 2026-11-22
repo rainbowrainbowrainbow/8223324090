@@ -566,21 +566,78 @@ test('newly confirmed recipient receives CRM and bot voice assignments without a
     assert.deepEqual(outcome, {
         sent: 1, messageId: 50001, restarted: true,
         deliveryCommandConfirmed: process.env.NOTIFICATION_E2E_EXPECT_DELIVERY_COMMAND !== '0',
-        morningWithTasks: true, emptyMorningSilent: true
+        morningWithTasks: true, emptyMorningSilent: true, editedOriginalAssignment: true
     });
     const { rows } = await pool.query(`SELECT task_id, status, reason, telegram_message_id
-        FROM telegram_crm_delivery_outbox WHERE task_id=ANY($1::int[]) ORDER BY id`,
+        FROM telegram_crm_delivery_outbox WHERE task_id=ANY($1::int[]) AND event_kind='assignment' ORDER BY id`,
     [[invalidated.data.task.id, id, voiceTaskId]]);
     assert.deepEqual(rows, [
         { task_id: invalidated.data.task.id, status: 'cancelled', reason: 'binding_unavailable', telegram_message_id: null },
         { task_id: id, status: 'sent', reason: null, telegram_message_id: '50001' },
         { task_id: voiceTaskId, status: 'sent', reason: null, telegram_message_id: String(voiceMessageId) }
     ]);
-    const voiceTasks = await pool.query(`SELECT id, source_module, owner_user_id, created_by_user_id
+    const edited = await pool.query(`SELECT status, telegram_message_id FROM telegram_crm_delivery_outbox
+        WHERE task_id=$1 AND event_kind='cancellation'`, [voiceTaskId]);
+    assert.deepEqual(edited.rows, [{ status: 'sent', telegram_message_id: String(voiceMessageId) }]);
+    const voiceTasks = await pool.query(`SELECT id, source_module, owner_user_id, created_by_user_id, status
         FROM tasks WHERE title=$1`, ['Disposable voice assignment lifecycle']);
     assert.deepEqual(voiceTasks.rows, [{
-        id: voiceTaskId, source_module: 'telegram_crm', owner_user_id: peer.id, created_by_user_id: voiceCreator.user.id
+        id: voiceTaskId, source_module: 'telegram_crm', owner_user_id: peer.id, created_by_user_id: voiceCreator.user.id,
+        status: 'cancelled'
     }]);
+});
+
+test('text and voice create one task each and deliver to the primary and co-assignee', {
+    skip: !enabled || !process.env.NOTIFICATION_E2E_PYTHON
+}, async () => {
+    const username = 'telegram.fixture.coauthor.' + randomUUID();
+    const password = 'isolated-coauthor-fixture-password';
+    const sender = String(randomInt(970000000000, 980000000000));
+    const { rows: [author] } = await pool.query(`INSERT INTO users
+        (username,name,role,password_hash,business_contexts,default_business_context)
+        VALUES($1,'Co-assigning Fixture','senior_manager',$2,ARRAY['event_genix'],'event_genix') RETURNING id`,
+    [username, await bcrypt.hash(password, 4)]);
+    await pool.query(`INSERT INTO organization_memberships(organization_id,user_id,role)
+        VALUES($1,$2,'member')`, [business.organization_id, author.id]);
+    await pool.query(`INSERT INTO business_memberships(business_id,organization_id,user_id,role,is_default)
+        VALUES($1,$2,$3,'senior_manager',true)`, [business.id, business.organization_id, author.id]);
+    await pool.query('INSERT INTO telegram_crm_bindings(user_id,pilot_enabled,proposed_telegram_id) VALUES($1,true,$2)',
+        [author.id, sender]);
+    const session = await request('POST', '/api/auth/login', { username, password });
+    assert.equal(session.status, 200, JSON.stringify(session.data));
+    const link = await request('POST', '/api/auth/telegram-crm/link', {}, session.data.token);
+    assert.equal(link.status, 201, JSON.stringify(link.data));
+    const code = new URL(link.data.url).searchParams.get('start').slice(4);
+    assert.equal((await bot('/link/claim', { token: code }, sender)).status, 200);
+    assert.equal((await request('POST', '/api/auth/telegram-crm/link/confirm', link.data, session.data.token)).status, 200);
+    const draft = {
+        title: 'Disposable co-assignee guard', ownerUserId: peer.id, coAssigneeUserIds: [secondCo.user.id],
+        businessContext: 'event_genix', sourceUpdateId: String(nextUpdate++)
+    };
+    const denied = await bot('/tasks/preview', draft, voiceCreator.telegram);
+    assert.equal(denied.status, 403, JSON.stringify(denied.data));
+    assert.equal(denied.data.code, 'TASK_REASSIGN_FORBIDDEN');
+    const privateTask = await bot('/tasks/preview', { ...draft, ownerUserId: author.id, taskMode: 'personal' }, sender);
+    assert.equal(privateTask.data.code, 'TELEGRAM_PERSONAL_TASK_SELF_ONLY');
+
+    const { stdout } = await promisify(execFile)(process.env.NOTIFICATION_E2E_PYTHON, [
+        join(__dirname, '../fixtures/telegram-crm-notification-probe.py'), '--multi', BASE_URL,
+        sender, peerTelegram, String(peer.id), secondCo.telegram, String(secondCo.user.id)
+    ]);
+    const { tasks } = JSON.parse(stdout.trim());
+    assert.deepEqual(tasks.map(t => t.accepted), [2, 2]);
+    const ids = tasks.map(t => t.id);
+    const saved = await pool.query(`SELECT t.id,t.owner_user_id,ca.user_id AS co_assignee
+        FROM tasks t JOIN task_co_assignees ca ON ca.task_id=t.id
+        WHERE t.created_by_user_id=$1 ORDER BY t.id`, [author.id]);
+    assert.deepEqual(saved.rows, ids.map(id => ({ id, owner_user_id: peer.id, co_assignee: secondCo.user.id })));
+    const sent = await pool.query(`SELECT task_id,owner_user_id,assignment_role,status,(telegram_message_id>0) AS accepted
+        FROM telegram_crm_delivery_outbox WHERE task_id=ANY($1::int[]) AND event_kind='assignment'
+        ORDER BY task_id,assignment_role`, [ids]);
+    assert.deepEqual(sent.rows, ids.flatMap(task_id => [
+        { task_id, owner_user_id: secondCo.user.id, assignment_role: 'co', status: 'sent', accepted: true },
+        { task_id, owner_user_id: peer.id, assignment_role: 'primary', status: 'sent', accepted: true }
+    ]));
 });
 
 check('Telegram personal creation stays self-only and team tasks remain team-visible', async () => {
@@ -677,6 +734,64 @@ check('cancellation is author-controlled, idempotent, and appears in performer h
     assert.ok(cabinet.data.cancelledHistory.some(task => task.id === taskId && task.status === 'cancelled'));
     assert.ok(!cabinet.data.completedHistory.some(task => task.id === taskId));
     assert.equal((await request('PUT', `/api/tasks/${taskId}`, { ...payload, status: 'todo' }, jwt)).status, 409);
+});
+
+check('Telegram creation undo is single-use, author-only, time-bounded and version-checked', async () => {
+    const author = (path, body) => bot(path, body, secondCo.telegram);
+    async function create(title, ownerUserId = secondCo.user.id) {
+        const draft = await bot('/tasks/preview', {
+            title, ownerUserId, taskMode: ownerUserId === secondCo.user.id ? 'personal' : 'work',
+            businessContext: 'event_genix', sourceUpdateId: String(nextUpdate++)
+        }, secondCo.telegram);
+        assert.equal(draft.status, 201, JSON.stringify(draft.data));
+        const id = draft.data.operationId;
+        const created = await author(`/operations/${id}/confirm`, { confirmed: true });
+        assert.equal(created.status, 200, JSON.stringify(created.data));
+        assert.ok(Date.parse(created.data.receipt.undoUntil) > Date.now());
+        return { id, taskId: created.data.receipt.task.id, path: `/operations/${id}/cancel` };
+    }
+
+    const candidate = await create('Disposable Telegram undo candidate', voiceCreator.user.id);
+    const undo = { undoCreate: true };
+    assert.equal((await bot(candidate.path, undo, voiceCreator.telegram)).status, 404);
+    assert.equal((await author(candidate.path, {})).status, 409);
+    const assignment = (await notifications('/claim', { leaseId: randomUUID() })).data.event;
+    assert.equal(assignment.taskId, candidate.taskId);
+    assert.equal(assignment.telegramId, voiceCreator.telegram);
+    const outcomes = await Promise.all([author(candidate.path, undo), author(candidate.path, undo)]);
+    assert.deepEqual(outcomes.map(result => result.status), [200, 200], JSON.stringify(outcomes));
+    assert.ok(outcomes.every(result => result.data.receipt.createUndone === true));
+    const replay = await author(`/operations/${candidate.id}/confirm`, { confirmed: true });
+    assert.equal(replay.data.receipt.task.id, candidate.taskId);
+    assert.equal(replay.data.receipt.task.status, 'cancelled');
+    assert.equal(replay.data.receipt.createUndone, true);
+    const { rows: [audit] } = await pool.query(`SELECT COUNT(*)::int AS count FROM task_action_history
+        WHERE task_id=$1 AND action_type='task_cancelled'`, [candidate.taskId]);
+    assert.equal(audit.count, 1);
+    assert.equal((await notifications(`/${assignment.id}/result`, {
+        leaseId: assignment.leaseId, status: 'sent', messageId: 903
+    })).data.status, 'sent');
+    const edit = (await notifications('/claim', { leaseId: randomUUID(), cancellationEvents: true })).data.event;
+    assert.equal(edit.kind, 'cancellation');
+    assert.equal(edit.messageId, 903);
+    assert.equal((await notifications(`/${edit.id}/result`, {
+        leaseId: edit.leaseId, status: 'sent', messageId: edit.messageId
+    })).data.status, 'sent');
+
+    const edited = await create('Disposable Telegram undo edited');
+    await pool.query('UPDATE tasks SET version=version+1 WHERE id=$1', [edited.taskId]);
+    const stale = await author(edited.path, undo);
+    assert.equal(stale.status, 409, JSON.stringify(stale.data));
+    assert.equal(stale.data.code, 'TASK_STALE_WRITE');
+
+    const expired = await create('Disposable Telegram undo expired');
+    await pool.query(`UPDATE telegram_crm_task_operations SET receipt = receipt ||
+        jsonb_build_object('undoUntil', clock_timestamp()-INTERVAL '1 second') WHERE id=$1`, [expired.id]);
+    const late = await author(expired.path, undo);
+    assert.equal(late.status, 410, JSON.stringify(late.data));
+    assert.equal(late.data.code, 'TELEGRAM_UNDO_EXPIRED');
+    const { rows } = await pool.query('SELECT status FROM tasks WHERE id=ANY($1) ORDER BY id', [[edited.taskId, expired.taskId]]);
+    assert.deepEqual(rows, [{ status: 'todo' }, { status: 'todo' }]);
 });
 
 check('KPI credits the completion-time primary owner and separately counts the actual finisher in Kyiv', async () => {

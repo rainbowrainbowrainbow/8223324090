@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.84.24",
+  "version": "0.84.25",
   "eventGenix": {
-    "releaseLabel": "HR-підміни та життєвий цикл задач"
+    "releaseLabel": "Закріплені дати в графіку персоналу"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

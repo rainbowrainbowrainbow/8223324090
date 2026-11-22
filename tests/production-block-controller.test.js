@@ -21,7 +21,8 @@ const {
     PROFILE_EMPLOYEE_AUTH_BLOB,
     MY_DAY_PROFILE_RELEASE,
     TASK_KPI_08421,
-    taskKpi08421ReleaseFor,
+    KPI_PROFILE_08432,
+    taskKpiReleaseFor,
     EVENTGENIX_REMEDIATION,
     EVENTGENIX_REMEDIATION_RETRY,
     EVENTGENIX_REMEDIATION_HR_RETRY,
@@ -146,7 +147,7 @@ test('task KPI execution rejects drift in the prepared SHA, reviewed payload or 
 
 test('task KPI recovery requires the exact failed push and preserves protected scope', async t => {
     const workflow = 'task-kpi-recovery-08424';
-    const reviewed = taskKpi08421ReleaseFor(workflow);
+    const reviewed = taskKpiReleaseFor(workflow);
     const options = { protectedWorkflow: workflow, maxReleaseAttempts: 1 };
     const failedRun = {
         databaseId: Number(reviewed.failedCiRunId), headSha: reviewed.failedPredecessorSha,
@@ -174,6 +175,63 @@ test('task KPI recovery requires the exact failed push and preserves protected s
     await assert.rejects(executeAction(execution, dryRuntime({
         async drift() { return { ...drift, taskKpi08421FailedCi: { ...failedRun, databaseId: 1 } }; }
     })), { code: 'PRODUCTION_BLOCK_CI_IDENTITY_INVALID' });
+});
+
+test('profile KPI 0.84.32 binds its protected route and exact read-only release', async t => {
+    const reviewed = KPI_PROFILE_08432;
+    const options = { protectedWorkflow: 'kpi-profile-08432', maxReleaseAttempts: 1 };
+    const candidate = {
+        live: { commitSha: reviewed.baseSha, version: reviewed.baseVersion,
+            sourceBranch: 'codex/eventgenix-production', deploymentMetadata: { complete: true } },
+        remoteSha: reviewed.baseSha,
+        releaseVersion: reviewed.version,
+        taskKpi08421PayloadSha: reviewed.payloadSha,
+        taskKpiProfileAuthBlob: reviewed.authBlob,
+        changedPaths: ['routes/auth.js', ...reviewed.controllerPaths],
+        migrations: []
+    };
+    const value = manifest(options, candidate);
+    assert.equal(value.preparedRelease.taskKpiProfileAuthBlob, reviewed.authBlob);
+    assert.equal(value.preparedRelease.sha, value.initialHeadSha);
+    assert.deepEqual(value.allowedMigrationFiles, []);
+    assert.equal(value.allowedQaScope.enabled, false);
+    const plan = releaseCommandPlan(value);
+    assert.ok(plan.some(step => step.includes('<exact-sha-run>')));
+    assert.ok(plan.some(step => step.includes('<exact-sha-runtime-artifact-run>')));
+    const file = blockFile(t, value);
+    const exact = {
+        ...await dryRuntime().drift(value),
+        taskKpi08421PayloadSha: reviewed.payloadSha,
+        taskKpiProfileAuthBlob: reviewed.authBlob
+    };
+    const dryRun = overrides => executeAction({
+        blockFile: file, confirmation: confirmationValue(value), dryRun: true
+    }, dryRuntime({ async drift() { return { ...exact, ...overrides }; } }));
+    await assert.doesNotReject(dryRun({}));
+    await assert.rejects(dryRun({ head: RELEASE_SHA }), { code: 'PRODUCTION_BLOCK_SHA_DRIFT' });
+    await assert.rejects(dryRun({ taskKpiProfileAuthBlob: RELEASE_SHA }), { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT' });
+    await assert.rejects(dryRun({ changedPaths: [...exact.changedPaths, 'services/unreviewed.js'] }),
+        { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT' });
+
+    for (const changes of [
+        { live: { ...candidate.live, commitSha: RELEASE_SHA } },
+        { live: { ...candidate.live, version: '0.84.30' } },
+        { releaseVersion: '0.84.33' },
+        { taskKpi08421PayloadSha: RELEASE_SHA },
+        { taskKpiProfileAuthBlob: RELEASE_SHA },
+        { changedPaths: [...candidate.changedPaths, 'middleware/auth.js'] },
+        { changedPaths: [...candidate.changedPaths, 'db/migrations/432_example.sql'] }
+    ]) {
+        assert.throws(() => manifest(options, { ...candidate, ...changes }),
+            { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID' });
+    }
+    assert.throws(() => manifest(options, { ...candidate, remoteSha: RELEASE_SHA }),
+        { code: 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT' });
+    assert.throws(() => manifest({ ...options, maxReleaseAttempts: 2 }, candidate),
+        { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID' });
+    assert.throws(() => manifest({ ...options,
+        qaScope: { enabled: true, kind: 'canary', date: '2026-11-23', fixtureLimit: 1, ttlMinutes: 10, animators: '1' }
+    }, candidate), { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID' });
 });
 
 test('payroll schema release binds the exact two migrations and a converged production base', () => {

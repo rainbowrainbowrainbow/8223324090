@@ -21,6 +21,7 @@ const PROTECTED_WORKFLOWS = Object.freeze({
     MY_DAY_PROFILE_RELEASE: 'my-day-profile-release-083100',
     TASK_KPI_08421: 'task-kpi-release-08421',
     TASK_KPI_08424_RECOVERY: 'task-kpi-recovery-08424',
+    KPI_PROFILE_08432: 'kpi-profile-08432',
     EVENTGENIX_REMEDIATION: 'eventgenix-remediation-08417',
     EVENTGENIX_REMEDIATION_RETRY: 'eventgenix-remediation-08417-retry',
     EVENTGENIX_REMEDIATION_HR_RETRY: 'eventgenix-remediation-08417-hr-retry',
@@ -96,9 +97,20 @@ const TASK_KPI_08424_RECOVERY = Object.freeze({
     controllerPaths: Object.freeze(['scripts/production-block-policy.js', 'tests/production-block-controller.test.js'])
 });
 
-function taskKpi08421ReleaseFor(workflow) {
+const KPI_PROFILE_08432 = Object.freeze({
+    baseSha: '179f63051ddc5763d2847b421f51a96cf3d4d0e1',
+    baseVersion: '0.84.31',
+    version: '0.84.32',
+    payloadSha: 'd7d2f9252a5db968f927ab70b8739250d56099a6',
+    authBlob: 'ad016bdf0e372b0c5cce1427d7d8e10385ef53a5',
+    controllerPaths: TASK_KPI_08421.controllerPaths,
+    migrationHashes: Object.freeze({})
+});
+
+function taskKpiReleaseFor(workflow) {
     if (workflow === PROTECTED_WORKFLOWS.TASK_KPI_08421) return TASK_KPI_08421;
     if (workflow === PROTECTED_WORKFLOWS.TASK_KPI_08424_RECOVERY) return TASK_KPI_08424_RECOVERY;
+    if (workflow === PROTECTED_WORKFLOWS.KPI_PROFILE_08432) return KPI_PROFILE_08432;
     return null;
 }
 
@@ -781,7 +793,7 @@ function isPreparedProtectedWorkflow(kind) {
         PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE, PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE,
         PROTECTED_WORKFLOWS.FREELANCE_SHIFT_BLOCKS, PROTECTED_WORKFLOWS.FREELANCE_CANCEL_424,
         PROTECTED_WORKFLOWS.PAYROLL_425_426]
-        .includes(kind) || Boolean(freelanceScheduleReleaseFor(kind) || eventGenixRemediationFor(kind) || taskKpi08421ReleaseFor(kind));
+        .includes(kind) || Boolean(freelanceScheduleReleaseFor(kind) || eventGenixRemediationFor(kind) || taskKpiReleaseFor(kind));
 }
 
 function isPreparedProtectedRelease(manifest) {
@@ -874,7 +886,7 @@ function validateProtectedWorkflow(workflow, changedPaths = [], redPaths = []) {
     }
     fail(Object.values(PROTECTED_WORKFLOWS).includes(workflow),
         'Unsupported protected production workflow', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_INVALID');
-    const taskKpiRelease = taskKpi08421ReleaseFor(workflow);
+    const taskKpiRelease = taskKpiReleaseFor(workflow);
     if (taskKpiRelease) {
         fail(stableJson(redPaths) === stableJson(['routes/auth.js'])
             && taskKpiRelease.controllerPaths.every(file => changedPaths.includes(file))
@@ -1199,9 +1211,10 @@ function validateMinorReleaseBump(bump) {
     return bump;
 }
 
-function assertTaskKpi08421Scope(reviewed, { baseSha, baseVersion, version, payloadSha, qaScope, migrations, attempts }) {
+function assertTaskKpiReleaseScope(reviewed, { baseSha, baseVersion, version, payloadSha, authBlob, qaScope, migrations, attempts }) {
     fail(baseSha === reviewed.baseSha && baseVersion === reviewed.baseVersion
         && version === reviewed.version && payloadSha === reviewed.payloadSha
+        && (!reviewed.authBlob || authBlob === reviewed.authBlob)
         && qaScope.enabled === false && attempts === 1
         && migrations.every(item => item.kind === 'schema' && !item.red)
         && migrations.length === Object.keys(reviewed.migrationHashes).length
@@ -1236,11 +1249,11 @@ function buildManifest(facts, options = {}) {
             to: parts[0] + '.' + (Number(parts[1]) + 1) + '.0' });
     }
     const maxReleaseAttempts = Number(options.maxReleaseAttempts || DEFAULT_MAX_ATTEMPTS);
-    const taskKpiRelease = taskKpi08421ReleaseFor(protectedWorkflow.kind);
+    const taskKpiRelease = taskKpiReleaseFor(protectedWorkflow.kind);
     if (taskKpiRelease) {
         migrations.forEach((item, index) => { item.sqlHash = migrationSqlHash(facts.migrations[index].sql); });
-        assertTaskKpi08421Scope(taskKpiRelease, { baseSha: baseLiveSha, baseVersion: facts.live?.version,
-            version: facts.releaseVersion, payloadSha: facts.taskKpi08421PayloadSha,
+        assertTaskKpiReleaseScope(taskKpiRelease, { baseSha: baseLiveSha, baseVersion: facts.live?.version,
+            version: facts.releaseVersion, payloadSha: facts.taskKpi08421PayloadSha, authBlob: facts.taskKpiProfileAuthBlob,
             qaScope, migrations, attempts: maxReleaseAttempts });
         fail(facts.remoteSha === (taskKpiRelease.failedPredecessorSha || baseLiveSha) && facts.live?.sourceBranch === TARGET.branch
             && facts.live?.deploymentMetadata?.complete === true,
@@ -1396,6 +1409,7 @@ function buildManifest(facts, options = {}) {
             preparedRelease: {
                 sha: head, version: facts.releaseVersion, baseVersion: facts.live.version,
                 ...(taskKpiRelease ? { taskKpi08421PayloadSha: facts.taskKpi08421PayloadSha } : {}),
+                ...(taskKpiRelease?.authBlob ? { taskKpiProfileAuthBlob: facts.taskKpiProfileAuthBlob } : {}),
                 ...(taskKpiRelease?.failedPredecessorSha ? {
                     failedPredecessorSha: taskKpiRelease.failedPredecessorSha, failedCiRunId: taskKpiRelease.failedCiRunId
                 } : {}),
@@ -1476,11 +1490,12 @@ function validateManifest(manifest, options = {}) {
     );
     fail(JSON.stringify(validatedProtectedWorkflow) === JSON.stringify(protectedWorkflow),
         'Protected workflow envelope differs from candidate paths', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
-    const taskKpiRelease = taskKpi08421ReleaseFor(protectedWorkflow.kind);
+    const taskKpiRelease = taskKpiReleaseFor(protectedWorkflow.kind);
     if (taskKpiRelease) {
-        assertTaskKpi08421Scope(taskKpiRelease, { baseSha: manifest.baseLiveSha, baseVersion: manifest.preparedRelease?.baseVersion,
+        assertTaskKpiReleaseScope(taskKpiRelease, { baseSha: manifest.baseLiveSha, baseVersion: manifest.preparedRelease?.baseVersion,
             version: manifest.preparedRelease?.version, payloadSha: manifest.preparedRelease?.taskKpi08421PayloadSha,
-            qaScope, migrations: manifest.migrationClassifications, attempts: manifest.maxReleaseAttempts });
+            authBlob: manifest.preparedRelease?.taskKpiProfileAuthBlob, qaScope,
+            migrations: manifest.migrationClassifications, attempts: manifest.maxReleaseAttempts });
         fail(manifest.preparedRelease?.sha === manifest.initialHeadSha
             && manifest.preparedRelease?.failedPredecessorSha === taskKpiRelease.failedPredecessorSha
             && manifest.preparedRelease?.failedCiRunId === taskKpiRelease.failedCiRunId
@@ -1738,7 +1753,8 @@ function warningText(manifest) {
 module.exports = {
     MY_DAY_PROFILE_RELEASE,
     TASK_KPI_08421,
-    taskKpi08421ReleaseFor,
+    KPI_PROFILE_08432,
+    taskKpiReleaseFor,
     EVENTGENIX_REMEDIATION,
     EVENTGENIX_REMEDIATION_RETRY,
     EVENTGENIX_REMEDIATION_HR_RETRY,

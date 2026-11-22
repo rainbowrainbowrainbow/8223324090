@@ -23,7 +23,7 @@ const {
     assertPerformanceCiRecovery,
     assertProfileEmployeeAuthBlob,
     MY_DAY_PROFILE_RELEASE,
-    taskKpi08421ReleaseFor,
+    taskKpiReleaseFor,
     eventGenixRemediationFor,
     assertEventGenixRemediationFailedCi,
     assertEventGenixRemediationPayload,
@@ -382,7 +382,7 @@ function assertPreparedProductionBase(manifest, live, remoteSha) {
 
     const reviewedPredecessor = freelanceScheduleReleaseFor(manifest.allowedProtectedWorkflow?.kind)?.failedPredecessorSha
         || eventGenixRemediationFor(manifest.allowedProtectedWorkflow?.kind)?.failedPredecessorSha
-        || taskKpi08421ReleaseFor(manifest.allowedProtectedWorkflow?.kind)?.failedPredecessorSha;
+        || taskKpiReleaseFor(manifest.allowedProtectedWorkflow?.kind)?.failedPredecessorSha;
     if (reviewedPredecessor) {
         fail(remoteSha === reviewedPredecessor || remoteSha === manifest.initialHeadSha,
             'Recovery remote differs from its reviewed predecessor or corrected SHA',
@@ -413,7 +413,7 @@ async function assertStandardProductionBase(manifest, expectedRemote) {
         && live.deploymentMetadata?.complete === true,
         'Live production changed after release preparation', 'PRODUCTION_BLOCK_LIVE_BASE_DRIFT');
     const workflow = manifest.allowedProtectedWorkflow?.kind;
-    if (workflow === PROTECTED_WORKFLOWS.PAYROLL_425_426 || taskKpi08421ReleaseFor(workflow)) {
+    if (workflow === PROTECTED_WORKFLOWS.PAYROLL_425_426 || taskKpiReleaseFor(workflow)) {
         fail(live.version === manifest.preparedRelease.baseVersion,
             'Live version changed after protected release preparation', 'PRODUCTION_BLOCK_LIVE_BASE_DRIFT');
     }
@@ -558,11 +558,11 @@ function eventGenixRemediationFacts(head, reviewed) {
 function usesStandardProtectedReleaseFlow(kind) {
     return [PROTECTED_WORKFLOWS.PROFILE_EMPLOYEE_RELEASE, PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE,
         PROTECTED_WORKFLOWS.FREELANCE_CANCEL_424, PROTECTED_WORKFLOWS.PAYROLL_425_426].includes(kind)
-        || Boolean(freelanceScheduleReleaseFor(kind) || eventGenixRemediationFor(kind) || taskKpi08421ReleaseFor(kind));
+        || Boolean(freelanceScheduleReleaseFor(kind) || eventGenixRemediationFor(kind) || taskKpiReleaseFor(kind));
 }
 
-function taskKpi08421Facts(head, workflow) {
-    const reviewed = taskKpi08421ReleaseFor(workflow);
+function taskKpiReleaseFacts(head, workflow) {
+    const reviewed = taskKpiReleaseFor(workflow);
     if (!reviewed) return {};
     if (reviewed.failedPredecessorSha) {
         fail(gitIsAncestor(reviewed.failedPredecessorSha, reviewed.payloadSha)
@@ -570,7 +570,13 @@ function taskKpi08421Facts(head, workflow) {
         'Task KPI recovery must be one controller commit following the reviewed recovery payload',
         'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
     }
+    if (reviewed.authBlob) {
+        fail(git(['rev-list', '--parents', '-n', '1', head]) === `${head} ${reviewed.payloadSha}`,
+            'Profile KPI release must be one controller commit following the reviewed payload',
+            'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
+    }
     return {
+        ...(reviewed.authBlob ? { taskKpiProfileAuthBlob: git(['rev-parse', `${head}:routes/auth.js`]) } : {}),
         taskKpi08421PayloadSha: reviewedReleasePayloadSha(head, reviewed),
         ...(reviewed.failedCiRunId ? { taskKpi08421FailedCi: readReviewedFailedCi(reviewed) } : {})
     };
@@ -607,7 +613,7 @@ function defaultRuntime() {
                     profileEmployeeAuthBlob: git(['rev-parse', `${head}:routes/auth.js`])
                 } : {}),
                 ...(myDayProfile ? { myDayProfilePayloadSha: reviewedReleasePayloadSha(head, MY_DAY_PROFILE_RELEASE) } : {}),
-                ...taskKpi08421Facts(head, options.protectedWorkflow),
+                ...taskKpiReleaseFacts(head, options.protectedWorkflow),
                 ...eventGenixRemediationFacts(head, eventGenixRemediationFor(options.protectedWorkflow)),
                 ...freelanceScheduleFacts(head, freelanceScheduleReleaseFor(options.protectedWorkflow)),
                 workflowHashes: performanceCi ? performanceCiWorkflowHashes(paths)
@@ -637,7 +643,7 @@ function defaultRuntime() {
                     ? { profileEmployeeAuthBlob: git(['rev-parse', `${head}:routes/auth.js`]) } : {}),
                 ...(manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE
                     ? { myDayProfilePayloadSha: reviewedReleasePayloadSha(head, MY_DAY_PROFILE_RELEASE) } : {}),
-                ...taskKpi08421Facts(head, manifest.allowedProtectedWorkflow?.kind),
+                ...taskKpiReleaseFacts(head, manifest.allowedProtectedWorkflow?.kind),
                 ...eventGenixRemediationFacts(head, eventGenixRemediationFor(manifest.allowedProtectedWorkflow?.kind)),
                 ...freelanceScheduleFacts(head, freelanceScheduleReleaseFor(manifest.allowedProtectedWorkflow?.kind)),
                 workflowHashes: performanceCi ? performanceCiWorkflowHashes(paths)
@@ -678,13 +684,13 @@ function defaultRuntime() {
             };
         },
         async preflightExecution(manifest) {
-            const taskKpiRecovery = taskKpi08421ReleaseFor(manifest.allowedProtectedWorkflow?.kind);
-            if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.PAYROLL_425_426) {
+            const taskKpiRelease = taskKpiReleaseFor(manifest.allowedProtectedWorkflow?.kind);
+            if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.PAYROLL_425_426 || taskKpiRelease?.authBlob) {
                 await assertStandardProductionBase(manifest, manifest.baseLiveSha);
                 assertRuntimeArtifactPushPaths(manifest.baseLiveSha, manifest.initialHeadSha);
-            } else if (taskKpiRecovery?.failedPredecessorSha) {
-                await assertStandardProductionBase(manifest, taskKpiRecovery.failedPredecessorSha);
-                assertRuntimeArtifactPushPaths(taskKpiRecovery.failedPredecessorSha, manifest.initialHeadSha);
+            } else if (taskKpiRelease?.failedPredecessorSha) {
+                await assertStandardProductionBase(manifest, taskKpiRelease.failedPredecessorSha);
+                assertRuntimeArtifactPushPaths(taskKpiRelease.failedPredecessorSha, manifest.initialHeadSha);
             } else if (isPreparedProtectedRelease(manifest)) {
                 assertPreparedProductionBase(manifest, await liveVersion(), remoteProductionSha());
             }
@@ -757,7 +763,7 @@ function defaultRuntime() {
                 if (reviewed?.failedPredecessorSha) assertFreelanceScheduleFailedCi(readReviewedFailedCi(reviewed), reviewed);
                 const eventGenix = eventGenixRemediationFor(workflow);
                 if (eventGenix?.failedCiRunId) assertEventGenixRemediationFailedCi(readReviewedFailedCi(eventGenix), eventGenix);
-                const taskKpiRecovery = taskKpi08421ReleaseFor(workflow);
+                const taskKpiRecovery = taskKpiReleaseFor(workflow);
                 if (taskKpiRecovery?.failedCiRunId) assertEventGenixRemediationFailedCi(readReviewedFailedCi(taskKpiRecovery), taskKpiRecovery);
                 await assertStandardProductionBase(manifest, workflow === PROTECTED_WORKFLOWS.FREELANCE_CANCEL_424
                     ? '60c9f296d93a9a8ce4b8a2f374d41085c4dd32e9'
@@ -1302,10 +1308,11 @@ async function assertExecuteDrift(manifest, runtime) {
     if (manifest.allowedProtectedWorkflow?.kind === PROTECTED_WORKFLOWS.MY_DAY_PROFILE_RELEASE) {
         assertMyDayProfilePayload(drift.myDayProfilePayloadSha);
     }
-    const taskKpiRelease = taskKpi08421ReleaseFor(manifest.allowedProtectedWorkflow?.kind);
+    const taskKpiRelease = taskKpiReleaseFor(manifest.allowedProtectedWorkflow?.kind);
     if (taskKpiRelease) {
-        fail(drift.taskKpi08421PayloadSha === taskKpiRelease.payloadSha,
-            'Task KPI release differs from its reviewed payload', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
+        fail(drift.taskKpi08421PayloadSha === taskKpiRelease.payloadSha
+            && (!taskKpiRelease.authBlob || drift.taskKpiProfileAuthBlob === taskKpiRelease.authBlob),
+            'Task KPI release differs from its reviewed payload or protected route', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
         assertEventGenixRemediationFailedCi(drift.taskKpi08421FailedCi, taskKpiRelease);
     }
     const eventGenix = eventGenixRemediationFor(manifest.allowedProtectedWorkflow?.kind);

@@ -3990,23 +3990,37 @@ async function runRecoveryReadOnlyFlow(browser, base) {
 }
 
 async function runStickyScheduleDatesFlow(browser, base) {
-    for (const viewport of [{ width: 1024, height: 720 }, { width: 390, height: 720 }]) {
+    const viewports = [{ width: 1440, height: 720 }, { width: 1024, height: 720 }, { width: 390, height: 720 }];
+    for (const viewport of viewports) {
         const { context, page } = await openStaffPage(browser, base, viewport, {
             darkMode: viewport.width === 390,
-            hasTouch: viewport.width === 390
+            hasTouch: viewport.width === 390,
+            preparePage: page => page.route('https://**/*', route => route.abort())
         });
         try {
+            await page.reload({ waitUntil: 'domcontentloaded' });
+            await waitForDayColumns(page, 9);
             await expandAllScheduleGroups(page);
             const wrapper = page.locator('#scheduleWrapper');
-            for (const [range, days] of [['week', 9], ['compact-month', 31]]) {
-                if (range === 'compact-month') await applyManualRange(page, '2026-07-01', '2026-07-31');
+            for (const [range, days] of [['week', 9], ['month', 31]]) {
+                if (range === 'month') {
+                    await applyManualRange(page, '2026-07-01', '2026-07-31');
+                    if (viewport.width === 1440) await page.locator('[data-schedule-month-density="detailed"]').click();
+                }
                 await waitForDayColumns(page, days);
                 await wrapper.scrollIntoViewIfNeeded();
                 await wrapper.evaluate(element => element.scrollTo(0, 0));
-                const box = await wrapper.boundingBox();
-                await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-                const horizontal = range === 'compact-month' ? 120 : 0;
-                await page.mouse.wheel(horizontal, 160);
+                const label = `${viewport.width}px ${range}`;
+                const scrollRange = await wrapper.evaluate(element => ({
+                    x: element.scrollWidth - element.clientWidth,
+                    y: element.scrollHeight - element.clientHeight
+                }));
+                assert.ok(scrollRange.y > 0, `${label}: fixture has rows to scroll`);
+                const horizontal = range === 'month';
+                if (horizontal) assert.ok(scrollRange.x > 0, `${label}: fixture has dates to scroll`);
+                await wrapper.focus();
+                await page.keyboard.press('PageDown');
+                if (horizontal) await page.keyboard.press('ArrowRight');
                 await page.waitForFunction(horizontal => {
                     const element = document.getElementById('scheduleWrapper');
                     return element.scrollTop > 0 && (!horizontal || element.scrollLeft > 0);
@@ -4020,16 +4034,17 @@ async function runStickyScheduleDatesFlow(browser, base) {
                         headerOffset: firstDay.top - element.getBoundingClientRect().top - element.clientTop,
                         dateShiftOffset: firstDay.left - cells[1].getBoundingClientRect().left,
                         staffHeaderOffset: days[0].getBoundingClientRect().left - element.getBoundingClientRect().left - element.clientLeft,
+                        staffNameOffset: cells[0].getBoundingClientRect().left - days[0].getBoundingClientRect().left,
                         focusClearance: parseFloat(getComputedStyle(element).scrollPaddingBlockStart) - firstDay.height
                     };
                 });
-                const label = `${viewport.width}px ${range}`;
                 assert.ok(Math.abs(metrics.headerOffset) <= 2, `${label}: dates remain at the top during vertical scrolling`);
                 assert.ok(Math.abs(metrics.dateShiftOffset) <= 2, `${label}: dates and shift columns align`);
                 assert.ok(Math.abs(metrics.staffHeaderOffset) <= 2, `${label}: employee header stays pinned to the left`);
+                assert.ok(Math.abs(metrics.staffNameOffset) <= 2, `${label}: employee names stay aligned with their pinned header`);
                 assert.ok(metrics.focusClearance >= 0, `${label}: focus scroll padding clears the date header`);
-                if (range === 'compact-month') {
-                    await captureStableScheduleScreenshot(page, `sticky-dates-${viewport.width}.png`);
+                if (range === 'month') {
+                    await captureStableScheduleScreenshot(page, `sticky-dates-${browser.browserType().name()}-${viewport.width}.png`);
                     const shift = page.locator('#scheduleBody .sch-cell[data-staff="101"][data-date="2026-07-11"]').first();
                     await shift.click();
                     await page.locator('#schModalOverlay.visible').waitFor({ state: 'visible' });
@@ -4602,9 +4617,10 @@ async function runPayConditionsDraftFlow(browser, base) {
 if (require.main === module) (async () => {
     fs.mkdirSync(OUTPUT_DIR, { recursive: true });
     assertSingleScheduleEntryPerStaffDate(SCHEDULE_FIXTURE_ENTRIES);
-    const { chromium } = requirePlaywright();
+    const { chromium, webkit } = requirePlaywright();
+    const engine = process.argv.includes('--sticky-dates-only') && process.argv.includes('--webkit') ? webkit : chromium;
     const { server, base } = await createServer();
-    const browser = await chromium.launch({ headless: HEADLESS });
+    const browser = await engine.launch({ headless: HEADLESS });
     try {
         if (process.argv.includes('--sticky-dates-only')) {
             await runStickyScheduleDatesFlow(browser, base);

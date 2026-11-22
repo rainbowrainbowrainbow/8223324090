@@ -149,6 +149,24 @@ test('park edition paginates all periods and disables legacy module writes', {
         assert.equal(Number((await pool.query('SELECT version FROM tasks WHERE id = $1', [legacyPrivate])).rows[0].version), initialVersion + 1);
         const stale = await request('PUT', `/api/tasks/${legacyPrivate}/co-assignees`, { userIds: [], previousUserIds: [] }, token);
         assert.equal(stale.status, 409);
+
+        const coAssigneesPath = `/api/tasks/${legacyPrivate}/co-assignees`;
+        const replacements = [[], [observer.id]];
+        const responses = await Promise.all(replacements.map(userIds => request('PUT', coAssigneesPath, {
+            userIds, previousUserIds: [peer.id]
+        }, token)));
+        assert.deepEqual(responses.map(response => response.status).sort(), [200, 409], JSON.stringify(responses));
+        const winner = responses.findIndex(response => response.status === 200);
+        const storedCoAssignees = async () => {
+            const { rows } = await pool.query('SELECT user_id FROM task_co_assignees WHERE task_id = $1', [legacyPrivate]);
+            return rows.map(row => row.user_id);
+        };
+        assert.deepEqual(await storedCoAssignees(), replacements[winner]);
+
+        const legacyReplacement = await request('PUT', coAssigneesPath, { userIds: [peer.id] }, token);
+        assert.equal(legacyReplacement.status, 200, JSON.stringify(legacyReplacement.data));
+        assert.deepEqual(await storedCoAssignees(), [peer.id]);
+
         const coDetail = await request('GET', `/api/tasks/${legacyPrivate}`, undefined, peer.token);
         assert.equal(coDetail.status, 200, JSON.stringify(coDetail.data));
         assert.equal(coDetail.data.drawer.actions.complete, true);

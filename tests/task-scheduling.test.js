@@ -7,7 +7,8 @@ const scheduling = require('../services/taskScheduling');
 const {
     applyCanonicalRescheduleMutation,
     classifyTaskActor,
-    evaluateTaskPostponement
+    evaluateTaskPostponement,
+    rescheduleTask
 } = require('../services/taskReschedule');
 const { TASK_ACTION_TYPES } = require('../services/taskActionHistory');
 const { canRescheduleTask } = require('../services/taskPolicy');
@@ -259,6 +260,9 @@ function postponementQuery(initialTask) {
         events,
         get updateCalls() { return updateCalls; },
         async query(text, params = []) {
+            if (/FROM tasks t/i.test(text) && /FOR UPDATE OF t/i.test(text)) {
+                return { rows: [{ ...task }], rowCount: 1 };
+            }
             if (/FROM task_action_history/i.test(text) && /idempotencyKey/i.test(text)) {
                 const event = events.find(item => item.meta_json?.idempotencyKey === params[1]);
                 return { rows: event ? [event] : [], rowCount: event ? 1 : 0 };
@@ -352,6 +356,18 @@ test('canonical mutation increments once per idempotency key and records manual/
     assert.equal(retry.idempotent, true);
     assert.equal(retry.task.postponementCount, 1);
     assert.equal(botQuery.updateCalls, 1);
+});
+
+test('rescheduling writes UTC for legacy wall time and explicit offset deadlines', async () => {
+    const actor = { id: 7, name: 'Owner', role: 'director' };
+    for (const deadline of ['2026-11-22T18:00:00', '2026-11-22T20:00:00+02:00']) {
+        const pool = postponementQuery({
+            id: 41, owner_user_id: actor.id, status: 'todo', workflow_state: 'todo',
+            date: '2026-11-21', priority: 'normal', version: 1, business_context: 'event_genix'
+        });
+        const result = await rescheduleTask(41, deadline, actor, { pool, now: '2026-11-22T10:00:00.000Z' });
+        assert.equal(result.task.deadline, '2026-11-22T18:00:00.000Z');
+    }
 });
 
 test('second counted postponement atomically escalates high priority to urgent', async () => {

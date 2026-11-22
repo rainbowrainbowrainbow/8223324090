@@ -20,7 +20,7 @@ const PROTECTED_WORKFLOWS = Object.freeze({
     PROFILE_EMPLOYEE_RELEASE: 'profile-employee-release',
     MY_DAY_PROFILE_RELEASE: 'my-day-profile-release-083100',
     TASK_KPI_08421: 'task-kpi-release-08421',
-    TASK_KPI_08422_RECOVERY: 'task-kpi-recovery-08422',
+    TASK_KPI_08423_RECOVERY: 'task-kpi-recovery-08423',
     EVENTGENIX_REMEDIATION: 'eventgenix-remediation-08417',
     EVENTGENIX_REMEDIATION_RETRY: 'eventgenix-remediation-08417-retry',
     EVENTGENIX_REMEDIATION_HR_RETRY: 'eventgenix-remediation-08417-hr-retry',
@@ -86,18 +86,19 @@ const TASK_KPI_08421 = Object.freeze({
         'db/migrations/431_staff_substitution_freelance_link.sql': '1f43bf4377ff6d687d1ef794e986cb60d66ab81067869c26c547c59901be256b'
     })
 });
-const TASK_KPI_08422_RECOVERY = Object.freeze({
+const TASK_KPI_08423_RECOVERY = Object.freeze({
     ...TASK_KPI_08421,
-    version: '0.84.22',
-    payloadSha: '869d15bbd76e041c6e17e95c8a0d7a40dea55067',
-    failedPredecessorSha: '416f1095a88166a976c839d60c05e4a930480bc6',
-    failedCiRunId: '44957263660',
-    failedJobs: Object.freeze(['HR and payroll PostgreSQL integration', 'My Day PostgreSQL integration', 'My Day browser interactions'])
+    version: '0.84.23',
+    payloadSha: '7d56b838840904f7cab4664fa635fc24a1c3c2a8',
+    failedPredecessorSha: '5eedb0cd441692b3305506d613af25d3b0e1c378',
+    failedCiRunId: '44962061679',
+    failedJobs: Object.freeze(['HR and payroll PostgreSQL integration']),
+    controllerPaths: Object.freeze(['scripts/production-block-policy.js', 'tests/production-block-controller.test.js'])
 });
 
 function taskKpi08421ReleaseFor(workflow) {
     if (workflow === PROTECTED_WORKFLOWS.TASK_KPI_08421) return TASK_KPI_08421;
-    if (workflow === PROTECTED_WORKFLOWS.TASK_KPI_08422_RECOVERY) return TASK_KPI_08422_RECOVERY;
+    if (workflow === PROTECTED_WORKFLOWS.TASK_KPI_08423_RECOVERY) return TASK_KPI_08423_RECOVERY;
     return null;
 }
 

@@ -145,7 +145,7 @@ test('task KPI execution rejects drift in the prepared SHA, reviewed payload or 
 });
 
 test('task KPI recovery requires the exact failed push and preserves protected scope', async t => {
-    const workflow = 'task-kpi-recovery-08422';
+    const workflow = 'task-kpi-recovery-08423';
     const reviewed = taskKpi08421ReleaseFor(workflow);
     const options = { protectedWorkflow: workflow, maxReleaseAttempts: 1 };
     const failedRun = {
@@ -158,8 +158,8 @@ test('task KPI recovery requires the exact failed push and preserves protected s
         taskKpi08421PayloadSha: reviewed.payloadSha, taskKpi08421FailedCi: failedRun };
     const value = manifest(options, scope);
     assert.doesNotThrow(() => validateManifest(value));
-    assert.equal(value.preparedRelease.version, '0.84.22');
-    assert.throws(() => manifest(options, { ...scope, releaseVersion: '0.84.21' }),
+    assert.equal(value.preparedRelease.version, '0.84.23');
+    assert.throws(() => manifest(options, { ...scope, releaseVersion: '0.84.22' }),
         { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID' });
     assert.equal(value.preparedRelease.failedPredecessorSha, reviewed.failedPredecessorSha);
     assert.equal(value.preparedRelease.failedCiRunId, reviewed.failedCiRunId);

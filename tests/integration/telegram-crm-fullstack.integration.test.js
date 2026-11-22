@@ -12,7 +12,7 @@ const { assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
 const { applyPilot, PILOT } = require('../../scripts/telegram-crm-pilot');
 const enabled = process.env.RUN_TELEGRAM_CRM_FULLSTACK === 'true';
 const check = (name, fn) => test(name, { skip: !enabled }, fn);
-let pool, jwt, owner, peer, business, voiceCreator, secondCo;
+let pool, jwt, owner, peer, business, voiceCreator, secondCo, coAssigneePilots;
 const telegram = String(randomInt(900000000000, 910000000000));
 let peerTelegram = String(randomInt(920000000000, 930000000000));
 let nextUpdate = 100;
@@ -224,29 +224,31 @@ check('reassignment identifies the actor rather than the original task author', 
     })).data.status, 'sent');
 });
 
+async function createPilotTaskCreator() {
+    const username = 'tg.fixture.' + randomUUID();
+    const password = 'isolated-assignment-fixture-password';
+    const user = (await pool.query(`INSERT INTO users(username,name,role,password_hash,business_contexts,default_business_context)
+        VALUES($1,'Assignment Fixture','animator',$2,ARRAY['event_genix'],'event_genix') RETURNING *`,
+    [username, await bcrypt.hash(password, 4)])).rows[0];
+    await pool.query(`INSERT INTO organization_memberships(organization_id,user_id,role)
+        VALUES($1,$2,'member')`, [business.organization_id, user.id]);
+    await pool.query(`INSERT INTO business_memberships(business_id,organization_id,user_id,role,is_default,action_allowlist)
+        VALUES($1,$2,$3,'animator',true,ARRAY['tasks.create'])`, [business.id,business.organization_id,user.id]);
+    const sender = String(randomInt(950000000000, 960000000000));
+    await pool.query('INSERT INTO telegram_crm_bindings(user_id,pilot_enabled,proposed_telegram_id) VALUES($1,true,$2)', [user.id,sender]);
+    const session = await request('POST','/api/auth/login',{ username,password });
+    assert.equal(session.status,200);
+    const link = await request('POST','/api/auth/telegram-crm/link',{},session.data.token);
+    assert.equal(link.status,201);
+    const start = new URL(link.data.url).searchParams.get('start').slice(4);
+    assert.equal((await bot('/link/claim',{token:start},sender)).status,200);
+    assert.equal((await request('POST','/api/auth/telegram-crm/link/confirm',link.data,session.data.token)).status,200);
+    return { user, telegram:sender, token:session.data.token, password };
+}
+
 check('four confirmed participants can create for every peer with current business and identity checks', async () => {
     const participants = [];
-    for (let index = 0; index < 4; index++) {
-        const username = 'tg.fixture.' + randomUUID();
-        const password = 'isolated-assignment-fixture-password';
-        const user = (await pool.query(`INSERT INTO users(username,name,role,password_hash,business_contexts,default_business_context)
-            VALUES($1,'Assignment Fixture','animator',$2,ARRAY['event_genix'],'event_genix') RETURNING *`,
-        [username, await bcrypt.hash(password, 4)])).rows[0];
-        await pool.query(`INSERT INTO organization_memberships(organization_id,user_id,role)
-            VALUES($1,$2,'member')`, [business.organization_id, user.id]);
-        await pool.query(`INSERT INTO business_memberships(business_id,organization_id,user_id,role,is_default,action_allowlist)
-            VALUES($1,$2,$3,'animator',true,ARRAY['tasks.create'])`, [business.id,business.organization_id,user.id]);
-        const sender = String(randomInt(950000000000, 960000000000));
-        await pool.query('INSERT INTO telegram_crm_bindings(user_id,pilot_enabled,proposed_telegram_id) VALUES($1,true,$2)', [user.id,sender]);
-        const session = await request('POST','/api/auth/login',{ username,password });
-        assert.equal(session.status,200);
-        const link = await request('POST','/api/auth/telegram-crm/link',{},session.data.token);
-        assert.equal(link.status,201);
-        const start = new URL(link.data.url).searchParams.get('start').slice(4);
-        assert.equal((await bot('/link/claim',{token:start},sender)).status,200);
-        assert.equal((await request('POST','/api/auth/telegram-crm/link/confirm',link.data,session.data.token)).status,200);
-        participants.push({ user, telegram:sender, token:session.data.token, password });
-    }
+    for (let index = 0; index < 4; index++) participants.push(await createPilotTaskCreator());
     const original = (await pool.query('SELECT action_allowlist FROM business_memberships WHERE business_id=$1 AND user_id=$2',
         [business.id,peer.id])).rows[0].action_allowlist;
     await pool.query("UPDATE business_memberships SET action_allowlist=ARRAY['tasks.create'] WHERE business_id=$1 AND user_id=$2",
@@ -317,6 +319,12 @@ check('four confirmed participants can create for every peer with current busine
             assert.equal(rowCount, 0);
         };
         await expectNoHistoricalEvent();
+        const unlinkedCo = await bot('/tasks/preview', {
+            title: 'Disposable unlinked co-assignee guard', ownerUserId: participants[0].user.id,
+            coAssigneeUserIds: [outsider.user.id], businessContext: 'event_genix',
+            sourceUpdateId: String(nextUpdate++)
+        }, participants[0].telegram);
+        assert.equal(unlinkedCo.data.code, 'TASK_REASSIGN_FORBIDDEN');
 
         const pending = await assignToPeer('Disposable draft before pilot access removal');
         assert.equal(pending.status, 201, JSON.stringify(pending.data));
@@ -337,6 +345,7 @@ check('four confirmed participants can create for every peer with current busine
         const token = new URL(relink.data.url).searchParams.get('start').slice(4);
         assert.equal((await bot('/link/claim', { token }, newTelegram)).status, 200);
         assert.equal((await request('POST', '/api/auth/telegram-crm/link/confirm', relink.data, outsider.token)).status, 200);
+        outsider.telegram = newTelegram;
         await expectNoHistoricalEvent();
         const next = await assignToPeer('Disposable assignment after Telegram confirmation');
         assert.equal(next.status, 201, JSON.stringify(next.data));
@@ -354,6 +363,50 @@ check('four confirmed participants can create for every peer with current busine
     }
     voiceCreator = participants[1];
     secondCo = participants[3];
+    coAssigneePilots = participants;
+});
+
+check('all five verified pilot authors can add one another as co-assignees only in writable Event Genix Telegram tasks', async () => {
+    const pilots = [...coAssigneePilots, await createPilotTaskCreator()];
+    const draftFor = (sender, recipient) => ({
+        title: 'Disposable pilot co-assignment', ownerUserId: sender.user.id,
+        coAssigneeUserIds: [recipient.user.id], businessContext: 'event_genix',
+        sourceUpdateId: String(nextUpdate++)
+    });
+    for (const sender of pilots) {
+        for (const recipient of pilots.filter(person => person !== sender)) {
+            const preview = await bot('/tasks/preview', draftFor(sender, recipient), sender.telegram);
+            assert.equal(preview.status, 201, JSON.stringify(preview.data));
+            assert.deepEqual(preview.data.draft.coAssignees.map(person => person.id), [recipient.user.id]);
+        }
+    }
+    const draft = draftFor(voiceCreator, secondCo);
+    const web = await request('POST', '/api/tasks', draft, voiceCreator.token);
+    assert.equal(web.status, 403, JSON.stringify(web.data));
+    assert.equal(web.data.code, 'TASK_REASSIGN_FORBIDDEN');
+    const personal = await bot('/tasks/preview', { ...draft, taskMode: 'personal' }, voiceCreator.telegram);
+    assert.equal(personal.data.code, 'TELEGRAM_PERSONAL_TASK_SELF_ONLY');
+    const pending = await bot('/tasks/preview', draft, voiceCreator.telegram);
+    assert.equal(pending.status, 201, JSON.stringify(pending.data));
+    const confirm = () => bot(`/operations/${pending.data.operationId}/confirm`, { confirmed: true }, voiceCreator.telegram);
+    try {
+        await pool.query('UPDATE business_memberships SET is_active=false WHERE business_id=$1 AND user_id=$2',
+            [business.id, secondCo.user.id]);
+        const outside = await confirm();
+        assert.equal(outside.data.code, 'TASK_OWNER_NOT_ASSIGNABLE');
+        await pool.query('UPDATE business_memberships SET is_active=true WHERE business_id=$1 AND user_id=$2',
+            [business.id, secondCo.user.id]);
+        await pool.query('UPDATE telegram_crm_bindings SET pilot_enabled=false WHERE user_id=$1', [secondCo.user.id]);
+        const revoked = await confirm();
+        assert.equal(revoked.data.code, 'TELEGRAM_OWNER_OUTSIDE_PILOT');
+        const { rows: [operation] } = await pool.query('SELECT task_id FROM telegram_crm_task_operations WHERE id=$1',
+            [pending.data.operationId]);
+        assert.equal(operation.task_id, null);
+    } finally {
+        await pool.query('UPDATE business_memberships SET is_active=true WHERE business_id=$1 AND user_id=$2',
+            [business.id, secondCo.user.id]);
+        await pool.query('UPDATE telegram_crm_bindings SET pilot_enabled=true WHERE user_id=$1', [secondCo.user.id]);
+    }
 });
 
 check('co-assignees receive assignments and the author sees the person who completed the task', async () => {
@@ -590,33 +643,11 @@ test('newly confirmed recipient receives CRM and bot voice assignments without a
 test('text and voice create one task each and deliver to the primary and co-assignee', {
     skip: !enabled || !process.env.NOTIFICATION_E2E_PYTHON
 }, async () => {
-    const username = 'tg.coauthor.' + randomUUID();
-    const password = 'isolated-coauthor-fixture-password';
-    const sender = String(randomInt(970000000000, 980000000000));
-    const { rows: [author] } = await pool.query(`INSERT INTO users
-        (username,name,role,password_hash,business_contexts,default_business_context)
-        VALUES($1,'Co-assigning Fixture','senior_manager',$2,ARRAY['event_genix'],'event_genix') RETURNING id`,
-    [username, await bcrypt.hash(password, 4)]);
-    await pool.query(`INSERT INTO organization_memberships(organization_id,user_id,role)
-        VALUES($1,$2,'member')`, [business.organization_id, author.id]);
-    await pool.query(`INSERT INTO business_memberships(business_id,organization_id,user_id,role,is_default)
-        VALUES($1,$2,$3,'senior_manager',true)`, [business.id, business.organization_id, author.id]);
-    await pool.query('INSERT INTO telegram_crm_bindings(user_id,pilot_enabled,proposed_telegram_id) VALUES($1,true,$2)',
-        [author.id, sender]);
-    const session = await request('POST', '/api/auth/login', { username, password });
-    assert.equal(session.status, 200, JSON.stringify(session.data));
-    const link = await request('POST', '/api/auth/telegram-crm/link', {}, session.data.token);
-    assert.equal(link.status, 201, JSON.stringify(link.data));
-    const code = new URL(link.data.url).searchParams.get('start').slice(4);
-    assert.equal((await bot('/link/claim', { token: code }, sender)).status, 200);
-    assert.equal((await request('POST', '/api/auth/telegram-crm/link/confirm', link.data, session.data.token)).status, 200);
+    const { user: author, telegram: sender } = await createPilotTaskCreator();
     const draft = {
         title: 'Disposable co-assignee guard', ownerUserId: peer.id, coAssigneeUserIds: [secondCo.user.id],
         businessContext: 'event_genix', sourceUpdateId: String(nextUpdate++)
     };
-    const denied = await bot('/tasks/preview', draft, voiceCreator.telegram);
-    assert.equal(denied.status, 403, JSON.stringify(denied.data));
-    assert.equal(denied.data.code, 'TASK_REASSIGN_FORBIDDEN');
     const privateTask = await bot('/tasks/preview', { ...draft, ownerUserId: author.id, taskMode: 'personal' }, sender);
     assert.equal(privateTask.data.code, 'TELEGRAM_PERSONAL_TASK_SELF_ONLY');
 

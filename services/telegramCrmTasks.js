@@ -98,6 +98,35 @@ async function defaultActorContext(userRow, client, businessContext) {
     return { actor, scope };
 }
 
+async function pilotOwnerBinding(client, ownerUserId) {
+    const { rows: [binding] } = await client.query(
+        'SELECT verified_at FROM telegram_crm_bindings WHERE user_id=$1 AND pilot_enabled=true',
+        [ownerUserId]
+    );
+    if (!binding) throw failure(403, 'TELEGRAM_OWNER_OUTSIDE_PILOT', 'Поки можна призначати задачі тільки учасникам пілоту.');
+    return binding;
+}
+
+async function resolveTelegramCreationCoAssignees(client, ids, actor, scope, assignableOwner = getAssignableTaskOwner) {
+    const assignees = [];
+    for (const id of ids) {
+        const binding = await pilotOwnerBinding(client, id);
+        const verifiedPeer = scope.activeContext === 'event_genix' && Boolean(binding.verified_at);
+        const resolveOwner = () => assignableOwner(id, {
+            pool: client, actor, businessScope: scope,
+            telegramCrmPeerAssignment: verifiedPeer,
+            telegramCrmRequireVerifiedPeer: verifiedPeer
+        });
+        if (verifiedPeer) {
+            assignees.push(await resolveOwner());
+        } else {
+            await validateCreationCoAssignees(client, [id], actor, scope.activeContext,
+                async () => { assignees.push(await resolveOwner()); });
+        }
+    }
+    return assignees.map(({ id, label }) => ({ id, label }));
+}
+
 function createTelegramCrmTasks(options) {
     const { pool, identity } = options;
     const actorContext = options.actorContext || defaultActorContext;
@@ -118,20 +147,12 @@ function createTelegramCrmTasks(options) {
         }
     }
 
-    async function owner(client, ownerUserId, actor, scope, { peerAssignment = true } = {}) {
-        const pilot = (await client.query('SELECT user_id FROM telegram_crm_bindings WHERE user_id=$1 AND pilot_enabled=true', [ownerUserId])).rows[0];
-        if (!pilot) throw failure(403, 'TELEGRAM_OWNER_OUTSIDE_PILOT', 'Поки можна призначати задачі тільки учасникам пілоту.');
+    async function owner(client, ownerUserId, actor, scope) {
+        await pilotOwnerBinding(client, ownerUserId);
         return assignableOwner(ownerUserId, {
             pool: client, actor, businessScope: scope,
-            telegramCrmPeerAssignment: peerAssignment && canUseTaskRouteCapability(actor, 'create')
+            telegramCrmPeerAssignment: canUseTaskRouteCapability(actor, 'create')
         });
-    }
-
-    async function resolveCoAssignees(client, payload, actor, scope) {
-        const assignees = [];
-        await validateCreationCoAssignees(client, payload.coAssigneeUserIds || [], actor, payload.businessContext,
-            async id => { assignees.push(await owner(client, id, actor, scope, { peerAssignment: false })); });
-        return assignees.map(({ id, label }) => ({ id, label }));
     }
 
     function taskReceipt(row, actor, scope) {
@@ -264,7 +285,7 @@ function createTelegramCrmTasks(options) {
             assertCreate(actor, scope);
             assertPersonalOwner(payload, actor);
             const assignee = await owner(client, payload.ownerUserId, actor, scope);
-            const coAssignees = await resolveCoAssignees(client, payload, actor, scope);
+            const coAssignees = await resolveTelegramCreationCoAssignees(client, payload.coAssigneeUserIds || [], actor, scope, assignableOwner);
             const draft = { ...payload, ownerLabel: assignee.label, ...(coAssignees.length && { coAssignees }) };
             const prior = (await client.query(
                 'SELECT *,expires_at>NOW() AS fresh FROM telegram_crm_task_operations WHERE user_id=$1 AND binding_version=$2 AND source_update_id=$3',
@@ -454,7 +475,7 @@ function createTelegramCrmTasks(options) {
             assertPersonalOwner(payload, actor);
             const personal = payload.taskMode === 'personal';
             const assignee = await owner(client, payload.ownerUserId, actor, scope);
-            const coAssignees = await resolveCoAssignees(client, payload, actor, scope);
+            const coAssignees = await resolveTelegramCreationCoAssignees(client, payload.coAssigneeUserIds || [], actor, scope, assignableOwner);
             const task = await createTask({ ...payload, owner_user_id: assignee.id, owner: assignee.label, assigned_to: assignee.label,
                 created_by: actor.username, created_by_user_id: actor.id, task_type: 'human', task_mode: payload.taskMode, task_kind: 'action',
                 visibility: personal ? 'me_only' : 'team', workflow_state: 'todo',
@@ -481,4 +502,4 @@ function createTelegramCrmTasks(options) {
     return { cancel, commit, list, me, operation, owners, preview, previewChange, undoCreate };
 }
 
-module.exports = { createTelegramCrmTasks, dateOnly, defaultActorContext, normalizeDraft };
+module.exports = { createTelegramCrmTasks, dateOnly, defaultActorContext, normalizeDraft, resolveTelegramCreationCoAssignees };

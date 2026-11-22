@@ -2209,7 +2209,7 @@ router.get('/', async (req, res) => {
             conditions.push(`department = $${params.length}`);
         }
         if (req.query.pool === 'reserve') {
-            conditions.push(`staff.hr_pool_status = 'reserve' AND NOT COALESCE(staff.is_freelance, false)`);
+            conditions.push(`staff.is_active IS TRUE AND staff.hr_pool_status = 'reserve' AND NOT COALESCE(staff.is_freelance, false)`);
         } else if (active !== undefined) {
             const activeRequested = active === 'true';
             if (activeRequested) {

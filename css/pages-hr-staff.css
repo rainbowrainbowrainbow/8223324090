@@ -7862,6 +7862,7 @@ body.dark-mode .hr-shift-multi-guard__segments span,
 }
 
 .schedule-freelance-dialog select,
+.schedule-freelance-dialog input[type="search"],
 .schedule-freelance-dialog input[type="date"] {
     display: block;
     min-block-size: 3rem;

@@ -207,10 +207,12 @@ async function run() {
         const openSchedule = async (workDate = date, route = '/staff') => {
             await page.goto(new URL(route, base).href, { waitUntil: 'domcontentloaded' });
             await page.waitForFunction(() => window.StaffSchedulePage?.isInitialized());
+            if (route === '/hr#schedule') await page.locator('#tab-schedule').waitFor({ state: 'visible' });
             await page.locator('#scheduleWorkModeFilter').selectOption('all');
             await page.locator('#scheduleDateFrom').fill(workDate);
             await page.locator('#scheduleDateTo').fill(workDate);
             await page.locator('#applyScheduleRangeBtn').click();
+            await page.locator('#scheduleWrapper[aria-busy="false"]:not([inert])').waitFor();
             await page.locator('#deptFilter [data-dept="animators"]').click();
             const toggle = page.locator('[data-schedule-group-toggle="animators"]');
             if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
@@ -288,17 +290,20 @@ async function run() {
              VALUES ($1, 'animators', 'Synthetic QA', 'animator', 'hour', 120, true) RETURNING id`,
             [controlName]
         );
-        const { rows: [reserve, blacklisted, trampolineReserve] } = await db.query(
+        const { rows: [reserve, blacklisted, trampolineReserve, dismissed] } = await db.query(
             `INSERT INTO staff (name, department, position, role_type, secondary_professions, rate_unit, hourly_rate,
                                 is_active, hr_pool_status, termination_date)
-             VALUES ($1, 'animators', 'Synthetic QA', 'animator', '["waiter"]', 'hour', 120, false, 'reserve', $3::date - 1),
+             VALUES ($1, 'animators', 'Synthetic QA', 'animator', '["waiter"]', 'hour', 120, true, 'reserve', NULL),
                     ($2, 'animators', 'Synthetic QA', 'animator', '[]', 'hour', 120, false, 'blacklisted', $3::date - 1),
-                    ($4, 'trampoline', 'Synthetic QA', 'trampoline_instructor', '[]', 'hour', 120, false, 'reserve', $3::date - 1)
+                    ($4, 'trampoline', 'Synthetic QA', 'trampoline_instructor', '[]', 'hour', 120, true, 'reserve', NULL),
+                    ($5, 'animators', 'Synthetic QA', 'animator', '[]', 'hour', 120, false, 'reserve', $3::date - 1)
              RETURNING id, name`,
-            ['Synthetic Reserve ' + suffix, 'Synthetic Blacklist ' + suffix, date, 'Synthetic Trampoline Reserve ' + suffix]
+            ['Synthetic Reserve ' + suffix, 'Synthetic Blacklist ' + suffix, date, 'Synthetic Trampoline Reserve ' + suffix,
+                'Synthetic Dismissed ' + suffix]
         );
         const chooser = page.getByRole('dialog', { name: 'Додати фріланс' });
         const staffPicker = chooser.getByLabel('Співробітник');
+        const candidateSearch = chooser.getByRole('searchbox', { name: 'Пошук за іменем або професією' });
         const pickerDate = chooser.getByLabel('Дата виходу');
         const openPlan = chooser.getByRole('button', { name: 'Відкрити план' });
         const emptyAdd = page.getByRole('button', { name: 'Додати фріланс', exact: true });
@@ -393,17 +398,36 @@ async function run() {
         assert.deepEqual(replay.map(response => response.status), [409, 409]);
         assert.deepEqual(await controlRecords.locator('span').allTextContents(), ['12:00–16:00', '16:00–20:00']);
         stage = 'freelance reserve picker and server validation';
+        const pickerOnly = process.env.FREELANCE_RESERVE_PICKER_ONLY === '1';
         await openSchedule(date, '/hr#schedule');
         if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
         const addFreelance = row.getByRole('button', { name: '+ Додати фріланс · ' + date });
         const reserveOption = 'reserve:' + reserve.id + ':animator';
+        const reserveResponse = await request(auth, '/api/staff?pool=reserve');
+        assert.equal(reserveResponse.status, 200);
+        const reserveIds = (await reserveResponse.json()).data.map(staff => staff.id);
+        assert.ok(reserveIds.includes(reserve.id));
+        assert.ok(!reserveIds.includes(dismissed.id));
+        assert.ok(!reserveIds.includes(blacklisted.id));
         await addFreelance.click();
         await staffPicker.locator('option[value="' + reserveOption + '"]').waitFor({ state: 'attached' });
         assert.match(await staffPicker.locator('option[value="' + reserveOption + '"]').evaluate(option =>
             option.parentElement.label), /^Резерв · /);
         assert.equal(await staffPicker.locator('option[value="reserve:' + reserve.id + ':waiter"]').count(), 1);
         assert.equal(await staffPicker.locator('option').filter({ hasText: blacklisted.name }).count(), 0);
+        assert.equal(await staffPicker.locator('option').filter({ hasText: dismissed.name }).count(), 0);
+        assert.equal(await candidateSearch.evaluate(input => input === document.activeElement), true);
+        await candidateSearch.fill(reserve.name.toUpperCase());
+        assert.equal(await staffPicker.locator('option:enabled').count(), 3);
+        await candidateSearch.press('Tab');
         assert.equal(await staffPicker.evaluate(select => select === document.activeElement), true);
+        await staffPicker.selectOption(reserveOption);
+        await candidateSearch.fill(dismissed.name);
+        assert.equal(await staffPicker.inputValue(), '');
+        assert.equal(await openPlan.isDisabled(), true);
+        await chooser.getByText('За цим запитом нікого не знайдено.').waitFor();
+        await candidateSearch.fill('');
+        assert.equal(await staffPicker.locator(`option[value="${reserveOption}"]`).count(), 1);
         await chooser.screenshot({ path: path.join(out, 'freelance-reserve-picker-desktop.png'), animations: 'disabled' });
         await page.keyboard.press('Escape');
         await chooser.waitFor({ state: 'hidden' });
@@ -416,12 +440,33 @@ async function run() {
             return rect.left >= 8 && rect.right <= innerWidth - 8
                 && Math.abs(rect.left + rect.width / 2 - innerWidth / 2) < 2;
         }), 'Picker must fit and center on a 320px viewport');
+        const secondary = staffPicker.locator(`option[value="reserve:${reserve.id}:waiter"]`);
+        const profession = await secondary.evaluate(option => option.parentElement.label.split(' · ')[1]);
+        await candidateSearch.fill(profession);
+        assert.equal(await secondary.count(), 1);
+        assert.equal(await staffPicker.locator(`option[value="${reserveOption}"]`).count(), 0);
+        await candidateSearch.fill(reserve.name);
         await staffPicker.selectOption(reserveOption);
         await chooser.screenshot({ path: path.join(out, 'freelance-reserve-picker-320.png'), animations: 'disabled' });
         await chooser.getByRole('button', { name: 'Відкрити план' }).click();
         await setTime(cards.first(), '12:00', '14:00');
         const reservePlan = await savePlan();
         assert.equal(reservePlan.reserveFreelance, true);
+        const dismissedWrite = await request(auth, '/api/staff/schedule', { method: 'PUT',
+            body: { ...reservePlan, staffId: dismissed.id } });
+        assert.equal(dismissedWrite.status, 400);
+        assert.equal((await dismissedWrite.json()).code, 'STAFF_INACTIVE');
+        // A person dismissed after planning can still have their existing block cancelled.
+        await db.query('UPDATE staff SET is_active = true, termination_date = NULL WHERE id = $1', [dismissed.id]);
+        const beforeDismissal = await request(auth, '/api/staff/schedule', { method: 'PUT',
+            body: { ...reservePlan, staffId: dismissed.id } });
+        assert.equal(beforeDismissal.status, 200, await beforeDismissal.clone().text());
+        const priorPlan = (await beforeDismissal.json()).data;
+        await db.query('UPDATE staff SET is_active = false, termination_date = $2 WHERE id = $1', [dismissed.id, date]);
+        const cancelAfterDismissal = await request(auth, '/api/staff/schedule', { method: 'PUT',
+            body: { staffId: dismissed.id, date, reserveFreelance: true, status: 'dayoff', segments: [],
+                expectedUpdatedAt: priorPlan.planUpdatedAt } });
+        assert.equal(cancelAfterDismissal.status, 200, await cancelAfterDismissal.clone().text());
         assert.equal(await page.locator('[data-schedule-staff-row="' + reserve.id + '"]').count(), 0);
         const reserveRecord = row.getByRole('button', { name: new RegExp(reserve.name) });
         await reserveRecord.waitFor();
@@ -448,6 +493,76 @@ async function run() {
         assert.equal((await regular.json()).code, 'STAFF_RESERVE_FREELANCE_ONLY');
         const stale = await request(auth, '/api/staff/schedule', { method: 'PUT', body: reservePlan });
         assert.equal(stale.status, 409);
+        if (membership) {
+            stage = 'scoped manager opens freelance reserve from HR';
+            const manager = await login('manager', { identity: 'picker_manager', deniedActions: ['hr.staff.view'] });
+            const managerId = (await db.query('SELECT id FROM users WHERE username = $1',
+                ['freelance_qa_picker_manager_' + suffix])).rows[0].id;
+            await db.query('UPDATE staff SET company_structure_node_id = $1 WHERE id = ANY($2::int[])',
+                ['picker-' + suffix, [control.id, reserve.id]]);
+            await db.query('INSERT INTO employee_profiles (staff_id, user_id, full_name, is_active) VALUES ($1,$2,$3,true)',
+                [control.id, managerId, 'Synthetic picker manager']);
+            const response = await request(manager, '/api/staff?pool=reserve');
+            assert.equal(response.status, 200);
+            const roster = await response.json();
+            const card = roster.data.find(person => person.id === reserve.id);
+            assert.ok(card);
+            assert.equal(Object.hasOwn(card, 'hr_pool_status'), false);
+            assert.equal(roster.scheduleAccess.scope, 'team');
+            assert.ok(roster.scheduleAccess.editableStaffIds.includes(reserve.id));
+            assert.ok(!roster.scheduleAccess.editableStaffIds.includes(trampolineReserve.id));
+            const managerContext = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
+            try {
+                await initializeBrowserSession(managerContext, manager);
+                const managerPage = await managerContext.newPage();
+                await managerPage.goto(new URL('/hr#schedule', base).href);
+                const searchRoster = managerPage.locator('#scheduleStaffSearch');
+                await searchRoster.waitFor();
+                await managerPage.locator('#deptFilter [data-dept="animators"]').click();
+                await searchRoster.fill('unmatched-picker-search');
+                await managerPage.locator('#scheduleAddFreelanceBtn').click();
+                const dialog = managerPage.getByRole('dialog', { name: 'Додати фріланс' });
+                const picker = dialog.getByLabel('Співробітник');
+                await picker.locator(`option[value="${reserveOption}"]`).waitFor({ state: 'attached' });
+                assert.equal(await picker.locator(`option[value^="reserve:${trampolineReserve.id}:"]`).count(), 0);
+                await dialog.getByRole('searchbox').fill(reserve.name);
+                await picker.selectOption(reserveOption);
+                const dateField = dialog.getByLabel('Дата виходу');
+                const managerDate = await dateField.evaluate(input => input.max);
+                await dateField.fill(managerDate);
+                await dialog.screenshot({ path: path.join(out, 'freelance-manager-picker-mobile.png'), animations: 'disabled' });
+                await dialog.getByRole('button', { name: 'Відкрити план' }).click();
+                await managerPage.locator('#schModalOverlay').waitFor({ state: 'visible' });
+                assert.match(await managerPage.locator('#schModalTitle').textContent(), new RegExp(reserve.name));
+                const lastBlock = managerPage.locator('#schSegmentsList .sch-segment-card').last();
+                await setTime(lastBlock, '18:00', '19:00');
+                const savedByManager = managerPage.waitForResponse(res => new URL(res.url()).pathname === '/api/staff/schedule'
+                    && res.request().method() === 'PUT');
+                await managerPage.locator('#schSaveBtn').click();
+                const savedResponse = await savedByManager;
+                const savedBody = await savedResponse.text();
+                assert.equal(savedResponse.status(), 200, savedBody);
+                assert.equal(savedResponse.request().postDataJSON().reserveFreelance, true);
+                const managerPlan = JSON.parse(savedBody).data;
+                await managerPage.reload();
+                await managerPage.locator('#deptFilter [data-dept="animators"]').click();
+                await searchRoster.fill('');
+                const managerToggle = managerPage.locator('[data-freelance-toggle="animators"]');
+                if (await managerToggle.getAttribute('aria-expanded') !== 'true') await managerToggle.click();
+                await managerPage.locator(`[data-freelance-staff="${reserve.id}"][data-freelance-date="${managerDate}"]`)
+                    .filter({ hasText: '18:00–19:00' }).waitFor({ state: 'visible' });
+                const cleanup = await request(manager, '/api/staff/schedule', { method: 'PUT',
+                    body: { staffId: reserve.id, date: managerDate, reserveFreelance: true,
+                        status: 'dayoff', segments: [], expectedUpdatedAt: managerPlan.planUpdatedAt } });
+                assert.equal(cleanup.status, 200, await cleanup.text());
+            } finally {
+                await managerContext.close();
+            }
+        }
+        if (pickerOnly) {
+            console.log('Active reserve selection, search, schedule writes and cancellation passed.');
+            return;
+        }
         await setWidth(1440);
         await openSchedule(date, '/hr#schedule');
         if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();

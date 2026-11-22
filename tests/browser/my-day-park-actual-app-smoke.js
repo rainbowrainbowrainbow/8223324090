@@ -222,7 +222,12 @@ async function run() {
         const moveToday = overdue.getByRole('button', { name: 'На сьогодні', exact: true });
         await moveToday.waitFor();
         assert.ok(await moveToday.evaluate(node => node.previousElementSibling.classList.contains('park-task-heading')));
+        const overdueId = await overdue.getAttribute('data-task-id');
+        const moveTodayResponse = page.waitForResponse(response => response.request().method() === 'POST'
+            && new URL(response.url()).pathname === `/api/tasks/${overdueId}/reschedule`);
         await moveToday.press('Enter');
+        const rescheduleResponse = await moveTodayResponse;
+        assert.equal(rescheduleResponse.status(), 200, await rescheduleResponse.text());
         const moved = page.locator('[data-park-period="today"]').getByText('Узгодити макет афіші', { exact: true });
         await moved.waitFor();
         assert.equal(await moveToday.count(), 0);

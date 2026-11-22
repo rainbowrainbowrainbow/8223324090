@@ -87,6 +87,14 @@ function isoValue(value) {
     return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
 
+function rescheduleDeadlineIso(value) {
+    const timestamp = typeof value === 'string' ? value.trim() : value;
+    // The legacy deadline column stores UTC in a timestamp without time zone.
+    const withoutOffset = typeof timestamp === 'string'
+        && /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/.test(timestamp);
+    return isoValue(withoutOffset ? `${timestamp.replace(' ', 'T')}Z` : timestamp) ?? value;
+}
+
 function kyivDateOnly(value) {
     const parsed = value instanceof Date ? value : new Date(value);
     if (Number.isNaN(parsed.getTime())) return null;
@@ -393,10 +401,11 @@ async function applyCanonicalRescheduleMutation(query, task, patch, actor = {}, 
 
 function deadlinePatch(task, deadline, options = {}) {
     const explicit = deadline && typeof deadline === 'object' && !(deadline instanceof Date) ? deadline : null;
-    const nextDeadline = explicit ? (explicit.deadline ?? task.deadline ?? null) : deadline;
+    const requestedDeadline = rescheduleDeadlineIso(explicit ? explicit.deadline : deadline);
+    const nextDeadline = explicit ? (requestedDeadline ?? task.deadline ?? null) : requestedDeadline;
     const patch = explicit ? {
         ...(Object.prototype.hasOwnProperty.call(explicit, 'date') ? { date: explicit.date || null } : {}),
-        ...(Object.prototype.hasOwnProperty.call(explicit, 'deadline') ? { deadline: explicit.deadline || null } : {})
+        ...(Object.prototype.hasOwnProperty.call(explicit, 'deadline') ? { deadline: requestedDeadline || null } : {})
     } : {
         deadline: nextDeadline || null,
         date: nextDeadline ? kyivDateOnly(nextDeadline) : task.date || null

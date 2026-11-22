@@ -389,7 +389,8 @@ test('park edition paginates all periods and disables legacy module writes', {
         const reschedulePath = `/api/tasks/${own.id}/reschedule`;
         const moveBody = { deadline: `${today}T18:00:00`, sourceSurface: 'profile_my_cabinet_overdue_to_today_button' };
         const move = await request('POST', reschedulePath, moveBody, token);
-        assert.equal(move.status, 200);
+        assert.equal(move.status, 200, JSON.stringify(move.data));
+        assert.equal(move.data.task.deadline, `${today}T18:00:00.000Z`);
         const undoPath = `${reschedulePath}/undo`;
         const undoBody = { eventId: move.data.historyEvent.id };
         assert.equal((await request('POST', undoPath, undoBody, token)).status, 200);

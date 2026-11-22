@@ -258,7 +258,7 @@ async def multi_assignee_probe(base_url, creator, primary, primary_user, co, co_
             tasks = []
             for idx, kind in enumerate(("text", "voice"), 1):
                 title = f"Disposable multi-assignee {kind}"
-                command = f"Створи задачу: {title}"
+                command = f"Створи одну задачу: {title}"
                 lane.flow.composer.compose.return_value = {"draft": {
                     "title": title, "ownerUserId": primary_user, "coAssigneeUserIds": [co_user],
                     "taskMode": "work", "businessContext": "event_genix", "priority": "normal",

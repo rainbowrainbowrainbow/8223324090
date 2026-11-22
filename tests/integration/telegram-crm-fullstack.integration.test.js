@@ -590,7 +590,7 @@ test('newly confirmed recipient receives CRM and bot voice assignments without a
 test('text and voice create one task each and deliver to the primary and co-assignee', {
     skip: !enabled || !process.env.NOTIFICATION_E2E_PYTHON
 }, async () => {
-    const username = 'telegram.fixture.coauthor.' + randomUUID();
+    const username = 'tg.coauthor.' + randomUUID();
     const password = 'isolated-coauthor-fixture-password';
     const sender = String(randomInt(970000000000, 980000000000));
     const { rows: [author] } = await pool.query(`INSERT INTO users

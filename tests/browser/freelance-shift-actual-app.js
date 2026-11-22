@@ -549,6 +549,11 @@ async function run() {
                 if (await managerToggle.getAttribute('aria-expanded') !== 'true') await managerToggle.click();
                 await managerPage.locator(`[data-freelance-staff="${reserve.id}"][data-freelance-date="${managerDate}"]`)
                     .filter({ hasText: '18:00–19:00' }).waitFor({ state: 'visible' });
+                const managerPlan = (await savedResponse.json()).data;
+                const cleanup = await request(manager, '/api/staff/schedule', { method: 'PUT',
+                    body: { staffId: reserve.id, date: managerDate, reserveFreelance: true,
+                        status: 'dayoff', segments: [], expectedUpdatedAt: managerPlan.planUpdatedAt } });
+                assert.equal(cleanup.status, 200, await cleanup.text());
             } finally {
                 await managerContext.close();
             }

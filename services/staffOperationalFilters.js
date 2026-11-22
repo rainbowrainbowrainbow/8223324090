@@ -170,9 +170,10 @@ async function validateStaffScheduleableForDate(db, staffId, date, options = {})
         [id, safeDate]
     );
     const row = result.rows[0] || null;
-    // Reserve is a pool status, independent of the ended regular employment.
+    // Offboarding can leave an inactive card tagged as reserve.
     const reserveFreelance = options.allowReserveFreelance === true
-        && row?.hr_pool_status === 'reserve' && row.is_freelance !== true;
+        && row?.hr_pool_status === 'reserve' && row.is_freelance !== true
+        && (row.is_active === true || options.removingReservePlan === true);
     if (row?.is_scheduleable === true || reserveFreelance) {
         return {
             ok: true,

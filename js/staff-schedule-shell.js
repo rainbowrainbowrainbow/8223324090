@@ -128,8 +128,14 @@
                             <p id="scheduleFreelanceDateHint"></p>
                         </div>
                         <div class="form-group">
+                            <search>
+                                <label for="scheduleFreelanceSearch">Пошук за іменем або професією</label>
+                                <input type="search" name="candidateSearch" id="scheduleFreelanceSearch" aria-controls="scheduleFreelanceStaff" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false">
+                            </search>
+                        </div>
+                        <div class="form-group">
                             <label for="scheduleFreelanceStaff">Співробітник</label>
-                            <select name="staff" id="scheduleFreelanceStaff" aria-describedby="scheduleFreelanceStaffStatus" required autofocus></select>
+                            <select name="staff" id="scheduleFreelanceStaff" aria-describedby="scheduleFreelanceStaffStatus" required></select>
                             <p id="scheduleFreelanceStaffStatus" role="status"></p>
                         </div>
                         <div class="schedule-freelance-dialog-actions">

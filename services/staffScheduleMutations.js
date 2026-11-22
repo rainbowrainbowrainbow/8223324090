@@ -544,7 +544,8 @@ async function mutateStaffScheduleEntry(client, entry, options = {}) {
     }
     const validation = options.staffValidation || await validateScheduleWriteStaff(client, staffId, date, {
         forUpdate: options.forUpdate !== false,
-        allowReserveFreelance: options.allowReserveFreelance === true
+        allowReserveFreelance: options.allowReserveFreelance === true,
+        removingReservePlan: status === 'dayoff' && Array.isArray(entry.segments) && entry.segments.length === 0
     });
     if (!validation.ok) {
         return { ok: false, status: validation.status || 400, code: validation.code, error: validation.error, validation };
@@ -560,7 +561,8 @@ async function mutateStaffScheduleEntry(client, entry, options = {}) {
         const segments = entry.segments;
         const freelanceOnly = Array.isArray(segments) && segments.length > 0
             && segments.every(segment => (segment?.workMode ?? segment?.work_mode) === 'freelance');
-        const cancelFreelance = status === 'dayoff' && (previousSegments.length > 0 || entry.cancelFreelanceSegmentIds !== undefined)
+        const cancelFreelance = status === 'dayoff' && (previousSegments.length > 0
+            || (validation.staff.is_active === true && entry.cancelFreelanceSegmentIds !== undefined))
             && Array.isArray(segments) && segments.length === 0;
         if (previousSegments.some(segment => segment.workMode !== 'freelance')
             || (!previousPlan && previousScheduleEntry && scheduleStatusNeedsProfession(previousScheduleEntry.status))

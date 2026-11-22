@@ -81,7 +81,8 @@ const {
     taskKpiDaySql,
     taskKpiEligibleSql,
     taskKpiMachineSignalSql,
-    taskKpiPrimaryOwnerSql
+    taskKpiPrimaryOwnerSql,
+    taskKpiPeriodSql
 } = require('../services/taskPerformancePolicy');
 const {
     ONBOARDING_TASK_SOURCE_TYPE,
@@ -3039,10 +3040,7 @@ async function loadKpiSnapshot(monthValue, businessScope, db = pool) {
             FROM tasks t
             ${taskKpiCompletionJoinSql('t')}
             CROSS JOIN params p
-            WHERE ${taskBusiness} AND (
-                ${taskKpiDaySql('t.created_at')} BETWEEN p.date_from AND p.date_to
-                OR ${completionDay} BETWEEN p.date_from AND p.date_to
-            )
+            WHERE ${taskBusiness} AND ${taskKpiPeriodSql('t', 'p.date_from', 'p.date_to')}
         ),
         actual_task_stats AS (
             SELECT ep.staff_id, COUNT(*)::int AS tasks_actually_completed

@@ -137,6 +137,16 @@
     .park-my-day .park-composer-options .cabinet-task-composer-main-advanced { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
+.profile-task-kpi-link {
+    display: inline-flex;
+    align-items: center;
+    min-block-size: 2rem;
+    margin-inline: 1rem;
+}
+.profile-task-kpi li {
+    flex-wrap: wrap;
+    overflow-wrap: anywhere;
+}
 .park-employee-disclosure { margin-block: .5rem; }
 .park-employee-disclosure > summary {
     min-block-size: 44px;

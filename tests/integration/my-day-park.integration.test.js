@@ -15,6 +15,72 @@ const { inventory } = require('../../scripts/my-day-legacy-task-inventory');
 const { cancelledBookingAutoArchivePredicateSql } = require('../../services/taskLifecycle');
 const { buildMachineTaskControlMetaPatch, MACHINE_AUTO_ARCHIVE_POLICY_CANCELLED_BOOKING } = require('../../services/taskAutomationPolicy');
 
+test('monthly task KPI credits the historical primary owner once and hides inaccessible details', {
+    skip: process.env.RUN_MY_DAY_PARK_INTEGRATION !== 'true'
+}, async () => {
+    assert.equal(process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER, 'true');
+    assertSafeIsolatedTestUrl(process.env.TEST_URL);
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: false });
+    try {
+        const suffix = randomBytes(4).toString('hex');
+        const { rows: [primary, executor, second, author] } = await pool.query(`INSERT INTO users
+            (username, name, password_hash, role)
+            SELECT 'kpi_' || $1 || '_' || n, 'KPI fixture ' || n, 'unused-kpi-fixture', 'animator'
+            FROM generate_series(1, 4) n RETURNING id`, [suffix]);
+        await pool.query(`WITH employee AS (
+            INSERT INTO staff (name, department, position, role_type, is_active)
+            VALUES ('KPI primary fixture', 'QA', 'Animator', 'animator', true) RETURNING id
+        )
+        INSERT INTO employee_profiles (user_id, staff_id, full_name, role, is_active)
+        SELECT $1, id, 'KPI primary fixture', 'animator', true FROM employee`, [primary.id]);
+        const { rows: [task] } = await pool.query(`INSERT INTO tasks
+            (title, created_at, status, workflow_state, task_mode, visibility, owner_user_id, created_by_user_id, business_context)
+            VALUES ('KPI fixture at month boundary', '2024-06-30 20:45:00', 'todo', 'inbox', 'work', 'team', $1, $2, 'event_genix')
+            RETURNING id`, [primary.id, author.id]);
+        await pool.query(`INSERT INTO task_co_assignees (task_id, user_id, added_by)
+            VALUES ($1, $2, $4), ($1, $3, $4)`, [task.id, executor.id, second.id, author.id]);
+        const read = async (id, month = '2024-07', activeContext = 'event_genix') => (
+            await loadEmployeeResults(pool, { id: 0 }, id, { activeContext }, employeeMonthRange(month),
+                { now: new Date('2024-08-01T09:00:00Z'), viewer: { id, role: 'animator' } })
+        ).taskKpi;
+        const finish = async () => {
+            await pool.query(`UPDATE tasks SET status = 'done', workflow_state = 'done',
+                completed_at = '2024-06-30 21:15:00' WHERE id = $1`, [task.id]);
+            await pool.query(`INSERT INTO task_action_history
+                (task_id, action_type, actor_user_id, actor_name_snapshot, created_at, new_value_json)
+                SELECT $1, 'task_completed', $2, 'KPI closer fixture', '2024-06-30T21:15:00Z',
+                    jsonb_build_object('status', 'done', 'ownerUserId', $3::int)
+                FROM generate_series(1, 2)`, [task.id, executor.id, primary.id]);
+        };
+        await finish();
+        const first = await read(primary.id);
+        assert.equal(first.assigned, 1);
+        assert.equal(first.done, 1);
+        assert.deepEqual(first.details.map(row => [row.id, row.date, row.completedByYou]), [
+            [task.id, '2024-07-01', false]
+        ]);
+        for (const actor of [executor, second, author]) assert.equal((await read(actor.id)).done, 0);
+        assert.equal((await read(primary.id, '2024-07', 'dar')).done, 0);
+        const inbox = await listControlCompletions(pool, { id: author.id, role: 'animator' }, 'event_genix');
+        const authoredAlert = inbox.alerts.find(alert => alert.eventKey.startsWith(`${task.id}:`));
+        assert.equal(authoredAlert?.kpiCredit, 'primary');
+        assert.equal(authoredAlert?.message, 'Виконав(ла): KPI closer fixture');
+        assert.equal((await listControlCompletions(pool, { id: executor.id, role: 'animator' }, 'event_genix')).unread, 0);
+        await pool.query(`UPDATE tasks SET status = 'todo', workflow_state = 'inbox', completed_at = NULL
+            WHERE id = $1`, [task.id]);
+        assert.equal((await read(primary.id)).done, 0);
+        await finish();
+        assert.equal((await read(primary.id)).done, 1);
+        await pool.query('UPDATE tasks SET owner_user_id = $2 WHERE id = $1', [task.id, second.id]);
+        const transferred = await read(primary.id);
+        assert.equal(transferred.done, 1);
+        assert.deepEqual(transferred.details, []);
+        assert.equal((await read(second.id)).done, 0);
+    } finally {
+        await pool.end();
+    }
+});
+
 test('task search and Operations Center retain each task context across Park and Dar links', {
     skip: process.env.RUN_MY_DAY_PARK_INTEGRATION !== 'true'
 }, async () => {
@@ -268,6 +334,7 @@ test('park edition paginates all periods and disables legacy module writes', {
         assert.equal(authorAlerts.data.controlCompletions.unread, 2);
         assert.equal(info[0].level, 'info');
         assert.equal(info[0].action, undefined);
+        assert.equal(info[0].kpiCredit, undefined);
         assert.equal(info[0].link, `/profile?tab=myday&open=${assigned.id}&businessContext=event_genix`);
         for (const role of Object.keys(ROLE_PERMISSIONS).filter(role => role !== 'guest')) {
             const actor = { id: owner, username: profile.data.user.username, role };
@@ -298,7 +365,9 @@ test('park edition paginates all periods and disables legacy module writes', {
         const reopen = await request('PATCH', `/api/tasks/${assigned.id}/status`, { status: 'todo' }, peer.token);
         assert.equal(reopen.status, 200);
         const reopenedAlerts = await request('GET', '/api/dashboard/alerts', undefined, token);
-        assert.ok(reopenedAlerts.data.alerts.some(alert => alert.id === info[0].id));
+        const retainedAlert = reopenedAlerts.data.alerts.find(alert => alert.id === info[0].id);
+        assert.ok(retainedAlert);
+        assert.equal(retainedAlert.kpiCredit, undefined);
         const allowedInbox = '/api/tasks/control-completions';
         const deniedRead = await request('POST', `${allowedInbox}/read`, { eventKey: info[0].eventKey }, observer.token);
         assert.equal(deniedRead.status, 200);
@@ -413,6 +482,12 @@ test('park edition paginates all periods and disables legacy module writes', {
         const performance = await loadEmployeeResults(pool, { id: 0 }, owner, { activeContext: 'event_genix' },
             employeeMonthRange('2023-02'), { now: new Date('2023-03-01T08:00:00Z') });
         assert.equal(performance.current.tasks.completed, 1);
+        assert.equal(performance.taskKpi.assigned, 1);
+        assert.equal(performance.taskKpi.done, 1);
+        assert.equal(performance.taskKpi.rate, 100);
+        assert.deepEqual(performance.taskKpi.details.map(row => [row.title, row.date]), [
+            ['Result work fixture', '2023-02-08']
+        ]);
 
         const daily = await pool.query(`
             INSERT INTO tasks (title, date, status, task_mode, visibility, owner_user_id, business_context, completed_at)
@@ -431,8 +506,13 @@ test('park edition paginates all periods and disables legacy module writes', {
                    ($1, 'task_completed', $2, '2023-03-01T22:05:00Z'),
                    ($3, 'task_completed', $4, '2023-03-02T10:00:00Z')`,
         [idFor('Daily work'), owner, idFor('Daily done by someone else'), peer.id]);
-        const dailyResults = (await loadEmployeeResults(pool, { id: 0 }, owner, { activeContext: 'event_genix' },
-            employeeMonthRange('2023-03'), { now: new Date('2023-03-02T12:00:00Z') })).dailyTasks;
+        const marchResults = await loadEmployeeResults(pool, { id: 0 }, owner, { activeContext: 'event_genix' },
+            employeeMonthRange('2023-03'), { now: new Date('2023-03-02T12:00:00Z') });
+        const dailyResults = marchResults.dailyTasks;
+        assert.deepEqual(marchResults.taskKpi.details.map(row => [row.id, row.date, row.completedByYou]), [
+            [idFor('Daily done by someone else'), '2023-03-02', false],
+            [idFor('Daily work'), '2023-03-02', true]
+        ]);
         assert.equal(dailyResults.days.length, 7);
         assert.deepEqual(dailyResults.days.slice(-3), [
             { date: '2023-02-28', work: 0, personal: 0 },

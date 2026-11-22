@@ -13,6 +13,7 @@ const { chromium, webkit } = require('../helpers/playwright')();
 const { assertSafeIsolatedTestUrl, assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
 
 async function rejectCancellationInEditor(page, segmentId, screenshotPath) {
+    const segmentIds = [segmentId].flat().map(String);
     const note = page.locator('#schNote');
     if (!await note.isVisible()) await page.locator('#schPlanExtra > summary').click();
     const memo = 'Synthetic note retained after rejection';
@@ -22,13 +23,19 @@ async function rejectCancellationInEditor(page, segmentId, screenshotPath) {
             success: false, code: 'FREELANCE_CANCELLATION_AFTER_START', error: 'Synthetic cancellation refusal'
         } });
     await page.route('**/api/staff/schedule', reject);
-    const card = page.locator(`#schSegmentsList [data-segment-id="${segmentId}"]`);
     try {
-        await card.getByRole('button', { name: /Скасувати фріланс · блок/ }).press('Enter');
-        await page.locator('.confirm-overlay[data-confirm-kind="confirm"]')
-            .getByRole('button', { name: 'Скасувати фріланс' }).click();
-        await page.locator('#schSaveBtn').click();
-        await card.waitFor();
+        for (const id of segmentIds) {
+            await page.locator(`#schSegmentsList [data-segment-id="${id}"]`)
+                .getByRole('button', { name: /Скасувати фріланс · блок/ }).press('Enter');
+            await page.locator('.confirm-overlay[data-confirm-kind="confirm"]')
+                .getByRole('button', { name: 'Скасувати фріланс' }).click();
+        }
+        const [response] = await Promise.all([
+            page.waitForResponse(res => new URL(res.url()).pathname === '/api/staff/schedule' && res.request().method() === 'PUT'),
+            page.locator('#schSaveBtn').click()
+        ]);
+        assert.deepEqual(response.request().postDataJSON().cancelFreelanceSegmentIds, segmentIds);
+        for (const id of segmentIds) await page.locator(`#schSegmentsList [data-segment-id="${id}"]`).waitFor();
         assert.equal(await note.inputValue(), memo);
         await page.waitForFunction(() => document.activeElement?.id === 'schStatus');
         await page.screenshot({ path: screenshotPath });
@@ -281,6 +288,51 @@ async function run() {
             assert.equal(restored.status, 200, await restored.clone().text());
             const { data: restoredPlan } = await restored.json();
             assert.notEqual(String(restoredPlan.segments[1].id), String(previousId));
+
+            const onlyFreelanceDate = laterDate(10);
+            const onlyFreelance = await request(auth, scheduleUrl, { method: 'PUT', body: {
+                ...body, date: onlyFreelanceDate, segments: [
+                    { workMode: 'freelance', professionKey: 'animator', shiftStart: '14:00', shiftEnd: '17:00' },
+                    { workMode: 'freelance', professionKey: 'animator', shiftStart: '18:00', shiftEnd: '19:00' }
+                ]
+            } });
+            assert.equal(onlyFreelance.status, 200, await onlyFreelance.clone().text());
+            const { data: onlyFreelancePlan } = await onlyFreelance.json();
+            const ids = onlyFreelancePlan.segments.map(segment => String(segment.id));
+            await (await openSchedule(onlyFreelanceDate, '/hr#schedule')).press('Enter');
+            const status = page.locator('#schStatus');
+            const originalStatus = await status.inputValue();
+            const allCancelledMemo = await rejectCancellationInEditor(page, ids,
+                path.join(out, 'freelance-cancellation-rejected-last-block-320.png'));
+            assert.equal(await status.inputValue(), originalStatus);
+            const [savedAll] = await Promise.all([
+                page.waitForResponse(res => new URL(res.url()).pathname === scheduleUrl && res.request().method() === 'PUT'),
+                page.locator('#schSaveBtn').click()
+            ]);
+            assert.equal(savedAll.status(), 200, await savedAll.text());
+            assert.equal(savedAll.request().postDataJSON().cancelFreelanceSegmentIds, undefined);
+            assert.equal(savedAll.request().postDataJSON().note, allCancelledMemo);
+            assert.deepEqual((await savedAll.json()).data.segments.map(segment => String(segment.id)), ids);
+            await page.locator('#schModalOverlay').waitFor({ state: 'hidden' });
+            await (await openSchedule(onlyFreelanceDate, '/hr#schedule')).press('Enter');
+            await page.locator(`#schSegmentsList [data-segment-id="${ids[0]}"]`)
+                .getByRole('button', { name: /Скасувати фріланс · блок/ }).press('Enter');
+            await page.locator('.confirm-overlay[data-confirm-kind="confirm"]')
+                .getByRole('button', { name: 'Скасувати фріланс' }).click();
+            let savedStatus;
+            await page.route('**/api/staff/schedule', async route => {
+                if (route.request().method() !== 'PUT') return route.continue();
+                savedStatus = (await route.fetch()).status();
+                await route.abort('connectionreset');
+            });
+            const [reconciled] = await Promise.all([
+                page.waitForResponse(res => new URL(res.url()).pathname === scheduleUrl && res.request().method() === 'GET'),
+                page.locator('#schSaveBtn').click()
+            ]);
+            assert.equal(savedStatus, 200);
+            const plan = (await reconciled.json()).data.find(row => Number(row.staff_id) === Number(staff.id));
+            assert.deepEqual(plan.segments.map(segment => String(segment.id)), [ids[1]]);
+            await page.getByRole('button', { name: 'Оновити з сервера' }).waitFor();
             console.log('Focused cancellation, reassignment and draft recovery passed on both schedule entries');
             return;
         }

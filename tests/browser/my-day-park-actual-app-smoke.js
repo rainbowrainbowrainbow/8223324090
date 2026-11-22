@@ -9,6 +9,60 @@ const { requirePlaywright } = require('./timeline-room-summary-browser-smoke');
 const { verifyLocales, verifySalary, verifySettings } = require('./profile-cleanup-checks');
 const { benchmark } = require('./my-day-cleanup-benchmark');
 
+async function verifyTaskKpi(page, origin, session, staffId, evidence) {
+    const db = new Pool({ connectionString: process.env.DATABASE_URL, ssl: false });
+    let creditedId;
+    let personalId;
+    try {
+        const { rows } = await db.query(`INSERT INTO tasks
+            (title, status, workflow_state, task_mode, visibility, owner_user_id, created_by_user_id,
+                business_context, completed_at)
+            VALUES ('КПД: робоча задача', 'done', 'done', 'work', 'team', $1, $1, 'event_genix', NOW() AT TIME ZONE 'UTC'),
+                   ('КПД: незавершена задача', 'todo', 'inbox', 'work', 'team', $1, $1, 'event_genix', NULL),
+                   ('КПД: особиста задача', 'done', 'done', 'personal', 'me_only', $1, $1, 'event_genix', NOW() AT TIME ZONE 'UTC')
+            RETURNING id, title`, [session.user.id]);
+        creditedId = rows.find(row => row.title === 'КПД: робоча задача').id;
+        personalId = rows.find(row => row.title === 'КПД: особиста задача').id;
+    } finally {
+        await db.end();
+    }
+    await page.goto(origin + '/profile?tab=myday', { waitUntil: 'domcontentloaded' });
+    const [response] = await Promise.all([
+        page.waitForResponse(res => res.url().includes('/api/auth/profile/me/results?month=')),
+        page.getByRole('link', { name: 'КПД за задачами', exact: true }).click()
+    ]);
+    assert.equal(response.status(), 200);
+    const results = await response.json();
+    const hrResponse = await fetch(origin + `/api/hr/kpi?month=${results.month}`, {
+        headers: { Authorization: `Bearer ${session.token}`, 'X-Business-Context': 'event_genix' }
+    });
+    assert.equal(hrResponse.status, 200);
+    const hr = await hrResponse.json();
+    const staff = hr.data.find(row => Number(row.staff_id) === Number(staffId));
+    assert.ok(staff);
+    assert.equal(results.taskKpi.assigned, staff.task_kpi.tasks_assigned);
+    assert.equal(results.taskKpi.done, staff.task_kpi.tasks_done);
+    assert.equal(results.taskKpi.rate, staff.task_completion_rate);
+    assert.deepEqual(results.taskKpi.details.map(task => task.id), [creditedId]);
+
+    const kpi = page.getByRole('region', { name: 'КПД за задачами' });
+    await kpi.waitFor();
+    assert.match(await kpi.textContent(), /1 із 2 · 50%/);
+    await kpi.locator('summary').focus();
+    await page.keyboard.press('Enter');
+    const taskLink = kpi.getByRole('link', { name: 'КПД: робоча задача', exact: true });
+    await taskLink.waitFor();
+    assert.equal(await kpi.locator(`a[href*="open=${personalId}&"]`).count(), 0);
+    const engine = process.env.MY_DAY_BROWSER || 'chromium';
+    for (const width of [390, 1440]) {
+        await page.setViewportSize({ width, height: 950 });
+        await kpi.screenshot({ path: path.join(evidence, `profile-task-kpi-${engine}-${width}.png`), animations: 'disabled' });
+    }
+    await taskLink.click();
+    await page.waitForURL(url => url.searchParams.get('open') === String(creditedId));
+    console.log(`Profile and HR task KPI agree in ${engine}: 1 of 2, the credited card is reachable.`);
+}
+
 async function run() {
     assert.equal(process.env.RUN_MY_DAY_PARK_ACTUAL_BROWSER, 'true');
     assert.equal(process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER, 'true');
@@ -22,16 +76,19 @@ async function run() {
     const session = await response.json();
     assert.ok(session.token && session.user);
 
+    let profileStaffId;
     const setup = new Pool({ connectionString: process.env.DATABASE_URL, ssl: false });
     try {
-        const existing = await setup.query('SELECT 1 FROM employee_profiles WHERE user_id = $1 AND is_active = true', [session.user.id]);
-        if (!existing.rowCount) {
+        const existing = await setup.query('SELECT staff_id FROM employee_profiles WHERE user_id = $1 AND is_active = true', [session.user.id]);
+        profileStaffId = existing.rows[0]?.staff_id;
+        if (!profileStaffId) {
             const { rows: [staff] } = await setup.query(`
                 INSERT INTO staff (name, department, position, role_type, is_active)
                 VALUES ('Local QA Employee', 'QA', 'QA', 'animator', true) RETURNING id`);
             await setup.query(`
                 INSERT INTO employee_profiles (user_id, staff_id, full_name, role, is_active)
                 VALUES ($1, $2, 'Local QA Employee', 'animator', true)`, [session.user.id, staff.id]);
+            profileStaffId = staff.id;
         }
     } finally {
         await setup.end();
@@ -71,6 +128,10 @@ async function run() {
         }
         const page = await context.newPage();
         page.setDefaultTimeout(20000);
+        if (process.env.MY_DAY_TASK_KPI_ONLY === '1') {
+            await verifyTaskKpi(page, origin, session, profileStaffId, evidence);
+            return;
+        }
         if (process.env.MY_DAY_CO_ASSIGNEE_ONLY === '1') {
             page.setDefaultTimeout(60000);
             const fixture = new Pool({ connectionString: process.env.DATABASE_URL, ssl: false });
@@ -536,6 +597,12 @@ async function run() {
         try {
             const { rows: [assignee] } = await controlFixtures.query(`INSERT INTO users (username, name, password_hash, role)
                 VALUES ($1, 'Олена Тестова', 'unused-in-browser-qa', 'director') RETURNING id`, [`control_fixture_${suffix}`]);
+            await controlFixtures.query(`WITH employee AS (
+                INSERT INTO staff (name, department, position, role_type, is_active)
+                VALUES ('Олена Тестова', 'QA', 'Animator', 'animator', true) RETURNING id
+            )
+            INSERT INTO employee_profiles (user_id, staff_id, full_name, role, is_active)
+            SELECT $1, id, 'Олена Тестова', 'animator', true FROM employee`, [assignee.id]);
             await controlFixtures.query(`INSERT INTO tasks (title, status, workflow_state, task_mode, visibility, owner_user_id, created_by_user_id, business_context, date)
                 VALUES ($1, 'todo', 'todo', 'work', 'team', $2, $3, 'event_genix', ((NOW() AT TIME ZONE 'Europe/Kyiv')::date - 1)::text)`,
             [assignedTitle, assignee.id, session.user.id]);
@@ -626,6 +693,8 @@ async function run() {
         await completionAlert.waitFor();
         const infoAlert = completionAlert.locator('xpath=ancestor::*[@data-alert-id][1]');
         await infoAlert.getByText('Виконав(ла): Олена Тестова', { exact: true }).waitFor();
+        await infoAlert.getByText('Зараховано до КПД основного виконавця', { exact: true }).waitFor();
+        assert.equal(await infoAlert.getByText('Зараховано до вашого КПД', { exact: true }).count(), 0);
         assert.equal(await infoAlert.getByRole('button', { name: /Підтвердити|Створити/ }).count(), 0);
         await infoAlert.screenshot({ path: path.join(evidence, 'profile-control-completion-notification-320.png'), animations: 'disabled' });
         const secondDevice = await browser.newContext({ serviceWorkers: 'block' });

@@ -6,6 +6,8 @@ const { TASK_ACTION_TYPES } = require('./taskActionConstants');
 const { buildTaskOwnerMatch, normalizeUserId } = require('./taskPolicy');
 const { buildTaskControlPredicates } = require('./taskPersonalScope');
 const { appendTaskBusinessScopeSql } = require('./taskBusinessScope');
+const { taskKpiCompletedSql, taskKpiEligibleSql, taskKpiPrimaryOwnerSql } = require('./taskPerformancePolicy');
+const { scheduleableStaffWhere } = require('./staffOperationalFilters');
 
 const PAGE_SIZE = 25;
 
@@ -75,7 +77,7 @@ function eventScope(user, businessScope, params) {
 
 async function listControlCompletions(db, user, scope, { cursor, summary = false } = {}) {
     const params = [];
-    const { sql } = eventScope(user, scope, params);
+    const { sql, recipient } = eventScope(user, scope, params);
     const after = completionEventKey(cursor);
     let condition = '';
     if (after && !summary) {
@@ -85,11 +87,24 @@ async function listControlCompletions(db, user, scope, { cursor, summary = false
     }
     // Cast microseconds to text before serializing JSON, which uses JS numbers.
     const page = summary ? "'[]'::json" : `COALESCE((SELECT json_agg(p ORDER BY p.completed_at DESC, p.task_id DESC)
-        FROM (SELECT selected.*, completion.actor_name_snapshot AS executor_name
+        FROM (SELECT selected.*, completion.actor_name_snapshot AS executor_name,
+                     (SELECT CASE ${taskKpiPrimaryOwnerSql()}
+                         WHEN ${recipient} THEN 'self'
+                         ELSE 'primary'
+                         END
+                         FROM tasks t
+                         WHERE t.id = selected.task_id AND t.completed_at = selected.completed_at
+                           AND ${taskKpiCompletedSql()} AND ${taskKpiEligibleSql()}
+                           AND EXISTS (
+                               SELECT 1 FROM employee_profiles ep JOIN staff s ON s.id = ep.staff_id
+                               WHERE ep.is_active AND ep.user_id = ${taskKpiPrimaryOwnerSql()}
+                                 AND ${scheduleableStaffWhere()}
+                           )
+                     ) AS kpi_credit
               FROM (SELECT task_id, title, business_context, completed_at, micros::text AS micros, read_at
                     FROM keyed ${condition} ORDER BY completed_at DESC, task_id DESC LIMIT ${PAGE_SIZE + 1}) selected
               LEFT JOIN LATERAL (
-                  SELECT h.actor_name_snapshot FROM task_action_history h
+                  SELECT h.actor_name_snapshot, h.new_value_json FROM task_action_history h
                   WHERE h.task_id = selected.task_id AND h.action_type = 'task_completed'
                     AND h.created_at = selected.completed_at AT TIME ZONE 'UTC'
                   ORDER BY h.id DESC LIMIT 1
@@ -104,6 +119,7 @@ async function listControlCompletions(db, user, scope, { cursor, summary = false
         icon: '✓',
         title: `Завершено: ${event.title || 'Задача без назви'}`,
         message: event.executor_name ? `Виконав(ла): ${event.executor_name}` : 'Виконавця не зафіксовано',
+        ...(event.kpi_credit ? { kpiCredit: event.kpi_credit } : {}),
         link: taskUrl(event.task_id, { businessContext: event.business_context }),
         read: Boolean(event.read_at)
     }));

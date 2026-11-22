@@ -109,6 +109,13 @@ test('results compare Kyiv calendar months using linked staff and typed task own
                 { date: '2024-02-01', work: 2, personal: 0, overdue: 3 }
             ] };
         }
+        if (sql.includes('WITH credited AS')) {
+            assert.deepEqual(params.slice(0, 4), [7, '2024-01-01', '2024-01-31', 'event_genix']);
+            assert.match(sql, /FILTER \(WHERE completed AND visible\)/);
+            return { rows: [{ assigned: 8, done: 5, rate: 63, details: [
+                { id: 91, title: 'Завершена задача', date: '2024-01-31', completedByYou: false }
+            ] }] };
+        }
         if (sql.includes('FROM tasks')) {
             assert.deepEqual(params, current
                 ? [7, '2024-01-01', '2024-02-01', 'event_genix']
@@ -139,6 +146,11 @@ test('results compare Kyiv calendar months using linked staff and typed task own
     });
     assert.equal(results.previous.tasks.completed, 2);
     assert.equal(results.current.tasks.actuallyCompleted, 6);
+    assert.deepEqual(results.taskKpi, {
+        assigned: 8, done: 5, rate: 63, from: '2024-01-01', through: '2024-01-31',
+        details: [{ id: 91, title: 'Завершена задача', date: '2024-01-31', completedByYou: false,
+            link: '/profile?tab=myday&open=91&businessContext=event_genix' }]
+    });
     assert.deepEqual(results.substitutions, [{ id:'91', date:'2024-01-08', role:'original', state:'completed', partial:true }]);
     assert.deepEqual(results.dailyTasks, {
         days: [

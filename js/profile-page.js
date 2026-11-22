@@ -4201,6 +4201,7 @@ function renderCabinetCompletionPulse() {
                 <h3><span aria-hidden="true">✓</span> Виконано сьогодні</h3>
                 <b>${formatCabinetPulseCount(metrics.parentTasks)}</b>
             </div>
+            <a href="/profile?tab=results" class="profile-task-kpi-link">КПД за задачами</a>
             ${renderCabinetCompletionTabs()}
             ${renderCabinetCompletionDetails()}
         </section>`;

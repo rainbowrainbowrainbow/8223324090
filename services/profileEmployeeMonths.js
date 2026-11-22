@@ -6,7 +6,10 @@ const { getEmployeePayrollPreview } = require('./payroll');
 const { loadPayrollSettlementReadModels } = require('./payrollSettlement');
 const { taskWorkloadDateSql } = require('./taskCabinetProjection');
 const { TASK_ACTION_TYPES } = require('./taskActionConstants');
-const { taskKpiCompletionJoinSql, taskKpiPrimaryOwnerSql, taskKpiEligibleSql, taskKpiCompletedSql } = require('./taskPerformancePolicy');
+const { taskKpiCompletionJoinSql, taskKpiPrimaryOwnerSql, taskKpiEligibleSql, taskKpiCompletedSql,
+    taskKpiDaySql, taskKpiPeriodSql } = require('./taskPerformancePolicy');
+const { buildTaskVisibilityScope } = require('./taskPolicy');
+const { taskUrl } = require('../js/task-links');
 
 const kyivDate = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
 
@@ -146,6 +149,35 @@ async function loadEmployeeSalary(db, staffId, range) {
     };
 }
 
+async function loadMonthlyTaskKpi(db, viewer, context, range) {
+    const through = employeeDateOffset(range.to, -1);
+    const params = [viewer.id, range.from, through, context];
+    const visible = buildTaskVisibilityScope(viewer, params, 't');
+    const { rows: [kpi] } = await db.query(
+        `
+        WITH credited AS (
+            SELECT t.id, t.title, ${taskKpiDaySql('t.completed_at')} AS completion_day,
+                   ${taskKpiCompletedSql()} AS completed, completion.actor_user_id = $1 AS "completedByYou",
+                   (TRUE ${visible}) AS visible
+            FROM tasks t ${taskKpiCompletionJoinSql()}
+            WHERE COALESCE(t.business_context, 'event_genix') = $4
+              AND ${taskKpiPeriodSql('t', '$2::date', '$3::date')}
+              AND ${taskKpiEligibleSql()}
+              AND ${taskKpiPrimaryOwnerSql()} = $1
+        )
+        SELECT COUNT(*)::int AS assigned, COUNT(*) FILTER (WHERE completed)::int AS done,
+               ROUND(COUNT(*) FILTER (WHERE completed)::numeric * 100 / NULLIF(COUNT(*), 0))::int AS rate,
+               COALESCE(jsonb_agg(jsonb_build_object('id', id, 'title', title, 'date', completion_day,
+                   'completedByYou', "completedByYou") ORDER BY completion_day DESC NULLS LAST, id DESC)
+                   FILTER (WHERE completed AND visible), '[]'::jsonb) AS details
+        FROM credited`, params
+    );
+    return {
+        ...kpi, from: range.from, through,
+        details: kpi.details.map(task => ({ ...task, link: taskUrl(task.id, { businessContext: context }) }))
+    };
+}
+
 async function loadResultPeriod(db, staffId, userId, scope, range) {
     const taskParams = [userId, range.from, range.to, scope.activeContext];
     const params = [staffId, range.from, range.to];
@@ -278,10 +310,11 @@ async function loadDailyTaskResults(db, userId, scope, today) {
 async function loadEmployeeResults(db, employee, userId, scope, range, options = {}) {
     const today = kyivDate.format(options.now || new Date());
     const [currentRange, previousRange] = employeeComparisonRanges(range, today);
-    const [current, previous, dailyTasks, substitutions] = await Promise.all([
+    const [current, previous, dailyTasks, taskKpi, substitutions] = await Promise.all([
         loadResultPeriod(db, employee.id, userId, scope, currentRange),
         loadResultPeriod(db, employee.id, userId, scope, previousRange),
         loadDailyTaskResults(db, userId, scope, today),
+        loadMonthlyTaskKpi(db, options.viewer || { id: userId }, scope.activeContext, range),
         scope.activeContext === DEFAULT_BUSINESS_CONTEXT ? db.query(
             `SELECT id::text AS id, work_date::text AS date, state,
                     CASE WHEN staff_id = $1 THEN 'replacement' ELSE 'original' END AS role,
@@ -304,7 +337,7 @@ async function loadEmployeeResults(db, employee, userId, scope, range, options =
             [employee.id, range.from, range.to, DEFAULT_BUSINESS_CONTEXT]
         ) : null
     ]);
-    return { state: 'ready', month: range.month, current, previous, dailyTasks,
+    return { state: 'ready', month: range.month, current, previous, dailyTasks, taskKpi,
         currentAssignments: employee.profession_assignments || [],
         ...(substitutions ? { substitutions: substitutions.rows } : {}) };
 }

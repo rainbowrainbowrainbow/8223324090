@@ -499,7 +499,7 @@ router.get('/profile/me/salary', authenticateToken, (req, res) =>
 
 router.get('/profile/me/results', authenticateToken, (req, res) =>
     readEmployeeProfileMonth(req, res, (db, employee, scope, range) =>
-        loadEmployeeResults(db, employee, req.user.id, scope, range)));
+        loadEmployeeResults(db, employee, req.user.id, scope, range, { viewer: req.user })));
 
 // v10.6: Personal cabinet — comprehensive profile data with shift, achievements, team, deltas
 router.get('/profile', authenticateToken, async (req, res) => {

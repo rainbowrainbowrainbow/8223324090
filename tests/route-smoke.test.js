@@ -7324,7 +7324,9 @@ describe('route-level API safety smoke', () => {
         assert.equal(invalidGroup.status, 200, JSON.stringify(invalidGroup.data));
         assert.equal(invalidGroup.data.success, true);
         assert.equal(invalidGroup.data.data.nodes[0].displayGroup, null);
-        assert.deepEqual(invalidGroup.data.displayGroups.map(group => group.key), ['animators', 'trampoline', 'reception', 'admin', 'cafe', 'tech', 'cleaning']);
+        assert.deepEqual(invalidGroup.data.displayGroups.map(group => group.key), [
+            'animators', 'trampoline', 'reception', 'admin', 'cafe', 'tech', 'cleaning', 'ungrouped'
+        ]);
         assert.ok(queries.some(q => /INSERT INTO settings \(key, value\)/i.test(q.text)));
         assert.ok(queries.some(q => /INSERT INTO hr_audit_log/i.test(q.text)));
     });

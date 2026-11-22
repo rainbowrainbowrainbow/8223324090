@@ -37,7 +37,13 @@ function taskKpiDaySql(column) {
     return `((${column} AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/Kyiv')::date`;
 }
 
+function taskKpiPeriodSql(task, from, through) {
+    return `(${taskKpiDaySql(`${task}.created_at`)} BETWEEN ${from} AND ${through}
+        OR ${taskKpiDaySql(`${task}.completed_at`)} BETWEEN ${from} AND ${through})`;
+}
+
 module.exports = {
+    taskKpiPeriodSql,
     TASK_PERFORMANCE_POLICY_VERSION,
     OWNER_ACCEPTANCE_ACTIONS,
     taskKpiEligibleSql,

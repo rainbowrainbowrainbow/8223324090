@@ -2162,7 +2162,7 @@ const LEGACY_DEPARTMENT_FALLBACK = {
     security: 'Охорона'
 };
 
-const SCHEDULE_DEPARTMENT_ORDER = ['animators', 'trampoline', 'reception', 'admin', 'cafe', 'tech', 'cleaning'];
+const SCHEDULE_DEPARTMENT_ORDER = ['animators', 'trampoline', 'reception', 'admin', 'cafe', 'tech', 'cleaning', 'ungrouped'];
 const SCHEDULE_RECEPTION_ROLE_KEYS = new Set(['reception', 'manager', 'senior_manager']);
 const SCHEDULE_COPY_RAW_DEPARTMENT_SAFE = new Set(['animators', 'trampoline', 'cafe', 'cleaning']);
 const SCHEDULE_COPY_EXPLICIT_STAFF_CATEGORIES = new Set(['reception', 'tech', 'admin']);
@@ -2282,6 +2282,7 @@ function scheduleDepartmentLabels() {
         ...apiDepartmentLabels,
         reception: 'Рецепшен',
         tech: 'Технічний відділ',
+        ungrouped: 'Без групи',
         ...displayGroupLabels
     };
 }
@@ -2389,6 +2390,12 @@ function resolveScheduleSubGroup(staff = {}, departmentKey = '', context = {}) {
         : scheduleSubGroupsForDepartment(departmentKey);
     if (!subGroups.length) return null;
 
+    if (scheduleCanonicalDisplayGroupKey(staff) === normalizeScheduleDisplayGroupKey(departmentKey)) {
+        const canonicalSubgroup = normalizeProfessionKey(staff.display_subgroup || staff.displaySubgroup);
+        const matchingGroup = canonicalSubgroup && subGroups.find(group => (group.id || group.key) === canonicalSubgroup);
+        if (matchingGroup) return matchingGroup;
+    }
+
     const requestedDepartment = String(context.activeDepartment ?? StaffState.activeDept ?? 'all').trim();
     const activeDepartment = requestedDepartment && requestedDepartment !== 'all'
         ? normalizeScheduleDisplayGroupKey(requestedDepartment)
@@ -2444,7 +2451,7 @@ function scheduleRenderableSubGroupBuckets(departmentKey = '', partition = {}) {
     const groups = (Array.isArray(partition.groups) ? partition.groups : [])
         .filter(group => !shouldSkipScheduleSubGroup(departmentKey, group.subGroup));
     const ungrouped = uniqueScheduleStaffById(partition.ungrouped || []);
-    if (ungrouped.length) {
+    if (ungrouped.length && departmentKey !== 'ungrouped') {
         groups.push({ subGroup: SCHEDULE_OTHER_SUB_GROUP, staff: ungrouped });
     }
     return groups;
@@ -4860,7 +4867,7 @@ function renderSchedule() {
             }
         }
         // Rows from duplicate-label groups stay under the top-level header without a redundant subgroup header.
-        // Truly unclassified rows are already owned by the explicit "Інші" bucket above.
+        // Rows in the ungrouped department belong directly under its header.
         for (const emp of uniqueScheduleStaffById(deptStaff).filter(staff => !renderedStaffIds.has(normalizeScheduleStaffId(staff.id)))) {
             const staffId = normalizeScheduleStaffId(emp.id);
             bodyHtml += renderEmpRow(emp, dates, today, health, {

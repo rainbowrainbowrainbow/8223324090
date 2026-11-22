@@ -171,9 +171,10 @@ const STAFF_DISPLAY_GROUP_LABELS = {
     admin: 'Адміністрація',
     cafe: 'Кафе',
     tech: 'Технічний відділ',
-    cleaning: 'Прибирання'
+    cleaning: 'Прибирання',
+    ungrouped: 'Без групи'
 };
-const STAFF_DISPLAY_GROUP_ORDER = ['animators', 'trampoline', 'reception', 'admin', 'cafe', 'tech', 'cleaning'];
+const STAFF_DISPLAY_GROUP_ORDER = ['animators', 'trampoline', 'reception', 'admin', 'cafe', 'tech', 'cleaning', 'ungrouped'];
 const COMPANY_STRUCTURE_DEFAULT_DISPLAY_GROUPS = {
     director: 'admin',
     deputy_director: 'admin',

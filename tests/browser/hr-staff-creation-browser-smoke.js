@@ -75,7 +75,30 @@ async function seed(pool) {
         `INSERT INTO business_memberships (business_id, organization_id, user_id, role, is_default, is_active)
          VALUES ($1, $2, $3, 'creator', false, true)`, [secondBusiness.id, organization.id, creator.user.id]
     );
-    return actors;
+    const placements = [];
+    const placementCases = schedulePlacementOnly ? [
+        ['kitchen', 'Кухня', 'cafe', 'Кухня'],
+        ['unknown', 'QA Незнайомий відділ', 'ungrouped', '']
+    ] : [];
+    for (const [suffix, department, displayGroup, subgroup] of placementCases) {
+        const professionKey = `qa_grouping_${suffix}_${runId}`;
+        const { rows: [profession] } = await pool.query(
+            'INSERT INTO hr_professions (key, title, department, is_active) VALUES ($1, $2, $3, true) RETURNING id',
+            [professionKey, `QA placement ${suffix}`, suffix === 'kitchen' ? 'cafe' : department]
+        );
+        if (suffix === 'kitchen') {
+            await pool.query(
+                'INSERT INTO park_profession_departments (organization_id, profession_id, department) VALUES ($1, $2, $3)',
+                [organization.id, profession.id, department]
+            );
+        }
+        const { rows: [staff] } = await pool.query(
+            'INSERT INTO staff (name, role_type, department, position) VALUES ($1, $2, $3, $4) RETURNING id',
+            [`QA existing placement ${suffix} ${runId}`, professionKey, department, `QA placement ${suffix}`]
+        );
+        placements.push({ professionKey, department, displayGroup, subgroup, id: staff.id });
+    }
+    return { actors, placements };
 }
 
 function waitForResponse(page, method, pathname) {
@@ -174,7 +197,7 @@ async function verifyKitchenAccount(browser, managerPage, pool) {
     }
 }
 
-async function runActor(browser, pool, actor, existingAccountId) {
+async function runActor(browser, pool, actor, existingAccountId, placements) {
     const session = await login(actor.username, actor.password);
     const context = await browser.newContext({ viewport: { width: actor.width, height: 900 }, serviceWorkers: 'block' });
     await context.addInitScript(session => {
@@ -255,6 +278,38 @@ async function runActor(browser, pool, actor, existingAccountId) {
                 assert.equal(await schedulePlacement.innerText(), `У графіку — ${expectedPlacement}`);
             }
             await dialog.screenshot({ path: path.join(output, `${actor.label}-schedule-placement.png`) });
+            if (actor.label === 'desktop' || actor.label === 'mobile') {
+                const schedule = await context.newPage();
+                await schedule.route('**/*', route => new URL(route.request().url()).origin === new URL(target).origin
+                    ? route.continue() : route.abort());
+                try {
+                    await schedule.goto(new URL(actor.label === 'desktop' ? '/staff' : '/hr#schedule', target).href);
+                    for (const fixture of placements) {
+                        const groupLabel = fixture.displayGroup === 'cafe' ? 'Кафе' : 'Без групи';
+                        const placement = [groupLabel, fixture.subgroup].filter(Boolean).join(' → ');
+                        await department.selectOption({ label: fixture.department });
+                        await position.selectOption(fixture.professionKey);
+                        assert.equal(await schedulePlacement.innerText(), `У графіку — ${placement}`);
+                        assert.equal(await position.getAttribute('aria-describedby'), 'hrCreateStaffSchedulePlacement');
+                        await dialog.screenshot({ path: path.join(output, `${actor.label}-${fixture.displayGroup}-placement.png`) });
+                        const group = schedule.locator(`[data-schedule-group-toggle="${fixture.displayGroup}"]`);
+                        await group.waitFor({ state: 'visible' });
+                        assert.equal(await group.locator('.schedule-group-label').textContent(), groupLabel);
+                        if (await group.getAttribute('aria-expanded') === 'false') await group.press('Enter');
+                        const row = schedule.locator(`[data-schedule-staff-row="${fixture.id}"]`);
+                        await row.waitFor({ state: 'visible' });
+                        assert.equal(await row.count(), 1);
+                        assert.equal(await row.getAttribute('data-schedule-department'), fixture.displayGroup);
+                        assert.equal(await row.getAttribute('data-schedule-subgroup-label'), fixture.subgroup || null);
+                        await row.scrollIntoViewIfNeeded();
+                        await schedule.screenshot({ path: path.join(output, `${actor.label}-${fixture.displayGroup}-schedule.png`) });
+                        assert.deepEqual((await pool.query('SELECT department, role_type FROM staff WHERE id = $1', [fixture.id])).rows,
+                            [{ department: fixture.department, role_type: fixture.professionKey }]);
+                    }
+                } finally {
+                    await schedule.close();
+                }
+            }
         }
         await department.selectOption({ label: 'Аніматори' });
         await position.selectOption('animator');
@@ -825,7 +880,7 @@ async function runActor(browser, pool, actor, existingAccountId) {
             await createButton.click();
             await dialog.locator('[name="department"]').selectOption({ label: 'Кухня' });
             await dialog.locator('[name="position"]').selectOption(professionKey);
-            assert.equal(await schedulePlacement.innerText(), 'У графіку — Адміністрація',
+            assert.equal(await schedulePlacement.innerText(), 'У графіку — Кафе → Кухня',
                 'placement uses the effective Park department for a custom profession');
             await dialog.locator('#hrCreateStaffCancel').click();
             await verifyKitchenAccount(browser, page, pool);
@@ -1019,13 +1074,15 @@ async function main() {
     const pool = new Pool({ connectionString: database.url.toString(), ssl: false });
     let browser;
     try {
-        const actors = await seed(pool);
+        const { actors, placements } = await seed(pool);
         browser = await requirePlaywright().chromium.launch({ headless: true,
             ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } : {}) });
         if (!schedulePlacementOnly) {
             await verifyScheduleAccountForms(browser, pool, actors.find(actor => actor.role === 'creator'));
         }
-        for (const actor of actors) await runActor(browser, pool, actor, actors.find(item => item.label === 'mobile').id);
+        for (const actor of actors) {
+            await runActor(browser, pool, actor, actors.find(item => item.label === 'mobile').id, placements);
+        }
         if (process.env.EG_HR_UX_VISUAL_AUDIT === '1') {
             await require('./hr-crm-ux-visual-audit').runHrCrmVisualAudit({ browser, pool, actors, login, target, output, runId });
         }

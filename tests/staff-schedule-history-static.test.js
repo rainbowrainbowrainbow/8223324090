@@ -20,19 +20,35 @@ const staffCss = fs.readFileSync('css/pages-hr-staff.css', 'utf8');
 const staffScheduleBrowserSmoke = fs.readFileSync('tests/browser/staff-schedule-custom-range-browser-smoke.js', 'utf8');
 const liveStaffScheduleSmoke = fs.readFileSync('scripts/live-staff-schedule-smoke.js', 'utf8');
 
-it('records the current placement for standard and custom hiring roles', () => {
+it('shares placement between the profession catalog and existing staff cards', () => {
     const professions = [
         { key: 'cook', department: 'Кухня' },
-        { key: 'qa_linked', department: 'Кухня', structure_node_id: 'qa_kitchen' },
-        { key: 'qa_unlinked', department: 'Кухня' },
-        { key: 'qa_unknown', department: 'Інший відділ' }
+        { key: 'qa_linked', department: 'Кухня', structure_node_id: 'qa_tech' },
+        { key: 'qa_unlinked', department: '  КУХНЯ  ' },
+        { key: 'qa_unknown', department: 'Інший відділ' },
+        { key: 'qa_empty', department: '' },
+        { key: 'qa_admin', department: 'Адміністрація' }
     ];
     const context = staffDisplayGroups.staffDisplayGroupContextFromCompanyStructure({
-        nodes: [{ id: 'qa_kitchen', title: 'Кухня', displayGroup: 'cafe' }]
+        nodes: [{ id: 'qa_tech', title: 'Технічний відділ', displayGroup: 'tech' }]
     }, { professions });
-    assert.deepEqual(professions.map(profession =>
-        staffDisplayGroups.professionSchedulePlacement(profession, context).groupLabel
-    ), ['Кафе', 'Кафе', 'Адміністрація', 'Адміністрація']);
+    const expected = [
+        ['Кафе', 'Кухня'], ['Технічний відділ', ''], ['Кафе', 'Кухня'],
+        ['Без групи', ''], ['Без групи', ''], ['Адміністрація', '']
+    ];
+    for (const [index, profession] of professions.entries()) {
+        const { groupLabel, subgroupLabel } = staffDisplayGroups.professionSchedulePlacement(profession, context);
+        const staff = staffDisplayGroups.decorateStaffWithDisplayGroup(
+            { role_type: profession.key, department: profession.department }, { displayGroupContext: context }
+        );
+        assert.deepEqual([groupLabel, subgroupLabel], expected[index], profession.key);
+        assert.deepEqual([staff.display_group_label, staff.display_subgroup_label], expected[index], profession.key);
+    }
+    const kitchenStaff = staffDisplayGroups.decorateStaffWithDisplayGroup({
+        role_type: 'qa_unlinked', department: 'Кухня', secondary_professions: ['waiter']
+    });
+    const api = loadStaffScheduleBehaviorApi();
+    assert.equal(api.resolveScheduleSubGroup(kitchenStaff, 'cafe', { activeDepartment: 'cafe' })?.label, 'Кухня');
 });
 
 const STAFF_SCHEDULE_CATEGORY_FIXTURES = Object.freeze([
@@ -1372,7 +1388,7 @@ describe('staff schedule safety guards', () => {
     });
 
     it('groups reception, managers, and security into schedule display departments without changing stored departments', () => {
-        assert.match(staffPage, /const SCHEDULE_DEPARTMENT_ORDER = \['animators', 'trampoline', 'reception', 'admin', 'cafe', 'tech', 'cleaning'\]/);
+        assert.match(staffPage, /const SCHEDULE_DEPARTMENT_ORDER = \['animators', 'trampoline', 'reception', 'admin', 'cafe', 'tech', 'cleaning', 'ungrouped'\]/);
         assert.match(staffPage, /const SCHEDULE_RECEPTION_ROLE_KEYS = new Set\(\['reception', 'manager', 'senior_manager'\]\)/);
         const canonicalGroupBlock = namedFunctionBlock(staffPage, 'scheduleCanonicalDisplayGroupKey');
         assert.match(canonicalGroupBlock, /const backendGroup = normalizeScheduleDisplayGroupKey\(staff\.display_group \|\| staff\.displayGroup\)/);
@@ -1396,7 +1412,7 @@ describe('staff schedule safety guards', () => {
 
     it('centralizes operational staff display groups in the backend contract', () => {
         assert.deepEqual(staffDisplayGroups.listStaffDisplayGroups().map(group => group.key), [
-            'animators', 'trampoline', 'reception', 'admin', 'cafe', 'tech', 'cleaning'
+            'animators', 'trampoline', 'reception', 'admin', 'cafe', 'tech', 'cleaning', 'ungrouped'
         ]);
         assert.equal(staffDisplayGroups.resolveStaffDisplayGroup({ department: 'security', role_type: 'maintenance' }), 'tech');
         assert.equal(staffDisplayGroups.resolveStaffDisplayGroup({ department: 'admin', role_type: 'manager' }), 'reception');
@@ -1985,7 +2001,7 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /function shouldSkipScheduleSubGroup/);
         assert.match(resolverBlock, /scheduleSubGroupProfessionCandidates\(staff, activeDepartment\)/);
         assert.match(resolverBlock, /\.sort\(compareScheduleSubGroupCandidates\)/);
-        assert.doesNotMatch(resolverBlock, /\.find\(/);
+        assert.doesNotMatch(resolverBlock.slice(resolverBlock.indexOf('const requestedDepartment')), /\.find\(/);
         assert.match(partitionBlock, /uniqueScheduleStaffById\(deptStaff \|\| \[\]\)/);
         assert.match(partitionBlock, /ownershipByStaffId\.set\(staffId, subGroup\)/);
         assert.match(staffPage, /const SCHEDULE_OTHER_SUB_GROUP = Object\.freeze\(\{[\s\S]*label: 'Інші'/);

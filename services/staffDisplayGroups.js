@@ -5,7 +5,8 @@ const STAFF_DISPLAY_GROUPS = Object.freeze([
     { key: 'admin', label: 'Адміністрація', order: 40 },
     { key: 'cafe', label: 'Кафе', order: 50 },
     { key: 'tech', label: 'Технічний відділ', order: 60 },
-    { key: 'cleaning', label: 'Прибирання / сервіс', order: 70 }
+    { key: 'cleaning', label: 'Прибирання / сервіс', order: 70 },
+    { key: 'ungrouped', label: 'Без групи', order: 80 }
 ]);
 
 const STAFF_DISPLAY_GROUP_BY_KEY = Object.freeze(Object.fromEntries(
@@ -319,31 +320,45 @@ function staffCategoryProfessionKeys(staff = {}) {
     return [primary, ...secondary].filter(key => key && !seen.has(key) && seen.add(key));
 }
 
-function resolveStaffDisplayGroup(staff = {}, options = {}) {
+function resolveStaffDisplayPlacement(staff = {}, options = {}) {
     const explicitStaffGroup = normalizeStaffDisplayGroupKey(staff.display_group || staff.displayGroup);
-    if (explicitStaffGroup && options.preferExisting !== false) return explicitStaffGroup;
+    if (explicitStaffGroup && options.preferExisting !== false) return { displayGroup: explicitStaffGroup };
 
     const primaryProfessionRule = staffProfessionCategoryRule(staff.role_type || staff.roleType);
-    if (primaryProfessionRule) return primaryProfessionRule.displayGroup;
+    if (primaryProfessionRule) return primaryProfessionRule;
 
     const structureGroup = staffStructureDisplayGroupKey(options.structureNode || options.companyStructureNode);
-    if (structureGroup) return structureGroup;
+    if (structureGroup) return { displayGroup: structureGroup };
 
     const professionStructureGroup = staffStructureDisplayGroupKey(options.professionStructureNode);
-    if (professionStructureGroup) return professionStructureGroup;
+    if (professionStructureGroup) return { displayGroup: professionStructureGroup };
 
     const roleKey = normalizeStaffDisplayToken(staff.role_type || staff.roleType);
-    if (STAFF_DISPLAY_RECEPTION_ROLE_KEYS.has(roleKey)) return 'reception';
+    if (STAFF_DISPLAY_RECEPTION_ROLE_KEYS.has(roleKey)) return { displayGroup: 'reception' };
 
-    const departmentKey = normalizeStaffDisplayToken(staff.department);
-    if (departmentKey === 'security') return 'tech';
-    if (STAFF_DISPLAY_GROUP_KEYS.has(departmentKey)) return departmentKey;
-    return 'admin';
+    const departmentName = String(staff.department || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    if (departmentName === 'кухня' || departmentName === 'kitchen') {
+        const { displayGroup, subgroupKey, subgroupLabel } = STAFF_PROFESSION_CATEGORY_RULES.cook;
+        return { displayGroup, subgroupKey, subgroupLabel };
+    }
+    const departmentKey = normalizeStaffDisplayToken(departmentName);
+    if (departmentKey === 'security') return { displayGroup: 'tech' };
+
+    const namedGroup = STAFF_DISPLAY_GROUPS.find(group => group.label.toLowerCase() === departmentName);
+    return {
+        displayGroup: STAFF_DISPLAY_GROUP_KEYS.has(departmentKey) ? departmentKey : namedGroup?.key || 'ungrouped'
+    };
+}
+
+function resolveStaffDisplayGroup(staff = {}, options = {}) {
+    return resolveStaffDisplayPlacement(staff, options).displayGroup;
 }
 
 function staffScheduleCategoryMemberships(staff = {}, options = {}) {
+    const placement = options.placement || resolveStaffDisplayPlacement(staff, options);
     const canonicalGroup = normalizeStaffDisplayGroupKey(options.canonicalGroup)
-        || resolveStaffDisplayGroup(staff, options);
+        || placement.displayGroup;
+    const primaryProfessionKey = normalizeStaffDisplayToken(staff.role_type || staff.roleType);
     const memberships = [];
     const seen = new Set();
 
@@ -359,19 +374,21 @@ function staffScheduleCategoryMemberships(staff = {}, options = {}) {
             displayGroupLabel: staffDisplayGroupLabel(rule.displayGroup),
             subgroupKey: rule.subgroupKey,
             subgroupLabel: rule.subgroupLabel,
-            source: professionKey === normalizeStaffDisplayToken(staff.role_type || staff.roleType)
+            source: professionKey === primaryProfessionKey
                 ? 'primary_profession'
                 : 'secondary_profession'
         });
     }
 
-    if (!memberships.some(item => item.displayGroup === canonicalGroup)) {
+    const subgroupKey = placement.displayGroup === canonicalGroup ? placement.subgroupKey || '' : '';
+    if (!memberships.some(item => item.displayGroup === canonicalGroup
+        && (!subgroupKey || (item.subgroupKey === subgroupKey && item.professionKey === primaryProfessionKey)))) {
         memberships.unshift({
-            professionKey: normalizeStaffDisplayToken(staff.role_type || staff.roleType),
+            professionKey: primaryProfessionKey,
             displayGroup: canonicalGroup,
             displayGroupLabel: staffDisplayGroupLabel(canonicalGroup),
-            subgroupKey: '',
-            subgroupLabel: '',
+            subgroupKey,
+            subgroupLabel: subgroupKey ? placement.subgroupLabel : '',
             source: 'canonical_fallback'
         });
     }
@@ -421,11 +438,12 @@ function decorateStaffWithDisplayGroup(staff = {}, options = {}) {
         structureNode: options.structureNode || options.companyStructureNode || staffStructureNodeForDisplayGroup(staff, context),
         professionStructureNode: options.professionStructureNode || staffProfessionStructureNodeForDisplayGroup(staff, context)
     };
-    const group = resolveStaffDisplayGroup(staff, resolutionOptions);
+    const placement = resolveStaffDisplayPlacement(staff, resolutionOptions);
+    const group = placement.displayGroup;
     const label = staffDisplayGroupLabel(group);
     const memberships = staffScheduleCategoryMemberships(staff, {
         ...resolutionOptions,
-        canonicalGroup: group
+        placement
     });
     const displayGroups = [...new Set([group, ...memberships.map(item => item.displayGroup)].filter(Boolean))];
     const canonicalMembership = memberships.find(item => item.displayGroup === group) || null;

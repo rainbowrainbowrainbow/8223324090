@@ -132,6 +132,30 @@ export function createEmployeeRenderers({ escapeHtml, profileEmployeeDateText, p
             </figure>`;
     }
 
+    function renderTaskKpi(kpi) {
+        if (!kpi) return '';
+        const period = `${profileEmployeeDateText(kpi.from)} – ${profileEmployeeDateText(kpi.through)}`;
+        const missing = kpi.done - kpi.details.length;
+        return `
+            <section class="profile-employee-details profile-task-kpi" aria-labelledby="profileTaskKpiTitle">
+                <h3 id="profileTaskKpiTitle">КПД за задачами</h3>
+                <p>${escapeHtml(period)}</p>
+                <p>${kpi.assigned
+                    ? `<strong>${kpi.done} із ${kpi.assigned} · ${kpi.rate}%</strong> зараховано основному виконавцю`
+                    : 'За цей період немає задач, що враховуються в КПД.'}</p>
+                ${kpi.details.length ? `
+                    <details class="park-employee-disclosure">
+                        <summary>Зараховані задачі (${kpi.details.length})</summary>
+                        <ul>${kpi.details.map(task => `<li>
+                            <a href="${escapeHtml(task.link)}">${escapeHtml(task.title || 'Задача без назви')}</a>
+                            <span>${escapeHtml(task.date ? profileEmployeeDateText(task.date) : 'Дату завершення не зафіксовано')}
+                                ${task.completedByYou === false ? ' · Закрив інший користувач' : ''}</span>
+                        </li>`).join('')}</ul>
+                    </details>` : ''}
+                ${missing > 0 ? `<p>Без доступу до картки — ${missing}.</p>` : ''}
+            </section>`;
+    }
+
     function renderResults(data) {
         const current = data.current;
         const previous = data.previous;
@@ -171,6 +195,7 @@ export function createEmployeeRenderers({ escapeHtml, profileEmployeeDateText, p
         });
         return `
             ${data.dailyTasks?.days?.length >= 2 ? renderDailyTaskResults(data.dailyTasks) : ''}
+            ${renderTaskKpi(data.taskKpi)}
             <details class="profile-employee-comparison">
                 <summary>Відвідуваність, професійний розвиток і задачі</summary>
                 <table>

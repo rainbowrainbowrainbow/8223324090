@@ -291,12 +291,18 @@ function _renderAlertItem(a, isRead) {
     const levelClass = a.level || 'info';
 
     if (a.type === 'control_completion') {
+        const kpiCredit = {
+            self: 'Зараховано до вашого КПД',
+            primary: 'Зараховано до КПД основного виконавця'
+        };
+        const credit = Object.hasOwn(kpiCredit, a.kpiCredit) ? kpiCredit[a.kpiCredit] : '';
         return `<div class="ap-item info${isRead ? ' read' : ''}" data-alert-id="${id}">
             <div class="ap-item-main">
                 <span class="ap-icon" aria-hidden="true">✓</span>
                 <div class="ap-content">
                     <a class="ap-item-title" href="${link}" onclick="if (!event.metaKey &amp;&amp; !event.ctrlKey &amp;&amp; !event.shiftKey &amp;&amp; !event.altKey) { event.preventDefault(); _openControlAlert('${link}', '${a.eventKey}'); }">${escapeHtml(a.title || '')}</a>
                     <div class="ap-item-desc">${escapeHtml(a.message || '')}</div>
+                    ${credit ? `<div class="ap-item-desc">${credit}</div>` : ''}
                 </div>
                 ${isRead ? '' : `<button type="button" class="ap-act ap-act-secondary" onclick="_readControlAlert('${a.eventKey}', this)" aria-label="Позначити сповіщення як прочитане">✓</button>`}
             </div>

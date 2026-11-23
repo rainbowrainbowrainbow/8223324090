@@ -248,7 +248,7 @@ describe('static-only scheduler job behavior coverage', () => {
         resetState({ time: '00:05', kyivDate: new Date('2026-06-29T00:05:00+03:00') });
         mockLastSent('recurring');
         mockSetLastSent('recurring');
-        onQuery('active task templates', queryIncludes('FROM task_templates', 'WHERE is_active = true'), () => rows([
+        onQuery('active task templates', queryIncludes('FROM task_templates AS template', 'WHERE template.is_active = true'), () => rows([
             {
                 id: 41,
                 title: 'Open shift checklist',

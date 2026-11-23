@@ -603,9 +603,9 @@ async function checkRecurringTasks() {
 
         const templates = await pool.query(
             `SELECT *, COALESCE(business_context, $1) AS business_context
-             FROM task_templates
-             WHERE is_active = true
-             ORDER BY business_context ASC, created_at ASC`,
+             FROM task_templates AS template
+             WHERE template.is_active = true
+             ORDER BY COALESCE(template.business_context, $1) ASC, template.created_at ASC, template.id ASC`,
             [DEFAULT_TASK_BUSINESS_CONTEXT]
         );
         let created = 0;

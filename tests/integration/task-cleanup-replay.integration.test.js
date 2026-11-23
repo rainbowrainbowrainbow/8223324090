@@ -90,26 +90,6 @@ test('read-only audit and booking replay after an isolated archival fixture', {
         } finally {
             t.mock.timers.reset();
         }
-        let recurrenceVerification = 'scheduler';
-        if (!occurrences.length) {
-            // Check the creation boundary independently when the scheduler's
-            // existing duplicate business_context projection stops before it.
-            await assert.rejects(pool.query(`SELECT *, COALESCE(business_context, $1) AS business_context
-                FROM task_templates WHERE is_active = true ORDER BY business_context, created_at`, ['event_genix']),
-            { code: '42702' });
-            recurrenceVerification = 'creation_service_only_scheduler_42702';
-            t.diagnostic('Recurring scheduler blocked by PostgreSQL 42702 on its template query; tested creation service directly.');
-            const { createTask } = require('../../services/kleshnya');
-            const payload = { title: 'Fixture recurring replay', template_id: template.id,
-                created_by: 'system', source_type: 'recurring', businessContext: 'event_genix', duplicateMode: 'skip' };
-            const first = await createTask({ ...payload, date: '2099-02-02' });
-            const same = await createTask({ ...payload, date: '2099-02-02' });
-            assert.equal(same.id, first.id);
-            assert.equal(same.duplicateSkipped, true);
-            const next = await createTask({ ...payload, date: '2099-02-03' });
-            assert.notEqual(next.id, first.id);
-            occurrences = (await pool.query('SELECT id, date FROM tasks WHERE template_id = $1 ORDER BY date', [template.id])).rows;
-        }
         assert.deepEqual(occurrences.map(item => item.date), ['2099-02-02', '2099-02-03']);
         const after = await runAudit('after');
         assert.ok(after.ids.includes(active[0].id));
@@ -122,7 +102,7 @@ test('read-only audit and booking replay after an isolated archival fixture', {
         fs.writeFileSync(path.join(output, 'isolated-result.json'), JSON.stringify({
             cancelledBooking: { before: before[0].id, replay: active[0].id, activeAfterReplay: active.length },
             newBooking: (await matching(fresh))[0].id,
-            recurring: { verification: recurrenceVerification, occurrences },
+            recurring: { verification: 'scheduler', occurrences },
             wave: { classifier, count: wave.count, membershipChecksum: wave.membershipChecksum },
             groups: groups.rows
         }, null, 2));

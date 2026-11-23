@@ -31,11 +31,10 @@ to one. The new booking created ID `3`.
 archived rows. Hold waves whose cancelled booking triggers can be replayed until
 the rule behaviour is approved and verified.
 
-The recurring scheduler reached PostgreSQL error `42702`. The template query in
-`checkRecurringTasks` selects `*` plus another `business_context` output and orders
-by the ambiguous name. Reproducing the scheduler's inputs at the creation
-service retained ID `4` on the same date and created ID `5` for the next date.
-The scheduler query itself needs separate approval to change.
+The recurring template query now sorts by the qualified business context with
+the existing default for legacy rows. The test calls the actual scheduler twice
+for each fixture date. It kept ID `4` on `2099-02-02` and created only ID `5`
+on `2099-02-03`.
 
 ## Read-only commands for production counts
 

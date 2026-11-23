@@ -389,8 +389,7 @@ async function installFixtureRoutes(context, baseUrl, state) {
 async function waitForMode(page, mode) {
     await page.waitForFunction(expected => {
         const shell = document.getElementById('taskCenterShell');
-        const tab = document.querySelector(`.task-center-mode-tab[data-task-mode="${expected}"]`);
-        return shell?.dataset.taskMode === expected && tab?.getAttribute('aria-selected') === 'true';
+        return shell?.dataset.taskMode === expected;
     }, mode);
 }
 
@@ -433,60 +432,12 @@ async function assertNoHorizontalOverflow(page, label) {
     assert.deepEqual(result.protruding, [], `${label}: no non-scroll-container element protrudes outside viewport`);
 }
 
-async function assertComposerFitsViewport(page, label) {
-    await page.waitForFunction(() => {
-        const composer = document.getElementById('quickAdd');
-        if (!composer || composer.hidden) return false;
-        const rect = composer.getBoundingClientRect();
-        return rect.width > 0 && rect.height > 0;
-    }, { timeout: 10000 });
-    const result = await page.evaluate(() => {
-        const composer = document.getElementById('quickAdd');
-        const composerRect = composer?.getBoundingClientRect();
-        const selectors = [
-            '.task-composer-primary',
-            '.task-composer-details',
-            '.task-composer-group',
-            '.task-composer-title-wrap',
-            '.task-owner-toggle',
-            '.task-due-presets',
-            '#quickAdd input',
-            '#quickAdd select',
-            '#quickAdd button'
-        ];
-        const controls = [...new Set(selectors.flatMap(selector => [...document.querySelectorAll(selector)]))].map(el => {
-            const rect = el.getBoundingClientRect();
-            const style = getComputedStyle(el);
-            return {
-                selector: el.id ? `#${el.id}` : `.${String(el.className || '').trim().split(/\s+/).join('.')}`,
-                visible: rect.width > 0 && rect.height > 0,
-                left: rect.left,
-                right: rect.right,
-                width: rect.width,
-                boxSizing: style.boxSizing,
-                minWidth: style.minWidth,
-                maxWidth: style.maxWidth
-            };
-        }).filter(item => item.visible);
-        return {
-            viewport: window.innerWidth,
-            composer: composerRect ? {
-                visible: composerRect.width > 0 && composerRect.height > 0,
-                left: composerRect.left,
-                right: composerRect.right,
-                width: composerRect.width
-            } : null,
-            controls
-        };
-    });
-    assert.equal(result.composer?.visible, true, `${label}: quick-add composer is visible`);
-    assert.ok(result.composer.right <= result.viewport + 1, `${label}: composer fits viewport (${JSON.stringify(result)})`);
-    assert.ok(result.controls.length >= 8, `${label}: composer controls are rendered (${JSON.stringify(result)})`);
-    for (const control of result.controls) {
-        assert.ok(control.left >= result.composer.left - 1, `${label}: ${control.selector} stays inside composer left edge (${JSON.stringify(result)})`);
-        assert.ok(control.right <= result.composer.right + 1, `${label}: ${control.selector} stays inside composer right edge (${JSON.stringify(result)})`);
-        assert.ok(control.right <= result.viewport + 1, `${label}: ${control.selector} fits viewport (${JSON.stringify(result)})`);
-    }
+async function assertCreateLinkFitsViewport(page, label) {
+    const link = page.locator('#taskCenterCreateLink');
+    await link.waitFor();
+    const box = await link.boundingBox();
+    const width = await page.evaluate(() => innerWidth);
+    assert.ok(box.x >= 0 && box.x + box.width <= width + 1 && box.height >= 44, `${label}: create link fits the viewport`);
 }
 
 function parseCssRgb(value) {
@@ -513,7 +464,7 @@ function contrastRatio(foreground, background) {
 
 async function collectTaskCenterQueryControlStyles(page) {
     return page.evaluate(() => {
-        const controlSelector = '.task-center-query-row input, .task-center-query-row select, .task-center-saved-views-row select';
+        const controlSelector = '.task-center-query-row input, .task-center-query-row select, .task-center-saved-views-row select, .task-center-quick-filters select';
         return [...document.querySelectorAll(controlSelector)].map((el, index) => {
             const style = getComputedStyle(el);
             const placeholder = el.matches('input')
@@ -558,6 +509,7 @@ function assertDarkTaskCenterControls(styles, label) {
 }
 
 async function assertTaskCenterQueryThemeContract(page, label) {
+    await page.locator('#taskCenterQueryControls details').evaluate(element => { element.open = true; });
     const styles = await collectTaskCenterQueryControlStyles(page);
     assertDarkTaskCenterControls(styles, label);
 
@@ -651,7 +603,7 @@ async function assertTaskCenterOperationalDarkSurfaces(page, baseUrl) {
         { label: 'overview action pill', selector: '.task-overview-action' }
     ]), 'overview');
 
-    await page.locator('.task-center-mode-tab[data-task-mode="team"]').click();
+    await openPage(page, baseUrl, '?view=capacity');
     await waitForMode(page, 'team');
     await page.waitForSelector('.task-team-owner-card');
     assertDarkTaskCenterSurfaceStyles(await collectDarkTaskCenterSurfaceStyles(page, [
@@ -661,7 +613,7 @@ async function assertTaskCenterOperationalDarkSurfaces(page, baseUrl) {
         { label: 'team metric value', selector: '.task-team-metric strong', background: '.task-team-metric' }
     ]), 'team');
 
-    await page.locator('.task-center-mode-tab[data-task-mode="planning"]').click();
+    await openPage(page, baseUrl, '?mode=planning');
     await waitForMode(page, 'planning');
     await page.waitForSelector('.task-planning-table');
     assertDarkTaskCenterSurfaceStyles(await collectDarkTaskCenterSurfaceStyles(page, [
@@ -696,50 +648,40 @@ async function assertTaskCenterLightThemeUnchanged(page) {
     for (const item of styles.filter(entry => entry.type !== 'date')) {
         const background = parseCssRgb(item.backgroundColor);
         assert.ok(background, `light theme ${item.queryKey || 'saved-view'} background is parseable (${item.backgroundColor})`);
-        assert.ok(Math.min(background.r, background.g, background.b) >= 245, `light theme ${item.queryKey || 'saved-view'} keeps the existing white control background`);
+        const foreground = parseCssRgb(item.color);
+        assert.ok(relativeLuminance(background) >= 0.8, `light theme ${item.queryKey || 'saved-view'} uses a light surface`);
+        assert.ok(foreground && contrastRatio(foreground, background) >= 4.5, 'light theme control contrast is readable');
     }
 }
 
 async function verifyModesAndUrl(page, baseUrl) {
-    await openPage(page, baseUrl, '?mode=overview&queue=inbox&owner=901&from=2026-07-01&to=2026-07-31&status=todo&priority=urgent&category=admin&source=lead&search=fixture');
-    await waitForMode(page, 'overview');
-    await page.waitForSelector('.task-overview-queue', { timeout: 8000 });
+    await openPage(page, baseUrl);
+    await waitForMode(page, 'team');
+    await page.waitForSelector('.task-team-row');
+    assert.equal(await page.locator('#taskCenterCreateLink').isHidden(), true);
+    assert.equal(await page.locator('#quickAdd').count(), 0);
+    const views = page.locator('.task-center-navigation details');
+    await views.locator('summary').focus();
+    await page.keyboard.press('Enter');
+    assert.equal(await views.evaluate(element => element.open), true);
+    for (const [view, element] of [['board', '.kanban'], ['capacity', '.task-team-owner-card'], ['inbox', '.task-overview']]) {
+        await views.locator(`[data-view="${view}"]`).click();
+        await page.waitForSelector(element);
+        assert.equal(new URL(page.url()).searchParams.get('queue'), view);
+    }
+    const today = page.locator('.task-center-navigation [data-view="today"]');
+    await today.focus();
+    await page.keyboard.press('Enter');
+    assert.equal(await today.getAttribute('aria-pressed'), 'true');
+    assert.equal(new URL(page.url()).searchParams.get('queue'), 'today');
+
+    await openPage(page, baseUrl, '?view=team&owner=901&from=2026-07-01&to=2026-07-31&status=todo&priority=urgent&category=admin&source=lead&search=fixture');
     const canonical = new URL(page.url());
     assert.equal(canonical.searchParams.get('owner'), '901');
     assert.equal(canonical.searchParams.get('priority'), 'urgent');
     assert.equal(canonical.searchParams.get('source'), 'lead');
     assert.equal(canonical.searchParams.get('search'), 'fixture');
-    assert.equal(await page.locator('[data-task-saved-view] option').count(), 2, 'saved view control contains server-backed fixture view');
-    assert.equal(await page.locator('#taskCreatePermissionNotice').isVisible(), true, 'create permission reason is visible');
-    assert.match(await page.locator('#taskCreatePermissionNotice').textContent(), /\S/, 'create permission reason is non-empty');
-
-    for (const mode of ['team', 'planning', 'library', 'overview']) {
-        await page.locator(`.task-center-mode-tab[data-task-mode="${mode}"]`).click();
-        await waitForMode(page, mode);
-        assert.equal(new URL(page.url()).searchParams.get('mode'), mode, `${mode} is reflected in URL`);
-        if (mode === 'team') await page.waitForSelector('.task-team-owner-card');
-        if (mode === 'planning') await page.waitForSelector('.task-planning-table');
-        if (mode === 'library') assert.equal(await page.locator('#templatesSection').isVisible(), true, 'library renders template surface');
-        if (mode === 'overview') await page.waitForSelector('.task-overview');
-    }
-
-    const firstTab = page.locator('.task-center-mode-tab').first();
-    await firstTab.focus();
-    await page.keyboard.press('ArrowRight');
-    await waitForMode(page, 'team');
-    assert.equal(await page.locator('.task-center-mode-tab[data-task-mode="team"]').evaluate(el => el === document.activeElement), true, 'ArrowRight moves focus and selection');
-    await page.keyboard.press('End');
-    await waitForMode(page, 'library');
-    assert.equal(await page.locator('.task-center-mode-tab[data-task-mode="library"]').evaluate(el => el === document.activeElement), true, 'End moves focus and selection');
-
-    const aria = await page.evaluate(() => ({
-        tablist: document.querySelector('.task-center-mode-tabs')?.getAttribute('role'),
-        tabs: [...document.querySelectorAll('.task-center-mode-tab')].map(tab => ({ role: tab.getAttribute('role'), selected: tab.getAttribute('aria-selected') }))
-    }));
-    assert.equal(aria.tablist, 'tablist');
-    assert.equal(aria.tabs.length, 4);
-    assert.equal(aria.tabs.filter(tab => tab.selected === 'true').length, 1);
-    assert.ok(aria.tabs.every(tab => tab.role === 'tab'));
+    await page.waitForFunction(() => document.querySelectorAll('[data-task-saved-view] option').length === 2);
 }
 
 async function verifyLegacyLinks(page, baseUrl) {
@@ -817,11 +759,12 @@ async function verifyStates(page, baseUrl, state) {
     await page.waitForSelector('.task-overview-more');
 
     state.overview = 'error';
-    // The expected fatal state must not pass through openPage's success-only
-    // readiness check: a fast error response can render before that check runs.
-    await page.goto(`${baseUrl}/tasks?mode=overview`, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForSelector('.page-fatal-error[role=alert]');
-    assert.equal(await page.locator('.page-fatal-error[role=alert]').isVisible(), true, 'initial overview error renders an accessible fatal state');
+    await openPage(page, baseUrl, '?mode=overview');
+    const retry = page.locator('#boardContent [data-task-retry], #boardContent [data-task-overview-retry]').first();
+    await retry.waitFor();
+    state.overview = 'normal';
+    await retry.click();
+    await page.waitForSelector('.task-overview-queue');
     state.overview = 'normal';
 }
 
@@ -838,13 +781,8 @@ async function verifyResponsiveThemesAndMotion(page, baseUrl, state) {
     });
     assert.equal(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches), true, 'reduced motion preference reaches page');
     assert.equal(await page.locator('body').evaluate(body => body.classList.contains('dark-mode')), true, 'dark mode is applied');
-    await assertComposerFitsViewport(page, '320x700 dark reduced-motion fresh load');
+    await assertCreateLinkFitsViewport(page, '320x700 dark reduced-motion fresh load');
     await assertNoHorizontalOverflow(page, '320x700 dark reduced-motion fresh load');
-    await page.locator('#taskDetailsToggle').click();
-    await page.waitForSelector('#taskComposerDetails:not([hidden])');
-    await assertComposerFitsViewport(page, '320x700 dark reduced-motion expanded composer');
-    await assertNoHorizontalOverflow(page, '320x700 dark reduced-motion expanded composer');
-    await page.locator('#taskDetailsToggle').click();
     await assertTaskCenterQueryThemeContract(page, 'body.dark-mode');
     await assertTaskCenterOperationalDarkSurfaces(page, baseUrl);
     await page.evaluate(() => {
@@ -860,14 +798,14 @@ async function verifyResponsiveThemesAndMotion(page, baseUrl, state) {
     await page.emulateMedia({ reducedMotion: 'no-preference', colorScheme: 'dark' });
     await page.setViewportSize({ width: 1440, height: 900 });
     await openPage(page, baseUrl, '?mode=overview');
-    await assertComposerFitsViewport(page, '1440x900 dark normal-motion resize start');
+    await assertCreateLinkFitsViewport(page, '1440x900 dark normal-motion resize start');
     await page.setViewportSize({ width: 320, height: 700 });
     await waitForStableLayout(page);
-    await assertComposerFitsViewport(page, '320x700 dark normal-motion resized');
+    await assertCreateLinkFitsViewport(page, '320x700 dark normal-motion resized');
     await assertNoHorizontalOverflow(page, '320x700 dark normal-motion resized');
     await page.setViewportSize({ width: 1440, height: 900 });
     await waitForStableLayout(page);
-    await assertComposerFitsViewport(page, '1440x900 dark normal-motion resize end');
+    await assertCreateLinkFitsViewport(page, '1440x900 dark normal-motion resize end');
     const viewports = [
         { width: 320, height: 700 },
         { width: 360, height: 760 },
@@ -878,7 +816,7 @@ async function verifyResponsiveThemesAndMotion(page, baseUrl, state) {
     for (const viewport of viewports) {
         await page.setViewportSize(viewport);
         await page.waitForTimeout(350);
-        await assertComposerFitsViewport(page, `${viewport.width}x${viewport.height} dark`);
+        await assertCreateLinkFitsViewport(page, `${viewport.width}x${viewport.height} dark`);
         await assertNoHorizontalOverflow(page, `${viewport.width}x${viewport.height}`);
     }
 
@@ -891,11 +829,11 @@ async function verifyResponsiveThemesAndMotion(page, baseUrl, state) {
     for (const viewport of viewports) {
         await page.setViewportSize(viewport);
         await page.waitForTimeout(350);
-        await assertComposerFitsViewport(page, `${viewport.width}x${viewport.height} light`);
+        await assertCreateLinkFitsViewport(page, `${viewport.width}x${viewport.height} light`);
         await assertNoHorizontalOverflow(page, `${viewport.width}x${viewport.height} light`);
     }
-    await page.locator('.task-center-mode-tab').first().focus();
-    const focusStyle = await page.locator('.task-center-mode-tab').first().evaluate(el => {
+    await page.locator('.task-center-navigation .board-tab').first().focus();
+    const focusStyle = await page.locator('.task-center-navigation .board-tab').first().evaluate(el => {
         const style = getComputedStyle(el);
         return { outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth };
     });

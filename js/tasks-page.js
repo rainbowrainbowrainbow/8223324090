@@ -1332,24 +1332,13 @@ function setTaskCenterToolsOpen(isOpen) {
 function syncTaskCenterShell() {
     const mode = normalizeTaskCenterMode(currentTaskMode);
     const shell = document.getElementById('taskCenterShell');
-    const description = document.getElementById('taskCenterModeDescription');
     const context = document.getElementById('taskCenterBusinessContext');
     if (shell) shell.dataset.taskMode = mode;
-    if (description) description.textContent = taskCenterQueryState.personalOverdue
-        ? 'Мої прострочені задачі за чинними правилами обліку у вибраному бізнесі.'
-        : taskCenterQueryState.bookingOverdue
-        ? 'Прострочена підготовка доступних подій у вибраному бізнесі.'
-        : TASK_CENTER_MODE_CONFIG[mode].description;
     if (context) {
         const businessContext = taskBusinessContext();
         const business = window.CrmBusinessContext?.options?.(pageCurrentUser)?.find(item => (item.id || item.key) === businessContext);
         context.textContent = business?.label || businessContext;
     }
-    document.querySelectorAll('.task-center-mode-tab[data-task-mode]').forEach(tab => {
-        const active = tab.dataset.taskMode === mode;
-        tab.classList.toggle('active', active);
-        tab.setAttribute('aria-selected', active ? 'true' : 'false');
-    });
 }
 
 function setBoardView(view = 'inbox', mode = taskCenterModeForView(view)) {
@@ -1363,34 +1352,10 @@ function setBoardView(view = 'inbox', mode = taskCenterModeForView(view)) {
     syncTaskCenterShell();
 }
 
-function activateTaskMode(mode = 'overview') {
-    const nextMode = normalizeTaskCenterMode(mode);
-    assistantTaskFilter = '';
-    setTaskCenterToolsOpen(false);
-    activateTaskView(TASK_CENTER_MODE_CONFIG[nextMode].defaultView, { mode: nextMode });
-}
 function setupTaskCenterShell() {
-    document.querySelectorAll('.task-center-mode-tab').forEach(tab => {
-        tab.addEventListener('click', () => activateTaskMode(tab.dataset.taskMode || 'overview'));
-        tab.addEventListener('keydown', (event) => {
-            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-            event.preventDefault();
-            const tabs = Array.from(document.querySelectorAll('.task-center-mode-tab'));
-            const index = tabs.indexOf(tab);
-            const targetIndex = event.key === 'Home' ? 0
-                : event.key === 'End' ? tabs.length - 1
-                    : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
-            const target = tabs[targetIndex];
-            target?.focus();
-            if (target) activateTaskMode(target.dataset.taskMode || 'overview');
-        });
-    });
     document.getElementById('taskCenterToolsToggle')?.addEventListener('click', () => {
         const controls = document.getElementById('taskCenterLegacyControls');
         setTaskCenterToolsOpen(Boolean(controls?.hidden));
-    });
-    document.querySelectorAll('.task-center-metric[data-summary-view]').forEach(card => {
-        card.addEventListener('click', () => activateTaskView(card.dataset.summaryView || 'my'));
     });
     syncTaskCenterShell();
 }
@@ -1430,7 +1395,10 @@ function renderTaskCenterQueryControls() {
         `<option value="${escapeHtml(view.id)}">${escapeHtml(view.name)}</option>`
     )].join('');
     const quickFilters = [['overdue', 'Прострочені'], ['unassigned', 'Без відповідального'], ['automatic', 'Автоматичні']];
-    const selectedFilter = document.activeElement?.dataset?.taskQuickFilter;
+    const focused = host.contains(document.activeElement) ? document.activeElement : null;
+    const selectedFilter = focused?.dataset.taskQuickFilter;
+    const focusedQuery = focused?.dataset.taskCenterQuery;
+    const searchSelection = focusedQuery === 'search' ? [focused.selectionStart, focused.selectionEnd] : null;
     const extrasOpen = host.querySelector('details')?.open;
     host.innerHTML = `<div class="task-center-quick-filters">
         ${quickFilters.map(([key, label]) => `<button type="button" class="btn-secondary" data-task-quick-filter="${key}" aria-pressed="${state[key]}">${label}</button>`).join('')}
@@ -1449,6 +1417,11 @@ function renderTaskCenterQueryControls() {
         <button type="button" class="btn-secondary" data-task-delete-saved-view disabled>\u0412\u0438\u0434\u0430\u043b\u0438\u0442\u0438</button>
     </div></details>`;
     if (selectedFilter) host.querySelector(`[data-task-quick-filter="${selectedFilter}"]`)?.focus({ preventScroll: true });
+    if (focusedQuery) {
+        const field = host.querySelector(`[data-task-center-query="${focusedQuery}"]`);
+        field?.focus({ preventScroll: true });
+        if (searchSelection) field?.setSelectionRange(...searchSelection);
+    }
     if (host.dataset.bound === 'true') return;
     host.dataset.bound = 'true';
     host.addEventListener('input', event => {
@@ -2230,7 +2203,7 @@ async function loadTaskOverview(options = {}) {
     }
 }
 function taskTeamControlModeActive() {
-    return currentView === 'capacity';
+    return currentView === 'capacity' || (currentView === 'next' && currentTaskMode === 'planning');
 }
 
 function normalizeTaskTeamControlFilters() {
@@ -2287,7 +2260,8 @@ async function loadAllTasks(options = {}) {
     }
     try {
         const targetPage = append ? Math.max(1, Number(taskPagination.nextPage) || Number(taskPagination.page || 0) + 1) : 1;
-        const payload = await apiGetTasksPage({ view: currentView, page: targetPage, limit: taskPagination.limit || 100, signal: requestSignal });
+        const limit = append ? taskPagination.limit || 100 : 100;
+        const payload = await apiGetTasksPage({ view: currentView, page: targetPage, limit, signal: requestSignal });
         if (loadSeq !== taskLoadSeq) return;
         const incoming = payload.tasks;
         allTasks = append

@@ -31,5 +31,6 @@ system Chromium, set `TASK_CENTER_BROWSER_EXECUTABLE` to its executable path.
 - Opened a legacy link, read history and a retained checklist, and returned to
   the filtered team list. Checked keyboard actions and both themes in Chromium.
 - Ran the existing PostgreSQL My Day integration suites and the Chromium
-  co-assignee smoke. External AI provider behaviour and production data remain
+  co-assignee smoke. The Task Center browser parity suite also passed for the
+  retained views, keyboard focus, load states and theme contrast. External AI provider behaviour and production data remain
   outside this validation run.

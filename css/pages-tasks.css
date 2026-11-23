@@ -2159,6 +2159,8 @@ body.dark-mode .task-center-query-row input,
 html[data-theme="dark"] .task-center-query-row input,
 body.dark-mode .task-center-query-row select,
 html[data-theme="dark"] .task-center-query-row select,
+body.dark-mode .task-center-quick-filters select,
+html[data-theme="dark"] .task-center-quick-filters select,
 body.dark-mode .task-center-saved-views-row select,
 html[data-theme="dark"] .task-center-saved-views-row select {
     color-scheme: dark;
@@ -2177,6 +2179,8 @@ body.dark-mode .task-center-query-row input:focus,
 html[data-theme="dark"] .task-center-query-row input:focus,
 body.dark-mode .task-center-query-row select:focus,
 html[data-theme="dark"] .task-center-query-row select:focus,
+body.dark-mode .task-center-quick-filters select:focus,
+html[data-theme="dark"] .task-center-quick-filters select:focus,
 body.dark-mode .task-center-saved-views-row select:focus,
 html[data-theme="dark"] .task-center-saved-views-row select:focus {
     border-color: #2DD4BF;
@@ -2189,6 +2193,8 @@ body.dark-mode .task-center-query-row input:disabled,
 html[data-theme="dark"] .task-center-query-row input:disabled,
 body.dark-mode .task-center-query-row select:disabled,
 html[data-theme="dark"] .task-center-query-row select:disabled,
+body.dark-mode .task-center-quick-filters select:disabled,
+html[data-theme="dark"] .task-center-quick-filters select:disabled,
 body.dark-mode .task-center-saved-views-row select:disabled,
 html[data-theme="dark"] .task-center-saved-views-row select:disabled {
     background: rgba(15, 23, 42, .58);
@@ -2278,8 +2284,8 @@ body.dark-mode .task-card-subtask-item.is-blocked-attention {
     max-inline-size: 100%;
     min-block-size: 44px;
     padding-inline: .5rem;
-    background: var(--surface, var(--bg-card));
-    color: var(--text-primary);
+    background: var(--surface, var(--bg-card, white));
+    color: var(--text-primary, var(--gray-900));
     border: 1px solid var(--border-color, var(--gray-300));
     border-radius: .5rem;
 }
@@ -2343,4 +2349,15 @@ body.dark-mode .task-card-subtask-item.is-blocked-attention {
 @media (max-width: 760px) {
     .task-center-header #taskCenterCreateLink { align-self: start; }
     .task-center-shell .task-center-query-controls { margin-top: .65rem; }
+}
+
+html[data-theme="dark"] .tasks-page .task-team-row,
+html[data-theme="dark"] .task-center-navigation .board-tab:not(.active) {
+    background: var(--bg-card, #1e1e38);
+    color: var(--text-primary, #f8fafc);
+    border-color: var(--border-color, rgba(255, 255, 255, .12));
+}
+html[data-theme="dark"] .tasks-page .task-team-row:hover { border-color: var(--primary); }
+html[data-theme="dark"] .task-team-row :is(.task-team-due, .task-team-source, .task-team-status) {
+    color: var(--text-secondary, #cbd5e1);
 }

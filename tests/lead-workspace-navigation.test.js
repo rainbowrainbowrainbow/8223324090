@@ -92,7 +92,7 @@ function harness(t, url = 'https://crm.example/sales-funnel?queue=active', optio
         const originalLoadLeads = loadLeads;
         window.__workspaceTest.restoreListReload = () => { loadLeads = originalLoadLeads; currentView = 'table'; };
         window.__workspaceTest.rows = () => leadsData;
-        window.__workspaceTest.setCollaborationPrompt = fn => { requestCollaborationLeadTaskPayload = fn; };
+        window.__workspaceTest.setCollaborationComposer = fn => { openLeadCollaborationComposer = fn; };
         window.__workspaceTest.stubListReload = () => { loadLeads = async () => {}; };
     `, dom.getInternalVMContext());
     return {
@@ -564,40 +564,19 @@ test('create duplicate submission is blocked while the real stage confirmation a
     assert.equal(h.field('leadModal').classList.contains('active'), false);
 });
 
-test('collaboration workflow success followed by PATCH failure retries contacts without duplicating the task', async t => {
+test('lead editor hands other changes to the collaboration composer before any write', async t => {
     const record = editableWorkspace(929);
     const h = editorHarness(t, new Map([[929, record]]));
     await h.app.edit(929);
     h.change('leadName', 'Contact draft after collaboration');
     h.change('leadLeadType', 'collaboration');
-    let promptCount = 0;
-    h.app.setCollaborationPrompt(async () => { promptCount += 1; return { title: 'Isolated task' }; });
-    let patchCount = 0;
-    h.setRequestHandler(request => {
-        if (request.url.endsWith('/collaboration-task')) return {
-            ok: true, json: async () => ({ success: true, task: { id: 99 }, lead: { pipeline_stage: 'contacted' } })
-        };
-        if (request.method === 'PATCH') {
-            patchCount += 1;
-            return { ok: patchCount > 1, json: async () => ({ success: patchCount > 1, error: 'Retry contact save' }) };
-        }
-        return response(record);
-    });
-    await h.app.save();
-    assert.equal(h.field('leadPipelineStage').value, 'contacted');
+    const handoffs = [];
+    h.app.setCollaborationComposer(async (leadId, payload) => { handoffs.push([leadId, { ...payload }]); return true; });
+    await Promise.all([h.app.save(), h.app.save()]);
     assert.equal(h.field('leadName').value, 'Contact draft after collaboration');
     assert.equal(h.field('leadEditorForm').parentElement.id, 'leadWorkspaceEditorHost');
-    await h.app.save();
-    assert.equal(promptCount, 1);
-    assert.equal(h.mutations().filter(request => request.url.endsWith('/collaboration-task')).length, 1);
-    const patches = h.mutations().filter(request => request.method === 'PATCH');
-    assert.equal(patches.length, 2);
-    for (const request of patches) {
-        const payload = JSON.parse(request.body);
-        assert.equal(payload.client_name, 'Contact draft after collaboration');
-        assert.equal(Object.hasOwn(payload, 'lead_type'), false);
-        assert.equal(Object.hasOwn(payload, 'pipeline_stage'), false);
-    }
+    assert.deepEqual(handoffs, [[929, { client_name: 'Contact draft after collaboration' }]]);
+    assert.deepEqual(h.mutations(), []);
 });
 
 test('late editor load is discarded after a newer lead enters editing', async t => {

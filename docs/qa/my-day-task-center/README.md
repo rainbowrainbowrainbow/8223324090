@@ -25,6 +25,9 @@ system Chromium, set `TASK_CENTER_BROWSER_EXECUTABLE` to its executable path.
   delegation, co-assignment, completion and exactly one completion event.
 - Created linked work in a second business, dropped the first response, then
   replayed the same creation key. Tested batch overrides and operation-pack replay.
+- Changed a lead to collaboration in the My Day composer and replayed a lost
+  response. Retried separate contact edits after a write failure and verified
+  one source-linked task and one lead status event.
 - Checked the Kyiv date boundary from a browser in another time zone, private
   and observer visibility, server-side filters across 104 matches and retry after
   a collection error.
@@ -32,5 +35,6 @@ system Chromium, set `TASK_CENTER_BROWSER_EXECUTABLE` to its executable path.
   the filtered team list. Checked keyboard actions and both themes in Chromium.
 - Ran the existing PostgreSQL My Day integration suites and the Chromium
   co-assignee smoke. The Task Center browser parity suite also passed for the
-  retained views, keyboard focus, load states and theme contrast. External AI provider behaviour and production data remain
-  outside this validation run.
+  retained views, keyboard focus, load states and theme contrast.
+- The external AI provider and production database were unavailable in this
+  validation environment.

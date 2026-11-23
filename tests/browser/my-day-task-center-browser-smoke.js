@@ -281,6 +281,59 @@ async function run() {
             { title: 'Тестова основна задача', date: today, priority: 'normal' },
             { title: 'Тестова додаткова задача', date: null, priority: 'urgent' }
         ]);
+
+        const createdLead = await api('/api/leads', { token: manager.token, body: { client_name: 'Тест співпраці' } });
+        const leadId = (createdLead.lead || createdLead).id;
+        assert.ok(leadId);
+        const leadPage = `/sales-funnel?lead=${leadId}&businessContext=event_genix`;
+        const leadApi = `/api/leads/${leadId}`;
+        await goto(page, leadPage);
+        await page.locator('#leadWorkspaceTab-details').click();
+        await page.locator(`button[onclick="editLead(${leadId})"]`).click();
+        await page.locator('#leadName').fill('Оновлений контакт співпраці');
+        await page.locator('#leadLeadType').selectOption('collaboration');
+        await page.locator('#leadModalSave').click();
+        const collaborate = page.getByRole('button', { name: 'Оформити співпрацю', exact: true });
+        await collaborate.waitFor();
+        assert.equal(await page.locator('#cabinetTaskTime').inputValue(), '12:00');
+        assert.equal(await page.locator('[data-cabinet-add-task]').isVisible(), false);
+        await page.locator('#cabinetTaskOwner').selectOption(String(primary.user.id));
+        const collaborationTitle = 'Уточнити умови співпраці';
+        await page.locator('#cabinetTaskTitle').fill(collaborationTitle);
+        await page.evaluate(() => rerenderCabinetTaskTabs());
+        assert.equal(await page.locator('#cabinetTaskTitle').inputValue(), collaborationTitle);
+        assert.equal(await page.locator('#cabinetTaskOwner').inputValue(), String(primary.user.id));
+        const collaborationRequests = [];
+        await page.route('**' + leadApi + '/collaboration-task', async route => {
+            collaborationRequests.push(route.request().postDataJSON());
+            if (collaborationRequests.length > 1) return route.continue();
+            assert.ok((await route.fetch()).ok());
+            return route.abort('connectionreset');
+        });
+        await page.route('**' + leadApi, route => route.request().method() === 'PATCH'
+            ? route.fulfill({ status: 503, contentType: 'application/json', body: '{}' })
+            : route.continue(), { times: 1 });
+        await collaborate.click();
+        await page.locator('#cabinetTaskComposerStatus.error').waitFor();
+        assert.equal(await page.locator('#cabinetTaskTitle').isDisabled(), true);
+        const retriedCollaboration = page.waitForResponse(reply => new URL(reply.url()).pathname === leadApi + '/collaboration-task');
+        await collaborate.click();
+        const replayedCollaboration = await (await retriedCollaboration).json();
+        assert.equal(replayedCollaboration.meta?.replayed, true);
+        assert.deepEqual(collaborationRequests[0], collaborationRequests[1]);
+        await page.getByText('Задачу створено. Повторіть збереження решти змін ліда.', { exact: true }).waitFor();
+        await page.getByRole('button', { name: 'Зберегти зміни ліда', exact: true }).click();
+        await page.waitForURL(origin + leadPage);
+        assert.equal(collaborationRequests.length, 2);
+        const { rows: collaborationLeads } = await db.query(
+            'SELECT client_name, lead_type, pipeline_stage FROM leads WHERE id = $1', [leadId]);
+        assert.deepEqual(collaborationLeads, [{ client_name: 'Оновлений контакт співпраці', lead_type: 'collaboration', pipeline_stage: 'contacted' }]);
+        const { rows: collaborationTasks } = await db.query(`SELECT id, title, owner_user_id FROM tasks
+            WHERE source_type = 'lead' AND source_id = $1 AND business_context = 'event_genix'`, [String(leadId)]);
+        assert.deepEqual(collaborationTasks, [{ id: replayedCollaboration.task.id, title: collaborationTitle, owner_user_id: primary.user.id }]);
+        const { rows: interactions } = await db.query(`SELECT COUNT(*)::int AS count FROM lead_interactions
+            WHERE lead_id = $1 AND details->>'source' = 'leads.collaboration_task'`, [leadId]);
+        assert.deepEqual(interactions, [{ count: 1 }]);
         console.log('Task Center and My Day acceptance passed (Chromium, PostgreSQL, dark 360/1440 and light).');
     } catch (error) {
         await Promise.all(pages.map((page, index) => page.screenshot({

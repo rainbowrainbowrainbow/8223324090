@@ -65,6 +65,7 @@ let completedDashboardHistoryState = {
 let cabinetCreatePriority = 'normal';
 let cabinetTaskComposerExpanded = false;
 let cabinetCreateContext = null;
+let cabinetLeadCollaboration = null;
 let cabinetCreateAssignment = null;
 let myDayAutomaticOnly = false;
 let myDayUndatedOpen = false;
@@ -1490,6 +1491,7 @@ async function initProfilePage() {
                 const composer = document.getElementById('cabinetTaskComposer');
                 if (composer && composer.dataset.creationScope !== cabinetHrReminderScope()) {
                     cabinetCreateContext = null;
+                    cabinetLeadCollaboration = null;
                     cabinetCreateAssignment = null;
                     myCabinetData = null;
                     myDayUndatedOpen = false;
@@ -4720,7 +4722,7 @@ function bindCabinetCreateCoAssignees(form) {
         if (!team) owner.value = '';
         ownerField.hidden = !team || owner.options.length < 2;
         const primaryOwner = Number(owner.value || currentUserId);
-        fieldset.hidden = !team || !options.childElementCount;
+        fieldset.hidden = !team || !options.childElementCount || Boolean(cabinetLeadCollaboration?.composer.contains(form));
         options.querySelectorAll('input').forEach(input => {
             const primary = Number(input.value) === primaryOwner;
             input.closest('label').hidden = primary;
@@ -4736,7 +4738,7 @@ function bindCabinetCreateCoAssignees(form) {
             const permissions = access?.permissions;
             const canCreate = access?.capabilities?.create?.allowed ?? permissions?.canCreateTasks;
             const pack = document.querySelector('[data-cabinet-operation-pack]');
-            if (pack) pack.hidden = !canCreate;
+            if (pack) pack.hidden = !canCreate || Boolean(cabinetLeadCollaboration?.composer.contains(form));
             if (canCreate === false) {
                 form.querySelectorAll('[data-cabinet-create-action], [data-cabinet-add-task]').forEach(button => { button.disabled = true; });
             }
@@ -4848,8 +4850,7 @@ function clearCabinetTaskCreateAttempt(signature = '', idempotencyKey = '') {
     if (!signature || cabinetTaskCreateAttempt?.signature === signature) cabinetTaskCreateAttempt = null;
 }
 
-function setCabinetTaskCreateBusy(busy = false) {
-    const form = document.getElementById('cabinetTaskComposer');
+function setCabinetTaskCreateBusy(busy = false, form = document.getElementById('cabinetTaskComposer')) {
     if (form) form.dataset.cabinetCreateBusy = busy ? 'true' : 'false';
     form?.querySelectorAll?.('[data-cabinet-create-action], [data-task-ai-draft-submit-intent]')
         .forEach(button => {
@@ -4858,8 +4859,9 @@ function setCabinetTaskCreateBusy(busy = false) {
         });
 }
 
-function setCabinetTaskComposerStatus(message = '', type = '') {
-    const node = document.getElementById('cabinetTaskComposerStatus') || document.querySelector('[data-task-ai-draft-status]');
+function setCabinetTaskComposerStatus(message = '', type = '', root = document) {
+    const status = root === document ? document.getElementById('cabinetTaskComposerStatus') : root.querySelector('#cabinetTaskComposerStatus');
+    const node = status || root.querySelector?.('[data-task-ai-draft-status]');
     if (!node) return;
     node.textContent = message;
     node.className = `task-ai-draft-status cabinet-task-composer-status ${type || ''}`.trim();
@@ -5945,9 +5947,6 @@ function bindMyDayTaskNavigation(composer) {
         undated.dataset.bound = 'true';
         undated.addEventListener('toggle', () => { myDayUndatedOpen = undated.open; });
     }
-    if (composer.dataset.creationBound) return;
-    composer.dataset.creationBound = 'true';
-    composer.dataset.creationScope = cabinetHrReminderScope();
     const businessContext = window.CrmBusinessContext?.scope?.()?.activeContext;
     if (businessContext) {
         workspace.querySelectorAll('[data-profile-control-shortcut], [data-profile-team-link]').forEach(link => {
@@ -5956,14 +5955,21 @@ function bindMyDayTaskNavigation(composer) {
             link.href = url.href;
         });
     }
-    workspace.querySelector('[data-cabinet-automatic]')?.addEventListener('click', async event => {
-        const button = event.currentTarget;
-        myDayAutomaticOnly = !myDayAutomaticOnly;
-        button.setAttribute('aria-pressed', String(myDayAutomaticOnly));
-        button.disabled = true;
-        try { await refreshMyCabinetTab({ force: true, keepExistingOnError: false }); }
-        finally { button.disabled = false; }
-    });
+    const automatic = workspace.querySelector('[data-cabinet-automatic]');
+    if (automatic && !automatic.dataset.bound) {
+        automatic.dataset.bound = 'true';
+        automatic.addEventListener('click', async event => {
+            const button = event.currentTarget;
+            myDayAutomaticOnly = !myDayAutomaticOnly;
+            button.setAttribute('aria-pressed', String(myDayAutomaticOnly));
+            button.disabled = true;
+            try { await refreshMyCabinetTab({ force: true, keepExistingOnError: false }); }
+            finally { button.disabled = false; }
+        });
+    }
+    if (composer.dataset.creationBound) return;
+    composer.dataset.creationBound = 'true';
+    composer.dataset.creationScope = cabinetHrReminderScope();
     composer.querySelector('[data-cabinet-add-task]')?.addEventListener('click', () => {
         const host = composer.querySelector('[data-cabinet-extra-tasks]');
         const row = document.createElement('div');
@@ -6028,12 +6034,108 @@ function bindMyDayTaskNavigation(composer) {
             composer.querySelector('#cabinetTaskDate').value = handoff.date;
             setCabinetDuePreset('custom');
         }
+        const leadId = handoff.sourceType === 'lead' && window.TaskLinks.taskId(handoff.sourceId);
+        if (handoff.workflow === 'lead_collaboration' && leadId) {
+            configureCabinetLeadCollaboration(composer, workspace, leadId, handoff);
+        }
         composer.querySelector('.park-composer-options').open = true;
     }
     window.requestAnimationFrame(() => {
         const title = composer.querySelector('#cabinetTaskTitle');
         if (title?.isConnected) title.focus();
     });
+}
+
+function configureCabinetLeadCollaboration(form, workspace, leadId, handoff) {
+    cabinetLeadCollaboration = {
+        leadId,
+        businessContext: handoff.businessContext,
+        pendingLeadEdits: handoff.pendingLeadEdits || {},
+        scope: cabinetHrReminderScope(),
+        composer: form.closest('.park-composer')
+    };
+    const status = form.querySelector('[data-cabinet-create-context]');
+    status.textContent = `Лід №${leadId} · після створення задачі тип ліда зміниться на «Співпраця».`;
+    status.hidden = false;
+    form.querySelector('[data-cabinet-create-action="plain"]').textContent = 'Оформити співпрацю';
+    form.querySelector('#cabinetTaskPriority option[value="urgent"]')?.remove();
+    form.querySelectorAll('[data-cabinet-add-task], [data-task-ai-draft-preview], [data-cabinet-no-date], #cabinetCreateCoAssignees').forEach(element => {
+        element.hidden = true;
+    });
+    ['cabinetTaskMode', 'cabinetTaskKind', 'cabinetTaskCategory', 'cabinetTaskVisibility', 'cabinetTaskAllowReschedule'].forEach(id => {
+        const label = form.querySelector('#' + id)?.closest('label');
+        if (label) label.hidden = true;
+    });
+    const pack = workspace.querySelector('[data-cabinet-operation-pack]');
+    if (pack) pack.hidden = true;
+}
+
+async function submitCabinetLeadCollaboration(form) {
+    const workflow = cabinetLeadCollaboration;
+    if (!workflow || workflow.scope !== cabinetHrReminderScope()) return;
+    const path = `/leads/${workflow.leadId}`;
+    cabinetTaskCreatePending = true;
+    setCabinetTaskCreateBusy(true, form);
+    try {
+        if (!workflow.createdTask && !workflow.request) {
+            const titleField = form.querySelector('#cabinetTaskTitle');
+            const dateField = form.querySelector('#cabinetTaskDate');
+            const timeField = form.querySelector('#cabinetTaskTime');
+            const ownerField = form.querySelector('#cabinetTaskOwner');
+            const title = titleField.value.trim();
+            const date = dateField.value;
+            const time = timeField.value;
+            const ownerUserId = Number(ownerField.value) || currentUserId;
+            const titleError = validateCabinetPlainTaskTitle(title);
+            if (titleError || !date || !time || !ownerUserId) {
+                setCabinetTaskComposerStatus(titleError || 'Оберіть відповідального, дату й час.', 'error', form);
+                (titleError ? titleField : !date ? dateField : !time ? timeField : ownerField).focus();
+                return;
+            }
+            workflow.request = {
+                title, date, deadline: `${date}T${time}:00`, ownerUserId,
+                description: form.querySelector('#cabinetTaskDetails').value.trim(),
+                priority: readCabinetCreatePriority(),
+                businessContext: workflow.businessContext,
+                idempotencyKey: randomCabinetTaskCreateIdempotencyKey()
+            };
+            workflow.lockedFields = [...form.querySelectorAll('input:enabled, select:enabled, textarea:enabled')];
+            workflow.lockedFields.forEach(field => { field.disabled = true; });
+        }
+        if (!workflow.createdTask) {
+            setCabinetTaskComposerStatus('Зберігаю співпрацю…', '', form);
+            const result = await apiPost(`${path}/collaboration-task`, workflow.request);
+            if (workflow !== cabinetLeadCollaboration || workflow.scope !== cabinetHrReminderScope()) return;
+            if (!result?.success || !result.task?.id) {
+                if (result?.status >= 400 && result.status < 500) {
+                    workflow.request = null;
+                    workflow.lockedFields.forEach(field => { field.disabled = false; });
+                    setCabinetTaskComposerStatus(result.message || result.error || 'Не вдалося оформити співпрацю.', 'error', form);
+                } else {
+                    setCabinetTaskComposerStatus('Не вдалося підтвердити створення задачі. Повторіть збереження.', 'error', form);
+                }
+                return;
+            }
+            workflow.createdTask = result.task;
+            notifyTaskWidgetsChanged({ action: 'create', taskId: result.task.id });
+        }
+        if (workflow.scope !== cabinetHrReminderScope()) return;
+        if (Object.keys(workflow.pendingLeadEdits).length) {
+            form.querySelector('[data-cabinet-create-action="plain"]').textContent = 'Зберегти зміни ліда';
+            setCabinetTaskComposerStatus('Задачу створено. Зберігаю решту змін ліда…', '', form);
+            const saved = await apiPatch(path, { ...workflow.pendingLeadEdits, businessContext: workflow.businessContext });
+            if (workflow !== cabinetLeadCollaboration || workflow.scope !== cabinetHrReminderScope()) return;
+            if (!saved?.success) {
+                setCabinetTaskComposerStatus('Задачу створено. Повторіть збереження решти змін ліда.', 'error', form);
+                return;
+            }
+        }
+        const params = new URLSearchParams({ lead: String(workflow.leadId), businessContext: workflow.businessContext });
+        window.location.assign(`/sales-funnel?${params}`);
+    } finally {
+        cabinetTaskCreatePending = false;
+        setCabinetTaskCreateBusy(false, form);
+    }
 }
 
 async function createCabinetExtraTasks(fields, defaults) {
@@ -7485,6 +7587,10 @@ async function createCabinetTask(event) {
     const current = (typeof AppState !== 'undefined' && AppState.currentUser) ? AppState.currentUser : {};
     const title = String(input?.value || '').trim();
     const composer = document.getElementById('cabinetTaskComposer');
+    if (cabinetLeadCollaboration?.composer.contains(composer)) {
+        await submitCabinetLeadCollaboration(composer);
+        return;
+    }
     const aiCommitPayload = window.TaskAiDraft?.commitPayloadFor?.(composer);
     const coAssigneeUserIds = readCabinetCreateCoAssignees(composer);
     const titleError = !aiCommitPayload ? validateCabinetPlainTaskTitle(title) : '';
@@ -7992,6 +8098,14 @@ async function checkProfileWorkAccess() {
 }
 
 function attachProfileListeners() {
+    if (cabinetLeadCollaboration && cabinetLeadCollaboration.scope !== cabinetHrReminderScope()) {
+        cabinetLeadCollaboration = null;
+    }
+    const collaborationComposer = cabinetLeadCollaboration?.composer;
+    const newComposer = document.querySelector('.park-composer');
+    if (collaborationComposer && newComposer && collaborationComposer !== newComposer) {
+        newComposer.replaceWith(collaborationComposer);
+    }
     document.getElementById('profileWorkAccessCheck')?.addEventListener('click', checkProfileWorkAccess);
     bindProfileControlTabs();
     if (isOwnProfile) void window.TelegramCrmProfile?.mount(document.querySelector('[data-telegram-crm-profile]'));
@@ -8151,7 +8265,8 @@ function attachProfileListeners() {
     if (cabinetDate && cabinetDate.dataset.cabinetDateBound !== 'true') {
         cabinetDate.dataset.cabinetDateBound = 'true';
         cabinetDate.addEventListener('change', () => {
-            setCabinetDuePreset(cabinetDate.value ? 'custom' : 'no_date');
+            const hasRequiredDate = cabinetLeadCollaboration?.composer.contains(cabinetDate);
+            setCabinetDuePreset(cabinetDate.value || hasRequiredDate ? 'custom' : 'no_date');
         });
     }
     const noDate = document.querySelector('[data-cabinet-no-date]');

@@ -3419,6 +3419,15 @@ router.post('/:id/collaboration-task', shapeRevenueResponse, async (req, res) =>
             return res.status(400).json({ success: false, error: 'Оберіть відповідального для задачі співпраці' });
         }
 
+        const operationKey = String(req.body?.idempotencyKey || '').trim();
+        if (operationKey && !/^[a-zA-Z0-9_-]{12,120}$/.test(operationKey)) {
+            return res.status(400).json({ success: false, error: 'Некоректний ключ створення задачі' });
+        }
+        const actorId = Number(req.user?.id);
+        const requestHash = operationKey && crypto.createHash('sha256').update(JSON.stringify([
+            ownerId.value, cleanText(req.body.title), cleanText(req.body.description), cleanText(req.body.comment),
+            cleanText(req.body.date), cleanText(req.body.deadline), normalizeCollaborationTaskPriority(req.body.priority)
+        ])).digest('hex');
         const afterCommit = [];
         await client.query('BEGIN');
         transactionStarted = true;
@@ -3444,6 +3453,27 @@ router.post('/:id/collaboration-task', shapeRevenueResponse, async (req, res) =>
             await client.query('ROLLBACK');
             transactionStarted = false;
             return res.status(400).json({ success: false, error: taskPayload.error });
+        }
+
+        if (operationKey) {
+            // The lead row lock serializes original submissions and retries.
+            const { rows: [existing] } = await client.query(
+                `SELECT * FROM tasks
+                 WHERE business_context = $1 AND source_type = 'lead' AND source_id = $2
+                   AND created_by_user_id = $3 AND control_meta->>'collaborationOperationKey' = $4
+                 LIMIT 1`,
+                [businessContext, String(leadId), actorId, operationKey]
+            );
+            if (existing) {
+                await client.query('COMMIT');
+                transactionStarted = false;
+                if (existing.control_meta.collaborationRequestHash !== requestHash) {
+                    return res.status(409).json({ success: false, error: 'Запит уже використано для іншої задачі' });
+                }
+                return res.json({ success: true, lead: oldLead, task: existing, meta: { atomic: true, replayed: true } });
+            }
+            taskPayload.control_meta.collaborationOperationKey = operationKey;
+            taskPayload.control_meta.collaborationRequestHash = requestHash;
         }
 
         const task = await getKleshnya().createTask(taskPayload, { pool: client, afterCommit });

@@ -36,7 +36,6 @@ const LEAD_WORKSPACE_NOTES_CONTRACT = Object.freeze({
 const ACTIVE_KANBAN_LEAD_TYPES = new Set(['quality']);
 const LEAD_TYPE_WORKFLOW_MESSAGES = {
     spam: 'Спам закрито і прибрано з активної воронки',
-    collaboration: 'Запит на співпрацю винесено з активної воронки, задача створена й привʼязана до ліда',
     informational: 'Інформаційний запит додано до розсилки й закрито з активної воронки',
     low_quality: 'Неякісний лід закрито з активної воронки',
     quality: 'Лід повернуто до типу “Якісний”'
@@ -3731,32 +3730,16 @@ async function prepareCreateStagePayload(stage) {
     return { pipeline_stage: normalizedStage };
 }
 async function leadTypePatchOptions(leadId, type) {
-    if (type === 'collaboration') {
-        const collaborationTaskPayload = await requestCollaborationLeadTaskPayload(leadId);
-        if (!collaborationTaskPayload) return null;
-        return { collaborationTaskPayload };
-    }
     if (!leadTypeNeedsReason(type)) return {};
     const lostReason = await requestLeadTypeReason(leadId, type);
     if (!lostReason) return null;
     return { lostReason };
 }
 
-async function persistLeadType(leadId, type, { reload = true, lostReason, collaborationTaskPayload = null } = {}) {
+async function persistLeadType(leadId, type, { reload = true, lostReason } = {}) {
     if (!guardLeadWrite('змінювати тип ліда')) return false;
     const normalizedType = LEAD_TYPE_MAP[type] ? type : 'quality';
-    if (normalizedType === 'collaboration') {
-        if (!collaborationTaskPayload) {
-            throw new Error('Заповніть задачу для співпраці перед зміною типу ліда');
-        }
-        const data = await createCollaborationLeadTask(leadId, collaborationTaskPayload);
-        if (typeof showNotification === 'function') {
-            showNotification(LEAD_TYPE_WORKFLOW_MESSAGES[normalizedType] || 'Співпрацю оформлено', 'success');
-        }
-        if (reload) await loadLeads();
-        return data?.success !== false;
-    }
-
+    if (normalizedType === 'collaboration') return openLeadCollaborationComposer(leadId);
     const body = { lead_type: normalizedType };
     if (lostReason !== undefined) body.lost_reason = lostReason;
     const res = await apiFetch(`/api/leads/${leadId}`, { method: 'PATCH', body: JSON.stringify(body) });
@@ -4206,7 +4189,7 @@ async function updateLeadTypeFromKanbanSelect(leadId, type, event) {
     }
     try {
         const saved = await persistLeadType(leadId, nextType, { reload: false, ...patchOptions });
-        if (!saved) {
+        if (!saved || nextType === 'collaboration') {
             return;
         }
         if (lead) lead.lead_type = nextType;
@@ -5344,40 +5327,21 @@ async function saveLead() {
     if (!session || session.loading || !leadEditorIsCurrent(session)) return;
     const editId = session.leadId;
     const sourceCustomerId = editId ? null : leadModalSourceCustomerId();
-    // Includes reason/task prompts, not just the final HTTP request.
+    // Includes reason prompts and composer navigation.
     leadSaveInFlight = true;
     try {
         const body = collectLeadEditorPayload(session);
         setLeadEditorSaving(true);
-        if (editId && body.lead_type && (leadTypeNeedsReason(body.lead_type) || body.lead_type === 'collaboration')) {
+        if (editId && body.lead_type === 'collaboration') {
+            delete body.lead_type;
+            delete body.pipeline_stage;
+            await openLeadCollaborationComposer(editId, body);
+            return;
+        }
+        if (editId && body.lead_type && leadTypeNeedsReason(body.lead_type)) {
             const patchOptions = await leadTypePatchOptions(editId, body.lead_type);
             if (!patchOptions || !leadEditorIsCurrent(session)) return;
             if (patchOptions.lostReason !== undefined) body.lost_reason = patchOptions.lostReason;
-            if (patchOptions.collaborationTaskPayload) {
-                const workflow = await createCollaborationLeadTask(editId, patchOptions.collaborationTaskPayload);
-                if (!leadEditorIsCurrent(session)) return;
-                // The existing workflow commits task + type separately. Remember its
-                // success so retrying a failed contact save does not create another task.
-                session.lead.lead_type = 'collaboration';
-                session.committedWorkflow = true;
-                session.initialValues.leadLeadType = 'collaboration';
-                const stage = workflow.lead?.pipeline_stage || workflow.lead?.pipelineStage || 'contacted';
-                session.lead.pipeline_stage = stage;
-                session.initialValues.leadPipelineStage = stage;
-                document.getElementById('leadPipelineStage').value = stage;
-                modalInitialState = JSON.stringify(session.initialValues);
-                if (currentWorkspaceData?.lead?.id === editId) {
-                    renderLeadWorkspaceContent({
-                        ...currentWorkspaceData,
-                        lead: { ...currentWorkspaceData.lead, leadType: 'collaboration', pipelineStage: stage,
-                            status: workflow.lead?.status || currentWorkspaceData.lead.status },
-                        canonical: { ...currentWorkspaceData.canonical, stage,
-                            aggregateStatus: workflow.lead?.status || currentWorkspaceData.canonical?.aggregateStatus }
-                    });
-                }
-                delete body.lead_type;
-                delete body.pipeline_stage;
-            }
         } else if (!editId) {
             const stagePayload = await prepareCreateStagePayload(document.getElementById('leadPipelineStage')?.value || 'new');
             if (!stagePayload || !leadEditorIsCurrent(session)) return;
@@ -5416,7 +5380,7 @@ async function saveLead() {
             const message = err.name === 'TypeError'
                 ? 'Не вдалося з’єднатися із сервером. Введені дані залишилися у формі.'
                 : err.message || 'Помилка збереження';
-            showNotification(session.committedWorkflow ? `Співпрацю й задачу вже збережено. Інші зміни залишилися у формі: ${message}` : message, 'error');
+            showNotification(message, 'error');
         }
     } finally {
         leadSaveInFlight = false;
@@ -5666,17 +5630,6 @@ function localDateInput(date = new Date()) {
     return localDateTimeInput(date).slice(0, 10);
 }
 
-async function loadLeadTaskOwners() {
-    const ownersRes = await apiFetch('/api/tasks/owners');
-    if (!ownersRes) return [];
-    const ownersData = await ownersRes.json().catch(() => ({}));
-    return Array.isArray(ownersData.users) ? ownersData.users : [];
-}
-
-function taskOwnerOptionLabel(owner = {}) {
-    return `${owner.label || owner.name || owner.username || ('User #' + owner.id)}${owner.role ? ' (' + owner.role + ')' : ''}`;
-}
-
 function leadPrimaryName(lead = {}, leadId = '') {
     return lead.clientName || lead.client_name || lead.name || (leadId ? `лід #${leadId}` : 'лід');
 }
@@ -5699,100 +5652,28 @@ function defaultCollaborationTaskDescription(leadId, lead = {}, comment = '') {
     ].filter(Boolean).join('\n');
 }
 
-async function requestCollaborationTaskValues(leadId, lead = {}) {
-    if (typeof formModal !== 'function') {
-        throw new Error('Форма задач недоступна. Оновіть сторінку і повторіть дію.');
-    }
-
-    let taskOwners = [];
-    try {
-        taskOwners = await loadLeadTaskOwners();
-    } catch (err) {
-        console.error('Load collaboration task owners error', err);
-        throw new Error('Не вдалося завантажити відповідальних для задачі');
-    }
-    if (!taskOwners.length) {
-        throw new Error('Немає доступних відповідальних для задачі');
-    }
-
-    const defaultDeadline = new Date();
-    defaultDeadline.setDate(defaultDeadline.getDate() + 1);
-    defaultDeadline.setHours(12, 0, 0, 0);
-
-    return formModal('Задача для співпраці', [
-        { key: 'title', label: 'Назва задачі', defaultValue: defaultCollaborationTaskTitle(leadId, lead), required: true },
-        {
-            key: 'ownerUserId',
-            label: 'Відповідальний',
-            type: 'select',
-            required: true,
-            options: [
-                { value: '', label: 'Оберіть відповідального' },
-                ...taskOwners.map(owner => ({
-                    value: String(owner.id),
-                    label: taskOwnerOptionLabel(owner)
-                }))
-            ]
-        },
-        { key: 'deadline', label: 'Дедлайн', type: 'datetime-local', defaultValue: localDateTimeInput(defaultDeadline), required: true },
-        {
-            key: 'priority',
-            label: 'Пріоритет',
-            type: 'select',
-            defaultValue: 'normal',
-            options: [
-                { value: 'high', label: 'Високий' },
-                { value: 'normal', label: 'Звичайний' },
-                { value: 'low', label: 'Низький' }
-            ]
-        },
-        { key: 'comment', label: 'Коментар', type: 'textarea', placeholder: 'Що саме треба перевірити або кому написати...' }
-    ], { okText: 'Створити задачу', type: 'success', icon: '🤝' });
-}
-
-async function requestCollaborationLeadTaskPayload(leadId) {
-    if (!guardLeadWrite('створювати задачу для співпраці')) return null;
+async function openLeadCollaborationComposer(leadId, pendingLeadEdits = {}) {
+    if (!guardLeadWrite('створювати задачу для співпраці')) return false;
     const workspaceLead = Number(currentWorkspaceData?.lead?.id) === Number(leadId) ? currentWorkspaceData.lead : null;
-    const lead = leadsData.find(l => Number(l.id) === Number(leadId)) || workspaceLead || {};
-    const values = await requestCollaborationTaskValues(leadId, lead);
-    if (!values) return null;
-
-    const title = String(values.title || '').trim();
-    const ownerUserId = String(values.ownerUserId || '').trim();
-    const deadline = values.deadline || '';
-    if (!title) throw new Error('Назва задачі обовʼязкова');
-    if (!ownerUserId) throw new Error('Оберіть відповідального для задачі');
-    if (!deadline) throw new Error('Дедлайн задачі обовʼязковий');
-
-    const body = {
-        title,
-        description: defaultCollaborationTaskDescription(leadId, lead, values.comment || ''),
-        date: String(deadline).slice(0, 10),
-        deadline,
-        priority: values.priority || 'normal',
+    const lead = workspaceLead || leadsData.find(item => Number(item.id) === Number(leadId)) || {};
+    const today = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Europe/Kyiv', year: 'numeric', month: '2-digit', day: '2-digit'
+    }).format(new Date());
+    const tomorrow = new Date(Date.parse(today) + 86400000).toISOString().slice(0, 10);
+    return openManualTaskComposer({
+        workflow: 'lead_collaboration',
+        title: defaultCollaborationTaskTitle(leadId, lead),
+        description: defaultCollaborationTaskDescription(leadId, lead),
+        date: tomorrow,
+        time: '12:00',
+        priority: 'normal',
         category: 'operational',
-        task_type: 'human',
-        source_type: 'lead',
-        source_id: String(leadId),
-        sourceEntityType: 'lead',
-        sourceEntityId: String(leadId),
-        ownerUserId,
-        businessContext: leadContextFromRecord(lead)
-    };
-
-    return body;
-}
-
-async function createCollaborationLeadTask(leadId, taskPayload) {
-    const res = await apiFetch(`/api/leads/${leadId}/collaboration-task`, { method: 'POST', body: JSON.stringify(taskPayload || {}) });
-    if (!res) throw new Error('Не вдалося оформити співпрацю');
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || data.success === false) {
-        const message = data.message || data.error || (res.status === 409 ? 'Така активна задача вже існує' : 'Не вдалося оформити співпрацю');
-        throw new Error(message);
-    }
-    if (!data.task?.id) throw new Error('Задачу створено без id. Перевірте задачник перед зміною типу ліда.');
-    return data;
+        sourceType: 'lead',
+        sourceId: leadId,
+        sourceLabel: 'Лід',
+        businessContext: leadContextFromRecord(lead),
+        pendingLeadEdits
+    });
 }
 
 async function createLeadWorkspaceCallbackTask(leadId) {

@@ -676,3 +676,65 @@ html:has(.park-my-day.is-completing-task)::view-transition-new(root) { animation
 .park-task-dialog-facts dd { margin: .2rem 0 0; font-weight: 650; }
 .park-my-day-role-group { display: grid; gap: .65rem; }
 .park-my-day-role-group h4 { margin-block: .25rem 0; font-size: .95rem; }
+
+.park-task-navigation,
+.cabinet-extra-task {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: .5rem;
+}
+.park-task-navigation { margin-block: .5rem; }
+.park-task-navigation :is(a, button),
+.park-task-menu > summary,
+.park-undated > summary {
+    display: inline-flex;
+    align-items: center;
+    min-block-size: 44px;
+    padding-inline: .75rem;
+    border-radius: .6rem;
+    border: 1px solid var(--park-outline);
+    background: var(--park-surface);
+    color: var(--park-ink);
+    font: inherit;
+    cursor: pointer;
+}
+.park-task-navigation [aria-pressed="true"] {
+    border-color: var(--primary);
+    box-shadow: inset 0 0 0 1px var(--primary);
+    font-weight: 700;
+}
+.park-undated { margin-block: .75rem; }
+.park-undated > summary { display: list-item; padding-block: .55rem; }
+.park-task-menu { position: relative; }
+.park-task-menu > summary { justify-content: center; min-inline-size: 44px; padding: 0; }
+.park-task-menu-items {
+    position: absolute;
+    z-index: 10;
+    inset-inline-end: 0;
+    display: grid;
+    min-inline-size: max-content;
+    gap: .25rem;
+    padding: .35rem;
+    border: 1px solid var(--park-outline);
+    border-radius: .6rem;
+    background: var(--park-surface);
+    box-shadow: var(--shadow-md);
+}
+.park-task-overdue { display: inline-flex; align-items: center; gap: .25rem; }
+.park-my-day [data-cabinet-create-co-assignee-options] {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+    max-block-size: 14rem;
+    overflow-y: auto;
+}
+.park-my-day [data-cabinet-create-co-assignee-options] label[hidden] { display: none !important; }
+.park-my-day #cabinetTaskOwnerField[hidden] { display: none; }
+.cabinet-extra-task { margin-block: .45rem; align-items: end; }
+.cabinet-extra-task > label { flex: 1 1 12rem; }
+.cabinet-extra-task label { display: grid; gap: .25rem; }
+.cabinet-extra-task input, .cabinet-extra-task select { min-inline-size: 0; max-inline-size: 100%; }
+.cabinet-extra-task details[open] { flex: 1 1 100%; }
+.cabinet-extra-task summary { cursor: pointer; }
+.park-my-day .cabinet-task-create-date input[type="date"] { inline-size: 100%; min-inline-size: 0; }
+.park-task-dialog details > summary { padding-block: .45rem; cursor: pointer; }

@@ -49,11 +49,11 @@ test('personal task scope treats a co-assignee as an executor without granting e
     assert.equal(canMutateTask(user, task), false);
 });
 
-test('My Day card keeps completion available and disables editing for a restricted co-assignee', () => {
+test('My Day card keeps completion available and hides editing for a restricted co-assignee', () => {
     const window = { escapeHtml: value => String(value ?? '') };
     vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../js/profile-my-day.js'), 'utf8'), { window });
     const card = window.ProfileMyDay.renderCard({ id: 1, title: 'Task', status: 'todo', priority: 'normal', mode: 'work', modeLabel: 'Work', dueState: 'none', role: 'executor', canEdit: false, canReschedule: false, priorityControl: '' });
     assert.match(card, /data-cabinet-task-action="done"[^>]*>/);
     assert.doesNotMatch(card, /data-cabinet-task-action="done"[^>]*disabled/);
-    assert.match(card, /data-cabinet-task-action="edit"[^>]*disabled/);
+    assert.doesNotMatch(card, /data-cabinet-task-action="edit"/);
 });

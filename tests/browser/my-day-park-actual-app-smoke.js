@@ -148,8 +148,8 @@ async function run() {
                 await card.waitFor({ state: 'visible', timeout: 60000 });
                 const parkDone = card.locator('[data-cabinet-task-action="done"]');
                 assert.equal(await parkDone.isEnabled(), true);
-                assert.equal(await card.locator('[data-cabinet-task-action="edit"]').isDisabled(), true);
-                assert.equal(await card.locator('[data-cabinet-task-priority-select]').isDisabled(), true);
+                assert.equal(await card.locator('[data-cabinet-task-action="edit"]').count(), 0);
+                assert.equal(await card.locator('[data-cabinet-task-priority-select]').count(), 0);
                 await card.scrollIntoViewIfNeeded();
                 await page.screenshot({ path: path.join(evidence, `my-day-co-assignee-mobile-${browserName}.png`), animations: 'disabled' });
                 const isCompletion = response => new URL(response.url()).pathname === `/api/tasks/${taskId}/complete`;

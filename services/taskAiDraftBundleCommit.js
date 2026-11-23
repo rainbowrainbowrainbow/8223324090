@@ -575,6 +575,7 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
     const requestHash = hashCommitRequest({
         bundleId,
         bundleTitle,
+        ...(input.sourceContext && { sourceContext: input.sourceContext }),
         tasks,
         ...(coAssigneeUserIds.length && { coAssigneeUserIds }),
         acceptedTaskMask,
@@ -681,6 +682,7 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
                 task_kind: 'action',
                 visibility: 'team',
                 workflow_state: 'inbox',
+                ...(input.sourceContext || {}),
                 source_module: 'tasks_ai_draft_bundle_commit',
                 control_meta: taskControlMetaForBundle({
                     bundleId,

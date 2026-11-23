@@ -175,7 +175,7 @@ for (const scenario of [
         ${slice('const TASK_CENTER_MODE_CONFIG', 'let userPermissions')}
         ${slice('function taskCenterOwnerOptions', 'async function persistTaskSavedViews')}
         ${slice('async function apiGetTasksPage', 'async function apiGetTaskOverview')}
-        ${slice('async function loadAllTasks', 'async function apiCreateOperationPack')}
+        ${slice('async function loadAllTasks', 'function filterByTaxonomy')}
         ${slice('function renderBoard()', 'function renderTaskOverview')}
         this.__drilldown = {
             read: taskCenterQueryStateFromUrl,

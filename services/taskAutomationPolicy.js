@@ -269,6 +269,23 @@ function taskMachineSignalSql(taskAlias = 't') {
     )`;
 }
 
+// Display provenance is independent of archive eligibility and human activity.
+function taskAutomaticOriginSql(taskAlias = 't') {
+    const source = `LOWER(COALESCE(${taskAlias}.source_type, ''))`;
+    const type = `LOWER(COALESCE(${taskAlias}.type, ''))`;
+    return `(
+        COALESCE(${taskAlias}.created_by_user_id, 0) = 0
+        AND ${source} NOT IN (${listToSql(AI_SOURCE_TYPES)})
+        AND ${type} NOT IN (${listToSql(AI_SOURCE_TYPES)})
+        AND (
+            (${taskAlias}.control_meta #>> '{automationProvenance,policyVersion}' = '${TASK_AUTOMATION_POLICY_VERSION}'
+             AND ${taskAlias}.control_meta #>> '{automationProvenance,serviceOwned}' = 'true')
+            OR ${type} IN (${listToSql(MACHINE_TASK_TYPES)})
+            OR LOWER(COALESCE(${taskAlias}.created_by, '')) IN (${listToSql(AUTOMATION_MARKER_CREATORS)})
+        )
+    ) IS TRUE`;
+}
+
 function taskProtectedKpiSignalSql(taskAlias = 't') {
     return `(
         LOWER(COALESCE(${taskAlias}.visibility, '')) IN (${listToSql(PRIVATE_OR_PERSONAL)})
@@ -474,6 +491,7 @@ module.exports = {
     numeric,
     protectionFlags,
     taskActiveWorkSql,
+    taskAutomaticOriginSql,
     taskCanonicalOverdueSql,
     taskCompletedSql,
     taskHumanCreatedSql,

@@ -137,6 +137,8 @@ const MODES = {
     'my-day-full-edition': ['tests/integration/my-day-postgres.integration.test.js'],
     'my-day-park': ['tests/integration/my-day-park.integration.test.js'],
     'my-day-park-browser': ['tests/browser/my-day-park-actual-app-smoke.js'],
+    'task-cleanup-replay': ['tests/integration/task-cleanup-replay.integration.test.js'],
+    'my-day-task-center-browser': ['tests/browser/my-day-task-center-browser-smoke.js'],
     'my-day-browser': ['tests/browser/my-day-park-actual-app-smoke.js'],
     'my-day-full-edition-browser': ['tests/browser/my-day-actual-app-browser-smoke.js'],
     'hr-reminders-browser': [

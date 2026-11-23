@@ -48,7 +48,7 @@ const {
 const { undoQuickTodayReschedule } = require('../services/taskReschedule');
 const { parseMyDayTaskOperation, isMyDayTaskOperationApplied, assertMyDayTaskOperationVersion } = require('../services/myDayTaskOperation');
 const { listTaskActionHistory, logTaskActionEvent, TASK_ACTION_TYPES } = require('../services/taskActionHistory');
-const { historicalTaskWorkSql, isTerminalStatus } = require('../services/taskAutomationPolicy');
+const { historicalTaskWorkSql, isTerminalStatus, taskActiveWorkSql, taskAutomaticOriginSql, taskWorkloadDateSql } = require('../services/taskAutomationPolicy');
 const { normalizeTaskPayload: normalizeTaskContractPayload } = require('../services/taskContract');
 const { withTaskDrawerContract } = require('../services/taskDetailContract');
 const { completionEventKey, listControlCompletions, markControlCompletionsRead } = require('../services/taskControlCompletionInbox');
@@ -651,16 +651,6 @@ function taskWorkloadDate(task = {}) {
     );
 }
 
-function taskWorkloadDateSql(alias = 't') {
-    return `COALESCE(
-        (${alias}.scheduled_start_at AT TIME ZONE 'Europe/Kyiv')::date,
-        (${alias}.snoozed_until AT TIME ZONE 'Europe/Kyiv')::date,
-        CASE WHEN LEFT(COALESCE(${alias}.date, ''), 10) ~ '^\\d{4}-\\d{2}-\\d{2}$' THEN LEFT(${alias}.date, 10)::date END,
-        (${alias}.deadline AT TIME ZONE 'Europe/Kyiv')::date,
-        (${alias}.remind_at AT TIME ZONE 'Europe/Kyiv')::date
-    )`;
-}
-
 function todayKyivDate() {
     const parts = new Intl.DateTimeFormat('en-CA', {
         timeZone: 'Europe/Kyiv',
@@ -1088,6 +1078,19 @@ async function buildTaskAiDraftPreview(req, res) {
     };
 }
 
+function taskAiSourceContext(body) {
+    const context = body.sourceContext || {};
+    const entityId = normalizeSourceEntityId(context.sourceEntityId);
+    const relatedType = String(context.sourceEntityType || '').trim().toLowerCase();
+    if (!entityId || !/^[a-z][a-z0-9_-]{0,79}$/.test(relatedType)) return null;
+    const entityType = normalizeSourceEntityType(relatedType);
+    return {
+        ...(entityType && { source_entity_type: entityType, source_entity_id: entityId }),
+        related_entity_type: relatedType,
+        related_entity_id: entityId
+    };
+}
+
 async function buildTaskAiDraftCommit(req, res) {
     const businessScope = requireTaskWriteScope(req, res);
     if (!businessScope) return null;
@@ -1098,6 +1101,7 @@ async function buildTaskAiDraftCommit(req, res) {
     const impacts = omitClassification ? [] : await listTaxonomy(pool, userId, 'impacts');
     return commitTaskAiDraft({
         omitClassification,
+        sourceContext: taskAiSourceContext(body),
         proposalToken: body.proposalToken || body.proposal_token,
         finalDraft: taskAiFinalDraftFromBody(body),
         coAssigneeUserIds: body.coAssigneeUserIds ?? body.co_assignee_user_ids,
@@ -1181,6 +1185,7 @@ async function buildTaskAiDraftBundleCommit(req, res) {
     const impacts = omitClassification ? [] : await listTaxonomy(pool, userId, 'impacts');
     return commitTaskAiDraftBundle({
         omitClassification,
+        sourceContext: taskAiSourceContext(body),
         proposalToken: body.proposalToken || body.proposal_token,
         proposalHash: body.proposalHash || body.proposal_hash,
         proposal: body.proposal,
@@ -1223,7 +1228,7 @@ router.get('/', async (req, res) => {
             related_entity_type, relatedEntityType, related_entity_id, relatedEntityId, source_module, sourceModule,
             source_entity_type, sourceEntityType, source_entity_id, sourceEntityId, pack_id, packId, pack_status, packStatus,
             view, include_duplicates, includeDuplicates, pagination, paginated, priority, source, source_type, overdue, dashboardFilter, search, q,
-            archive_system, archiveSystem, system_archive, systemArchive
+            archive_system, archiveSystem, system_archive, systemArchive, automatic, unassigned, overdue_work
         } = req.query;
         const conditions = [];
         const params = [];
@@ -1463,10 +1468,17 @@ router.get('/', async (req, res) => {
         const paginatedResponse = isTruthy(pagination || paginated);
         const taskView = String(view || '').trim();
         const archiveSystemMode = normalizeArchiveSystemMode(archive_system || archiveSystem || system_archive || systemArchive);
-        const activeTaskSql = `COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')`;
+        const activeTaskSql = taskActiveWorkSql('t');
+        const todaySql = "(NOW() AT TIME ZONE 'Europe/Kyiv')::date";
         const notDeferredSql = `(t.snoozed_until IS NULL OR t.snoozed_until <= NOW())`;
         const workloadDateSql = taskWorkloadDateSql('t');
-        const weekStartSql = `date_trunc('week', CURRENT_DATE)::date`;
+        const weekStartSql = `date_trunc('week', ${todaySql}::timestamp)::date`;
+        if (isTruthy(automatic)) conditions.push(taskAutomaticOriginSql('t'));
+        if (isTruthy(unassigned)) conditions.push(`t.owner_user_id IS NULL
+            AND NULLIF(BTRIM(t.assigned_to), '') IS NULL
+            AND NULLIF(BTRIM(t.owner), '') IS NULL
+            AND NOT EXISTS (SELECT 1 FROM task_co_assignees ca WHERE ca.task_id = t.id)`);
+        if (isTruthy(overdue_work)) conditions.push(activeTaskSql, notDeferredSql, `${workloadDateSql} < ${todaySql}`);
 
         // Apply the active view before LIMIT/OFFSET so populated views cannot be
         // hidden behind unrelated rows in the first legacy page.
@@ -1476,10 +1488,10 @@ router.get('/', async (req, res) => {
                 conditions.push(`(COALESCE(t.workflow_state, 'todo') = 'inbox' OR (t.date IS NULL AND t.deadline IS NULL AND t.scheduled_start_at IS NULL))`);
                 break;
             case 'today':
-                conditions.push(activeTaskSql, notDeferredSql, `(${workloadDateSql} = CURRENT_DATE OR ${workloadDateSql} IS NULL)`);
+                conditions.push(activeTaskSql, notDeferredSql, `${workloadDateSql} = ${todaySql}`);
                 break;
             case 'next':
-                conditions.push(activeTaskSql, notDeferredSql, `${workloadDateSql} > CURRENT_DATE`, `${workloadDateSql} <= (${weekStartSql} + 6)`);
+                conditions.push(activeTaskSql, notDeferredSql, `${workloadDateSql} > ${todaySql}`, `${workloadDateSql} <= (${weekStartSql} + 6)`);
                 break;
             case 'deferred':
                 conditions.push(activeTaskSql, `t.snoozed_until IS NOT NULL AND t.snoozed_until > NOW()`);
@@ -1560,6 +1572,8 @@ router.get('/', async (req, res) => {
                 GROUP BY d.task_id
              )
              SELECT t.*, u.name AS owner_name, u.username AS owner_username,
+                    ${taskAutomaticOriginSql('t')} AS is_automatic,
+                    ${workloadDateSql}::text AS workload_date,
                     EXISTS (SELECT 1 FROM task_co_assignees viewer_ca WHERE viewer_ca.task_id = t.id AND viewer_ca.user_id = $${viewerUserIdParam}) AS viewer_is_co_assignee,
                     COALESCE((SELECT COUNT(*) FROM task_observers tob WHERE tob.task_id = t.id), 0)::int AS observer_count,
                     EXISTS (
@@ -1588,7 +1602,7 @@ router.get('/', async (req, res) => {
                  ${taskPriorityOrderSql('t')},
                  ${canonicalTaskOrderSql('t')},
                  CASE t.status WHEN 'in_progress' THEN 0 WHEN 'todo' THEN 1 WHEN 'done' THEN 2 END,
-                 t.created_at DESC
+                 t.created_at DESC, t.id DESC
             LIMIT $${idx++} OFFSET $${idx++}`,
             params
         );
@@ -2241,6 +2255,7 @@ router.get('/my-cabinet', async (req, res) => {
                 businessScope,
                 bucket,
                 excludeControlFromPlanning,
+                automaticOnly: isTruthy(req.query.automatic),
                 includeLegacyMetadata: false,
                 focusDate: normalizeTaskCabinetFocusDate(req.query.focusDate || req.query.focus_date),
                 bucketLimit: normalizeTaskCabinetBucketLimit(req.query.limit || req.query.bucketLimit || req.query.bucket_limit),
@@ -2253,6 +2268,7 @@ router.get('/my-cabinet', async (req, res) => {
             user: req.user,
             businessScope,
             excludeControlFromPlanning,
+            automaticOnly: isTruthy(req.query.automatic),
             includeLegacyMetadata: false,
             focusDate: normalizeTaskCabinetFocusDate(req.query.focusDate || req.query.focus_date),
             planningRowLimit: req.query.planningRowLimit || req.query.planning_row_limit,
@@ -2485,6 +2501,11 @@ router.get('/:id', async (req, res) => {
                           AND viewer_tob.user_id = $${viewerUserIdParam}
                         LIMIT 1
                     ) AS viewer_observer_access_level,
+                    COALESCE((SELECT json_agg(checklist_item) FROM (
+                        SELECT sub.title, sub.is_done
+                        FROM task_subtasks sub WHERE sub.task_id = t.id
+                        ORDER BY sub.sort_order, sub.id LIMIT 100
+                    ) checklist_item), '[]'::json) AS checklist,
                     COALESCE(observer_rows.observers, '[]'::json) AS observers,
                     COALESCE(dep.total, 0)::int AS dependency_count,
                     COALESCE(dep.open, 0)::int AS open_dependency_count,
@@ -2534,6 +2555,7 @@ router.get('/:id', async (req, res) => {
         if (result.rows.length === 0) return res.status(404).json({ error: 'Task not found' });
         const row = result.rows[0];
         if (!row.task_standard_visibility) {
+            row.checklist = [];
             row.co_assignee_user_ids = [];
             row.co_assignees = [];
             row.observers = [];
@@ -3185,52 +3207,71 @@ router.post('/operation-pack', requireTaskRouteCapability('create'), async (req,
         const priority = normalizeTaskPriority(req.body.priority);
         const username = req.user?.username || 'system';
         const kleshnya = getKleshnya();
-        const created = [];
-        const taskByTemplateKey = {};
+        const afterCommit = [];
+        const authorId = normalizeUserId(req.user);
+        const created = await withDependencyTransaction(async client => {
+            await client.query('SELECT pg_advisory_xact_lock(hashtext($1)::bigint)', [`task_operation_pack:${businessContext}:${packId}`]);
+            const existing = await client.query(
+                `SELECT * FROM tasks WHERE pack_id = $1 AND business_context = $2 ORDER BY id`,
+                [packId, businessContext]);
+            if (existing.rows.length) {
+                if (existing.rows.some(task => task.created_by_user_id !== authorId)) {
+                    throw dependencyError('This operation pack ID is already in use.', 409, 'TASK_OPERATION_PACK_ID_IN_USE');
+                }
+                return existing.rows;
+            }
+            const created = [];
+            const taskByTemplateKey = {};
 
-        for (const item of preset.bundle) {
-            const template = getOperationTaskTemplate(item.templateKey);
-            if (!template) continue;
-            const taskTitle = preset.bundle.length > 1
-                ? `${baseTitle}: ${template.label}`
-                : `${baseTitle}`;
-            const task = await kleshnya.createTask({
-                businessContext,
-                title: taskTitle,
-                description: item.description || null,
-                date,
-                priority,
-                assigned_to: null,
-                owner_user_id: null,
-                task_type: 'human',
-                source_type: 'operation_pack',
-                source_id: packId,
-                category: 'checklist',
-                subcategory: template.subcategory,
-                source_entity_type: sourceEntityType,
-                source_entity_id: sourceEntityId,
-                pack_id: packId,
-                pack_status: packStatus,
-                owner_role: item.owner_role || template.owner_role,
-                sla_minutes: item.sla_minutes || template.sla_minutes,
-                escalate_after: null,
-                created_by: username,
-                created_by_user_id: normalizeUserId(req.user),
-                task_mode: 'work',
-                task_kind: 'action',
-                visibility: 'team',
-                workflow_state: 'todo',
-                source_module: 'tasks_operation_pack'
-            });
-            created.push(task);
-            taskByTemplateKey[item.templateKey] = task;
-        }
+            for (const item of preset.bundle) {
+                const template = getOperationTaskTemplate(item.templateKey);
+                if (!template) continue;
+                const taskTitle = preset.bundle.length > 1
+                    ? `${baseTitle}: ${template.label}`
+                    : `${baseTitle}`;
+                const task = await kleshnya.createTask({
+                    businessContext,
+                    title: taskTitle,
+                    description: item.description || null,
+                    date,
+                    priority,
+                    assigned_to: null,
+                    owner_user_id: null,
+                    task_type: 'human',
+                    source_type: 'operation_pack',
+                    source_id: packId,
+                    category: 'checklist',
+                    subcategory: template.subcategory,
+                    source_entity_type: sourceEntityType,
+                    source_entity_id: sourceEntityId,
+                    pack_id: packId,
+                    pack_status: packStatus,
+                    owner_role: item.owner_role || template.owner_role,
+                    sla_minutes: item.sla_minutes || template.sla_minutes,
+                    escalate_after: null,
+                    created_by: username,
+                    created_by_user_id: normalizeUserId(req.user),
+                    task_mode: 'work',
+                    task_kind: 'action',
+                    visibility: 'team',
+                    workflow_state: 'todo',
+                    source_module: 'tasks_operation_pack'
+                }, { pool: client, afterCommit });
+                created.push(task);
+                taskByTemplateKey[item.templateKey] = task;
+            }
 
-        for (const dependency of preset.dependencies || []) {
-            const task = taskByTemplateKey[dependency.taskTemplateKey];
-            const dependsOn = taskByTemplateKey[dependency.dependsOnTemplateKey];
-            if (task && dependsOn) await createTaskDependencyRows(task.id, [dependsOn.id]);
-        }
+            for (const dependency of preset.dependencies || []) {
+                const task = taskByTemplateKey[dependency.taskTemplateKey];
+                const dependsOn = taskByTemplateKey[dependency.dependsOnTemplateKey];
+                if (task && dependsOn) await createTaskDependencyRows(task.id, [dependsOn.id], { pool: client });
+            }
+
+            return created;
+        });
+        afterCommit.forEach(callback => {
+            try { callback(); } catch (error) { log.warn(`Operation pack after-commit callback failed: ${error.message}`); }
+        });
 
         res.json({
             success: true,
@@ -3246,8 +3287,7 @@ router.post('/operation-pack', requireTaskRouteCapability('create'), async (req,
         });
         _alertPush();
     } catch (err) {
-        log.error('Create operation pack error', err);
-        res.status(500).json({ error: 'Internal server error' });
+        sendTaskActionError(res, err);
     }
 });
 

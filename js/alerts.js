@@ -74,14 +74,6 @@ function _saveRead(s) { localStorage.setItem(_ALERTS_KEY, JSON.stringify([...s])
 function _getDismissed() { try { return new Set(JSON.parse(localStorage.getItem(_ALERTS_DISMISSED_KEY) || '[]')); } catch { return new Set(); } }
 function _saveDismissed(s) { localStorage.setItem(_ALERTS_DISMISSED_KEY, JSON.stringify([...s])); }
 
-function _alertCurrentUserId() {
-    const user = window.AppState?.currentUser || (() => {
-        try { return JSON.parse(localStorage.getItem('pzp_current_user') || 'null'); } catch { return null; }
-    })();
-    const id = Number(user?.id || user?.userId || 0);
-    return Number.isInteger(id) && id > 0 ? id : null;
-}
-
 function _alertsFingerprint(alerts) {
     return (alerts || [])
         .map(a => [a.id || '', a.level || '', a.link || '', a.title || '', a.message || ''].join('::'))
@@ -460,15 +452,15 @@ async function _quickAction(alertId, action) {
             { key: 'note', label: 'Примітка', placeholder: 'Терміново' }
         ], { icon: '🛒' });
         if (!result) return;
-        try {
-            const fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
-            await fetchWithAuth('/api/tasks', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ title: `Замовити: ${result.name} (${result.qty} шт)`, description: result.note || '', priority: 'high', category: 'purchase', source_type: 'alert', ownerUserId: _alertCurrentUserId() })
-            });
-            if (typeof showNotification === 'function') showNotification('Задачу на замовлення створено!', 'success');
-            _dismissAlert(alertId);
-        } catch {}
+        await openManualTaskComposer({
+            title: `Замовити: ${result.name} (${result.qty} шт)`,
+            description: result.note || '',
+            priority: 'high',
+            category: 'purchase',
+            sourceType: 'alert',
+            sourceId: alertId,
+            sourceLabel: 'Сповіщення'
+        });
     } else if (action === 'task') {
         _alertCreateTask(alertId);
     }
@@ -544,80 +536,30 @@ function _goAlert(link, id) {
     window.location.href = `${targetUrl.pathname}${targetUrl.search}${targetUrl.hash}`;
 }
 
-// ─── Task creation (expanded inline) ────────────
+// ─── Task creation ────────────
 async function _alertCreateTask(alertId) {
-    const alert = _alertsData.find(a => a.id === alertId);
+    const alert = _alertsData.find(item => item.id === alertId);
     if (!alert) return;
-    const area = document.getElementById('taskArea_' + alertId.replace(/'/g, ''));
-    if (!area) return;
-    if (area.innerHTML) { area.innerHTML = ''; return; }
     const prompt = alert.action?.prompt || alert.title || '';
-    area.innerHTML = `<div class="ap-task-form">
-        <textarea class="ap-task-input" placeholder="Опис задачі...">${prompt}</textarea>
-        <div class="ap-task-form-actions">
-            <button class="ap-act ap-act-primary" onclick="_submitAlertTask(this,'${_esc(alertId)}')">📋 Поставити задачу</button>
-            <button class="ap-act ap-act-ghost" onclick="this.closest('.ap-task-form').parentElement.innerHTML=''">Скасувати</button>
-        </div>
-    </div>`;
-    area.querySelector('textarea').focus();
+    await openManualTaskComposer({
+        title: prompt.slice(0, 100),
+        description: prompt,
+        priority: alert.level === 'critical' ? 'high' : 'normal',
+        kind: alert.level === 'critical' ? 'followup' : 'reminder',
+        sourceType: 'alert',
+        sourceId: alertId,
+        sourceLabel: 'Сповіщення',
+        sourceEntityType: alert.type || 'alert'
+    });
 }
 
-async function _submitAlertTask(btn, alertId) {
-    const alert = _alertsData.find(a => a.id === alertId);
-    const form = btn.closest('.ap-task-form');
-    const text = form.querySelector('textarea').value.trim();
-    if (!text) return;
-    btn.disabled = true; btn.textContent = '⏳';
-    try {
-        const fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
-        const resp = await fetchWithAuth('/api/tasks', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                title: text.slice(0, 100),
-                description: text,
-                date: new Date().toISOString().slice(0, 10),
-                priority: alert?.level === 'critical' ? 'high' : 'normal',
-                task_mode: 'work',
-                task_kind: alert?.level === 'critical' ? 'followup' : 'reminder',
-                visibility: 'team',
-                workflow_state: 'inbox',
-                source_type: 'alert',
-                source_id: alertId,
-                source_module: 'alerts',
-                ownerUserId: _alertCurrentUserId(),
-                related_entity_type: alert?.type || 'alert',
-                related_entity_id: alertId
-            })
-        });
-        if (!resp) return;
-        if (resp.ok) {
-            const data = await resp.json();
-            const taskId = data.task?.id || data.id || '';
-            const message = document.createElement('div');
-            message.style.cssText = 'color:#22c55e;font-size:12px;padding:6px';
-            message.textContent = '✅ Задачу #' + taskId + ' створено!';
-            if (typeof data.taskHref === 'string' && data.taskHref.startsWith('/profile?tab=myday&open=')) {
-                const link = document.createElement('a');
-                link.href = data.taskHref;
-                link.textContent = 'Відкрити';
-                link.style.cssText = 'color:#22c55e;text-decoration:underline';
-                message.append(' ', link);
-            }
-            form.replaceChildren(message);
-            setTimeout(() => { form.parentElement.innerHTML = ''; _dismissAlert(alertId); }, 3000);
-        } else { btn.disabled = false; btn.textContent = '📋 Спробувати ще'; }
-    } catch { btn.disabled = false; btn.textContent = '📋 Поставити задачу'; }
-}
-
-// ─── Outside click + init ───────────────────────
-document.addEventListener('click', e => {
-    const p = document.getElementById('alertsPanel');
-    const trigger = e.target.closest?.('#sidebarAlertWidget');
-    if (p?.classList.contains('open') && !trigger && !p.contains(e.target)) _closeAlertsPanel();
+document.addEventListener('click', event => {
+    const panel = document.getElementById('alertsPanel');
+    const trigger = event.target.closest?.('#sidebarAlertWidget');
+    if (panel?.classList.contains('open') && !trigger && !panel.contains(event.target)) _closeAlertsPanel();
 });
-
-document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') _closeAlertsPanel();
+document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') _closeAlertsPanel();
 });
 
 function startAlertRuntime() {

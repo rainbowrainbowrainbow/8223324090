@@ -5802,105 +5802,24 @@ async function createLeadWorkspaceCallbackTask(leadId) {
 async function createLeadWorkspaceFollowUpTask(leadId, presetKey = 'callback') {
     if (!guardLeadWrite('створювати задачі з ліда')) return;
     const workspace = currentWorkspaceData?.lead?.id === leadId ? currentWorkspaceData : null;
-    const lead = workspace?.lead || leadsData.find(l => l.id === leadId) || {};
+    const lead = workspace?.lead || leadsData.find(item => item.id === leadId) || {};
     const preset = MAYSTERNYA_LEAD_TASK_PRESETS[presetKey] || MAYSTERNYA_LEAD_TASK_PRESETS.callback;
-    const defaultDeadline = new Date();
-    defaultDeadline.setDate(defaultDeadline.getDate() + (preset.offsetDays ?? 1));
-    defaultDeadline.setHours(preset.hour ?? 10, 0, 0, 0);
-    const defaultTitle = typeof preset.title === 'function'
-        ? preset.title(lead)
-        : `Передзвонити: ${lead.clientName || lead.client_name || `лід #${leadId}`}`;
-    let taskOwners = [];
-    try {
-        const ownersRes = await apiFetch('/api/tasks/owners');
-        const ownersData = await ownersRes.json();
-        taskOwners = ownersData.users || [];
-    } catch (err) {
-        console.error('Load task owners error', err);
-    }
-    if (!taskOwners.length) {
-        if (typeof showNotification === 'function') showNotification('Немає доступних виконавців для задачі', 'error');
-        return;
-    }
-
-    let values = null;
-    if (typeof formModal === 'function') {
-        values = await formModal(isMaysternyaLeadContext() ? 'Нова дія Майстерні' : 'Нова дія для ліда', [
-            { key: 'title', label: 'Що зробити', defaultValue: defaultTitle, required: true },
-            { key: 'deadline', label: 'Коли', type: 'datetime-local', defaultValue: localDateTimeInput(defaultDeadline), required: true },
-            {
-                key: 'priority',
-                label: 'Пріоритет',
-                type: 'select',
-                defaultValue: preset.priority || 'high',
-                options: [
-                    { value: 'high', label: 'Високий' },
-                    { value: 'normal', label: 'Звичайний' },
-                    { value: 'low', label: 'Низький' }
-                ]
-            },
-            {
-                key: 'ownerUserId',
-                label: 'Виконавець',
-                type: 'select',
-                required: true,
-                options: [
-                    { value: '', label: 'Оберіть виконавця' },
-                    ...taskOwners.map(owner => ({
-                        value: String(owner.id),
-                        label: `${owner.label || owner.name || owner.username || ('User #' + owner.id)}${owner.role ? ' (' + owner.role + ')' : ''}`
-                    }))
-                ]
-            }
-        ], { okText: 'Створити задачу', type: 'success', icon: preset.icon || '📞' });
-    } else if (typeof promptModal === 'function') {
-        const title = await promptModal('Назва callback-задачі', { defaultValue: defaultTitle, okText: 'Створити' });
-        values = title ? { title, deadline: localDateTimeInput(defaultDeadline), priority: preset.priority || 'high' } : null;
-    }
-    if (!values) return;
-
-    const title = String(values.title || '').trim();
-    if (!title) {
-        if (typeof showNotification === 'function') showNotification('Назва задачі обовʼязкова', 'error');
-        return;
-    }
-    if (!values.ownerUserId) {
-        if (typeof showNotification === 'function') showNotification('Оберіть виконавця задачі', 'error');
-        return;
-    }
-
-    try {
-        const deadline = values.deadline || localDateTimeInput(defaultDeadline);
-        const body = {
-            title,
-            description: typeof preset.description === 'function'
-                ? preset.description(leadId)
-                : `Швидка дія з workspace ліда #${leadId}`,
-            date: deadline ? String(deadline).slice(0, 10) : localDateInput(),
-            deadline,
-            priority: values.priority || preset.priority || 'high',
-            category: 'operational',
-            task_type: 'human',
-            source_type: 'lead',
-            source_id: String(leadId),
-            sourceEntityType: 'lead',
-            sourceEntityId: String(leadId),
-            ownerUserId: values.ownerUserId,
-            businessContext: leadContextFromRecord(lead)
-        };
-        const res = await apiFetch('/api/tasks', { method: 'POST', body: JSON.stringify(body) });
-        if (!res) return;
-        const data = await res.json();
-        if (data.success) {
-            if (typeof showNotification === 'function') showNotification('Follow-up задачу створено і привʼязано до ліда', 'success');
-            await openLeadWorkspace(leadId, { pushState: false });
-        } else if (typeof showNotification === 'function') {
-            showNotification(data.error || 'Не вдалося створити задачу', 'error');
-        }
-    } catch (err) {
-        console.error('Create lead workspace task error', err);
-        if (typeof showNotification === 'function') showNotification('Помилка створення callback-задачі', 'error');
-    }
+    const deadline = new Date();
+    deadline.setDate(deadline.getDate() + (preset.offsetDays ?? 1));
+    deadline.setHours(preset.hour ?? 10, 0, 0, 0);
+    await openManualTaskComposer({
+        title: preset.title?.(lead) || `Передзвонити: ${lead.clientName || lead.client_name || `лід #${leadId}`}`,
+        description: preset.description?.(leadId) || '',
+        date: localDateInput(deadline),
+        time: localDateTimeInput(deadline).slice(11, 16),
+        priority: preset.priority || 'high',
+        category: 'operational',
+        kind: 'followup',
+        sourceType: 'lead',
+        sourceId: leadId,
+        sourceLabel: 'Лід',
+        businessContext: leadContextFromRecord(lead)
+    });
 }
 
 async function completeLeadWorkspaceTask(leadId, taskId) {

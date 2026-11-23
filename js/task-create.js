@@ -203,6 +203,12 @@
         if (draft.ownerUserId || draft.owner_user_id) data.ownerUserId = draft.ownerUserId || draft.owner_user_id;
         if (draft.coAssigneeUserIds?.length) data.coAssigneeUserIds = draft.coAssigneeUserIds;
         if (draft.sourceId || draft.source_id) data.source_id = draft.sourceId || draft.source_id;
+        if (draft.sourceEntityType && draft.sourceEntityId) {
+            data.source_entity_type = draft.sourceEntityType;
+            data.source_entity_id = draft.sourceEntityId;
+            data.related_entity_type = draft.sourceEntityType;
+            data.related_entity_id = draft.sourceEntityId;
+        }
         if (draft.sourceSurface || draft.source_surface || options.sourceSurface) {
             data.source_surface = draft.sourceSurface || draft.source_surface || options.sourceSurface;
         }
@@ -218,8 +224,8 @@
             data.controlMeta = controlMeta;
         }
 
-        if (dueDate) {
-            data.date = dueDate;
+        if (dueDate) data.date = dueDate;
+        if (dueDate && !draft.dateOnly) {
             data.schedule = {
                 date: dueDate,
                 slot: draft.scheduleSlot || draft.schedule_slot || options.scheduleSlot || 'morning',

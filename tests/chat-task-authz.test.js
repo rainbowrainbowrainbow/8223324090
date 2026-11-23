@@ -219,17 +219,15 @@ describe('chat task authorization and duplicate-safe creation', () => {
 });
 
 describe('operations flow static contracts', () => {
-    it('wires chat-created operational tasks through canonical tasks with explicit owner selection', () => {
+    it('hands chat tasks to the shared composer with source and suggested assignee', () => {
         const chatPage = fs.readFileSync(path.join(repoRoot, 'js/chat-page.js'), 'utf8');
-
         assert.match(chatPage, /\/api\/tasks\/owners/);
-        assert.match(chatPage, /ownerUserId: payload\.ownerUserId/);
-        assert.match(chatPage, /function _findTaskOwnerForMessageAuthor/);
-        assert.match(chatPage, /var authorOwner = _findTaskOwnerForMessageAuthor\(owners, msg, author\)/);
-        assert.match(chatPage, /var defaultOwner = authorOwner \|\| currentOwner/);
-        assert.match(chatPage, /sourceType: msg && msg\.id \? 'chat_message' : 'chat_channel'/);
-        assert.match(chatPage, /Для \/task вкажіть виконавця/);
-        assert.doesNotMatch(chatPage, /_api\('POST', '\/tasks'/);
+        assert.match(chatPage, /openManualTaskComposer\(\{/);
+        assert.match(chatPage, /ownerUserId: _taskOwnerId\(owner\)/);
+        assert.match(chatPage, /sourceType: msg.id \? 'chat_message' : 'chat_channel'/);
+        assert.match(chatPage, /sourceEntityId: _currentChannel\?\.id/);
+        assert.match(chatPage, /assignee: mention\?\.\[1\]/);
+        assert.doesNotMatch(chatPage, /fetch\('\/api\/tasks'/);
     });
 
     it('keeps task assignment notifications change-aware and typed-owner aware', () => {

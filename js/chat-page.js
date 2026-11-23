@@ -2879,40 +2879,6 @@
         return owner ? (owner.id || owner.user_id || owner.userId || owner.ownerUserId || '') : '';
     }
 
-    function _taskOwnerOption(owner) {
-        var label = owner.label || owner.name || owner.username || ('User #' + owner.id);
-        var role = owner.role ? ' (' + owner.role + ')' : '';
-        return '<option value="' + _esc(_taskOwnerId(owner)) + '">' + _esc(label + role) + '</option>';
-    }
-
-    function _getCurrentTaskOwner(owners) {
-        var appState = window.AppState || (typeof AppState !== 'undefined' ? AppState : null);
-        var current = appState && appState.currentUser ? appState.currentUser : null;
-        if (!current) {
-            try {
-                var saved = localStorage.getItem('pzp_current_user');
-                current = saved ? JSON.parse(saved) : null;
-            } catch (err) {
-                current = null;
-            }
-        }
-        if (!current || !Array.isArray(owners) || !owners.length) return null;
-
-        var currentId = Number(current.id || current.user_id || current.userId || _currentUserId || 0);
-        var currentUsername = String(current.username || _currentUsername || '').trim().toLowerCase();
-        var currentName = String(current.name || current.label || '').trim().toLowerCase();
-
-        return owners.find(function (u) {
-            var ownerId = Number(u.id || u.user_id || u.userId || u.ownerUserId || 0);
-            var ownerUsername = String(u.username || '').trim().toLowerCase();
-            var ownerName = String(u.name || u.label || '').trim().toLowerCase();
-            if (currentId && ownerId && currentId === ownerId) return true;
-            if (currentUsername && ownerUsername && currentUsername === ownerUsername) return true;
-            if (currentName && ownerName && currentName === ownerName) return true;
-            return false;
-        }) || null;
-    }
-
     function _normalizeTaskOwnerLookup(value) {
         return String(value || '').replace(/^@+/, '').trim().toLowerCase();
     }
@@ -2934,120 +2900,27 @@
         }) || null;
     }
 
-    async function _createCanonicalChatTask(payload) {
-        var body = {
-            title: String(payload.title || '').slice(0, 100),
-            description: payload.description || null,
-            priority: 'normal',
-            category: 'operational',
-            ownerUserId: payload.ownerUserId,
-            task_mode: payload.task_mode || payload.taskMode || 'work',
-            task_kind: payload.task_kind || payload.taskKind || 'action',
-            visibility: payload.visibility || 'team',
-            workflow_state: payload.workflow_state || payload.workflowState || 'inbox',
-            sourceType: payload.sourceType || 'chat_message',
-            sourceId: payload.sourceId || null,
-            source_module: payload.source_module || payload.sourceModule || 'chat',
-            related_entity_type: payload.related_entity_type || payload.relatedEntityType || 'chat',
-            related_entity_id: payload.related_entity_id || payload.relatedEntityId || payload.sourceId || null
-        };
-        var resp = await fetch('/api/tasks', {
-            method: 'POST',
-            headers: _headers(),
-            body: JSON.stringify(body)
-        });
-        var data = await resp.json().catch(function () { return {}; });
-        if (!resp.ok) throw new Error(data.error || data.message || 'Не вдалося створити задачу');
-        return data.task || data;
-    }
-
     async function _createTaskFromMessage() {
-        if (!_contextMsg) return;
-        await _createAITaskFromMsg(_contextMsg, _contextMsg.el);
+        if (_contextMsg) await _createAITaskFromMsg(_contextMsg, _contextMsg.el);
     }
 
-    // v33.12.0/v0.48.12: AI task from message with explicit operator-selected owner.
-    async function _createAITaskFromMsg(msg, el) {
-        var contentEl = el ? el.querySelector('.chat-bubble-content') : null;
-        var usernameEl = el ? el.querySelector('.chat-bubble-username') : null;
-        var msgText = contentEl ? contentEl.textContent.trim() : (msg.content || '');
-        var author = usernameEl ? usernameEl.textContent.trim() : (msg.displayName || msg.username || '');
-        var existing = el ? el.querySelector('.msg-ai-task-form') : null;
-        if (existing) { existing.remove(); return; }
-        var owners = await _loadTaskOwnerCandidates();
-        if (!owners.length) {
-            if (typeof showNotification === 'function') showNotification('Немає доступних виконавців для задачі', 'error');
-            return;
-        }
-        var currentOwner = _getCurrentTaskOwner(owners);
-        var authorOwner = _findTaskOwnerForMessageAuthor(owners, msg, author);
-        var defaultOwner = authorOwner || currentOwner;
-        var form = document.createElement('div');
-        form.className = 'msg-ai-task-form';
-        form.innerHTML =
-            '<div style="font-size:11px;color:var(--gray-400);margin-bottom:6px">📋 Поставити задачу</div>' +
-            '<div style="font-size:12px;color:var(--gray-500);margin-bottom:6px;padding:6px;background:rgba(0,0,0,0.03);border-radius:6px;border-left:2px solid var(--primary,#6366f1)"><b>@' + _esc(author) + ':</b> ' + _esc(msgText.slice(0, 100)) + '</div>' +
-            '<div style="display:flex;gap:6px;margin-bottom:6px">' +
-                '<select class="ai-task-owner" style="flex:1;min-width:0;padding:6px;border:1px solid var(--border-color);border-radius:6px;font-size:12px;box-sizing:border-box">' +
-                    '<option value="">Оберіть виконавця</option>' + owners.map(_taskOwnerOption).join('') +
-                '</select>' +
-                '<button type="button" class="ai-task-self" style="padding:6px 10px;border:1px solid var(--border-color);border-radius:6px;background:none;cursor:pointer;font-size:12px;white-space:nowrap">Собі</button>' +
-            '</div>' +
-            '<textarea placeholder="Що треба зробити?" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:6px;font-size:12px;resize:none;height:50px;box-sizing:border-box;margin-bottom:6px"></textarea>' +
-            '<div style="display:flex;gap:6px"><button class="ai-task-submit" style="flex:1;padding:6px;background:var(--primary,#6366f1);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px">📋 Створити задачу</button>' +
-            '<button onclick="this.closest(\'.msg-ai-task-form\').remove()" style="padding:6px 10px;border:1px solid var(--border-color);border-radius:6px;background:none;cursor:pointer;font-size:12px">×</button></div>';
-        var bubble = el ? el.querySelector('.chat-bubble') : null;
-        if (bubble) bubble.appendChild(form);
-        var textarea = form.querySelector('textarea');
-        var ownerSelect = form.querySelector('.ai-task-owner');
-        var selfBtn = form.querySelector('.ai-task-self');
-        var currentOwnerId = _taskOwnerId(currentOwner);
-        var defaultOwnerId = _taskOwnerId(defaultOwner);
-        if (defaultOwnerId && ownerSelect) ownerSelect.value = String(defaultOwnerId);
-        if (selfBtn) {
-            selfBtn.addEventListener('click', function () {
-                if (!currentOwnerId) {
-                    if (typeof showNotification === 'function') showNotification('Не вдалося визначити ваш профіль для self-task', 'error');
-                    return;
-                }
-                if (ownerSelect) ownerSelect.value = String(currentOwnerId);
-                if (textarea) textarea.focus();
-            });
-        }
-        if (textarea) textarea.focus();
-        var submitBtn = form.querySelector('.ai-task-submit');
-        if (submitBtn) {
-            submitBtn.addEventListener('click', async function() {
-                var text = textarea.value.trim();
-                if (!text) { textarea.focus(); return; }
-                var ownerUserId = ownerSelect ? ownerSelect.value : '';
-                if (!ownerUserId) {
-                    if (ownerSelect) ownerSelect.focus();
-                    if (typeof showNotification === 'function') showNotification('Оберіть виконавця задачі', 'error');
-                    return;
-                }
-                submitBtn.disabled = true;
-                submitBtn.textContent = '⏳...';
-                try {
-                    var task = await _createCanonicalChatTask({
-                        title: text,
-                        ownerUserId: ownerUserId,
-                        task_mode: currentOwnerId && String(ownerUserId) === String(currentOwnerId) ? 'personal' : 'work',
-                        task_kind: 'followup',
-                        visibility: currentOwnerId && String(ownerUserId) === String(currentOwnerId) ? 'me_only' : 'team',
-                        workflow_state: 'inbox',
-                        sourceType: msg && msg.id ? 'chat_message' : 'chat_channel',
-                        sourceId: msg && msg.id ? String(msg.id) : (_currentChannel ? String(_currentChannel.id) : null),
-                        description: 'З чату' + (_currentChannel?.name ? ' ' + _currentChannel.name : '') + ' від @' + author + ':\n' + msgText + '\n\nЗадача: ' + text
-                    });
-                    form.innerHTML = '<div style="color:var(--success,green);font-size:12px;padding:4px">✅ Задачу створено #' + _esc(task.id || '') + '</div>';
-                    setTimeout(function() { form.remove(); }, 2000);
-                } catch (e) {
-                    submitBtn.textContent = '📋 Створити задачу';
-                    if (typeof showNotification === 'function') showNotification(e.message || 'Помилка створення задачі', 'error');
-                } finally { submitBtn.disabled = false; }
-            });
-        }
+    async function _createAITaskFromMsg(msg, element) {
+        const content = element?.querySelector('.chat-bubble-content')?.textContent.trim() || msg.content || '';
+        const author = msg.displayName || msg.username || '';
+        const owners = await _loadTaskOwnerCandidates();
+        const owner = _findTaskOwnerForMessageAuthor(owners, msg, author);
+        await openManualTaskComposer({
+            title: content.slice(0, 100),
+            description: content,
+            ownerUserId: _taskOwnerId(owner),
+            category: 'operational',
+            kind: 'followup',
+            sourceType: msg.id ? 'chat_message' : 'chat_channel',
+            sourceId: msg.id || _currentChannel?.id,
+            sourceEntityType: 'chat',
+            sourceEntityId: _currentChannel?.id,
+            sourceLabel: 'Чат'
+        });
     }
 
     function _startEdit() {
@@ -6955,95 +6828,22 @@
     // ==========================================
 
     async function _sendTaskFromChat(taskText) {
-        try {
-            function appendTaskConfirm(confirmMsg, fallbackText) {
-                if (confirmMsg && typeof confirmMsg.content === 'string') {
-                    _appendMessage(confirmMsg);
-                    return;
-                }
-                if (fallbackText) _appendSystemMessage(fallbackText);
-            }
-
-            var selfMatch = taskText.match(/^(?:собі|self|me)\s+(.+)/i);
-            if (selfMatch) {
-                var selfTitle = selfMatch[1].trim();
-                if (!selfTitle) {
-                    showNotification('Додайте опис задачі після "собі"', 'error');
-                    return;
-                }
-                var selfOwners = await _loadTaskOwnerCandidates();
-                var currentOwner = _getCurrentTaskOwner(selfOwners);
-                var currentOwnerId = _taskOwnerId(currentOwner);
-                if (!currentOwnerId) {
-                    showNotification('Не вдалося визначити ваш профіль для self-task', 'error');
-                    return;
-                }
-
-                var selfTask = await _createCanonicalChatTask({
-                    title: selfTitle,
-                    ownerUserId: currentOwnerId,
-                    task_mode: 'personal',
-                    task_kind: 'action',
-                    visibility: 'me_only',
-                    workflow_state: 'inbox',
-                    sourceType: 'chat_command',
-                    sourceId: _currentChannel ? String(_currentChannel.id) : null,
-                    description: 'Self-task з команди /task у чаті' + (_currentChannel?.name ? ' ' + _currentChannel.name : '') + '.'
-                });
-
-                if (selfTask) {
-                    var selfConfirmText = '\u{1F4CB} Задачу #' + (selfTask.id || '') + ' створено собі: «' + selfTitle + '»';
-                    var confirmSelf = await _api('POST', '/channels/' + _currentChannel.id + '/messages', {
-                        content: selfConfirmText
-                    });
-                    appendTaskConfirm(confirmSelf, selfConfirmText);
-                }
-                return;
-            }
-
-            var mentionMatch = taskText.match(/^@([\w.-]+)\s+(.+)/);
-            if (!mentionMatch) {
-                showNotification('Для /task вкажіть виконавця: /task @username опис або /task собі опис', 'error');
-                return;
-            }
-            var targetUsername = mentionMatch[1];
-            var title = mentionMatch[2].trim();
-            if (!title) {
-                showNotification('Додайте опис задачі після @username', 'error');
-                return;
-            }
-            var owners = await _loadTaskOwnerCandidates();
-            var targetOwner = owners.find(function (u) {
-                return String(u.username || '').toLowerCase() === targetUsername.toLowerCase();
-            });
-            if (!targetOwner) {
-                showNotification('Виконавець @' + targetUsername + ' недоступний для задач', 'error');
-                return;
-            }
-
-            var task = await _createCanonicalChatTask({
-                title: title,
-                ownerUserId: targetOwner.id,
-                task_mode: 'work',
-                task_kind: 'action',
-                visibility: 'team',
-                workflow_state: 'inbox',
-                sourceType: 'chat_command',
-                sourceId: _currentChannel ? String(_currentChannel.id) : null,
-                description: 'Задача з команди /task у чаті' + (_currentChannel?.name ? ' ' + _currentChannel.name : '') + '. Виконавець підтверджений оператором: @' + targetUsername + '.'
-            });
-
-            if (task) {
-                var delegatedConfirmText = '\u{1F4CB} Задачу #' + (task.id || '') + ' створено: «' + title + '» → @' + targetUsername;
-                var confirmMsg = await _api('POST', '/channels/' + _currentChannel.id + '/messages', {
-                    content: delegatedConfirmText
-                });
-                appendTaskConfirm(confirmMsg, delegatedConfirmText);
-            }
-        } catch (err) {
-            console.error('[Chat] Task creation error:', err);
-            showNotification('Помилка: ' + err.message, 'error');
+        const self = taskText.match(/^(?:собі|self|me)\s+(.+)/i);
+        const mention = taskText.match(/^@([\w.-]+)\s+(.+)/);
+        if (!self && !mention) {
+            showNotification('Вкажіть виконавця: /task @username опис або /task собі опис', 'error');
+            return;
         }
+        await openManualTaskComposer({
+            title: (self ? self[1] : mention[2]).trim(),
+            assignee: mention?.[1],
+            mode: self ? 'personal' : 'work',
+            category: 'operational',
+            sourceType: 'chat_command',
+            sourceId: _currentChannel?.id,
+            sourceEntityType: 'chat',
+            sourceLabel: 'Чат'
+        });
     }
 
     // ==========================================

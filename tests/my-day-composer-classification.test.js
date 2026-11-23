@@ -234,7 +234,7 @@ test('Park cards use separate facts and actions, without the legacy time UI', ()
     const html = read('profile.html');
     assert.match(profile, /park-task-facts/);
     assert.match(profile, /park-task-actions/);
-    assert.match(profile, /priorityControl/);
+    assert.match(profile, /<details class="park-task-menu">/);
     assert.match(profile, /control\('open'[\s\S]*control\('done',[\s\S]*Виконати/);
     assert.match(profile, /control\('reschedule-date'[\s\S]*control\('edit'/);
     assert.doesNotMatch(profile, /time-menu|timer-start|time-entries/);

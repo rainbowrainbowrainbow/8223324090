@@ -2011,7 +2011,7 @@ test('park card ignores legacy report requirements and opens the canonical task 
     for (const html of [compact, full]) {
         assert.match(html, /park-task-card/);
         assert.match(html, /priority-high/);
-        assert.match(html, /data-cabinet-task-priority-select/);
+        assert.doesNotMatch(html, /data-cabinet-task-priority-select/);
         assert.doesNotMatch(html, /потрібен звіт/i);
         assert.match(html, /data-task-due-state="overdue"/);
         assert.equal((html.match(/data-cabinet-task-action="open"/g) || []).length, 1);
@@ -2071,7 +2071,7 @@ test('park keeps the task details path singular even with legacy checklists', ()
     const full = ctx.renderMyDayTab();
     for (const html of [compact, full]) {
         assert.doesNotMatch(html, /Чекліст|First done|Second next/i);
-        assert.match(html, /data-cabinet-task-priority-select/);
+        assert.doesNotMatch(html, /data-cabinet-task-priority-select/);
         assert.match(html, /data-cabinet-task-action="open"/);
         assert.doesNotMatch(html, /data-cabinet-inline-subtask|toggle-my-day-details/);
     }
@@ -2346,7 +2346,7 @@ test('my cabinet task projection counts today, undated and overdue carry-over wo
     const authSource = fs.readFileSync(path.join(ROOT, 'routes', 'auth.js'), 'utf8');
     const sidebarSource = fs.readFileSync(path.join(ROOT, 'js', 'components', 'sidebar.js'), 'utf8');
 
-    assert.match(source, /function taskWorkloadDateSql/);
+    assert.match(source, /taskWorkloadDateSql, taskAutomaticOriginSql/);
     assert.match(source, /taskQuick/);
     assert.match(source, /COUNT\(\*\) FILTER \(WHERE t\.status = 'done'\)::int AS parent_done_total/);
     assert.match(source, /const completedParentTotal = Number\(quickStats\.parent_done_total \|\| 0\);/);
@@ -2388,7 +2388,7 @@ test('my cabinet task projection counts today, undated and overdue carry-over wo
     assert.match(source, /snoozed_until/);
     assert.match(source, /taskPriorityOrderSql/);
     assert.match(source, /dueDate && dueDate < today/);
-    assert.match(source, /dueDate === today \|\| !dueDate/);
+    assert.match(source, /if \(dueDate === today\) buckets\.today\.push/);
     assert.doesNotMatch(completionHistorySource, /task_subtasks/);
     assert.match(source, /completedHistory:\s*\{\s*\n\s*\.\.\.completedHistoryPage\.pagination/);
     assert.doesNotMatch(source, /task_subtasks/);
@@ -2810,7 +2810,7 @@ test('my cabinet and tasks expose explicit deferred task bucket', () => {
     assert.match(tasksPageSource, /function isDeferredTask/);
     assert.match(tasksPageSource, /case 'deferred'/);
     assert.match(tasksHtml, /data-view="deferred"/);
-    assert.match(tasksHtml, /id="countDeferred"/);
+    assert.match(tasksHtml, /<summary>Інші перегляди<\/summary>/);
 });
 
 test('task sounds use task scoped preferences and controls, not chat settings', () => {

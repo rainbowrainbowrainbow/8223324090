@@ -63,13 +63,6 @@ const CHECKLIST_TEMPLATE_BY_SUBCATEGORY = {
     cake_decor: 'cake_decor_base',
     purchase: 'purchase_base'
 };
-const OPERATION_PRESETS = {
-    hall_prep_basic: 'Підготовка залу',
-    kitchen_basic: 'Кухня',
-    cake_basic: 'Торт',
-    cake_with_decor: 'Торт + прикраси',
-    purchase_basic: 'Закупка'
-};
 const PACK_STATUS_LABELS = {
     draft: 'Чернетка',
     confirmed: 'Підтверджено',
@@ -261,6 +254,7 @@ const TASK_CENTER_LEGACY_VIEW_MAP = Object.freeze({
     done_today: Object.freeze({ mode: 'overview', filter: 'done_today' }),
     waiting: Object.freeze({ mode: 'team', filter: 'waiting' }),
     team: Object.freeze({ mode: 'team', filter: 'team' }),
+    capacity: Object.freeze({ mode: 'team', filter: 'capacity' }),
     next: Object.freeze({ mode: 'planning', filter: 'next' }),
     week: Object.freeze({ mode: 'planning', filter: 'week' }),
     deferred: Object.freeze({ mode: 'planning', filter: 'deferred' }),
@@ -285,21 +279,15 @@ function resolveTaskCenterRoute(params = new URLSearchParams()) {
     const requestedView = String(params.get('view') || '').trim().toLowerCase();
     const explicitMode = TASK_CENTER_MODE_VALUES.includes(requestedMode) ? requestedMode : '';
     const legacy = TASK_CENTER_LEGACY_VIEW_MAP[requestedView] || null;
-    const mode = explicitMode || legacy?.mode || 'overview';
+    const mode = explicitMode || legacy?.mode || 'team';
     const view = legacy && (!explicitMode || legacy.mode === mode)
         ? requestedView
         : TASK_CENTER_MODE_CONFIG[mode].defaultView;
     return Object.freeze({ mode, view, legacy: Boolean(legacy && !explicitMode) });
 }
 
-function taskCenterModeUrl(mode = currentTaskMode) {
-    const url = new URL(window.location.href);
-    url.searchParams.set('mode', normalizeTaskCenterMode(mode));
-    url.searchParams.delete('view');
-    return url;
-}
-let currentView = 'inbox';
-let currentTaskMode = 'overview';
+let currentView = 'team';
+let currentTaskMode = 'team';
 let currentCategory = 'all';
 let currentSubcategory = 'all';
 let currentScopeFilter = 'all';
@@ -358,6 +346,9 @@ function normalizeTaskCenterQueryState(input = {}) {
             ? String(input.source).trim().toLowerCase()
             : '',
         search: String(input.search ?? input.q ?? '').trim().slice(0, 120),
+        overdue: input.overdue === true,
+        unassigned: input.unassigned === true,
+        automatic: input.automatic === true,
         bookingOverdue: input.bookingOverdue === true,
         personalOverdue: input.personalOverdue === true && input.bookingOverdue !== true
     };
@@ -376,6 +367,9 @@ function taskCenterQueryStateFromUrl(params = new URLSearchParams(window.locatio
         category: params.get('category'),
         source: params.get('source'),
         search: params.get('search') || params.get('q'),
+        overdue: params.get('overdue_work') === '1',
+        unassigned: params.get('unassigned') === '1',
+        automatic: params.get('automatic') === '1',
         bookingOverdue: params.get('source_type') === 'booking' && params.get('overdue') === '1',
         personalOverdue: params.get('dashboardFilter') === 'my-overdue'
     });
@@ -384,7 +378,7 @@ function taskCenterQueryStateFromUrl(params = new URLSearchParams(window.locatio
 function taskCenterUrlForState(state = taskCenterQueryState) {
     const normalized = normalizeTaskCenterQueryState(state);
     const url = new URL(window.location.href);
-    ['view', 'queue', 'owner', 'from', 'to', 'status', 'priority', 'category', 'source', 'source_type', 'overdue', 'dashboardFilter', 'search', 'q'].forEach(key => url.searchParams.delete(key));
+    ['view', 'queue', 'owner', 'from', 'to', 'status', 'priority', 'category', 'source', 'source_type', 'overdue', 'overdue_work', 'unassigned', 'automatic', 'dashboardFilter', 'search', 'q'].forEach(key => url.searchParams.delete(key));
     url.searchParams.set('mode', normalized.mode);
     url.searchParams.set('queue', normalized.queue);
     if (normalized.ownerUserId) url.searchParams.set('owner', normalized.ownerUserId);
@@ -395,6 +389,9 @@ function taskCenterUrlForState(state = taskCenterQueryState) {
     if (normalized.category) url.searchParams.set('category', normalized.category);
     if (normalized.source) url.searchParams.set('source', normalized.source);
     if (normalized.search) url.searchParams.set('search', normalized.search);
+    if (normalized.overdue) url.searchParams.set('overdue_work', '1');
+    if (normalized.unassigned) url.searchParams.set('unassigned', '1');
+    if (normalized.automatic) url.searchParams.set('automatic', '1');
     if (normalized.bookingOverdue) {
         url.searchParams.set('source_type', 'booking');
         url.searchParams.set('overdue', '1');
@@ -484,18 +481,11 @@ function taskCapabilityReason(capability, fallbackAllowed = false) {
 let pageCurrentUser = null;
 let currentTaskBusinessContext = 'event_genix';
 let currentMaysternyaTaskFilter = 'all';
-let captureIntent = {};
-let taskAssigneeMode = 'self';
-let lastCreatedTaskId = null;
-let quickTaskBatchItems = [];
-let quickTaskBatchNextId = 1;
 let showCompletedInSlices = localStorage.getItem('eg_tasks_show_completed') === 'true';
 let quickScheduleSlot = 'morning';
-let taskDuePreset = 'today';
 let kanbanDragState = null;
 let lastKanbanDragEndedAt = 0;
 let kanbanSavingTaskIds = new Set();
-let taskComposerAiImpactIds = [];
 let taskSoundPreferences = { enabled: true, volume: 0.4, theme: 'subtle' };
 
 function notifyTaskWidgetsChanged(detail = {}) {
@@ -869,7 +859,7 @@ function setupMaysternyaTaskOpsBar() {
             return;
         }
         const preset = event.target.closest('[data-maysternya-task-preset]');
-        if (preset) applyMaysternyaTaskPreset(preset.dataset.maysternyaTaskPreset || '');
+        if (preset) openMaysternyaTaskPreset(preset.dataset.maysternyaTaskPreset || '');
     });
 }
 
@@ -880,35 +870,14 @@ function setMaysternyaTaskFilter(filter = 'all') {
     renderBoard();
 }
 
-function applyMaysternyaTaskPreset(key) {
+function openMaysternyaTaskPreset(key) {
     const preset = MAYSTERNYA_TASK_PRESETS[key];
     if (!preset) return;
-    const title = document.getElementById('taskTitle');
-    const category = document.getElementById('taskCategory');
-    const priority = document.getElementById('taskPriority');
-    const kind = document.getElementById('taskKind');
-    const mode = document.getElementById('taskMode');
-    const visibility = document.getElementById('taskVisibility');
-    const deadline = document.getElementById('taskDeadlineTime');
-    if (title) title.value = preset.title;
-    if (category) category.value = 'operational';
-    if (priority) priority.value = preset.priority;
-    if (kind) kind.value = 'followup';
-    if (mode) mode.value = 'work';
-    if (visibility) visibility.value = 'team';
-    if (deadline) deadline.value = preset.deadlineTime;
-    captureIntent = {};
-    setTaskDuePreset('today', { expand: false });
-    currentCategory = 'operational';
-    currentSubcategory = 'all';
-    currentMaysternyaTaskFilter = key;
-    renderCategoryFilters();
-    renderSubcategoryFilters();
-    renderMaysternyaTaskOpsBar();
-    syncTaskSurfaceVisibility();
-    renderBoard();
-    toggleTaskComposerDetails(true);
-    title?.focus();
+    window.location.assign(window.TaskLinks.createUrl({
+        businessContext: taskBusinessContext(), title: preset.title,
+        category: 'operational', kind: 'followup', priority: preset.priority,
+        time: preset.deadlineTime
+    }));
 }
 
 function syncMaysternyaTaskUi() {
@@ -949,7 +918,11 @@ function initTaskBusinessContext(user) {
             renderCategoryFilters();
             renderSubcategoryFilters();
             syncTaskScopeFilters();
-            await loadAllTasks({ fatal: false });
+            updateTaskCenterQueryState({ ownerUserId: '' }, { replace: true, reload: false });
+            const loading = loadAllTasks({ fatal: false });
+            await _loadAssigneeDropdown();
+            renderTaskCenterQueryControls();
+            await loading;
         }
     }) || 'event_genix';
     syncMaysternyaTaskUi();
@@ -996,11 +969,7 @@ function getWorkflowLabel(status) {
 }
 
 function getTodayStr() {
-    const d = new Date();
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    return window.TaskUiShared.taskDateKey(new Date().toISOString());
 }
 
 function getDateOffsetStr(days = 0) {
@@ -1334,9 +1303,6 @@ function compareTasksForDisplay(a = {}, b = {}) {
     }
     const rankDiff = taskWorkspaceDisplayRank(a) - taskWorkspaceDisplayRank(b);
     if (rankDiff) return rankDiff;
-    const aIsNew = lastCreatedTaskId && String(a.id) === String(lastCreatedTaskId);
-    const bIsNew = lastCreatedTaskId && String(b.id) === String(lastCreatedTaskId);
-    if (aIsNew !== bIsNew) return aIsNew ? -1 : 1;
     const aOrder = a.scheduleSort?.order;
     const bOrder = b.scheduleSort?.order;
     if (Array.isArray(aOrder) && Array.isArray(bOrder)) {
@@ -1376,9 +1342,8 @@ function syncTaskCenterShell() {
         : TASK_CENTER_MODE_CONFIG[mode].description;
     if (context) {
         const businessContext = taskBusinessContext();
-        context.textContent = businessContext
-            ? `Контекст: ${businessContext}. Робочі задачі, команда та планування в одному місці.`
-            : 'Мої робочі задачі, команда та планування в одному місці.';
+        const business = window.CrmBusinessContext?.options?.(pageCurrentUser)?.find(item => (item.id || item.key) === businessContext);
+        context.textContent = business?.label || businessContext;
     }
     document.querySelectorAll('.task-center-mode-tab[data-task-mode]').forEach(tab => {
         const active = tab.dataset.taskMode === mode;
@@ -1390,7 +1355,11 @@ function syncTaskCenterShell() {
 function setBoardView(view = 'inbox', mode = taskCenterModeForView(view)) {
     currentView = TASK_CENTER_LEGACY_VIEWS.includes(view) ? view : 'inbox';
     currentTaskMode = normalizeTaskCenterMode(mode);
-    document.querySelectorAll('.board-tab').forEach(tab => tab.classList.toggle('active', tab.dataset.view === currentView));
+    document.querySelectorAll('.board-tab').forEach(tab => {
+        const selected = tab.dataset.view === currentView;
+        tab.classList.toggle('active', selected);
+        tab.setAttribute('aria-pressed', String(selected));
+    });
     syncTaskCenterShell();
 }
 
@@ -1460,9 +1429,14 @@ function renderTaskCenterQueryControls() {
     const savedOptions = [`<option value="">\u0417\u0431\u0435\u0440\u0435\u0436\u0435\u043d\u0456 \u0432\u0438\u0433\u043b\u044f\u0434\u0438</option>`, ...taskSavedViews.map(view =>
         `<option value="${escapeHtml(view.id)}">${escapeHtml(view.name)}</option>`
     )].join('');
-    host.innerHTML = `${drilldownActive ? '<div class="task-center-query-row"><button type="button" class="btn-secondary" data-task-clear-dashboard-overdue aria-label="Прибрати фільтр: ' + drilldownLabel + '">' + drilldownLabel + ' ×</button></div>' : ''}<div class="task-center-query-row">
+    const quickFilters = [['overdue', 'Прострочені'], ['unassigned', 'Без відповідального'], ['automatic', 'Автоматичні']];
+    const selectedFilter = document.activeElement?.dataset?.taskQuickFilter;
+    const extrasOpen = host.querySelector('details')?.open;
+    host.innerHTML = `<div class="task-center-quick-filters">
+        ${quickFilters.map(([key, label]) => `<button type="button" class="btn-secondary" data-task-quick-filter="${key}" aria-pressed="${state[key]}">${label}</button>`).join('')}
+        <label>Виконавець <select data-task-center-query="ownerUserId">${taskCenterOwnerOptions()}</select></label>
+    </div><details${extrasOpen ? ' open' : ''}><summary>Додаткові фільтри</summary>${drilldownActive ? '<div class="task-center-query-row"><button type="button" class="btn-secondary" data-task-clear-dashboard-overdue aria-label="Прибрати фільтр: ' + drilldownLabel + '">' + drilldownLabel + ' ×</button></div>' : ''}<div class="task-center-query-row">
         <label><span>\u041f\u043e\u0448\u0443\u043a</span><input type="search" data-task-center-query="search" value="${escapeHtml(state.search)}" placeholder="\u041d\u0430\u0437\u0432\u0430, ID, \u0432\u0438\u043a\u043e\u043d\u0430\u0432\u0435\u0446\u044c \u0430\u0431\u043e CRM-\u043a\u043e\u043d\u0442\u0435\u043a\u0441\u0442"></label>
-        <label><span>\u0412\u0438\u043a\u043e\u043d\u0430\u0432\u0435\u0446\u044c</span><select data-task-center-query="ownerUserId">${taskCenterOwnerOptions()}</select></label>
         <label><span>\u0412\u0456\u0434</span><input type="date" data-task-center-query="dateFrom" value="${state.dateFrom}"></label>
         <label><span>\u0414\u043e</span><input type="date" data-task-center-query="dateTo" value="${state.dateTo}"></label>
         <label><span>\u0421\u0442\u0430\u0442\u0443\u0441</span><select data-task-center-query="status">${taskCenterSelectOptions(TASK_CENTER_URL_STATUSES, state.status, '\u0423\u0441\u0456')}</select></label>
@@ -1473,7 +1447,8 @@ function renderTaskCenterQueryControls() {
         <select data-task-saved-view>${savedOptions}</select>
         <button type="button" class="btn-secondary" data-task-save-view ${taskCenterSavedViewSaving ? 'disabled aria-busy="true"' : drilldownActive ? 'disabled title="Цей зріз можна зберегти як посилання. Для збереженого вигляду приберіть фільтр прострочених задач."' : ''}>\u0417\u0431\u0435\u0440\u0435\u0433\u0442\u0438 \u0432\u0438\u0433\u043b\u044f\u0434</button>
         <button type="button" class="btn-secondary" data-task-delete-saved-view disabled>\u0412\u0438\u0434\u0430\u043b\u0438\u0442\u0438</button>
-    </div>`;
+    </div></details>`;
+    if (selectedFilter) host.querySelector(`[data-task-quick-filter="${selectedFilter}"]`)?.focus({ preventScroll: true });
     if (host.dataset.bound === 'true') return;
     host.dataset.bound = 'true';
     host.addEventListener('input', event => {
@@ -1489,11 +1464,13 @@ function renderTaskCenterQueryControls() {
             return;
         }
         const view = taskSavedViews.find(item => item.id === event.target?.value);
-        if (event.target?.dataset?.taskSavedView && view?.state) updateTaskCenterQueryState({ ...view.state, bookingOverdue: false, personalOverdue: false });
+        if (event.target?.matches('[data-task-saved-view]') && view?.state) updateTaskCenterQueryState(normalizeTaskCenterQueryState(view.state));
         const remove = host.querySelector('[data-task-delete-saved-view]');
         if (remove) { remove.disabled = !view; remove.dataset.taskSavedViewId = view?.id || ''; }
     });
     host.addEventListener('click', event => {
+        const quickFilter = event.target.closest('[data-task-quick-filter]')?.dataset.taskQuickFilter;
+        if (quickFilter) updateTaskCenterQueryState({ [quickFilter]: !taskCenterQueryState[quickFilter] });
         if (event.target.closest('[data-task-clear-dashboard-overdue]')) updateTaskCenterQueryState({ bookingOverdue: false, personalOverdue: false });
         if (event.target.closest('[data-task-save-view]')) void saveCurrentTaskCenterView();
         const remove = event.target.closest('[data-task-delete-saved-view]');
@@ -1568,16 +1545,11 @@ function setTaskScopeFilter(scope = 'all') {
     renderBoard();
 }
 
-function shouldShowOperationPackBar(view = currentView) {
-    if (view === 'templates' || !taskCapabilityAllowed('create', userPermissions?.canCreateTasks !== false)) return false;
-    return currentCategory === 'orders' || currentCategory === 'checklist';
-}
-
 function syncTaskSurfaceVisibility(view = currentView) {
     const isTemplates = view === 'templates';
+    const filterShell = document.getElementById('tasksFilterShell');
+    if (filterShell) filterShell.hidden = ['team', 'today'].includes(view);
     const catFilters = document.getElementById('catFilters');
-    const quickAdd = document.getElementById('quickAdd');
-    const operationPackBar = document.getElementById('operationPackBar');
     const operationsSummary = document.getElementById('operationsSummary');
     const boardContent = document.getElementById('boardContent');
     const templatesSection = document.getElementById('templatesSection');
@@ -1587,8 +1559,12 @@ function syncTaskSurfaceVisibility(view = currentView) {
     if (catFilters) catFilters.hidden = isTemplates;
     if (subcatFilters) subcatFilters.hidden = isTemplates;
     if (scopeFilters) scopeFilters.hidden = isTemplates;
-    if (quickAdd) quickAdd.hidden = isTemplates || !canCreate;
-    if (operationPackBar) operationPackBar.hidden = !shouldShowOperationPackBar(view);
+    const createLink = document.getElementById('taskCenterCreateLink');
+    if (createLink) {
+        const scope = taskBusinessScope();
+        createLink.hidden = !canCreate || scope.readOnly || scope.canWrite === false;
+        createLink.href = window.TaskLinks.createUrl({ businessContext: taskBusinessContext() });
+    }
     if (operationsSummary) operationsSummary.hidden = isTemplates || !supportsSubcategory(currentCategory);
     if (boardContent) boardContent.hidden = isTemplates;
     if (templatesSection) {
@@ -1614,73 +1590,9 @@ function activateTaskView(view = 'inbox', { mode = taskCenterModeForView(view), 
     if (nextView === 'templates') void loadTemplates();
     else void loadAllTasks();
 }
-function keepNewTaskVisible(task = {}, fallback = {}) {
-    const comparableTask = { ...fallback, ...task };
-    const category = task.category || fallback.category || 'admin';
-    const subcategory = task.subcategory || fallback.subcategory || null;
-    const workflow = task.workflowState || task.workflow_state || fallback.workflow_state || 'inbox';
-    const kind = task.taskKind || task.task_kind || fallback.task_kind || 'action';
-    const due = (task.deadline || task.remindAt || task.remind_at || task.date || fallback.deadline || fallback.date || '').slice(0, 10);
-    const week = getWeekRange();
-    const isWaiting = workflow === 'waiting' || kind === 'waiting';
-    const isNext = due && due > getTodayStr() && due <= week.to;
-    let filtersChanged = false;
-    if (currentCategory !== 'all' && currentCategory !== category) {
-        currentCategory = 'all';
-        currentSubcategory = 'all';
-        filtersChanged = true;
-    } else if (currentSubcategory !== 'all' && currentSubcategory !== (subcategory || '')) {
-        currentSubcategory = 'all';
-        filtersChanged = true;
-    }
-    if ((currentView === 'waiting' && !isWaiting) || (currentView === 'next' && !isNext) || ['routines', 'archive'].includes(currentView)) setBoardView('inbox');
-    if (currentScopeFilter !== 'all' && !taskMatchesScopeFilter(comparableTask, currentScopeFilter)) {
-        currentScopeFilter = 'all';
-        syncTaskScopeFilters();
-    }
-    if (filtersChanged) {
-        renderCategoryFilters();
-        renderSubcategoryFilters();
-    }
-}
-
 function openTaskDeepLink() {
     const taskId = getTaskDeepLinkId();
     if (taskId) openTaskDetail(taskId);
-}
-
-function showTaskCreateSuccessToast(createdTasks = [], drafts = [], postCreateWarningCount = 0) {
-    const firstTaskId = createdTasks.find(task => task?.id || task?.taskId || task?.task_id)?.id
-        || createdTasks.find(task => task?.id || task?.taskId || task?.task_id)?.taskId
-        || createdTasks.find(task => task?.id || task?.taskId || task?.task_id)?.task_id;
-    const payload = window.TaskCreate?.buildCreateNotification
-        ? window.TaskCreate.buildCreateNotification(createdTasks, drafts, { postCreateWarningCount })
-        : {
-            type: postCreateWarningCount > 0 ? 'warning' : 'success',
-            title: createdTasks.length > 1 ? 'Задачі успішно створено' : 'Задачу успішно створено',
-            message: createdTasks.length > 1 ? `Створено ${createdTasks.length} задач.` : 'Задачу додано в основний список',
-            details: postCreateWarningCount > 0 ? [`Потрібно перевірити: ${postCreateWarningCount}`] : [],
-            durationMs: 8000,
-            fadeDurationMs: 850,
-            pauseOnInteract: true,
-            closeButton: true
-        };
-    if (firstTaskId) {
-        payload.actions = [
-            {
-                label: 'Відкрити',
-                onClick: () => openTaskDetail(firstTaskId)
-            },
-            {
-                label: 'Редагувати',
-                onClick: async () => {
-                    await openTaskDetail(firstTaskId, { mode: 'edit' });
-                    window.requestAnimationFrame?.(() => document.getElementById('_tdTitle')?.focus());
-                }
-            }
-        ];
-    }
-    showNotification(payload, payload.type || 'success');
 }
 
 function setupTaskFilterToggle() {
@@ -1788,7 +1700,6 @@ async function initPage() {
             applyTaskCenterQueryState({ ...taskCenterQueryState, mode: 'team', queue: 'team' }, { syncShell: false });
         }        await _loadAssigneeDropdown();
         bootStep('owners:loaded', { count: _assigneeList.length });
-        setupTaskComposer();
         setupTaskCenterShell();
         setupTaskGovernanceMenu();
         setupTaskSoundControls();
@@ -1833,27 +1744,12 @@ async function initPage() {
             resetTaskFilters();
         });
 
-        // Quick add task
-        document.getElementById('addTaskBtn')?.addEventListener('click', addTask);
-        document.getElementById('taskCategory')?.addEventListener('change', () => {
-            syncSubcategorySelect('taskCategory', 'taskSubcategory');
-            syncTaskSurfaceVisibility();
-        });
-        document.getElementById('taskTitle')?.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') addTask();
-        });
-        document.querySelectorAll('[data-capture-chip]').forEach(btn => {
-            btn.addEventListener('click', () => applyCaptureChip(btn.dataset.captureChip));
-        });
-
         // Templates
         document.getElementById('addTemplateBtn')?.addEventListener('click', addTemplate);
         document.getElementById('tplCategory')?.addEventListener('change', () => syncSubcategorySelect('tplCategory', 'tplSubcategory'));
         document.getElementById('tplPattern')?.addEventListener('change', (e) => {
             document.getElementById('tplDays').style.display = e.target.value === 'custom' ? '' : 'none';
         });
-        document.getElementById('createOperationPackBtn')?.addEventListener('click', createOperationPack);
-        syncSubcategorySelect('taskCategory', 'taskSubcategory');
         syncSubcategorySelect('tplCategory', 'tplSubcategory');
 
         // v20.9.16: Load permissions and apply UI restrictions
@@ -1875,7 +1771,7 @@ async function initPage() {
         applyTaskViewShell(currentView);
         bootStep('permissions:loaded', { hasPermissions: Boolean(userPermissions) });
 
-        await loadAllTasks({ fatal: true });
+        await loadAllTasks();
         if (currentView === 'templates') await loadTemplates();
         bootStep('tasks:loaded', { count: Array.isArray(allTasks) ? allTasks.length : 0 });
         openTaskDeepLink();
@@ -1894,28 +1790,12 @@ async function initPage() {
 // v20.9.16: Hide/show UI elements based on role permissions
 function applyPermissionsUI(perms) {
     const canCreate = taskCapabilityAllowed('create', perms?.canCreateTasks !== false);
-    const quickAdd = document.getElementById('quickAdd');
-    let notice = document.getElementById('taskCreatePermissionNotice');
-    if (!notice && quickAdd) {
-        notice = document.createElement('p');
-        notice.id = 'taskCreatePermissionNotice';
-        notice.className = 'task-permission-notice';
-        notice.setAttribute('role', 'status');
-        quickAdd.insertAdjacentElement('afterend', notice);
-    }
-    if (notice) {
-        notice.hidden = canCreate;
-        notice.textContent = canCreate ? '' : taskCapabilityReason('create', false);
-    }
-    const operationPackBar = document.getElementById('operationPackBar');
-    if (operationPackBar) operationPackBar.hidden = !canCreate;
     const templatesTab = document.querySelector('[data-view="templates"]');
     if (templatesTab) {
         templatesTab.hidden = !canCreate;
         templatesTab.style.display = canCreate ? '' : 'none';
     }
     syncTaskSurfaceVisibility();
-    renderTaskCreateCoAssignees();
 }
 
 // ==========================================
@@ -1935,28 +1815,6 @@ async function apiGetTasks(filters = {}) {
         console.error('API getTasks error:', err);
         return [];
     }
-}
-
-async function apiCreateTask(data) {
-    if (window.TaskCreate?.createTask) {
-        return await window.TaskCreate.createTask(taskPayload(data), {
-            onDuplicate: (err) => showNotification(err.message || 'Активний дубль не створено', 'warning')
-        });
-    }
-    try {
-        const response = await taskApiFetchWithAuth(`${API_BASE}/tasks`, {
-            method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data)
-        });
-        if (!response) return null;
-        if (handleAuthError(response)) return null;
-        if (response.status === 409) {
-            const err = await response.json();
-            showNotification(err.message || 'Активний дубль не створено', 'warning');
-            return { success: false, duplicate: true, ...err };
-        }
-        if (!response.ok) throw new Error('create task API error');
-        return await response.json();
-    } catch (err) { console.error('API createTask error:', err); return null; }
 }
 
 // v33.3: Bulk task actions
@@ -2008,6 +1866,9 @@ async function apiGetTasksPage({ view = currentView, page = 1, limit = 100, sign
     }
     if (state.personalOverdue) params.set('dashboardFilter', 'my-overdue');
     if (state.ownerUserId) params.set('owner_user_id', state.ownerUserId);
+    if (state.overdue) params.set('overdue_work', '1');
+    if (state.unassigned) params.set('unassigned', '1');
+    if (state.automatic) params.set('automatic', '1');
     if (state.dateFrom) params.set('date_from', state.dateFrom);
     if (state.dateTo) params.set('date_to', state.dateTo);
     if (state.status.length) params.set('status', state.status.join(','));
@@ -2340,7 +2201,7 @@ function renderSubcategoryFilters() {
 }
 
 function taskOverviewModeActive() {
-    return typeof currentTaskMode !== 'undefined' && currentTaskMode === 'overview';
+    return currentView === 'inbox' && !taskCenterQueryState.automatic && !taskCenterQueryState.unassigned && !taskCenterQueryState.overdue && !taskCenterQueryState.ownerUserId;
 }
 
 async function loadTaskOverview(options = {}) {
@@ -2369,7 +2230,7 @@ async function loadTaskOverview(options = {}) {
     }
 }
 function taskTeamControlModeActive() {
-    return typeof currentTaskMode !== 'undefined' && ['team', 'planning'].includes(currentTaskMode);
+    return currentView === 'capacity';
 }
 
 function normalizeTaskTeamControlFilters() {
@@ -2410,8 +2271,8 @@ async function loadTaskTeamControl(options = {}) {
 async function loadAllTasks(options = {}) {
     const { fatal = false, append = false } = options;
     const dashboardOverdue = typeof taskCenterQueryState !== 'undefined' && (taskCenterQueryState.bookingOverdue || taskCenterQueryState.personalOverdue);
-    if (!append && !dashboardOverdue && typeof currentTaskMode !== 'undefined' && currentTaskMode === 'overview') return loadTaskOverview({ fatal });
-    if (!append && !dashboardOverdue && typeof currentTaskMode !== 'undefined' && ['team', 'planning'].includes(currentTaskMode)) return loadTaskTeamControl({ fatal });
+    if (!append && !dashboardOverdue && taskOverviewModeActive()) return loadTaskOverview({ fatal });
+    if (!append && !dashboardOverdue && taskTeamControlModeActive()) return loadTaskTeamControl({ fatal });
     if (!append) {
         window.__taskCenterRequestAbortController?.abort();
         window.__taskCenterRequestAbortController = typeof AbortController === 'function' ? new AbortController() : null;
@@ -2457,19 +2318,6 @@ function renderTaskPagination(container) {
     const existing = container.querySelector(':scope > .task-pagination');
     if (existing) existing.outerHTML = html;
     else container.insertAdjacentHTML('beforeend', html);
-}
-
-async function apiCreateOperationPack(data) {
-    try {
-        const response = await taskApiFetch(`${API_BASE}/tasks/operation-pack`, {
-            method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data)
-        });
-        if (handleAuthError(response)) return null;
-        return await response.json();
-    } catch (err) {
-        console.error('API createOperationPack error:', err);
-        return null;
-    }
 }
 
 function filterByTaxonomy(tasks) {
@@ -2808,7 +2656,7 @@ function updateCounts() {
     const doneToday = filterByCategory(allTasks.filter(isCompletedToday));
     const todayTasks = activeNotDeferred.filter(t => {
         const due = taskDueDate(t);
-        return due === today || !due;
+        return due === today;
     });
     const weekTasks = activeNotDeferred.filter(t => {
         const due = taskDueDate(t);
@@ -2869,7 +2717,7 @@ function getTasksAssistantViewBase(view = currentView) {
         case 'today':
             return activeNotDeferred.filter(t => {
                 const due = taskDueDate(t);
-                return due === today || !due;
+                return due === today;
             });
         case 'next':
             return activeNotDeferred.filter(t => {
@@ -2921,7 +2769,7 @@ function getTasksAssistantCounts() {
     });
     const todayTasks = activeNotDeferred.filter(t => {
         const due = taskDueDate(t);
-        return due === today || !due;
+        return due === today;
     });
     return {
         loaded: allTasks.length,
@@ -3086,7 +2934,7 @@ function renderBoard() {
 
     switch (currentView) {
         case 'inbox': renderSimpleTaskView(container, 'inbox', t => isInboxTask(t), 'Інбокс чистий. Нові задачі без контексту зʼявлятимуться тут.', t => taskWorkflow(t) === 'inbox' || (!t.date && !t.deadline)); break;
-        case 'today': renderTodayView(container); break;
+        case 'today': renderCompactTeamList(container, 'Сьогодні'); break;
         case 'next': renderSimpleTaskView(container, 'next', t => {
             const today = getTodayStr();
             const week = getWeekRange();
@@ -3100,7 +2948,7 @@ function renderBoard() {
         }); break;
         case 'deferred': renderSimpleTaskView(container, 'deferred', t => isActiveTask(t) && isDeferredTask(t), 'Відкладених задач немає.', isDeferredTask); break;
         case 'waiting': renderSimpleTaskView(container, 'waiting', t => isActiveTask(t) && isWaitingTask(t), 'Немає задач у стані “чекаю”.', isWaitingTask); break;
-        case 'team': renderSimpleTaskView(container, 'team', t => isActiveTask(t) && isTeamTask(t), 'Командних задач у цьому зрізі немає.', isTeamTask); break;
+        case 'team': renderCompactTeamList(container, 'Задачі команди'); break;
         case 'week': renderWeekView(container); break;
         case 'my': renderMyView(container); break;
         case 'board': renderKanbanView(container); break;
@@ -3110,6 +2958,43 @@ function renderBoard() {
         default: renderSimpleTaskView(container, 'inbox', t => isInboxTask(t), 'Інбокс чистий.');
     }
     renderTaskPagination(container);
+}
+
+function renderCompactTeamList(container, heading) {
+    const tasks = allTasks;
+    container.innerHTML = `<h2 class="task-team-heading">${heading} <span aria-live="polite">· ${taskPagination.total || 0}</span></h2>
+        ${tasks.length ? `<div class="task-team-list">${tasks.map(renderCompactTeamRow).join('')}</div>`
+            : '<p class="empty-state">Немає доступних задач за цими умовами.</p>'}`;
+}
+
+function renderCompactTeamRow(task) {
+    const id = Number(task.id);
+    const due = taskDueDate(task);
+    const days = window.TaskUiShared.daysBetweenTaskDates(due, getTodayStr());
+    const overdue = days > 0 && !isDeferredTask(task);
+    const time = window.TaskUiShared.taskExplicitTime(task);
+    const status = WORKFLOW_LABELS[taskWorkflow(task)] || STATUS_LABELS[task.status] || 'До виконання';
+    const ai = window.TaskAiDraft?.isAiTask?.(task);
+    const context = { booking: 'Бронювання', recurring: 'Рутина', lead: 'Лід', order: 'Замовлення',
+        customer: 'Клієнт', operation_pack: 'Операційний пакет', chat: 'Чат', attendance: 'Табель' }[task.source_type];
+    const source = ai ? 'AI-чернетка' : task.is_automatic
+        ? ['Автоматична', context].filter(Boolean).join(' · ') : context || 'Вручну';
+    const blocked = task.isBlocked || Number(task.open_dependency_count) > 0;
+    const permission = task.actionPermissions || {};
+    const owner = task.ownerLabel || task.owner_name || task.owner_username || task.assigned_to || task.owner;
+    return `<article class="task-team-row" data-task-id="${id}" data-task-status="${escapeHtml(task.status)}">
+        <button type="button" class="task-team-title" data-task-action="open-detail" data-task-id="${id}">${escapeHtml(task.title)}</button>
+        <span class="task-team-owner">${escapeHtml(owner || 'Без відповідального')}</span>
+        <span class="task-team-due">${due ? `<time datetime="${due}">${escapeHtml(formatDateShort(due))}${time ? ` · ${escapeHtml(time)}` : ''}</time>` : 'Без дати'}
+            ${overdue ? `<small>Прострочено: ${days} дн.</small>` : ''}</span>
+        <span class="task-team-status">${escapeHtml(status)}</span>
+        <span class="task-team-source">${escapeHtml(source)}</span>
+        <div class="task-team-actions">
+            ${permission.canChangeStatus && !blocked ? `<button type="button" class="btn-secondary" data-task-action="status" data-next-status="done" data-task-id="${id}">Виконати</button>` : ''}
+            ${permission.canMutate || permission.canReschedule ? renderTaskRowMoreAction(id) : ''}
+        </div>
+        ${blocked ? `<p class="task-team-blocked">Заблоковано. ${escapeHtml(task.blockedByTitles || task.blocked_by_titles || 'Спочатку виконайте попередню задачу.')}</p>` : ''}
+    </article>`;
 }
 
 function renderTaskOverview(container) {
@@ -3269,7 +3154,7 @@ function renderTodayView(container) {
     const activeBase = allTasks.filter(t => {
         if (!isActiveTask(t) || isDeferredTask(t)) return false;
         const due = taskDueDate(t);
-        return due === today || !due;
+        return due === today;
     });
     const completedBase = allTasks.filter(t => t.status === 'done' && (t.date === today || isCompletedToday(t)));
     const baseTasks = composeSliceTasks(activeBase, completedBase);
@@ -3641,6 +3526,12 @@ function taskRowMoveTargets(task = {}) {
 
 function renderTaskRowMenuItems(task = {}) {
     const taskId = Number(task.id || 0);
+    if (['team', 'today'].includes(currentView)) {
+        return window.TaskUI?.renderMenuItems([
+            ...(task.actionPermissions?.canReschedule ? [{ label: 'Перенести', attrs: { 'data-task-action': 'move-target', 'data-task-move-target': 'snooze_custom', 'data-task-id': taskId } }] : []),
+            ...(task.actionPermissions?.canMutate ? [{ label: 'Редагувати', attrs: { 'data-task-action': 'edit-detail', 'data-task-id': taskId } }] : [])
+        ]) || '';
+    }
     const moveItems = taskRowMoveTargets(task).map(target => ({
         label: target.label,
         detail: target.detail,
@@ -3802,463 +3693,6 @@ function renderTaskCard(task) {
 // TASK ACTIONS
 // ==========================================
 
-function _ensureCurrentUserInAssignees() {
-    const self = currentUserTaskOwnerOption();
-    if (!self) return null;
-    const exists = _assigneeList.some(user => String(user.id) === String(self.id));
-    if (!exists) _assigneeList.unshift(self);
-    return self;
-}
-
-function _renderAssigneeSelect() {
-    const sel = document.getElementById('taskAssignedTo');
-    if (!sel) return;
-    _ensureCurrentUserInAssignees();
-    const selected = sel.value;
-    sel.innerHTML = '<option value="">Оберіть людину</option>' +
-        _assigneeList.map(s => `<option value="${s.id}">${escapeHtml(s.label || s.name || s.username || ('User #' + s.id))}${s.role ? ' (' + escapeHtml(s.role) + ')' : ''}</option>`).join('');
-    sel.value = selected;
-    renderTaskCreateCoAssignees();
-}
-
-function renderTaskCreateCoAssignees() {
-    const fieldset = document.getElementById('taskCreateCoAssignees');
-    if (!fieldset) return;
-    const list = fieldset.querySelector('[data-task-create-co-assignee-options]');
-    const checked = new Set([...list.querySelectorAll('input:checked')].map(input => Number(input.value)));
-    const allowed = userPermissions?.canAssignAnyone === true || ['all', 'department'].includes(userPermissions?.taskVisibility);
-    const primary = Number(resolveQuickAddOwnerUserId());
-    const people = allowed ? _assigneeList.filter(person => Number(person.id) > 0 && Number(person.id) !== primary) : [];
-    fieldset.hidden = people.length === 0;
-    list.innerHTML = people.map(person => {
-        const id = Number(person.id);
-        const label = escapeHtml(person.label || person.name || person.username || `User #${id}`);
-        return `<label for="taskCreateCoAssignee${id}" style="display:flex;align-items:center;gap:8px;min-height:44px;overflow-wrap:anywhere"><input id="taskCreateCoAssignee${id}" type="checkbox" value="${id}" ${checked.has(id) ? 'checked' : ''}>${label}</label>`;
-    }).join('');
-}
-
-function setTaskAssigneeMode(mode = 'self') {
-    taskAssigneeMode = mode === 'team' ? 'team' : 'self';
-    const quickAdd = document.getElementById('quickAdd');
-    const select = document.getElementById('taskAssignedTo');
-    if (quickAdd) quickAdd.dataset.assigneeMode = taskAssigneeMode;
-    document.querySelectorAll('[data-task-assignee-mode]').forEach(btn => {
-        const active = btn.dataset.taskAssigneeMode === taskAssigneeMode;
-        btn.classList.toggle('active', active);
-        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
-    });
-    if (!select) return;
-    if (taskAssigneeMode === 'self') {
-        const self = _ensureCurrentUserInAssignees();
-        if (self) select.value = String(self.id);
-        select.hidden = true;
-        select.disabled = true;
-        select.setAttribute('aria-hidden', 'true');
-        select.tabIndex = -1;
-    } else {
-        select.hidden = false;
-        select.disabled = false;
-        select.setAttribute('aria-hidden', 'false');
-        select.removeAttribute('tabindex');
-        if (select.value && String(select.value) === String(currentUserId() || '')) select.value = '';
-    }
-    renderTaskCreateCoAssignees();
-}
-
-function dateForDuePreset(preset = taskDuePreset) {
-    return dateForDuePresetValue(preset, document.getElementById('taskScheduleDate')?.value || '');
-}
-
-function dateForDuePresetValue(preset = 'today', manualDate = '') {
-    if (preset === 'tomorrow') {
-        const d = new Date();
-        d.setDate(d.getDate() + 1);
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    }
-    if (preset === 'no_date') return '';
-    return manualDate || getTodayStr();
-}
-
-function taskBatchDueOptions(selected = 'today') {
-    const options = [
-        ['today', 'Сьогодні'],
-        ['tomorrow', 'Завтра'],
-        ['no_date', 'Без дати'],
-        ['custom', 'Інша дата']
-    ];
-    return options.map(([value, label]) => `<option value="${value}" ${selected === value ? 'selected' : ''}>${label}</option>`).join('');
-}
-
-function taskPriorityOptions(selected = 'normal') {
-    const options = [
-        ['urgent', 'Терміново'],
-        ['normal', 'Звичайний'],
-        ['high', 'Високий'],
-        ['low', 'Низький']
-    ];
-    return options.map(([value, label]) => `<option value="${value}" ${selected === value ? 'selected' : ''}>${label}</option>`).join('');
-}
-
-function readTaskComposerDraft() {
-    const category = document.getElementById('taskCategory')?.value || 'admin';
-    const scheduleDate = document.getElementById('taskScheduleDate')?.value || getTodayStr();
-    const mode = document.getElementById('taskMode')?.value || (captureIntent.private ? 'private' : (captureIntent.personal ? 'personal' : 'work'));
-    const kind = document.getElementById('taskKind')?.value || (captureIntent.waiting ? 'waiting' : 'action');
-    return {
-        title: document.getElementById('taskTitle')?.value.trim() || '',
-        description: document.getElementById('taskDescription')?.value.trim() || '',
-        category,
-        subcategory: selectedSubcategoryFor(category, 'taskSubcategory'),
-        priority: document.getElementById('taskPriority')?.value || 'normal',
-        taskType: document.getElementById('taskType')?.value || 'human',
-        deadlineTime: document.getElementById('taskDeadlineTime')?.value || '',
-        ownerUserId: resolveQuickAddOwnerUserId(),
-        coAssigneeUserIds: [...document.querySelectorAll('#taskCreateCoAssignees:not([hidden]) input:checked')].map(input => Number(input.value)),
-        assigneeMode: taskAssigneeMode,
-        mode: 'simple',
-        structuralMode: 'simple',
-        taskMode: mode,
-        kind,
-        visibility: defaultVisibilityForTaskMode(mode, document.getElementById('taskVisibility')?.value || 'team'),
-        duePreset: taskDuePreset,
-        scheduleDate,
-        dueDate: dateForDuePresetValue(taskDuePreset, scheduleDate),
-        durationMinutes: Math.max(5, parseInt(document.getElementById('taskScheduleDuration')?.value, 10) || 30),
-        scheduleSlot: quickScheduleSlot,
-        impactIds: [...taskComposerAiImpactIds],
-        scheduleConfirmed: taskDuePreset !== 'no_date',
-        allowReschedule: document.getElementById('taskAllowReschedule')?.checked !== false,
-        captureIntent: { ...captureIntent }
-    };
-}
-
-function applyTaskAiDraftField(field, value) {
-    if (field === 'title') {
-        const input = document.getElementById('taskTitle');
-        if (input) input.value = String(value || '');
-        return;
-    }
-    if (field === 'description') {
-        const textarea = document.getElementById('taskDescription');
-        if (textarea) textarea.value = String(value || '');
-        return;
-    }
-    if (field === 'impactIds') {
-        const maxImpacts = Number(window.MyDayImpactIcons?.MAX_SELECTED_IMPACTS || 5);
-        taskComposerAiImpactIds = (Array.isArray(value) ? value : []).map(Number).filter(Number.isInteger).slice(0, maxImpacts);
-        return;
-    }
-    if (field === 'scheduleDate') {
-        const input = document.getElementById('taskScheduleDate');
-        const date = String(value || '').trim();
-        if (input) input.value = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : '';
-        setTaskDuePreset(date ? 'custom' : 'no_date', { expand: false });
-        return;
-    }
-    if (field === 'priority') {
-        const select = document.getElementById('taskPriority');
-        if (select && ['urgent', 'high', 'normal', 'low'].includes(String(value || ''))) select.value = String(value);
-        return;
-    }
-}
-
-function focusTaskAiDraftField(field) {
-    const map = {
-        title: 'taskTitle',
-        description: 'taskDescription',
-        mode: 'taskMode',
-        scheduleDate: 'taskScheduleDate',
-        priority: 'taskPriority'
-    };
-    document.getElementById(map[field])?.focus();
-}
-
-function cloneTaskBatchSettings(source = {}) {
-    return {
-        category: source.category || 'admin',
-        subcategory: source.subcategory || null,
-        taskType: source.taskType || 'human',
-        ownerUserId: source.ownerUserId || null,
-        assigneeMode: source.assigneeMode || taskAssigneeMode || 'self',
-        mode: source.taskMode || source.mode || 'work',
-        kind: source.kind || 'action',
-        visibility: source.visibility || 'team',
-        scheduleSlot: source.scheduleSlot || quickScheduleSlot || 'morning',
-        allowReschedule: source.allowReschedule !== false,
-        captureIntent: { ...(source.captureIntent || {}) }
-    };
-}
-
-function createQuickTaskBatchItem(source = readTaskComposerDraft()) {
-    const settings = cloneTaskBatchSettings(source);
-    return {
-        id: quickTaskBatchNextId++,
-        title: '',
-        priority: source.priority || 'normal',
-        duePreset: source.duePreset || taskDuePreset || 'today',
-        scheduleDate: source.scheduleDate || source.dueDate || getTodayStr(),
-        deadlineTime: source.deadlineTime || '',
-        durationMinutes: Math.max(5, parseInt(source.durationMinutes, 10) || 30),
-        ...settings
-    };
-}
-
-function taskBatchSourceDraft() {
-    return quickTaskBatchItems.length ? quickTaskBatchItems[quickTaskBatchItems.length - 1] : readTaskComposerDraft();
-}
-
-function taskBatchOwnerLabel(item = {}) {
-    if (item.assigneeMode === 'self' || String(item.ownerUserId || '') === String(currentUserId() || '')) return 'Собі';
-    const owner = _assigneeList.find(user => String(user.id) === String(item.ownerUserId || ''));
-    return owner?.label || owner?.name || owner?.username || (item.ownerUserId ? `User #${item.ownerUserId}` : 'Команді');
-}
-
-function taskBatchSummary(item = {}) {
-    const dueDate = dateForDuePresetValue(item.duePreset, item.scheduleDate);
-    const dateLabel = item.duePreset === 'no_date' ? 'без дати' : (dueDate || 'дата не задана');
-    return `${taskBatchOwnerLabel(item)} · ${getTaxonomyLabel(item.category, item.subcategory)} · ${dateLabel}`;
-}
-
-function renderQuickTaskBatchItems() {
-    const panel = document.getElementById('taskBatchPanel');
-    const list = document.getElementById('taskBatchList');
-    if (!panel || !list) return;
-    panel.hidden = quickTaskBatchItems.length === 0;
-    list.innerHTML = quickTaskBatchItems.map((item, index) => `
-        <section class="task-batch-card" data-task-batch-card="${item.id}">
-            <div class="task-batch-card-head">
-                <div class="task-batch-card-title">
-                    <strong>Задача ${index + 2}</strong>
-                    <span title="${escapeHtml(taskBatchSummary(item))}">${escapeHtml(taskBatchSummary(item))}</span>
-                </div>
-                <button type="button" class="task-batch-remove" data-task-batch-remove="${item.id}">Прибрати</button>
-            </div>
-            <div class="task-batch-fields">
-                <label for="taskBatchTitle-${item.id}">Назва
-                    <input type="text" id="taskBatchTitle-${item.id}" data-task-batch-id="${item.id}" data-task-batch-field="title" value="${escapeHtml(item.title)}" placeholder="Що треба зробити?">
-                </label>
-                <label for="taskBatchPriority-${item.id}">Пріоритет
-                    <select id="taskBatchPriority-${item.id}" data-task-batch-id="${item.id}" data-task-batch-field="priority">${taskPriorityOptions(item.priority)}</select>
-                </label>
-                <label for="taskBatchDuePreset-${item.id}">Коли
-                    <select id="taskBatchDuePreset-${item.id}" data-task-batch-id="${item.id}" data-task-batch-field="duePreset">${taskBatchDueOptions(item.duePreset)}</select>
-                </label>
-                <label for="taskBatchDate-${item.id}">Дата
-                    <input type="date" id="taskBatchDate-${item.id}" data-task-batch-id="${item.id}" data-task-batch-field="scheduleDate" value="${escapeHtml(item.scheduleDate || '')}">
-                </label>
-                <label for="taskBatchTime-${item.id}">Час
-                    <input type="time" id="taskBatchTime-${item.id}" data-task-batch-id="${item.id}" data-task-batch-field="deadlineTime" value="${escapeHtml(item.deadlineTime || '')}">
-                </label>
-                <label for="taskBatchDuration-${item.id}">Хв
-                    <input type="number" id="taskBatchDuration-${item.id}" data-task-batch-id="${item.id}" data-task-batch-field="durationMinutes" min="5" max="480" step="5" value="${escapeHtml(String(item.durationMinutes || 30))}">
-                </label>
-            </div>
-        </section>
-    `).join('');
-}
-
-function updateQuickTaskBatchItem(id, field, value) {
-    const item = quickTaskBatchItems.find(row => String(row.id) === String(id));
-    if (!item) return;
-    if (field === 'durationMinutes') item[field] = Math.max(5, parseInt(value, 10) || 30);
-    else item[field] = value;
-    if (field === 'duePreset' && (value === 'today' || value === 'tomorrow')) {
-        item.scheduleDate = dateForDuePresetValue(value, item.scheduleDate);
-    }
-}
-
-function bindTaskBatchListEvents() {
-    const list = document.getElementById('taskBatchList');
-    if (!list) return;
-    list.addEventListener('input', (event) => {
-        const control = event.target.closest('[data-task-batch-field]');
-        if (!control) return;
-        updateQuickTaskBatchItem(control.dataset.taskBatchId, control.dataset.taskBatchField, control.value);
-    });
-    list.addEventListener('change', (event) => {
-        const control = event.target.closest('[data-task-batch-field]');
-        if (!control) return;
-        updateQuickTaskBatchItem(control.dataset.taskBatchId, control.dataset.taskBatchField, control.value);
-        if (control.dataset.taskBatchField === 'duePreset') renderQuickTaskBatchItems();
-    });
-    list.addEventListener('click', (event) => {
-        const remove = event.target.closest('[data-task-batch-remove]');
-        if (!remove) return;
-        quickTaskBatchItems = quickTaskBatchItems.filter(item => String(item.id) !== String(remove.dataset.taskBatchRemove));
-        renderQuickTaskBatchItems();
-    });
-}
-
-function addQuickTaskBatchItem() {
-    const item = createQuickTaskBatchItem(taskBatchSourceDraft());
-    quickTaskBatchItems.push(item);
-    renderQuickTaskBatchItems();
-    toggleTaskComposerDetails(true);
-    setTimeout(() => document.getElementById(`taskBatchTitle-${item.id}`)?.focus(), 0);
-}
-
-function taskDraftFromBatchItem(item = {}) {
-    return {
-        ...cloneTaskBatchSettings(item),
-        title: String(item.title || '').trim(),
-        priority: item.priority || 'normal',
-        duePreset: item.duePreset || 'today',
-        scheduleDate: item.scheduleDate || getTodayStr(),
-        dueDate: dateForDuePresetValue(item.duePreset || 'today', item.scheduleDate || ''),
-        deadlineTime: item.deadlineTime || '',
-        durationMinutes: Math.max(5, parseInt(item.durationMinutes, 10) || 30)
-    };
-}
-
-function buildTaskCreatePayload(draft = {}) {
-    if (window.TaskCreate?.buildPayload) {
-        return window.TaskCreate.buildPayload(draft, {
-            sourceModule: 'tasks',
-            scheduleSlot: draft.scheduleSlot || quickScheduleSlot
-        });
-    }
-    const category = draft.category || 'admin';
-    const subcategory = draft.subcategory || null;
-    const dueDate = dateForDuePresetValue(draft.duePreset || 'today', draft.scheduleDate || draft.dueDate || '');
-    const durationMinutes = Math.max(5, parseInt(draft.durationMinutes, 10) || 30);
-    const data = {
-        title: String(draft.title || '').trim(),
-        priority: draft.priority || 'normal',
-        category,
-        task_type: draft.taskType || 'human',
-        task_mode: draft.taskMode || draft.mode || 'work',
-        task_kind: draft.kind || 'action',
-        visibility: defaultVisibilityForTaskMode(draft.taskMode || draft.mode || 'work', draft.visibility || 'team'),
-        workflow_state: draft.captureIntent?.waiting ? 'waiting' : 'inbox',
-        subcategory,
-        source_type: 'manual',
-        source_module: 'tasks',
-        allowReschedule: draft.allowReschedule !== false,
-        controlMeta: {
-            canReschedule: draft.allowReschedule !== false,
-            allowReschedule: draft.allowReschedule !== false
-        }
-    };
-    if (draft.ownerUserId) data.ownerUserId = draft.ownerUserId;
-    if (draft.coAssigneeUserIds?.length) data.coAssigneeUserIds = draft.coAssigneeUserIds;
-    if (dueDate) {
-        data.date = dueDate;
-        data.schedule = {
-            date: dueDate,
-            slot: draft.scheduleSlot || quickScheduleSlot,
-            durationMinutes
-        };
-        data.effort_minutes = durationMinutes;
-    }
-    if (draft.deadlineTime && dueDate) {
-        data.deadline = `${dueDate}T${draft.deadlineTime}:00`;
-        data.schedule = {
-            date: dueDate,
-            scheduledStartAt: `${dueDate}T${draft.deadlineTime}`,
-            durationMinutes
-        };
-        data.effort_minutes = durationMinutes;
-    }
-    return data;
-}
-
-function focusInvalidTaskDraft(index, itemId) {
-    if (index === 0) {
-        document.getElementById('taskTitle')?.focus();
-        return;
-    }
-    document.getElementById(`taskBatchTitle-${itemId}`)?.focus();
-}
-
-function resetTaskComposerAfterCreate() {
-    const title = document.getElementById('taskTitle');
-    if (title) title.value = '';
-    const description = document.getElementById('taskDescription');
-    if (description) description.value = '';
-    document.querySelectorAll('#taskCreateCoAssignees input:checked').forEach(input => { input.checked = false; });
-    taskComposerAiImpactIds = [];
-    window.TaskAiDraft?.clear?.(document.getElementById('quickAdd'));
-    if (document.getElementById('taskDeadlineTime')) document.getElementById('taskDeadlineTime').value = '';
-    if (document.getElementById('taskScheduleDuration')) document.getElementById('taskScheduleDuration').value = '30';
-    if (document.getElementById('taskScheduleDate')) document.getElementById('taskScheduleDate').value = getTodayStr();
-    if (document.getElementById('taskAllowReschedule')) document.getElementById('taskAllowReschedule').checked = true;
-    quickTaskBatchItems = [];
-    renderQuickTaskBatchItems();
-    captureIntent = {};
-    document.querySelectorAll('[data-capture-chip]').forEach(btn => btn.classList.remove('active'));
-    setTaskDuePreset('today', { expand: false });
-    setTaskAssigneeMode('self');
-    toggleTaskComposerDetails(false);
-}
-
-function setTaskDuePreset(preset = 'today', options = {}) {
-    taskDuePreset = ['today', 'tomorrow', 'no_date', 'custom'].includes(preset) ? preset : 'today';
-    document.querySelectorAll('[data-due-preset]').forEach(btn => {
-        const active = btn.dataset.duePreset === taskDuePreset;
-        btn.classList.toggle('active', active);
-        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
-    });
-    const dateInput = document.getElementById('taskScheduleDate');
-    if (dateInput && taskDuePreset === 'today') dateInput.value = getTodayStr();
-    if (dateInput && taskDuePreset === 'tomorrow') dateInput.value = dateForDuePreset('tomorrow');
-    if (taskDuePreset === 'custom' && options.expand !== false) {
-        toggleTaskComposerDetails(true);
-        dateInput?.focus();
-    }
-}
-
-function toggleTaskComposerDetails(force) {
-    const details = document.getElementById('taskComposerDetails');
-    const toggle = document.getElementById('taskDetailsToggle');
-    if (!details || !toggle) return;
-    const open = typeof force === 'boolean' ? force : details.hidden;
-    details.hidden = !open;
-    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-    toggle.textContent = open ? 'Сховати' : 'Ще';
-}
-
-function setupTaskComposer() {
-    _renderAssigneeSelect();
-    setTaskAssigneeMode('self');
-    document.getElementById('taskAssignedTo')?.addEventListener('change', renderTaskCreateCoAssignees);
-    const dateInput = document.getElementById('taskScheduleDate');
-    if (dateInput && !dateInput.value) dateInput.value = getTodayStr();
-    setTaskDuePreset('today', { expand: false });
-    document.querySelectorAll('[data-task-assignee-mode]').forEach(btn => {
-        btn.addEventListener('click', () => setTaskAssigneeMode(btn.dataset.taskAssigneeMode));
-    });
-    document.querySelectorAll('[data-due-preset]').forEach(btn => {
-        btn.addEventListener('click', () => setTaskDuePreset(btn.dataset.duePreset));
-    });
-    dateInput?.addEventListener('change', () => setTaskDuePreset('custom', { expand: false }));
-    document.querySelectorAll('[data-schedule-slot]').forEach(btn => {
-        btn.addEventListener('click', () => {
-            quickScheduleSlot = btn.dataset.scheduleSlot || 'morning';
-            document.querySelectorAll('[data-schedule-slot]').forEach(slotBtn => {
-                const active = slotBtn.dataset.scheduleSlot === quickScheduleSlot;
-                slotBtn.classList.toggle('active', active);
-                slotBtn.setAttribute('aria-pressed', active ? 'true' : 'false');
-            });
-        });
-    });
-    document.getElementById('addTaskRowBtn')?.addEventListener('click', addQuickTaskBatchItem);
-    bindTaskBatchListEvents();
-    renderQuickTaskBatchItems();
-    document.getElementById('taskDetailsToggle')?.addEventListener('click', () => toggleTaskComposerDetails());
-    if (window.TaskAiDraft) {
-        window.TaskAiDraft.bindComposer(document.getElementById('quickAdd'), {
-            sourceModule: 'tasks',
-            sourceSurface: 'tasks_quick_composer',
-            readDraft: readTaskComposerDraft,
-            applyField: applyTaskAiDraftField,
-            focusField: focusTaskAiDraftField,
-            requestSubmit: () => document.getElementById('addTaskBtn')?.click(),
-            commitBundle: window.TaskCreate?.commitAiDraftBundle,
-            readCoAssignees: () => readTaskComposerDraft().coAssigneeUserIds
-        });
-    }
-}
-
 function getTaskScopeLabel(scope = currentScopeFilter) {
     const labels = {
         all: 'Всі мої',
@@ -4294,195 +3728,11 @@ function applyTaskScopeFilter(tasks = []) {
     return tasks.filter(task => taskMatchesScopeFilter(task));
 }
 
-function resolveQuickAddOwnerUserId() {
-    if (taskAssigneeMode === 'self') return currentUserId();
-    const selected = document.getElementById('taskAssignedTo')?.value || '';
-    return selected || null;
-}
-
 async function _loadAssigneeDropdown() {
     try {
         _assigneeList = (await apiGetTaskOwners()).sort((a, b) => String(a.label || '').localeCompare(String(b.label || ''), 'uk'));
-        _renderAssigneeSelect();
     } catch {}
 }
-
-function applyCaptureChip(chip) {
-    captureIntent[chip] = !captureIntent[chip];
-    document.querySelectorAll('[data-capture-chip]').forEach(btn => {
-        btn.classList.toggle('active', !!captureIntent[btn.dataset.captureChip]);
-    });
-    const mode = document.getElementById('taskMode');
-    const kind = document.getElementById('taskKind');
-    const visibility = document.getElementById('taskVisibility');
-    if (chip === 'personal' && mode) {
-        mode.value = 'personal';
-        if (visibility) visibility.value = 'me_only';
-    }
-    if (chip === 'private' && mode) {
-        mode.value = 'private';
-        if (visibility) visibility.value = 'private';
-    }
-    if (chip === 'waiting' && kind) kind.value = 'waiting';
-    if (chip === 'idea' && kind) kind.value = 'idea';
-    const dateInput = document.getElementById('taskScheduleDate');
-    if (dateInput && (chip === 'today' || chip === 'tomorrow')) dateInput.value = dateFromCaptureIntent();
-}
-
-function defaultVisibilityForTaskMode(mode, explicitVisibility) {
-    if (explicitVisibility === 'private' || explicitVisibility === 'me_only') return explicitVisibility;
-    if (mode === 'private') return 'private';
-    if (mode === 'personal') return 'me_only';
-    return 'team';
-}
-
-function dateFromCaptureIntent() {
-    if (captureIntent.tomorrow) {
-        const d = new Date();
-        d.setDate(d.getDate() + 1);
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    }
-    return getTodayStr();
-}
-
-async function addTask() {
-    if (!taskCapabilityAllowed('create', userPermissions?.canCreateTasks !== false)) {
-        showNotification(taskCapabilityReason('create', false), 'error');
-        return;
-    }
-    const composer = document.getElementById('quickAdd');
-    const mainDraft = readTaskComposerDraft();
-    const batchDrafts = quickTaskBatchItems.map(taskDraftFromBatchItem);
-    const aiCommitPayload = window.TaskAiDraft?.commitPayloadFor?.(composer);
-    if (aiCommitPayload) {
-        if (window.TaskAiDraft?.isCommitPending?.(composer)) return;
-        if (batchDrafts.length) {
-            showNotification('AI-пропозиція створює тільки показану структуру. Приберіть додаткові ручні рядки або скасуйте AI-зміни.', 'warning');
-            return;
-        }
-        if (aiCommitPayload.commitType === 'bundle') {
-            if (!window.TaskCreate?.commitAiDraftBundle) {
-                showNotification('Створення кількох AI-задач тимчасово недоступне. Ручне створення працює як раніше.', 'error');
-                return;
-            }
-            window.TaskAiDraft?.setCommitPending?.(composer, true);
-            const result = await window.TaskCreate.commitAiDraftBundle({
-                ...aiCommitPayload,
-                coAssigneeUserIds: mainDraft.coAssigneeUserIds,
-                sourceSurface: 'tasks_quick_composer'
-            });
-            window.TaskAiDraft?.setCommitPending?.(composer, false);
-            if (!result?.success) {
-                showNotification(result?.error || 'AI bundle не створено. Ручне створення доступне.', 'error');
-                return;
-            }
-            const createdTasks = (Array.isArray(result.tasks) ? result.tasks : [])
-                .map(row => row?.task || row)
-                .filter(Boolean);
-            createdTasks.forEach(task => {
-                window.TaskAiDraft?.markCommittedTaskId?.(task?.id || task?.taskId || task?.task_id);
-                keepNewTaskVisible(task, mainDraft);
-                notifyTaskWidgetsChanged({ action: 'create', taskId: task?.id || task?.taskId || task?.task_id });
-            });
-            resetTaskComposerAfterCreate();
-            showTaskCreateSuccessToast(createdTasks, createdTasks.map(task => ({ ...mainDraft, title: task?.title || mainDraft.title })), 0);
-            await loadAllTasks();
-            return;
-        }
-        if (window.TaskCreate?.commitAiDraft) {
-            window.TaskAiDraft?.setCommitPending?.(composer, true);
-            const result = await window.TaskCreate.commitAiDraft({
-                ...aiCommitPayload,
-                coAssigneeUserIds: mainDraft.coAssigneeUserIds,
-                finalDraft: {
-                    ...mainDraft,
-                    ...(aiCommitPayload.finalDraft || {}),
-                    sourceType: 'ai_draft',
-                    sourceModule: 'tasks',
-                    sourceSurface: 'tasks_quick_composer'
-                }
-            });
-            window.TaskAiDraft?.setCommitPending?.(composer, false);
-            if (!result?.success) {
-                showNotification(result?.error || 'AI-задачу не створено. Ручне створення доступне.', 'error');
-                return;
-            }
-            const createdTask = result.task;
-            window.TaskAiDraft?.markCommittedTaskId?.(createdTask?.id || createdTask?.taskId || createdTask?.task_id);
-            lastCreatedTaskId = createdTask?.id || lastCreatedTaskId;
-            keepNewTaskVisible(createdTask, mainDraft);
-            resetTaskComposerAfterCreate();
-            showTaskCreateSuccessToast([createdTask], [mainDraft], Array.isArray(result.postCreateWarnings) ? result.postCreateWarnings.length : 0);
-            notifyTaskWidgetsChanged({ action: 'create', taskId: createdTask?.id });
-            await loadAllTasks();
-            return;
-        }
-        showNotification('AI commit тимчасово недоступний. Скасуйте AI-зміни або створіть задачу вручну.', 'error');
-        return;
-    }
-    const drafts = [mainDraft, ...batchDrafts];
-    const invalidIndex = drafts.findIndex(draft => !String(draft.title || '').trim());
-    if (invalidIndex >= 0) {
-        const invalidItem = invalidIndex > 0 ? quickTaskBatchItems[invalidIndex - 1] : null;
-        showNotification(`Заповніть назву задачі #${invalidIndex + 1}`, 'error');
-        focusInvalidTaskDraft(invalidIndex, invalidItem?.id);
-        return;
-    }
-
-    const createdTasks = [];
-    let postCreateWarningCount = 0;
-    for (let i = 0; i < drafts.length; i += 1) {
-        const data = buildTaskCreatePayload(drafts[i]);
-        const result = await apiCreateTask(data);
-        if (!result || !result.success) {
-            if (!createdTasks.length && result?.duplicate) return;
-            if (createdTasks.length) {
-                showNotification(`Створено ${createdTasks.length} з ${drafts.length} задач. Задача #${i + 1} не збережена.`, 'warning');
-                await loadAllTasks();
-            } else {
-                showNotification('Помилка додавання задачі', 'error');
-            }
-            return;
-        }
-        if (Array.isArray(result.postCreateWarnings)) postCreateWarningCount += result.postCreateWarnings.length;
-        createdTasks.push(result.task);
-        lastCreatedTaskId = result.task?.id || lastCreatedTaskId;
-        keepNewTaskVisible(result.task, data);
-    }
-
-    resetTaskComposerAfterCreate();
-    showTaskCreateSuccessToast(createdTasks, drafts, postCreateWarningCount);
-    createdTasks.forEach(task => notifyTaskWidgetsChanged({ action: 'create', taskId: task?.id }));
-    await loadAllTasks();
-}
-
-async function createOperationPack() {
-    const preset = document.getElementById('operationPreset')?.value || 'kitchen_basic';
-    const titleInput = document.getElementById('operationPackTitle');
-    const sourceType = document.getElementById('operationSourceType')?.value || '';
-    const sourceId = document.getElementById('operationSourceId')?.value.trim() || '';
-    const title = titleInput?.value.trim() || OPERATION_PRESETS[preset] || 'Операційний пакет';
-    const data = {
-        preset,
-        title,
-        source_entity_type: sourceType || null,
-        source_entity_id: sourceId || null,
-        pack_status: 'draft'
-    };
-    const result = await apiCreateOperationPack(data);
-    if (result?.success) {
-        if (titleInput) titleInput.value = '';
-        showNotification(`Операційний пакет створено: ${result.tasks?.length || 0}`, 'success');
-        currentCategory = 'checklist';
-        currentSubcategory = 'all';
-        renderCategoryFilters();
-        renderSubcategoryFilters();
-        await loadAllTasks();
-        return;
-    }
-    showNotification(result?.error || 'Не вдалося створити операційний пакет', 'error');
-}
-window.createOperationPack = createOperationPack;
 
 function setTaskActionBusy(button, busy) {
     if (!button) return;
@@ -4612,8 +3862,8 @@ async function handleTaskActionButton(button) {
         openTaskRowActionMenu(button);
         return;
     }
-    if (action === 'open-detail') {
-        openTaskDetail(taskId);
+    if (action === 'open-detail' || action === 'edit-detail') {
+        openTaskDetail(taskId, { mode: action === 'edit-detail' ? 'edit' : '' });
         return;
     }
     if (action === 'reschedule-overdue-menu') {
@@ -5646,7 +4896,13 @@ function applyTaskDetailActionPermissions(task = {}) {
     }
 }
 async function openTaskDetail(taskId, options = {}) {
-    if (window.TaskDetailDrawer) return window.TaskDetailDrawer.open(taskId, options);
+    if (window.TaskDetailDrawer) {
+        const task = allTasks.find(item => Number(item.id) === Number(taskId));
+        return window.TaskDetailDrawer.open(taskId, {
+            ...options, businessContext: task?.businessContext || taskBusinessContext(),
+            returnTo: window.location.pathname + window.location.search
+        });
+    }
     return renderTaskDetailDrawer(taskId, options);
 }
 

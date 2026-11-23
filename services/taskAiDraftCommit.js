@@ -396,6 +396,7 @@ async function commitTaskAiDraft(input = {}, options = {}) {
     });
     const requestHash = hashCommitRequest({
         finalDraft,
+        ...(input.sourceContext && { sourceContext: input.sourceContext }),
         ...(coAssigneeUserIds.length && { coAssigneeUserIds }),
         acceptedFieldMask,
         editedFieldMask,
@@ -476,6 +477,7 @@ async function commitTaskAiDraft(input = {}, options = {}) {
             task_kind: finalDraft.taskKind,
             visibility: finalDraft.visibility,
             workflow_state: finalDraft.workflowState,
+            ...(input.sourceContext || {}),
             source_module: 'tasks_ai_draft_commit',
             control_meta: {
                 aiDraft: {

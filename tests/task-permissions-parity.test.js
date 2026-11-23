@@ -140,8 +140,8 @@ test('Task Center create controls are hidden until task permissions hydrate', ()
     const html = fs.readFileSync(path.join(ROOT, 'tasks.html'), 'utf8');
 
     assert.match(html, /class="board-tab" data-view="templates" hidden/);
-    assert.match(html, /id="quickAdd"[^>]* hidden/);
-    assert.match(html, /id="operationPackBar" hidden/);
+    assert.match(html, /id="taskCenterCreateLink"[^>]* hidden/);
+    assert.doesNotMatch(html, /id="quickAdd"|id="operationPackBar"/);
 });
 
 test('task route mutation guards run before service and database work', () => {

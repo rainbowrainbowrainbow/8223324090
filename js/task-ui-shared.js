@@ -235,12 +235,35 @@
     }
 
     function taskDateKey(value) {
-        const key = taskText(value).slice(0, 10);
-        return /^\d{4}-\d{2}-\d{2}$/.test(key) ? key : '';
+        const text = taskText(value);
+        const plainDate = text.slice(0, 10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(plainDate)) return '';
+        if (!/[zZ]|[+-]\d{2}:?\d{2}$/.test(text.slice(10))) return plainDate;
+        const parsed = new Date(text);
+        return Number.isNaN(parsed.getTime()) ? '' : new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'Europe/Kyiv', year: 'numeric', month: '2-digit', day: '2-digit'
+        }).format(parsed);
+    }
+
+    function daysBetweenTaskDates(from, to) {
+        if (!from || !to) return 0;
+        return Math.round((Date.parse(to) - Date.parse(from)) / 86400000);
+    }
+
+    function taskExplicitTime(task = {}) {
+        const deadline = task.deadline;
+        const start = taskScheduledStart(task);
+        const value = deadline || (taskScheduleSlot(task) === 'manual' ? start : null);
+        if (!value || !/[T ]\d{2}:\d{2}/.test(value)) return '';
+        if (!/[zZ]|[+-]\d{2}:?\d{2}$/.test(value.slice(10))) return value.slice(11, 16);
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? '' : new Intl.DateTimeFormat('uk-UA', {
+            timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit'
+        }).format(date);
     }
 
     function taskDueDate(task = {}) {
-        return taskDateKey(taskDueValue(task));
+        return taskDateKey(task.workload_date || taskDueValue(task));
     }
 
     function taskScheduleStatus(task = {}) {
@@ -395,6 +418,8 @@
         taskDueValue,
         taskDueDate,
         taskDateKey,
+        daysBetweenTaskDates,
+        taskExplicitTime,
         taskScheduleStatus,
         taskScheduleSlot,
         taskIsActive,

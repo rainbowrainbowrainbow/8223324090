@@ -27,7 +27,44 @@
         } catch {}
     }
 
-    function openTaskDialog({ taskId, load, selectDate, statusLabel, opener, onClose, mode, save, complete, cancel, reschedule, draftScope, onReconciled }) {
+    function bindTaskHistory(details, load, signal) {
+        if (!details || !load) return;
+        const log = details.querySelector('[data-task-history-content]');
+        async function refresh() {
+            if (log.dataset.state === 'loaded' || log.dataset.state === 'loading') return;
+            log.dataset.state = 'loading';
+            log.textContent = 'Завантаження історії…';
+            try {
+                const result = await load(signal);
+                const history = Array.isArray(result?.history) ? result.history : [];
+                log.dataset.state = 'loaded';
+                if (history.length) {
+                    const list = document.createElement('ul');
+                    history.forEach(event => {
+                        const date = event.createdAt && new Date(event.createdAt);
+                        const when = date && !Number.isNaN(date.valueOf())
+                            ? date.toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv' }) : '';
+                        const item = document.createElement('li');
+                        item.textContent = [event.summary, event.actor?.name, when].filter(Boolean).join(' · ');
+                        list.append(item);
+                    });
+                    log.replaceChildren(list);
+                } else log.textContent = 'Історія поки порожня.';
+            } catch (error) {
+                if (signal.aborted) return;
+                log.dataset.state = 'error';
+                log.textContent = 'Не вдалося завантажити історію. ';
+                const retry = document.createElement('button');
+                retry.type = 'button';
+                retry.textContent = 'Повторити';
+                retry.addEventListener('click', refresh);
+                log.append(retry);
+            }
+        }
+        details.addEventListener('toggle', () => { if (details.open) void refresh(); });
+    }
+
+    function openTaskDialog({ taskId, load, loadHistory, selectDate, statusLabel, opener, onClose, mode, save, complete, cancel, reschedule, draftScope, onReconciled }) {
         const draftKey = draftScope?.actor && draftScope?.business && Number.isSafeInteger(taskId)
             ? sessionDraftPrefix + JSON.stringify([draftScope.actor, draftScope.business, taskId]) : null;
         const dialog = document.createElement('dialog');
@@ -303,6 +340,11 @@
                 ${executor ? `<div><dt>Виконавець</dt><dd>${escape(executor)}</dd></div>` : ''}
             </dl>
             ${description && description !== title.textContent.trim() ? `<p class="park-task-dialog-description">${escape(description)}</p>` : ''}
+            ${task.drawer?.source?.href ? `<p><a href="${escape(task.drawer.source.href)}">${escape(task.drawer.source.label)}</a></p>` : ''}
+            ${task.checklist?.length ? `<details class="park-task-dialog-checklist"><summary>Чекліст</summary>
+                <ul>${task.checklist.map(item => `<li>${escape(item.title)} · ${item.is_done ? 'Виконано' : 'До виконання'}</li>`).join('')}</ul>
+            </details>` : ''}
+            ${actions.readHistory && loadHistory ? '<details data-task-dialog-history><summary>Історія</summary><div data-task-history-content aria-live="polite"></div></details>' : ''}
             <div class="park-task-dialog-buttons">
                 ${actions.edit && save ? '<button type="button" data-dialog-edit>Редагувати</button>' : ''}
                 ${actions.complete && complete ? '<button type="button" data-dialog-complete>Виконати</button>' : ''}
@@ -319,6 +361,7 @@
                 <label for="my-day-reschedule-date">Нова дата</label><input id="my-day-reschedule-date" name="date" type="date" required value="${escape(scheduleDraft ?? due ?? '')}">
                 <button type="submit">Перенести</button>
             </form>` : ''}`;
+            bindTaskHistory(content.querySelector('[data-task-dialog-history]'), loadHistory, controller.signal);
             const editor = content.querySelector('[data-dialog-editor]');
             content.querySelector('[data-dialog-edit]')?.addEventListener('click', () => { editorVisible = true; editor.hidden = false; editor.elements.title.focus(); });
             editor?.addEventListener('input', () => {
@@ -456,23 +499,22 @@
     }
 
     function renderCard({ id, title, status, due, priority, mode, modeLabel, blocked, postponementBadge, substitution,
-        isAi, priorityControl, dueState, canReschedule, canMoveToToday, role, executor, canEdit = true }) {
+        isAi, dueState, overdueDays, time, canReschedule, canMoveToToday, role, executor, canEdit = true, canComplete = true }) {
         const escape = global.escapeHtml;
         const attrs = `data-task-id="${id || ''}"`;
         const control = (action, label, className, enabled = true, extra = '') => `<button type="button" class="${className}" data-cabinet-task-action="${action}" ${attrs} ${extra} ${id && enabled ? '' : 'disabled'}>${label}</button>`;
-        const stateLabel = dueState === 'overdue' ? 'Прострочено' : status === 'in_progress' ? 'У роботі' : 'До виконання';
+        const stateLabel = blocked ? 'Заблоковано' : dueState === 'waiting' ? 'Чекаю'
+            : status === 'in_progress' ? 'У роботі' : 'До виконання';
         const substitutionStates = { active: 'Погоджено', completed: 'Завершено' };
         const agreementState = substitutionStates[substitution?.state];
         return `<article class="cabinet-task-card park-task-card priority-${escape(priority)}" ${attrs} data-task-status="${escape(status)}" data-task-due-state="${escape(dueState)}">
             ${control('open', `${isAi ? '<span class="task-ai-created-marker" aria-label="Створено з допомогою AI">AI</span> ' : ''}${escape(title)}`, 'park-task-title', true, 'aria-haspopup="dialog"')}
             <div class="park-task-heading">
-                <span class="park-task-state">${dueState === 'overdue' ? icon('overdue') : ''}${stateLabel}</span>
-                ${role === 'executor' ? `<span class="park-task-priority">${priority === 'urgent' ? icon('urgency') : ''}${priorityControl}</span>` : ''}
+                <span class="park-task-state">${stateLabel}</span>
+                ${overdueDays > 0 ? `<span class="park-task-overdue">${icon('overdue')}Прострочено: ${overdueDays} дн.</span>` : ''}
             </div>
-            ${role === 'executor' && dueState === 'overdue' && canMoveToToday
-                ? control('move-to-today', `${icon('calendar')}<span>На сьогодні</span>`, 'park-task-move-today') : ''}
             <div class="park-task-facts">
-                <span class="park-task-date">${icon('calendar')}${due ? `<time datetime="${escape(due)}">${escape(due.split('-').reverse().join('.'))}</time>` : 'Без дати'}</span>
+                <span class="park-task-date">${icon('calendar')}${due ? `<time datetime="${escape(due)}">${escape(due.split('-').reverse().join('.'))}${time ? ` · ${escape(time)}` : ''}</time>` : 'Без дати'}</span>
                 <span class="park-task-kind" data-park-task-mode="${escape(mode)}">${escape(modeLabel)}</span>
                 ${role !== 'executor' && executor ? `<span>Виконує ${escape(executor)}</span>` : ''}
                 ${postponementBadge || ''}
@@ -480,11 +522,16 @@
             </div>
             ${blocked ? `<p id="park-task-blocked-${id}" class="park-task-blocked">${escape(blocked)}</p>` : ''}
             <div class="park-task-actions">
-                ${role === 'executor' ? `
-                ${control('done', `${icon('done')}<span>Виконати</span>`, 'cabinet-task-action-done park-task-done', !blocked, blocked ? `aria-describedby="park-task-blocked-${id}"` : '')}
-                ${control('reschedule-date', `${icon('calendar')}<span>Перенести</span>`, 'park-task-secondary', canReschedule, 'aria-haspopup="dialog"')}
-                ${control('edit', `${icon('edit')}<span>Редагувати</span>`, 'park-task-secondary', canEdit)}
-                ` : ''}
+                ${role === 'executor' && canComplete && !blocked
+                    ? control('done', `${icon('done')}<span>Виконати</span>`, 'cabinet-task-action-done park-task-done') : ''}
+                ${canReschedule || canEdit ? `<details class="park-task-menu">
+                    <summary aria-label="Більше дій">⋯</summary>
+                    <div class="park-task-menu-items">
+                        ${canMoveToToday ? control('move-to-today', 'На сьогодні', 'park-task-secondary') : ''}
+                        ${canReschedule ? control('reschedule-date', 'Перенести', 'park-task-secondary', true, 'aria-haspopup="dialog"') : ''}
+                        ${canEdit ? control('edit', 'Редагувати', 'park-task-secondary') : ''}
+                    </div>
+                </details>` : ''}
             </div>
         </article>`;
     }

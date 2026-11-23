@@ -1778,57 +1778,37 @@
         <div class="alerts-panel-v4" id="alertsPanel"></div>
 
         <main id="main-content" class="page-container">
-            <section class="task-center-shell" id="taskCenterShell" data-task-mode="overview" aria-label="Центр задач">
+            <section class="task-center-shell" id="taskCenterShell" data-task-mode="team" aria-label="Центр задач">
                 <header class="task-center-header">
                     <div>
-                        <p class="task-center-eyebrow">Операційний простір</p>
                         <h1>Центр задач</h1>
-                        <p class="task-center-subtitle" id="taskCenterBusinessContext">Мої робочі задачі, команда та планування в одному місці.</p>
+                        <p class="task-center-subtitle" id="taskCenterBusinessContext"></p>
                     </div>
-                    <button type="button" class="task-center-tools-toggle" id="taskCenterToolsToggle" aria-expanded="false" aria-controls="taskCenterLegacyControls">Фільтри та інструменти</button>
+                    <a class="btn-primary" id="taskCenterCreateLink" href="/profile?tab=myday&amp;create=1" hidden>+ Нова задача</a>
                 </header>
 
-                <div class="task-center-metrics" aria-label="Оперативні показники">
-                    <button type="button" class="task-center-metric" data-summary-view="my"><span>Мої активні</span><strong id="taskCenterMetricMy">0</strong></button>
-                    <button type="button" class="task-center-metric" data-summary-view="today"><span>Сьогодні</span><strong id="taskCenterMetricToday">0</strong></button>
-                    <button type="button" class="task-center-metric" data-summary-view="waiting"><span>Чекаю</span><strong id="taskCenterMetricWaiting">0</strong></button>
-                    <button type="button" class="task-center-metric" data-summary-view="team"><span>Командні</span><strong id="taskCenterMetricTeam">0</strong></button>
+                <div class="task-center-navigation">
+                    <button type="button" class="board-tab" data-view="team">Задачі команди</button>
+                    <button type="button" class="board-tab" data-view="today">Сьогодні</button>
+                    <details>
+                        <summary>Інші перегляди</summary>
+                        <div id="taskOtherViews">
+                            <button type="button" class="board-tab" data-view="board">Канбан</button>
+                            <button type="button" class="board-tab" data-view="routines">Рутини</button>
+                            <button type="button" class="board-tab" data-view="deferred">Відкладені</button>
+                            <button type="button" class="board-tab" data-view="archive">Архів</button>
+                            <button type="button" class="board-tab" data-view="inbox">Огляд</button>
+                            <button type="button" class="board-tab" data-view="capacity">Завантаження команди</button>
+                            <button type="button" class="board-tab" data-view="templates" hidden>Шаблони</button>
+                        </div>
+                    </details>
+                    <button type="button" class="task-center-tools-toggle" id="taskCenterToolsToggle" aria-expanded="false" aria-controls="taskCenterLegacyControls">Інструменти</button>
                 </div>
-
-                <div class="task-center-mode-tabs" role="tablist" aria-label="Режими Центру задач">
-                    <button type="button" class="task-center-mode-tab active" role="tab" aria-selected="true" data-task-mode="overview">Огляд</button>
-                    <button type="button" class="task-center-mode-tab" role="tab" aria-selected="false" data-task-mode="team">Команда</button>
-                    <button type="button" class="task-center-mode-tab" role="tab" aria-selected="false" data-task-mode="planning">Планування</button>
-                    <button type="button" class="task-center-mode-tab" role="tab" aria-selected="false" data-task-mode="library">Бібліотека</button>
-                </div>
-                <p class="task-center-mode-description" id="taskCenterModeDescription">Вхідні, сьогодні та винятки</p>
             </section>
 
             <section class="task-center-context-zone" id="taskCenterLegacyControls" hidden aria-label="Додаткові фільтри та інструменти">
             <section class="tasks-filter-shell is-secondary-collapsed" id="tasksFilterShell" aria-label="Фільтри задач">
-            <div class="tasks-toolbar-row">
-                <div class="tasks-filter-summary">
-                    <strong>Задачі</strong>
-                    <span>поширені зрізи завжди зверху, детальні фільтри згортаються</span>
-                </div>
-                <button type="button" class="tasks-filter-toggle" id="tasksFilterToggle" aria-expanded="false" aria-controls="taskScopeFilters catFilters subcatFilters">Фільтри</button>
-            </div>
-            <!-- Board view tabs -->
-            <div class="board-tabs" id="boardTabs">
-                <button type="button" class="board-tab active" data-view="inbox">Інбокс <span class="tab-count" id="countInbox">0</span></button>
-                <button type="button" class="board-tab" data-view="today">Сьогодні <span class="tab-count" id="countToday">0</span></button>
-                <button type="button" class="board-tab" data-view="next">Наступні <span class="tab-count" id="countNext">0</span></button>
-                <button type="button" class="board-tab" data-view="deferred">Відкладено <span class="tab-count" id="countDeferred">0</span></button>
-                <button type="button" class="board-tab" data-view="waiting">Чекаю <span class="tab-count" id="countWaiting">0</span></button>
-                <button type="button" class="board-tab" data-view="team">Командні <span class="tab-count" id="countTeam">0</span></button>
-                <button type="button" class="board-tab" data-view="my" title="Мої: задачі для мене, собі і ті, які я поставив команді">Мої <span class="tab-count" id="countMy">0</span></button>
-                <button type="button" class="board-tab" data-view="done_today">Виконано сьогодні <span class="tab-count" id="countDoneToday">0</span></button>
-                <button type="button" class="board-tab" data-view="board">Канбан</button>
-                <button type="button" class="board-tab" data-view="routines">Рутини</button>
-                <button type="button" class="board-tab" data-view="templates" hidden>Шаблони</button>
-                <button type="button" class="board-tab" data-view="archive">📦 Архів</button>
-            </div>
-
+            <button type="button" class="tasks-filter-toggle" id="tasksFilterToggle" aria-expanded="false" aria-controls="taskScopeFilters catFilters subcatFilters">Категорії</button>
             <div class="task-scope-filters" id="taskScopeFilters" role="group" aria-label="Фільтр за типом задач">
                 <button type="button" class="task-scope-chip active" data-scope="all">Всі мої</button>
                 <button type="button" class="task-scope-chip" data-scope="work">Робочі</button>
@@ -1883,143 +1863,6 @@
             </div>
 
             </section>
-
-            <div class="quick-add task-composer" id="quickAdd" data-assignee-mode="self" hidden>
-                <div class="task-composer-primary">
-                    <label class="task-composer-title-wrap" for="taskTitle">
-                        <span class="task-composer-kicker">Швидко додати задачу</span>
-                        <input type="text" id="taskTitle" aria-label="Що треба зробити?" placeholder="Що треба зробити?" data-task-ai-source-field="title">
-                    </label>
-                    <select id="taskCategory" class="task-composer-select" aria-label="Категорія">
-                        <option value="admin">Адмін</option>
-                        <option value="event">Івент</option>
-                        <option value="purchase">Закупівлі</option>
-                        <option value="orders">Замовлення</option>
-                        <option value="trampoline">Батути</option>
-                        <option value="personal">Особисті</option>
-                        <option value="improvement">Покращення</option>
-                        <option value="operational">Операційні</option>
-                        <option value="maintenance">Технічні</option>
-                        <option value="checklist">Чек-листи</option>
-                    </select>
-                    <select id="taskPriority" class="task-composer-select" aria-label="Пріоритет">
-                        <option value="normal">Звичайний</option>
-                        <option value="urgent">Терміново</option>
-                        <option value="high">Високий</option>
-                        <option value="low">Низький</option>
-                    </select>
-                    <div class="task-owner-toggle" role="group" aria-label="Кому поставити задачу">
-                        <button type="button" class="active" data-task-assignee-mode="self" aria-pressed="true">Собі</button>
-                        <button type="button" data-task-assignee-mode="team" aria-pressed="false">Команді</button>
-                    </div>
-                    <select id="taskAssignedTo" class="task-assignee-select" title="Відповідальний" aria-label="Відповідальний" hidden disabled aria-hidden="true" tabindex="-1">
-                        <option value="">Оберіть людину</option>
-                    </select>
-                    <div class="task-due-presets" id="taskDuePresets" role="group" aria-label="Коли виконати">
-                        <button class="task-due-chip active" type="button" data-due-preset="today" aria-pressed="true">Сьогодні</button>
-                        <button class="task-due-chip" type="button" data-due-preset="tomorrow" aria-pressed="false">Завтра</button>
-                        <button class="task-due-chip" type="button" data-due-preset="no_date" aria-pressed="false">Без дати</button>
-                        <button class="task-due-chip" type="button" data-due-preset="custom" aria-pressed="false">Інша дата</button>
-                    </div>
-                    <button type="button" id="taskDetailsToggle" class="task-composer-secondary" aria-expanded="false" aria-controls="taskComposerDetails">Ще</button>
-                    <button type="button" id="addTaskBtn" class="task-add-submit">Створити задачу</button>
-                </div>
-                <div class="task-ai-draft-panel" data-task-ai-draft-panel>
-                    <div class="task-ai-draft-row">
-                        <label class="task-ai-draft-details" for="taskDescription">
-                            <span>Опиши результат або деталі</span>
-                            <textarea id="taskDescription" data-task-ai-source-field="description" rows="3" placeholder="Контекст, очікуваний результат, критерій готовності"></textarea>
-                        </label>
-                        <button type="button" class="task-ai-draft-trigger" data-task-ai-draft-preview aria-busy="false">✨ Підготувати з AI</button>
-                    </div>
-                    <p class="task-ai-draft-status" data-task-ai-draft-status aria-live="polite"></p>
-                    <div class="task-ai-draft-review-host" data-task-ai-draft-review hidden></div>
-                </div>
-                <div class="task-composer-details" id="taskComposerDetails" hidden>
-                    <fieldset id="taskCreateCoAssignees" hidden>
-                        <legend>Співвиконавці</legend>
-                        <div data-task-create-co-assignee-options></div>
-                    </fieldset>
-                    <div class="task-composer-group">
-                        <span class="task-composer-label">Основне</span>
-                        <select id="taskSubcategory" class="hidden" aria-label="Підкатегорія"></select>
-                    </div>
-                    <div class="task-composer-group">
-                        <span class="task-composer-label">Планування</span>
-                        <input type="date" id="taskScheduleDate" title="Дата плану" aria-label="Дата плану">
-                        <input type="number" id="taskScheduleDuration" min="5" max="480" step="5" value="30" title="Тривалість, хв" aria-label="Тривалість задачі у хвилинах">
-                        <div class="task-slot-picker" id="taskSlotPicker" role="group" aria-label="Швидкі слоти дня">
-                            <button class="task-slot-btn active" type="button" data-schedule-slot="morning" aria-pressed="true" title="Ранок">🌅</button>
-                            <button class="task-slot-btn" type="button" data-schedule-slot="midday" aria-pressed="false" title="День">☀️</button>
-                            <button class="task-slot-btn" type="button" data-schedule-slot="afternoon" aria-pressed="false" title="Після обіду">🌤️</button>
-                            <button class="task-slot-btn" type="button" data-schedule-slot="evening" aria-pressed="false" title="Вечір">🌙</button>
-                        </div>
-                        <input type="time" id="taskDeadlineTime" title="Дедлайн (час)" aria-label="Дедлайн">
-                    </div>
-                    <div class="task-composer-group">
-                        <span class="task-composer-label">Видимість і правила</span>
-                        <select id="taskType" title="Тип задачі" aria-label="Тип задачі">
-                            <option value="human">Людина</option>
-                            <option value="bot">Бот</option>
-                        </select>
-                        <select id="taskMode" title="Режим задачі" aria-label="Режим задачі">
-                            <option value="work">Робоча</option>
-                            <option value="personal">Особиста</option>
-                            <option value="private">Приватна</option>
-                            <option value="system">Системна</option>
-                        </select>
-                        <select id="taskKind" title="Тип наміру" aria-label="Тип наміру">
-                            <option value="action">Дія</option>
-                            <option value="reminder">Нагадування</option>
-                            <option value="followup">Дотиск</option>
-                            <option value="deep_work">Глибока робота</option>
-                            <option value="waiting">Чекаю</option>
-                            <option value="idea">Ідея</option>
-                            <option value="routine">Рутина</option>
-                        </select>
-                        <select id="taskVisibility" title="Видимість" aria-label="Видимість">
-                            <option value="team">Командна</option>
-                            <option value="me_only">Тільки мені</option>
-                            <option value="private">Приватна</option>
-                        </select>
-                        <label class="task-composer-toggle" for="taskAllowReschedule">
-                            <input id="taskAllowReschedule" type="checkbox" checked>
-                            <span>Дозволити перенесення</span>
-                        </label>
-                        <button class="task-chip" type="button" data-capture-chip="personal">Особиста</button>
-                        <button class="task-chip" type="button" data-capture-chip="private">Приватна</button>
-                        <button class="task-chip" type="button" data-capture-chip="waiting">Чекаю</button>
-                        <button class="task-chip" type="button" data-capture-chip="idea">Ідея</button>
-                    </div>
-                </div>
-                <div class="task-batch-toolbar" aria-label="Масове створення окремих задач">
-                    <button type="button" id="addTaskRowBtn" class="task-batch-add">+ Ще задача</button>
-                    <span class="task-batch-hint">Новий рядок копіює відповідального, категорію, режим і дату з попередньої задачі.</span>
-                </div>
-                <div class="task-batch-panel" id="taskBatchPanel" hidden>
-                    <div class="task-batch-list" id="taskBatchList"></div>
-                </div>
-            </div>
-
-            <div class="operations-pack-bar" id="operationPackBar" hidden>
-                <select id="operationPreset" aria-label="Операційний пакет">
-                    <option value="kitchen_basic">Кухня</option>
-                    <option value="cake_basic">Торт</option>
-                    <option value="cake_with_decor">Торт + прикраси</option>
-                    <option value="hall_prep_basic">Підготовка залу</option>
-                    <option value="purchase_basic">Закупка</option>
-                </select>
-                <input type="text" id="operationPackTitle" aria-label="Назва пакета" placeholder="Назва пакета">
-                <select id="operationSourceType" aria-label="Джерело">
-                    <option value="">Без джерела</option>
-                    <option value="booking">Бронювання</option>
-                    <option value="order">Замовлення</option>
-                    <option value="lead">Лід</option>
-                    <option value="customer">Клієнт</option>
-                </select>
-                <input type="text" id="operationSourceId" aria-label="ID джерела" placeholder="ID джерела">
-                <button type="button" id="createOperationPackBtn">Створити операційний пакет</button>
-            </div>
 
             <!-- v33.4: Bulk toolbar -->
             <div id="bulkToolbar" class="bulk-toolbar-tasks" style="display:none">

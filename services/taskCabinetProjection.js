@@ -38,6 +38,8 @@ const {
 } = require('./myDayTimeTracking');
 const { listLatestTaskPostponementEvents } = require('./taskActionHistory');
 
+const { taskWorkloadDateSql, taskAutomaticOriginSql } = require('./taskAutomationPolicy');
+
 const DEFAULT_TASK_CABINET_PLANNING_ROW_LIMIT = 260;
 const MAX_TASK_CABINET_PLANNING_ROW_LIMIT = 500;
 const DEFAULT_TASK_CABINET_BUCKET_PAGE_LIMIT = 80;
@@ -79,7 +81,7 @@ function taskDateOnly(value) {
 
 function taskWorkloadDate(task = {}) {
     return taskDateOnly(
-        task.scheduledStartAt ||
+        task.workload_date || task.scheduledStartAt ||
         task.scheduled_start_at ||
         task.schedule?.startAt ||
         task.snoozedUntil ||
@@ -91,14 +93,11 @@ function taskWorkloadDate(task = {}) {
     );
 }
 
-function taskWorkloadDateSql(alias = 't') {
-    return `COALESCE(
-        (${alias}.scheduled_start_at AT TIME ZONE 'Europe/Kyiv')::date,
-        (${alias}.snoozed_until AT TIME ZONE 'Europe/Kyiv')::date,
-        CASE WHEN LEFT(COALESCE(${alias}.date, ''), 10) ~ '^\\d{4}-\\d{2}-\\d{2}$' THEN LEFT(${alias}.date, 10)::date END,
-        (${alias}.deadline AT TIME ZONE 'Europe/Kyiv')::date,
-        (${alias}.remind_at AT TIME ZONE 'Europe/Kyiv')::date
-    )`;
+function taskPlanningAudienceSql(personalQuery, options) {
+    if (options.automaticOnly) return `AND ${personalQuery.owner} AND ${taskAutomaticOriginSql('t')}`;
+    return options.excludeControlFromPlanning
+        ? `AND (NOT ${personalQuery.control} OR (${personalQuery.owner} OR ${personalQuery.participant}) IS TRUE)`
+        : '';
 }
 
 function todayKyivDate(now = new Date()) {
@@ -456,7 +455,7 @@ async function buildTaskCabinetBucketPage(options = {}) {
         whereSql = `COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')
             AND ${TASK_CABINET_READY_FILTER_SQL}
             AND ${planningBucketCondition}
-            ${options.excludeControlFromPlanning ? `AND NOT ${personalQuery.control}` : ''}`;
+            ${taskPlanningAudienceSql(personalQuery, options)}`;
         orderSql = `${dateSql} ASC NULLS LAST,
              ${taskPriorityOrderSql('t')},
              CASE WHEN COALESCE(t.focus_rank, 0) > 0 THEN 0 ELSE 1 END,
@@ -487,7 +486,7 @@ async function buildTaskCabinetBucketPage(options = {}) {
         countParams
     );
     const result = await queryable.query(
-        `SELECT t.*, t.completed_at AT TIME ZONE 'UTC' AS completed_at,
+        `SELECT t.*, ${dateSql}::text AS workload_date, t.completed_at AT TIME ZONE 'UTC' AS completed_at,
                 u.name AS owner_name, u.username AS owner_username, ${personalQuery.roles} AS viewer_roles,
                 ${personalQuery.coAssignee} AS viewer_is_co_assignee,
                 ${TASK_SUBSTITUTION_SELECT}
@@ -571,7 +570,7 @@ async function buildTaskCabinetProjection(options = {}) {
     const completedHistoryLimit = normalizeCompletionHistoryLimit(options.completedHistoryLimit);
 
     const result = await queryable.query(
-        `SELECT t.*, u.name AS owner_name, u.username AS owner_username, ${personalQuery.roles} AS viewer_roles,
+        `SELECT t.*, ${taskWorkloadDateSql('t')}::text AS workload_date, u.name AS owner_name, u.username AS owner_username, ${personalQuery.roles} AS viewer_roles,
                 ${personalQuery.coAssignee} AS viewer_is_co_assignee,
                 ${TASK_SUBSTITUTION_SELECT}
          FROM tasks t
@@ -621,12 +620,12 @@ async function buildTaskCabinetProjection(options = {}) {
     const planningLimitParam = planningParams.length + 1;
     planningParams.push(planningFetchLimit);
     const planningDateSql = taskWorkloadDateSql('t');
-    const planningAudienceSql = options.excludeControlFromPlanning ? `AND NOT ${personalQuery.control}` : '';
+    const planningAudienceSql = taskPlanningAudienceSql(personalQuery, options);
     const planningFocusDateSql = focusDate
         ? `OR ${planningDateSql} = $${planningFocusParam}::date`
         : '';
     const planningResult = await queryable.query(
-        `SELECT t.*, u.name AS owner_name, u.username AS owner_username, ${personalQuery.roles} AS viewer_roles,
+        `SELECT t.*, ${taskWorkloadDateSql('t')}::text AS workload_date, u.name AS owner_name, u.username AS owner_username, ${personalQuery.roles} AS viewer_roles,
                 ${personalQuery.coAssignee} AS viewer_is_co_assignee,
                 ${TASK_SUBSTITUTION_SELECT}
          FROM tasks t
@@ -833,7 +832,7 @@ async function buildTaskCabinetProjection(options = {}) {
             return;
         }
         if (dueDate && dueDate < today) buckets.overdue.push(task);
-        if (dueDate === today || !dueDate) buckets.today.push(task);
+        if (dueDate === today) buckets.today.push(task);
         if (dueDate && dueDate >= tomorrow && dueDate <= nextWeek) buckets.next.push(task);
     });
 
@@ -848,7 +847,8 @@ async function buildTaskCabinetProjection(options = {}) {
                 COUNT(*) FILTER (WHERE t.status = 'done' AND (t.completed_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Kyiv')::date = $${quickParams.length}::date)::int AS parent_done_today,
                 COUNT(*) FILTER (
                     WHERE COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')
-                      AND (${quickDateSql} = $${quickParams.length}::date OR ${quickDateSql} IS NULL)
+                      AND ${TASK_CABINET_READY_FILTER_SQL}
+                      AND ${quickDateSql} = $${quickParams.length}::date
                 )::int AS remaining_today,
                 COUNT(*) FILTER (
                     WHERE COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')

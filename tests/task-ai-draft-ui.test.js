@@ -130,13 +130,13 @@ test('AI draft composer is visible, shared, reviewable, and not hidden in advanc
     assert.match(tasksHtml, /js\/task-ai-draft\.js\?v=/);
     assert.match(profileCode, /data-task-ai-draft-preview/);
     assert.match(profileCode, /id="cabinetTaskAiFillBtn"[^>]*data-task-ai-draft-preview/);
-    assert.match(tasksHtml, /data-task-ai-draft-preview/);
+    assert.doesNotMatch(tasksHtml, /data-task-ai-draft-preview/);
+    assert.match(tasksHtml, /id="taskCenterCreateLink"/);
     assert.doesNotMatch(profileCode, /Опиши результат або деталі/);
     assert.doesNotMatch(profileCode, /Підготувати з AI/);
     assert.match(profileCode, /id="cabinetTaskComposerAdvanced"[\s\S]*?<textarea id="cabinetTaskDetails"/);
     assert.match(profileCode, /hideImpactReview: true/);
-    assert.match(tasksHtml, /Опиши результат або деталі/);
-    assert.ok(tasksHtml.indexOf('data-task-ai-draft-panel') < tasksHtml.indexOf('id="taskComposerDetails"'));
+    assert.ok(profileCode.indexOf('data-task-ai-draft-panel') < profileCode.indexOf('id="cabinetTaskComposerAdvanced"'));
 
     assert.match(taskCreateCode, /requestAiDraftPreview/);
     assert.match(taskCreateCode, /\/tasks\/ai-draft\/preview/);
@@ -188,13 +188,13 @@ test('AI draft composer is visible, shared, reviewable, and not hidden in advanc
     assert.doesNotMatch(profileCode, /id="cabinetSubtaskDraftBtn"/);
 
     assert.match(profileCode, /window\.TaskAiDraft\.bindComposer/);
-    assert.match(tasksCode, /window\.TaskAiDraft\.bindComposer/);
+    assert.doesNotMatch(tasksCode, /window\.TaskAiDraft\.bindComposer/);
     assert.match(profileCode, /commitPayloadFor/);
-    assert.match(tasksCode, /commitPayloadFor/);
+    assert.doesNotMatch(tasksCode, /commitPayloadFor/);
     assert.match(profileCode, /commitAiDraft/);
-    assert.match(tasksCode, /commitAiDraft/);
+    assert.doesNotMatch(tasksCode, /commitAiDraft/);
     assert.match(profileCode, /markCommittedTaskId/);
-    assert.match(tasksCode, /markCommittedTaskId/);
+    assert.doesNotMatch(tasksCode, /markCommittedTaskId/);
     assert.match(profileCode, /await refreshMyCabinetTab\(\{ force: true \}\);\s*return;/);
     assert.match(profileCode, /data-ai-created="true"/);
     assert.match(tasksCode, /data-ai-created="true"/);

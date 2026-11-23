@@ -132,13 +132,13 @@ test('team control endpoint stays visibility-scoped, pagination-independent, and
     }
 });
 
-test('team and planning UI reuse the task schedule mutation with a rollback path, without calling the HR schedule API from the browser', () => {
+test('team capacity UI reuses the task schedule mutation with a rollback path, without calling the HR schedule API from the browser', () => {
     const source = fs.readFileSync(path.join(ROOT, 'js', 'tasks-page.js'), 'utf8');
     assert.match(source, /async function apiGetTaskTeamControl/);
     assert.match(source, /function renderTaskTeamControl/);
     assert.match(source, /async function scheduleTaskFromTeamControl/);
     assert.match(source, /apiScheduleTask\(taskId,/);
     assert.match(source, /taskTeamControlProjection = previous/);
-    assert.match(source, /\['team', 'planning'\]/);
+    assert.match(source, /currentView === 'capacity'/);
     assert.doesNotMatch(source, /\/api\/staff\/schedule/);
 });

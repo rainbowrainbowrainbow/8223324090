@@ -1376,39 +1376,18 @@
     }
 
     async function createTaskFromCommand(payload = {}) {
-        const sessionUser = getSessionUser();
-        const ownerUserId = sessionUser?.id || sessionUser?.userId || null;
-        const body = {
+        const success = await openManualTaskComposer({
             title: compactText(payload.title, 180),
             date: payload.date || assistantToday(0),
-            deadline: payload.deadline || null,
+            time: payload.deadline ? String(payload.deadline).slice(11, 16) : '',
             priority: payload.priority || 'normal',
             category: payload.category || 'admin',
-            task_type: 'human',
-            task_mode: 'work',
-            task_kind: payload.task_kind || 'action',
-            visibility: 'team',
-            workflow_state: payload.task_kind === 'waiting' ? 'waiting' : 'inbox',
-            source_type: payload.source_type || 'assistant_command',
-            source_id: payload.source_id || null,
-            source_module: payload.source_module || getPageId(),
-            ownerUserId
-        };
-        const fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
-        const response = await fetchWithAuth('/api/tasks', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
+            kind: payload.task_kind || 'action',
+            sourceType: payload.source_type || 'assistant_command',
+            sourceId: payload.source_id,
+            sourceModule: payload.source_module || getPageId()
         });
-        if (!response) throw new Error('auth_required');
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok || !data.success) {
-            const err = new Error(data.message || data.error || `task_create_http_${response.status}`);
-            err.status = response.status;
-            err.payload = data;
-            throw err;
-        }
-        return { success: true, task: data.task, summary: `Задачу створено: “${body.title}”.` };
+        return { success, summary: success ? 'Відкрито форму нової задачі.' : 'Не вдалося відкрити форму задачі.' };
     }
 
     async function executeCommand(route = {}, options = {}) {

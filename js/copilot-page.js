@@ -1770,7 +1770,7 @@ const CopilotPage = (() => {
                         ${p.expected_result ? '<div class="wf-field"><label>Очікуваний результат</label><div style="font-size:13px;color:#CBD5E1">' + esc(p.expected_result) + '</div></div>' : ''}
                         <div class="wf-field"><label>Призначити</label><input id="wfTaskAssign" value="${esc(p.suggested_assignee || '')}" style="min-height:44px"></div>
                         <div style="display:flex;gap:8px;margin-top:12px">
-                            <button class="wf-send-btn" style="flex:1;border-radius:12px;padding:12px" onclick="CopilotPage.confirmTask()">✅ Створити задачу</button>
+                            <button class="wf-send-btn" style="flex:1;border-radius:12px;padding:12px" onclick="CopilotPage.confirmTask()">Відкрити в Моєму дні</button>
                             <button class="wf-case-btn" style="padding:12px 20px" onclick="document.getElementById('wfTaskPreview').style.display='none'">Скасувати</button>
                         </div>
                     </div>`;
@@ -1782,34 +1782,14 @@ const CopilotPage = (() => {
 
     async function confirmTask() {
         const title = document.getElementById('wfTaskTitle')?.value;
-        const description = document.getElementById('wfTaskDesc')?.value;
-        const assignee = document.getElementById('wfTaskAssign')?.value;
         if (!title) return;
-
-        try {
-            const fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
-            const res = await fetchWithAuth('/api/tasks', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    title, description,
-                    assigned_to: assignee || undefined,
-                    priority: 'normal',
-                    category: 'operational',
-                    source_type: 'auto',
-                    date: new Date().toISOString().split('T')[0]
-                })
-            });
-            const data = await res.json();
-            if (data.id || data.success) {
-                document.getElementById('wfTaskPreview').style.display = 'none';
-                if (typeof showNotification === 'function') showNotification('✅ Задачу створено: ' + title, 'success');
-            } else {
-                if (typeof showNotification === 'function') showNotification('❌ ' + (data.error || 'Помилка'), 'error');
-            }
-        } catch (err) {
-            if (typeof showNotification === 'function') showNotification('❌ ' + err.message, 'error');
-        }
+        await openManualTaskComposer({
+            title,
+            description: document.getElementById('wfTaskDesc')?.value,
+            assignee: document.getElementById('wfTaskAssign')?.value,
+            category: 'operational',
+            sourceType: 'copilot'
+        });
     }
 
     async function newCase() {

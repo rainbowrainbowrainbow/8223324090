@@ -806,47 +806,17 @@
     });
 
     reportSubmitBtn.addEventListener('click', async function () {
-        var title = reportTitle.value.trim();
+        const title = reportTitle.value.trim();
         if (!title) { reportTitle.focus(); return; }
-
-        reportSubmitBtn.disabled = true;
-        reportSubmitBtn.textContent = 'Надсилаю...';
-
-        var emoji = reportType === 'bug' ? '🐛' : '💡';
-        var label = reportType === 'bug' ? 'Баг' : 'Покращення';
-        var user = localStorage.getItem('pzp_current_user');
-        var userName = 'Користувач';
-        try { userName = JSON.parse(user).name || JSON.parse(user).username; } catch (e) {}
-
-        try {
-            var fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
-            var res = await fetchWithAuth('/api/tasks', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    title: emoji + ' ' + label + ': ' + title,
-                    description: (reportDesc.value.trim() ? reportDesc.value.trim() + '\n\n' : '') + 'Від: ' + userName,
-                    priority: reportPriority.value,
-                    category: 'improvement',
-                    assigned_to: 'Sergey',
-                    source_type: 'kleshnya',
-                    task_type: 'human'
-                })
-            });
-
-            if (!res.ok) throw new Error('Failed');
-            reportOverlay.classList.remove('visible');
-            var prioLabel = reportPriority.value === 'high' ? 'Високий' : reportPriority.value === 'low' ? 'Низький' : 'Звичайний';
-            addMessage('assistant',
-                '🤖 ' + emoji + ' ' + label + ' прийнято!\n\n📋 "' + title + '"\n👤 Призначено: Сергій\n⚡ Пріоритет: ' + prioLabel + '\n\nДякую за фідбек!',
-                new Date().toISOString(), null);
-        } catch (err) {
-            addMessage('assistant', '🤖 Упс, не вдалося створити задачу. Спробуй ще раз!', new Date().toISOString(), null);
-            reportOverlay.classList.remove('visible');
-        }
-
-        reportSubmitBtn.disabled = false;
-        reportSubmitBtn.textContent = 'Надіслати Сергію';
+        const label = reportType === 'bug' ? 'Баг' : 'Покращення';
+        await openManualTaskComposer({
+            title: label + ': ' + title,
+            description: reportDesc.value.trim(),
+            priority: reportPriority.value,
+            category: 'improvement',
+            assignee: 'Sergey',
+            sourceType: 'kleshnya'
+        });
     });
 
     // ==========================================

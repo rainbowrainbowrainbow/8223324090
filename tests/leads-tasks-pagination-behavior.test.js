@@ -131,11 +131,11 @@ test('Tasks and Leads route contracts preserve boundaries and apply filters befo
 
 function tasksHarness(url = 'https://crm.test/tasks') {
     const loadStart = tasksSource.indexOf('async function loadAllTasks');
-    const loadEnd = tasksSource.indexOf('async function apiCreateOperationPack', loadStart);
+    const loadEnd = tasksSource.indexOf('function filterByTaxonomy', loadStart);
     const deepIdStart = tasksSource.indexOf('function getTaskDeepLinkId');
     const deepIdEnd = tasksSource.indexOf('function getTasksCurrentUser', deepIdStart);
     const deepOpenStart = tasksSource.indexOf('function openTaskDeepLink');
-    const deepOpenEnd = tasksSource.indexOf('function showTaskCreateSuccessToast', deepOpenStart);
+    const deepOpenEnd = tasksSource.indexOf('function setupTaskFilterToggle', deepOpenStart);
     assert.ok(loadStart >= 0 && loadEnd > loadStart && deepOpenEnd > deepOpenStart);
 
     const dom = new JSDOM('<main id="boardContent"></main>', { runScripts: 'outside-only', url });
@@ -148,6 +148,8 @@ function tasksHarness(url = 'https://crm.test/tasks') {
         pending.push({ args, ...item });
         return item.promise;
     };
+    context.taskOverviewModeActive = () => false;
+    context.taskTeamControlModeActive = () => false;
     context.updateCounts = () => {};
     context.showNotification = (...args) => notifications.push(args);
     context.openTaskDetail = id => opened.push(id);

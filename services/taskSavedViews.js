@@ -4,7 +4,7 @@ const MAX_SAVED_TASK_VIEWS = 12;
 const MAX_SAVED_VIEW_NAME_LENGTH = 64;
 const MAX_SAVED_VIEW_SEARCH_LENGTH = 120;
 const SAVED_VIEW_MODES = new Set(['overview', 'team', 'planning', 'library']);
-const SAVED_VIEW_QUEUES = new Set(['inbox', 'today', 'my', 'done_today', 'waiting', 'team', 'next', 'week', 'deferred', 'board', 'routines', 'templates', 'archive', 'overdue', 'unassigned', 'blocked', 'stale', 'no_date']);
+const SAVED_VIEW_QUEUES = new Set(['inbox', 'today', 'my', 'done_today', 'waiting', 'team', 'capacity', 'next', 'week', 'deferred', 'board', 'routines', 'templates', 'archive', 'overdue', 'unassigned', 'blocked', 'stale', 'no_date']);
 const SAVED_VIEW_STATUSES = new Set(['todo', 'in_progress', 'waiting', 'scheduled', 'done', 'archived', 'cancelled']);
 const SAVED_VIEW_PRIORITIES = new Set(['urgent', 'high', 'normal', 'low']);
 const SAVED_VIEW_SOURCES = new Set(['manual', 'booking', 'lead', 'customer', 'event', 'order', 'hr', 'finance', 'automation']);
@@ -72,7 +72,10 @@ function normalizeSavedTaskView(input = {}) {
             ...(uniqueAllowed(rawState.priority, SAVED_VIEW_PRIORITIES).length ? { priority: uniqueAllowed(rawState.priority, SAVED_VIEW_PRIORITIES) } : {}),
             ...(category ? { category } : {}),
             ...(source ? { source } : {}),
-            ...(search ? { search } : {})
+            ...(search ? { search } : {}),
+            ...(rawState.overdue === true ? { overdue: true } : {}),
+            ...(rawState.unassigned === true ? { unassigned: true } : {}),
+            ...(rawState.automatic === true ? { automatic: true } : {})
         }
     };
 }

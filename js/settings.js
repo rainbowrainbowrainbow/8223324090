@@ -3065,20 +3065,7 @@ async function apiGetTasks(filters = {}) {
     }
 }
 
-async function apiCreateTask(data) {
-    try {
-        const response = await fetch(`${API_BASE}/tasks`, {
-            method: 'POST',
-            headers: getAuthHeaders(),
-            body: JSON.stringify(data)
-        });
-        if (handleAuthError(response)) return null;
-        return await response.json();
-    } catch (err) {
-        console.error('Task create error:', err);
-        return null;
-    }
-}
+
 
 async function apiUpdateTask(id, data) {
     try {
@@ -3180,33 +3167,13 @@ async function renderTasksList() {
 }
 
 async function addTask() {
-    const titleInput = document.getElementById('taskTitle');
-    const dateInput = document.getElementById('taskDate');
-    const prioritySelect = document.getElementById('taskPriority');
-    const assignedInput = document.getElementById('taskAssignedTo');
-
-    const title = titleInput?.value.trim();
-    if (!title) {
-        showNotification('Введіть назву завдання', 'error');
-        return;
-    }
-
-    const categorySelect = document.getElementById('taskCategory');
-    const result = await apiCreateTask({
-        title,
-        date: dateInput?.value || null,
-        priority: prioritySelect?.value || 'normal',
-        assigned_to: assignedInput?.value.trim() || null,
-        category: categorySelect?.value || 'admin'
+    await openManualTaskComposer({
+        title: document.getElementById('taskTitle')?.value.trim(),
+        date: document.getElementById('taskDate')?.value || 'undated',
+        priority: document.getElementById('taskPriority')?.value || 'normal',
+        assignee: document.getElementById('taskAssignedTo')?.value.trim(),
+        category: document.getElementById('taskCategory')?.value || 'admin'
     });
-
-    if (result && result.success) {
-        titleInput.value = '';
-        showNotification('Завдання додано!', 'success');
-        await renderTasksList();
-    } else {
-        showNotification('Помилка додавання', 'error');
-    }
 }
 
 async function cycleTaskStatus(id, newStatus) {
@@ -3282,33 +3249,15 @@ function showImprovementFab() {
     if (fab) fab.classList.remove('hidden');
 }
 
-async function handleImprovementSubmit(e) {
-    e.preventDefault();
-    const title = document.getElementById('improvementTitle')?.value.trim();
-    const description = document.getElementById('improvementDescription')?.value.trim() || null;
-    if (!title) {
-        showNotification('Введіть опис ідеї', 'error');
-        return;
-    }
-
-    const username = AppState.currentUser?.name || 'admin';
-    const result = await apiCreateTask({
-        title,
-        description,
+async function handleImprovementSubmit(event) {
+    event.preventDefault();
+    await openManualTaskComposer({
+        title: document.getElementById('improvementTitle')?.value.trim(),
+        description: document.getElementById('improvementDescription')?.value.trim(),
         category: 'improvement',
-        priority: 'normal',
-        assigned_to: username,
-        type: 'manual'
+        kind: 'idea',
+        date: 'undated'
     });
-
-    if (result && result.success) {
-        document.getElementById('improvementTitle').value = '';
-        document.getElementById('improvementDescription').value = '';
-        document.getElementById('improvementModal')?.classList.add('hidden');
-        showNotification('Ідею надіслано в задачі!', 'success');
-    } else {
-        showNotification('Помилка надсилання', 'error');
-    }
 }
 
 // ==========================================

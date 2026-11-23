@@ -36,7 +36,7 @@ test('Task Center maps every legacy task view to a compatible new mode', () => {
 });
 
 test('Task Center mode URLs receive a stable default view and mode takes priority over conflicting legacy view', () => {
-    assert.deepEqual(resolveRoute(''), { mode: 'overview', view: 'inbox', legacy: false });
+    assert.deepEqual(resolveRoute(''), { mode: 'team', view: 'team', legacy: false });
     assert.deepEqual(resolveRoute('mode=team'), { mode: 'team', view: 'team', legacy: false });
     assert.deepEqual(resolveRoute('mode=planning'), { mode: 'planning', view: 'next', legacy: false });
     assert.deepEqual(resolveRoute('mode=library&view=today'), { mode: 'library', view: 'templates', legacy: false });
@@ -47,13 +47,14 @@ test('Task Center shell keeps legacy controls available but hidden by default, w
     const css = fs.readFileSync(path.join(ROOT, 'css', 'pages-tasks.css'), 'utf8');
     const sidebar = fs.readFileSync(path.join(ROOT, 'js', 'components', 'sidebar.js'), 'utf8');
 
-    for (const mode of ['overview', 'team', 'planning', 'library']) {
-        assert.match(html, new RegExp(`data-task-mode="${mode}"`));
+    assert.match(html, /data-task-mode="team" aria-label="Центр задач"/);
+    assert.match(html, /id="taskCenterCreateLink" href="\/profile\?tab=myday&amp;create=1"/);
+    assert.doesNotMatch(html, /id="quickAdd"|id="operationPackBar"/);
+    assert.match(html, /<summary>Інші перегляди<\/summary>/);
+    for (const view of ['board', 'routines', 'archive']) {
+        assert.match(html, new RegExp(`data-view="${view}"`));
     }
     assert.match(html, /id="taskCenterLegacyControls" hidden/);
-    assert.match(html, /id="taskCenterToolsToggle"/);
-    assert.match(css, /\.task-center-metrics\s*\{[\s\S]*grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/);
-    assert.match(css, /@media \(max-width: 760px\)[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
-    assert.match(css, /@media \(max-width: 420px\)[\s\S]*grid-template-columns: 1fr/);
+    assert.match(css, /@media \(max-width: 900px\)[\s\S]*repeat\(2, minmax\(0, 1fr\)\)/);
     assert.match(sidebar, /href: '\/tasks'.*label: 'Центр задач'.*access: 'tasks'/);
 });

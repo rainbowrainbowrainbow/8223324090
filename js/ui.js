@@ -4323,3 +4323,16 @@ function initKeyboardShortcuts() {
         }
     });
 }
+
+async function openManualTaskComposer(draft = {}) {
+    try {
+        if (!window.TaskLinks?.createUrl) await import('./task-links.js');
+        const businessContext = draft.businessContext || window.CrmBusinessContext?.scope?.()?.activeContext;
+        window.location.assign(window.TaskLinks.createUrl({ ...draft, businessContext }));
+        return true;
+    } catch (error) {
+        console.warn('Task composer navigation failed', error);
+        showNotification('Не вдалося відкрити форму нової задачі. Спробуйте ще раз.', 'error');
+        return false;
+    }
+}

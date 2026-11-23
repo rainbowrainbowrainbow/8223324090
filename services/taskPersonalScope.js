@@ -22,7 +22,7 @@ function buildTaskControlPredicates(user, params, alias = 't') {
     const primaryOwner = buildTaskOwnerMatch(user, params, alias);
     const coAssignee = buildTaskCoAssigneeMatch(user, params, alias);
     const owner = `(${primaryOwner} OR ${coAssignee})`;
-    return { author, owner, coAssignee, control: `((${author}) IS TRUE AND (${owner}) IS NOT TRUE)` };
+    return { author, owner, coAssignee, control: `((${author}) IS TRUE AND ((${owner}) IS NOT TRUE OR ((${coAssignee}) IS TRUE AND (${primaryOwner}) IS NOT TRUE)))` };
 }
 
 function authoredTeamTaskSql(author, alias) {
@@ -39,6 +39,8 @@ function buildTaskPersonalQuery(user, params, alias = 't', { authorRead = true }
     return {
         match: `(((${owner} OR ${author} OR ${participant}) ${visibility}) OR ${authorRead ? authoredTeamTaskSql(author, alias) : 'FALSE'})`,
         control,
+        owner,
+        participant,
         coAssignee,
         roles: `array_remove(ARRAY[CASE WHEN ${owner} THEN 'executor' END, CASE WHEN ${author} THEN 'author' END, CASE WHEN ${participant} THEN 'participant' END], NULL)`
     };

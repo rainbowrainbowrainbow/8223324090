@@ -536,13 +536,17 @@ async function verifyTaskEntry({ origin, session, evidence }) {
                 headers: { authorization: 'Bearer ' + deniedLogin.token }
             });
             assert.ok([403, 404].includes(deniedDetail.status), 'actor without Dar membership remains denied');
-            const [overview] = await Promise.all([
-                page.waitForEvent('requestfinished', { predicate: request => request.method() === 'GET'
-                    && new URL(request.url()).pathname === '/api/tasks/overview' }),
+            const [teamList] = await Promise.all([
+                page.waitForEvent('requestfinished', { predicate: request => {
+                    const url = new URL(request.url());
+                    return request.method() === 'GET' && url.pathname === '/api/tasks'
+                        && url.searchParams.get('view') === 'team' && url.searchParams.get('pagination') === '1';
+                } }),
                 navigate(origin + '/tasks')
             ]);
             assert.equal(new URL(page.url()).pathname, '/tasks');
-            assert.ok((await overview.response())?.ok(), 'The bare Tasks route successfully loads its overview');
+            assert.ok((await teamList.response())?.ok(), 'The bare Tasks route successfully loads the paginated team list');
+            await page.getByRole('heading', { name: /^Задачі команди/ }).waitFor();
             await verifyBackgroundReadback(page);
             await settleBootstrapReads(page);
             // Start the logout check from the task document.

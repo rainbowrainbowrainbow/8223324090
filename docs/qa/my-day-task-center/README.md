@@ -36,5 +36,8 @@ system Chromium, set `TASK_CENTER_BROWSER_EXECUTABLE` to its executable path.
 - Ran the existing PostgreSQL My Day integration suites and the Chromium
   co-assignee smoke. The Task Center browser parity suite also passed for the
   retained views, keyboard focus, load states and theme contrast.
+- Passed the Chromium draft, AI composer and interaction suites and all 35
+  Omni PostgreSQL checks. The My Day app test also exercises undo after the
+  keyboard move-to-today menu action.
 - The external AI provider and production database were unavailable in this
   validation environment.

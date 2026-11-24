@@ -271,6 +271,7 @@ async function run() {
             const task = payload.task || payload;
             assert.equal(task.taskMode || task.task_mode, taskMode);
             assert.equal(task.visibility, taskMode === 'work' ? 'team' : 'me_only');
+            assert.equal(task.priority, priority);
             const card = page.locator(`.park-task-card[data-task-id="${id}"]`);
             await card.waitFor();
             return card;
@@ -278,11 +279,10 @@ async function run() {
 
         const suffix = Date.now();
         const overdue = await create('Узгодити макет афіші', 'work', { dayOffset: -2, priority: 'urgent' });
-        assert.equal(await overdue.getByText('Прострочено', { exact: true }).count(), 1);
-        assert.equal(await overdue.locator('.park-task-priority select').inputValue(), 'urgent');
+        assert.equal(await overdue.getByText('Прострочено: 2 дн.', { exact: true }).count(), 1);
+        await overdue.getByLabel('Більше дій', { exact: true }).press('Enter');
         const moveToday = overdue.getByRole('button', { name: 'На сьогодні', exact: true });
         await moveToday.waitFor();
-        assert.ok(await moveToday.evaluate(node => node.previousElementSibling.classList.contains('park-task-heading')));
         const overdueId = await overdue.getAttribute('data-task-id');
         const moveTodayResponse = page.waitForResponse(response => response.request().method() === 'POST'
             && new URL(response.url()).pathname === `/api/tasks/${overdueId}/reschedule`);
@@ -304,7 +304,8 @@ async function run() {
         assert.equal(await mode.inputValue(), 'work');
         assert.equal(await work.locator('[data-park-task-mode]').textContent(), 'Робоча');
         assert.equal(await personal.locator('[data-park-task-mode]').textContent(), 'Особиста');
-        assert.equal(await page.locator('#cabinetTaskAiFillBtn, #cabinetDecompositionMode, [data-cabinet-my-day-view-mode]').count(), 0);
+        assert.equal(await composer.getByRole('button', { name: 'Заповнити з AI', exact: true }).isVisible(), true);
+        assert.equal(await page.locator('#cabinetDecompositionMode, [data-cabinet-my-day-view-mode]').count(), 0);
 
         const done = work.getByRole('button', { name: 'Виконати', exact: true });
         await done.focus();
@@ -461,6 +462,7 @@ async function run() {
         await page.goto(origin + '/profile?tab=myday&period=today');
         await work.waitFor();
 
+        await work.getByLabel('Більше дій', { exact: true }).click();
         await work.getByRole('button', { name: 'Перенести' }).click();
         const dateDialog = page.locator('.confirm-dialog').filter({ hasText: 'Нова дата для задачі' });
         await dateDialog.locator('input[type=date]').waitFor();
@@ -483,6 +485,7 @@ async function run() {
         await page.waitForURL(url => url.pathname === '/profile' && !url.searchParams.has('open'));
         await page.setViewportSize({ width: 390, height: 844 });
         await work.waitFor();
+        await work.getByLabel('Більше дій', { exact: true }).click();
         await work.getByRole('button', { name: 'Редагувати' }).click();
         await page.waitForURL(url => url.pathname === '/profile' && url.searchParams.get('mode') === 'edit');
         await taskDialog.locator('[data-dialog-editor]').waitFor();

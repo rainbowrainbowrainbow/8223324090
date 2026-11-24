@@ -239,7 +239,7 @@ async function assertDraftSurvivesDueChanges(page, state) {
     const titleHeight = await title.evaluate(element => element.offsetHeight);
     await title.fill('A long example task title '.repeat(9));
     assert.ok(await title.evaluate(element => element.offsetHeight) > titleHeight, 'long titles grow on a phone');
-    await page.locator('.cabinet-task-create-submit').click();
+    await page.getByRole('button', { name: 'Додати задачу', exact: true }).click();
     assert.equal(await title.getAttribute('aria-invalid'), 'true', 'submission marks the overlong title invalid');
     await title.fill(draft);
     assert.equal(await title.getAttribute('aria-invalid'), 'false', 'correcting the title clears the error while typing');
@@ -341,7 +341,7 @@ async function assertFullComposerContract(page, state) {
         allowReschedule: document.getElementById('cabinetTaskAllowReschedule')?.checked === true
     }));
     const title = page.locator('#cabinetTaskTitle');
-    const options = page.locator('.park-composer-options');
+    const options = page.locator('#cabinetTaskComposer .park-composer-options');
     await options.locator('summary').press('Enter');
     assert.equal(await options.evaluate(element => element.open), true);
     await title.fill('Browser full composer create');
@@ -351,7 +351,9 @@ async function assertFullComposerContract(page, state) {
     await page.locator('#cabinetTaskPriority').selectOption('high');
     await page.locator('#cabinetTaskVisibility').selectOption('me_only');
     await page.locator('#cabinetTaskAllowReschedule').uncheck();
-    assert.equal(await page.locator('#cabinetTaskAiFillBtn, #cabinetTaskKind, #cabinetDecompositionMode, #cabinetSubtaskList, #cabinetTaskReportRequired').count(), 0);
+    assert.equal(await page.getByRole('button', { name: 'Заповнити з AI', exact: true }).isVisible(), true);
+    assert.equal(await page.locator('#cabinetTaskKind').inputValue(), 'action');
+    assert.equal(await page.locator('#cabinetDecompositionMode, #cabinetSubtaskList, #cabinetTaskReportRequired').count(), 0);
     const expected = await readComposer();
 
     const assertRetained = async label => {
@@ -395,7 +397,7 @@ async function assertFullComposerContract(page, state) {
         assert.match(submitState.onsubmit, /createCabinetTask/, 'composer form keeps create submit handler');
         assert.equal(submitState.createHandlerType, 'function', 'createCabinetTask is globally callable');
         assert.ok(submitState.title, 'composer title is set before submit');
-        await page.locator('.cabinet-task-create-submit').click();
+        await page.getByRole('button', { name: 'Додати задачу', exact: true }).click();
     };
     const [failedCreate] = await Promise.all([
         page.waitForResponse(isTaskCreate),
@@ -432,8 +434,8 @@ async function assertFullComposerContract(page, state) {
     assert.equal(Object.hasOwn(payload, 'reportRequired'), false, 'payload omits the retired report requirement');
     assert.equal(payload.allowReschedule, false, 'payload reschedule control is exact');
     assert.equal(payload.date, '2099-06-01', 'payload custom date is exact');
-    assert.equal(payload.schedule?.date, '2099-06-01', 'payload schedule date is exact');
-    assert.equal(payload.schedule?.durationMinutes, 30, 'payload schedule duration is exact');
+    assert.equal(Object.hasOwn(payload, 'schedule'), false, 'a date without a time stays date-only');
+    assert.equal(Object.hasOwn(payload, 'deadline'), false, 'a date without a time has no implicit deadline hour');
     assert.equal(Object.hasOwn(payload, 'subtasks'), false, 'payload omits the retired checklist');
 
     const reset = await readComposer();

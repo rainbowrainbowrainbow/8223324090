@@ -527,7 +527,7 @@
                 ${canReschedule || canEdit ? `<details class="park-task-menu">
                     <summary aria-label="Більше дій">⋯</summary>
                     <div class="park-task-menu-items">
-                        ${canMoveToToday ? control('move-to-today', 'На сьогодні', 'park-task-secondary') : ''}
+                        ${canMoveToToday ? control('move-to-today', 'На сьогодні', 'park-task-secondary', true, 'data-cabinet-move-undo="true"') : ''}
                         ${canReschedule ? control('reschedule-date', 'Перенести', 'park-task-secondary', true, 'aria-haspopup="dialog"') : ''}
                         ${canEdit ? control('edit', 'Редагувати', 'park-task-secondary') : ''}
                     </div>

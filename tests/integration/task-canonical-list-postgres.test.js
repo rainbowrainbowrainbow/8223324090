@@ -77,10 +77,10 @@ test('canonical task selection and full list queries preserve terminal rows, sco
             CREATE TABLE tasks(id integer PRIMARY KEY,title text,description text,status text,assigned_to text,owner text,
                 owner_user_id integer,created_by_user_id integer,created_by text,business_context text,visibility text,date text,
                 deadline timestamp,created_at timestamp,updated_at timestamp,completed_at timestamp,archived_at timestamp,
-                scheduled_start_at timestamptz,snoozed_until timestamptz,priority text,category text,subcategory text,
+                scheduled_start_at timestamptz,snoozed_until timestamptz,remind_at timestamptz,priority text,category text,subcategory text,
                 checklist_template_key text,template_id integer,pack_id integer,source_entity_type text,source_entity_id text,
                 afisha_id integer,source_type text,source_id text,source_module text,related_entity_type text,task_mode text,
-                related_entity_id text,type text,workflow_state text);
+                related_entity_id text,type text,workflow_state text,control_meta jsonb);
             CREATE TABLE staff_substitutions(id bigint PRIMARY KEY,business_context text,work_date date,
                 source_type text,source_id text,state text);
             CREATE TABLE task_subtasks(id integer PRIMARY KEY,task_id integer,title text,is_done boolean,sort_order integer,

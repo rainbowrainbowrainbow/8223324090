@@ -5938,9 +5938,6 @@ function bindMyDayTaskNavigation(composer) {
             menu.open = false;
             menu.querySelector('summary').focus();
         });
-        menu.addEventListener('click', event => {
-            if (event.target.closest('button')) menu.open = false;
-        });
     });
     const undated = workspace.querySelector('.park-undated');
     if (undated && !undated.dataset.bound) {
@@ -7094,6 +7091,12 @@ async function handleCabinetTaskActionClick(event) {
         if (typeof showNotification === 'function') showNotification('Не вдалося визначити задачу', 'error');
         return;
     }
+    const parkMenu = button.closest('.park-task-menu');
+    const menuTrigger = parkMenu?.querySelector('summary');
+    if (parkMenu) {
+        parkMenu.open = false;
+        menuTrigger?.focus({ preventScroll: true });
+    }
 
     if (action === 'postponement-explanation') {
         openCabinetPostponementExplanation(button);
@@ -7168,7 +7171,7 @@ async function handleCabinetTaskActionClick(event) {
             if (mode) url.searchParams.set('mode', mode);
             else url.searchParams.delete('mode');
             window.history.pushState({ ...window.history.state, myDayTask: taskId }, '', url);
-            syncMyDayTaskDialog(button);
+            syncMyDayTaskDialog(menuTrigger || button);
         } else if (window.TaskDetailDrawer?.open) {
             window.TaskDetailDrawer.open(taskId, { view: 'my', mode, sourceSurface: 'profile_my_day' });
         } else {
@@ -7179,7 +7182,7 @@ async function handleCabinetTaskActionClick(event) {
     }
 
     if (action === 'move-to-today') {
-        const quickAction = button.classList.contains('park-task-move-today');
+        const quickAction = button.dataset.cabinetMoveUndo === 'true';
         button.disabled = true;
         button.classList.add('is-busy');
         const card = button.closest('.cabinet-task-card, .cabinet-overdue-triage-row');
@@ -7706,10 +7709,12 @@ async function createCabinetTask(event) {
                 allowReschedule: draft.allowReschedule
             }
         };
-        if (dueDate) {
-            payload.date = dueDate;
-            payload.schedule = { date: dueDate, slot: 'morning', durationMinutes: 30 };
-            payload.effort_minutes = 30;
+        if (dueDate) payload.date = dueDate;
+        if (dueDate && draft.deadlineTime) {
+            const start = `${dueDate}T${draft.deadlineTime}`;
+            payload.deadline = `${start}:00`;
+            payload.schedule = { date: dueDate, scheduledStartAt: start, durationMinutes: draft.durationMinutes };
+            payload.effort_minutes = draft.durationMinutes;
         }
     }
     const createSignature = cabinetTaskCreateSignature(draft);

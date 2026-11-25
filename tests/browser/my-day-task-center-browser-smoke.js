@@ -114,11 +114,14 @@ async function run() {
         await page.waitForFunction(() => document.activeElement?.id === 'cabinetTaskTitle');
         assert.ok(await page.locator('.park-composer').evaluate(element => element.open));
         await title.fill(delegatedTitle);
-        await page.locator('.park-composer-options').first().locator('summary').click();
-        const owner = page.locator('#cabinetTaskOwner');
-        await owner.waitFor();
-        await owner.selectOption(String(primary.user.id));
-        await page.locator('#cabinetCreateCoAssignee' + co.user.id).check();
+        const assignment = page.locator('[data-cabinet-assignment]');
+        await assignment.locator('summary').click();
+        await assignment.locator('input[type="search"]').fill('Тестовий виконавець');
+        await assignment.locator('[data-assignment-user="' + primary.user.id + '"]').click();
+        await assignment.locator('input[type="search"]').fill('Тестовий співвиконавець');
+        await assignment.locator('[data-assignment-user="' + co.user.id + '"]').click();
+        await assignment.screenshot({ path: path.join(evidence, 'assignee-picker-360.png'), animations: 'disabled' });
+        await assignment.locator('input[type="search"]').press('Escape');
         const created = page.waitForResponse(response => new URL(response.url()).pathname === '/api/tasks'
             && response.request().method() === 'POST');
         await page.locator('#cabinetTaskComposer').evaluate(form => {
@@ -259,6 +262,28 @@ async function run() {
         assert.deepEqual(linked, [{ source_type: 'lead', source_id: '101', source_entity_type: 'lead',
             date: null, priority: 'high', business_context: 'dar' }]);
 
+        const bookingId = 'qa-task-handoff-' + randomBytes(4).toString('hex');
+        const roomId = bookingId + '-room';
+        await db.query(`INSERT INTO timeline_resources (business_context, resource_id, type, name)
+            VALUES ('event_genix', $1, 'cabinet', 'Тестова кімната')`, [roomId]);
+        await db.query(`INSERT INTO bookings (id, date, time, line_id, business_context, room, room_resource_id)
+            VALUES ($1, $2, '12:00', 'qa-task-handoff', 'event_genix', 'Тестова кімната', $3)`, [bookingId, today, roomId]);
+        const bookingTitle = 'Тестова задача з бронювання';
+        await page.evaluate(({ bookingId, bookingTitle, ownerUserId, today }) => openManualTaskComposer({
+            businessContext: 'event_genix', sourceType: 'booking', sourceId: bookingId,
+            sourceLabel: 'Бронювання', title: bookingTitle, ownerUserId, date: today, time: '12:00'
+        }), { bookingId, bookingTitle, ownerUserId: primary.user.id, today });
+        await page.locator('[data-cabinet-create-context]').filter({ hasText: 'Джерело:' }).waitFor();
+        await page.locator('[data-cabinet-assignment] summary').filter({ hasText: 'Тестовий виконавець' }).waitFor();
+        const bookingCreate = page.waitForResponse(response => new URL(response.url()).pathname === '/api/tasks'
+            && response.request().method() === 'POST');
+        await page.locator('[data-cabinet-create-action="plain"]').click();
+        assert.ok((await bookingCreate).ok());
+        const { rows: bookingTasks } = await db.query(`SELECT source_type, source_id, source_entity_type, source_entity_id,
+            owner_user_id, date, business_context FROM tasks WHERE title = $1`, [bookingTitle]);
+        assert.deepEqual(bookingTasks, [{ source_type: 'booking', source_id: bookingId, source_entity_type: 'booking',
+            source_entity_id: bookingId, owner_user_id: primary.user.id, date: today, business_context: 'event_genix' }]);
+
         const packId = '83944057-542c-48fd-8762-2f65ba25f7a4';
         const packBody = { preset: 'cake_with_decor', title: 'Тестовий пакет', packId };
         const createPack = () => api('/api/tasks/operation-pack', { token: manager.token, body: packBody });
@@ -266,21 +291,39 @@ async function run() {
         assert.ok(packs[0].tasks.length > 1);
         assert.deepEqual(packs[0].tasks.map(task => task.id).sort(), packs[1].tasks.map(task => task.id).sort());
         await goto(page, '/profile?tab=myday&create=1&businessContext=event_genix');
+        const pack = page.locator('[data-cabinet-operation-pack]');
+        await pack.locator('summary').click();
+        await pack.locator('[name="preset"]').selectOption('cake_with_decor');
+        await pack.locator('[name="title"]').fill('Тестовий пакет із форми');
+        await pack.locator('[name="sourceType"]').selectOption('booking');
+        await pack.locator('[name="sourceId"]').fill(bookingId);
+        const packPattern = /\/api\/tasks\/operation-pack(?:\?|$)/;
+        const packRequests = [];
+        await page.route(packPattern, async route => {
+            packRequests.push(route.request().postDataJSON());
+            if (packRequests.length > 1) return route.continue();
+            assert.ok((await route.fetch()).ok());
+            await route.abort('connectionreset');
+        });
+        await pack.getByRole('button', { name: 'Створити пакет' }).click();
+        await pack.locator('[data-operation-pack-status]').filter({ hasText: /.+/ }).waitFor();
+        const packRetry = page.waitForResponse(packPattern);
+        await pack.getByRole('button', { name: 'Створити пакет' }).click();
+        const packResponse = await packRetry;
+        assert.ok(packResponse.ok());
+        assert.deepEqual(packRequests[0], packRequests[1]);
+        const retriedPack = await packResponse.json();
+        const { rows: [packRows] } = await db.query(`SELECT COUNT(*)::int AS count, BOOL_AND(source_entity_id = $2) AS linked
+            FROM tasks WHERE pack_id = $1`, [retriedPack.packId, bookingId]);
+        assert.deepEqual(packRows, { count: retriedPack.tasks.length, linked: true });
+        await page.unroute(packPattern);
         await page.locator('#cabinetTaskTitle').fill('Тестова основна задача');
-        await page.getByRole('button', { name: '+ Ще задача', exact: true }).click();
-        const extra = page.locator('.cabinet-extra-task');
-        await extra.locator('[data-cabinet-extra-title]').fill('Тестова додаткова задача');
-        await extra.locator('summary').click();
-        await extra.locator('[data-extra-priority]').selectOption('urgent');
-        await extra.locator('[data-extra-undated]').check();
+        assert.equal(await page.getByRole('button', { name: '+ Ще задача', exact: true }).count(), 0);
+        await page.locator('#cabinetTaskDate').fill('');
         await page.locator('[data-cabinet-create-action="plain"]').click();
         await page.waitForFunction(() => document.querySelector('#cabinetTaskTitle')?.value === '');
-        const { rows: batch } = await db.query(`SELECT title, date, priority FROM tasks
-            WHERE title = ANY($1::text[]) ORDER BY id`, [['Тестова основна задача', 'Тестова додаткова задача']]);
-        assert.deepEqual(batch, [
-            { title: 'Тестова основна задача', date: today, priority: 'normal' },
-            { title: 'Тестова додаткова задача', date: null, priority: 'urgent' }
-        ]);
+        const { rows: directTasks } = await db.query('SELECT date FROM tasks WHERE title = $1', ['Тестова основна задача']);
+        assert.deepEqual(directTasks, [{ date: null }]);
 
         const createdLead = await api('/api/leads', { token: manager.token, body: { client_name: 'Тест співпраці' } });
         const leadId = (createdLead.lead || createdLead).id;
@@ -297,12 +340,15 @@ async function run() {
         await collaborate.waitFor();
         assert.equal(await page.locator('#cabinetTaskTime').inputValue(), '12:00');
         assert.equal(await page.locator('[data-cabinet-add-task]').isVisible(), false);
-        await page.locator('#cabinetTaskOwner').selectOption(String(primary.user.id));
+        await page.locator('[data-cabinet-assignment] summary').click();
+        const selectedOwner = page.locator('[data-assignment-user="' + primary.user.id + '"]');
+        await selectedOwner.click();
+        const label = await selectedOwner.textContent();
         const collaborationTitle = 'Уточнити умови співпраці';
         await page.locator('#cabinetTaskTitle').fill(collaborationTitle);
         await page.evaluate(() => rerenderCabinetTaskTabs());
         assert.equal(await page.locator('#cabinetTaskTitle').inputValue(), collaborationTitle);
-        assert.equal(await page.locator('#cabinetTaskOwner').inputValue(), String(primary.user.id));
+        assert.ok((await page.locator('[data-cabinet-assignment] summary').textContent()).includes(label));
         const collaborationRequests = [];
         await page.route('**' + leadApi + '/collaboration-task', async route => {
             collaborationRequests.push(route.request().postDataJSON());
@@ -316,6 +362,7 @@ async function run() {
         await collaborate.click();
         await page.locator('#cabinetTaskComposerStatus.error').waitFor();
         assert.equal(await page.locator('#cabinetTaskTitle').isDisabled(), true);
+        assert.equal(await selectedOwner.isDisabled(), true, 'the owner remains locked until the original request is resolved');
         const retriedCollaboration = page.waitForResponse(reply => new URL(reply.url()).pathname === leadApi + '/collaboration-task');
         await collaborate.click();
         const replayedCollaboration = await (await retriedCollaboration).json();
@@ -334,6 +381,66 @@ async function run() {
         const { rows: interactions } = await db.query(`SELECT COUNT(*)::int AS count FROM lead_interactions
             WHERE lead_id = $1 AND details->>'source' = 'leads.collaboration_task'`, [leadId]);
         assert.deepEqual(interactions, [{ count: 1 }]);
+        const shiftDate = '2099-11-26';
+        for (const [session, name] of [[primary, 'Тестовий адміністратор А'], [co, 'Тестовий адміністратор Б']]) {
+            const { rows: [staff] } = await db.query(`INSERT INTO staff (name, department, position, role_type)
+                VALUES ($1, 'admin', 'Адміністратор зміни', 'admin') RETURNING id`, [name]);
+            await db.query(`INSERT INTO employee_profiles (staff_id, user_id, full_name, is_active)
+                VALUES ($1, $2, $3, true) ON CONFLICT (user_id) WHERE user_id IS NOT NULL
+                DO UPDATE SET staff_id = excluded.staff_id, is_active = true`, [staff.id, session.user.id, name]);
+            await db.query(`INSERT INTO staff_schedule (staff_id, date, shift_start, shift_end, status)
+                VALUES ($1, $2, '09:00', '18:00', 'working')`, [staff.id, shiftDate]);
+        }
+        const directory = await api('/api/tasks/owners?q=' + encodeURIComponent('Адміністратор зміни'), { token: manager.token });
+        assert.ok(directory.users.some(person => person.id === primary.user.id && person.position === 'Адміністратор зміни'));
+        const { rows: [missingPrimary] } = await db.query(`INSERT INTO tasks
+            (title, status, workflow_state, visibility, task_mode, business_context)
+            VALUES ('Тест без головного відповідального', 'todo', 'todo', 'team', 'work', 'event_genix') RETURNING id`);
+        await db.query('INSERT INTO task_co_assignees (task_id, user_id, added_by) VALUES ($1, $2, $3)',
+            [missingPrimary.id, co.user.id, manager.user.id]);
+        const unassigned = await api('/api/tasks?view=team&unassigned=1&pagination=1&search='
+            + encodeURIComponent('Тест без головного відповідального'), { token: manager.token });
+        assert.equal(unassigned.pagination.total, 1);
+        assert.equal(unassigned.tasks[0].id, missingPrimary.id);
+        await goto(page, '/profile?tab=myday&create=1&businessContext=event_genix');
+        await page.setViewportSize({ width: 360, height: 900 });
+        await page.locator('#cabinetTaskTitle').fill('Тестова задача адміністраторам зміни');
+        const shiftPicker = page.locator('[data-cabinet-assignment]');
+        await shiftPicker.locator('summary').click();
+        await shiftPicker.getByRole('button', { name: 'Відділ на зміні' }).click();
+        await shiftPicker.getByLabel('Дата зміни').fill(shiftDate);
+        await shiftPicker.locator('option[value="admin.administrators"]').waitFor({ state: 'attached' });
+        await shiftPicker.locator('#cabinetShiftGroup').selectOption('admin.administrators');
+        await shiftPicker.getByRole('button', { name: 'Підтвердити склад' }).click();
+        await shiftPicker.screenshot({ path: path.join(evidence, 'shift-assignment-360.png'), animations: 'disabled' });
+        const shiftCreated = page.waitForResponse(response => new URL(response.url()).pathname === '/api/tasks'
+            && response.request().method() === 'POST');
+        await page.locator('[data-cabinet-create-action="plain"]').click();
+        const shiftResponse = await shiftCreated;
+        assert.ok(shiftResponse.ok(), JSON.stringify(await shiftResponse.json()));
+        const shiftTask = (await shiftResponse.json()).task;
+        const { rows: shiftAssignments } = await db.query('SELECT user_id FROM task_co_assignees WHERE task_id = $1', [shiftTask.id]);
+        assert.deepEqual([shiftTask.ownerUserId, ...shiftAssignments.map(row => row.user_id)].sort((a, b) => a - b),
+            [primary.user.id, co.user.id].sort((a, b) => a - b));
+        const captured = shiftResponse.request();
+        const body = captured.postDataJSON();
+        assert.equal(body.shiftAssignment.group, 'admin.administrators');
+        const originalKey = captured.headers()['idempotency-key'];
+        assert.ok(originalKey);
+        await db.query(`UPDATE staff_schedule SET status = 'dayoff'
+            WHERE date = $1 AND staff_id = (SELECT staff_id FROM employee_profiles WHERE user_id = $2)`, [shiftDate, co.user.id]);
+        const submitShift = (key, requestBody) => fetch(origin + '/api/tasks', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'idempotency-key': key,
+                'x-business-context': 'event_genix', authorization: 'Bearer ' + manager.token },
+            body: JSON.stringify(requestBody)
+        });
+        const replayedShift = await submitShift(originalKey, body);
+        assert.equal(replayedShift.status, 200);
+        assert.equal((await replayedShift.json()).task.id, shiftTask.id);
+        const staleShift = await submitShift(randomBytes(16).toString('hex'), { ...body, title: 'Тест застарілого складу' });
+        assert.equal(staleShift.status, 409);
+        assert.equal((await staleShift.json()).code, 'TASK_SHIFT_ROSTER_CHANGED');
         console.log('Task Center and My Day acceptance passed (Chromium, PostgreSQL, dark 360/1440 and light).');
     } catch (error) {
         await Promise.all(pages.map((page, index) => page.screenshot({

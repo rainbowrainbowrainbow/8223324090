@@ -417,7 +417,9 @@ async function buildTaskCabinetBucketPage(options = {}) {
     const offset = normalizeTaskCabinetBucketOffset(options.bucketOffset);
     const params = [];
     const personalQuery = buildTaskPersonalQuery(user, params, 't');
-    const ownMatch = personalQuery.match;
+    const ownMatch = options.excludeControlFromPlanning
+        ? `(${personalQuery.match}) AND NOT ${taskAutomaticOriginSql('t')}`
+        : personalQuery.match;
     const ownBusinessCondition = appendTaskBusinessScopeSql(params, businessScope, 't');
     params.push(today);
     const todayParam = params.length;
@@ -554,7 +556,9 @@ async function buildTaskCabinetProjection(options = {}) {
     const businessScope = options.businessScope;
     const ownParams = [];
     const personalQuery = buildTaskPersonalQuery(user, ownParams, 't');
-    const ownMatch = personalQuery.match;
+    const ownMatch = options.excludeControlFromPlanning
+        ? `(${personalQuery.match}) AND NOT ${taskAutomaticOriginSql('t')}`
+        : personalQuery.match;
     const ownBusinessCondition = appendTaskBusinessScopeSql(ownParams, businessScope, 't');
     const now = options.now instanceof Date ? options.now : new Date();
     const today = todayKyivDate(now);
@@ -666,6 +670,7 @@ async function buildTaskCabinetProjection(options = {}) {
         user,
         businessScope,
         limit: completedHistoryLimit,
+        excludeAutomatic: options.excludeControlFromPlanning,
     });
     const completedHistorySourceRowsRaw = Array.isArray(completedHistoryPage.sourceRows)
         ? completedHistoryPage.sourceRows
@@ -837,7 +842,9 @@ async function buildTaskCabinetProjection(options = {}) {
     });
 
     const quickParams = [];
-    const quickOwnerMatch = buildTaskPersonalQuery(user, quickParams, 't').match;
+    const quickPersonalQuery = buildTaskPersonalQuery(user, quickParams, 't');
+    const quickOwnerMatch = quickPersonalQuery.match;
+    const quickAudience = taskPlanningAudienceSql(quickPersonalQuery, options);
     const quickBusinessCondition = appendTaskBusinessScopeSql(quickParams, businessScope, 't');
     quickParams.push(today);
     const quickDateSql = taskWorkloadDateSql('t');
@@ -860,7 +867,8 @@ async function buildTaskCabinetProjection(options = {}) {
                 )::int AS active_my_day
          FROM tasks t
          WHERE ${quickOwnerMatch}
-           ${quickBusinessCondition}`,
+           ${quickBusinessCondition}
+           ${options.excludeControlFromPlanning ? `AND NOT ${taskAutomaticOriginSql('t')} ${quickAudience}` : ''}`,
         quickParams
     );
     const quickStats = quickResult.rows[0] || {};

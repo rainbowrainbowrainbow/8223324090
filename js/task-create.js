@@ -264,12 +264,12 @@
             if (!response) return null;
             if (typeof handleAuthError === 'function' && handleAuthError(response)) return null;
             const payload = await response.json().catch(() => ({}));
-            if (response.status === 409 && typeof options.onDuplicate === 'function') {
+            if (response.status === 409 && payload.code !== 'TASK_SHIFT_ROSTER_CHANGED' && typeof options.onDuplicate === 'function') {
                 options.onDuplicate(payload);
                 return { success: false, duplicate: true, ...payload };
             }
             if (!response.ok) {
-                return { success: false, status: response.status, error: payload.error || payload.message || 'Task create failed' };
+                return { success: false, status: response.status, code: payload.code, error: payload.error || payload.message || 'Task create failed' };
             }
             return payload;
         } catch (error) {

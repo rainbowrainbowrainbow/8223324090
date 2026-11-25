@@ -800,21 +800,21 @@ test('profile task composer keeps one date on the quick row and one priority in 
     assert.match(collapsed, /data-cabinet-composer-state="collapsed"/);
     assert.match(collapsed, /<textarea id="cabinetTaskTitle"[^>]*aria-required="true"/);
     assert.match(collapsed, /<input id="cabinetTaskDate"[^>]*type="date" value="\d{4}-\d{2}-\d{2}"/);
-    assert.match(collapsed, /data-cabinet-no-date>Без дати/);
+    assert.match(collapsed, /data-cabinet-assignment>\s*<summary>Кому · Я/);
     assert.match(collapsed, /data-cabinet-create-action="plain"[^>]*>Додати задачу/);
     assert.match(collapsed, /data-cabinet-composer-toggle[^>]*aria-expanded="false"[^>]*>Більше параметрів/);
     assert.match(collapsed, /id="cabinetTaskAiFillBtn"[^>]*data-task-ai-draft-preview/);
     assert.match(collapsed, /id="cabinetTaskComposerStatus"[^>]*role="status"/);
     assert.match(collapsed, /id="cabinetTaskComposerAdvanced"[^>]*hidden[\s\S]*id="cabinetTaskDetails"[\s\S]*id="cabinetTaskPriority"/);
-    assert.equal((collapsed.match(/type="date"/g) || []).length, 1);
+    assert.equal((collapsed.match(/id="cabinetTaskDate"/g) || []).length, 1);
     assert.equal((collapsed.match(/id="cabinetTaskPriority"/g) || []).length, 1);
     assert.doesNotMatch(collapsed, /cabinet-(due|priority)-preset|data-my-day-composer-impact/);
 
     vm.runInContext("cabinetTaskComposerExpanded = true; cabinetCreateDuePreset = 'no_date';", ctx);
     const expanded = ctx.renderCabinetTaskComposer({ segment: 'personal', mode: 'personal' });
     assert.match(expanded, /data-cabinet-composer-state="expanded"/);
-    assert.match(expanded, /<input id="cabinetTaskDate"[^>]*value="" disabled>/);
-    assert.match(expanded, /data-cabinet-no-date>На сьогодні/);
+    assert.match(expanded, /<input id="cabinetTaskDate"[^>]*value="">/);
+    assert.doesNotMatch(expanded, /data-cabinet-no-date/);
     assert.match(expanded, /data-cabinet-composer-toggle[^>]*aria-expanded="true"[^>]*>Згорнути/);
     assert.doesNotMatch(expanded, /id="cabinetTaskComposerAdvanced"[^>]*hidden/);
 });

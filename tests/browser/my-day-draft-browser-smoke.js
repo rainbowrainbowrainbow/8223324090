@@ -233,7 +233,6 @@ async function installFixtureRoutes(context, baseUrl, state) {
 async function assertDraftSurvivesDueChanges(page, state) {
     const title = page.locator('#cabinetTaskTitle');
     const date = page.locator('#cabinetTaskDate');
-    const noDateToggle = page.locator('[data-cabinet-no-date]');
     const originalDate = await date.inputValue();
     const draft = 'Browser regression draft — do not create';
     const titleHeight = await title.evaluate(element => element.offsetHeight);
@@ -247,11 +246,10 @@ async function assertDraftSurvivesDueChanges(page, state) {
     await title.click();
     await title.pressSequentially(draft, { delay: 1 });
 
-    await noDateToggle.click();
+    await date.fill('');
     assert.equal(await title.inputValue(), draft, 'clearing the date keeps the typed task draft');
-    assert.equal(await date.isDisabled(), true, 'the date input is disabled for an undated task');
-    assert.equal(await page.locator('#cabinetTaskNoDateValue').isVisible(), true, 'the undated state is visible');
-    await noDateToggle.click();
+    assert.equal(await date.inputValue(), '', 'the date was cleared');
+    await date.fill(originalDate);
     assert.equal(await title.inputValue(), draft, 'restoring today keeps the typed task draft');
     assert.equal(await date.inputValue(), originalDate, 'today is restored in the date input');
 
@@ -276,7 +274,7 @@ async function assertComposerListenersStayBoundOnce(page, state) {
     const initialCabinetRequests = state.cabinetRequests;
     assert.equal(initialCount, 1, 'composer title starts with one input handler');
     for (let index = 0; index < 20; index += 1) {
-        await page.locator('[data-cabinet-no-date]').click();
+        await page.locator('#cabinetTaskDate').fill(index % 2 ? '' : '2099-05-31');
     }
     assert.equal(await countInputListeners(), 1, 'partial date refreshes do not multiply composer input handlers');
     assert.equal(state.cabinetRequests, initialCabinetRequests, 'date toggles do not multiply projection requests');
@@ -363,10 +361,10 @@ async function assertFullComposerContract(page, state) {
         }
     };
 
-    const noDateToggle = page.locator('[data-cabinet-no-date]');
-    await noDateToggle.click();
+    const previousDate = await page.locator('#cabinetTaskDate').inputValue();
+    await page.locator('#cabinetTaskDate').fill('');
     await assertRetained('clearing the date');
-    await noDateToggle.click();
+    await page.locator('#cabinetTaskDate').fill(previousDate);
     await assertRetained('restoring today');
 
     const customDate = page.locator('#cabinetTaskDate');

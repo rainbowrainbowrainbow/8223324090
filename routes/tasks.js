@@ -6,6 +6,8 @@ const crypto = require('crypto');
 const { taskUrl } = require('../js/task-links');
 const { pool } = require('../db');
 const { normalizeCreationCoAssignees, validateCreationCoAssignees, saveCreationCoAssignees } = require('../services/taskCreationCoAssignees');
+const { listTaskShiftGroups, normalizeTaskShiftAssignment, normalizeTaskShiftDate, shiftAssignmentError } = require('../services/taskShiftAssignment');
+const { canAccessParkStaffAccounts } = require('../services/legacyBusinessSurface');
 const { requireRole, authenticateToken, canUseAction, JWT_SECRET } = require('../middleware/auth');
 const {
     installRevenueResponseShaper,
@@ -839,6 +841,7 @@ function directTaskCreateRequestHashPayload(fields = {}) {
         assignedTo: String(fields.assigned_to || fields.assignedTo || '').trim(),
         ownerUserId: Number(fields.owner_user_id || fields.ownerUserId || 0) || null,
         ...(fields.coAssigneeUserIds?.length ? { coAssigneeUserIds: fields.coAssigneeUserIds } : {}),
+        ...(fields.shiftAssignment ? { shiftAssignment: fields.shiftAssignment } : {}),
         owner: String(fields.owner || '').trim(),
         taskType: fields.task_type || fields.taskType || 'human',
         deadline: fields.deadline || null,
@@ -1476,8 +1479,7 @@ router.get('/', async (req, res) => {
         if (isTruthy(automatic)) conditions.push(taskAutomaticOriginSql('t'));
         if (isTruthy(unassigned)) conditions.push(`t.owner_user_id IS NULL
             AND NULLIF(BTRIM(t.assigned_to), '') IS NULL
-            AND NULLIF(BTRIM(t.owner), '') IS NULL
-            AND NOT EXISTS (SELECT 1 FROM task_co_assignees ca WHERE ca.task_id = t.id)`);
+            AND NULLIF(BTRIM(t.owner), '') IS NULL`);
         if (isTruthy(overdue_work)) conditions.push(activeTaskSql, notDeferredSql, `${workloadDateSql} < ${todaySql}`);
 
         // Apply the active view before LIMIT/OFFSET so populated views cannot be
@@ -1574,6 +1576,7 @@ router.get('/', async (req, res) => {
              SELECT t.*, u.name AS owner_name, u.username AS owner_username,
                     ${taskAutomaticOriginSql('t')} AS is_automatic,
                     ${workloadDateSql}::text AS workload_date,
+                    (SELECT COUNT(participants.user_id)::int FROM task_co_assignees participants WHERE participants.task_id = t.id) AS additional_assignee_count,
                     EXISTS (SELECT 1 FROM task_co_assignees viewer_ca WHERE viewer_ca.task_id = t.id AND viewer_ca.user_id = $${viewerUserIdParam}) AS viewer_is_co_assignee,
                     COALESCE((SELECT COUNT(*) FROM task_observers tob WHERE tob.task_id = t.id), 0)::int AS observer_count,
                     EXISTS (
@@ -1794,6 +1797,18 @@ router.get('/permissions', (req, res) => {
     res.json({ success: true, permissions: perms, capabilities, role: req.user?.role });
 });
 
+router.get('/shift-assignees', requireTaskRouteCapability('create'), async (req, res) => {
+    try {
+        const businessScope = requireTaskWriteScope(req, res);
+        if (!businessScope) return;
+        const date = normalizeTaskShiftDate(req.query.date);
+        const groups = await listTaskShiftGroups(pool, req, businessScope, date);
+        res.json({ success: true, date, groups });
+    } catch (error) {
+        sendTaskActionError(res, error);
+    }
+});
+
 // GET /api/tasks/owners — active assignable users for typed task ownership
 router.get('/owners', async (req, res) => {
     try {
@@ -1803,14 +1818,26 @@ router.get('/owners', async (req, res) => {
         if (!perms.canCreateTasks && !perms.canAssignAnyone && !['all', 'department'].includes(perms.taskVisibility)) {
             return res.status(403).json({ error: 'Insufficient permissions' });
         }
-        const users = await listTaskOwnerCandidates({ actor: req.user });
+        const ownerOptions = { actor: req.user };
+        if (typeof req.query.q === 'string') {
+            ownerOptions.search = req.query.q.trim();
+            ownerOptions.businessScope = businessScope;
+            ownerOptions.searchStaff = canUseAction(req.user, 'hr.schedule.view') && canAccessParkStaffAccounts(req);
+            const afterUserId = Number(req.query.after || 0);
+            if (!Number.isSafeInteger(afterUserId) || afterUserId < 0) return res.status(400).json({ error: 'Invalid owner cursor' });
+            ownerOptions.afterUserId = afterUserId;
+        }
+        const candidates = await listTaskOwnerCandidates(ownerOptions);
+        const more = ownerOptions.search !== undefined && candidates.length > 200;
+        const users = more ? candidates.slice(0, 200) : candidates;
         res.json({
             success: true,
             users,
             meta: {
                 canonicalField: 'tasks.owner_user_id',
                 legacyDisplayFields: ['assigned_to', 'owner']
-            }
+            },
+            ...(ownerOptions.search !== undefined ? { nextAfter: more ? users.at(-1).id : null } : {})
         });
     } catch (err) {
         log.error('Task owners lookup error', err);
@@ -2220,6 +2247,7 @@ router.get('/my-cabinet/completions', async (req, res) => {
         const history = await listTaskCompletionHistory(pool, {
             user: req.user,
             businessScope,
+            excludeAutomatic: req.query.planningView === 'my-day',
             cursor: req.query.cursor,
             limit: req.query.limit
         });
@@ -2255,7 +2283,7 @@ router.get('/my-cabinet', async (req, res) => {
                 businessScope,
                 bucket,
                 excludeControlFromPlanning,
-                automaticOnly: isTruthy(req.query.automatic),
+                automaticOnly: !excludeControlFromPlanning && isTruthy(req.query.automatic),
                 includeLegacyMetadata: false,
                 focusDate: normalizeTaskCabinetFocusDate(req.query.focusDate || req.query.focus_date),
                 bucketLimit: normalizeTaskCabinetBucketLimit(req.query.limit || req.query.bucketLimit || req.query.bucket_limit),
@@ -2268,7 +2296,7 @@ router.get('/my-cabinet', async (req, res) => {
             user: req.user,
             businessScope,
             excludeControlFromPlanning,
-            automaticOnly: isTruthy(req.query.automatic),
+            automaticOnly: !excludeControlFromPlanning && isTruthy(req.query.automatic),
             includeLegacyMetadata: false,
             focusDate: normalizeTaskCabinetFocusDate(req.query.focusDate || req.query.focus_date),
             planningRowLimit: req.query.planningRowLimit || req.query.planning_row_limit,
@@ -3307,6 +3335,7 @@ router.post('/', requireTaskRouteCapability('create'), async (req, res) => {
         const assigned_to = typedOwner?.assignedToSnapshot || b.assigned_to || b.assignedTo;
         const owner_user_id = typedOwner?.ownerUserId || null;
         const coAssigneeUserIds = normalizeCreationCoAssignees(b.coAssigneeUserIds ?? b.co_assignee_user_ids, owner_user_id);
+        const shiftAssignment = normalizeTaskShiftAssignment(b.shiftAssignment);
         const owner = b.owner;
         const type = b.type;
         const template_id = b.template_id || b.templateId;
@@ -3349,6 +3378,9 @@ router.post('/', requireTaskRouteCapability('create'), async (req, res) => {
                 code: 'TASK_CREATE_IDEMPOTENCY_INVALID'
             });
         }
+        if (shiftAssignment && (!owner_user_id || osFields.visibility !== 'team' || osFields.task_mode !== 'work' || !directIdempotencyKey)) {
+            throw shiftAssignmentError(400, 'TASK_SHIFT_ASSIGNMENT_INVALID', 'Для зміни потрібна робоча задача з відповідальним.');
+        }
         const directRequestHash = directIdempotencyKey
             ? hashDirectTaskCreateRequest(directTaskCreateRequestHashPayload({
                 ...b,
@@ -3359,6 +3391,7 @@ router.post('/', requireTaskRouteCapability('create'), async (req, res) => {
                 assigned_to,
                 owner_user_id,
                 coAssigneeUserIds,
+                shiftAssignment,
                 owner,
                 task_type: VALID_TASK_TYPES.includes(task_type) ? task_type : 'human',
                 deadline,
@@ -3443,6 +3476,16 @@ router.post('/', requireTaskRouteCapability('create'), async (req, res) => {
                 }
             }
 
+            if (shiftAssignment) {
+                const groups = await listTaskShiftGroups(query, req, businessScope, shiftAssignment.date);
+                const group = groups.find(item => item.key === shiftAssignment.group);
+                const recipients = group?.users.map(person => person.id).sort((a, b) => a - b);
+                const selected = [owner_user_id, ...coAssigneeUserIds].sort((a, b) => a - b);
+                if (!recipients?.length || group.unavailableCount || recipients.join(',') !== selected.join(',')) {
+                    throw shiftAssignmentError(409, 'TASK_SHIFT_ROSTER_CHANGED', 'Перевірте оновлений склад зміни й підтвердьте його повторно.');
+                }
+                controlMeta.shiftAssignment = { ...shiftAssignment, label: group.label };
+            }
             const duplicate = await findActiveDuplicateTask(query, {
                 title,
                 date,
@@ -3620,7 +3663,8 @@ router.post('/', requireTaskRouteCapability('create'), async (req, res) => {
                 existingStatus: err.task?.status || null
             });
         }
-        if (['TASK_OWNER_NOT_ASSIGNABLE', 'TASK_REASSIGN_FORBIDDEN', 'TASK_CO_ASSIGNEES_INVALID'].includes(err.code)) {
+        if (err.code?.startsWith('TASK_SHIFT_')
+            || ['TASK_OWNER_NOT_ASSIGNABLE', 'TASK_REASSIGN_FORBIDDEN', 'TASK_CO_ASSIGNEES_INVALID'].includes(err.code)) {
             return sendTaskActionError(res, err);
         }
         log.error('Create error', err);

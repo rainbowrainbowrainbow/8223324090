@@ -560,7 +560,7 @@ test('AI draft composer renders interactive task bundle review without single-ta
             <button type="button" data-task-ai-draft-preview>AI</button>
             <div data-task-ai-draft-status></div>
             <div data-task-ai-draft-review hidden></div>
-            <fieldset><legend>Співвиконавці</legend><div data-task-create-co-assignee-options></div></fieldset>
+            <details data-cabinet-assignment><summary>Кому</summary></details>
         </div>
     </body>`, {
         runScripts: 'outside-only',

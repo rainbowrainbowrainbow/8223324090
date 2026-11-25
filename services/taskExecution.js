@@ -217,6 +217,22 @@ async function listTaskOwnerCandidates(options = {}) {
     const business = businessUserAccessSql(options.actor, params, 'users', options.businessScope || options.businessContext);
     let pagination = '';
     let order = "COALESCE(NULLIF(name, ''), username), id";
+    let search = '';
+    const staffJoin = options.searchStaff ? `LEFT JOIN LATERAL (
+        SELECT s.position, s.department
+        FROM employee_profiles ep JOIN staff s ON s.id = ep.staff_id
+        WHERE ep.user_id = users.id AND ep.is_active IS TRUE AND s.is_active IS DISTINCT FROM FALSE
+        ORDER BY ep.id DESC LIMIT 1
+    ) staff_profile ON true` : '';
+    const staffFields = options.searchStaff ? ', staff_profile.position, staff_profile.department' : '';
+    if (options.search !== undefined) {
+        params.push(String(options.search).slice(0, 100));
+        const term = '$' + params.length;
+        search = `AND (
+            (strpos(lower(concat_ws(' ', users.name, users.username)), lower(${term})) > 0 OR users.id::text = ${term})
+            ${options.searchStaff ? `OR strpos(lower(concat_ws(' ', staff_profile.position, staff_profile.department)), lower(${term})) > 0` : ''}
+        )`;
+    }
     if (options.afterUserId !== undefined) {
         if (!Number.isSafeInteger(options.afterUserId) || options.afterUserId < 0) {
             throw new TypeError('Invalid task owner cursor');
@@ -226,12 +242,14 @@ async function listTaskOwnerCandidates(options = {}) {
         order = 'users.id';
     }
     const result = await query.query(
-        `SELECT id, username, name, ${business.roleSql} AS role
+        `SELECT id, username, name, ${business.roleSql} AS role ${staffFields}
          FROM users
+         ${staffJoin}
          WHERE COALESCE(is_active, true) = true
            AND ${business.roleSql} = ANY($1::text[])
            ${scope}
            ${business.condition}
+           ${search}
            ${pagination}
          ORDER BY ${order}
          LIMIT ${options.afterUserId === undefined ? 200 : 201}`,
@@ -242,6 +260,7 @@ async function listTaskOwnerCandidates(options = {}) {
         username: row.username,
         name: row.name || null,
         role: row.role || null,
+        ...(options.searchStaff ? { position: row.position || null, department: row.department || null } : {}),
         label: row.name || row.username || `User #${row.id}`
     }));
 }

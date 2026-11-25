@@ -4,6 +4,7 @@ const {
     normalizeUserId
 } = require('./taskPolicy');
 const { buildTaskPersonalQuery } = require('./taskPersonalScope');
+const { taskAutomaticOriginSql } = require('./taskAutomationPolicy');
 const { dateOnly: taskKyivDateOnly } = require('./taskScheduling');
 const { normalizeTaskPayload } = require('./taskContract');
 const { loadTaskClassifications } = require('./myDayTaxonomy');
@@ -117,6 +118,7 @@ async function queryTaskCompletionHistoryPage(queryable, options = {}) {
     const limit = normalizeCompletionHistoryLimit(options.limit);
     const cursor = decodeCompletionHistoryCursor(options.cursor);
     const scope = taskCompletionHistoryScope(user, options.businessScope);
+    const automaticCondition = options.excludeAutomatic ? `AND NOT ${taskAutomaticOriginSql('t')}` : '';
     const orderExpression = completedTaskOrderExpression('t');
     const pageParams = [...scope.params];
     let cursorCondition = '';
@@ -136,6 +138,7 @@ async function queryTaskCompletionHistoryPage(queryable, options = {}) {
         `${taskCabinetRowSelectSql(scope.roles, scope.coAssignee)}
          WHERE ${scope.ownerMatch}
            ${scope.businessCondition}
+           ${automaticCondition}
            AND COALESCE(t.status, 'todo') = 'done'
            ${cursorCondition}
          ORDER BY ${orderExpression} DESC, t.id DESC
@@ -149,6 +152,7 @@ async function queryTaskCompletionHistoryPage(queryable, options = {}) {
          FROM tasks t
          WHERE ${scope.ownerMatch}
            ${scope.businessCondition}
+           ${automaticCondition}
            AND COALESCE(t.status, 'todo') = 'done'`,
         scope.params
     );

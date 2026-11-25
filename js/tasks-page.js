@@ -1395,16 +1395,20 @@ function renderTaskCenterQueryControls() {
         `<option value="${escapeHtml(view.id)}">${escapeHtml(view.name)}</option>`
     )].join('');
     const quickFilters = [['overdue', 'Прострочені'], ['unassigned', 'Без відповідального'], ['automatic', 'Автоматичні']];
+    const defaultQuery = normalizeTaskCenterQueryState({ mode: state.mode, queue: state.queue });
+    const allSelected = JSON.stringify(state) === JSON.stringify(defaultQuery);
     const focused = host.contains(document.activeElement) ? document.activeElement : null;
     const selectedFilter = focused?.dataset.taskQuickFilter;
     const focusedQuery = focused?.dataset.taskCenterQuery;
     const searchSelection = focusedQuery === 'search' ? [focused.selectionStart, focused.selectionEnd] : null;
     const extrasOpen = host.querySelector('details')?.open;
     host.innerHTML = `<div class="task-center-quick-filters">
+        <button type="button" class="btn-secondary" data-task-quick-filter="all" aria-pressed="${allSelected}">Усі</button>
         ${quickFilters.map(([key, label]) => `<button type="button" class="btn-secondary" data-task-quick-filter="${key}" aria-pressed="${state[key]}">${label}</button>`).join('')}
         <label>Виконавець <select data-task-center-query="ownerUserId">${taskCenterOwnerOptions()}</select></label>
+    </div><div class="task-center-query-row">
+        <label><span>Пошук</span><input type="search" data-task-center-query="search" value="${escapeHtml(state.search)}" placeholder="Назва, ID, виконавець або CRM-контекст"></label>
     </div><details${extrasOpen ? ' open' : ''}><summary>Додаткові фільтри</summary>${drilldownActive ? '<div class="task-center-query-row"><button type="button" class="btn-secondary" data-task-clear-dashboard-overdue aria-label="Прибрати фільтр: ' + drilldownLabel + '">' + drilldownLabel + ' ×</button></div>' : ''}<div class="task-center-query-row">
-        <label><span>\u041f\u043e\u0448\u0443\u043a</span><input type="search" data-task-center-query="search" value="${escapeHtml(state.search)}" placeholder="\u041d\u0430\u0437\u0432\u0430, ID, \u0432\u0438\u043a\u043e\u043d\u0430\u0432\u0435\u0446\u044c \u0430\u0431\u043e CRM-\u043a\u043e\u043d\u0442\u0435\u043a\u0441\u0442"></label>
         <label><span>\u0412\u0456\u0434</span><input type="date" data-task-center-query="dateFrom" value="${state.dateFrom}"></label>
         <label><span>\u0414\u043e</span><input type="date" data-task-center-query="dateTo" value="${state.dateTo}"></label>
         <label><span>\u0421\u0442\u0430\u0442\u0443\u0441</span><select data-task-center-query="status">${taskCenterSelectOptions(TASK_CENTER_URL_STATUSES, state.status, '\u0423\u0441\u0456')}</select></label>
@@ -1443,7 +1447,11 @@ function renderTaskCenterQueryControls() {
     });
     host.addEventListener('click', event => {
         const quickFilter = event.target.closest('[data-task-quick-filter]')?.dataset.taskQuickFilter;
-        if (quickFilter) updateTaskCenterQueryState({ [quickFilter]: !taskCenterQueryState[quickFilter] });
+        if (quickFilter === 'all') {
+            const { mode, queue } = taskCenterQueryState;
+            window.clearTimeout(taskCenterSearchTimer);
+            updateTaskCenterQueryState(normalizeTaskCenterQueryState({ mode, queue }));
+        } else if (quickFilter) updateTaskCenterQueryState({ [quickFilter]: !taskCenterQueryState[quickFilter] });
         if (event.target.closest('[data-task-clear-dashboard-overdue]')) updateTaskCenterQueryState({ bookingOverdue: false, personalOverdue: false });
         if (event.target.closest('[data-task-save-view]')) void saveCurrentTaskCenterView();
         const remove = event.target.closest('[data-task-delete-saved-view]');
@@ -2956,9 +2964,12 @@ function renderCompactTeamRow(task) {
     const blocked = task.isBlocked || Number(task.open_dependency_count) > 0;
     const permission = task.actionPermissions || {};
     const owner = task.ownerLabel || task.owner_name || task.owner_username || task.assigned_to || task.owner;
+    const extraAssignees = Number(task.additional_assignee_count) || 0;
+    const assignedShift = (task.controlMeta || task.control_meta)?.shiftAssignment;
     return `<article class="task-team-row" data-task-id="${id}" data-task-status="${escapeHtml(task.status)}">
         <button type="button" class="task-team-title" data-task-action="open-detail" data-task-id="${id}">${escapeHtml(task.title)}</button>
-        <span class="task-team-owner">${escapeHtml(owner || 'Без відповідального')}</span>
+        <span class="task-team-owner">${escapeHtml(owner || 'Без відповідального')}${extraAssignees ? ' · +' + extraAssignees : ''}
+            ${assignedShift?.label && assignedShift?.date ? `<small>${escapeHtml(assignedShift.label)} · ${escapeHtml(formatDateShort(assignedShift.date))}</small>` : ''}</span>
         <span class="task-team-due">${due ? `<time datetime="${due}">${escapeHtml(formatDateShort(due))}${time ? ` · ${escapeHtml(time)}` : ''}</time>` : 'Без дати'}
             ${overdue ? `<small>Прострочено: ${days} дн.</small>` : ''}</span>
         <span class="task-team-status">${escapeHtml(status)}</span>

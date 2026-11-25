@@ -67,7 +67,6 @@ let cabinetTaskComposerExpanded = false;
 let cabinetCreateContext = null;
 let cabinetLeadCollaboration = null;
 let cabinetCreateAssignment = null;
-let myDayAutomaticOnly = false;
 let myDayUndatedOpen = false;
 let cabinetTaskSoundSettings = { enabled: true, volume: 0.4, theme: 'subtle' };
 let cabinetSnoozeOutsideBound = false;
@@ -1166,6 +1165,7 @@ async function apiGetScoped(path) {
 function cabinetCompletionHistoryApiUrl({ cursor = '', limit = CABINET_COMPLETED_HISTORY_VISIBLE_LIMIT } = {}) {
     const params = new URLSearchParams();
     params.set('period', 'history');
+    params.set('planningView', 'my-day');
     params.set('limit', String(Math.max(1, Math.min(100, Number(limit || CABINET_COMPLETED_HISTORY_VISIBLE_LIMIT) || CABINET_COMPLETED_HISTORY_VISIBLE_LIMIT))));
     if (cursor) params.set('cursor', String(cursor));
     const path = `/api/tasks/my-cabinet/completions?${params.toString()}`;
@@ -1278,7 +1278,6 @@ async function loadMyCabinetProjection(options = {}) {
     const focusDate = requestedFocusDate || myDayLinkedDate || selectedFocusDate;
     const params = new URLSearchParams({ planningView: 'my-day' });
     if (focusDate) params.set('focusDate', focusDate);
-    if (myDayAutomaticOnly) params.set('automatic', '1');
     const path = `/tasks/my-cabinet?${params}`;
     const reminderScope = cabinetHrReminderScope();
     const cacheKey = `${reminderScope}:${path}`;
@@ -3706,7 +3705,6 @@ async function loadCabinetBucketPage(button) {
             planningView: 'my-day'
         });
         if (focusDate) params.set('focusDate', focusDate);
-        if (myDayAutomaticOnly) params.set('automatic', '1');
         const payload = await apiGetScopedJson(`/tasks/my-cabinet?${params.toString()}`, {
             timeoutMs: CABINET_PROJECTION_TIMEOUT_MS
         });
@@ -4625,14 +4623,6 @@ function setCabinetDuePreset(preset = 'today', options = {}) {
     cabinetCreateDuePreset = normalizeCabinetDuePreset(preset);
     const date = document.getElementById?.('cabinetTaskDate');
     if (date && cabinetCreateDuePreset !== 'custom') date.value = cabinetDueDateForPreset(cabinetCreateDuePreset);
-    const noDate = document.querySelector?.('[data-cabinet-no-date]');
-    if (noDate) {
-        const undated = cabinetCreateDuePreset === 'no_date';
-        noDate.textContent = undated ? 'На сьогодні' : 'Без дати';
-        if (date) date.disabled = undated;
-        const selection = document.getElementById('cabinetTaskNoDateValue');
-        if (selection) selection.hidden = !undated;
-    }
     if (options.rerender === true) {
         rerenderCabinetMyDaySegmentPanel();
     }
@@ -4695,85 +4685,313 @@ function cabinetTaskCreateSignature(draft = {}) {
         workflowState: String(draft.workflowState || '').trim(),
         duePreset: String(draft.duePreset || '').trim(),
         scheduleDate: String(draft.scheduleDate || '').trim(),
+        ...(draft.dueMode === 'deadline' ? { dueMode: draft.dueMode } : {}),
         sourceType: String(draft.sourceType || '').trim(),
         sourceModule: draft.sourceModule || '',
         coAssigneeUserIds: (draft.coAssigneeUserIds || []).slice().sort((a, b) => a - b),
+        ...(draft.shiftAssignment ? { shiftAssignment: draft.shiftAssignment } : {}),
         impactIds: Array.isArray(draft.impactIds) ? draft.impactIds.map(Number).filter(Number.isInteger).sort((a, b) => a - b) : [],
         allowReschedule: draft.allowReschedule !== false
     });
 }
 
-function readCabinetCreateCoAssignees(form) {
-    const fieldset = form?.querySelector('#cabinetCreateCoAssignees');
-    return fieldset && !fieldset.hidden ? [...fieldset.querySelectorAll('input:checked')].map(input => Number(input.value)) : [];
+const cabinetAssignmentPickers = new WeakMap();
+
+function readCabinetOwner(form = document.getElementById('cabinetTaskComposer')) {
+    const user = AppState.currentUser || {};
+    return cabinetAssignmentPickers.get(form)?.selected.keys().next().value || Number(user.id || user.user_id || currentUserId);
 }
 
-function bindCabinetCreateCoAssignees(form) {
-    const fieldset = form?.querySelector('#cabinetCreateCoAssignees');
-    if (!fieldset || fieldset.dataset.bound) return;
-    fieldset.dataset.bound = 'true';
-    const options = fieldset.querySelector('[data-cabinet-create-co-assignee-options]');
+function readCabinetCreateCoAssignees(form) {
+    return [...(cabinetAssignmentPickers.get(form)?.selected.keys() || [])].slice(1);
+}
+
+function bindCabinetAssignmentPicker(form) {
+    const picker = form?.querySelector('[data-cabinet-assignment]');
+    if (!picker || cabinetAssignmentPickers.has(form)) return;
     const visibility = form.querySelector('#cabinetTaskVisibility');
     const mode = form.querySelector('#cabinetTaskMode');
-    const owner = form.querySelector('#cabinetTaskOwner');
-    const ownerField = form.querySelector('#cabinetTaskOwnerField');
-    const syncVisibility = () => {
-        const team = visibility.value === 'team' && mode.value === 'work';
-        if (!team) owner.value = '';
-        ownerField.hidden = !team || owner.options.length < 2;
-        const primaryOwner = Number(owner.value || currentUserId);
-        fieldset.hidden = !team || !options.childElementCount || Boolean(cabinetLeadCollaboration?.composer.contains(form));
-        options.querySelectorAll('input').forEach(input => {
-            const primary = Number(input.value) === primaryOwner;
-            input.closest('label').hidden = primary;
-            if (primary) input.checked = false;
-        });
+    const summary = picker.querySelector('summary');
+    const search = picker.querySelector('input[type="search"]');
+    const results = picker.querySelector('[data-assignment-results]');
+    const status = picker.querySelector('[role="status"]');
+    const shift = picker.querySelector('[data-assignment-shift]');
+    const shiftDate = shift.querySelector('input');
+    const shiftGroups = shift.querySelector('select');
+    const confirmShift = shift.querySelector('button');
+    const shiftButton = picker.querySelector('[data-assignment-shift-mode]');
+    const peopleButton = picker.querySelector('[data-assignment-people-mode]');
+    const morePeople = picker.querySelector('[data-assignment-more]');
+    const self = readCabinetOwner(form);
+    const state = { selected: new Map([[self, 'Я']]), implicitSelf: true };
+    cabinetAssignmentPickers.set(form, state);
+    let canAssign = false;
+    let requestNumber = 0;
+    let scope = cabinetHrReminderScope();
+    let groups = [];
+    let candidates = [];
+    let nextAfter = null;
+    const assignmentLocked = () => cabinetLeadCollaboration?.request && cabinetLeadCollaboration.composer.contains(form);
+
+    function reset() {
+        requestNumber++;
+        state.selected = new Map([[self, 'Я']]);
+        state.implicitSelf = true;
+        state.shiftAssignment = null;
+        state.needsShiftConfirmation = false;
+        showShift(false);
+        search.value = '';
+        picker.open = false;
+        results.replaceChildren();
+        morePeople.hidden = true;
+        status.textContent = '';
+        summary.textContent = 'Кому · Я';
+    }
+
+    function sync() {
+        const team = mode.value === 'work' && visibility.value === 'team';
+        picker.hidden = !team;
+        if (!team) reset();
+    }
+
+    function renderSelection() {
+        const labels = [...state.selected.values()];
+        summary.textContent = labels.length > 2
+            ? 'Кому · ' + labels.slice(0, 2).join(', ') + ' +' + (labels.length - 2)
+            : 'Кому · ' + labels.join(', ');
+    }
+
+    function showShift(visible) {
+        shift.hidden = !visible;
+        search.closest('label').hidden = visible;
+        peopleButton.setAttribute('aria-pressed', String(!visible));
+        shiftButton.setAttribute('aria-pressed', String(visible));
+        morePeople.hidden = visible || !nextAfter;
+    }
+
+    function showShiftGroup() {
+        const group = groups.find(item => item.key === shiftGroups.value);
+        const available = group?.users.length || 0;
+        confirmShift.disabled = !available || group.unavailableCount > 0 || available > 101;
+        status.textContent = group?.unavailableCount
+            ? 'Частині зміни призначити задачу неможливо. Оберіть людей вручну.'
+            : available > 101 ? 'Зміна перевищує ліміт виконавців.'
+                : available ? 'Побачать задачу: ' + group.users.map(person => person.label).join(', ') : 'На цю дату виконавців немає.';
+    }
+
+    async function loadShift() {
+        const request = ++requestNumber;
+        const context = cabinetHrReminderScope();
+        if (state.shiftAssignment) state.needsShiftConfirmation = true;
+        const previous = shiftGroups.value || state.shiftAssignment?.group;
+        groups = [];
+        shiftGroups.replaceChildren();
+        results.replaceChildren();
+        confirmShift.disabled = true;
+        if (!shiftDate.value) {
+            status.textContent = 'Оберіть дату зміни.';
+            return;
+        }
+        status.textContent = 'Завантаження зміни…';
+        const params = new URLSearchParams({ date: shiftDate.value });
+        const data = await apiGetScopedJson('/tasks/shift-assignees?' + params);
+        if (request !== requestNumber || context !== cabinetHrReminderScope() || !form.isConnected) return;
+        if (!Array.isArray(data?.groups)) {
+            status.textContent = 'Графік недоступний. Перевірте доступ або оберіть людей.';
+            return;
+        }
+        groups = data.groups;
+        for (const group of groups) shiftGroups.add(new Option(group.label, group.key));
+        if (groups.some(group => group.key === previous)) shiftGroups.value = previous;
+        showShiftGroup();
+    }
+
+    peopleButton.addEventListener('click', () => {
+        showShift(false);
+        state.shiftAssignment = null;
+        state.needsShiftConfirmation = false;
+        search.focus();
+        void load();
+    });
+    shiftButton.addEventListener('click', () => {
+        showShift(true);
+        state.needsShiftConfirmation = true;
+        shiftDate.value = state.shiftAssignment?.date || form.querySelector('#cabinetTaskDate').value || '';
+        shiftDate.focus();
+        void loadShift();
+    });
+    shiftDate.addEventListener('change', loadShift);
+    shiftGroups.addEventListener('change', showShiftGroup);
+    confirmShift.addEventListener('click', () => {
+        const group = groups.find(item => item.key === shiftGroups.value);
+        if (confirmShift.disabled || !group) return;
+        const previousOwner = readCabinetOwner(form);
+        const participants = group.users.map(person => [Number(person.id), person.label]);
+        participants.sort(([a], [b]) => Number(b === previousOwner) - Number(a === previousOwner));
+        state.selected = new Map(participants);
+        state.implicitSelf = false;
+        state.shiftAssignment = { group: group.key, date: shiftDate.value };
+        state.needsShiftConfirmation = false;
+        renderSelection();
+        renderCandidates([]);
+        status.textContent = 'Зміна підтверджена. За потреби позначте іншого відповідального.';
+    });
+    state.reloadShift = () => {
+        picker.open = true;
+        showShift(true);
+        shiftDate.value = state.shiftAssignment?.date || shiftDate.value;
+        void loadShift();
     };
-    let loaded = false;
-    const load = async () => {
-        if (loaded) return;
-        loaded = true;
+
+    function renderCandidates(people) {
+        const rows = new Map(state.selected);
+        const details = new Map();
+        for (const person of people) {
+            const id = Number(person.id);
+            if (!(id > 0) || id === self) continue;
+            rows.set(id, person.label || person.name || person.username);
+            details.set(id, person);
+        }
+        if (shift.hidden && !search.value.trim()) rows.set(self, 'Я');
+        results.replaceChildren();
+        const single = cabinetLeadCollaboration?.composer.contains(form);
+        const primary = readCabinetOwner(form);
+        for (const [id, label] of rows) {
+            const row = document.createElement('div');
+            row.className = 'cabinet-assignment-row';
+            const toggle = document.createElement('button');
+            toggle.type = 'button';
+            toggle.disabled = !shift.hidden;
+            toggle.textContent = label;
+            const person = details.get(id);
+            if (person?.position || person?.department) {
+                const subtitle = document.createElement('small');
+                subtitle.textContent = [person.position, person.department].filter(Boolean).join(' · ');
+                toggle.append(subtitle);
+            }
+            toggle.setAttribute('aria-pressed', String(state.selected.has(id)));
+            toggle.addEventListener('click', () => {
+                if (!shift.hidden || assignmentLocked()) return;
+                state.shiftAssignment = null;
+                state.needsShiftConfirmation = false;
+                if (single || (state.implicitSelf && id !== self)) state.selected.clear();
+                state.implicitSelf = false;
+                if (state.selected.has(id) && state.selected.size > 1) state.selected.delete(id);
+                else if (state.selected.has(id) || state.selected.size < 101) state.selected.set(id, label);
+                else {
+                    status.textContent = 'Можна вибрати до 101 виконавця.';
+                    return;
+                }
+                renderSelection();
+                renderCandidates(people);
+                results.querySelector('[data-assignment-user="' + id + '"]')?.focus();
+            });
+            toggle.dataset.assignmentUser = String(id);
+            row.append(toggle);
+            if (state.selected.has(id) && !single && state.selected.size > 1) {
+                const owner = document.createElement('button');
+                owner.type = 'button';
+                owner.className = 'cabinet-assignment-primary';
+                owner.disabled = primary === id;
+                owner.textContent = owner.disabled ? 'Головний' : 'Зробити головним';
+                owner.setAttribute('aria-label', (owner.disabled ? 'Відповідальний: ' : 'Зробити відповідальним: ') + label);
+                owner.addEventListener('click', () => {
+                    state.selected = new Map([[id, label], ...state.selected]);
+                    renderSelection();
+                    renderCandidates(people);
+                    results.querySelector('[data-assignment-user="' + id + '"]')?.focus();
+                });
+                row.append(owner);
+            }
+            results.append(row);
+        }
+    }
+
+    async function load(append = false) {
+        const request = ++requestNumber;
+        const context = cabinetHrReminderScope();
+        const current = () => request === requestNumber && form.isConnected && context === cabinetHrReminderScope()
+            && !assignmentLocked();
+        if (!current()) return;
+        status.textContent = 'Завантаження…';
         try {
             const access = await apiGetScopedJson('/tasks/permissions');
+            if (!current()) return;
             const permissions = access?.permissions;
             const canCreate = access?.capabilities?.create?.allowed ?? permissions?.canCreateTasks;
             const pack = document.querySelector('[data-cabinet-operation-pack]');
             if (pack) pack.hidden = !canCreate || Boolean(cabinetLeadCollaboration?.composer.contains(form));
-            if (canCreate === false) {
-                form.querySelectorAll('[data-cabinet-create-action], [data-cabinet-add-task]').forEach(button => { button.disabled = true; });
+            if (canCreate === false) form.querySelectorAll('[data-cabinet-create-action]').forEach(button => { button.disabled = true; });
+            canAssign = Boolean(permissions?.canAssignAnyone || ['all', 'department'].includes(permissions?.taskVisibility));
+            shiftButton.hidden = !canAssign || Boolean(cabinetLeadCollaboration?.composer.contains(form));
+            const query = new URLSearchParams({ q: search.value.trim() });
+            if (append && nextAfter) query.set('after', nextAfter);
+            const data = canAssign ? await apiGetScopedJson('/tasks/owners?' + query) : { users: [] };
+            if (!current()) return;
+            if (!Array.isArray(data?.users)) throw new Error('Owner directory unavailable');
+            const assignment = cabinetCreateAssignment;
+            if (state.implicitSelf && assignment) {
+                const matches = person => String(person.id) === String(assignment.ownerUserId)
+                    || (assignment.assignee && [person.name, person.username, person.label].includes(assignment.assignee));
+                let preferred = data.users.find(matches);
+                const knownAssignee = assignment.ownerUserId || assignment.assignee;
+                if (!preferred && canAssign && knownAssignee && !search.value.trim()) {
+                    const lookup = new URLSearchParams({ q: knownAssignee });
+                    const exact = await apiGetScopedJson('/tasks/owners?' + lookup);
+                    if (!current()) return;
+                    preferred = exact?.users?.find(matches);
+                }
+                if (preferred && state.implicitSelf) {
+                    state.selected = new Map([[Number(preferred.id), preferred.label || preferred.name || preferred.username]]);
+                    state.implicitSelf = false;
+                    renderSelection();
+                }
             }
-            if (!permissions?.canAssignAnyone && !['all', 'department'].includes(permissions?.taskVisibility)) return;
-            const data = await apiGetScopedJson('/tasks/owners');
-            if (!form.isConnected) return;
-            const current = AppState.currentUser || {};
-            const self = Number(current.id || current.user_id);
-            const candidates = (data?.users || []).filter(person => Number(person.id) > 0);
-            owner.innerHTML = '<option value="">Я</option>' + candidates.filter(person => Number(person.id) !== self)
-                .map(person => `<option value="${Number(person.id)}">${escapeHtml(person.label || person.name || person.username || String(person.id))}</option>`).join('');
-            const preferred = candidates.find(person => String(person.id) === String(cabinetCreateAssignment?.ownerUserId)
-                || (cabinetCreateAssignment?.assignee && [person.name, person.username, person.label].includes(cabinetCreateAssignment.assignee)));
-            if (preferred && Number(preferred.id) !== self) owner.value = String(preferred.id);
-            options.innerHTML = candidates.map(person => {
-                    const id = Number(person.id);
-                    const label = escapeHtml(person.label || person.name || person.username || String(id));
-                    return `<label for="cabinetCreateCoAssignee${id}" style="display:flex;align-items:center;gap:8px;min-height:44px;overflow-wrap:anywhere">
-                        <input id="cabinetCreateCoAssignee${id}" type="checkbox" value="${id}"> ${label}</label>`;
-                }).join('');
-            syncVisibility();
+            candidates = append ? [...candidates, ...data.users] : data.users;
+            nextAfter = data.nextAfter || null;
+            morePeople.hidden = !nextAfter;
+            renderCandidates(candidates);
+            status.textContent = canAssign && search.value.trim() && data.users.length === 0 ? 'Нікого не знайдено.' : '';
         } catch (error) {
-            loaded = false;
+            if (current()) status.textContent = 'Не вдалося завантажити виконавців. Повторіть пошук.';
         }
-    };
-    visibility.addEventListener('change', syncVisibility);
-    owner.addEventListener('change', syncVisibility);
-    mode.addEventListener('change', syncVisibility);
-    const details = form.querySelector('.park-composer-options');
-    details?.addEventListener('toggle', () => { if (details.open) void load(); });
-    form.querySelector('[data-cabinet-composer-toggle]')?.addEventListener('click', () => {
-        if (cabinetTaskComposerExpanded) void load();
+    }
+
+    let debounce;
+    search.addEventListener('input', () => {
+        requestNumber++;
+        morePeople.hidden = true;
+        clearTimeout(debounce);
+        debounce = setTimeout(load, 200);
     });
-    form.closest('.park-composer')?.addEventListener('toggle', event => { if (event.target.open) void load(); });
-    if (form.closest('.park-composer')?.open || details?.open || (!details && cabinetTaskComposerExpanded)) void load();
+    morePeople.addEventListener('click', () => { if (nextAfter) void load(true); });
+    picker.addEventListener('toggle', () => {
+        if (!picker.open) return;
+        if (!shift.hidden) return;
+        search.focus();
+        void load();
+    });
+    picker.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && picker.open) {
+            event.stopPropagation();
+            picker.open = false;
+            summary.focus();
+        }
+        if (event.key === 'Enter' && event.target === search) event.preventDefault();
+    });
+    form.addEventListener('reset', reset);
+    visibility.addEventListener('change', sync);
+    mode.addEventListener('change', sync);
+    form.closest('.park-composer')?.addEventListener('toggle', event => {
+        if (event.target !== form.closest('.park-composer') || !event.target.open) return;
+        if (scope !== cabinetHrReminderScope()) {
+            scope = cabinetHrReminderScope();
+            reset();
+        }
+        void load();
+    });
+    sync();
+    if (form.closest('.park-composer')?.open) void load();
 }
 
 function cabinetTaskCreateRetryBlockMessage(signature = '') {
@@ -4904,7 +5122,7 @@ function readCabinetAiDraft() {
         scheduleDate: selectedDate,
         durationMinutes: 30,
         scheduleSlot: 'morning',
-        ownerUserId: Number(document.getElementById('cabinetTaskOwner')?.value) || currentUserId,
+        ownerUserId: readCabinetOwner(),
         sourceType: 'manual',
         sourceModule: 'profile_my_cabinet',
         sourceSurface: 'profile_my_cabinet',
@@ -5952,43 +6170,9 @@ function bindMyDayTaskNavigation(composer) {
             link.href = url.href;
         });
     }
-    const automatic = workspace.querySelector('[data-cabinet-automatic]');
-    if (automatic && !automatic.dataset.bound) {
-        automatic.dataset.bound = 'true';
-        automatic.addEventListener('click', async event => {
-            const button = event.currentTarget;
-            myDayAutomaticOnly = !myDayAutomaticOnly;
-            button.setAttribute('aria-pressed', String(myDayAutomaticOnly));
-            button.disabled = true;
-            try { await refreshMyCabinetTab({ force: true, keepExistingOnError: false }); }
-            finally { button.disabled = false; }
-        });
-    }
     if (composer.dataset.creationBound) return;
     composer.dataset.creationBound = 'true';
     composer.dataset.creationScope = cabinetHrReminderScope();
-    composer.querySelector('[data-cabinet-add-task]')?.addEventListener('click', () => {
-        const host = composer.querySelector('[data-cabinet-extra-tasks]');
-        const row = document.createElement('div');
-        row.className = 'cabinet-extra-task';
-        row.innerHTML = `<label>Назва додаткової задачі <input type="text" data-cabinet-extra-title></label>
-            <details><summary>Параметри рядка</summary>
-                <label>Пріоритет <select data-extra-priority><option value="">Як в основної задачі</option>
-                    ${CABINET_TASK_PRIORITIES.map(item => `<option value="${item.value}">${escapeHtml(item.label)}</option>`).join('')}
-                </select></label>
-                <label>Дата <input type="date" data-extra-date></label>
-                <label>Без дати <input type="checkbox" data-extra-undated></label>
-                <label>Час <input type="time" data-extra-time></label>
-                <label>Хвилин <input type="number" min="5" max="480" step="5" data-extra-duration></label>
-            </details>
-            <button type="button" class="cabinet-task-composer-toggle">Прибрати рядок</button>`;
-        row.querySelector('button').addEventListener('click', () => {
-            row.remove();
-            composer.querySelector('[data-cabinet-add-task]')?.focus();
-        });
-        host.appendChild(row);
-        row.querySelector('input').focus();
-    });
     workspace.querySelector('[data-cabinet-operation-pack] button')?.addEventListener('click', createCabinetOperationPack);
     const url = new URL(window.location.href);
     const token = url.searchParams.get('create');
@@ -6056,10 +6240,10 @@ function configureCabinetLeadCollaboration(form, workspace, leadId, handoff) {
     status.hidden = false;
     form.querySelector('[data-cabinet-create-action="plain"]').textContent = 'Оформити співпрацю';
     form.querySelector('#cabinetTaskPriority option[value="urgent"]')?.remove();
-    form.querySelectorAll('[data-cabinet-add-task], [data-task-ai-draft-preview], [data-cabinet-no-date], #cabinetCreateCoAssignees').forEach(element => {
+    form.querySelectorAll('[data-task-ai-draft-preview]').forEach(element => {
         element.hidden = true;
     });
-    ['cabinetTaskMode', 'cabinetTaskKind', 'cabinetTaskCategory', 'cabinetTaskVisibility', 'cabinetTaskAllowReschedule'].forEach(id => {
+    ['cabinetTaskMode', 'cabinetTaskKind', 'cabinetTaskCategory', 'cabinetTaskVisibility', 'cabinetTaskAllowReschedule', 'cabinetDueMode'].forEach(id => {
         const label = form.querySelector('#' + id)?.closest('label');
         if (label) label.hidden = true;
     });
@@ -6078,11 +6262,11 @@ async function submitCabinetLeadCollaboration(form) {
             const titleField = form.querySelector('#cabinetTaskTitle');
             const dateField = form.querySelector('#cabinetTaskDate');
             const timeField = form.querySelector('#cabinetTaskTime');
-            const ownerField = form.querySelector('#cabinetTaskOwner');
+            const ownerField = form.querySelector('[data-cabinet-assignment] summary');
             const title = titleField.value.trim();
             const date = dateField.value;
             const time = timeField.value;
-            const ownerUserId = Number(ownerField.value) || currentUserId;
+            const ownerUserId = readCabinetOwner(form);
             const titleError = validateCabinetPlainTaskTitle(title);
             if (titleError || !date || !time || !ownerUserId) {
                 setCabinetTaskComposerStatus(titleError || 'Оберіть відповідального, дату й час.', 'error', form);
@@ -6096,7 +6280,7 @@ async function submitCabinetLeadCollaboration(form) {
                 businessContext: workflow.businessContext,
                 idempotencyKey: randomCabinetTaskCreateIdempotencyKey()
             };
-            workflow.lockedFields = [...form.querySelectorAll('input:enabled, select:enabled, textarea:enabled')];
+            workflow.lockedFields = [...form.querySelectorAll('input:enabled, select:enabled, textarea:enabled, [data-cabinet-assignment] button:enabled')];
             workflow.lockedFields.forEach(field => { field.disabled = true; });
         }
         if (!workflow.createdTask) {
@@ -6133,37 +6317,6 @@ async function submitCabinetLeadCollaboration(form) {
         cabinetTaskCreatePending = false;
         setCabinetTaskCreateBusy(false, form);
     }
-}
-
-async function createCabinetExtraTasks(fields, defaults) {
-    for (const field of fields) {
-        const row = field.closest('.cabinet-extra-task');
-        const date = row.querySelector('[data-extra-date]').value;
-        const noDate = row.querySelector('[data-extra-undated]').checked;
-        const draft = {
-            ...defaults,
-            title: field.value.trim(),
-            priority: row.querySelector('[data-extra-priority]').value || defaults.priority,
-            duePreset: noDate ? 'no_date' : date ? 'custom' : defaults.duePreset,
-            scheduleDate: noDate ? '' : date || defaults.scheduleDate,
-            deadlineTime: noDate ? '' : row.querySelector('[data-extra-time]').value || defaults.deadlineTime,
-            durationMinutes: Number(row.querySelector('[data-extra-duration]').value) || defaults.durationMinutes
-        };
-        const signature = cabinetTaskCreateSignature(draft);
-        const key = cabinetTaskCreateIdempotencyKeyForSignature(signature);
-        rememberCabinetTaskCreateAttempt(signature, 'in_flight', key);
-        const result = await window.TaskCreate.createTask(window.TaskCreate.buildPayload(draft), { idempotencyKey: key });
-        if (!result?.success || !createdCabinetTaskId(result)) {
-            rememberCabinetTaskCreateAttempt(signature, 'unknown', key);
-            field.focus();
-            setCabinetTaskComposerStatus(result?.error || 'Частину задач створено. Повторіть для решти рядків.', 'error');
-            return false;
-        }
-        row.remove();
-        clearCabinetTaskCreateAttempt(signature, key);
-        notifyTaskWidgetsChanged({ action: 'create', taskId: createdCabinetTaskId(result) });
-    }
-    return true;
 }
 
 function renderCabinetOperationPack() {
@@ -6255,13 +6408,32 @@ function renderCabinetTaskComposer(options = {}) {
                     <textarea id="cabinetTaskTitle" name="title" rows="1" autocomplete="off" enterkeyhint="done" placeholder="Що потрібно зробити?" data-task-ai-source-field="title" aria-required="true" aria-describedby="cabinetTaskTitleGuidance cabinetTaskComposerStatus" aria-invalid="false"></textarea>
                     <span id="cabinetTaskTitleGuidance" class="cabinet-task-title-guidance" aria-live="polite"></span>
                 </label>
+                <details class="cabinet-assignment" data-cabinet-assignment>
+                    <summary>Кому · Я</summary>
+                    <button type="button" data-assignment-people-mode aria-pressed="true">Люди</button>
+                    <button type="button" data-assignment-shift-mode aria-pressed="false" hidden>Відділ на зміні</button>
+                    <label>Пошук виконавців <input type="search" placeholder="Ім’я, посада або відділ"></label>
+                    <div data-assignment-shift hidden>
+                        <label>Дата зміни <input type="date"></label>
+                        <div><label for="cabinetShiftGroup">Відділ</label><select id="cabinetShiftGroup"></select></div>
+                        <button type="button" disabled>Підтвердити склад</button>
+                    </div>
+                    <p role="status"></p>
+                    <div data-assignment-results></div>
+                    <button type="button" data-assignment-more hidden>Показати ще</button>
+                </details>
                 <div class="cabinet-task-create-date">
                     <label for="cabinetTaskDate">
-                        <span>Дата</span>
-                        <input id="cabinetTaskDate" name="date" type="date" value="${escapeHtml(dateValue)}" ${dateValue ? '' : 'disabled'}>
-                        <span id="cabinetTaskNoDateValue" ${dateValue ? 'hidden' : ''}>Без дати</span>
+                        <span>Термін</span>
+                        <input id="cabinetTaskDate" name="date" type="date" value="${escapeHtml(dateValue)}">
                     </label>
-                    <button type="button" class="cabinet-task-composer-toggle" data-cabinet-no-date>${dateValue ? 'Без дати' : 'На сьогодні'}</button>
+                    <label for="cabinetDueMode">
+                        <span>Тип терміну</span>
+                        <select id="cabinetDueMode">
+                            <option value="scheduled">На дату</option>
+                            <option value="deadline">До дати</option>
+                        </select>
+                    </label>
                 </div>
                 <label class="park-task-mode" for="cabinetTaskMode">
                     <span>Вид задачі</span>
@@ -6276,10 +6448,8 @@ function renderCabinetTaskComposer(options = {}) {
             <div class="cabinet-task-composer-actions">
                 ${simple ? '' : `<button type="button" class="cabinet-task-composer-toggle" data-cabinet-composer-toggle aria-expanded="${expanded ? 'true' : 'false'}" aria-controls="cabinetTaskComposerAdvanced">${expanded ? 'Згорнути' : 'Більше параметрів'}</button>`}
                 <button type="button" class="cabinet-task-ai-fill task-ai-draft-trigger" id="cabinetTaskAiFillBtn" data-cabinet-create-action="ai" data-task-ai-draft-preview aria-busy="false">Заповнити з AI</button>
-                ${simple ? '<button type="button" class="cabinet-task-composer-toggle" data-cabinet-add-task>+ Ще задача</button>' : ''}
             </div>
             <p data-cabinet-create-context hidden></p>
-            <div data-cabinet-extra-tasks></div>
             <div class="task-ai-draft-panel" data-task-ai-draft-panel>
                 <p id="cabinetTaskComposerStatus" class="task-ai-draft-status cabinet-task-composer-status" data-task-ai-draft-status role="status" aria-live="polite"></p>
                 <div class="task-ai-draft-review-host" data-task-ai-draft-review hidden></div>
@@ -6305,10 +6475,6 @@ function renderCabinetTaskComposer(options = {}) {
                         </select>
                     </label>
                     <label for="cabinetTaskTime"><span>Час</span><input type="time" id="cabinetTaskTime"></label>
-                    <label for="cabinetTaskOwner" id="cabinetTaskOwnerField" hidden>
-                        <span>Відповідальний</span>
-                        <select id="cabinetTaskOwner"><option value="">Я</option></select>
-                    </label>
                     <label for="cabinetTaskPriority">
                         <span>Пріоритет</span>
                         <select id="cabinetTaskPriority">${priorityOptions}</select>
@@ -6328,10 +6494,6 @@ function renderCabinetTaskComposer(options = {}) {
                         <span>Дозволити перенесення</span>
                     </label>
                 </div>
-                <fieldset id="cabinetCreateCoAssignees" hidden>
-                    <legend>Співвиконавці</legend>
-                    <div data-cabinet-create-co-assignee-options></div>
-                </fieldset>
             </div>
             ${simple ? '</details>' : ''}
         </form>
@@ -6666,7 +6828,6 @@ function renderMyDayCommandCenterTab() {
             <nav class="park-task-navigation" aria-label="Перегляди задач">
                 <a href="/profile?tab=control" data-profile-control-shortcut>На контролі</a>
                 <a href="/tasks?view=team" data-profile-team-link>Задачі команди</a>
-                <button type="button" data-cabinet-automatic aria-pressed="${myDayAutomaticOnly}">Мої автоматичні</button>
             </nav>
             <details class="park-composer"${composerOpen ? ' open' : ''}>
                 <summary>Нова задача</summary>
@@ -7595,6 +7756,15 @@ async function createCabinetTask(event) {
         return;
     }
     const aiCommitPayload = window.TaskAiDraft?.commitPayloadFor?.(composer);
+    const assignmentState = cabinetAssignmentPickers.get(composer);
+    if (assignmentState?.needsShiftConfirmation) {
+        setCabinetTaskComposerStatus('Підтвердьте склад зміни перед створенням задачі.', 'error');
+        return;
+    }
+    if (aiCommitPayload && assignmentState?.shiftAssignment) {
+        setCabinetTaskComposerStatus('Для AI-чернетки оберіть виконавців у списку «Люди».', 'error');
+        return;
+    }
     const coAssigneeUserIds = readCabinetCreateCoAssignees(composer);
     const titleError = !aiCommitPayload ? validateCabinetPlainTaskTitle(title) : '';
     if (titleError) {
@@ -7606,10 +7776,12 @@ async function createCabinetTask(event) {
     const draft = {
         title,
         description: document.getElementById('cabinetTaskDetails')?.value.trim() || '',
-        ownerUserId: Number(document.getElementById('cabinetTaskOwner')?.value) || current.id || current.user_id,
+        ownerUserId: readCabinetOwner(composer),
         deadlineTime: document.getElementById('cabinetTaskTime')?.value || '',
         dateOnly: true,
         ...(coAssigneeUserIds.length && { coAssigneeUserIds }),
+        dueMode: composer?.querySelector?.('#cabinetDueMode')?.value,
+        ...(assignmentState?.shiftAssignment ? { shiftAssignment: assignmentState.shiftAssignment } : {}),
         category: document.getElementById('cabinetTaskCategory')?.value || cabinetCreateDefaultsForSegment(myTasksSegment, selectedMode).category,
         priority: readCabinetCreatePriority(),
         taskType: 'human',
@@ -7631,17 +7803,6 @@ async function createCabinetTask(event) {
         allowReschedule: document.getElementById('cabinetTaskAllowReschedule')?.checked !== false,
         captureIntent: { waiting: kind === 'waiting' }
     };
-    const extraFields = Array.from(composer?.querySelectorAll?.('[data-cabinet-extra-title]') || []);
-    if (extraFields.length && aiCommitPayload) {
-        setCabinetTaskComposerStatus('Приберіть додаткові рядки, щоб підтвердити AI-чернетку.', 'warning');
-        return;
-    }
-    const invalidExtra = extraFields.find(field => validateCabinetPlainTaskTitle(field.value));
-    if (invalidExtra) {
-        invalidExtra.focus();
-        setCabinetTaskComposerStatus(validateCabinetPlainTaskTitle(invalidExtra.value), 'error');
-        return;
-    }
     if (aiCommitPayload) {
         if (window.TaskAiDraft?.isCommitPending?.(composer)) return;
         if (aiCommitPayload.commitType === 'bundle') {
@@ -7717,6 +7878,13 @@ async function createCabinetTask(event) {
             payload.effort_minutes = draft.durationMinutes;
         }
     }
+    if (draft.shiftAssignment) payload.shiftAssignment = draft.shiftAssignment;
+    if (!aiCommitPayload && !cabinetCreateContext && draft.dueMode === 'deadline') {
+        const deadlineDate = cabinetDueDateForPreset(draft.duePreset, draft.scheduleDate);
+        delete payload.date;
+        delete payload.schedule;
+        if (deadlineDate) payload.deadline = deadlineDate + 'T' + (draft.deadlineTime || '23:59') + ':00';
+    }
     const createSignature = cabinetTaskCreateSignature(draft);
     const directCreateIdempotencyKey = !aiCommitPayload ? cabinetTaskCreateIdempotencyKeyForSignature(createSignature) : '';
     if (!aiCommitPayload) {
@@ -7773,6 +7941,7 @@ async function createCabinetTask(event) {
         }
     }
     if (!result?.success) {
+        if (result?.code === 'TASK_SHIFT_ROSTER_CHANGED') cabinetAssignmentPickers.get(composer)?.reloadShift();
         if (!aiCommitPayload) {
             if (result?.networkError || !result || result.status >= 500) rememberCabinetTaskCreateAttempt(createSignature, 'unknown', directCreateIdempotencyKey);
             else clearCabinetTaskCreateAttempt(createSignature, directCreateIdempotencyKey);
@@ -7787,7 +7956,7 @@ async function createCabinetTask(event) {
     }
     const postCreateWarningCount = Array.isArray(result.postCreateWarnings) ? result.postCreateWarnings.length : 0;
     const delegated = Number(draft.ownerUserId) !== Number(current.id || current.user_id);
-    const verification = await verifyCabinetCreatedTask(result, draft.duePreset === 'custom' ? draft.scheduleDate : '', delegated || myDayAutomaticOnly);
+    const verification = await verifyCabinetCreatedTask(result, draft.duePreset === 'custom' ? draft.scheduleDate : '', delegated);
     if (!verification.ok) {
         if (!aiCommitPayload) {
             rememberCabinetTaskCreateAttempt(createSignature, 'unknown', directCreateIdempotencyKey);
@@ -7806,12 +7975,6 @@ async function createCabinetTask(event) {
         window.TaskAiDraft?.markCommittedTaskId?.(verification.taskId);
     }
     notifyTaskWidgetsChanged({ action: 'create', taskId: verification.taskId });
-    if (extraFields.length && !await createCabinetExtraTasks(extraFields, draft)) {
-        cabinetTaskCreatePending = false;
-        setCabinetTaskCreateBusy(false);
-        await refreshMyCabinetTab({ force: true });
-        return;
-    }
     if (!aiCommitPayload) clearCabinetTaskCreateAttempt(createSignature, directCreateIdempotencyKey);
     cabinetCreateContext = null;
     cabinetCreateAssignment = null;
@@ -8274,13 +8437,6 @@ function attachProfileListeners() {
             setCabinetDuePreset(cabinetDate.value || hasRequiredDate ? 'custom' : 'no_date');
         });
     }
-    const noDate = document.querySelector('[data-cabinet-no-date]');
-    if (noDate && noDate.dataset.cabinetDueBound !== 'true') {
-        noDate.dataset.cabinetDueBound = 'true';
-        noDate.addEventListener('click', () => {
-            setCabinetDuePreset(cabinetCreateDuePreset === 'no_date' ? 'today' : 'no_date');
-        });
-    }
     const visibility = document.getElementById('cabinetTaskVisibility');
     if (visibility && visibility.dataset.cabinetVisibilityBound !== 'true') {
         visibility.dataset.cabinetVisibilityBound = 'true';
@@ -8307,7 +8463,7 @@ function attachProfileListeners() {
 
     const composer = document.getElementById('cabinetTaskComposer');
     bindMyDayTaskNavigation(composer);
-    bindCabinetCreateCoAssignees(composer);
+    bindCabinetAssignmentPicker(composer);
     if (window.TaskAiDraft && activeTab === 'myday' && composer) {
         window.TaskAiDraft.bindComposer(composer, {
             sourceModule: 'profile_my_cabinet',
@@ -8318,8 +8474,9 @@ function attachProfileListeners() {
             focusField: focusCabinetAiDraftField,
             requestSubmit: () => composer?.requestSubmit?.(),
             commitBundle: payload => {
-                if (composer.querySelector('[data-cabinet-extra-title]')) {
-                    return { success: false, error: 'Приберіть ручні рядки, щоб створити AI-задачі.' };
+                const assignment = cabinetAssignmentPickers.get(composer);
+                if (assignment?.shiftAssignment || assignment?.needsShiftConfirmation) {
+                    return { success: false, error: 'Для AI-пакета оберіть виконавців у списку «Люди».' };
                 }
                 return window.TaskCreate.commitAiDraftBundle({ ...payload, sourceContext: cabinetCreateContext });
             },

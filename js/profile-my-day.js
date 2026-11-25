@@ -325,7 +325,14 @@
         }
         function render() {
             const due = selectDate(task);
-            const executor = task.ownerLabel || task.owner_name || task.owner_username;
+            const executor = global.TaskUiShared?.taskOwnerLabel?.(task) || task.ownerLabel || task.owner_name || task.owner_username;
+            const coAssignees = Array.isArray(task.co_assignees) ? task.co_assignees : [];
+            const actor = Number(draftScope?.actor);
+            const isAuthor = actor > 0 && actor === Number(task.createdByUserId ?? task.created_by_user_id);
+            const isCoAssignee = actor > 0 && (task.co_assignee_user_ids || []).some(id => Number(id) === actor);
+            const viewerLabel = isCoAssignee ? (isAuthor ? 'Постановник · Співвиконавець' : 'Співвиконавець') : roleLabel(taskRole(task));
+            const coAssigneeLabels = coAssignees.map(person => actor === Number(person.userId) ? 'Я'
+                : global.TaskUiShared?.taskPersonLabel?.(person) || person.name || person.username).filter(Boolean);
             const actions = task.drawer?.actions || {};
             const priorities = global.TaskUiShared?.TASK_PRIORITY_OPTIONS || [];
             const editorBase = editorSnapshot(task);
@@ -334,10 +341,11 @@
             title.textContent = task.title || `Задача #${taskId}`;
             const description = typeof task.description === 'string' ? task.description.trim() : '';
             content.innerHTML = `<dl class="park-task-dialog-facts">
-                <div><dt>Моя роль</dt><dd>${escape(roleLabel(taskRole(task)) || 'Перегляд')}</dd></div>
+                <div><dt>Моя роль</dt><dd>${escape(viewerLabel || 'Перегляд')}</dd></div>
                 <div><dt>Стан</dt><dd>${escape(statusLabel(task))}</dd></div>
                 <div><dt>Дата</dt><dd>${due ? `<time datetime="${escape(due)}">${escape(due.split('-').reverse().join('.'))}</time>` : 'Без дати'}</dd></div>
-                ${executor ? `<div><dt>Виконавець</dt><dd>${escape(executor)}</dd></div>` : ''}
+                ${executor ? `<div><dt>Відповідальний</dt><dd>${escape(executor)}</dd></div>` : ''}
+                ${coAssigneeLabels.length ? `<div><dt>Співвиконавці</dt><dd>${escape(coAssigneeLabels.join(', '))}</dd></div>` : ''}
             </dl>
             ${description && description !== title.textContent.trim() ? `<p class="park-task-dialog-description">${escape(description)}</p>` : ''}
             ${task.drawer?.source?.href ? `<p><a href="${escape(task.drawer.source.href)}">${escape(task.drawer.source.label)}</a></p>` : ''}

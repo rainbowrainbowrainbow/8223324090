@@ -1106,7 +1106,7 @@ function currentUserTaskOwnerOption() {
         username: user?.username || null,
         name: user?.name || null,
         role: user?.role || null,
-        label: user?.name || user?.username || `User #${id}`
+        label: user?.name || user?.username || `Користувач №${id}`
     };
 }
 
@@ -1207,6 +1207,10 @@ function getTaskAssignmentView(task = {}) {
     const createdByMe = isTaskCreatedByCurrentUser(task);
     const hasTypedOwner = !!taskOwnerUserId(task);
     if (task.viewerIsCoAssignee === true || task.viewer_is_co_assignee === true) {
+        if (createdByMe && ownerLabel) {
+            return { tone: 'delegated', label: `Я поставив · Співвиконавець · Відповідальний: ${ownerLabel}`,
+                title: 'Ви створили задачу й берете участь у її виконанні' };
+        }
         return { tone: 'incoming', label: 'Співвиконавець', title: 'Ви призначені співвиконавцем цієї задачі' };
     }
     if (isSelfCreatedPersonalTask(task)) {
@@ -1363,7 +1367,7 @@ function taskCenterOwnerOptions() {
     return [`<option value="">\u0423\u0441\u0456 \u0432\u0438\u043a\u043e\u043d\u0430\u0432\u0446\u0456</option>`, ...(_assigneeList || []).map(owner => {
         const id = Number(owner?.id || owner?.userId || 0);
         if (!Number.isInteger(id) || id <= 0) return '';
-        const label = owner.name || owner.username || `User #${id}`;
+        const label = window.TaskUiShared.taskPersonLabel(owner);
         return `<option value="${id}" ${String(id) === taskCenterQueryState.ownerUserId ? 'selected' : ''}>${escapeHtml(label)}</option>`;
     })].join('');
 }
@@ -2963,12 +2967,14 @@ function renderCompactTeamRow(task) {
         ? ['Автоматична', context].filter(Boolean).join(' · ') : context || 'Вручну';
     const blocked = task.isBlocked || Number(task.open_dependency_count) > 0;
     const permission = task.actionPermissions || {};
-    const owner = task.ownerLabel || task.owner_name || task.owner_username || task.assigned_to || task.owner;
+    const owner = getTaskOwnerLabel(task);
+    const authorIsCoAssignee = isTaskCreatedByCurrentUser(task) && (task.viewerIsCoAssignee === true || task.viewer_is_co_assignee === true);
     const extraAssignees = Number(task.additional_assignee_count) || 0;
     const assignedShift = (task.controlMeta || task.control_meta)?.shiftAssignment;
     return `<article class="task-team-row" data-task-id="${id}" data-task-status="${escapeHtml(task.status)}">
         <button type="button" class="task-team-title" data-task-action="open-detail" data-task-id="${id}">${escapeHtml(task.title)}</button>
         <span class="task-team-owner">${escapeHtml(owner || 'Без відповідального')}${extraAssignees ? ' · +' + extraAssignees : ''}
+            ${authorIsCoAssignee ? '<small>Я поставив · Співвиконавець</small>' : ''}
             ${assignedShift?.label && assignedShift?.date ? `<small>${escapeHtml(assignedShift.label)} · ${escapeHtml(formatDateShort(assignedShift.date))}</small>` : ''}</span>
         <span class="task-team-due">${due ? `<time datetime="${due}">${escapeHtml(formatDateShort(due))}${time ? ` · ${escapeHtml(time)}` : ''}</time>` : 'Без дати'}
             ${overdue ? `<small>Прострочено: ${days} дн.</small>` : ''}</span>
@@ -3017,7 +3023,7 @@ function renderTaskOverview(container) {
         const task = item.task || {};
         const taskId = Number(task.id || 0);
         const due = task.schedule?.date || task.scheduledDate || task.date || task.deadline || 'Без дати';
-        const owner = task.ownerLabel || task.owner_name || task.assigned_to || task.owner || 'Не призначено';
+        const owner = getTaskOwnerLabel(task) || 'Не призначено';
         return `<article class="task-overview-item"><div class="task-overview-item-head"><div class="task-overview-reasons">${reasonHtml}</div><span class="task-overview-action">Рекомендована дія: ${escapeHtml(item.recommendedAction || '')}</span></div><div class="task-card task-work-row" data-task-open="true" data-task-id="${taskId}" tabindex="0" role="button" aria-label="Відкрити задачу: ${escapeHtml(task.title || 'Без назви')}"><div class="task-card-title">${escapeHtml(task.title || 'Без назви')}</div><div class="task-card-meta"><span>${escapeHtml(owner)}</span><span>${escapeHtml(String(due).slice(0, 10))}</span></div><div class="task-card-actions task-row-actions"><button type="button" class="task-row-primary" data-task-action="open-detail" data-task-id="${taskId}">Відкрити деталі</button></div></div></article>`;
     }).join('');
     const more = meta.hasMore ? `<p class="task-overview-more">Показано ${Number(meta.returned || queue.length)} з ${Number(meta.exceptionTotal || queue.length)} задач. Звузьте контекст або відкрийте деталі потрібної задачі.</p>` : '';
@@ -4942,8 +4948,8 @@ async function renderTaskDetailDrawer(taskId) {
         const scheduleSlotButtons = TASK_SCHEDULE_SLOTS.map(slot => `<button type="button" class="task-slot-btn ${scheduleSlotValue === slot.key ? 'active' : ''}" data-detail-schedule-slot="${slot.key}" aria-pressed="${scheduleSlotValue === slot.key ? 'true' : 'false'}" title="${escapeHtml(slot.label)}">${slot.icon}</button>`).join('');
         const ownerSelectHtml = _assigneeList.map(s => {
             const selected = taskOwnerUserId(t) === Number(s.id) ? ' selected' : '';
-            const label = s.label || s.name || s.username || ('User #' + s.id);
-            return `<option value="${s.id}"${selected}>${escapeHtml(label)}${s.role ? ' (' + escapeHtml(s.role) + ')' : ''}</option>`;
+            const label = window.TaskUiShared.taskPersonLabel(s);
+            return `<option value="${s.id}"${selected}>${escapeHtml(label)}</option>`;
         }).join('');
         const coAssigneeIds = new Set((t.co_assignee_user_ids || []).map(Number));
         const coAssigneeCandidates = [..._assigneeList];
@@ -4954,7 +4960,7 @@ async function renderTaskDetailDrawer(taskId) {
         });
         const coAssigneeHtml = coAssigneeCandidates.filter(s => taskOwnerUserId(t) !== Number(s.id)).map(s => {
             const id = Number(s.id);
-            const label = s.label || s.name || s.username || ('User #' + id);
+            const label = window.TaskUiShared.taskPersonLabel(s);
             return `<label for="taskCoAssignee${id}" style="display:flex;align-items:center;gap:8px;min-height:44px"><input id="taskCoAssignee${id}" name="coAssignee" type="checkbox" data-co-assignee value="${id}" ${coAssigneeIds.has(id) ? 'checked' : ''}><span>${escapeHtml(label)}</span></label>`;
         }).join('');
         const currentObserverIds = new Set((Array.isArray(t.observers) ? t.observers : [])
@@ -4964,8 +4970,8 @@ async function renderTaskDetailDrawer(taskId) {
             .filter(s => taskOwnerUserId(t) !== Number(s.id))
             .map(s => {
                 const selected = currentObserverIds.has(Number(s.id)) ? ' selected' : '';
-                const label = s.label || s.name || s.username || ('User #' + s.id);
-                return `<option value="${s.id}"${selected}>${escapeHtml(label)}${s.role ? ' (' + escapeHtml(s.role) + ')' : ''}</option>`;
+                const label = window.TaskUiShared.taskPersonLabel(s);
+                return `<option value="${s.id}"${selected}>${escapeHtml(label)}</option>`;
             }).join('');
         const ownerStateLabel = getTaskOwnerStateLabel(t);
         const taskIntel = t.intelligence || {};

@@ -173,10 +173,18 @@
     }
 
     function taskOwnerLabel(task = {}) {
-        return taskText(
-            task.ownerLabel ?? task.owner_label ?? task.ownerName ?? task.owner_name
-            ?? task.ownerUsername ?? task.owner_username ?? task.assignedTo ?? task.assigned_to ?? task.owner
-        ) || null;
+        return taskPersonLabel({
+            id: taskOwnerUserId(task),
+            name: task.ownerName || task.owner_name,
+            username: task.ownerUsername || task.owner_username,
+            label: task.ownerLabel || task.owner_label || task.assignedTo || task.assigned_to || task.owner
+        });
+    }
+
+    function taskPersonLabel(person = {}) {
+        const name = taskText(person.name) || taskText(person.username) || taskText(person.label);
+        const id = Number(person.id ?? person.userId ?? 0);
+        return name || (Number.isInteger(id) && id > 0 ? `Користувач №${id}` : null);
     }
 
     function taskOwnerState(task = {}) {
@@ -406,6 +414,7 @@
         taskContext,
         taskOwnerUserId,
         taskOwnerLabel,
+        taskPersonLabel,
         taskOwnerState,
         taskMode,
         taskKind,

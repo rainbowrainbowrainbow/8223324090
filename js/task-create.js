@@ -346,7 +346,7 @@
         if (draft.assigneeMode === 'self') return 'Собі';
         if (draft.ownerLabel) return String(draft.ownerLabel);
         const ownerId = draft.ownerUserId || draft.owner_user_id || task.ownerUserId || task.owner_user_id;
-        if (ownerId) return `User #${ownerId}`;
+        if (ownerId) return `Користувач №${ownerId}`;
         return draft.assigneeMode === 'team' ? 'Команді' : 'Собі';
     }
 

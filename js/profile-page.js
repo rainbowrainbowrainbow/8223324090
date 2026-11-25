@@ -4699,11 +4699,13 @@ const cabinetAssignmentPickers = new WeakMap();
 
 function readCabinetOwner(form = document.getElementById('cabinetTaskComposer')) {
     const user = AppState.currentUser || {};
-    return cabinetAssignmentPickers.get(form)?.selected.keys().next().value || Number(user.id || user.user_id || currentUserId);
+    const state = cabinetAssignmentPickers.get(form);
+    return state ? state.ownerId : Number(user.id || user.user_id || currentUserId);
 }
 
 function readCabinetCreateCoAssignees(form) {
-    return [...(cabinetAssignmentPickers.get(form)?.selected.keys() || [])].slice(1);
+    const state = cabinetAssignmentPickers.get(form);
+    return state ? [...state.selected.keys()].filter(id => id !== state.ownerId) : [];
 }
 
 function bindCabinetAssignmentPicker(form) {
@@ -4723,7 +4725,7 @@ function bindCabinetAssignmentPicker(form) {
     const peopleButton = picker.querySelector('[data-assignment-people-mode]');
     const morePeople = picker.querySelector('[data-assignment-more]');
     const self = readCabinetOwner(form);
-    const state = { selected: new Map([[self, 'Я']]), implicitSelf: true };
+    const state = { selected: new Map([[self, 'Я']]), ownerId: self, implicitSelf: true };
     cabinetAssignmentPickers.set(form, state);
     let canAssign = false;
     let requestNumber = 0;
@@ -4731,11 +4733,14 @@ function bindCabinetAssignmentPicker(form) {
     let groups = [];
     let candidates = [];
     let nextAfter = null;
+    let debounce;
     const assignmentLocked = () => cabinetLeadCollaboration?.request && cabinetLeadCollaboration.composer.contains(form);
 
     function reset() {
+        clearTimeout(debounce);
         requestNumber++;
         state.selected = new Map([[self, 'Я']]);
+        state.ownerId = self;
         state.implicitSelf = true;
         state.shiftAssignment = null;
         state.needsShiftConfirmation = false;
@@ -4756,6 +4761,14 @@ function bindCabinetAssignmentPicker(form) {
 
     function renderSelection() {
         const labels = [...state.selected.values()];
+        if (state.needsShiftConfirmation) {
+            summary.textContent = 'Кому · Підтвердьте склад зміни';
+            return;
+        }
+        if (!labels.length) {
+            summary.textContent = 'Кому · Оберіть виконавця';
+            return;
+        }
         summary.textContent = labels.length > 2
             ? 'Кому · ' + labels.slice(0, 2).join(', ') + ' +' + (labels.length - 2)
             : 'Кому · ' + labels.join(', ');
@@ -4783,6 +4796,7 @@ function bindCabinetAssignmentPicker(form) {
         const request = ++requestNumber;
         const context = cabinetHrReminderScope();
         if (state.shiftAssignment) state.needsShiftConfirmation = true;
+        renderSelection();
         const previous = shiftGroups.value || state.shiftAssignment?.group;
         groups = [];
         shiftGroups.replaceChildren();
@@ -4807,13 +4821,19 @@ function bindCabinetAssignmentPicker(form) {
     }
 
     peopleButton.addEventListener('click', () => {
+        if (state.shiftAssignment && state.needsShiftConfirmation) {
+            state.selected.clear();
+            state.ownerId = null;
+        }
         showShift(false);
         state.shiftAssignment = null;
         state.needsShiftConfirmation = false;
+        renderSelection();
         search.focus();
         void load();
     });
     shiftButton.addEventListener('click', () => {
+        clearTimeout(debounce);
         showShift(true);
         state.needsShiftConfirmation = true;
         shiftDate.value = state.shiftAssignment?.date || form.querySelector('#cabinetTaskDate').value || '';
@@ -4821,14 +4841,19 @@ function bindCabinetAssignmentPicker(form) {
         void loadShift();
     });
     shiftDate.addEventListener('change', loadShift);
-    shiftGroups.addEventListener('change', showShiftGroup);
+    shiftGroups.addEventListener('change', () => {
+        state.needsShiftConfirmation = true;
+        results.replaceChildren();
+        renderSelection();
+        showShiftGroup();
+    });
     confirmShift.addEventListener('click', () => {
         const group = groups.find(item => item.key === shiftGroups.value);
         if (confirmShift.disabled || !group) return;
         const previousOwner = readCabinetOwner(form);
-        const participants = group.users.map(person => [Number(person.id), person.label]);
-        participants.sort(([a], [b]) => Number(b === previousOwner) - Number(a === previousOwner));
+        const participants = group.users.map(person => [Number(person.id), Number(person.id) === self ? 'Я' : person.label]);
         state.selected = new Map(participants);
+        state.ownerId = state.selected.has(previousOwner) ? previousOwner : participants[0][0];
         state.implicitSelf = false;
         state.shiftAssignment = { group: group.key, date: shiftDate.value };
         state.needsShiftConfirmation = false;
@@ -4848,14 +4873,16 @@ function bindCabinetAssignmentPicker(form) {
         const details = new Map();
         for (const person of people) {
             const id = Number(person.id);
-            if (!(id > 0) || id === self) continue;
-            rows.set(id, person.label || person.name || person.username);
+            if (!(id > 0)) continue;
+            rows.set(id, id === self ? 'Я' : window.TaskUiShared.taskPersonLabel(person));
             details.set(id, person);
         }
-        if (shift.hidden && !search.value.trim()) rows.set(self, 'Я');
+        if (shift.hidden && matchesSelfSearch()) rows.set(self, 'Я');
         results.replaceChildren();
         const single = cabinetLeadCollaboration?.composer.contains(form);
         const primary = readCabinetOwner(form);
+        const labelCounts = new Map();
+        for (const label of rows.values()) labelCounts.set(label, (labelCounts.get(label) || 0) + 1);
         for (const [id, label] of rows) {
             const row = document.createElement('div');
             row.className = 'cabinet-assignment-row';
@@ -4864,9 +4891,12 @@ function bindCabinetAssignmentPicker(form) {
             toggle.disabled = !shift.hidden;
             toggle.textContent = label;
             const person = details.get(id);
-            if (person?.position || person?.department) {
+            const subtitleValues = [person?.positionLabel, person?.departmentLabel];
+            if (labelCounts.get(label) > 1) subtitleValues.unshift(person?.username || `№${id}`);
+            const subtitleText = subtitleValues.filter(Boolean).join(' · ');
+            if (subtitleText) {
                 const subtitle = document.createElement('small');
-                subtitle.textContent = [person.position, person.department].filter(Boolean).join(' · ');
+                subtitle.textContent = subtitleText;
                 toggle.append(subtitle);
             }
             toggle.setAttribute('aria-pressed', String(state.selected.has(id)));
@@ -4874,32 +4904,42 @@ function bindCabinetAssignmentPicker(form) {
                 if (!shift.hidden || assignmentLocked()) return;
                 state.shiftAssignment = null;
                 state.needsShiftConfirmation = false;
-                if (single || (state.implicitSelf && id !== self)) state.selected.clear();
+                if (single || (state.implicitSelf && id !== self)) {
+                    state.selected.clear();
+                    state.ownerId = null;
+                }
                 state.implicitSelf = false;
-                if (state.selected.has(id) && state.selected.size > 1) state.selected.delete(id);
-                else if (state.selected.has(id) || state.selected.size < 101) state.selected.set(id, label);
+                if (state.selected.has(id)) {
+                    state.selected.delete(id);
+                    if (state.ownerId === id) state.ownerId = state.selected.keys().next().value ?? null;
+                } else if (state.selected.has(id) || state.selected.size < 101) {
+                    state.selected.set(id, label);
+                    state.ownerId ??= id;
+                }
                 else {
                     status.textContent = 'Можна вибрати до 101 виконавця.';
                     return;
                 }
                 renderSelection();
                 renderCandidates(people);
-                results.querySelector('[data-assignment-user="' + id + '"]')?.focus();
+                (results.querySelector('[data-assignment-user="' + id + '"]') || search).focus();
             });
             toggle.dataset.assignmentUser = String(id);
             row.append(toggle);
-            if (state.selected.has(id) && !single && state.selected.size > 1) {
+            if (state.selected.has(id) && !single) {
                 const owner = document.createElement('button');
                 owner.type = 'button';
                 owner.className = 'cabinet-assignment-primary';
                 owner.disabled = primary === id;
-                owner.textContent = owner.disabled ? 'Головний' : 'Зробити головним';
+                owner.textContent = owner.disabled ? 'Відповідальний' : 'Зробити відповідальним';
                 owner.setAttribute('aria-label', (owner.disabled ? 'Відповідальний: ' : 'Зробити відповідальним: ') + label);
                 owner.addEventListener('click', () => {
-                    state.selected = new Map([[id, label], ...state.selected]);
+                    if (assignmentLocked()) return;
+                    state.ownerId = id;
                     renderSelection();
                     renderCandidates(people);
-                    results.querySelector('[data-assignment-user="' + id + '"]')?.focus();
+                    if (shift.hidden) results.querySelector('[data-assignment-user="' + id + '"]')?.focus();
+                    else confirmShift.focus();
                 });
                 row.append(owner);
             }
@@ -4907,11 +4947,19 @@ function bindCabinetAssignmentPicker(form) {
         }
     }
 
+    function matchesSelfSearch() {
+        const query = search.value.trim().toLocaleLowerCase('uk');
+        const user = AppState.currentUser || {};
+        return !query || query === 'я' || [user.name, user.username, String(self)].some(value =>
+            String(value || '').toLocaleLowerCase('uk').includes(query));
+    }
+
     async function load(append = false) {
+        if (!shift.hidden || assignmentLocked()) return;
         const request = ++requestNumber;
         const context = cabinetHrReminderScope();
         const current = () => request === requestNumber && form.isConnected && context === cabinetHrReminderScope()
-            && !assignmentLocked();
+            && shift.hidden && !assignmentLocked();
         if (!current()) return;
         status.textContent = 'Завантаження…';
         try {
@@ -4942,7 +4990,8 @@ function bindCabinetAssignmentPicker(form) {
                     preferred = exact?.users?.find(matches);
                 }
                 if (preferred && state.implicitSelf) {
-                    state.selected = new Map([[Number(preferred.id), preferred.label || preferred.name || preferred.username]]);
+                    state.ownerId = Number(preferred.id);
+                    state.selected = new Map([[state.ownerId, state.ownerId === self ? 'Я' : window.TaskUiShared.taskPersonLabel(preferred)]]);
                     state.implicitSelf = false;
                     renderSelection();
                 }
@@ -4951,13 +5000,12 @@ function bindCabinetAssignmentPicker(form) {
             nextAfter = data.nextAfter || null;
             morePeople.hidden = !nextAfter;
             renderCandidates(candidates);
-            status.textContent = canAssign && search.value.trim() && data.users.length === 0 ? 'Нікого не знайдено.' : '';
+            status.textContent = canAssign && search.value.trim() && candidates.length === 0 && !matchesSelfSearch() ? 'Нікого не знайдено.' : '';
         } catch (error) {
             if (current()) status.textContent = 'Не вдалося завантажити виконавців. Повторіть пошук.';
         }
     }
 
-    let debounce;
     search.addEventListener('input', () => {
         requestNumber++;
         morePeople.hidden = true;
@@ -5811,7 +5859,7 @@ async function reassignCabinetPostponementTask(taskId, task = {}) {
                 { value: '', label: 'Оберіть виконавця' },
                 ...owners.map(owner => ({
                     value: String(owner.id),
-                    label: `${owner.label || owner.name || owner.username || ('User #' + owner.id)}${owner.role ? ' (' + owner.role + ')' : ''}`
+                    label: window.TaskUiShared?.taskPersonLabel?.(owner) || owner.label || owner.name || owner.username || `Користувач №${owner.id}`
                 }))
             ]
         }
@@ -7761,6 +7809,11 @@ async function createCabinetTask(event) {
         setCabinetTaskComposerStatus('Підтвердьте склад зміни перед створенням задачі.', 'error');
         return;
     }
+    if (assignmentState?.ownerId === null) {
+        setCabinetTaskComposerStatus('Оберіть виконавця.', 'error');
+        composer.querySelector('[data-cabinet-assignment] summary')?.focus();
+        return;
+    }
     if (aiCommitPayload && assignmentState?.shiftAssignment) {
         setCabinetTaskComposerStatus('Для AI-чернетки оберіть виконавців у списку «Люди».', 'error');
         return;
@@ -8477,6 +8530,9 @@ function attachProfileListeners() {
                 const assignment = cabinetAssignmentPickers.get(composer);
                 if (assignment?.shiftAssignment || assignment?.needsShiftConfirmation) {
                     return { success: false, error: 'Для AI-пакета оберіть виконавців у списку «Люди».' };
+                }
+                if (assignment?.ownerId === null) {
+                    return { success: false, error: 'Оберіть виконавця.' };
                 }
                 return window.TaskCreate.commitAiDraftBundle({ ...payload, sourceContext: cabinetCreateContext });
             },

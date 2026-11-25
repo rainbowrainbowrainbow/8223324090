@@ -750,9 +750,14 @@ html:has(.park-my-day.is-completing-task)::view-transition-new(root) { animation
 .cabinet-assignment-row [data-assignment-user] { flex: 1; min-inline-size: 0; text-align: start; }
 .cabinet-assignment-row .cabinet-assignment-primary {
     flex: 0 1 auto;
-    max-inline-size: 42%;
-    padding-inline: .5rem;
-    font-size: .8rem;
+    max-inline-size: 50%;
+    padding-inline: .35rem;
+    font-size: .75rem;
+    overflow-wrap: normal;
+}
+@media (max-width: 600px) {
+    .cabinet-assignment-row { display: grid; grid-template-columns: minmax(0, 1fr); }
+    .cabinet-assignment-row .cabinet-assignment-primary { max-inline-size: 100%; justify-self: start; }
 }
 .cabinet-assignment-row small { display: block; font-weight: 400; }
 .cabinet-assignment button[aria-pressed="false"] {

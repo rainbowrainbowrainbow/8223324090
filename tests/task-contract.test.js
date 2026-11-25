@@ -14,6 +14,16 @@ function loadTaskUiShared() {
     return sandbox.TaskUiShared;
 }
 
+test('task participant labels use the display name, login, then a Ukrainian ID fallback', () => {
+    const taskUi = loadTaskUiShared();
+    assert.equal(taskUi.taskPersonLabel({ id: 7, name: ' Олена ', username: 'olena' }), 'Олена');
+    assert.equal(taskUi.taskPersonLabel({ id: 7, name: ' ', username: 'olena' }), 'olena');
+    assert.equal(taskUi.taskPersonLabel({ id: 7 }), 'Користувач №7');
+    assert.equal(taskUi.taskOwnerLabel({ owner_user_id: 7, owner_name: 'Олена', ownerLabel: 'old.label' }), 'Олена');
+    assert.equal(taskUi.taskOwnerLabel({ assigned_to: 'legacy.owner' }), 'legacy.owner');
+    assert.equal(taskUi.taskOwnerLabel({}), null);
+});
+
 test('frontend task contract preserves a legacy owner and uses the canonical due-date order', () => {
     const taskUi = loadTaskUiShared();
     const normalized = taskUi.normalizeTask({

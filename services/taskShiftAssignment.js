@@ -6,7 +6,7 @@ const { STAFF_SCHEDULE_SUBGROUPS, listStaffDisplayGroups, resolveStaffDisplayGro
 const { canUseParkStaffSchedule } = require('./parkStaffScheduleAccess');
 const { legacyBusinessSurfaceAccess } = require('./legacyBusinessSurface');
 const { resolveCapability } = require('./accountAccessPolicy');
-const { getAssignableTaskOwner } = require('./taskExecution');
+const { getAssignableTaskOwner, taskPersonLabel } = require('./taskExecution');
 
 function shiftAssignmentError(statusCode, code, message) {
     return Object.assign(new Error(message), { statusCode, code });
@@ -55,7 +55,7 @@ async function listTaskShiftGroups(db, req, scope, date) {
                 CASE WHEN users.is_active IS DISTINCT FROM FALSE
                       AND users.id IS NOT NULL ${membership.condition}
                      THEN users.id END AS user_id,
-                COALESCE(NULLIF(users.name, ''), users.username) AS user_label
+                users.name AS user_name, users.username AS user_username
          FROM staff_schedule ss
          JOIN staff s ON s.id = ss.staff_id AND s.is_active IS DISTINCT FROM FALSE
          LEFT JOIN employee_profiles ep ON ep.staff_id = s.id AND ep.is_active IS TRUE
@@ -104,7 +104,10 @@ async function listTaskShiftGroups(db, req, scope, date) {
             const group = groups.get(key);
             if (!group) continue;
             group.staffIds.add(row.staff_id);
-            if (eligible.has(Number(row.user_id))) group.users.set(Number(row.user_id), { id: Number(row.user_id), label: row.user_label });
+            if (eligible.has(Number(row.user_id))) {
+                const id = Number(row.user_id);
+                group.users.set(id, { id, label: taskPersonLabel({ id, name: row.user_name, username: row.user_username }) });
+            }
             else group.unavailable.add(row.staff_id);
         }
     }

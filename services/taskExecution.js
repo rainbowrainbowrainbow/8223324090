@@ -23,6 +23,7 @@ const { appendTaskBusinessScopeSql } = require('./taskBusinessScope');
 const { buildTaskAuthorMatch } = require('./taskPersonalScope');
 const { isTerminalOrArchived } = require('./taskAutomationPolicy');
 const { businessUserAccessSql } = require('./businessUserAccess');
+const { STAFF_DISPLAY_GROUPS } = require('./staffDisplayGroups');
 const { rescheduleTask: canonicalRescheduleTask } = require('./taskReschedule');
 const { postponementAttentionLevel } = require('./taskPostponementPolicy');
 const { stopActiveTimerForUser } = require('./myDayTimeTracking');
@@ -93,7 +94,8 @@ function normalizeTaskRow(row = {}) {
     return {
         ...row,
         ownerUserId: row.owner_user_id || null,
-        ownerLabel: row.owner_label || row.owner_name || row.owner_username || row.assigned_to || row.owner || null,
+        ownerLabel: taskPersonLabel({ id: row.owner_user_id, name: row.owner_name, username: row.owner_username,
+            label: row.owner_label || row.assigned_to || row.owner }),
         ownerState: taskOwnerState(row),
         postponementCount: Math.max(0, Number(row.postponement_count ?? row.postponementCount ?? 0) || 0),
         attentionLevel: postponementAttentionLevel(row.postponement_count ?? row.postponementCount),
@@ -210,6 +212,11 @@ function ownerCandidateScopeSql(actor, params, options = {}) {
     return `AND users.id = ${actorRef}`;
 }
 
+function taskPersonLabel(person) {
+    return [person.name, person.username, person.label].map(value => String(value ?? '').trim()).find(Boolean)
+        || (person.id ? `Користувач №${person.id}` : null);
+}
+
 async function listTaskOwnerCandidates(options = {}) {
     const query = options.pool || pool;
     const params = [ASSIGNABLE_TASK_ROLES];
@@ -218,19 +225,27 @@ async function listTaskOwnerCandidates(options = {}) {
     let pagination = '';
     let order = "COALESCE(NULLIF(name, ''), username), id";
     let search = '';
+    if (options.searchStaff) params.push(JSON.stringify(Object.fromEntries(STAFF_DISPLAY_GROUPS.map(({ key, label }) => [key, label]))));
     const staffJoin = options.searchStaff ? `LEFT JOIN LATERAL (
-        SELECT s.position, s.department
+        SELECT s.position, s.department,
+               COALESCE(profession.title, NULLIF(btrim(s.position), '')) AS position_label,
+               COALESCE($${params.length}::jsonb ->> lower(btrim(s.department)), NULLIF(btrim(s.department), '')) AS department_label
         FROM employee_profiles ep JOIN staff s ON s.id = ep.staff_id
+        LEFT JOIN hr_professions profession ON profession.key = lower(COALESCE(NULLIF(btrim(s.position), ''), s.role_type))
         WHERE ep.user_id = users.id AND ep.is_active IS TRUE AND s.is_active IS DISTINCT FROM FALSE
         ORDER BY ep.id DESC LIMIT 1
     ) staff_profile ON true` : '';
-    const staffFields = options.searchStaff ? ', staff_profile.position, staff_profile.department' : '';
+    const staffFields = options.searchStaff ? ', staff_profile.position, staff_profile.department, staff_profile.position_label, staff_profile.department_label' : '';
     if (options.search !== undefined) {
         params.push(String(options.search).slice(0, 100));
         const term = '$' + params.length;
+        const selfId = String(options.search).toLocaleLowerCase('uk') === 'я' && normalizeUserId(options.actor);
+        if (selfId) params.push(selfId);
         search = `AND (
             (strpos(lower(concat_ws(' ', users.name, users.username)), lower(${term})) > 0 OR users.id::text = ${term})
-            ${options.searchStaff ? `OR strpos(lower(concat_ws(' ', staff_profile.position, staff_profile.department)), lower(${term})) > 0` : ''}
+            ${selfId ? `OR users.id = $${params.length}` : ''}
+            ${options.searchStaff ? `OR strpos(lower(concat_ws(' ', staff_profile.position, staff_profile.department,
+                staff_profile.position_label, staff_profile.department_label)), lower(${term})) > 0` : ''}
         )`;
     }
     if (options.afterUserId !== undefined) {
@@ -260,8 +275,9 @@ async function listTaskOwnerCandidates(options = {}) {
         username: row.username,
         name: row.name || null,
         role: row.role || null,
-        ...(options.searchStaff ? { position: row.position || null, department: row.department || null } : {}),
-        label: row.name || row.username || `User #${row.id}`
+        ...(options.searchStaff ? { position: row.position || null, department: row.department || null,
+            positionLabel: row.position_label || null, departmentLabel: row.department_label || null } : {}),
+        label: taskPersonLabel(row)
     }));
 }
 
@@ -300,7 +316,7 @@ async function getAssignableTaskOwner(ownerUserId, options = {}) {
         username: row.username,
         name: row.name || null,
         role: row.role || null,
-        label: row.name || row.username || `User #${row.id}`
+        label: taskPersonLabel(row)
     };
 }
 
@@ -624,6 +640,7 @@ module.exports = {
     getAssignableTaskOwner,
     getVisibleTask,
     listTaskOwnerCandidates,
+    taskPersonLabel,
     taskCompletionReportId,
     taskControlMeta,
     reassignTaskOwner,

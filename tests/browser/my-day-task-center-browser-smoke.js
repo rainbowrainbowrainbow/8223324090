@@ -382,15 +382,33 @@ async function run() {
             WHERE lead_id = $1 AND details->>'source' = 'leads.collaboration_task'`, [leadId]);
         assert.deepEqual(interactions, [{ count: 1 }]);
         const shiftDate = '2099-11-26';
-        for (const [session, name] of [[primary, 'Тестовий адміністратор А'], [co, 'Тестовий адміністратор Б']]) {
+        const previousShiftDate = '2099-11-25';
+        const staffShifts = [
+            [primary, 'Тестовий адміністратор А', previousShiftDate, '22:00', '06:00'],
+            [co, 'Тестовий адміністратор Б', shiftDate, '09:00', '18:00']
+        ];
+        for (const [session, name, date, start, end] of staffShifts) {
             const { rows: [staff] } = await db.query(`INSERT INTO staff (name, department, position, role_type)
                 VALUES ($1, 'admin', 'Адміністратор зміни', 'admin') RETURNING id`, [name]);
             await db.query(`INSERT INTO employee_profiles (staff_id, user_id, full_name, is_active)
                 VALUES ($1, $2, $3, true) ON CONFLICT (user_id) WHERE user_id IS NOT NULL
                 DO UPDATE SET staff_id = excluded.staff_id, is_active = true`, [staff.id, session.user.id, name]);
             await db.query(`INSERT INTO staff_schedule (staff_id, date, shift_start, shift_end, status)
-                VALUES ($1, $2, '09:00', '18:00', 'working')`, [staff.id, shiftDate]);
+                VALUES ($1, $2, $3, $4, 'working')`, [staff.id, date, start, end]);
+            const { rows: [shift] } = await db.query(`INSERT INTO hr_shifts
+                (staff_id, shift_date, profession_key, planned_start, planned_end)
+                VALUES ($1, $2, 'admin', $3, $4) RETURNING id`, [staff.id, date, start, end]);
+            await db.query(`INSERT INTO hr_shift_segments
+                (hr_shift_id, profession_key, planned_start, planned_end, start_day_offset, end_day_offset)
+                VALUES ($1, 'admin', $2, $3, NULL, NULL)`, [shift.id, start, end]);
         }
+        const schedule = await api(`/api/staff/schedule?from=${previousShiftDate}&to=${shiftDate}`, { token: manager.token });
+        assert.ok(schedule.data.some(entry => entry.status === 'working' && entry.role_type === 'admin'));
+        const shiftGroups = await api(`/api/tasks/shift-assignees?date=${shiftDate}`, { token: manager.token });
+        const administrators = shiftGroups.groups.find(group => group.key === 'admin.administrators');
+        assert.ok(administrators, 'Staff schedule has a working administrator shift, but the assignment picker has no administrators');
+        assert.deepEqual(administrators.users.map(user => user.id).sort((a, b) => a - b),
+            [primary.user.id, co.user.id].sort((a, b) => a - b));
         const directory = await api('/api/tasks/owners?q=' + encodeURIComponent('Адміністратор зміни'), { token: manager.token });
         assert.ok(directory.users.some(person => person.id === primary.user.id && person.position === 'Адміністратор зміни'));
         const { rows: [missingPrimary] } = await db.query(`INSERT INTO tasks
@@ -412,6 +430,8 @@ async function run() {
         await shiftPicker.locator('option[value="admin.administrators"]').waitFor({ state: 'attached' });
         await shiftPicker.locator('#cabinetShiftGroup').selectOption('admin.administrators');
         await shiftPicker.getByRole('button', { name: 'Підтвердити склад' }).click();
+        await shiftPicker.getByText('Зміна підтверджена. За потреби позначте іншого відповідального.', { exact: true }).waitFor();
+        assert.equal(await shiftPicker.locator('[data-assignment-user][aria-pressed="true"]').count(), 2);
         await shiftPicker.screenshot({ path: path.join(evidence, 'shift-assignment-360.png'), animations: 'disabled' });
         const shiftCreated = page.waitForResponse(response => new URL(response.url()).pathname === '/api/tasks'
             && response.request().method() === 'POST');

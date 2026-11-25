@@ -67,9 +67,9 @@ async function listTaskShiftGroups(db, req, scope, date) {
              ) AS role_keys
              FROM hr_shift_segments segment
              WHERE segment.hr_shift_id = hs.id
-               AND (ss.date::date + segment.start_day_offset < $1::date + 1)
-               AND (ss.date::date + segment.end_day_offset > $1::date
-                   OR (ss.date::date + segment.end_day_offset = $1::date AND segment.planned_end > TIME '00:00'))
+               AND ss.date::date + COALESCE(segment.start_day_offset, 0) + segment.planned_start < $1::date + 1
+               AND ss.date::date + COALESCE(segment.end_day_offset,
+                   CASE WHEN segment.planned_end < segment.planned_start THEN 1 ELSE 0 END) + segment.planned_end > $1::date
          ) segment ON TRUE
          WHERE ss.date::date IN ($1::date, $1::date - 1)
            AND ss.status IN ('working', 'remote')

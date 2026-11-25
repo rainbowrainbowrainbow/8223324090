@@ -128,6 +128,10 @@ async function run() {
         assert.equal(await self.getAttribute('aria-pressed'), 'true');
         await assignment.getByRole('button', { name: 'Відповідальний: Тестовий виконавець', exact: true }).waitFor();
         await assignment.screenshot({ path: path.join(evidence, 'assignee-author-co-360.png'), animations: 'disabled' });
+        await assignment.getByRole('button', { name: 'Зробити відповідальним: Я', exact: true }).click();
+        await assignment.locator('summary').click();
+        assert.equal(await assignment.locator('summary').innerText(), 'Кому · Відповідальний: Я · Співвиконавці: Тестовий виконавець');
+        await assignment.locator('summary').click();
         await self.click();
         await assignment.locator(`[data-assignment-user="${primary.user.id}"]`).click();
         await assignment.locator('summary').getByText('Кому · Оберіть виконавця').waitFor();
@@ -517,6 +521,23 @@ async function run() {
         await shiftPicker.getByText('Зміна підтверджена. За потреби позначте іншого відповідального.', { exact: true }).waitFor();
         assert.equal(await shiftPicker.locator('[data-assignment-user][aria-pressed="true"]').count(), 2);
         await shiftPicker.screenshot({ path: path.join(evidence, 'shift-assignment-360.png'), animations: 'disabled' });
+        await shiftPicker.getByRole('button', { name: 'Люди', exact: true }).click();
+        await shiftPicker.getByRole('button', { name: 'Змінити склад вручну' }).click();
+        assert.ok(await shiftPicker.locator(`[data-assignment-user="${primary.user.id}"]`).isEnabled());
+        const rosterUrl = url => url.pathname === '/api/tasks/shift-assignees';
+        await page.route(rosterUrl, route => route.fulfill({ status: 403, json: { error: 'Forbidden' } }), { times: 1 });
+        // Manual mode takes its initial shift date from the task deadline.
+        await page.locator('#cabinetTaskDate').evaluate((input, date) => { input.value = date; }, shiftDate);
+        await shiftPicker.getByRole('button', { name: 'Відділ на зміні' }).click();
+        await shiftPicker.getByText('Немає доступу до графіка.').waitFor();
+        assert.ok(await shiftPicker.getByRole('button', { name: 'Підтвердити склад' }).isDisabled());
+        await shiftPicker.getByRole('button', { name: 'Обрати людей' }).click();
+        await page.route(rosterUrl, route => route.abort(), { times: 1 });
+        await shiftPicker.getByRole('button', { name: 'Відділ на зміні' }).click();
+        await shiftPicker.getByRole('button', { name: 'Повторити' }).click();
+        await shiftPicker.locator('option[value="admin.administrators"]').waitFor({ state: 'attached' });
+        await shiftPicker.locator('#cabinetShiftGroup').selectOption('admin.administrators');
+        await shiftPicker.getByRole('button', { name: 'Підтвердити склад' }).click();
         await shiftPicker.locator('#cabinetShiftGroup').selectOption('reception');
         await shiftPicker.screenshot({ path: path.join(evidence, 'shift-assignment-reconfirm-360.png'), animations: 'disabled' });
         page.on('request', captureRejectedRequest);
@@ -533,8 +554,32 @@ async function run() {
         await shiftPicker.locator('option[value="reception"]').waitFor({ state: 'attached' });
         await shiftPicker.locator('#cabinetShiftGroup').selectOption('admin.administrators');
         await shiftPicker.getByRole('button', { name: 'Підтвердити склад' }).click();
-        const shiftCreated = page.waitForResponse(response => new URL(response.url()).pathname === '/api/tasks'
+        const shiftSummary = await shiftPicker.locator('summary').innerText();
+        assert.ok(shiftSummary.includes(shiftDate));
+        assert.ok(shiftSummary.includes(await shiftPicker.locator('#cabinetShiftGroup option:checked').innerText()));
+        await shiftPicker.getByRole('button', { name: 'Люди', exact: true }).click();
+        assert.ok(await shiftPicker.locator(`[data-assignment-user="${co.user.id}"]`).isDisabled());
+        await shiftPicker.locator('summary').click();
+        assert.equal(await shiftPicker.locator('summary').innerText(), shiftSummary);
+        const updateSchedule = status => db.query(`UPDATE staff_schedule SET status = $3
+            WHERE date = $1 AND staff_id = (SELECT staff_id FROM employee_profiles WHERE user_id = $2)`, [shiftDate, co.user.id, status]);
+        await updateSchedule('dayoff');
+        const waitForShiftSubmit = () => page.waitForResponse(response => new URL(response.url()).pathname === '/api/tasks'
             && response.request().method() === 'POST');
+        const rejectedShift = waitForShiftSubmit();
+        await page.locator('[data-cabinet-create-action="plain"]').click();
+        const rejectedResponse = await rejectedShift;
+        assert.equal(rejectedResponse.status(), 409);
+        assert.equal((await rejectedResponse.json()).code, 'TASK_SHIFT_ROSTER_CHANGED');
+        const rejectedBody = rejectedResponse.request().postDataJSON();
+        assert.deepEqual(rejectedBody.shiftAssignment, { group: 'admin.administrators', date: shiftDate });
+        assert.equal((await db.query('SELECT id FROM tasks WHERE title = $1', [rejectedBody.title])).rowCount, 0);
+        await shiftPicker.locator('summary').getByText('Кому · Підтвердьте склад зміни').waitFor();
+        await shiftPicker.locator('#cabinetShiftGroup option[value="admin.administrators"]').waitFor({ state: 'attached' });
+        await updateSchedule('working');
+        await shiftPicker.getByRole('button', { name: 'Відділ на зміні' }).click();
+        await shiftPicker.getByRole('button', { name: 'Підтвердити склад' }).click();
+        const shiftCreated = waitForShiftSubmit();
         await page.locator('[data-cabinet-create-action="plain"]').click();
         const shiftResponse = await shiftCreated;
         assert.ok(shiftResponse.ok(), JSON.stringify(await shiftResponse.json()));

@@ -4721,6 +4721,8 @@ function bindCabinetAssignmentPicker(form) {
     const shiftDate = shift.querySelector('input');
     const shiftGroups = shift.querySelector('select');
     const confirmShift = shift.querySelector('button');
+    const retryShift = shift.querySelector('[data-assignment-retry]');
+    const manual = picker.querySelector('[data-assignment-manual]');
     const shiftButton = picker.querySelector('[data-assignment-shift-mode]');
     const peopleButton = picker.querySelector('[data-assignment-people-mode]');
     const morePeople = picker.querySelector('[data-assignment-more]');
@@ -4744,13 +4746,14 @@ function bindCabinetAssignmentPicker(form) {
         state.implicitSelf = true;
         state.shiftAssignment = null;
         state.needsShiftConfirmation = false;
+        peopleButton.textContent = 'Люди';
         showShift(false);
         search.value = '';
         picker.open = false;
         results.replaceChildren();
         morePeople.hidden = true;
         status.textContent = '';
-        summary.textContent = 'Кому · Я';
+        renderSelection();
     }
 
     function sync() {
@@ -4760,26 +4763,29 @@ function bindCabinetAssignmentPicker(form) {
     }
 
     function renderSelection() {
-        const labels = [...state.selected.values()];
         if (state.needsShiftConfirmation) {
             summary.textContent = 'Кому · Підтвердьте склад зміни';
             return;
         }
-        if (!labels.length) {
+        if (!state.selected.size) {
             summary.textContent = 'Кому · Оберіть виконавця';
             return;
         }
-        summary.textContent = labels.length > 2
-            ? 'Кому · ' + labels.slice(0, 2).join(', ') + ' +' + (labels.length - 2)
-            : 'Кому · ' + labels.join(', ');
+        const co = readCabinetCreateCoAssignees(form).map(id => state.selected.get(id));
+        const parts = ['Кому · Відповідальний: ' + state.selected.get(state.ownerId)];
+        if (co.length) parts.push('Співвиконавці: ' + co.slice(0, 2).join(', ') + (co.length > 2 ? ' +' + (co.length - 2) : ''));
+        if (state.shiftAssignment) parts.push(shiftGroups.selectedOptions[0].textContent, state.shiftAssignment.date);
+        summary.textContent = parts.join(' · ');
     }
 
     function showShift(visible) {
         shift.hidden = !visible;
-        search.closest('label').hidden = visible;
+        const preview = !visible && Boolean(state.shiftAssignment);
+        manual.hidden = !preview;
+        search.closest('label').hidden = visible || preview;
         peopleButton.setAttribute('aria-pressed', String(!visible));
         shiftButton.setAttribute('aria-pressed', String(visible));
-        morePeople.hidden = visible || !nextAfter;
+        morePeople.hidden = visible || preview || !nextAfter;
     }
 
     function showShiftGroup() {
@@ -4802,35 +4808,58 @@ function bindCabinetAssignmentPicker(form) {
         shiftGroups.replaceChildren();
         results.replaceChildren();
         confirmShift.disabled = true;
+        retryShift.hidden = true;
+        peopleButton.textContent = 'Люди';
         if (!shiftDate.value) {
             status.textContent = 'Оберіть дату зміни.';
             return;
         }
         status.textContent = 'Завантаження зміни…';
         const params = new URLSearchParams({ date: shiftDate.value });
-        const data = await apiGetScopedJson('/tasks/shift-assignees?' + params);
-        if (request !== requestNumber || context !== cabinetHrReminderScope() || !form.isConnected) return;
-        if (!Array.isArray(data?.groups)) {
-            status.textContent = 'Графік недоступний. Перевірте доступ або оберіть людей.';
+        const current = () => request === requestNumber && context === cabinetHrReminderScope() && form.isConnected && !shift.hidden;
+        let data;
+        try {
+            data = await apiGetScopedJson('/tasks/shift-assignees?' + params);
+            if (!Array.isArray(data?.groups)) throw new Error('Invalid shift roster');
+        } catch (error) {
+            if (!current()) return;
+            const forbidden = error.status === 403;
+            status.textContent = forbidden ? 'Немає доступу до графіка.' : 'Не вдалося завантажити графік. Спробуйте ще раз.';
+            retryShift.hidden = forbidden;
+            peopleButton.textContent = 'Обрати людей';
             return;
         }
+        if (!current()) return;
         groups = data.groups;
         for (const group of groups) shiftGroups.add(new Option(group.label, group.key));
         if (groups.some(group => group.key === previous)) shiftGroups.value = previous;
         showShiftGroup();
     }
 
-    peopleButton.addEventListener('click', () => {
+    function selectPeopleManually() {
         if (state.shiftAssignment && state.needsShiftConfirmation) {
             state.selected.clear();
             state.ownerId = null;
         }
-        showShift(false);
         state.shiftAssignment = null;
         state.needsShiftConfirmation = false;
+        peopleButton.textContent = 'Люди';
+        showShift(false);
         renderSelection();
+        renderCandidates([]);
         search.focus();
         void load();
+    }
+    manual.addEventListener('click', selectPeopleManually);
+    retryShift.addEventListener('click', loadShift);
+    peopleButton.addEventListener('click', () => {
+        if (!state.shiftAssignment || state.needsShiftConfirmation) {
+            selectPeopleManually();
+            return;
+        }
+        showShift(false);
+        renderCandidates([]);
+        status.textContent = 'Склад прив’язаний до графіка.';
     });
     shiftButton.addEventListener('click', () => {
         clearTimeout(debounce);
@@ -4877,7 +4906,7 @@ function bindCabinetAssignmentPicker(form) {
             rows.set(id, id === self ? 'Я' : window.TaskUiShared.taskPersonLabel(person));
             details.set(id, person);
         }
-        if (shift.hidden && matchesSelfSearch()) rows.set(self, 'Я');
+        if (shift.hidden && !state.shiftAssignment && matchesSelfSearch()) rows.set(self, 'Я');
         results.replaceChildren();
         const single = cabinetLeadCollaboration?.composer.contains(form);
         const primary = readCabinetOwner(form);
@@ -4888,7 +4917,7 @@ function bindCabinetAssignmentPicker(form) {
             row.className = 'cabinet-assignment-row';
             const toggle = document.createElement('button');
             toggle.type = 'button';
-            toggle.disabled = !shift.hidden;
+            toggle.disabled = !shift.hidden || Boolean(state.shiftAssignment);
             toggle.textContent = label;
             const person = details.get(id);
             const subtitleValues = [person?.positionLabel, person?.departmentLabel];
@@ -4901,7 +4930,7 @@ function bindCabinetAssignmentPicker(form) {
             }
             toggle.setAttribute('aria-pressed', String(state.selected.has(id)));
             toggle.addEventListener('click', () => {
-                if (!shift.hidden || assignmentLocked()) return;
+                if (!shift.hidden || state.shiftAssignment || assignmentLocked()) return;
                 state.shiftAssignment = null;
                 state.needsShiftConfirmation = false;
                 if (single || (state.implicitSelf && id !== self)) {
@@ -4938,7 +4967,8 @@ function bindCabinetAssignmentPicker(form) {
                     state.ownerId = id;
                     renderSelection();
                     renderCandidates(people);
-                    if (shift.hidden) results.querySelector('[data-assignment-user="' + id + '"]')?.focus();
+                    if (!manual.hidden) manual.focus();
+                    else if (shift.hidden) results.querySelector('[data-assignment-user="' + id + '"]')?.focus();
                     else confirmShift.focus();
                 });
                 row.append(owner);
@@ -4955,7 +4985,7 @@ function bindCabinetAssignmentPicker(form) {
     }
 
     async function load(append = false) {
-        if (!shift.hidden || assignmentLocked()) return;
+        if (!shift.hidden || state.shiftAssignment || assignmentLocked()) return;
         const request = ++requestNumber;
         const context = cabinetHrReminderScope();
         const current = () => request === requestNumber && form.isConnected && context === cabinetHrReminderScope()
@@ -5016,6 +5046,10 @@ function bindCabinetAssignmentPicker(form) {
     picker.addEventListener('toggle', () => {
         if (!picker.open) return;
         if (!shift.hidden) return;
+        if (state.shiftAssignment) {
+            manual.focus();
+            return;
+        }
         search.focus();
         void load();
     });
@@ -6457,14 +6491,16 @@ function renderCabinetTaskComposer(options = {}) {
                     <span id="cabinetTaskTitleGuidance" class="cabinet-task-title-guidance" aria-live="polite"></span>
                 </label>
                 <details class="cabinet-assignment" data-cabinet-assignment>
-                    <summary>Кому · Я</summary>
+                    <summary>Кому · Відповідальний: Я</summary>
                     <button type="button" data-assignment-people-mode aria-pressed="true">Люди</button>
                     <button type="button" data-assignment-shift-mode aria-pressed="false" hidden>Відділ на зміні</button>
+                    <button type="button" data-assignment-manual hidden>Змінити склад вручну</button>
                     <label>Пошук виконавців <input type="search" placeholder="Ім’я, посада або відділ"></label>
                     <div data-assignment-shift hidden>
                         <label>Дата зміни <input type="date"></label>
                         <div><label for="cabinetShiftGroup">Відділ</label><select id="cabinetShiftGroup"></select></div>
                         <button type="button" disabled>Підтвердити склад</button>
+                        <button type="button" data-assignment-retry hidden>Повторити</button>
                     </div>
                     <p role="status"></p>
                     <div data-assignment-results></div>
@@ -7815,7 +7851,7 @@ async function createCabinetTask(event) {
         return;
     }
     if (aiCommitPayload && assignmentState?.shiftAssignment) {
-        setCabinetTaskComposerStatus('Для AI-чернетки оберіть виконавців у списку «Люди».', 'error');
+        setCabinetTaskComposerStatus('Для AI-чернетки відкрийте «Люди» й натисніть «Змінити склад вручну».', 'error');
         return;
     }
     const coAssigneeUserIds = readCabinetCreateCoAssignees(composer);
@@ -8529,7 +8565,7 @@ function attachProfileListeners() {
             commitBundle: payload => {
                 const assignment = cabinetAssignmentPickers.get(composer);
                 if (assignment?.shiftAssignment || assignment?.needsShiftConfirmation) {
-                    return { success: false, error: 'Для AI-пакета оберіть виконавців у списку «Люди».' };
+                    return { success: false, error: 'Для AI-пакета оберіть людей вручну. Для підтвердженої зміни відкрийте «Люди» й натисніть «Змінити склад вручну».' };
                 }
                 if (assignment?.ownerId === null) {
                     return { success: false, error: 'Оберіть виконавця.' };

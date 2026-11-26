@@ -38,9 +38,8 @@ async function api(route,method='GET',body,status=200) {
 async function waitTeacherRuntimeReads(page) {
     await page.waitForLoadState('networkidle');
     const snapshot=await page.waitForFunction(()=>{
-        const timer=window.GlobalTaskTimer?.state;
-        if(!timer?.hydrated||timer.loading||timer.pendingHydrate||window.EducationScheduleWorkspace?.state.loading||(typeof bookingTimePreflightState==='function'&&bookingTimePreflightState().status==='checking'))return false;
-        return {page:location.pathname+location.search,timer:{hydrated:timer.hydrated,loading:timer.loading,pending:timer.pendingHydrate},educationLoading:window.EducationScheduleWorkspace?.state.loading,educationError:window.EducationScheduleWorkspace?.state.error?.message||null};
+        if(!window.isAuthenticatedRuntimeReady?.()||window.EducationScheduleWorkspace?.state.loading||(typeof bookingTimePreflightState==='function'&&bookingTimePreflightState().status==='checking'))return false;
+        return {page:location.pathname+location.search,authenticated:true,educationLoading:window.EducationScheduleWorkspace?.state.loading,educationError:window.EducationScheduleWorkspace?.state.error?.message||null};
     });
     evidence.runtimeReadSettles ||= [];const settled=await snapshot.jsonValue();assert.equal(settled.educationError,null,'Education workspace must complete without error before navigation');evidence.runtimeReadSettles.push(settled);await snapshot.dispose();
     await page.waitForLoadState('networkidle');

@@ -21,7 +21,7 @@ const profiles = [
 ];
 let browser, manifest;
 function flush(){fs.writeFileSync(path.join(out,'verification.json'),JSON.stringify(evidence,null,2));}
-async function settleRuntime(page){await page.waitForFunction(()=>window.GlobalTaskTimer?.state.hydrated===true&&!window.GlobalTaskTimer.state.loading&&!window.GlobalTaskTimer.state.pendingHydrate&&!window.EducationScheduleWorkspace?.state.loading);await page.waitForLoadState('networkidle');}
+async function settleRuntime(page){await page.waitForFunction(()=>window.isAuthenticatedRuntimeReady?.()&&!window.EducationScheduleWorkspace?.state.loading);await page.waitForLoadState('networkidle');}
 async function check(id,action){await results.check(id,id,action,{dependsOn:id==='fixtures'?[]:['fixtures']});flush();console.log(results.results.at(-1).status+' '+id);}
 (async()=>{
     await check('fixtures',async()=>{

@@ -44,8 +44,7 @@ async function stableTabBounds(tab) {
 async function waitRuntimeReads(page) {
     await page.waitForLoadState('networkidle');
     await page.waitForFunction(() => {
-        const timer = window.GlobalTaskTimer?.state;
-        return timer?.hydrated && !timer.loading && !timer.pendingHydrate
+        return window.isAuthenticatedRuntimeReady?.()
             && !window.EducationScheduleWorkspace?.state.loading
             && (typeof bookingTimePreflightState !== 'function' || bookingTimePreflightState().status !== 'checking');
     });

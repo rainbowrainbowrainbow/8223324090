@@ -29,14 +29,13 @@ async function step(id, action) {
 async function api(route, method='GET', body) { const response=await fetch(base+route,{method,headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:body&&JSON.stringify(body)}); assert.ok(response.ok,`${method} ${route.split('?')[0]} ${response.status}`); return response.json(); }
 async function go(view) { await settle(); await page.waitForLoadState('networkidle'); await page.goto(`${base}/?businessContext=dar&educationSchedule=${view}&date=${date}`,{waitUntil:'domcontentloaded'}); await page.locator('#mainApp').waitFor({state:'visible',timeout:45000}); await page.waitForFunction(view=>window.EducationScheduleWorkspace?.state.activeView===view&&window.isAuthenticatedRuntimeReady?.(),view); await waitRuntimeReads(); await page.waitForLoadState('networkidle'); }
 async function waitRuntimeReads(target = page) {
- await target.waitForFunction(() => window.GlobalTaskTimer?.state.hydrated === true
-    && !window.GlobalTaskTimer.state.loading && !window.GlobalTaskTimer.state.pendingHydrate);
+ await target.waitForFunction(() => window.isAuthenticatedRuntimeReady?.()
+    && !window.EducationScheduleWorkspace?.state.loading);
  evidence.runtimeReadSettles ||= [];
  evidence.runtimeReadSettles.push(await target.evaluate(() => ({
     page: location.pathname + location.search,
-    hydrated: window.GlobalTaskTimer.state.hydrated,
-    loading: window.GlobalTaskTimer.state.loading,
-    pending: window.GlobalTaskTimer.state.pendingHydrate
+    authenticated: window.isAuthenticatedRuntimeReady(),
+    educationLoading: Boolean(window.EducationScheduleWorkspace?.state.loading)
  })));
 }
 async function settle() {

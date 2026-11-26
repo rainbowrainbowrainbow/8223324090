@@ -188,6 +188,7 @@ async function run() {
         }
         const pageErrors = [];
         const taskBoot = [];
+        const timerRequests = [];
         const gameRequests = [];
         const hermesRequests = [];
         page.on('pageerror', error => pageErrors.push(error.message));
@@ -196,6 +197,7 @@ async function run() {
         });
         page.on('request', request => {
             const url = new URL(request.url());
+            if (['/js/global-task-timer.js', '/css/global-task-timer.css', '/api/my-day/timer'].includes(url.pathname)) timerRequests.push(url.pathname);
             if (/(?:^|[.-])hermes(?:[.-]|$)/i.test(url.hostname) || /(?:^|\/)hermes(?:[/-]|$)/i.test(url.pathname)) {
                 hermesRequests.push(url.pathname);
             }
@@ -549,20 +551,6 @@ async function run() {
         await page.goBack();
         await work.waitFor();
         const id = Number(await work.getAttribute('data-task-id'));
-        const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: false });
-        try {
-            await pool.query(`INSERT INTO my_day_time_entries (user_id, task_id, started_at, source)
-                VALUES ($1, $2, NOW() - INTERVAL '5 minutes', 'timer')`, [session.user.id, id]);
-        } finally {
-            await pool.end();
-        }
-        await page.reload();
-        const timer = page.locator('[data-global-task-timer-panel-trigger]:visible').first();
-        await timer.click();
-        const stopped = page.waitForResponse(response => new URL(response.url()).pathname === '/api/my-day/timer/stop');
-        await page.getByRole('button', { name: 'Зупинити таймер', exact: true }).click();
-        assert.equal((await stopped).status(), 200);
-        await timer.waitFor({ state: 'hidden' });
         await page.goto(origin + `/tasks?view=my&open=${legacyIds[1]}`);
         const centerComplete = page.locator('.park-task-dialog [data-dialog-complete]');
         await centerComplete.waitFor();
@@ -787,9 +775,10 @@ async function run() {
 
         await require('./task-entry-checks').verifyTaskEntry({ origin, session, evidence, taskId: Number(workId) });
         assert.deepEqual(pageErrors, []);
+        assert.deepEqual(timerRequests, [], 'Park must not load or poll the global timer');
         assert.deepEqual(gameRequests, []);
         assert.deepEqual(hermesRequests, []);
-        console.log('Park local app / PostgreSQL browser: fixed board layout, legacy-link completion in My Day, keyboard undo, history restore, date reschedule, in-place editing, server action contracts, and timer recovery.');
+        console.log('Park local app / PostgreSQL browser: fixed board layout, legacy-link completion in My Day, keyboard undo, history restore, date reschedule, in-place editing, server action contracts, and no Park timer polling.');
     } finally {
         await browser.close();
     }

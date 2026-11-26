@@ -629,7 +629,8 @@ function registerAuthenticatedServiceWorker() {
 function markAuthenticatedRuntimeReady() {
     if (!hasAuthenticatedRuntimeSession()) return false;
     void registerAuthenticatedServiceWorker();
-    if (typeof window.scheduleGlobalTaskTimerAssets === 'function') {
+    if (typeof window.scheduleGlobalTaskTimerAssets === 'function'
+        && document.documentElement.hasAttribute('data-full-edition-task-timer')) {
         window.scheduleGlobalTaskTimerAssets();
     }
     if (authenticatedRuntimeReady) return true;

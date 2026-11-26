@@ -552,6 +552,21 @@ test('park edition paginates all periods and disables legacy module writes', {
         assert.equal(active.data.timer.taskId, futureTask.id);
         assert.equal((await request('POST', '/api/my-day/timer/stop', {}, token)).status, 200);
         assert.equal((await request('GET', '/api/my-day/timer', undefined, token)).data.timer, null);
+        const { listTimeEntries, loadTaskTimeTotals } = require('../../services/myDayTimeTracking');
+        const history = await listTimeEntries(pool, owner, { from: today, to: today });
+        const entry = history.find(row => row.taskId === futureTask.id && row.source === 'timer');
+        assert.ok(entry?.endedAt && entry.durationSeconds >= 300);
+        const totals = await loadTaskTimeTotals(pool, owner, [futureTask.id]);
+        assert.equal(totals.get(futureTask.id), entry.durationSeconds);
+        await pool.query(`INSERT INTO my_day_time_entries (user_id, task_id, started_at, ended_at, source)
+            VALUES ($1, $2, '2026-01-15T10:00:00+02', '2026-01-15T10:30:00+02', 'timer')`, [owner, futureTask.id]);
+        const { buildMyDayContribution } = require('../../services/myDayContribution');
+        const report = await buildMyDayContribution({
+            pool, user: profile.data.user, businessScope: 'event_genix',
+            query: { from: '2026-01-15', to: '2026-01-15' }
+        });
+        assert.equal(report.totals.taskMinutes, 30);
+        assert.equal(report.days[0].taskMinutes, 30);
     } finally {
         await pool.end();
     }

@@ -165,7 +165,6 @@ test('shared UI helper confirms only after the canonical 409 and retries with tr
 test('all reassignment routes use the same private handoff contract', () => {
     const tasksRoute = fs.readFileSync(path.join(ROOT, 'routes', 'tasks.js'), 'utf8');
     const hermesRoute = fs.readFileSync(path.join(ROOT, 'routes', 'hermes.js'), 'utf8');
-    const taskCenter = fs.readFileSync(path.join(ROOT, 'js', 'tasks-page.js'), 'utf8');
     const myDay = fs.readFileSync(path.join(ROOT, 'js', 'profile-page.js'), 'utf8');
 
     assert.match(tasksRoute, /confirmPrivateHandoff: req\.body\?\.confirmPrivateHandoff === true/);
@@ -173,9 +172,7 @@ test('all reassignment routes use the same private handoff contract', () => {
     assert.match(tasksRoute, /TASK_REASSIGN_USE_CANONICAL_ENDPOINT/);
     assert.match(hermesRoute, /confirmPrivateHandoff: payload\.confirmPrivateHandoff === true/);
     assert.match(hermesRoute, /sendHermesError\(res, err\.statusCode, err\.code \|\| 'HERMES_TASK_MUTATION_FAILED', err\.message, err\.meta \|\| null\)/);
-    assert.match(taskCenter, /executePrivateTaskHandoff/);
-    assert.match(taskCenter, /confirmPrivateHandoff: confirmed === true/);
-    assert.match(myDay, /executePrivateTaskHandoff/);
+    assert.match(myDay, /async reassign\(ownerUserId, dialog\)[\s\S]*?executePrivateTaskHandoff\(confirmed =>[\s\S]*?apiPost\(taskPath \+ '\/reassign'[\s\S]*?\.\.\.\(confirmed && \{ confirmPrivateHandoff: true \}\)/);
     assert.match(myDay, /if \(confirmed === true\) payload\.confirmPrivateHandoff = true/);
 });
 

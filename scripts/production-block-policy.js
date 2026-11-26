@@ -25,6 +25,7 @@ const PROTECTED_WORKFLOWS = Object.freeze({
     EVENTGENIX_REMEDIATION: 'eventgenix-remediation-08417',
     EVENTGENIX_REMEDIATION_RETRY: 'eventgenix-remediation-08417-retry',
     EVENTGENIX_REMEDIATION_HR_RETRY: 'eventgenix-remediation-08417-hr-retry',
+    PARK_TIMER_08443_RECOVERY: 'park-timer-recovery-08443',
     SYS_MB_AUTH_CUTOVER: 'sys-mb-auth-cutover',
     CERTIFICATE_QA_ISOLATION: 'certificate-qa-isolation',
     CERTIFICATE_CI_GATE: 'certificate-ci-gate',
@@ -146,6 +147,28 @@ const EVENTGENIX_REMEDIATION_HR_RETRY = Object.freeze({
     failedCiRunId: '44780086004',
     failedJobs: Object.freeze(['HR and payroll PostgreSQL integration']),
     controllerPaths: Object.freeze(['scripts/production-block-policy.js', 'tests/production-block-controller.test.js'])
+});
+const PARK_TIMER_08443_RECOVERY = Object.freeze({
+    baseSha: '59a27e208afc3cdb9a6ec8438200a41ac41259b2',
+    baseVersion: '0.84.42',
+    version: '0.84.43',
+    payloadSha: 'bb1383e5b78a8e7258f23f94b72225d94bf264d7',
+    failedPredecessorSha: '23b8700d0f2887db7c303946cc82f6bc314212db',
+    failedCiRunId: '45824126481',
+    failedJobs: Object.freeze([
+        'Education shard chromium-core (chromium)',
+        'Education shard chromium-journey (chromium)',
+        'Education shard webkit-flow (webkit)',
+        'HR Team browser smoke'
+    ]),
+    redPaths: Object.freeze([]),
+    controllerPaths: Object.freeze([
+        'docs/integrations/checkbox/IMPLEMENTATION_STATUS.md',
+        'index.html',
+        'package.json',
+        'scripts/production-block-policy.js',
+        'tests/production-block-controller.test.js'
+    ])
 });
 const FREELANCE_BASE = '46df02047c196dfa5159e27f6cfb09fe6e907b11';
 const FREELANCE_RECOVERY_PARENT = 'b67cbe8998e13bf762792361bad31534e36e2e88';
@@ -917,10 +940,10 @@ function validateProtectedWorkflow(workflow, changedPaths = [], redPaths = []) {
     }
     const eventGenixRemediation = eventGenixRemediationFor(workflow);
     if (eventGenixRemediation) {
-        const protectedPaths = ['.github/workflows/ci.yml'];
+        const protectedPaths = eventGenixRemediation.redPaths || ['.github/workflows/ci.yml'];
         fail(stableJson(redPaths) === stableJson(protectedPaths)
             && eventGenixRemediation.controllerPaths.every(file => changedPaths.includes(file)),
-        'EventGenix 0.84.17 requires its scoped controller and reviewed CI workflow',
+        'EventGenix recovery requires its scoped controller and reviewed paths',
         'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
         return { enabled: true, kind: workflow, protectedChangedPaths: protectedPaths };
     }
@@ -1144,18 +1167,19 @@ function eventGenixRemediationFor(workflow) {
     if (workflow === PROTECTED_WORKFLOWS.EVENTGENIX_REMEDIATION) return EVENTGENIX_REMEDIATION;
     if (workflow === PROTECTED_WORKFLOWS.EVENTGENIX_REMEDIATION_RETRY) return EVENTGENIX_REMEDIATION_RETRY;
     if (workflow === PROTECTED_WORKFLOWS.EVENTGENIX_REMEDIATION_HR_RETRY) return EVENTGENIX_REMEDIATION_HR_RETRY;
+    if (workflow === PROTECTED_WORKFLOWS.PARK_TIMER_08443_RECOVERY) return PARK_TIMER_08443_RECOVERY;
     return null;
 }
 
 function assertEventGenixRemediationPayload(payloadSha, reviewed) {
     fail(payloadSha === reviewed.payloadSha,
-        'EventGenix 0.84.17 differs from its reviewed payload', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
+        'EventGenix recovery differs from its reviewed payload', 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT');
 }
 
 function assertEventGenixRemediationScope(reviewed, base, baseVersion, version, qa, migrations, attempts) {
     fail(base === reviewed.baseSha && baseVersion === reviewed.baseVersion && version === reviewed.version
         && qa.enabled === false && migrations.length === 0 && attempts === 1,
-    'EventGenix 0.84.17 requires its exact base and version, one attempt, and read-only QA',
+    'EventGenix recovery requires its exact base and version, one attempt, and read-only QA',
     'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
 }
 
@@ -1295,7 +1319,7 @@ function buildManifest(facts, options = {}) {
         assertEventGenixRemediationPayload(facts.eventGenixRemediationPayloadSha, eventGenixRemediation);
         fail(facts.remoteSha === (eventGenixRemediation.failedPredecessorSha || baseLiveSha)
             && facts.live?.deploymentMetadata?.complete === true,
-            'EventGenix 0.84.17 requires its exact live and remote production SHAs',
+            'EventGenix recovery requires its exact live and remote production SHAs',
             'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT');
         assertEventGenixRemediationFailedCi(facts.eventGenixRemediationFailedCi, eventGenixRemediation);
     }
@@ -1547,7 +1571,7 @@ function validateManifest(manifest, options = {}) {
         'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID');
         fail(manifest.preparedRelease?.sha === manifest.initialHeadSha && manifest.allowedMigrationFiles.length === 0
             && !manifest.retryFrom && !manifest.renewalFrom,
-        'EventGenix 0.84.17 requires one exact prepared SHA without migrations or retries',
+        'EventGenix recovery requires one exact prepared SHA without migrations or retries',
         'PRODUCTION_BLOCK_RELEASE_NOT_PREPARED');
     }
     if (protectedWorkflow.kind === PROTECTED_WORKFLOWS.STAFF_DELETION_CI) {

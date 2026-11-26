@@ -26,6 +26,7 @@ const {
     EVENTGENIX_REMEDIATION,
     EVENTGENIX_REMEDIATION_RETRY,
     EVENTGENIX_REMEDIATION_HR_RETRY,
+    eventGenixRemediationFor,
     FREELANCE_SCHEDULE_RELEASE,
     FREELANCE_SCHEDULE_CI_RECOVERY,
     STAFF_DELETION_PATHS,
@@ -451,6 +452,41 @@ test('EventGenix retry requires the failed production SHA and CI identity', asyn
     await assert.doesNotReject(dryRun({}));
     await assert.rejects(dryRun({ eventGenixRemediationFailedCi: { ...failedCi, conclusion: 'success' } }),
         { code: 'PRODUCTION_BLOCK_CI_IDENTITY_INVALID' });
+});
+
+test('Park timer recovery binds the corrected payload and failed production CI to a single attempt', () => {
+    const options = { protectedWorkflow: 'park-timer-recovery-08443', maxReleaseAttempts: 1 };
+    const recovery = eventGenixRemediationFor(options.protectedWorkflow);
+    const failedCi = {
+        databaseId: 45824126481,
+        headSha: recovery.failedPredecessorSha,
+        headBranch: 'codex/eventgenix-production',
+        workflowName: 'CI',
+        event: 'push',
+        status: 'completed',
+        conclusion: 'failure',
+        jobs: recovery.failedJobs.map(name => ({ name, conclusion: 'failure' }))
+    };
+    const candidate = {
+        live: { commitSha: recovery.baseSha, version: '0.84.42', deploymentMetadata: { complete: true } },
+        remoteSha: recovery.failedPredecessorSha,
+        releaseVersion: '0.84.43',
+        eventGenixRemediationPayloadSha: recovery.payloadSha,
+        eventGenixRemediationFailedCi: failedCi,
+        changedPaths: [...recovery.controllerPaths, 'js/auth.js']
+    };
+    const value = manifest(options, candidate);
+    assert.equal(value.preparedRelease.failedPredecessorSha, recovery.failedPredecessorSha);
+    assert.equal(value.preparedRelease.version, '0.84.43');
+    assert.ok(releaseCommandPlan(value).some(step => step.includes('exact-sha-runtime-artifact-run')));
+    assert.throws(() => manifest(options, { ...candidate, eventGenixRemediationPayloadSha: RELEASE_SHA }),
+        { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_DRIFT' });
+    assert.throws(() => manifest(options, { ...candidate, remoteSha: recovery.baseSha }),
+        { code: 'PRODUCTION_BLOCK_REMOTE_BASE_DRIFT' });
+    assert.throws(() => manifest(options, { ...candidate, eventGenixRemediationFailedCi: { ...failedCi, jobs: [] } }),
+        { code: 'PRODUCTION_BLOCK_CI_IDENTITY_INVALID' });
+    assert.throws(() => manifest(options, { ...candidate, changedPaths: [...candidate.changedPaths, '.github/workflows/ci.yml'] }),
+        { code: 'PRODUCTION_BLOCK_PROTECTED_WORKFLOW_SCOPE_INVALID' });
 });
 
 test('EventGenix HR retry accepts only its exact predecessor with one failed HR job', () => {

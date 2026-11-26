@@ -63,6 +63,200 @@ async function verifyTaskKpi(page, origin, session, staffId, evidence) {
     console.log(`Profile and HR task KPI agree in ${engine}: 1 of 2, the credited card is reachable.`);
 }
 
+async function verifyTaskDetailActions(browser, origin, session) {
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: false });
+    const suffix = require('node:crypto').randomBytes(4).toString('hex');
+    const auth = { authorization: `Bearer ${session.token}`, 'content-type': 'application/json' };
+    async function actor(role, label, key = role) {
+        const username = `detail_${key}_${suffix}`;
+        const password = `Local-${suffix}-Test-A9`;
+        const created = await fetch(origin + '/api/users', {
+            method: 'POST', headers: auth, body: JSON.stringify({
+                username, password, name: label, role, businessContexts: ['event_genix'], defaultBusinessContext: 'event_genix'
+            })
+        });
+        assert.equal(created.status, 200);
+        const login = await fetch(origin + '/api/auth/login', {
+            method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username, password })
+        });
+        assert.equal(login.status, 200);
+        return login.json();
+    }
+    async function openFor(account) {
+        const context = await browser.newContext({ viewport: { width: 360, height: 800 }, serviceWorkers: 'block' });
+        await context.addInitScript(({ token, user }) => {
+            localStorage.setItem('pzp_token', token);
+            localStorage.setItem('pzp_access_token', token);
+            localStorage.setItem('pzp_current_user', JSON.stringify(user));
+            localStorage.setItem('pzp_crm_business_context', 'event_genix');
+        }, account);
+        const page = await context.newPage();
+        page.setDefaultTimeout(20000);
+        return { context, page };
+    }
+    async function openTask(page, id, alias) {
+        await page.goto(origin + `/tasks.html?${alias}=${id}&businessContext=event_genix`);
+        const dialog = page.locator('.park-task-dialog[open]');
+        await dialog.locator('[data-dialog-view]').waitFor();
+        assert.equal(new URL(page.url()).pathname, '/profile');
+        assert.equal(await page.locator('#taskDetailOverlay').count(), 0);
+        return dialog;
+    }
+    async function openAction(dialog, label) {
+        await dialog.getByText('Ще', { exact: true }).click();
+        await dialog.getByRole('button', { name: label, exact: true }).click();
+    }
+    try {
+        const guest = await actor('animator', 'Працівник');
+        const watcher = await actor('animator', 'Спостерігач', 'watcher');
+        const accountant = await actor('accountant', 'Бухгалтер');
+        const { rows: [deposit] } = await pool.query(`INSERT INTO banquet_deposits
+            (client_name_snapshot, event_date, banquet_number_snapshot, amount, payment_method, business_context)
+            VALUES ('Синтетичний клієнт', '2099-10-11', 'QA-01', 1200, 'cash', 'event_genix') RETURNING id`);
+        const { rows: [task] } = await pool.query(`INSERT INTO tasks
+            (title, status, task_mode, visibility, owner_user_id, created_by_user_id, business_context, control_meta)
+            VALUES ($1, 'done', 'work', 'team', $2, $3, 'event_genix', jsonb_build_object('depositId', $4::bigint)) RETURNING id`,
+        [`Дії картки ${suffix}`, guest.user.id, session.user.id, deposit.id]);
+        const admin = await openFor(session);
+        try {
+            const dialog = await openTask(admin.page, task.id, 'highlight');
+            await openAction(dialog, 'Оцінити виконання');
+            await dialog.getByLabel('Оцінка (1–10)').fill('8');
+            await dialog.getByLabel('Коментар', { exact: true }).fill('Локальна перевірка');
+            await dialog.getByRole('button', { name: 'Зберегти', exact: true }).click();
+            await dialog.getByText('8 / 10', { exact: true }).waitFor();
+            assert.equal((await pool.query('SELECT review_score FROM tasks WHERE id = $1', [task.id])).rows[0].review_score, 8);
+
+            await openAction(dialog, 'Змінити співвиконавців');
+            await dialog.getByLabel('Знайти людину').fill('Бухгалтер');
+            await dialog.getByRole('button', { name: 'Знайти', exact: true }).click();
+            await dialog.locator(`[data-person-add="${accountant.user.id}"]`).click();
+            await dialog.getByLabel('Знайти людину').fill('Інший пошук');
+            await admin.page.keyboard.press('Escape');
+            assert.equal(await dialog.isVisible(), true);
+            await dialog.getByRole('button', { name: 'Зберегти', exact: true }).click();
+            await dialog.getByText('Бухгалтер', { exact: true }).waitFor();
+            assert.equal((await pool.query('SELECT user_id FROM task_co_assignees WHERE task_id = $1', [task.id])).rows[0].user_id, accountant.user.id);
+            await openAction(dialog, 'Спостерігачі і матеріали');
+            await dialog.getByLabel('Знайти людину').fill('Спостерігач');
+            await dialog.getByRole('button', { name: 'Знайти', exact: true }).click();
+            await dialog.locator(`[data-person-add="${watcher.user.id}"]`).click();
+            await dialog.getByRole('button', { name: 'Зберегти', exact: true }).click();
+            await dialog.locator('[data-dialog-view]').waitFor();
+            assert.equal((await pool.query('SELECT user_id FROM task_observers WHERE task_id = $1', [task.id])).rows[0].user_id, watcher.user.id);
+            await dialog.locator('[data-task-dialog-history] summary').click();
+            const history = dialog.locator('[data-task-history-content][data-state="loaded"]');
+            await history.waitFor();
+            assert.match(await history.innerText(), /Спостерігач/i);
+            await openAction(dialog, 'Спостерігачі і матеріали');
+            await dialog.getByRole('button', { name: 'Зняти: Спостерігач', exact: true }).waitFor();
+            await dialog.getByRole('button', { name: 'Назад до перегляду', exact: true }).click();
+
+            await openAction(dialog, 'Розширені параметри');
+            await dialog.getByLabel('SLA, хв', { exact: true }).fill('95');
+            await dialog.getByLabel('Категорія', { exact: true }).selectOption('orders');
+            await dialog.getByLabel('Підкатегорія', { exact: true }).selectOption('kitchen');
+            await dialog.getByRole('button', { name: 'Зберегти', exact: true }).click();
+            await dialog.locator('[data-dialog-view]').waitFor();
+            assert.deepEqual((await pool.query('SELECT sla_minutes, category, subcategory FROM tasks WHERE id = $1', [task.id])).rows[0],
+                { sla_minutes: 95, category: 'orders', subcategory: 'kitchen' });
+
+            await pool.query("UPDATE tasks SET status = 'todo', workflow_state = 'todo' WHERE id = $1", [task.id]);
+            await admin.page.reload();
+            await dialog.locator('[data-dialog-view]').waitFor();
+            await openAction(dialog, 'Запланувати точний час');
+            await dialog.getByLabel('Тип часу').selectOption('manual');
+            await dialog.getByLabel('Дата', { exact: true }).fill('2099-11-26');
+            await dialog.getByLabel('Точний час (Київ)').fill('14:25');
+            await dialog.getByLabel('Тривалість, хв').fill('35');
+            const scheduling = admin.page.waitForResponse(response => response.request().method() === 'POST'
+                && new URL(response.url()).pathname === `/api/tasks/${task.id}/schedule`);
+            await dialog.getByRole('button', { name: 'Зберегти', exact: true }).click();
+            const scheduled = await scheduling;
+            assert.equal(scheduled.status(), 200, await scheduled.text());
+            await dialog.locator('[data-dialog-view]').waitFor();
+            const schedule = (await pool.query('SELECT scheduled_start_at, scheduled_end_at FROM tasks WHERE id = $1', [task.id])).rows[0];
+            assert.equal(new Date(schedule.scheduled_start_at).toISOString(), '2099-11-26T12:25:00.000Z');
+            assert.equal((new Date(schedule.scheduled_end_at) - new Date(schedule.scheduled_start_at)) / 60000, 35);
+        } finally {
+            await admin.context.close();
+        }
+        await pool.query(`UPDATE tasks SET status = 'todo', date = (NOW() AT TIME ZONE 'Europe/Kyiv')::date::text,
+            scheduled_start_at = NULL, scheduled_end_at = NULL, deadline = NULL WHERE id = $1`, [task.id]);
+        const finance = await openFor(accountant);
+        try {
+            const dialog = await openTask(finance.page, task.id, 'taskId');
+            await finance.page.keyboard.press('Escape');
+            await dialog.waitFor({ state: 'hidden' });
+            await finance.page.locator(`.park-task-card[data-task-id="${task.id}"] [data-cabinet-task-action="done"]`).click();
+            await dialog.locator('[data-dialog-view]').waitFor();
+            await dialog.getByRole('button', { name: 'Виконати', exact: true }).click();
+            await dialog.getByRole('alert').getByText(/Спочатку підтвердьте завдаток/).waitFor();
+            assert.equal((await pool.query('SELECT status FROM tasks WHERE id = $1', [task.id])).rows[0].status, 'todo');
+            await openAction(dialog, 'Підтвердити завдаток');
+            assert.equal(await dialog.getByLabel('Сума', { exact: true }).inputValue(), '1200');
+            await dialog.getByLabel('Сума', { exact: true }).fill('1250');
+            const posted = finance.page.waitForResponse(r => r.request().method() === 'POST'
+                && new URL(r.url()).pathname === `/api/banquet-deposits/${deposit.id}/confirm`);
+            await dialog.getByRole('button', { name: 'Підтвердити завдаток', exact: true }).click();
+            assert.equal((await posted).status(), 200);
+            await dialog.locator('[data-dialog-view]').waitFor();
+            const stored = (await pool.query('SELECT amount, verified_by FROM banquet_deposits WHERE id = $1', [deposit.id])).rows[0];
+            assert.deepEqual(stored, { amount: 1250, verified_by: accountant.user.id });
+            await openAction(dialog, 'Підтвердити завдаток');
+            await dialog.getByText('Завдаток уже підтверджено.', { exact: true }).waitFor();
+            assert.equal(await dialog.getByRole('button', { name: 'Підтвердити завдаток', exact: true }).isDisabled(), true);
+            await dialog.getByRole('button', { name: 'Назад до перегляду' }).click();
+            await dialog.getByRole('button', { name: 'Виконати', exact: true }).click();
+            await dialog.locator('[data-dialog-view]').getByText('Виконано', { exact: true }).waitFor();
+            const { rows: [brokenDepositTask] } = await pool.query(`INSERT INTO tasks
+                (title, status, task_mode, visibility, owner_user_id, business_context, source_type, source_id)
+                VALUES ('Завдаток без посилання', 'todo', 'work', 'team', $1, 'event_genix', 'banquet_deposit', 'legacy-missing') RETURNING id`,
+            [accountant.user.id]);
+            const broken = await openTask(finance.page, brokenDepositTask.id, 'open');
+            const completeRequests = [];
+            finance.page.on('request', request => {
+                if (new URL(request.url()).pathname === `/api/tasks/${brokenDepositTask.id}/complete`) completeRequests.push(request);
+            });
+            await broken.getByRole('button', { name: 'Виконати', exact: true }).click();
+            await broken.getByText('У задачі немає коректного посилання на завдаток.', { exact: true }).waitFor();
+            assert.deepEqual(completeRequests, []);
+            assert.equal((await pool.query('SELECT status FROM tasks WHERE id = $1', [brokenDepositTask.id])).rows[0].status, 'todo');
+        } finally {
+            await finance.context.close();
+        }
+        const employee = await openFor(watcher);
+        try {
+            const financeCalls = [];
+            employee.page.on('request', request => {
+                if (new URL(request.url()).pathname.startsWith('/api/banquet-deposits')) financeCalls.push(request.url());
+            });
+            const dialog = await openTask(employee.page, task.id, 'task');
+            assert.equal(await dialog.locator('[data-open-detail-action]').count(), 0);
+            assert.equal(await dialog.getByLabel('Сума', { exact: true }).count(), 0);
+            assert.deepEqual(financeCalls, []);
+            for (const [method, endpoint, body] of [
+                ['POST', `/api/banquet-deposits/${deposit.id}/confirm`, {}],
+                ['POST', `/api/tasks/${task.id}/review`, { score: 1 }],
+                ['PUT', `/api/tasks/${task.id}/co-assignees`, { userIds: [] }],
+                ['PUT', `/api/tasks/${task.id}/observers`, { observerUserIds: [] }],
+                ['PUT', `/api/tasks/${task.id}`, { sla_minutes: 50 }],
+                ['POST', `/api/tasks/${task.id}/schedule`, { schedule: { date: '2099-11-26', slot: 'morning' } }]
+            ]) {
+                const unauthorized = await fetch(origin + endpoint + '?businessContext=event_genix', {
+                    method, headers: { ...auth, authorization: `Bearer ${watcher.token}` }, body: JSON.stringify(body)
+                });
+                assert.equal(unauthorized.status, 403, endpoint);
+            }
+        } finally {
+            await employee.context.close();
+        }
+        console.log('My Day detail actions: review, co-assignees, observers, exact Kyiv time, SLA, deposit and denied role verified.');
+    } finally {
+        await pool.end();
+    }
+}
+
 async function run() {
     assert.equal(process.env.RUN_MY_DAY_PARK_ACTUAL_BROWSER, 'true');
     assert.equal(process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER, 'true');
@@ -106,6 +300,10 @@ async function run() {
     const evidence = path.resolve(__dirname, '../../output/qa');
     fs.mkdirSync(evidence, { recursive: true });
     try {
+        if (process.env.MY_DAY_DETAIL_ACTIONS_ONLY === '1') {
+            await verifyTaskDetailActions(browser, origin, session);
+            return;
+        }
         const context = await browser.newContext({
             viewport: { width: 390, height: 844 },
             hasTouch: true,
@@ -774,6 +972,7 @@ async function run() {
         assert.equal(await page.locator('[data-profile-control-new]:visible').count(), 0);
 
         await require('./task-entry-checks').verifyTaskEntry({ origin, session, evidence, taskId: Number(workId) });
+        await verifyTaskDetailActions(browser, origin, session);
         assert.deepEqual(pageErrors, []);
         assert.deepEqual(timerRequests, [], 'Park must not load or poll the global timer');
         assert.deepEqual(gameRequests, []);

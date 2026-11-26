@@ -1583,49 +1583,6 @@ body.dark-mode .task-overview-item {
         text-align: left;
     }
 }
-/* Canonical Task Detail Drawer context blocks */
-.task-detail-source-card,
-.task-detail-context-card,
-.task-detail-error {
-    display: grid;
-    gap: 6px;
-    padding: 10px;
-    border: 1px solid rgba(20, 184, 166, 0.22);
-    border-radius: 10px;
-    background: rgba(20, 184, 166, 0.06);
-    color: var(--gray-700, #334155);
-    font-size: 13px;
-}
-
-.task-detail-source-card a {
-    width: fit-content;
-    color: #0f766e;
-    font-weight: 800;
-}
-
-.task-detail-source-unavailable {
-    color: var(--gray-500, #64748b);
-    font-size: 12px;
-}
-
-.task-detail-overlay .task-detail-error,
-#taskDetailOverlay .task-detail-error {
-    width: min(420px, 100%);
-    padding: 24px;
-    background: var(--white, #fff);
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.28);
-}
-.task-detail-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 10000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-    background: rgba(0, 0, 0, 0.5);
-}
-
 /* TEAM CONTROL AND PLANNING */
 .task-team-control {
     display: grid;

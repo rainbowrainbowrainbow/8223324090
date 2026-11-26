@@ -681,6 +681,12 @@ html:has(.park-my-day.is-completing-task)::view-transition-new(root) { animation
 .park-task-dialog-content form label { font-weight: 600; }
 .park-task-dialog-content textarea { resize: vertical; }
 .park-task-dialog-content form :is(input, textarea, select) { margin-bottom: .4rem; }
+.park-task-dialog-content :is([data-detail-selected], [data-detail-people]) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+}
+.park-task-dialog-content [data-detail-selected]:empty { display: none; }
 .park-task-dialog-buttons { align-items: start; margin-top: 1rem; }
 .park-task-dialog-buttons button, .park-dialog-more > summary { font-weight: 650; }
 .park-task-dialog-content .park-dialog-primary {

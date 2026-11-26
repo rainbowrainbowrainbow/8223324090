@@ -6892,6 +6892,67 @@ function focusMyDayTaskDate(due) {
     }
 }
 
+function canViewMyDayTaskDeposit() {
+    return getPermissionLifecycle()?.status === 'ready' && canAccess('view_revenue') === true
+        && getAvailableWorkingRoles().some(role => ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'accountant'].includes(role));
+}
+
+function canConfirmMyDayTaskDeposit() {
+    return canViewMyDayTaskDeposit() && getAvailableWorkingRoles().some(role => ['creator', 'director', 'accountant'].includes(role));
+}
+
+function myDayTaskDetailActions(taskId) {
+    const taskPath = '/tasks/' + taskId;
+    async function mutate(request, message) {
+        const result = await request;
+        if (!result?.success) {
+            const status = Number(result?.status) || null;
+            throw Object.assign(new Error(result?.error || 'Не вдалося зберегти зміни.'), {
+                status, outcomeUnknown: !status || status >= 500
+            });
+        }
+        showNotification(typeof message === 'function' ? message(result) : message, 'success');
+        onMyDayTaskActionConfirmed('editor', taskId);
+    }
+    return {
+        review: fields => mutate(apiPost(taskPath + '/review', fields), 'Оцінку збережено'),
+        people: fields => mutate(apiPut(taskPath + '/co-assignees', fields), 'Співвиконавців збережено'),
+        observers: fields => mutate(apiPut(taskPath + '/observers', fields), 'Доступ спостерігачів збережено'),
+        advanced: (fields, version) => mutate(apiPut(taskPath, { ...fields, version }), 'Параметри задачі збережено'),
+        schedule: (schedule, idempotencyKey) => mutate(apiPost(taskPath + '/schedule', {
+            schedule, idempotencyKey, sourceSurface: 'profile_my_cabinet'
+        }), result => result.proposals?.length || result.task?.scheduleStatus === 'proposal'
+            ? 'Слот зайнятий. Збережено пропозицію часу' : 'Розклад задачі збережено'),
+        status: status => mutate(apiPatch(taskPath + '/status', { status, sourceSurface: 'profile_my_cabinet' }), 'Стан задачі збережено'),
+        async reassign(ownerUserId, dialog) {
+            const result = await window.TaskUiShared.executePrivateTaskHandoff(confirmed =>
+                apiPost(taskPath + '/reassign', {
+                    ownerUserId, sourceSurface: 'profile_my_cabinet', ...(confirmed && { confirmPrivateHandoff: true })
+                }), { confirm: (message, options) => confirmModal(message, { ...options, container: dialog }) });
+            if (!result?.cancelled) await mutate(result, 'Відповідального змінено');
+        },
+        categories: CABINET_TASK_CATEGORIES,
+        findPeople(query, after, signal) {
+            const params = new URLSearchParams({ q: query });
+            if (after) params.set('after', after);
+            return apiGetScopedJson('/tasks/owners?' + params, { signal });
+        },
+        canViewDeposit: canViewMyDayTaskDeposit,
+        canConfirmDeposit: canConfirmMyDayTaskDeposit,
+        loadDeposit(id, signal) {
+            if (!canViewMyDayTaskDeposit()) throw Object.assign(new Error('Фінансові дані недоступні.'), { status: 403 });
+            return apiGetScopedJson('/banquet-deposits/' + id, { signal, cache: 'no-store' });
+        },
+        deposit(id, fields) {
+            if (!canConfirmMyDayTaskDeposit()) throw Object.assign(new Error('Підтвердження завдатку недоступне.'), { status: 403 });
+            return mutate(apiPost('/banquet-deposits/' + id + '/confirm', {
+                ...fields, sourcePayload: { taskId, sourceSurface: 'task_detail_deposit_form' }
+            }), 'Завдаток підтверджено');
+        },
+        today: () => cabinetDateKeyOffset(0)
+    };
+}
+
 function syncMyDayTaskDialog(opener = null, { initialize = false } = {}) {
     const current = document.querySelector('.park-task-dialog[open]');
     const url = new URL(window.location.href);
@@ -6939,6 +7000,7 @@ function syncMyDayTaskDialog(opener = null, { initialize = false } = {}) {
         taskId, opener, mode: url.searchParams.get('mode'),
         load: signal => apiGetScopedJson(`/tasks/${taskId}`, { signal, cache: 'no-store' }),
         loadHistory: signal => apiGetScopedJson(`/tasks/${taskId}/history`, { signal, cache: 'no-store' }),
+        detailActions: myDayTaskDetailActions(taskId),
         draftScope: { actor: AppState.currentUser?.id, business: AppState.currentUser?.activeBusinessContext },
         save: (task, patch, operationId) => submitMyDayTaskAction(task, 'editor', patch, operationId),
         complete: (task, operationId) => submitMyDayTaskAction(task, 'complete', {}, operationId),
@@ -7360,7 +7422,8 @@ async function handleCabinetTaskActionClick(event) {
         return;
     }
 
-    if (action === 'open' || action === 'edit') {
+    const shouldConfirmDeposit = action === 'done' && window.TaskUiShared?.taskBanquetDepositRef?.(findCabinetTask(taskId) || {});
+    if (action === 'open' || action === 'edit' || shouldConfirmDeposit) {
         const mode = action === 'edit' ? 'edit' : '';
         if (activeTab === 'myday' && window.ProfileMyDay) {
             const url = new URL(window.location.href);

@@ -309,10 +309,6 @@ async function installFixtureRoutes(context, baseUrl, state) {
             return route.abort('blockedbyclient');
         }
         const method = request.method();
-        if (state.coAssignee && method === 'PUT' && url.pathname === '/api/tasks/42/co-assignees') {
-            state.coAssigneeIds = request.postDataJSON().userIds;
-            return json(route, { success: true, userIds: state.coAssigneeIds });
-        }
         if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
             state.mutations.push(`${method} ${url.pathname}${url.search}`);
             return route.abort('blockedbyclient');
@@ -322,7 +318,7 @@ async function installFixtureRoutes(context, baseUrl, state) {
         if (url.pathname === '/api/auth/verify') return json(route, { user: USER });
         if (url.pathname === '/api/auth/permissions') return json(route, AUTH_PERMISSIONS);
         if (url.pathname === '/api/business/profile') return json(route, { businessProfile: BUSINESS_PROFILE });
-        if (url.pathname === '/api/tasks/owners') return json(route, { success: true, users: [{ id: USER.id, name: USER.name, label: USER.name, role: USER.role }, ...(state.coAssignee ? [{ id: 902, name: 'Тестовий виконавець', label: 'Тестовий виконавець', role: 'manager' }] : [])] });
+        if (url.pathname === '/api/tasks/owners') return json(route, { success: true, users: [{ id: USER.id, name: USER.name, label: USER.name, role: USER.role }] });
         if (url.pathname === '/api/tasks/permissions') {
             const canCreateTasks = state.canCreateTasks === true;
             return json(route, {
@@ -361,8 +357,7 @@ async function installFixtureRoutes(context, baseUrl, state) {
         if (url.pathname === '/api/tasks/42/history') return json(route, { success: true, history: [] });
         if (url.pathname === '/api/tasks/42/observers') return json(route, { success: true, observers: [] });
         if (url.pathname === '/api/tasks/42/subtasks') return json(route, { success: true, subtasks: [] });
-        if (url.pathname === '/api/tasks/42') return json(route, { success: true, task: { ...TASK, substitution: state.substitution,
-            ...(state.coAssignee ? { co_assignee_user_ids: state.coAssigneeIds || [], drawer: { ...TASK.drawer, actions: { ...TASK.drawer.actions, edit: true, reassign: true, manageCoAssignees: true } } } : {}) } });
+        if (url.pathname === '/api/tasks/42') return json(route, { success: true, task: { ...TASK, substitution: state.substitution } });
         if (url.pathname === '/api/task-templates') return json(route, []);
         if (url.pathname === '/api/dashboard/alerts') return json(route, { alerts: [] });
         if (url.pathname === '/api/tasks') {
@@ -727,21 +722,6 @@ async function verifyArchiveExplanation(page, baseUrl) {
     assert.notEqual(focusStyle.outlineWidth, '0px', `archive mode button focus outline has width (${JSON.stringify(focusStyle)})`);
 }
 
-async function verifyDrawer(page, baseUrl) {
-    // Keep the retained Task Center renderer's visual/access contract covered in
-    // isolation. User entry routing is verified separately and in the actual app.
-    await openPage(page, baseUrl, '?mode=overview');
-    await page.evaluate(() => renderTaskDetailDrawer(42));
-    await page.waitForSelector('#taskDetailOverlay');
-    assert.equal(await page.locator('#taskDetailOverlay').getAttribute('data-task-version'), '3');
-    const disabledControls = await page.locator('#taskDetailOverlay [disabled][aria-disabled="true"]').count();
-    assert.ok(disabledControls >= 3, `drawer exposes permission-disabled controls (${disabledControls})`);
-    const permissionHint = page.locator('#taskDetailPermissionHint');
-    assert.equal(await permissionHint.isVisible(), true, 'drawer permission explanation is visible');
-    assert.match(await permissionHint.textContent(), /\S/, 'drawer permission explanation is non-empty');
-    assert.equal(await page.locator('.task-detail-source-card').isVisible(), true, 'drawer shows CRM source');
-}
-
 async function verifyStates(page, baseUrl, state) {
     state.overview = 'loading';
     const navigation = page.goto(`${baseUrl}/tasks?mode=overview`, { waitUntil: 'domcontentloaded', timeout: 30000 });
@@ -860,33 +840,6 @@ async function run() {
     page.setDefaultTimeout(25000);
     page.on('pageerror', error => pageErrors.push(error.message));
     try {
-        if (process.argv.includes('--co-assignee-only')) {
-            state.coAssignee = true;
-            await page.setViewportSize({ width: 390, height: 844 });
-            await openPage(page, fixture.baseUrl, '?mode=overview');
-            await page.evaluate(() => renderTaskDetailDrawer(42));
-            const checkbox = page.locator('#taskCoAssignee902');
-            await checkbox.waitFor({ state: 'visible' });
-            const label = page.locator('label[for="taskCoAssignee902"]');
-            assert.ok((await label.boundingBox()).height >= 44, 'checkbox label has a touch-sized target');
-            await label.click();
-            assert.equal(await checkbox.isChecked(), true);
-            await checkbox.evaluate(element => { window.__coAssigneeBeforeSave = element; });
-            await page.locator('[data-task-drawer-action="manageCoAssignees"]').click();
-            await page.waitForFunction(() => {
-                const current = document.querySelector('#taskCoAssignee902');
-                return current && current !== window.__coAssigneeBeforeSave && current.checked;
-            });
-            assert.deepEqual(state.coAssigneeIds, [902]);
-            await page.locator('label[for="taskCoAssignee902"]').scrollIntoViewIfNeeded();
-            const rect = await page.locator('label[for="taskCoAssignee902"]').boundingBox();
-            assert.ok(rect && rect.y >= 0 && rect.y + rect.height <= 844, 'selected co-assignee is visible in the mobile viewport');
-            const evidence = path.join(ROOT, 'output/playwright');
-            fs.mkdirSync(evidence, { recursive: true });
-            await page.screenshot({ path: path.join(evidence, 'task-co-assignee-mobile.png'), animations: 'disabled' });
-            assert.deepEqual(pageErrors, []);
-            return;
-        }
         if (substitutionOnly) {
             state.substitution = { id: '901', state: 'active' };
             const overdueList = '?mode=overview&dashboardFilter=my-overdue';
@@ -906,42 +859,34 @@ async function run() {
             await taskCard.screenshot({
                 path: path.join(evidence, 'task-list-substitution-mobile.png'), animations: 'disabled'
             });
-            await page.evaluate(() => renderTaskDetailDrawer(42));
-            const label = page.locator('.task-detail-source-card [data-task-substitution]');
-            assert.equal(await label.innerText(), 'Підміна №901 · погоджено');
-            await label.scrollIntoViewIfNeeded();
-            assert.ok(await label.evaluate(node => {
-                const range = document.createRange();
-                range.selectNodeContents(node);
-                const bounds = range.getBoundingClientRect();
-                return bounds.left >= 0 && bounds.right <= innerWidth;
-            }), 'substitution agreement text fits the phone viewport');
-            await page.locator('.task-detail-source-card').screenshot({
-                path: path.join(evidence, 'task-detail-substitution-mobile.png'), animations: 'disabled'
-            });
-            const overlay = page.locator('#taskDetailOverlay');
-            await overlay.getByRole('button', { name: '✕', exact: true }).click();
-            await overlay.waitFor({ state: 'hidden' });
             state.substitution = { id: '901', state: 'cancelled' };
             await openPage(page, fixture.baseUrl, overdueList);
             await taskCard.waitFor();
             assert.equal(await cardLabel.count(), 0);
-            await page.evaluate(() => renderTaskDetailDrawer(42));
-            await page.locator('.task-detail-source-card').waitFor();
-            assert.equal(await label.count(), 0);
-            console.log('Task list and detail substitution mobile smoke passed.');
+            console.log('Task list substitution mobile smoke passed.');
             return;
         }
         await verifyModesAndUrl(page, fixture.baseUrl);
         await verifyLegacyLinks(page, fixture.baseUrl);
         await verifyArchiveExplanation(page, fixture.baseUrl);
-        await verifyDrawer(page, fixture.baseUrl);
         await verifyStates(page, fixture.baseUrl, state);
         await verifyResponsiveThemesAndMotion(page, fixture.baseUrl, state);
         await page.route('**/profile?*', route => route.fulfill({ contentType: 'text/html', body: '<main>My Day destination fixture</main>' }));
         await openPage(page, fixture.baseUrl, '?mode=overview&dashboardFilter=my-overdue');
         await page.locator('#boardContent .task-card[data-task-id="42"] .task-card-title').click();
         await page.waitForURL(url => url.pathname === '/profile' && url.searchParams.get('tab') === 'myday' && url.searchParams.get('open') === '42');
+        await openPage(page, fixture.baseUrl, '?mode=overview');
+        await page.evaluate(() => {
+            const url = new URL(location.href);
+            url.searchParams.set('highlight', '42');
+            url.searchParams.set('businessContext', 'event_genix');
+            history.replaceState({}, '', url);
+            dispatchEvent(new PopStateEvent('popstate'));
+        });
+        await page.waitForURL(url => url.pathname === '/profile' && url.searchParams.get('open') === '42'
+            && url.searchParams.get('businessContext') === 'event_genix');
+        assert.equal(await page.locator('#taskDetailOverlay').count(), 0);
+
         assert.ok(state.requests.some(item => item.includes('/api/tasks/overview')), 'overview uses mocked API');
         assert.ok(state.requests.some(item => item.includes('/api/tasks/team-control')), 'team/planning use mocked API');
         assert.deepEqual(state.mutations, [], 'browser issued no task or preference mutations');

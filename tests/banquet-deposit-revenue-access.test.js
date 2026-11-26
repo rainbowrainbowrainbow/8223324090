@@ -161,7 +161,7 @@ test('view_revenue role defaults allow manager accountant and creator, while exp
 test('booking and task UI fail closed until revenue permission hydration is ready', () => {
     const booking = fs.readFileSync(path.join(ROOT, 'js', 'booking.js'), 'utf8');
     const banquetDetail = fs.readFileSync(path.join(ROOT, 'js', 'booking-banquet-detail.js'), 'utf8');
-    const tasks = fs.readFileSync(path.join(ROOT, 'js', 'tasks-page.js'), 'utf8');
+    const profile = fs.readFileSync(path.join(ROOT, 'js', 'profile-page.js'), 'utf8');
 
     assert.match(booking, /function bookingCanViewDepositRevenue\(\)[\s\S]*getPermissionLifecycle[\s\S]*lifecycle\?\.status === 'ready'[\s\S]*canAccess\('view_revenue'\) === true/);
     assert.match(booking, /async function hydrateBookingDepositFromServer[\s\S]*if \(!syncBookingDepositRevenueAccess\(\)\)[\s\S]*'restricted'/);
@@ -169,8 +169,7 @@ test('booking and task UI fail closed until revenue permission hydration is read
     assert.match(booking, /async function openBookingPanel[\s\S]*syncBookingDepositRevenueAccess\(\)[\s\S]*await getLinesForDate/);
     assert.match(banquetDetail, /function renderBanquetDepositStatusSection[\s\S]*if \(!bookingDetailCanViewDepositMoney\(\)\) return '';/);
 
-    assert.match(tasks, /function taskCanViewBanquetDepositRevenue\(\)[\s\S]*lifecycle\?\.status === 'ready'[\s\S]*canAccess\('view_revenue'\) === true/);
-    assert.match(tasks, /function renderBanquetDepositTaskPanel[\s\S]*if \(!taskCanViewBanquetDepositRevenue\(\)\)[\s\S]*depositProjectionForTask/);
-    assert.match(tasks, /async function confirmBanquetDepositFromTask[\s\S]*if \(!taskCanViewBanquetDepositRevenue\(\)\)[\s\S]*return false/);
-    assert.match(tasks, /if \(depositTask && !taskCanViewBanquetDepositRevenue\(\)\)[\s\S]*VIEW_REVENUE_REQUIRED[\s\S]*else if \(depositTask && depositId\)[\s\S]*apiGetBanquetDeposit/);
+    assert.match(profile, /function canViewMyDayTaskDeposit\(\)[\s\S]*getPermissionLifecycle\(\)\?\.status === 'ready'[\s\S]*canAccess\('view_revenue'\) === true/);
+    assert.match(profile, /loadDeposit\(id, signal\) \{\s*if \(!canViewMyDayTaskDeposit\(\)\) throw/);
+    assert.match(profile, /deposit\(id, fields\) \{\s*if \(!canConfirmMyDayTaskDeposit\(\)\) throw/);
 });

@@ -123,17 +123,18 @@ test('task permission audit document records current bulk baseline without stale
     assert.doesNotMatch(doc, /counts? (?:are|=) zero/i);
 });
 
-test('Task Center consumes capability decisions and explains disabled drawer actions', () => {
+test('Task Center consumes capability decisions and My Day gates review and observer actions', () => {
     const page = fs.readFileSync(path.join(ROOT, 'js', 'tasks-page.js'), 'utf8');
+    const card = fs.readFileSync(path.join(ROOT, 'js', 'profile-my-day.js'), 'utf8');
 
     assert.match(page, /taskCapabilities = permsResult\.capabilities \|\| \{\}/);
     assert.match(page, /let taskPermissionsLoaded = false/);
     assert.match(page, /TASK_PERMISSIONS_LOADING/);
     assert.match(page, /taskCapabilityAllowed\('create'/);
     assert.match(page, /taskCapabilityDecision\('delete'/);
-    assert.match(page, /taskPermissionReasonLabel\(reasons\[action\]\)/);
-    assert.match(page, /data-task-drawer-action="review"/);
-    assert.match(page, /data-task-drawer-action="delete"/);
+    assert.match(page, /deleteDecision\.reasonCode/);
+    assert.match(card, /review: actions\.review && detailActions\?\.review/);
+    assert.match(card, /observers: actions\.manageObservers && detailActions\?\.observers/);
 });
 
 test('Task Center create controls are hidden until task permissions hydrate', () => {

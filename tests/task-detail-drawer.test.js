@@ -71,11 +71,10 @@ test('shared drawer controller preserves open URLs and routes non-task surfaces 
     await ctx.TaskDetailDrawer.open(17, { view: 'my', sourceSurface: 'profile_my_day' });
     assert.equal(ctx.location.href, '/profile?tab=myday&open=17');
 
-    let rendered = null;
     ctx.location.href = 'https://crm.test/tasks?mode=overview';
-    ctx.TaskDetailDrawer.registerRenderer((id, options) => { rendered = { id, options }; return true; }, () => true);
+    assert.equal(await ctx.TaskDetailDrawer.open('22x'), false);
+    assert.equal(ctx.location.href, 'https://crm.test/tasks?mode=overview');
     await ctx.TaskDetailDrawer.open(22, { sourceSurface: 'tasks_page' });
-    assert.equal(rendered, null);
     assert.equal(ctx.location.href, '/profile?tab=myday&open=22');
 });
 
@@ -105,9 +104,9 @@ test('task surfaces use the shared controller rather than a second detail render
     const profileHtml = fs.readFileSync(path.join(ROOT, 'profile.html'), 'utf8');
     const route = fs.readFileSync(path.join(ROOT, 'routes', 'tasks.js'), 'utf8');
 
-    assert.match(tasksPage, /TaskDetailDrawer\.registerRenderer\(renderTaskDetailDrawer, closeTaskDetailOverlay\)/);
-    assert.match(tasksPage, /TaskDetailDrawer\.load\(taskId/);
-    assert.match(tasksPage, /renderTaskDetailSource\(t\)/);
+    assert.match(tasksPage, /TaskDetailDrawer\.open\(taskId/);
+    assert.match(tasksPage, /TaskLinks\.legacyDestination\(window\.location\.href, window\.location\.origin\)/);
+    assert.doesNotMatch(tasksPage, /renderTaskDetailDrawer|taskDetailOverlay/);
     assert.match(profilePage, /TaskDetailDrawer\.open\(taskId, \{ view: 'my'/);
     assert.match(tasksHtml, /js\/task-detail-drawer\.js/);
     assert.match(profileHtml, /js\/task-detail-drawer\.js/);

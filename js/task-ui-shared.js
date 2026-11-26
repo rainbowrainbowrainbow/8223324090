@@ -167,6 +167,22 @@
         return token || fallback;
     }
 
+    function taskBanquetDepositRef(task = {}) {
+        let meta = task.controlMeta || task.control_meta || {};
+        if (typeof meta === 'string') {
+            try { meta = JSON.parse(meta) || {}; } catch { meta = {}; }
+        }
+        const source = String(task.source_type || task.sourceType || '').toLowerCase() === 'banquet_deposit';
+        const entity = String(task.source_entity_type || task.sourceEntityType || '').toLowerCase() === 'banquet_deposit';
+        const candidates = [meta.depositId, meta.deposit_id];
+        if (!source && !entity && candidates.every(value => value == null)) return null;
+        if (source) candidates.push(task.source_id, task.sourceId);
+        if (entity) candidates.push(task.source_entity_id, task.sourceEntityId);
+        const id = candidates.map(value => String(value ?? '').trim())
+            .filter(value => /^[1-9]\d*$/.test(value)).map(Number).find(Number.isSafeInteger);
+        return { id: id ?? null };
+    }
+
     function taskOwnerUserId(task = {}) {
         const value = Number(task.ownerUserId ?? task.owner_user_id ?? 0);
         return Number.isInteger(value) && value > 0 ? value : null;
@@ -426,12 +442,71 @@
         return [...new Set(task.viewerRoles || task.viewer_roles || [])].map(role => labels[role]).filter(Boolean).join(' · ');
     }
 
+    const SUBCATEGORY_RAILS = {
+        orders: [
+            { id: 'all', label: 'Всі замовлення' },
+            { id: 'kitchen', label: 'Кухня' },
+            { id: 'confectionery', label: 'Кондитерка' },
+            { id: 'cakes', label: 'Торти' },
+            { id: 'cake_decor', label: 'Прикраси' }
+        ],
+        checklist: [
+            { id: 'all', label: 'Всі чек-листи' },
+            { id: 'hall_prep', label: 'Підготовка залу' },
+            { id: 'kitchen', label: 'Кухня' },
+            { id: 'cakes', label: 'Торт' },
+            { id: 'cake_decor', label: 'Прикраси' },
+            { id: 'purchase', label: 'Закупка' }
+        ]
+    };
+    const PACK_STATUS_LABELS = {
+        draft: 'Чернетка',
+        confirmed: 'Підтверджено',
+        in_production: 'У виробництві',
+        ready: 'Готово',
+        issued: 'Видано',
+        cancelled: 'Скасовано'
+    };
+    const TASK_KIND_LABELS = {
+        action: 'Дія',
+        reminder: 'Нагадування',
+        followup: 'Дотиск',
+        deep_work: 'Глибока робота',
+        checklist: 'Чеклист',
+        routine: 'Рутина',
+        waiting: 'Чекаю',
+        idea: 'Ідея',
+        decision: 'Рішення'
+    };
+    const WORKFLOW_LABELS = {
+        inbox: 'Інбокс',
+        todo: 'До виконання',
+        in_progress: 'В роботі',
+        waiting: 'Чекаю',
+        scheduled: 'Заплановано',
+        done: 'Виконано',
+        archived: 'Архів'
+    };
+    const TASK_SCHEDULE_SLOTS = [
+        { key: 'morning', icon: '🌅', label: 'Ранок' },
+        { key: 'midday', icon: '☀️', label: 'День' },
+        { key: 'afternoon', icon: '🌤️', label: 'Після обіду' },
+        { key: 'evening', icon: '🌙', label: 'Вечір' }
+    ];
+
     global.TaskUiShared = Object.freeze({
+        SUBCATEGORY_RAILS,
+        PACK_STATUS_LABELS,
+        TASK_KIND_LABELS,
+        WORKFLOW_LABELS,
+        TASK_SCHEDULE_SLOTS,
+
         taskViewerRoleLabel,
         TASK_PRIORITY_OPTIONS,
         TASK_WORKFLOW_VALUES,
         normalizeTask,
         taskContext,
+        taskBanquetDepositRef,
         taskOwnerUserId,
         taskOwnerLabel,
         taskPersonLabel,

@@ -331,8 +331,12 @@
             const isAuthor = actor > 0 && actor === Number(task.createdByUserId ?? task.created_by_user_id);
             const isCoAssignee = actor > 0 && (task.co_assignee_user_ids || []).some(id => Number(id) === actor);
             const viewerLabel = isCoAssignee ? (isAuthor ? 'Постановник · Співвиконавець' : 'Співвиконавець') : roleLabel(taskRole(task));
-            const coAssigneeLabels = coAssignees.map(person => actor === Number(person.userId) ? 'Я'
-                : global.TaskUiShared?.taskPersonLabel?.(person) || person.name || person.username).filter(Boolean);
+            const ownerId = global.TaskUiShared?.taskOwnerUserId?.(task);
+            const people = new Map(coAssignees.map(person => [Number(person.userId), actor === Number(person.userId) ? 'Я'
+                : global.TaskUiShared?.taskPersonLabel?.(person) || person.name || person.username]));
+            if (executor) people.set(ownerId, executor);
+            const labels = global.TaskUiShared?.taskParticipantLabels?.(people) || people;
+            const coAssigneeLabels = coAssignees.map(person => labels.get(Number(person.userId))).filter(Boolean);
             const actions = task.drawer?.actions || {};
             const priorities = global.TaskUiShared?.TASK_PRIORITY_OPTIONS || [];
             const editorBase = editorSnapshot(task);
@@ -344,7 +348,7 @@
                 <div><dt>Моя роль</dt><dd>${escape(viewerLabel || 'Перегляд')}</dd></div>
                 <div><dt>Стан</dt><dd>${escape(statusLabel(task))}</dd></div>
                 <div><dt>Дата</dt><dd>${due ? `<time datetime="${escape(due)}">${escape(due.split('-').reverse().join('.'))}</time>` : 'Без дати'}</dd></div>
-                ${executor ? `<div><dt>Відповідальний</dt><dd>${escape(executor)}</dd></div>` : ''}
+                ${executor ? `<div><dt>Відповідальний</dt><dd>${escape(labels.get(ownerId))}</dd></div>` : ''}
                 ${coAssigneeLabels.length ? `<div><dt>Співвиконавці</dt><dd>${escape(coAssigneeLabels.join(', '))}</dd></div>` : ''}
             </dl>
             ${description && description !== title.textContent.trim() ? `<p class="park-task-dialog-description">${escape(description)}</p>` : ''}

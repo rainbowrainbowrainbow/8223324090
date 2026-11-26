@@ -289,35 +289,38 @@ async function getAssignableTaskOwner(ownerUserId, options = {}) {
         err.code = 'INVALID_TASK_OWNER';
         throw err;
     }
+    const [owner] = await getAssignableTaskOwners([id], options);
+    if (!owner) {
+        throw Object.assign(new Error('Task owner is not active or assignable'),
+            { statusCode: 400, code: 'TASK_OWNER_NOT_ASSIGNABLE' });
+    }
+    return owner;
+}
+
+async function getAssignableTaskOwners(ids, options = {}) {
+    if (!ids.length) return [];
     const query = options.pool || pool;
-    const params = [id, ASSIGNABLE_TASK_ROLES];
+    const single = ids.length === 1;
+    const params = [single ? ids[0] : ids, ASSIGNABLE_TASK_ROLES];
     const scope = ownerCandidateScopeSql(options.actor, params, options);
     const business = businessUserAccessSql(options.actor, params, 'users', options.businessScope || options.businessContext);
     const result = await query.query(
         `SELECT id, username, name, ${business.roleSql} AS role
          FROM users
-         WHERE users.id = $1
+         WHERE users.id = ${single ? '$1' : 'ANY($1::int[])'}
            AND COALESCE(is_active, true) = true
            AND ${business.roleSql} = ANY($2::text[])
            ${scope}
-           ${business.condition}
-         LIMIT 1`,
+           ${business.condition}`,
         params
     );
-    if (!result.rows.length) {
-        const err = new Error('Task owner is not active or assignable');
-        err.statusCode = 400;
-        err.code = 'TASK_OWNER_NOT_ASSIGNABLE';
-        throw err;
-    }
-    const row = result.rows[0];
-    return {
+    return result.rows.map(row => ({
         id: row.id,
         username: row.username,
         name: row.name || null,
         role: row.role || null,
         label: taskPersonLabel(row)
-    };
+    }));
 }
 
 async function getVisibleTask(taskId, user, options = {}) {
@@ -638,6 +641,7 @@ module.exports = {
     completeTask,
     cancelTask,
     getAssignableTaskOwner,
+    getAssignableTaskOwners,
     getVisibleTask,
     listTaskOwnerCandidates,
     taskPersonLabel,

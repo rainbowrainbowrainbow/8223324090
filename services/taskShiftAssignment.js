@@ -6,7 +6,7 @@ const { STAFF_SCHEDULE_SUBGROUPS, listStaffDisplayGroups, resolveStaffDisplayGro
 const { canUseParkStaffSchedule } = require('./parkStaffScheduleAccess');
 const { legacyBusinessSurfaceAccess } = require('./legacyBusinessSurface');
 const { resolveCapability } = require('./accountAccessPolicy');
-const { getAssignableTaskOwner, taskPersonLabel } = require('./taskExecution');
+const { getAssignableTaskOwners, taskPersonLabel } = require('./taskExecution');
 
 function shiftAssignmentError(statusCode, code, message) {
     return Object.assign(new Error(message), { statusCode, code });
@@ -84,15 +84,9 @@ async function listTaskShiftGroups(db, req, scope, date) {
     const groups = new Map(taskShiftGroups().map(group => [
         group.key, { key: group.key, label: group.label, staffIds: new Set(), users: new Map(), unavailable: new Set() }
     ]));
-    const eligible = new Set();
-    for (const userId of new Set(rows.map(row => Number(row.user_id)).filter(Boolean))) {
-        try {
-            await getAssignableTaskOwner(userId, { pool: db, actor: req.user, businessScope: scope });
-            eligible.add(userId);
-        } catch (error) {
-            if (![400, 403, 404, 422].includes(error.statusCode)) throw error;
-        }
-    }
+    const ids = [...new Set(rows.map(row => Number(row.user_id)).filter(Boolean))];
+    const owners = await getAssignableTaskOwners(ids, { pool: db, actor: req.user, businessScope: scope });
+    const eligible = new Set(owners.map(owner => Number(owner.id)));
     for (const row of rows) {
         const professions = [row.segment_profession || row.profession_key || row.role_type, ...(row.role_keys || [])];
         const keys = professions.flatMap(profession => {

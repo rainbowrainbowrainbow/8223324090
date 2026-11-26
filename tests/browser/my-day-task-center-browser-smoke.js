@@ -18,6 +18,7 @@ async function run() {
     const evidence = path.resolve('output/qa/task-center');
     fs.mkdirSync(evidence, { recursive: true });
     const prefix = 'Тест задач';
+    const width = Number(process.env.TASK_ASSIGNMENT_VIEWPORT_WIDTH || 360);
     const pages = [];
     async function api(endpoint, { token, body, method = body ? 'POST' : 'GET', business = 'event_genix' } = {}) {
         const response = await fetch(origin + endpoint, {
@@ -44,7 +45,7 @@ async function run() {
     }
     async function newPage(session) {
         const context = await browser.newContext({
-            viewport: { width: 360, height: 900 }, timezoneId: 'America/Los_Angeles',
+            viewport: { width, height: 900 }, timezoneId: 'America/Los_Angeles',
             colorScheme: 'dark', serviceWorkers: 'block'
         });
         await context.route('https://**/*', route => route.abort());
@@ -411,6 +412,7 @@ async function run() {
             WHERE lead_id = $1 AND details->>'source' = 'leads.collaboration_task'`, [leadId]);
         assert.deepEqual(interactions, [{ count: 1 }]);
         await goto(page, '/profile?tab=myday&create=1&businessContext=event_genix');
+        await page.setViewportSize({ width, height: 900 });
         const authorTaskTitle = `${prefix} · Постановник співвиконавець`;
         await page.locator('#cabinetTaskTitle').fill(authorTaskTitle);
         const authorPicker = page.locator('[data-cabinet-assignment]');
@@ -499,7 +501,7 @@ async function run() {
         assert.equal(unassigned.pagination.total, 1);
         assert.equal(unassigned.tasks[0].id, missingPrimary.id);
         await goto(page, '/profile?tab=myday&create=1&businessContext=event_genix');
-        await page.setViewportSize({ width: 360, height: 900 });
+        await page.setViewportSize({ width, height: 900 });
         await page.locator('#cabinetTaskTitle').fill('Тестова задача адміністраторам зміни');
         const shiftPicker = page.locator('[data-cabinet-assignment]');
         await shiftPicker.locator('summary').click();
@@ -548,11 +550,24 @@ async function run() {
         await shiftPicker.getByRole('button', { name: 'Підтвердити склад' }).click();
         assert.deepEqual(await shiftPicker.locator('[data-assignment-user][aria-pressed="true"]').evaluateAll(rows =>
             rows.map(row => Number(row.dataset.assignmentUser))), [manager.user.id]);
+        const oldDateStarted = Promise.withResolvers();
+        const releaseDate = Promise.withResolvers();
+        const isOldDate = url => rosterUrl(url) && url.searchParams.get('date') === previousShiftDate;
+        await page.route(isOldDate, async route => {
+            const response = await route.fetch();
+            oldDateStarted.resolve();
+            await releaseDate.promise;
+            await route.fulfill({ response });
+        }, { times: 1 });
         await shiftPicker.getByLabel('Дата зміни').fill(previousShiftDate);
+        await oldDateStarted.promise;
         await shiftPicker.locator('summary').getByText('Кому · Підтвердьте склад зміни').waitFor();
         await shiftPicker.getByLabel('Дата зміни').fill(shiftDate);
         await shiftPicker.locator('option[value="reception"]').waitFor({ state: 'attached' });
         await shiftPicker.locator('#cabinetShiftGroup').selectOption('admin.administrators');
+        const oldDateDone = page.waitForResponse(response => isOldDate(new URL(response.url())));
+        releaseDate.resolve();
+        await (await oldDateDone).finished();
         await shiftPicker.getByRole('button', { name: 'Підтвердити склад' }).click();
         const shiftSummary = await shiftPicker.locator('summary').innerText();
         assert.ok(shiftSummary.includes(shiftDate));
@@ -576,8 +591,6 @@ async function run() {
         assert.equal((await db.query('SELECT id FROM tasks WHERE title = $1', [rejectedBody.title])).rowCount, 0);
         await shiftPicker.locator('summary').getByText('Кому · Підтвердьте склад зміни').waitFor();
         await shiftPicker.locator('#cabinetShiftGroup option[value="admin.administrators"]').waitFor({ state: 'attached' });
-        await updateSchedule('working');
-        await shiftPicker.getByRole('button', { name: 'Відділ на зміні' }).click();
         await shiftPicker.getByRole('button', { name: 'Підтвердити склад' }).click();
         const shiftCreated = waitForShiftSubmit();
         await page.locator('[data-cabinet-create-action="plain"]').click();
@@ -585,15 +598,25 @@ async function run() {
         assert.ok(shiftResponse.ok(), JSON.stringify(await shiftResponse.json()));
         const shiftTask = (await shiftResponse.json()).task;
         const { rows: shiftAssignments } = await db.query('SELECT user_id FROM task_co_assignees WHERE task_id = $1', [shiftTask.id]);
-        assert.deepEqual([shiftTask.ownerUserId, ...shiftAssignments.map(row => row.user_id)].sort((a, b) => a - b),
-            [primary.user.id, co.user.id].sort((a, b) => a - b));
+        assert.equal(shiftTask.ownerUserId, primary.user.id);
+        assert.deepEqual(shiftAssignments, []);
+        const storedShift = await db.query('SELECT owner_user_id FROM tasks WHERE id = $1', [shiftTask.id]);
+        assert.equal(storedShift.rows[0].owner_user_id, primary.user.id);
+        await goto(page, '/tasks?view=team');
+        await page.locator('[data-task-center-query="search"]').fill(rejectedBody.title);
+        await page.waitForFunction(() => document.querySelectorAll('.task-team-row').length === 1);
+        await Promise.all([page.waitForURL(url => Number(url.searchParams.get('open')) === shiftTask.id),
+            page.locator('.task-team-row').getByRole('button', {name: rejectedBody.title, exact: true}).click()]);
+        const shiftDialog = page.locator('.park-task-dialog[open]');
+        await shiftDialog.getByText('Тестовий виконавець', {exact: true}).waitFor();
+        assert.equal(await shiftDialog.getByText('Співвиконавці', {exact: true}).count(), 0);
+        await shiftDialog.screenshot({path:path.join(evidence, 'updated-shift-' + width + '.png')});
         const captured = shiftResponse.request();
         const body = captured.postDataJSON();
         assert.equal(body.shiftAssignment.group, 'admin.administrators');
         const originalKey = captured.headers()['idempotency-key'];
         assert.ok(originalKey);
-        await db.query(`UPDATE staff_schedule SET status = 'dayoff'
-            WHERE date = $1 AND staff_id = (SELECT staff_id FROM employee_profiles WHERE user_id = $2)`, [shiftDate, co.user.id]);
+        await updateSchedule('working');
         const submitShift = (key, requestBody) => fetch(origin + '/api/tasks', {
             method: 'POST',
             headers: { 'content-type': 'application/json', 'idempotency-key': key,
@@ -606,6 +629,12 @@ async function run() {
         const staleShift = await submitShift(randomBytes(16).toString('hex'), { ...body, title: 'Тест застарілого складу' });
         assert.equal(staleShift.status, 409);
         assert.equal((await staleShift.json()).code, 'TASK_SHIFT_ROSTER_CHANGED');
+        const missing = await db.query("INSERT INTO staff (name,department,position,role_type) VALUES ('Unlinked fixture','admin','Admin','admin') RETURNING id");
+        await db.query("INSERT INTO staff_schedule (staff_id,date,shift_start,shift_end,status) VALUES ($1,$2,'09:00','18:00','working')", [missing.rows[0].id, shiftDate]);
+        await db.query('UPDATE users SET is_active = false WHERE id = $1', [co.user.id]);
+        const partial = (await api('/api/tasks/shift-assignees?date=' + shiftDate, {token: manager.token})).groups.find(group => group.key === 'admin.administrators');
+        assert.equal(partial.unavailableCount, 2);
+        assert.deepEqual(partial.users.map(person => person.id), [primary.user.id]);
 
         const searchSeed = randomBytes(5).toString('hex');
         const sameName = `Тестовий каталог ${searchSeed}`;
@@ -633,7 +662,7 @@ async function run() {
         } });
         assert.ok(restrictedDirectory.status === 403 || (restrictedDirectory.ok && (await restrictedDirectory.json()).users.length === 0));
         await goto(page, '/profile?tab=myday&create=1&businessContext=event_genix');
-        await page.setViewportSize({ width: 1440, height: 900 });
+        await page.setViewportSize({ width, height: 900 });
         const directoryPicker = page.locator('[data-cabinet-assignment]');
         await directoryPicker.locator('summary').click();
         await directoryPicker.getByRole('searchbox').fill(sameName);
@@ -645,9 +674,15 @@ async function run() {
         await lastMatch.click();
         assert.equal(await firstMatch.getAttribute('aria-pressed'), 'true');
         assert.equal(await lastMatch.getAttribute('aria-pressed'), 'true');
+        await directoryPicker.locator('summary').click();
+        await directoryPicker.screenshot({path: path.join(evidence, 'same-name-summary-' + width + '.png')});
+        const roleSummary = await directoryPicker.locator('summary').innerText();
+        assert.ok(roleSummary.includes('Відповідальний: ' + sameName + ' · №' + directoryUsers[0].id)
+            && roleSummary.includes('Співвиконавці: ' + sameName + ' · №' + lastPage.users[0].id), 'Collapsed roles must distinguish namesakes');
+        await directoryPicker.locator('summary').click();
         await firstMatch.click();
         assert.equal(await lastMatch.getAttribute('aria-pressed'), 'true');
-        await directoryPicker.getByRole('button', { name: `Відповідальний: ${sameName}`, exact: true }).waitFor();
+        await directoryPicker.getByRole('button', { name: `Відповідальний: ${sameName} · №${lastPage.users[0].id}`, exact: true }).waitFor();
         const olderQuery = url => url.pathname === '/api/tasks/owners' && url.searchParams.get('q') === sameName;
         const delayedStarted = Promise.withResolvers();
         const delayedRelease = Promise.withResolvers();
@@ -668,6 +703,50 @@ async function run() {
         assert.equal(await firstMatch.count(), 0);
         await directorySearch.clear();
         await directoryPicker.locator(`[data-assignment-user="${primary.user.id}"]`).waitFor();
+        await directorySearch.fill(sameName);
+        await firstMatch.click();
+        const namesTitle = prefix + ' · Однакові імена';
+        await page.locator('#cabinetTaskTitle').fill(namesTitle);
+        const namesCreated = waitForShiftSubmit();
+        await page.locator('#cabinetTaskComposer').evaluate(form => form.requestSubmit());
+        const namesResponse = await namesCreated;
+        assert.ok(namesResponse.ok());
+        const namesTask = (await namesResponse.json()).task;
+        await goto(page, '/tasks?view=team');
+        await page.locator('[data-task-center-query="search"]').fill(namesTitle);
+        await page.waitForFunction(() => document.querySelectorAll('.task-team-row').length === 1);
+        await Promise.all([page.waitForURL(url => Number(url.searchParams.get('open')) === namesTask.id),
+            page.locator('.task-team-row').getByRole('button', {name:namesTitle, exact:true}).click()]);
+        const namesDialog = page.locator('.park-task-dialog[open]');
+        for (const [role,id] of [['Відповідальний', lastPage.users[0].id], ['Співвиконавці', directoryUsers[0].id]]) {
+            await namesDialog.getByText(role,{exact:true}).locator('..').getByText(sameName + ' · №' + id, {exact:true}).waitFor();
+        }
+        await namesDialog.screenshot({path:path.join(evidence, 'names-reopened-' + width + '.png')});
+        const largeShiftDate = '2099-12-24';
+        const largeShiftIds = directoryIds.slice(0,100);
+        const { rows: staffRows } = await db.query(`INSERT INTO staff (name, department, position, role_type)
+            SELECT 'Roster ' || id, 'admin', 'Admin', 'admin' FROM unnest($1::int[]) id RETURNING id, name`, [largeShiftIds]);
+        const staffIds = staffRows.map(row => row.id);
+        await db.query(`INSERT INTO employee_profiles(staff_id, user_id, full_name, is_active)
+            SELECT s, u, $3, true FROM unnest($1::int[], $2::int[]) link(s,u)`,
+        [staffIds, staffRows.map(row => Number(row.name.split(' ')[1])), sameName]);
+        await db.query(`INSERT INTO staff_schedule(staff_id, date, shift_start, shift_end, status)
+            SELECT id, $2, '09:00', '18:00', 'working' FROM unnest($1::int[]) id`, [staffIds, largeShiftDate]);
+        await goto(page, '/profile?tab=myday&create=1&businessContext=event_genix');
+        await directoryPicker.locator('summary').click();
+        await directoryPicker.getByRole('button', {name:'Відділ на зміні'}).click();
+        await directoryPicker.getByLabel('Дата зміни').fill(largeShiftDate);
+        await directoryPicker.locator('#cabinetShiftGroup').selectOption('admin.administrators');
+        const rosterStatus = await directoryPicker.locator('[role=status]').innerText();
+        for (const id of largeShiftIds) assert.ok(rosterStatus.includes(sameName + ' · №' + id));
+        await directoryPicker.getByRole('button', {name:'Підтвердити склад'}).click();
+        await directoryPicker.getByRole('button', {name:'Люди',exact:true}).click();
+        assert.equal(await directoryPicker.locator('[data-assignment-user][aria-pressed=true]').count(),100);
+        const lastOwner = sameName + ' · №' + largeShiftIds.at(-1);
+        await directoryPicker.getByRole('button',{name:'Зробити відповідальним: ' + lastOwner,exact:true}).click();
+        await directoryPicker.locator('summary').click();
+        assert.ok((await directoryPicker.locator('summary').innerText()).includes('Відповідальний: ' + lastOwner));
+        await directoryPicker.screenshot({path:path.join(evidence, 'large-shift-' + width + '.png')});
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
         console.log('Task Center and My Day acceptance passed (Chromium, PostgreSQL, dark 360/1440 and light).');
     } catch (error) {

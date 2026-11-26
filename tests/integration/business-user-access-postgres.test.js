@@ -50,14 +50,16 @@ test('task assignee SQL and fresh HTTP membership with disposable PostgreSQL', {
             business_contexts TEXT[] DEFAULT '{event_genix,dar}', default_business_context TEXT DEFAULT 'event_genix',
             telegram_chat_id TEXT, is_active BOOLEAN DEFAULT true, session_revoked_at TIMESTAMPTZ, last_seen_at TIMESTAMPTZ
         );
-        CREATE TABLE employee_profiles (user_id INT REFERENCES users(id), staff_id INT, department TEXT,
+        CREATE TABLE staff (id INT PRIMARY KEY, company_structure_node_id INT, department TEXT, role_type TEXT, position TEXT, is_active BOOLEAN DEFAULT true);
+        CREATE TABLE hr_professions (key TEXT PRIMARY KEY, title TEXT);
+        CREATE TABLE employee_profiles (id SERIAL PRIMARY KEY, user_id INT REFERENCES users(id), staff_id INT, department TEXT,
             is_active BOOLEAN DEFAULT true, last_activity_at TIMESTAMPTZ);`);
         await pool.query(fs.readFileSync(path.join(__dirname, '../../db/migrations/357_organizations_business_memberships.sql'), 'utf8'));
         require.cache[dbId] = { id: dbId, filename: dbId, loaded: true, exports: { pool } };
         auth = require('../../middleware/auth');
         const business = require('../../services/businessContext');
         const { loadMembershipAccess, applyMembershipAccess } = require('../../services/businessMembership');
-        const { getAssignableTaskOwner, listTaskOwnerCandidates } = require('../../services/taskExecution');
+        const { getAssignableTaskOwner, getAssignableTaskOwners, listTaskOwnerCandidates } = require('../../services/taskExecution');
         const { businessScopeWriteGuard } = require('../../middleware/businessScopeGuard');
         const app = express();
         app.use(express.json());
@@ -81,7 +83,7 @@ test('task assignee SQL and fresh HTTP membership with disposable PostgreSQL', {
             return { status: response.status, body: await response.json() };
         }
         async function reset() {
-            await pool.query(`TRUNCATE employee_profiles, business_memberships, organization_memberships, businesses, organizations, users RESTART IDENTITY CASCADE;
+            await pool.query(`TRUNCATE staff, employee_profiles, business_memberships, organization_memberships, businesses, organizations, users RESTART IDENTITY CASCADE;
                 INSERT INTO users (id, username, name, role) VALUES
                   (1, 'actor', 'Actor', 'creator'), (2, 'dual', 'Dual', 'creator'), (3, 'park', 'Park only', 'manager'),
                   (4, 'dar', 'Dar only', 'manager'), (5, 'foreign', 'Foreign', 'manager'), (6, 'inactive', 'Inactive', 'manager');
@@ -96,7 +98,9 @@ test('task assignee SQL and fresh HTTP membership with disposable PostgreSQL', {
                   (1, 1, 2, 'accountant', true), (2, 1, 2, 'animator', false),
                   (1, 1, 3, 'manager', true), (2, 1, 4, 'instructor', true),
                   (3, 2, 5, 'manager', true), (2, 1, 6, 'manager', true);
-                INSERT INTO employee_profiles (user_id, department) SELECT id, 'operations' FROM users;
+                UPDATE businesses SET modules = '["tasks"]';
+                INSERT INTO staff (id, company_structure_node_id) SELECT id, 1 FROM users;
+                INSERT INTO employee_profiles (user_id, staff_id, department) SELECT id, id, 'operations' FROM users;
                 UPDATE business_memberships SET is_active = false WHERE user_id = 6;
                 UPDATE users SET business_contexts = '{event_genix}' WHERE id = 4;`);
         }
@@ -104,6 +108,25 @@ test('task assignee SQL and fresh HTTP membership with disposable PostgreSQL', {
             const user = (await pool.query('SELECT * FROM users WHERE id = 1')).rows[0];
             return applyMembershipAccess(user, await loadMembershipAccess(pool, user, context));
         }
+        await t.test('batch assignment keeps business, department and self-only restrictions', async () => {
+            await reset();
+            const ids = [1, 2, 3, 4, 5, 6];
+            async function candidates(actor, businessContext) {
+                const owners = await getAssignableTaskOwners(ids, { actor, pool, businessContext });
+                return owners.map(owner => owner.id).sort((a, b) => a - b);
+            }
+            const park = await actorIn('event_genix');
+            const dar = await actorIn('dar');
+            assert.deepEqual(await candidates(park, 'event_genix'), [1, 2, 3]);
+            assert.deepEqual(await candidates(dar, 'dar'), [1, 2, 4]);
+            await pool.query("UPDATE staff SET company_structure_node_id = 2 WHERE id = 4");
+            assert.deepEqual(await candidates(dar, 'dar'), [1, 2]);
+            assert.deepEqual(await candidates(dar, 'event_genix'), []);
+            await pool.query("UPDATE business_memberships SET role = 'animator' WHERE user_id = 1 AND business_id = 2");
+            assert.deepEqual(await candidates(await actorIn('dar'), 'dar'), [1]);
+            await pool.query('UPDATE users SET is_active = false WHERE id = 2');
+            assert.deepEqual(await candidates(dar, 'dar'), [1]);
+        });
         await t.test('real owners route lists only active business employees and their business roles', async () => {
             await reset();
             const dar = await request('/api/tasks/owners?businessContext=dar');
@@ -164,13 +187,13 @@ test('task assignee SQL and fresh HTTP membership with disposable PostgreSQL', {
         });
         await t.test('self-only task policy still applies within the active membership', async () => {
             await reset();
+            await pool.query("UPDATE business_memberships SET role = 'animator' WHERE user_id = 1 AND business_id = 2");
             const actor = await actorIn('dar');
-            actor.role = 'animator';
             assert.deepEqual((await listTaskOwnerCandidates({ actor, pool })).map(row => row.id), [1]);
         });
         await t.test('department restriction still applies after matching business membership', async () => {
             await reset();
-            await pool.query("UPDATE employee_profiles SET department = 'other' WHERE user_id = 4");
+            await pool.query("UPDATE staff SET company_structure_node_id = 2 WHERE id = 4");
             assert.equal((await request('/candidate/4?businessContext=dar', 'POST')).status, 400);
             assert.deepEqual((await request('/api/tasks/owners?businessContext=dar')).body.users.map(row => row.id), [1, 2]);
         });

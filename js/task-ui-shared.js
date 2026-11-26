@@ -187,6 +187,15 @@
         return name || (Number.isInteger(id) && id > 0 ? `Користувач №${id}` : null);
     }
 
+    function taskParticipantLabels(people, duplicateNames = new Set()) {
+        const seen = new Set();
+        for (const name of people.values()) {
+            if (seen.has(name)) duplicateNames.add(name);
+            seen.add(name);
+        }
+        return new Map([...people].map(([id, name]) => [id, duplicateNames.has(name) ? name + ' · №' + id : name]));
+    }
+
     function taskOwnerState(task = {}) {
         const explicit = taskToken(task.ownerState ?? task.owner_state);
         if (explicit === 'typed' || explicit === 'legacy_unknown_owner' || explicit === 'unassigned') return explicit;
@@ -415,6 +424,7 @@
         taskOwnerUserId,
         taskOwnerLabel,
         taskPersonLabel,
+        taskParticipantLabels,
         taskOwnerState,
         taskMode,
         taskKind,

@@ -4734,11 +4734,13 @@ function bindCabinetAssignmentPicker(form) {
     let scope = cabinetHrReminderScope();
     let groups = [];
     let candidates = [];
+    const duplicateNames = new Set();
     let nextAfter = null;
     let debounce;
     const assignmentLocked = () => cabinetLeadCollaboration?.request && cabinetLeadCollaboration.composer.contains(form);
 
     function reset() {
+        duplicateNames.clear();
         clearTimeout(debounce);
         requestNumber++;
         state.selected = new Map([[self, 'Я']]);
@@ -4771,8 +4773,9 @@ function bindCabinetAssignmentPicker(form) {
             summary.textContent = 'Кому · Оберіть виконавця';
             return;
         }
-        const co = readCabinetCreateCoAssignees(form).map(id => state.selected.get(id));
-        const parts = ['Кому · Відповідальний: ' + state.selected.get(state.ownerId)];
+        const labels = window.TaskUiShared.taskParticipantLabels(state.selected, duplicateNames);
+        const co = readCabinetCreateCoAssignees(form).map(id => labels.get(id));
+        const parts = ['Кому · Відповідальний: ' + labels.get(state.ownerId)];
         if (co.length) parts.push('Співвиконавці: ' + co.slice(0, 2).join(', ') + (co.length > 2 ? ' +' + (co.length - 2) : ''));
         if (state.shiftAssignment) parts.push(shiftGroups.selectedOptions[0].textContent, state.shiftAssignment.date);
         summary.textContent = parts.join(' · ');
@@ -4791,11 +4794,13 @@ function bindCabinetAssignmentPicker(form) {
     function showShiftGroup() {
         const group = groups.find(item => item.key === shiftGroups.value);
         const available = group?.users.length || 0;
+        const members = new Map((group?.users || []).map(person => [person.id, person.label]));
+        const labels = window.TaskUiShared.taskParticipantLabels(members);
         confirmShift.disabled = !available || group.unavailableCount > 0 || available > 101;
         status.textContent = group?.unavailableCount
             ? 'Частині зміни призначити задачу неможливо. Оберіть людей вручну.'
             : available > 101 ? 'Зміна перевищує ліміт виконавців.'
-                : available ? 'Побачать задачу: ' + group.users.map(person => person.label).join(', ') : 'На цю дату виконавців немає.';
+                : available ? 'Побачать задачу: ' + [...labels.values()].join(', ') : 'На цю дату виконавців немає.';
     }
 
     async function loadShift() {
@@ -4910,18 +4915,18 @@ function bindCabinetAssignmentPicker(form) {
         results.replaceChildren();
         const single = cabinetLeadCollaboration?.composer.contains(form);
         const primary = readCabinetOwner(form);
-        const labelCounts = new Map();
-        for (const label of rows.values()) labelCounts.set(label, (labelCounts.get(label) || 0) + 1);
+        const labels = window.TaskUiShared.taskParticipantLabels(rows, duplicateNames);
+        renderSelection();
         for (const [id, label] of rows) {
             const row = document.createElement('div');
             row.className = 'cabinet-assignment-row';
             const toggle = document.createElement('button');
             toggle.type = 'button';
             toggle.disabled = !shift.hidden || Boolean(state.shiftAssignment);
-            toggle.textContent = label;
+            toggle.textContent = labels.get(id);
             const person = details.get(id);
             const subtitleValues = [person?.positionLabel, person?.departmentLabel];
-            if (labelCounts.get(label) > 1) subtitleValues.unshift(person?.username || `№${id}`);
+            if (duplicateNames.has(label)) subtitleValues.unshift(person?.username);
             const subtitleText = subtitleValues.filter(Boolean).join(' · ');
             if (subtitleText) {
                 const subtitle = document.createElement('small');
@@ -4961,7 +4966,7 @@ function bindCabinetAssignmentPicker(form) {
                 owner.className = 'cabinet-assignment-primary';
                 owner.disabled = primary === id;
                 owner.textContent = owner.disabled ? 'Відповідальний' : 'Зробити відповідальним';
-                owner.setAttribute('aria-label', (owner.disabled ? 'Відповідальний: ' : 'Зробити відповідальним: ') + label);
+                owner.setAttribute('aria-label', (owner.disabled ? 'Відповідальний: ' : 'Зробити відповідальним: ') + labels.get(id));
                 owner.addEventListener('click', () => {
                     if (assignmentLocked()) return;
                     state.ownerId = id;

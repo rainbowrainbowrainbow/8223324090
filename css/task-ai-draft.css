@@ -561,37 +561,6 @@
     opacity: 0.56;
 }
 
-.task-ai-created-marker {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    border: 1px solid rgba(99, 102, 241, 0.36);
-    border-radius: 999px;
-    padding: 3px 8px;
-    background: rgba(99, 102, 241, 0.12);
-    color: #3730a3;
-    font-size: 11px;
-    font-weight: 900;
-}
-
-.task-card.is-ai-created,
-.cabinet-task-card.is-ai-created {
-    outline: 2px solid rgba(20, 184, 166, 0.42);
-    outline-offset: 2px;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-    .task-card.is-ai-created,
-    .cabinet-task-card.is-ai-created {
-        animation: task-ai-created-pulse 1.8s ease-out 1;
-    }
-
-    @keyframes task-ai-created-pulse {
-        0% { box-shadow: 0 0 0 0 rgba(20, 184, 166, 0.36); }
-        100% { box-shadow: 0 0 0 18px rgba(20, 184, 166, 0); }
-    }
-}
-
 html[data-theme="dark"] .task-ai-draft-panel,
 body.dark-mode .task-ai-draft-panel {
     border-color: rgba(94, 234, 212, 0.22);
@@ -651,13 +620,6 @@ body.dark-mode .task-ai-review-meta dd,
 html[data-theme="dark"] .task-ai-draft-secondary summary,
 body.dark-mode .task-ai-draft-secondary summary {
     color: #e2e8f0;
-}
-
-html[data-theme="dark"] .task-ai-created-marker,
-body.dark-mode .task-ai-created-marker {
-    border-color: rgba(129, 140, 248, 0.45);
-    background: rgba(99, 102, 241, 0.22);
-    color: #c7d2fe;
 }
 
 html[data-theme="dark"] .task-ai-bundle-card-head strong,

@@ -803,7 +803,7 @@ test('profile task composer keeps one date on the quick row and one priority in 
     assert.match(collapsed, /data-cabinet-assignment>\s*<summary>Кому · Відповідальний: Я/);
     assert.match(collapsed, /data-cabinet-create-action="plain"[^>]*>Додати задачу/);
     assert.match(collapsed, /data-cabinet-composer-toggle[^>]*aria-expanded="false"[^>]*>Більше параметрів/);
-    assert.match(collapsed, /id="cabinetTaskAiFillBtn"[^>]*data-task-ai-draft-preview/);
+    assert.doesNotMatch(collapsed, /cabinetTaskAiFillBtn|data-task-ai-draft-preview/);
     assert.match(collapsed, /id="cabinetTaskComposerStatus"[^>]*role="status"/);
     assert.match(collapsed, /id="cabinetTaskComposerAdvanced"[^>]*hidden[\s\S]*id="cabinetTaskDetails"[\s\S]*id="cabinetTaskPriority"/);
     assert.equal((collapsed.match(/id="cabinetTaskDate"/g) || []).length, 1);

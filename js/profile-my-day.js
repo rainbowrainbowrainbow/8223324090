@@ -347,7 +347,7 @@
             content.innerHTML = `<dl class="park-task-dialog-facts">
                 <div><dt>Моя роль</dt><dd>${escape(viewerLabel || 'Перегляд')}</dd></div>
                 <div><dt>Стан</dt><dd>${escape(statusLabel(task))}</dd></div>
-                <div><dt>Дата</dt><dd>${due ? `<time datetime="${escape(due)}">${escape(due.split('-').reverse().join('.'))}</time>` : 'Без дати'}</dd></div>
+                <div><dt>${global.TaskUiShared?.taskDateLabel?.(task) || 'Дата'}</dt><dd>${due ? `<time datetime="${escape(due)}">${escape(due.split('-').reverse().join('.'))}</time>` : 'Без дати'}</dd></div>
                 ${executor ? `<div><dt>Відповідальний</dt><dd>${escape(labels.get(ownerId))}</dd></div>` : ''}
                 ${coAssigneeLabels.length ? `<div><dt>Співвиконавці</dt><dd>${escape(coAssigneeLabels.join(', '))}</dd></div>` : ''}
             </dl>

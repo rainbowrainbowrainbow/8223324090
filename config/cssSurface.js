@@ -606,7 +606,7 @@ const CSS_SURFACE = [
         owner: 'tasks-my-day-ai',
         category: 'feature-shared',
         status: 'active',
-        reason: 'Shared AI draft composer preview, review, field-mask, mobile, and dark-mode styles used by Profile My Day and Tasks composer.'
+        reason: 'AI draft editor styles retained for the standalone composer contract. Park task pages use the shared task marker styles.'
     },
     {
         file: 'css/my-day-impact-icons.css',

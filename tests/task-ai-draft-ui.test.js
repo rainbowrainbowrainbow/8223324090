@@ -115,7 +115,7 @@ function createSingleTaskDraftDom(options = {}) {
     };
 }
 
-test('AI draft composer is visible, shared, reviewable, and not hidden in advanced options', () => {
+test('manual task forms omit AI fill while the shared draft API remains available', () => {
     const profileHtml = read('profile.html');
     const tasksHtml = read('tasks.html');
     const profileCode = read('js/profile-page.js');
@@ -124,19 +124,17 @@ test('AI draft composer is visible, shared, reviewable, and not hidden in advanc
     const taskCreateCode = read('js/task-create.js');
     const css = read('css/task-ai-draft.css');
 
-    assert.match(profileHtml, /css\/task-ai-draft\.css\?v=/);
-    assert.match(tasksHtml, /css\/task-ai-draft\.css\?v=/);
-    assert.match(profileHtml, /js\/task-ai-draft\.js\?v=/);
-    assert.match(tasksHtml, /js\/task-ai-draft\.js\?v=/);
-    assert.match(profileCode, /data-task-ai-draft-preview/);
-    assert.match(profileCode, /id="cabinetTaskAiFillBtn"[^>]*data-task-ai-draft-preview/);
+    assert.doesNotMatch(profileHtml, /css\/task-ai-draft\.css\?v=/);
+    assert.doesNotMatch(tasksHtml, /css\/task-ai-draft\.css\?v=/);
+    assert.doesNotMatch(profileHtml, /js\/task-ai-draft\.js\?v=/);
+    assert.doesNotMatch(tasksHtml, /js\/task-ai-draft\.js\?v=/);
+    assert.doesNotMatch(profileCode, /data-task-ai-draft-preview/);
+    assert.doesNotMatch(profileCode, /id="cabinetTaskAiFillBtn"[^>]*data-task-ai-draft-preview/);
     assert.doesNotMatch(tasksHtml, /data-task-ai-draft-preview/);
     assert.match(tasksHtml, /id="taskCenterCreateLink"/);
     assert.doesNotMatch(profileCode, /Опиши результат або деталі/);
     assert.doesNotMatch(profileCode, /Підготувати з AI/);
     assert.match(profileCode, /id="cabinetTaskComposerAdvanced"[\s\S]*?<textarea id="cabinetTaskDetails"/);
-    assert.match(profileCode, /hideImpactReview: true/);
-    assert.ok(profileCode.indexOf('data-task-ai-draft-panel') < profileCode.indexOf('id="cabinetTaskComposerAdvanced"'));
 
     assert.match(taskCreateCode, /requestAiDraftPreview/);
     assert.match(taskCreateCode, /\/tasks\/ai-draft\/preview/);
@@ -187,22 +185,21 @@ test('AI draft composer is visible, shared, reviewable, and not hidden in advanc
     assert.doesNotMatch(tasksHtml, /id="taskSubtaskDraftBtn"/);
     assert.doesNotMatch(profileCode, /id="cabinetSubtaskDraftBtn"/);
 
-    assert.match(profileCode, /window\.TaskAiDraft\.bindComposer/);
+    assert.doesNotMatch(profileCode, /window\.TaskAiDraft\.bindComposer/);
     assert.doesNotMatch(tasksCode, /window\.TaskAiDraft\.bindComposer/);
-    assert.match(profileCode, /commitPayloadFor/);
+    assert.doesNotMatch(profileCode, /commitPayloadFor/);
     assert.doesNotMatch(tasksCode, /commitPayloadFor/);
-    assert.match(profileCode, /commitAiDraft/);
+    assert.doesNotMatch(profileCode, /commitAiDraft/);
     assert.doesNotMatch(tasksCode, /commitAiDraft/);
-    assert.match(profileCode, /markCommittedTaskId/);
+    assert.doesNotMatch(profileCode, /markCommittedTaskId/);
     assert.doesNotMatch(tasksCode, /markCommittedTaskId/);
-    assert.match(profileCode, /await refreshMyCabinetTab\(\{ force: true \}\);\s*return;/);
     assert.match(profileCode, /data-ai-created="true"/);
     assert.match(tasksCode, /data-ai-created="true"/);
 
-    assert.match(css, /prefers-reduced-motion/);
+    assert.match(read('css/pages-tasks.css'), /prefers-reduced-motion/);
     assert.match(css, /html\[data-theme="dark"\]/);
     assert.match(css, /@media \(max-width: 720px\)/);
-    assert.match(css, /task-ai-created-marker/);
+    assert.match(read('css/pages-tasks.css'), /task-ai-created-marker/);
     assert.match(css, /task-ai-bundle-review/);
     assert.match(css, /task-ai-bundle-card/);
     assert.match(css, /task-ai-bundle-fields/);

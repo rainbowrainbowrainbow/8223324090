@@ -1295,7 +1295,8 @@
 
     function isAiTask(task = {}) {
         const id = Number(task?.id || task?.taskId || task?.task_id || 0);
-        return String(task?.sourceType || task?.source_type || '') === 'ai_draft'
+        const source = task?.sourceType || task?.source_type;
+        return source === 'ai_draft' || source === 'ai_draft_bundle'
             || (Number.isInteger(id) && lastCommittedAiTaskIds.has(id));
     }
 

@@ -20,6 +20,7 @@ async function run() {
     const prefix = 'Тест задач';
     const width = Number(process.env.TASK_ASSIGNMENT_VIEWPORT_WIDTH || 360);
     const pages = [];
+    const aiDraftRequests = [];
     async function api(endpoint, { token, body, method = body ? 'POST' : 'GET', business = 'event_genix' } = {}) {
         const response = await fetch(origin + endpoint, {
             method,
@@ -59,6 +60,9 @@ async function run() {
             })) if (!localStorage.getItem(key)) localStorage.setItem(key, value);
         }, session);
         const page = await context.newPage();
+        page.on('request', request => {
+            if (new URL(request.url()).pathname.startsWith('/api/tasks/ai-draft/')) aiDraftRequests.push(request.method());
+        });
         page.setDefaultTimeout(18000);
         page.on('pageerror', error => console.error('Page error:', error.message));
         pages.push(page);
@@ -91,6 +95,7 @@ async function run() {
             SELECT $1 || ' · Автоматична ' || n, 'todo', 'todo', 'event_genix', $2::int, NULL, 'rule_engine', 'auto', 'booking', NULL
             FROM generate_series(1, 104) n
             UNION ALL SELECT $1 || ' · Чернетка AI', 'todo', 'todo', 'event_genix', $2::int, $3::int, 'qa', 'manual', 'ai_draft', NULL
+            UNION ALL SELECT $1 || ' · Пункт AI-пакета', 'todo', 'todo', 'event_genix', $2, $3, 'qa', 'manual', 'ai_draft_bundle', NULL
             UNION ALL SELECT $1 || ' · Інший бізнес', 'todo', 'todo', 'dar', $2, NULL, 'system', 'recurring', 'recurring', NULL
             UNION ALL SELECT $1 || ' · Прострочена', 'todo', 'todo', 'event_genix', $3, $3, 'qa', 'manual', 'manual', ($4::date - 2)::text`,
         [prefix, primary.user.id, manager.user.id, today]);
@@ -112,6 +117,7 @@ async function run() {
         await page.getByRole('link', { name: '+ Нова задача', exact: true }).click();
         const title = page.locator('#cabinetTaskTitle');
         await title.waitFor();
+        assert.equal(await page.locator('#cabinetTaskComposer [data-task-ai-draft-preview], #cabinetTaskComposer [data-task-ai-draft-review]').count(), 0);
         await page.waitForFunction(() => document.activeElement?.id === 'cabinetTaskTitle');
         assert.ok(await page.locator('.park-composer').evaluate(element => element.open));
         await title.fill(delegatedTitle);
@@ -163,7 +169,7 @@ async function run() {
         const { task } = await response.json();
         const id = task.id;
         await db.query("INSERT INTO task_subtasks (task_id, title, is_done) VALUES ($1, 'Тестовий пункт', true)", [id]);
-        await page.locator('[data-profile-control-shortcut]').click();
+        await page.locator('[data-profile-control-link]').click();
         await page.getByText(delegatedTitle, { exact: true }).waitFor();
 
         const primaryPage = await newPage(primary);
@@ -505,9 +511,12 @@ async function run() {
         await page.locator('#cabinetTaskTitle').fill('Тестова задача адміністраторам зміни');
         const shiftPicker = page.locator('[data-cabinet-assignment]');
         await shiftPicker.locator('summary').click();
+        const rosterStarted = Promise.withResolvers();
+        const releaseRoster = Promise.withResolvers();
         await page.route(url => url.pathname === '/api/tasks/shift-assignees' && url.searchParams.get('date') === shiftDate, async route => {
             const response = await route.fetch();
-            await new Promise(resolve => setTimeout(resolve, 350));
+            rosterStarted.resolve();
+            await releaseRoster.promise;
             await route.fulfill({ response });
         }, { times: 1 });
         await shiftPicker.evaluate(picker => {
@@ -517,13 +526,19 @@ async function run() {
             picker.querySelector('[data-assignment-shift-mode]').click();
         });
         await shiftPicker.getByLabel('Дата зміни').fill(shiftDate);
+        await rosterStarted.promise;
+        const composerSummary = page.locator('.park-composer > summary');
+        await composerSummary.click();
+        await page.waitForFunction(() => !document.querySelector('.park-composer').open);
+        await composerSummary.click();
+        releaseRoster.resolve();
         await shiftPicker.locator('option[value="admin.administrators"]').waitFor({ state: 'attached' });
         await shiftPicker.locator('#cabinetShiftGroup').selectOption('admin.administrators');
         await shiftPicker.getByRole('button', { name: 'Підтвердити склад' }).click();
         await shiftPicker.getByText('Зміна підтверджена. За потреби позначте іншого відповідального.', { exact: true }).waitFor();
         assert.equal(await shiftPicker.locator('[data-assignment-user][aria-pressed="true"]').count(), 2);
         await shiftPicker.screenshot({ path: path.join(evidence, 'shift-assignment-360.png'), animations: 'disabled' });
-        await shiftPicker.getByRole('button', { name: 'Люди', exact: true }).click();
+        await shiftPicker.getByRole('button', { name: 'Склад зміни', exact: true }).click();
         await shiftPicker.getByRole('button', { name: 'Змінити склад вручну' }).click();
         assert.ok(await shiftPicker.locator(`[data-assignment-user="${primary.user.id}"]`).isEnabled());
         const rosterUrl = url => url.pathname === '/api/tasks/shift-assignees';
@@ -572,7 +587,7 @@ async function run() {
         const shiftSummary = await shiftPicker.locator('summary').innerText();
         assert.ok(shiftSummary.includes(shiftDate));
         assert.ok(shiftSummary.includes(await shiftPicker.locator('#cabinetShiftGroup option:checked').innerText()));
-        await shiftPicker.getByRole('button', { name: 'Люди', exact: true }).click();
+        await shiftPicker.getByRole('button', { name: 'Склад зміни', exact: true }).click();
         assert.ok(await shiftPicker.locator(`[data-assignment-user="${co.user.id}"]`).isDisabled());
         await shiftPicker.locator('summary').click();
         assert.equal(await shiftPicker.locator('summary').innerText(), shiftSummary);
@@ -665,7 +680,12 @@ async function run() {
         await page.setViewportSize({ width, height: 900 });
         const directoryPicker = page.locator('[data-cabinet-assignment]');
         await directoryPicker.locator('summary').click();
+        const directoryResponse = page.waitForResponse(response => {
+            const url = new URL(response.url());
+            return url.pathname === '/api/tasks/owners' && url.searchParams.get('q') === sameName && !url.searchParams.has('after');
+        });
         await directoryPicker.getByRole('searchbox').fill(sameName);
+        assert.ok((await directoryResponse).ok());
         const firstMatch = directoryPicker.locator(`[data-assignment-user="${directoryUsers[0].id}"]`);
         await firstMatch.getByText(directoryUsers[0].username, { exact: true }).waitFor();
         await firstMatch.click();
@@ -740,7 +760,7 @@ async function run() {
         const rosterStatus = await directoryPicker.locator('[role=status]').innerText();
         for (const id of largeShiftIds) assert.ok(rosterStatus.includes(sameName + ' · №' + id));
         await directoryPicker.getByRole('button', {name:'Підтвердити склад'}).click();
-        await directoryPicker.getByRole('button', {name:'Люди',exact:true}).click();
+        await directoryPicker.getByRole('button', {name:'Склад зміни',exact:true}).click();
         assert.equal(await directoryPicker.locator('[data-assignment-user][aria-pressed=true]').count(),100);
         const lastOwner = sameName + ' · №' + largeShiftIds.at(-1);
         await directoryPicker.getByRole('button',{name:'Зробити відповідальним: ' + lastOwner,exact:true}).click();
@@ -748,7 +768,84 @@ async function run() {
         assert.ok((await directoryPicker.locator('summary').innerText()).includes('Відповідальний: ' + lastOwner));
         await directoryPicker.screenshot({path:path.join(evidence, 'large-shift-' + width + '.png')});
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        // Scope can change before the surrounding profile has been remounted.
+        await goto(page, '/profile?tab=myday&create=1&businessContext=event_genix');
+        const lookup = page.locator('[data-cabinet-assignment]');
+        await lookup.locator('summary').click();
+        await lookup.locator('[data-assignment-user="' + primary.user.id + '"]').waitFor();
+        const permissionScopes = [];
+        const recordScope = request => {
+            const url = new URL(request.url());
+            if (url.pathname === '/api/tasks/permissions') permissionScopes.push(url.searchParams.get('businessContext'));
+        };
+        page.on('request', recordScope);
+        async function searchPeople(query) {
+            const done = page.waitForResponse(response => {
+                const url = new URL(response.url());
+                return url.pathname === '/api/tasks/owners' && url.searchParams.get('q') === query;
+            });
+            await lookup.locator('input[type=search]').fill(query);
+            return (await done).status();
+        }
+        assert.equal(await searchPeople('Тест'), 200);
+        assert.equal(await searchPeople('Тестовий'), 200);
+        assert.deepEqual(permissionScopes, []);
+        await page.evaluate(() => CrmBusinessContext.set('dar', { emit: false }));
+        assert.equal(await searchPeople('Тестовий виконавець'), 200);
+        assert.deepEqual(permissionScopes, ['dar']);
+        await page.route(url => url.pathname === '/api/tasks/owners', route => route.fulfill({
+            status: 403, json: { error: 'Denied' }
+        }), { times: 1 });
+        assert.equal(await searchPeople('Помилка'), 403);
+        await lookup.getByText('Не вдалося завантажити виконавців. Повторіть пошук.').waitFor();
+        assert.equal(await searchPeople('Тест'), 200);
+        assert.deepEqual(permissionScopes, ['dar', 'dar']);
+        page.off('request', recordScope);
+
+        // Read a persisted AI task after a fresh navigation, with no composer or client-side commit cache.
+        for (const suffix of ['Чернетка AI', 'Пункт AI-пакета']) {
+            const legacyTitle = prefix + ' · ' + suffix;
+            await goto(primaryPage, '/tasks?view=team');
+            await primaryPage.locator('[data-task-center-query="search"]').fill(legacyTitle);
+            const legacyRow = primaryPage.locator('.task-team-row').filter({ hasText: legacyTitle });
+            await legacyRow.getByText('AI-чернетка', { exact: true }).waitFor();
+            await goto(primaryPage, '/profile?tab=myday');
+            const undated = primaryPage.locator('.park-undated');
+            if (!await undated.evaluate(element => element.open)) await undated.locator(':scope > summary').click();
+            const legacyCard = primaryPage.locator('.park-task-card').filter({ hasText: legacyTitle });
+            await legacyCard.locator('.task-ai-created-marker').waitFor();
+        }
+        const legacyManual = await db.query(`INSERT INTO tasks
+            (title, owner_user_id, created_by_user_id, status, visibility, business_context, date, deadline)
+            VALUES ($1, $2, $2, 'todo', 'team', 'event_genix', $3::text, $3::date + interval '8 hours') RETURNING id`,
+        [prefix + ' · Стара планова', primary.user.id, today]);
+        await primaryPage.reload();
+        const oldCard = primaryPage.locator('.park-task-card[data-task-id="' + legacyManual.rows[0].id + '"]');
+        await oldCard.waitFor();
+        assert.equal(await oldCard.locator('.task-ai-created-marker').count(), 0);
+        await oldCard.locator('.park-task-title').click();
+        await primaryPage.locator('.park-task-dialog[open]').getByText('Дата', {exact: true}).waitFor();
+        assert.equal(await primaryPage.evaluate(() => performance.getEntriesByType('resource')
+            .some(entry => /task-ai-draft[.](?:js|css)$/.test(new URL(entry.name).pathname))), false);
+
+        for (const business of ['dar', 'event_genix']) {
+            await goto(page, '/profile?tab=myday&businessContext=' + business);
+            const control = page.locator('[data-profile-control-link]');
+            await control.waitFor();
+            assert.equal(await page.locator('a[href*="tab=control"]:visible').count(), 1);
+            assert.equal(new URL(await control.evaluate(link => link.href)).searchParams.get('businessContext'), business);
+            const tabOpened = page.context().waitForEvent('page');
+            await control.click({ modifiers: ['Control'] });
+            const newTab = await tabOpened;
+            await newTab.locator('[data-profile-control-panel]').waitFor();
+            assert.equal(await newTab.evaluate(() => CrmBusinessContext.scope().activeContext), business);
+            await newTab.close();
+            await control.click();
+            await page.locator('[data-profile-control-panel]').waitFor();
+            assert.equal(await page.evaluate(() => CrmBusinessContext.scope().activeContext), business);
+        }
         console.log('Task Center and My Day acceptance passed (Chromium, PostgreSQL, dark 360/1440 and light).');
+        assert.deepEqual(aiDraftRequests, [], 'Manual task flows must not request AI drafts');
     } catch (error) {
         await Promise.all(pages.map((page, index) => page.screenshot({
             path: path.join(evidence, 'failure-' + index + '.png'), timeout: 3000

@@ -349,7 +349,7 @@ async function assertFullComposerContract(page, state) {
     await page.locator('#cabinetTaskPriority').selectOption('high');
     await page.locator('#cabinetTaskVisibility').selectOption('me_only');
     await page.locator('#cabinetTaskAllowReschedule').uncheck();
-    assert.equal(await page.getByRole('button', { name: 'Заповнити з AI', exact: true }).isVisible(), true);
+    assert.equal(await page.getByRole('button', { name: 'Заповнити з AI', exact: true }).count(), 0);
     assert.equal(await page.locator('#cabinetTaskKind').inputValue(), 'action');
     assert.equal(await page.locator('#cabinetDecompositionMode, #cabinetSubtaskList, #cabinetTaskReportRequired').count(), 0);
     const expected = await readComposer();

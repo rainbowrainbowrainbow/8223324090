@@ -1147,7 +1147,7 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
         assert.equal(bucket.rows[0].valid_window, true);
     });
 
-    it('commits AI draft task, subtasks, impacts, and audit history atomically with idempotent replay', async () => {
+    it('commits AI draft task, impacts, and audit history atomically without writing legacy subtasks', async () => {
         const taskAiDraftPreview = require('../../services/taskAiDraftPreview');
         const owner = await createUser('ai_draft_commit');
         const crmImpact = await createImpact(owner.id, 'AI Draft CRM');
@@ -1197,7 +1197,9 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
         assert.equal(committed.data?.replayed, false);
         const taskId = Number(committed.data?.task?.id);
         assert.ok(taskId > 0);
-        assert.equal(committed.data?.subtasks?.length, 3);
+        assert.deepEqual(committed.data.subtasks, []);
+        const storedSubtasks = await query('SELECT id FROM task_subtasks WHERE task_id = $1', [taskId]);
+        assert.equal(storedSubtasks.rowCount, 0);
         assert.deepEqual(committed.data?.classification?.impacts?.map(impact => Number(impact.id)), impactIds);
         assert.deepEqual(await readImpactIds(owner.id, taskId), impactIds);
 

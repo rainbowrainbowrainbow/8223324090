@@ -2960,7 +2960,7 @@ function renderCompactTeamRow(task) {
     const overdue = days > 0 && !isDeferredTask(task);
     const time = window.TaskUiShared.taskExplicitTime(task);
     const status = WORKFLOW_LABELS[taskWorkflow(task)] || STATUS_LABELS[task.status] || 'До виконання';
-    const ai = window.TaskAiDraft?.isAiTask?.(task);
+    const ai = window.TaskUiShared?.isAiTask?.(task);
     const context = { booking: 'Бронювання', recurring: 'Рутина', lead: 'Лід', order: 'Замовлення',
         customer: 'Клієнт', operation_pack: 'Операційний пакет', chat: 'Чат', attendance: 'Табель' }[task.source_type];
     const source = ai ? 'AI-чернетка' : task.is_automatic
@@ -3639,7 +3639,7 @@ function renderTaskCard(task) {
     const deferredHtml = renderTaskDeferredBadge(t);
     const isKanbanCard = currentView === 'board' && KANBAN_STATUSES.includes(t.status);
     const isKanbanSaving = kanbanSavingTaskIds.has(Number(t.id));
-    const isAiCreated = window.TaskAiDraft?.isAiTask?.(t) === true;
+    const isAiCreated = window.TaskUiShared?.isAiTask?.(t) === true;
     const aiCreatedMarker = isAiCreated ? '<span class="task-ai-created-marker" aria-label="Створено з допомогою AI">✨ AI</span>' : '';
     const kanbanAttrs = isKanbanCard
         ? ` draggable="true" data-kanban-card="true" data-status="${escapeHtml(t.status)}" aria-grabbed="false"`

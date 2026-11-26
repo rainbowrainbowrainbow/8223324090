@@ -304,7 +304,7 @@ async function run() {
         assert.equal(await mode.inputValue(), 'work');
         assert.equal(await work.locator('[data-park-task-mode]').textContent(), 'Робоча');
         assert.equal(await personal.locator('[data-park-task-mode]').textContent(), 'Особиста');
-        assert.equal(await composer.getByRole('button', { name: 'Заповнити з AI', exact: true }).isVisible(), true);
+        assert.equal(await composer.getByRole('button', { name: 'Заповнити з AI', exact: true }).count(), 0);
         assert.equal(await page.locator('#cabinetDecompositionMode, [data-cabinet-my-day-view-mode]').count(), 0);
 
         const done = work.getByRole('button', { name: 'Виконати', exact: true });

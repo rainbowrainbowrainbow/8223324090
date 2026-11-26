@@ -241,6 +241,17 @@
         return task.snoozedUntil || task.snoozed_until || null;
     }
 
+    function taskDateLabel(task = {}) {
+        const scheduled = Boolean(taskScheduledStart(task) || task.date);
+        if (taskSnoozedUntil(task) || scheduled === Boolean(task.deadline)) return 'Дата';
+        return scheduled ? 'На дату' : 'До дати';
+    }
+
+    function isAiTask(task = {}) {
+        const source = task.sourceType || task.source_type;
+        return source === 'ai_draft' || source === 'ai_draft_bundle' || global.TaskAiDraft?.isAiTask?.(task) === true;
+    }
+
     function taskDueValue(task = {}) {
         return taskScheduledStart(task)
             || taskSnoozedUntil(task)
@@ -424,6 +435,8 @@
         taskOwnerUserId,
         taskOwnerLabel,
         taskPersonLabel,
+        taskDateLabel,
+        isAiTask,
         taskParticipantLabels,
         taskOwnerState,
         taskMode,

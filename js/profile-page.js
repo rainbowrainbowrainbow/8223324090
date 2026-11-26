@@ -1871,6 +1871,8 @@ function renderProfileWorkHubTabs(entries = profileProfessionEntries()) {
 function renderProfileSecondaryTabs() {
     if (!isOwnProfile) return '';
     const controlCount = profileControlCount();
+    const context = window.CrmBusinessContext?.scope?.()?.activeContext;
+    const controlUrl = '/profile?tab=control' + (context ? '&businessContext=' + encodeURIComponent(context) : '');
     const tabs = [
         ['myday', 'Мій день'], ['control', 'На контролі'], ['results', PROFILE_EMPLOYEE_TABS.results],
         ['salary', PROFILE_EMPLOYEE_TABS.salary], ['workbase', 'Робоча база'], ['settings', 'Налаштування']
@@ -1879,7 +1881,7 @@ function renderProfileSecondaryTabs() {
         <nav class="profile-secondary-work-menu profile-park-nav" aria-label="Розділи профілю">
             <div class="profile-secondary-tabs">
                 ${tabs.map(([id, label]) => id === 'control'
-                    ? `<a class="profile-primary-tab${activeTab === id ? ' active' : ''}" data-profile-tab="control" data-profile-control-link href="/profile?tab=control"${activeTab === id ? ' aria-current="page"' : ''}>На контролі <span data-profile-control-count${controlCount == null ? ' hidden' : ''}>${escapeHtml(controlCount ?? '')}</span> ${renderProfileControlNewBadge({ announce: true })}</a>`
+                    ? `<a class="profile-primary-tab${activeTab === id ? ' active' : ''}" data-profile-tab="control" data-profile-control-link href="${escapeHtml(controlUrl)}"${activeTab === id ? ' aria-current="page"' : ''}>На контролі <span data-profile-control-count${controlCount == null ? ' hidden' : ''}>${escapeHtml(controlCount ?? '')}</span> ${renderProfileControlNewBadge({ announce: true })}</a>`
                     : renderProfilePrimaryTab(id, label)).join('')}
             </div>
         </nav>`;
@@ -4730,6 +4732,9 @@ function bindCabinetAssignmentPicker(form) {
     const state = { selected: new Map([[self, 'Я']]), ownerId: self, implicitSelf: true };
     cabinetAssignmentPickers.set(form, state);
     let canAssign = false;
+    let accessRequest = null;
+    let accessScope = null;
+    const permissionScope = () => JSON.stringify([AppState.currentUser?.id || currentUserId, cabinetHrReminderScope()]);
     let requestNumber = 0;
     let scope = cabinetHrReminderScope();
     let groups = [];
@@ -4740,6 +4745,7 @@ function bindCabinetAssignmentPicker(form) {
     const assignmentLocked = () => cabinetLeadCollaboration?.request && cabinetLeadCollaboration.composer.contains(form);
 
     function reset() {
+        accessRequest = null;
         duplicateNames.clear();
         clearTimeout(debounce);
         requestNumber++;
@@ -4876,6 +4882,7 @@ function bindCabinetAssignmentPicker(form) {
     });
     shiftDate.addEventListener('change', loadShift);
     shiftGroups.addEventListener('change', () => {
+        peopleButton.textContent = 'Люди';
         state.needsShiftConfirmation = true;
         results.replaceChildren();
         renderSelection();
@@ -4890,6 +4897,7 @@ function bindCabinetAssignmentPicker(form) {
         state.ownerId = state.selected.has(previousOwner) ? previousOwner : participants[0][0];
         state.implicitSelf = false;
         state.shiftAssignment = { group: group.key, date: shiftDate.value };
+        peopleButton.textContent = 'Склад зміни';
         state.needsShiftConfirmation = false;
         renderSelection();
         renderCandidates([]);
@@ -4991,16 +4999,22 @@ function bindCabinetAssignmentPicker(form) {
 
     async function load(append = false) {
         if (!shift.hidden || state.shiftAssignment || assignmentLocked()) return;
+        clearTimeout(debounce);
         const request = ++requestNumber;
-        const context = cabinetHrReminderScope();
-        const current = () => request === requestNumber && form.isConnected && context === cabinetHrReminderScope()
+        const context = permissionScope();
+        const current = () => request === requestNumber && form.isConnected && context === permissionScope()
             && shift.hidden && !assignmentLocked();
         if (!current()) return;
         status.textContent = 'Завантаження…';
         try {
-            const access = await apiGetScopedJson('/tasks/permissions');
+            if (!accessRequest || accessScope !== context) {
+                accessScope = context;
+                accessRequest = apiGetScopedJson('/tasks/permissions');
+            }
+            const access = await accessRequest;
             if (!current()) return;
-            const permissions = access?.permissions;
+            if (!access?.permissions) throw new Error('Task permissions unavailable');
+            const permissions = access.permissions;
             const canCreate = access?.capabilities?.create?.allowed ?? permissions?.canCreateTasks;
             const pack = document.querySelector('[data-cabinet-operation-pack]');
             if (pack) pack.hidden = !canCreate || Boolean(cabinetLeadCollaboration?.composer.contains(form));
@@ -5037,13 +5051,22 @@ function bindCabinetAssignmentPicker(form) {
             renderCandidates(candidates);
             status.textContent = canAssign && search.value.trim() && candidates.length === 0 && !matchesSelfSearch() ? 'Нікого не знайдено.' : '';
         } catch (error) {
-            if (current()) status.textContent = 'Не вдалося завантажити виконавців. Повторіть пошук.';
+            if (!current()) return;
+            accessRequest = null;
+            canAssign = false;
+            shiftButton.hidden = true;
+            morePeople.hidden = true;
+            renderCandidates([]);
+            status.textContent = 'Не вдалося завантажити виконавців. Повторіть пошук.';
         }
     }
 
     search.addEventListener('input', () => {
         requestNumber++;
+        nextAfter = null;
+        candidates = [];
         morePeople.hidden = true;
+        renderCandidates(candidates);
         clearTimeout(debounce);
         debounce = setTimeout(load, 200);
     });
@@ -5070,7 +5093,12 @@ function bindCabinetAssignmentPicker(form) {
     visibility.addEventListener('change', sync);
     mode.addEventListener('change', sync);
     form.closest('.park-composer')?.addEventListener('toggle', event => {
-        if (event.target !== form.closest('.park-composer') || !event.target.open) return;
+        if (event.target !== form.closest('.park-composer')) return;
+        if (!event.target.open) {
+            if (shift.hidden) requestNumber++;
+            accessRequest = null;
+            return;
+        }
         if (scope !== cabinetHrReminderScope()) {
             scope = cabinetHrReminderScope();
             reset();
@@ -5157,7 +5185,7 @@ function clearCabinetTaskCreateAttempt(signature = '', idempotencyKey = '') {
 
 function setCabinetTaskCreateBusy(busy = false, form = document.getElementById('cabinetTaskComposer')) {
     if (form) form.dataset.cabinetCreateBusy = busy ? 'true' : 'false';
-    form?.querySelectorAll?.('[data-cabinet-create-action], [data-task-ai-draft-submit-intent]')
+    form?.querySelectorAll?.('[data-cabinet-create-action]')
         .forEach(button => {
             button.disabled = Boolean(busy);
             button.setAttribute('aria-busy', busy ? 'true' : 'false');
@@ -5165,11 +5193,10 @@ function setCabinetTaskCreateBusy(busy = false, form = document.getElementById('
 }
 
 function setCabinetTaskComposerStatus(message = '', type = '', root = document) {
-    const status = root === document ? document.getElementById('cabinetTaskComposerStatus') : root.querySelector('#cabinetTaskComposerStatus');
-    const node = status || root.querySelector?.('[data-task-ai-draft-status]');
+    const node = root === document ? document.getElementById('cabinetTaskComposerStatus') : root.querySelector('#cabinetTaskComposerStatus');
     if (!node) return;
     node.textContent = message;
-    node.className = `task-ai-draft-status cabinet-task-composer-status ${type || ''}`.trim();
+    node.className = `cabinet-task-composer-status ${type || ''}`.trim();
 }
 
 function setCabinetTaskTitleGuidance(message = '', type = '') {
@@ -5186,77 +5213,6 @@ function autoGrowCabinetTaskInput(input = document.getElementById('cabinetTaskTi
     if (!input || String(input.tagName || '').toLowerCase() !== 'textarea') return;
     input.style.height = 'auto';
     input.style.height = `${Math.min(Math.max(input.scrollHeight || 0, 46), 180)}px`;
-}
-
-function readCabinetAiDraft() {
-    const kind = document.getElementById('cabinetTaskKind')?.value || 'action';
-    const selectedMode = document.getElementById('cabinetTaskMode')?.value || cabinetCreateDefaultsForSegment(myTasksSegment).mode;
-    const selectedDate = document.getElementById('cabinetTaskDate')?.value || '';
-    return {
-        title: document.getElementById('cabinetTaskTitle')?.value.trim() || '',
-        description: document.getElementById('cabinetTaskDetails')?.value.trim() || '',
-        category: document.getElementById('cabinetTaskCategory')?.value || cabinetCreateDefaultsForSegment(myTasksSegment, selectedMode).category,
-        priority: readCabinetCreatePriority(),
-        taskType: 'human',
-        mode: 'simple',
-        structuralMode: 'simple',
-        taskMode: selectedMode,
-        kind,
-        taskKind: kind,
-        visibility: document.getElementById('cabinetTaskVisibility')?.value || (selectedMode === 'private' ? 'private' : (selectedMode === 'personal' ? 'me_only' : 'team')),
-        workflowState: kind === 'waiting' ? 'waiting' : 'inbox',
-        duePreset: cabinetCreateDuePreset,
-        scheduleDate: selectedDate,
-        durationMinutes: 30,
-        scheduleSlot: 'morning',
-        ownerUserId: readCabinetOwner(),
-        sourceType: 'manual',
-        sourceModule: 'profile_my_cabinet',
-        sourceSurface: 'profile_my_cabinet',
-        scheduleConfirmed: cabinetCreateDuePreset !== 'no_date',
-        allowReschedule: document.getElementById('cabinetTaskAllowReschedule')?.checked !== false,
-        captureIntent: { waiting: kind === 'waiting' }
-    };
-}
-
-function applyCabinetAiDraftField(field, value) {
-    if (field === 'title') {
-        const input = document.getElementById('cabinetTaskTitle');
-        if (input) input.value = String(value || '');
-        return;
-    }
-    if (field === 'description') {
-        const textarea = document.getElementById('cabinetTaskDetails');
-        if (textarea) textarea.value = String(value || '');
-        return;
-    }
-    if (field === 'scheduleDate') {
-        const input = document.getElementById('cabinetTaskDate');
-        const date = String(value || '').trim();
-        if (input) input.value = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : '';
-        setCabinetDuePreset(date ? 'custom' : 'no_date');
-        return;
-    }
-    if (field === 'priority') {
-        setCabinetCreatePriority(String(value || 'normal'));
-        return;
-    }
-}
-
-function focusCabinetAiDraftField(field) {
-    const map = {
-        title: 'cabinetTaskTitle',
-        description: 'cabinetTaskDetails',
-        mode: 'cabinetTaskMode',
-        scheduleDate: 'cabinetTaskDate',
-        priority: 'cabinetTaskPriority'
-    };
-    if (['description', 'mode', 'priority'].includes(field)) {
-        setCabinetTaskComposerExpanded(true);
-        const details = document.querySelector('.park-composer-options');
-        if (details) details.open = true;
-    }
-    document.getElementById(map[field])?.focus();
 }
 
 function formatCabinetPulseCount(value) {
@@ -6095,7 +6051,7 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
             blocked,
             postponementBadge: renderCabinetPostponementBadge(task),
             substitution: task.substitution,
-            isAi: window.TaskAiDraft?.isAiTask?.(task) === true,
+            isAi: window.TaskUiShared?.isAiTask?.(task) === true,
             role: window.ProfileMyDay.taskRole(task),
             executor: task.ownerLabel || task.owner_name || task.owner_username,
             dueState: due.key,
@@ -6160,7 +6116,7 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
         attentionLevel ? 'attention-level-' + attentionLevel : '',
         `priority-${priority}`,
     ].filter(Boolean).join(' ');
-    const isAiCreated = window.TaskAiDraft?.isAiTask?.(task) === true;
+    const isAiCreated = window.TaskUiShared?.isAiTask?.(task) === true;
     const aiCreatedMarker = isAiCreated
         ? '<span class="task-ai-created-marker" aria-label="Створено з допомогою AI">✨ AI</span>'
         : '';
@@ -6251,7 +6207,7 @@ function bindMyDayTaskNavigation(composer) {
     }
     const businessContext = window.CrmBusinessContext?.scope?.()?.activeContext;
     if (businessContext) {
-        workspace.querySelectorAll('[data-profile-control-shortcut], [data-profile-team-link]').forEach(link => {
+        workspace.querySelectorAll('[data-profile-team-link]').forEach(link => {
             const url = new URL(link.href);
             url.searchParams.set('businessContext', businessContext);
             link.href = url.href;
@@ -6327,9 +6283,6 @@ function configureCabinetLeadCollaboration(form, workspace, leadId, handoff) {
     status.hidden = false;
     form.querySelector('[data-cabinet-create-action="plain"]').textContent = 'Оформити співпрацю';
     form.querySelector('#cabinetTaskPriority option[value="urgent"]')?.remove();
-    form.querySelectorAll('[data-task-ai-draft-preview]').forEach(element => {
-        element.hidden = true;
-    });
     ['cabinetTaskMode', 'cabinetTaskKind', 'cabinetTaskCategory', 'cabinetTaskVisibility', 'cabinetTaskAllowReschedule', 'cabinetDueMode'].forEach(id => {
         const label = form.querySelector('#' + id)?.closest('label');
         if (label) label.hidden = true;
@@ -6492,7 +6445,7 @@ function renderCabinetTaskComposer(options = {}) {
             <div class="cabinet-task-composer-main">
                 <label class="cabinet-task-title-field" for="cabinetTaskTitle">
                     <span>Назва задачі</span>
-                    <textarea id="cabinetTaskTitle" name="title" rows="1" autocomplete="off" enterkeyhint="done" placeholder="Що потрібно зробити?" data-task-ai-source-field="title" aria-required="true" aria-describedby="cabinetTaskTitleGuidance cabinetTaskComposerStatus" aria-invalid="false"></textarea>
+                    <textarea id="cabinetTaskTitle" name="title" rows="1" autocomplete="off" enterkeyhint="done" placeholder="Що потрібно зробити?" aria-required="true" aria-describedby="cabinetTaskTitleGuidance cabinetTaskComposerStatus" aria-invalid="false"></textarea>
                     <span id="cabinetTaskTitleGuidance" class="cabinet-task-title-guidance" aria-live="polite"></span>
                 </label>
                 <details class="cabinet-assignment" data-cabinet-assignment>
@@ -6534,20 +6487,14 @@ function renderCabinetTaskComposer(options = {}) {
                 <button type="submit" class="cabinet-task-create-submit" data-cabinet-create-action="plain" aria-busy="false">Додати задачу</button>
             </div>
             <p id="cabinetTaskVisibilityHint" class="park-task-visibility"${defaults.visibility === 'team' ? ' hidden' : ''}>${cabinetTaskVisibilityHint(defaults.visibility)}</p>
-            <div class="cabinet-task-composer-actions">
-                ${simple ? '' : `<button type="button" class="cabinet-task-composer-toggle" data-cabinet-composer-toggle aria-expanded="${expanded ? 'true' : 'false'}" aria-controls="cabinetTaskComposerAdvanced">${expanded ? 'Згорнути' : 'Більше параметрів'}</button>`}
-                <button type="button" class="cabinet-task-ai-fill task-ai-draft-trigger" id="cabinetTaskAiFillBtn" data-cabinet-create-action="ai" data-task-ai-draft-preview aria-busy="false">Заповнити з AI</button>
-            </div>
+            ${simple ? '' : `<div class="cabinet-task-composer-actions"><button type="button" class="cabinet-task-composer-toggle" data-cabinet-composer-toggle aria-expanded="${expanded ? 'true' : 'false'}" aria-controls="cabinetTaskComposerAdvanced">${expanded ? 'Згорнути' : 'Більше параметрів'}</button></div>`}
             <p data-cabinet-create-context hidden></p>
-            <div class="task-ai-draft-panel" data-task-ai-draft-panel>
-                <p id="cabinetTaskComposerStatus" class="task-ai-draft-status cabinet-task-composer-status" data-task-ai-draft-status role="status" aria-live="polite"></p>
-                <div class="task-ai-draft-review-host" data-task-ai-draft-review hidden></div>
-            </div>
+            <p id="cabinetTaskComposerStatus" class="cabinet-task-composer-status" role="status" aria-live="polite"></p>
             ${simple ? '<details class="park-composer-options"><summary>Параметри задачі</summary>' : ''}
             <div id="cabinetTaskComposerAdvanced" data-cabinet-composer-advanced ${expanded ? '' : 'hidden'}>
                 <label class="cabinet-task-description-field" for="cabinetTaskDetails">
                     <span>Опис</span>
-                    <textarea id="cabinetTaskDetails" name="description" rows="3" data-task-ai-source-field="description"></textarea>
+                    <textarea id="cabinetTaskDetails" name="description" rows="3"></textarea>
                 </label>
                 <div class="cabinet-task-composer-main-advanced">
                     <label for="cabinetTaskCategory">
@@ -6915,7 +6862,6 @@ function renderMyDayCommandCenterTab() {
         <div class="cabinet-shell cabinet-command-center park-my-day" id="myDayDayPanel">
             <div data-park-my-day-reminders>${renderMyDayHrReminders()}</div>
             <nav class="park-task-navigation" aria-label="Перегляди задач">
-                <a href="/profile?tab=control" data-profile-control-shortcut>На контролі</a>
                 <a href="/tasks?view=team" data-profile-team-link>Задачі команди</a>
             </nav>
             <details class="park-composer"${composerOpen ? ' open' : ''}>
@@ -7611,7 +7557,7 @@ function showCabinetTaskCreateSuccessToast(result = {}, draft = {}, verification
         ? window.TaskCreate.buildCreateNotification([task], [draft], { postCreateWarningCount })
         : {
             type: postCreateWarningCount > 0 ? 'warning' : 'success',
-            title: 'Задачу створено в основних задачах',
+            title: 'Задачу створено',
             message: draft.title ? `«${draft.title}»` : 'Задачу додано в основний список',
             details: postCreateWarningCount > 0 ? [`Потрібно перевірити: ${postCreateWarningCount}`] : [],
             durationMs: 8000,
@@ -7619,7 +7565,7 @@ function showCabinetTaskCreateSuccessToast(result = {}, draft = {}, verification
             pauseOnInteract: true,
             closeButton: true
         };
-    payload.title = 'Задачу створено в основних задачах';
+    payload.title = 'Задачу створено';
     if (taskId) {
         payload.actions = [
             {
@@ -7844,7 +7790,6 @@ async function createCabinetTask(event) {
         await submitCabinetLeadCollaboration(composer);
         return;
     }
-    const aiCommitPayload = window.TaskAiDraft?.commitPayloadFor?.(composer);
     const assignmentState = cabinetAssignmentPickers.get(composer);
     if (assignmentState?.needsShiftConfirmation) {
         setCabinetTaskComposerStatus('Підтвердьте склад зміни перед створенням задачі.', 'error');
@@ -7855,12 +7800,8 @@ async function createCabinetTask(event) {
         composer.querySelector('[data-cabinet-assignment] summary')?.focus();
         return;
     }
-    if (aiCommitPayload && assignmentState?.shiftAssignment) {
-        setCabinetTaskComposerStatus('Для AI-чернетки відкрийте «Люди» й натисніть «Змінити склад вручну».', 'error');
-        return;
-    }
     const coAssigneeUserIds = readCabinetCreateCoAssignees(composer);
-    const titleError = !aiCommitPayload ? validateCabinetPlainTaskTitle(title) : '';
+    const titleError = validateCabinetPlainTaskTitle(title);
     if (titleError) {
         input?.focus();
         setCabinetTaskTitleGuidance(titleError, 'error');
@@ -7897,47 +7838,6 @@ async function createCabinetTask(event) {
         allowReschedule: document.getElementById('cabinetTaskAllowReschedule')?.checked !== false,
         captureIntent: { waiting: kind === 'waiting' }
     };
-    if (aiCommitPayload) {
-        if (window.TaskAiDraft?.isCommitPending?.(composer)) return;
-        if (aiCommitPayload.commitType === 'bundle') {
-            if (!window.TaskCreate?.commitAiDraftBundle) {
-                if (typeof showNotification === 'function') showNotification('Створення кількох AI-задач тимчасово недоступне. Ручне створення працює як раніше.', 'error');
-                return;
-            }
-            window.TaskAiDraft?.setCommitPending?.(composer, true);
-            let bundleResult;
-            try {
-                bundleResult = await window.TaskCreate.commitAiDraftBundle({
-                    ...aiCommitPayload,
-                    sourceContext: cabinetCreateContext,
-                    coAssigneeUserIds,
-                    sourceSurface: 'profile_my_cabinet'
-                });
-            } finally {
-                window.TaskAiDraft?.setCommitPending?.(composer, false);
-            }
-            if (!bundleResult?.success) {
-                if (typeof showNotification === 'function') showNotification(bundleResult?.error || 'AI bundle не створено. Ручне створення доступне.', 'error');
-                return;
-            }
-            const bundleTasks = (Array.isArray(bundleResult.tasks) ? bundleResult.tasks : [])
-                .map(row => row?.task || row)
-                .filter(Boolean);
-            bundleTasks.forEach(task => {
-                const id = task?.id || task?.taskId || task?.task_id;
-                window.TaskAiDraft?.markCommittedTaskId?.(id);
-                notifyTaskWidgetsChanged({ action: 'create', taskId: id });
-            });
-            if (input) input.value = '';
-            setCabinetTaskTitleGuidance('');
-            const details = document.getElementById('cabinetTaskDetails');
-            if (details) details.value = '';
-            window.TaskAiDraft?.clear?.(composer);
-            if (typeof showNotification === 'function') showNotification(`Створено ${bundleTasks.length || 'кілька'} AI-задач`, 'success');
-            await refreshMyCabinetTab({ force: true });
-            return;
-        }
-    }
     let payload;
     if (window.TaskCreate?.buildPayload) {
         payload = window.TaskCreate.buildPayload(draft, {
@@ -7973,75 +7873,44 @@ async function createCabinetTask(event) {
         }
     }
     if (draft.shiftAssignment) payload.shiftAssignment = draft.shiftAssignment;
-    if (!aiCommitPayload && !cabinetCreateContext && draft.dueMode === 'deadline') {
+    if (!cabinetCreateContext && draft.dueMode === 'deadline') {
         const deadlineDate = cabinetDueDateForPreset(draft.duePreset, draft.scheduleDate);
         delete payload.date;
         delete payload.schedule;
         if (deadlineDate) payload.deadline = deadlineDate + 'T' + (draft.deadlineTime || '23:59') + ':00';
     }
     const createSignature = cabinetTaskCreateSignature(draft);
-    const directCreateIdempotencyKey = !aiCommitPayload ? cabinetTaskCreateIdempotencyKeyForSignature(createSignature) : '';
-    if (!aiCommitPayload) {
-        const retryBlockMessage = cabinetTaskCreateRetryBlockMessage(createSignature);
-        if (retryBlockMessage) {
-            input?.focus();
-            setCabinetTaskComposerStatus(retryBlockMessage, 'warning');
-            if (typeof showNotification === 'function') showNotification(retryBlockMessage, 'warning');
-            return;
-        }
-        cabinetTaskCreatePending = true;
-        rememberCabinetTaskCreateAttempt(createSignature, 'in_flight', directCreateIdempotencyKey);
-        setCabinetTaskCreateBusy(true);
-        setCabinetTaskComposerStatus('Створюю задачу...', '');
+    const directCreateIdempotencyKey = cabinetTaskCreateIdempotencyKeyForSignature(createSignature);
+    const retryBlockMessage = cabinetTaskCreateRetryBlockMessage(createSignature);
+    if (retryBlockMessage) {
+        input?.focus();
+        setCabinetTaskComposerStatus(retryBlockMessage, 'warning');
+        if (typeof showNotification === 'function') showNotification(retryBlockMessage, 'warning');
+        return;
     }
+    cabinetTaskCreatePending = true;
+    rememberCabinetTaskCreateAttempt(createSignature, 'in_flight', directCreateIdempotencyKey);
+    setCabinetTaskCreateBusy(true);
+    setCabinetTaskComposerStatus('Створюю задачу...', '');
     let result;
-    if (aiCommitPayload) {
-        if (!window.TaskCreate?.commitAiDraft) {
-            if (typeof showNotification === 'function') showNotification('AI commit тимчасово недоступний. Скасуйте AI-зміни або створіть задачу вручну.', 'error');
-            return;
-        }
-        window.TaskAiDraft?.setCommitPending?.(composer, true);
-        try {
-            result = await window.TaskCreate.commitAiDraft({
-                ...aiCommitPayload,
-                sourceContext: cabinetCreateContext,
-                acceptedFieldMask: [...new Set([...aiCommitPayload.acceptedFieldMask, 'owner', 'visibility'])],
-                coAssigneeUserIds,
-                finalDraft: {
-                    ...draft,
-                    ...(aiCommitPayload.finalDraft || {}),
-                    ownerUserId: draft.ownerUserId,
-                    visibility: draft.visibility,
-                    sourceType: 'ai_draft',
-                    sourceModule: 'profile_my_cabinet',
-                    sourceSurface: 'profile_my_cabinet'
+    try {
+        result = window.TaskCreate?.createTask
+            ? await window.TaskCreate.createTask(payload, {
+                idempotencyKey: directCreateIdempotencyKey,
+                onDuplicate: err => {
+                    if (typeof showNotification === 'function') showNotification(err.message || 'Активний дубль не створено', 'warning');
                 }
-            });
-        } finally {
-            window.TaskAiDraft?.setCommitPending?.(composer, false);
-        }
-    } else {
-        try {
-            result = window.TaskCreate?.createTask
-                ? await window.TaskCreate.createTask(payload, {
-                    idempotencyKey: directCreateIdempotencyKey,
-                    onDuplicate: err => {
-                        if (typeof showNotification === 'function') showNotification(err.message || 'Активний дубль не створено', 'warning');
-                    }
-                })
-                : await apiPost('/tasks', { ...payload, idempotencyKey: directCreateIdempotencyKey });
-        } catch (error) {
-            result = { success: false, networkError: true, error: error?.message || 'Не вдалося створити задачу' };
-        }
+            })
+            : await apiPost('/tasks', { ...payload, idempotencyKey: directCreateIdempotencyKey });
+    } catch (error) {
+        result = { success: false, networkError: true, error: error?.message || 'Не вдалося створити задачу' };
     }
     if (!result?.success) {
         if (result?.code === 'TASK_SHIFT_ROSTER_CHANGED') cabinetAssignmentPickers.get(composer)?.reloadShift();
-        if (!aiCommitPayload) {
-            if (result?.networkError || !result || result.status >= 500) rememberCabinetTaskCreateAttempt(createSignature, 'unknown', directCreateIdempotencyKey);
-            else clearCabinetTaskCreateAttempt(createSignature, directCreateIdempotencyKey);
-            cabinetTaskCreatePending = false;
-            setCabinetTaskCreateBusy(false);
-        }
+        if (result?.networkError || !result || result.status >= 500) rememberCabinetTaskCreateAttempt(createSignature, 'unknown', directCreateIdempotencyKey);
+        else clearCabinetTaskCreateAttempt(createSignature, directCreateIdempotencyKey);
+        cabinetTaskCreatePending = false;
+        setCabinetTaskCreateBusy(false);
         setCabinetTaskComposerStatus(result?.error || 'Не вдалося створити задачу', 'error');
         if (!result?.duplicate && typeof showNotification === 'function') {
             showNotification(result?.error || 'Не вдалося створити задачу', 'error');
@@ -8052,11 +7921,9 @@ async function createCabinetTask(event) {
     const delegated = Number(draft.ownerUserId) !== Number(current.id || current.user_id);
     const verification = await verifyCabinetCreatedTask(result, draft.duePreset === 'custom' ? draft.scheduleDate : '', delegated);
     if (!verification.ok) {
-        if (!aiCommitPayload) {
-            rememberCabinetTaskCreateAttempt(createSignature, 'unknown', directCreateIdempotencyKey);
-            cabinetTaskCreatePending = false;
-            setCabinetTaskCreateBusy(false);
-        }
+        rememberCabinetTaskCreateAttempt(createSignature, 'unknown', directCreateIdempotencyKey);
+        cabinetTaskCreatePending = false;
+        setCabinetTaskCreateBusy(false);
         setCabinetTaskComposerStatus(verification.message || 'Створення задачі не підтверджено', 'warning');
         if (typeof showNotification === 'function') {
             showNotification(verification.message || 'Створення задачі не підтверджено', 'warning');
@@ -8065,11 +7932,8 @@ async function createCabinetTask(event) {
     }
 
     lastCabinetCreatedTaskId = verification.taskId || lastCabinetCreatedTaskId;
-    if (aiCommitPayload) {
-        window.TaskAiDraft?.markCommittedTaskId?.(verification.taskId);
-    }
     notifyTaskWidgetsChanged({ action: 'create', taskId: verification.taskId });
-    if (!aiCommitPayload) clearCabinetTaskCreateAttempt(createSignature, directCreateIdempotencyKey);
+    clearCabinetTaskCreateAttempt(createSignature, directCreateIdempotencyKey);
     cabinetCreateContext = null;
     cabinetCreateAssignment = null;
     composer?.querySelector?.('[data-cabinet-create-context]')?.setAttribute('hidden', '');
@@ -8080,7 +7944,6 @@ async function createCabinetTask(event) {
     setCabinetTaskTitleGuidance('');
     const details = document.getElementById('cabinetTaskDetails');
     if (details) details.value = '';
-    window.TaskAiDraft?.clear?.(composer);
     setCabinetCreatePriority('normal');
     setCabinetDuePreset('today');
     setCabinetTaskComposerExpanded(false);
@@ -8558,29 +8421,6 @@ function attachProfileListeners() {
     const composer = document.getElementById('cabinetTaskComposer');
     bindMyDayTaskNavigation(composer);
     bindCabinetAssignmentPicker(composer);
-    if (window.TaskAiDraft && activeTab === 'myday' && composer) {
-        window.TaskAiDraft.bindComposer(composer, {
-            sourceModule: 'profile_my_cabinet',
-            sourceSurface: 'profile_my_cabinet',
-            readDraft: readCabinetAiDraft,
-            hideImpactReview: true,
-            applyField: applyCabinetAiDraftField,
-            focusField: focusCabinetAiDraftField,
-            requestSubmit: () => composer?.requestSubmit?.(),
-            commitBundle: payload => {
-                const assignment = cabinetAssignmentPickers.get(composer);
-                if (assignment?.shiftAssignment || assignment?.needsShiftConfirmation) {
-                    return { success: false, error: 'Для AI-пакета оберіть людей вручну. Для підтвердженої зміни відкрийте «Люди» й натисніть «Змінити склад вручну».' };
-                }
-                if (assignment?.ownerId === null) {
-                    return { success: false, error: 'Оберіть виконавця.' };
-                }
-                return window.TaskCreate.commitAiDraftBundle({ ...payload, sourceContext: cabinetCreateContext });
-            },
-            readCoAssignees: () => readCabinetCreateCoAssignees(composer)
-        });
-    }
-
     // Inventory slot click — equip/unequip
     document.querySelectorAll('.inventory-slot[data-item-id]').forEach(slot => {
         slot.addEventListener('click', async () => {

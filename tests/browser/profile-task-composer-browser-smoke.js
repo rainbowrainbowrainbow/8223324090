@@ -50,7 +50,6 @@ function harnessHtml() {
         </label>
         <div class="cabinet-task-composer-actions">
           <button type="submit" class="cabinet-task-create-submit">Додати задачу</button>
-          <button type="button" class="cabinet-task-ai-fill task-ai-draft-trigger">Заповнити з AI</button>
           <button type="button" class="cabinet-task-composer-toggle" aria-expanded="false" aria-controls="cabinetTaskComposerAdvanced">Більше параметрів</button>
         </div>
         <div id="cabinetTaskComposerAdvanced" data-cabinet-composer-advanced aria-hidden="true" hidden></div>

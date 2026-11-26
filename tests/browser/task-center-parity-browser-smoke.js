@@ -875,16 +875,24 @@ async function run() {
         await openPage(page, fixture.baseUrl, '?mode=overview&dashboardFilter=my-overdue');
         await page.locator('#boardContent .task-card[data-task-id="42"] .task-card-title').click();
         await page.waitForURL(url => url.pathname === '/profile' && url.searchParams.get('tab') === 'myday' && url.searchParams.get('open') === '42');
-        await openPage(page, fixture.baseUrl, '?mode=overview');
-        await page.evaluate(() => {
-            const url = new URL(location.href);
-            url.searchParams.set('highlight', '42');
-            url.searchParams.set('businessContext', 'event_genix');
-            history.replaceState({}, '', url);
-            dispatchEvent(new PopStateEvent('popstate'));
-        });
-        await page.waitForURL(url => url.pathname === '/profile' && url.searchParams.get('open') === '42'
-            && url.searchParams.get('businessContext') === 'event_genix');
+        // Startup also handles deep links. Finish it before testing the popstate handler.
+        await Promise.all([
+            page.waitForEvent('console', message => message.text() === '[tasks:boot] render:done'),
+            openPage(page, fixture.baseUrl, '?mode=overview')
+        ]);
+        await Promise.all([
+            page.waitForURL(url => url.pathname === '/profile' && url.searchParams.get('tab') === 'myday'
+                && url.searchParams.get('open') === '42'
+                && url.searchParams.get('businessContext') === 'event_genix', { waitUntil: 'commit' }),
+            page.evaluate(() => {
+                const url = new URL(location.href);
+                url.searchParams.set('highlight', '42');
+                url.searchParams.set('businessContext', 'event_genix');
+                history.replaceState({}, '', url);
+                dispatchEvent(new PopStateEvent('popstate'));
+            })
+        ]);
+        await page.getByText('My Day destination fixture').waitFor({ state: 'visible' });
         assert.equal(await page.locator('#taskDetailOverlay').count(), 0);
 
         assert.ok(state.requests.some(item => item.includes('/api/tasks/overview')), 'overview uses mocked API');

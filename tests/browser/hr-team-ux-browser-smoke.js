@@ -39,7 +39,7 @@ async function checkCreation(page, width, dark) {
             { key: 'pizzaiolo', title: 'Піцайоло', department: 'kitchen' }
         ];
         document.getElementById('tab-professions').classList.add('active');
-        bindProfessionWorkspaceControls();
+        bindProfessionCatalogFilters();
         renderProfessionCatalogFilterOptions();
         renderProfessions();
         ensureProfessionsLoaded = async () => hrProfessions;

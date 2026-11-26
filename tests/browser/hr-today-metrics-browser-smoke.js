@@ -263,7 +263,6 @@ async function installHarness(page, { recovery = false, todayOnly = false, parkW
         todayActiveMetric = null;
         await loadToday();
         initContextMenu();
-        initModals();
         initHrRealtime();
 
         window.__hrTodayBrowserSmoke = {

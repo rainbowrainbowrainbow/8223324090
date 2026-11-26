@@ -1437,7 +1437,7 @@ check('HR structure supports validated reparent, archive impact, and local undo 
 check('HR structure is responsive and keeps a keyboard-accessible inspector', hrSurface.includes('@media (max-width: 820px)') && hrSurface.includes('.hr-org-detail.is-mobile-open') && hrSurface.includes('.hr-org-tree { display: block; overflow-x: hidden; }') && hrHtml.includes('role="tree"') && hrHtml.includes('aria-label="Інспектор вузла"') && hrHtml.includes('aria-label="Скасувати останню зміну"'));
 check('HR structure uses explicit draft save, conflict recovery, and safe empty loading', hrCode.includes("companyStructureLoadState = 'loading'") && hrCode.includes('function markCompanyStructureChanged') && hrCode.includes('companyStructureSavePromise') && hrCode.includes("setCompanyStructureSaveState('conflict'") && hrCode.includes('applyDefaultCompanyStructureTemplate') && !hrCode.includes('scheduleCompanyStructureAutosave') && !hrCode.includes('compactCompanyOrgNodesForOneScreen') && hrHtml.includes('id="btnRetryCompanyStructure"') && hrHtml.includes('id="btnApplyCompanyStructureTemplate"') && hrHtml.includes('id="btnReloadCompanyStructureConflict"') && hrHtml.includes('id="btnCopyCompanyStructureDraft"') && hrRouteCode.includes('hasSavedStructure'));
 check('HR structure route sanitizes structured node payloads', hrRouteCode.includes('normalizeStaffCompanyStructurePayload') && hrRouteCode.includes('return normalizeStaffCompanyStructurePayload(value);') && htmlContains('services/staffDisplayGroups.js', 'function normalizeStaffCompanyStructurePayload') && htmlContains('services/staffDisplayGroups.js', 'function normalizeStaffCompanyStructureNodes') && htmlContains('services/staffDisplayGroups.js', 'displayGroup: staffStructureDisplayGroupKey({ ...source, id })') && htmlContains('services/staffDisplayGroups.js', 'collapsed: source.collapsed === true') && htmlContains('services/staffDisplayGroups.js', 'archived: source.archived === true'));
-    check('HR structure no longer leaks legacy animator shift summary below tabs', !hrHtml.includes('shiftsSummarySection') && !hrHtml.includes('loadShiftsSummary') && !hrHtml.includes('shiftsSummaryContainer') && hrCode.includes('function removeLegacyAnimatorShiftSummary') && hrCode.includes('removeLegacyAnimatorShiftSummary();'));
+    check('HR structure no longer leaks legacy animator shift summary below tabs', !hrHtml.includes('shiftsSummarySection') && !hrHtml.includes('loadShiftsSummary') && !hrHtml.includes('shiftsSummaryContainer') && !hrCode.includes('removeLegacyAnimatorShiftSummary'));
     check('HR resume uploads use authenticated Postgres-linked route storage', hrRouteCode.includes('multer.memoryStorage()') && hrRouteCode.includes('job_application_resume_files') && hrRouteCode.includes("router.post('/applications/:id/resume-files'") && hrRouteCode.includes("router.get('/applications/:id/resume-files/:fileId/download'"));
 });
 
@@ -3298,7 +3298,8 @@ check('Shared header settings fallback does not mutate capability policy or bypa
 check('Training and profile recover shared header controls without breaking profile navigation',
     fs.readFileSync(path.join(ROOT, 'js', 'training-page.js'), 'utf8').includes('window.HeaderSettingsActions?.refresh?.()')
     && fs.readFileSync(path.join(ROOT, 'js', 'training-page.js'), 'utf8').includes("window.addEventListener('pageshow', restoreTrainingShellVisibility)")
-    && /bindLogoutButton\(\);\r?\n    initSharedHeaderActions\(\);\r?\n    initHeaderThemeToggle\(\);/.test(authCode)
+    && /bindLogoutButton\(\);\r?\n    initHeaderThemeToggle\(\);/.test(authCode)
+    && /syncHeaderThemeToggle\(\);\r?\n    initSharedHeaderActions\(\);\r?\n}/.test(authCode)
     && authCode.includes("el.classList.add('user-name-clickable')")
     && authCode.includes("el.setAttribute('role', 'link')")
     && authCode.includes("el.addEventListener('click', openProfilePage)")
@@ -4142,7 +4143,7 @@ check('Role quick access uses one universal baseline for every role',
     && sidebarCode.includes('const UTILITY_RAIL_MAX_FAVORITES = 4')
     && sidebarCode.includes("href: '/staff'")
     && sidebarCode.includes('function _sidebarPageCapability')
-    && sidebarCode.includes('_getSelectedExtraMenuHrefs(role)')
+    && sidebarCode.includes('_getSelectedExtraMenuHrefs(role, selectable)')
     && sidebarCode.includes('.map(href => byHref.get(href))')
     && htmlContains('js/staff-page.js', "StaffState.canManageSchedule = canUseStaffCapability('hr.schedule.manage')")
     && htmlContains('js/staff-page.js', "cell.setAttribute('aria-readonly', 'true')")

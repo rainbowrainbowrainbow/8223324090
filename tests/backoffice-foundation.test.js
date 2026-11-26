@@ -48,7 +48,7 @@ describe('backoffice foundation v1 contracts', () => {
         assert.match(hrRoute, /replacement_staff_id/);
         assert.match(hrRoute, /original_staff_id = COALESCE\(original_staff_id, staff_id\)/);
         assert.match(hrPage, /async function replaceShift/);
-        assert.match(hrPage, /document\.getElementById\('shiftReplace'\)\?\.addEventListener\('click', replaceShift\)/);
+        assert.match(hrPage, /function bindHrAttendanceModal[\s\S]*modal\.querySelector\('#shiftReplace'\)\?\.addEventListener\('click', replaceShift\)/);
         assert.match(hrHtml, /id="shiftReplace"/);
         assert.match(staffRoute, /router\.post\('\/schedule\/:id\/replace'/);
         assert.match(staffRoute, /router\.post\('\/schedule\/:id\/replacement-clear'/);

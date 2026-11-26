@@ -1239,13 +1239,13 @@ function placeHeaderSettingsButton(userPanel, button) {
     if (!userPanel || !button) return;
     const themeAction = userPanel.querySelector('#headerThemeToggle');
     if (themeAction && themeAction !== button) {
-        userPanel.insertBefore(button, themeAction);
+        if (button.nextElementSibling !== themeAction) userPanel.insertBefore(button, themeAction);
         normalizeHeaderActionOrder(userPanel);
         return;
     }
     const logoutAction = userPanel.querySelector('#logoutBtn');
     if (logoutAction && logoutAction !== button) {
-        userPanel.insertBefore(button, logoutAction);
+        if (button.nextElementSibling !== logoutAction) userPanel.insertBefore(button, logoutAction);
         normalizeHeaderActionOrder(userPanel);
         return;
     }
@@ -2694,7 +2694,6 @@ function showAuthenticatedPageShell(options = {}) {
     if (_userEl && appUser?.name) _userEl.textContent = appUser.name;
 
     bindLogoutButton();
-    initSharedHeaderActions();
     initHeaderThemeToggle();
 
     const sidebarToggle = document.getElementById('sidebarToggle');

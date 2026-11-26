@@ -1731,10 +1731,17 @@ function fmtTime(t) {
     return String(t).substring(0, 5);
 }
 
+let hrKyivTimeFormatter;
+let hrKyivBreakFormatter;
+
 function fmtTimeFromISO(iso) {
     if (!iso) return '';
-    const d = new Date(iso);
-    return d.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Kyiv' });
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return date.toLocaleTimeString('uk-UA');
+    hrKyivTimeFormatter ??= new Intl.DateTimeFormat('uk-UA', {
+        hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Kyiv'
+    });
+    return hrKyivTimeFormatter.format(date);
 }
 
 function formatTodayBreakInterval({ startedAt, endedAt }) {
@@ -1743,10 +1750,10 @@ function formatTodayBreakInterval({ startedAt, endedAt }) {
     if (hrTodayKyivDate(start) === hrTodayKyivDate(end)) {
         return `${fmtTimeFromISO(start)}–${fmtTimeFromISO(end)}`;
     }
-    const format = new Intl.DateTimeFormat('uk-UA', {
+    hrKyivBreakFormatter ??= new Intl.DateTimeFormat('uk-UA', {
         timeZone: 'Europe/Kyiv', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
     });
-    return `${format.format(start)}–${format.format(end)}`;
+    return `${hrKyivBreakFormatter.format(start)}–${hrKyivBreakFormatter.format(end)}`;
 }
 
 function fmtMinutes(min) {
@@ -1880,14 +1887,10 @@ async function initPage() {
     else if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
     canManage = canUseHrCapability('hr.staff.manage', user);
 
-    removeLegacyAnimatorShiftSummary();
     if (typeof bindLogoutButton === 'function') bindLogoutButton();
 
-    initTabs();
-    initScheduleControls();
-    initModals();
+    bindHrNavClicks();
     initContextMenu();
-    initNewTabs();
     const initialTab = getInitialHrTab();
     await activateHrTab(initialTab, { updateHash: false });
     const organizationLink = document.getElementById('hrOrganizationMembersLink');
@@ -1918,119 +1921,68 @@ async function initPage() {
     }
 }
 
-function initNewTabs() {
-    document.getElementById('leaveStatusFilter')?.addEventListener('change', loadLeaves);
-    document.getElementById('btnNewLeave')?.addEventListener('click', showNewLeaveForm);
-    hydratePayrollExpandedGroups('salary');
-    hydratePayrollExpandedGroups('kpi');
-    bindPayrollFilterControls('salary');
-    bindPayrollFilterControls('kpi');
-    bindPayrollProfileCatalogControls();
-    document.getElementById('salaryMonth')?.addEventListener('change', () => {
-        syncSalaryPeriodInputsToMonth();
-        loadSalary();
-    });
-    document.getElementById('salaryDateFrom')?.addEventListener('change', applySalaryPeriodFilter);
-    document.getElementById('salaryDateTo')?.addEventListener('change', applySalaryPeriodFilter);
-    document.getElementById('btnApplySalaryPeriod')?.addEventListener('click', applySalaryPeriodFilter);
-    document.getElementById('btnResetSalaryPeriod')?.addEventListener('click', () => {
-        syncSalaryPeriodInputsToMonth();
-        loadSalary();
-    });
-    document.getElementById('zrsMonth')?.addEventListener('change', () => loadZrs({ forceSalary: true }));
-    document.getElementById('zrsSearch')?.addEventListener('input', scheduleZrsLoad);
-    document.getElementById('zrsStatusFilter')?.addEventListener('change', () => loadZrs({ journalOnly: true }));
-    document.getElementById('zrsRetry')?.addEventListener('click', () => loadZrs({ retry: true }));
-    document.getElementById('zrsLoadMore')?.addEventListener('click', loadMoreZrsJournal);
-    document.getElementById('kpiMonth')?.addEventListener('change', loadKpi);
-    document.getElementById('btnAddAdjustment')?.addEventListener('click', showAdjustmentForm);
-    document.getElementById('btnAddZrs')?.addEventListener('click', showZrsForm);
-    document.getElementById('btnCommitSalary')?.addEventListener('click', () => window.commitSalaries?.());
-    document.getElementById('btnRefreshSalaryReconciliation')?.addEventListener('click', refreshSalaryReconciliation);
-    document.getElementById('btnLockSalaryPeriod')?.addEventListener('click', () => setSalaryPeriodLock(true));
-    document.getElementById('btnUnlockSalaryPeriod')?.addEventListener('click', () => setSalaryPeriodLock(false));
-    document.getElementById('btnReverseSalary')?.addEventListener('click', reverseSalaryPeriod);
-    document.getElementById('btnStartOnboarding')?.addEventListener('click', showStartOnboarding);
-    document.getElementById('btnFormatVacancyPlatform')?.addEventListener('click', formatVacancyPlatformText);
-    document.getElementById('btnCopyVacancyTemplate')?.addEventListener('click', copyVacancyTemplateOutput);
-    document.getElementById('vacancyTemplateSource')?.addEventListener('change', renderVacancyTemplateStudio);
-    const addProfessionButton = document.getElementById('btnAddProfession');
-    if (addProfessionButton) {
-        addProfessionButton.addEventListener('click', () => {
-            if (canEditProfessionCatalog()) openProfessionWorkspace({ initialTab: 'main' });
-        });
+function bindHrTabControls(target, panel) {
+    if (panel.dataset.hrControlsBound === 'true') return;
+    switch (target) {
+        case 'salary':
+            hydratePayrollExpandedGroups('salary');
+            bindPayrollFilterControls('salary');
+            document.getElementById('salaryMonth')?.addEventListener('change', () => {
+                syncSalaryPeriodInputsToMonth();
+                loadSalary();
+            });
+            document.getElementById('salaryDateFrom')?.addEventListener('change', applySalaryPeriodFilter);
+            document.getElementById('salaryDateTo')?.addEventListener('change', applySalaryPeriodFilter);
+            document.getElementById('btnApplySalaryPeriod')?.addEventListener('click', applySalaryPeriodFilter);
+            document.getElementById('btnResetSalaryPeriod')?.addEventListener('click', () => {
+                syncSalaryPeriodInputsToMonth();
+                loadSalary();
+            });
+            document.getElementById('btnCommitSalary')?.addEventListener('click', () => window.commitSalaries?.());
+            document.getElementById('btnRefreshSalaryReconciliation')?.addEventListener('click', refreshSalaryReconciliation);
+            document.getElementById('btnLockSalaryPeriod')?.addEventListener('click', () => setSalaryPeriodLock(true));
+            document.getElementById('btnUnlockSalaryPeriod')?.addEventListener('click', () => setSalaryPeriodLock(false));
+            document.getElementById('btnReverseSalary')?.addEventListener('click', reverseSalaryPeriod);
+            break;
+        case 'profiles':
+            bindPayrollProfileCatalogControls();
+            break;
+        case 'zrs':
+            document.getElementById('zrsMonth')?.addEventListener('change', () => loadZrs({ forceSalary: true }));
+            document.getElementById('zrsSearch')?.addEventListener('input', scheduleZrsLoad);
+            document.getElementById('zrsStatusFilter')?.addEventListener('change', () => loadZrs({ journalOnly: true }));
+            document.getElementById('zrsRetry')?.addEventListener('click', () => loadZrs({ retry: true }));
+            document.getElementById('zrsLoadMore')?.addEventListener('click', loadMoreZrsJournal);
+            document.getElementById('btnAddZrs')?.addEventListener('click', showZrsForm);
+            break;
+        case 'kpi':
+            hydratePayrollExpandedGroups('kpi');
+            bindPayrollFilterControls('kpi');
+            document.getElementById('kpiMonth')?.addEventListener('change', loadKpi);
+            document.getElementById('btnAddAdjustment')?.addEventListener('click', showAdjustmentForm);
+            break;
+        case 'onboarding':
+            document.getElementById('btnStartOnboarding')?.addEventListener('click', showStartOnboarding);
+            break;
+        case 'vacancies':
+            document.getElementById('btnFormatVacancyPlatform')?.addEventListener('click', formatVacancyPlatformText);
+            document.getElementById('btnCopyVacancyTemplate')?.addEventListener('click', copyVacancyTemplateOutput);
+            document.getElementById('vacancyTemplateSource')?.addEventListener('change', renderVacancyTemplateStudio);
+            break;
+        case 'professions':
+            document.getElementById('btnAddProfession')?.addEventListener('click', () => {
+                if (canEditProfessionCatalog()) openProfessionWorkspace({ initialTab: 'main' });
+            });
+            break;
+        default:
+            return;
     }
-    const shiftPreferencesRoot = document.getElementById('editStaffShiftPreferences');
-    const markShiftPreferenceTouched = event => {
-        if (!event.target.matches('[data-shift-pref-start], [data-shift-pref-end]')) return;
-        const row = event.target.closest('[data-shift-pref-profession][data-shift-pref-day]');
-        if (row) row.dataset.shiftPrefTouched = 'true';
-    };
-    shiftPreferencesRoot?.addEventListener('input', markShiftPreferenceTouched);
-    shiftPreferencesRoot?.addEventListener('change', markShiftPreferenceTouched);
-    bindProfessionWorkspaceControls();
-    bindSecondaryProfessionPicker();
-    document.getElementById('editRoleType')?.addEventListener('change', () => {
-        const selected = readStaffSecondaryProfessionSelection();
-        populateSecondaryProfessionSelect(selected, document.getElementById('editRoleType')?.value);
-        refreshStaffRateEditorFromCurrentForm();
-        refreshStaffRoleAssignmentsFromCurrentForm();
-        refreshStaffShiftPreferencesFromCurrentForm();
-        refreshStaffPayrollProfilesFromCurrentForm();
-    });
-    document.getElementById('editHourlyRate')?.addEventListener('input', () => {
-        refreshStaffRateEditorFromCurrentForm();
-        refreshStaffRoleAssignmentsFromCurrentForm();
-        refreshStaffPayrollProfilesFromCurrentForm();
-    });
-    document.getElementById('editRateUnit')?.addEventListener('change', () => {
-        syncStaffRateUnitUi();
-        refreshStaffRateEditorFromCurrentForm();
-        refreshStaffRoleAssignmentsFromCurrentForm();
-        refreshStaffPayrollProfilesFromCurrentForm();
-        const payrollType = document.getElementById('editPayrollSchemeType');
-        const unit = currentEditRateUnit();
-        if (payrollType && !document.getElementById('editPayrollSchemeTitle')?.value) {
-            payrollType.value = unit === 'day' ? 'per_shift' : 'hourly';
-            updatePayrollAdvancedVisibility();
-        }
-    });
-    document.getElementById('editProfessionRates')?.addEventListener('input', event => {
-        if (event.target?.matches?.('[data-profession-rate]')) refreshStaffPayrollProfilesFromCurrentForm();
-    });
-    document.getElementById('editStaffName')?.addEventListener('input', event => {
-        syncStaffProfileHeaderName(event.target?.value || '');
-    });
-    for (const id of ['editStaffGivenName', 'editStaffFamilyName']) {
-        document.getElementById(id)?.addEventListener('input', () => {
-            const name = ['editStaffFamilyName', 'editStaffGivenName']
-                .map(fieldId => document.getElementById(fieldId)?.value.trim()).filter(Boolean).join(' ');
-            document.getElementById('editStaffName').value = name;
-            syncStaffProfileHeaderName(name);
-        });
-    }
-    document.getElementById('editResourceKind')?.addEventListener('change', event => {
-        loadStaffResourceOptions(event.target?.value || 'custom');
-    });
-    document.getElementById('editResourceSourceId')?.addEventListener('change', syncResourceTitleFromOption);
-    document.getElementById('editPayrollSchemeType')?.addEventListener('change', updatePayrollAdvancedVisibility);
-    document.getElementById('editPayrollBaseKind')?.addEventListener('change', updatePayrollAdvancedVisibility);
-    // The structure workspace initializes only when its module is needed.
+    panel.dataset.hrControlsBound = 'true';
 }
 
 // ==========================================
 // TABS
 // ==========================================
-
-function initTabs() {
-    try {
-    renderHrNav(resolveHrTabTarget(requestedHrTarget()).tab);
-    bindHrNavClicks();
-    } catch (err) {
-        console.error('HR init failed:', err);
-        throw err;
-    }
-}
 
 function isHrNavItemVisible(item) {
     const target = item.tab || item.id;
@@ -2179,7 +2131,7 @@ function cssEscapeValue(value) {
 
 function syncHrNavActive(target, bucket = null) {
     if (target === 'team' && !document.getElementById('hrNav')?.classList.contains('hr-nav--people')) return;
-    document.querySelectorAll('.hr-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.hr-tab.active').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.hr-nav--pulse .hr-tab[aria-current]').forEach(t => t.removeAttribute('aria-current'));
     document.querySelectorAll('.hr-tab[data-bucket]').forEach(t => t.setAttribute('aria-pressed', 'false'));
     const effectiveBucket = target === 'team'
@@ -2294,14 +2246,7 @@ function getInitialHrTab() {
     return resolved.tab;
 }
 
-function removeLegacyAnimatorShiftSummary() {
-    document.getElementById('shiftsSummarySection')?.remove();
-    document.getElementById('shiftsSummaryContainer')?.closest('.page-section')?.remove();
-    document.getElementById('shiftsMonthPicker')?.closest('.page-section')?.remove();
-}
-
 async function activateHrTab(target, options = {}) {
-    removeLegacyAnimatorShiftSummary();
     const resolved = resolveHrTabTarget(target);
     if (resolved.href) {
         window.location.href = resolved.href;
@@ -2322,7 +2267,9 @@ async function activateHrTab(target, options = {}) {
     if (!panel) return;
     if (!canViewHrTab(target)) return activateHrTab(firstAllowedHrTab(), { updateHash: true });
     const shouldRestoreNavFocus = document.getElementById('hrNav')?.contains(document.activeElement) === true;
-    document.querySelectorAll('.hr-tab-content').forEach(c => c.classList.remove('active'));
+    document.querySelectorAll('.hr-tab-content.active').forEach(activePanel => {
+        if (activePanel !== panel) activePanel.classList.remove('active');
+    });
     renderHrNav(target);
     updateHrPageTitle(target);
     setHrNavTeamMode(target);
@@ -2330,7 +2277,7 @@ async function activateHrTab(target, options = {}) {
     if (shouldRestoreNavFocus) {
         document.querySelector('#hrNav .hr-tab.active')?.focus({ preventScroll: true });
     }
-    panel.classList.add('active');
+    if (!panel.classList.contains('active')) panel.classList.add('active');
     if (options.updateHash || resolved.alias) {
         const hashTarget = hashForHrTarget(target, requestedBucket);
         const next = hashTarget === 'today' ? window.location.pathname : `${window.location.pathname}#${hashTarget}`;
@@ -2342,9 +2289,8 @@ async function activateHrTab(target, options = {}) {
         reports: loadReports, salary: loadSalary, profiles: loadPayrollProfilesCatalog, zrs: loadZrs, kpi: loadKpi, onboarding: loadOnboarding,
         vacancies: loadVacancies, accounts: loadAccountCenter
     };
-    const result = await loaders[target]?.(target === 'schedule' ? options : undefined);
-    removeLegacyAnimatorShiftSummary();
-    return result;
+    bindHrTabControls(target, panel);
+    return loaders[target]?.(target === 'schedule' ? options : undefined);
 }
 
 // ==========================================
@@ -2984,6 +2930,7 @@ function renderToday(data) {
         return;
     }
 
+    const canManageAttendance = !recoveryReadOnly && canManageHrSchedule();
     const focusedButton = document.activeElement;
     const focusedRow = focusedButton?.matches('.hr-today-clock-actions button')
         && list.contains(focusedButton) && focusedButton.closest('[data-staff-id]');
@@ -3007,6 +2954,7 @@ function renderToday(data) {
             meta = `План: ${fmtTime(plannedStart)}–${fmtTime(plannedEnd)}`;
         }
 
+        const actualStart = rec?.clock_in ? fmtTimeFromISO(rec.clock_in) : '—';
         if (rec) {
             const facts = todayAttendanceFacts(rec);
             const isLate = facts.lateMinutes > 0;
@@ -3049,7 +2997,6 @@ function renderToday(data) {
             }
 
             const attendanceFacts = [];
-            const actualStart = rec.clock_in ? fmtTimeFromISO(rec.clock_in) : '—';
             const actualEnd = rec.clock_out ? fmtTimeFromISO(rec.clock_out) : '—';
             if (rec.clock_in) meta += `${meta ? ' | ' : ''}Початок зміни: ${actualStart}`;
             if (autoClosed && awaitingDeparture) {
@@ -3114,21 +3061,21 @@ function renderToday(data) {
             !historical && item.is_reserve ? 'Резерв · фріланс' : ''
         ].filter(Boolean).join(' · ');
 
-        const canFinishPrevious = historical && !recoveryReadOnly && canManageHrSchedule()
+        const canFinishPrevious = historical && canManageAttendance
             && awaitingDeparture && rec?.id && todayClockDateAllowed('out', data.date);
         if (recoveryReadOnly || (historical && !canFinishPrevious)) {
             disabled = 'disabled aria-disabled="true" title="Режим перегляду"';
             if (btnClass === 'clock-in') btnText = shift ? 'Прихід не зафіксовано' : 'Немає відмітки';
-            if (onShift) btnText = `На роботі (з ${fmtTimeFromISO(rec.clock_in)})`;
+            if (onShift) btnText = `На роботі (з ${actualStart})`;
         }
         const staffId = Number(item.staff_id);
         const pending = todayClockPending.has(staffId);
-        const canCancel = !recoveryReadOnly && !historical && canManageHrSchedule() && onShift && rec.can_cancel_arrival === true;
-        const canCancelDeparture = !recoveryReadOnly && !historical && canManageHrSchedule()
+        const canCancel = !historical && canManageAttendance && onShift && rec.can_cancel_arrival === true;
+        const canCancelDeparture = !historical && canManageAttendance
             && rec?.can_cancel_departure === true && rec.record_version;
-        const canReview = !recoveryReadOnly && canManageHrSchedule() && rec?.id && rec.clock_in
+        const canReview = canManageAttendance && rec?.id && rec.clock_in
             && (todayFilters.reviewOnly || (rec.auto_closed && awaitingDeparture));
-        const canManageBreak = !recoveryReadOnly && canManageHrSchedule() && rec?.id && rec.clock_in
+        const canManageBreak = canManageAttendance && rec?.id && rec.clock_in
             && rec.record_version && Array.isArray(rec.break_intervals);
         const canRecordBreakNow = canManageBreak && onShift && (!historical || canFinishPrevious);
         return `<div class="hr-staff-row${arrived ? ' hr-staff-row--arrived' : ''}" data-staff-id="${item.staff_id}" data-attendance-state="${arrived ? 'arrived' : 'pending'}" tabindex="-1" ${recoveryReadOnly || historical ? '' : `oncontextmenu="showContext(event, ${item.staff_id})"`}>
@@ -3732,7 +3679,7 @@ async function refreshHrStaffScheduleAfterWorkSave(staffId) {
 }
 
 function initScheduleControls() {
-    if (hasHrStaffScheduleModule()) return;
+    if (scheduleWeekStart) return;
     scheduleWeekStart = getMonday(new Date());
 
     document.getElementById('schedPrev')?.addEventListener('click', () => {
@@ -3779,6 +3726,7 @@ function initScheduleControls() {
 
 async function loadSchedule() {
     if (hasHrStaffScheduleModule()) return loadHrScheduleModule();
+    initScheduleControls();
     // Load staff and templates
     const [staffData, tplData] = await Promise.all([
         hrFetch('/staff?active=true'),
@@ -4383,7 +4331,12 @@ function bindProfessionWorkspaceControls() {
     overlay.addEventListener('click', event => {
         if (event.target === overlay) document.getElementById('professionWorkspaceClose')?.focus();
     });
+}
 
+function bindProfessionCatalogFilters() {
+    const panel = document.getElementById('tab-professions');
+    if (!panel || panel.dataset.catalogFiltersBound === 'true') return;
+    panel.dataset.catalogFiltersBound = 'true';
     const filterBindings = {
         professionCatalogSearch: ['query', 'input'],
         professionCatalogStatus: ['status', 'change'],
@@ -4439,7 +4392,7 @@ async function loadProfessionCatalog(options = {}) {
 }
 
 async function loadProfessions() {
-    bindProfessionWorkspaceControls();
+    bindProfessionCatalogFilters();
     syncProfessionCatalogCapabilityUi();
     await ensureProfessionsLoaded({ force: true });
     renderProfessions();
@@ -4691,7 +4644,6 @@ async function loadProfessionChecklists(options = {}) {
     const feed = sameContext && ['assignments', 'archived', 'orphaned'].includes(options.feed) ? options.feed : null;
     let offset = feed ? Math.max(0, Number(options.offset) || 0) : 0;
     const previousData = sameContext ? professionChecklistDashboardState.data : null;
-    bindProfessionWorkspaceControls();
     bindProfessionChecklistDashboardControls();
     await ensureProfessionsLoaded({
         force: options.preserveCatalog !== true,
@@ -6981,6 +6933,15 @@ function bindHrStaffCreation() {
     const form = document.getElementById('hrCreateStaffForm');
     if (!button || !dialog || !form || form.dataset.bound === 'true') return;
     form.dataset.bound = 'true';
+    let open;
+    button.addEventListener('click', () => {
+        if (button.hidden || dialog.open) return;
+        open ??= prepareHrStaffCreation(button, dialog, form);
+        return open();
+    });
+}
+
+function prepareHrStaffCreation(button, dialog, form) {
     mountNewStaffFields(document.getElementById('hrCreateStaffFields'), 'hrCreateStaff',
         ['FamilyName', 'GivenName', 'Phone', 'Department', 'Position', 'HireDate', 'Address']);
     const status = document.getElementById('hrCreateStaffStatus');
@@ -7078,7 +7039,7 @@ function bindHrStaffCreation() {
             ? (previousJob ? 'Довідник оновлено. Оберіть актуальну посаду. Решту полів збережено.' : '')
             : (professionCatalogLoadError || 'Немає доступних посад із відділами. Перевірте довідник професій.');
     };
-    button.addEventListener('click', async () => {
+    const open = async () => {
         if (saving || button.hidden || dialog.open) return;
         const context = teamAccessContext();
         const opening = Symbol();
@@ -7100,7 +7061,7 @@ function bindHrStaffCreation() {
             return;
         }
         await refreshCreationCatalog(isCurrent);
-    });
+    };
     cancel?.addEventListener('click', () => dialog.close());
     dialog.addEventListener('cancel', event => {
         if (saving) event.preventDefault();
@@ -7153,6 +7114,7 @@ function bindHrStaffCreation() {
             if (cancel) cancel.disabled = false;
         }
     });
+    return open;
 }
 
 function clearTeamSearchOnBucketChange(nextBucket) {
@@ -13720,10 +13682,70 @@ function bindStaffOffboardingActionState(modal) {
     updateStaffOffboardingActionState();
 }
 
+function bindStaffProfileFormControls() {
+    const shiftPreferencesRoot = document.getElementById('editStaffShiftPreferences');
+    const markShiftPreferenceTouched = event => {
+        if (!event.target.matches('[data-shift-pref-start], [data-shift-pref-end]')) return;
+        const row = event.target.closest('[data-shift-pref-profession][data-shift-pref-day]');
+        if (row) row.dataset.shiftPrefTouched = 'true';
+    };
+    shiftPreferencesRoot?.addEventListener('input', markShiftPreferenceTouched);
+    shiftPreferencesRoot?.addEventListener('change', markShiftPreferenceTouched);
+    bindSecondaryProfessionPicker();
+    document.getElementById('editRoleType')?.addEventListener('change', () => {
+        const selected = readStaffSecondaryProfessionSelection();
+        populateSecondaryProfessionSelect(selected, document.getElementById('editRoleType')?.value);
+        refreshStaffRateEditorFromCurrentForm();
+        refreshStaffRoleAssignmentsFromCurrentForm();
+        refreshStaffShiftPreferencesFromCurrentForm();
+        refreshStaffPayrollProfilesFromCurrentForm();
+    });
+    document.getElementById('editHourlyRate')?.addEventListener('input', () => {
+        refreshStaffRateEditorFromCurrentForm();
+        refreshStaffPayrollProfilesFromCurrentForm();
+    });
+    document.getElementById('editRateUnit')?.addEventListener('change', () => {
+        syncStaffRateUnitUi();
+        refreshStaffRateEditorFromCurrentForm();
+        refreshStaffPayrollProfilesFromCurrentForm();
+        const payrollType = document.getElementById('editPayrollSchemeType');
+        const unit = currentEditRateUnit();
+        if (payrollType && !document.getElementById('editPayrollSchemeTitle')?.value) {
+            payrollType.value = unit === 'day' ? 'per_shift' : 'hourly';
+            updatePayrollAdvancedVisibility();
+        }
+    });
+    document.getElementById('editProfessionRates')?.addEventListener('input', event => {
+        if (event.target?.matches?.('[data-profession-rate]')) refreshStaffPayrollProfilesFromCurrentForm();
+    });
+    document.getElementById('editStaffName')?.addEventListener('input', event => {
+        syncStaffProfileHeaderName(event.target?.value || '');
+    });
+    for (const id of ['editStaffGivenName', 'editStaffFamilyName']) {
+        document.getElementById(id)?.addEventListener('input', () => {
+            const name = ['editStaffFamilyName', 'editStaffGivenName']
+                .map(fieldId => document.getElementById(fieldId)?.value.trim()).filter(Boolean).join(' ');
+            document.getElementById('editStaffName').value = name;
+            syncStaffProfileHeaderName(name);
+        });
+    }
+    document.getElementById('editResourceKind')?.addEventListener('change', event => {
+        loadStaffResourceOptions(event.target?.value || 'custom');
+    });
+    document.getElementById('editResourceSourceId')?.addEventListener('change', syncResourceTitleFromOption);
+    document.getElementById('editPayrollSchemeType')?.addEventListener('change', updatePayrollAdvancedVisibility);
+    document.getElementById('editPayrollBaseKind')?.addEventListener('change', updatePayrollAdvancedVisibility);
+}
+
 function prepareStaffProfileDrawerLayout() {
     const modal = document.getElementById('staffEditModal');
     if (!modal || modal.dataset.staffProfileDrawerReady === 'true') return;
     modal.dataset.staffProfileDrawerReady = 'true';
+    bindStaffProfileFormControls();
+    modal.querySelector('#editCloseTop')?.addEventListener('click', () => closeHrEditableModal('staffEditModal'));
+    modal.addEventListener('click', event => {
+        if (event.target === modal) closeHrEditableModal('staffEditModal');
+    });
     bindStaffProfileScopeDirtyTracking(modal);
     prepareStaffProfileActionButtons(modal);
     bindStaffOffboardingActionState(modal);
@@ -15470,6 +15492,7 @@ function showHrEditableModal(id, options = {}) {
         target.setAttribute('aria-hidden', 'true');
     };
     if (id === 'staffEditModal') bindStaffProfileHydrationDirtyTracking(modal);
+    if (id === 'shiftModal' || id === 'correctionModal') bindHrAttendanceModal(modal);
     if (typeof openModal === 'function') {
         openModal(modal, options.trigger || document.activeElement, {
             show,
@@ -15537,27 +15560,22 @@ async function closeHrEditableModal(id, force = false, message = 'Є незбе�
     return true;
 }
 
-function initModals() {
-    // Shift modal
-    document.getElementById('shiftSave')?.addEventListener('click', saveShift);
-    document.getElementById('shiftDelete')?.addEventListener('click', deleteShift);
-    document.getElementById('shiftReplace')?.addEventListener('click', replaceShift);
-    document.getElementById('shiftCancel')?.addEventListener('click', () => closeHrEditableModal('shiftModal', false, 'Є незбережені зміни у зміні. Закрити без збереження?'));
-
-    // Staff edit modal
-    prepareStaffProfileDrawerLayout();
-    document.getElementById('editCloseTop')?.addEventListener('click', () => closeHrEditableModal('staffEditModal'));
-
-    // Correction modal
-    document.getElementById('corrSave')?.addEventListener('click', saveCorrection);
-    document.getElementById('corrCancel')?.addEventListener('click', () => closeHrEditableModal('correctionModal', false, 'Є незбережені зміни корекції. Закрити без збереження?'));
-
-    // Close modals on overlay click
-    ['shiftModal', 'staffEditModal', 'correctionModal'].forEach(id => {
-        document.getElementById(id)?.addEventListener('click', (e) => {
-            if (e.target === e.currentTarget) closeHrEditableModal(id);
-        });
+function bindHrAttendanceModal(modal) {
+    if (modal.dataset.hrAttendanceBound === 'true') return;
+    const { id } = modal;
+    if (id === 'shiftModal') {
+        modal.querySelector('#shiftSave')?.addEventListener('click', saveShift);
+        modal.querySelector('#shiftDelete')?.addEventListener('click', deleteShift);
+        modal.querySelector('#shiftReplace')?.addEventListener('click', replaceShift);
+        modal.querySelector('#shiftCancel')?.addEventListener('click', () => closeHrEditableModal(id, false, 'Є незбережені зміни у зміні. Закрити без збереження?'));
+    } else {
+        modal.querySelector('#corrSave')?.addEventListener('click', saveCorrection);
+        modal.querySelector('#corrCancel')?.addEventListener('click', () => closeHrEditableModal(id, false, 'Є незбережені зміни корекції. Закрити без збереження?'));
+    }
+    modal.addEventListener('click', event => {
+        if (event.target === modal) closeHrEditableModal(id);
     });
+    modal.dataset.hrAttendanceBound = 'true';
 }
 
 async function saveCorrection() {
@@ -15606,82 +15624,6 @@ async function saveCorrection() {
         if (save) save.disabled = false;
     }
 }
-
-// ==========================================
-// LEAVES (inside schedule)
-// ==========================================
-
-async function loadLeaves() {
-    const statusFilter = document.getElementById('leaveStatusFilter')?.value || '';
-    const data = await hrFetch(`/leave-requests?status=${statusFilter}`);
-    if (!data || !data.success) return;
-    renderLeaves(data.data);
-}
-
-function renderLeaves(leaves) {
-    const el = document.getElementById('leavesList');
-    if (!leaves.length) {
-        el.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:40px;">Немає заявок</div>';
-        return;
-    }
-    const typeLabels = { vacation: 'Відпустка', sick: 'Лікарняний', day_off: 'Вихідний', unpaid: 'За свій рахунок' };
-    const statusColors = { pending: '#F59E0B', approved: '#10B981', rejected: '#EF4444', cancelled: '#9CA3AF' };
-    const statusLabels = { pending: 'Очікує', approved: 'Затверджено', rejected: 'Відхилено', cancelled: 'Скасовано' };
-
-    el.innerHTML = leaves.map(l => `
-        <div style="background:var(--white);border:1px solid var(--gray-100);border-radius:var(--radius);padding:16px;margin-bottom:12px;box-shadow:var(--shadow-xs);">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                <div>
-                    <strong>${escapeHtml(l.staff_name)}</strong>
-                    <span style="margin-left:8px;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;background:${statusColors[l.status]}20;color:${statusColors[l.status]};">${statusLabels[l.status]}</span>
-                </div>
-                <span style="font-size:12px;color:var(--gray-500);">${typeLabels[l.type] || l.type}</span>
-            </div>
-            <div style="font-size:13px;color:var(--gray-600);margin-bottom:6px;">
-                ${l.date_from?.split('T')[0]} — ${l.date_to?.split('T')[0]} (${l.days} дн.)
-            </div>
-            ${l.reason ? `<div style="font-size:12px;color:var(--gray-500);">Причина: ${escapeHtml(l.reason)}</div>` : ''}
-            ${l.status === 'pending' && canManage ? `
-                <div style="display:flex;gap:8px;margin-top:10px;">
-                    <button type="button" onclick="reviewLeave(${l.id}, 'approved')" style="padding:6px 16px;border:none;background:#10B981;color:#fff;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700;">Затвердити</button>
-                    <button type="button" onclick="reviewLeave(${l.id}, 'rejected')" style="padding:6px 16px;border:none;background:#EF4444;color:#fff;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700;">Відхилити</button>
-                </div>
-            ` : ''}
-        </div>
-    `).join('');
-}
-
-window.reviewLeave = async function(id, status) {
-    let comment = '';
-    if (status === 'rejected') {
-        comment = await promptModal('Причина відхилення:', { placeholder: 'Вкажіть причину...' });
-        if (comment === null) return;
-    }
-    const data = await hrFetch(`/leave-requests/${id}/review`, 'PUT', { status, comment });
-    if (data?.success) { showNotification(status === 'approved' ? 'Заявку затверджено' : 'Заявку відхилено', 'success'); loadLeaves(); }
-};
-
-window.showNewLeaveForm = async function() {
-    const staff = await hrFetch('/staff?active=true');
-    if (!staff?.success) return;
-    const staffOptions = staff.data.map(s => ({ value: String(s.id), label: `${s.name}` }));
-    const typeOptions = [
-        { value: 'vacation', label: 'Відпустка' },
-        { value: 'sick', label: 'Лікарняний' },
-        { value: 'day_off', label: 'Відгул' },
-        { value: 'unpaid', label: 'За свій рахунок' }
-    ];
-    const result = await formModal('Нова заявка на відпустку', [
-        { key: 'staffId', label: 'Співробітник', type: 'select', options: staffOptions, required: true },
-        { key: 'type', label: 'Тип', type: 'select', options: typeOptions, defaultValue: 'vacation' },
-        { key: 'dateFrom', label: 'Дата з', type: 'date', required: true },
-        { key: 'dateTo', label: 'Дата по', type: 'date', required: true },
-        { key: 'reason', label: 'Причина', placeholder: 'Необов\'язково' }
-    ], { icon: '🏖️' });
-    if (!result) return;
-    const data = await hrFetch('/leave-requests', 'POST', { staff_id: parseInt(result.staffId), type: result.type, date_from: result.dateFrom, date_to: result.dateTo, reason: result.reason || '' });
-    if (data?.success) { showNotification('Заявку створено', 'success'); loadLeaves(); }
-};
 
 // ==========================================
 // TAB 7: SALARY (#7)

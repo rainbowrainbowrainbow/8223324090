@@ -360,7 +360,6 @@ function createStaffProfileHarness() {
                         '<button type="button" id="editHistoryRefresh"></button><button type="button" id="editSaveWork"></button><button type="button" id="editSave"></button>',
                         '</div></div>'
                     ].join('');
-                    initModals();
                 }
 
                 function createHistoryDefer(staffId) {

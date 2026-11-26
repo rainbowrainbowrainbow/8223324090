@@ -130,6 +130,7 @@ const HARNESS_CODE = String.raw`
     payrollProfiles[0].versions = [payrollProfiles[0].current_version];
     const payrollAssignments = [];
     let holdProfileLoads = false;
+    let rapidProfileOpens;
     let holdHistoryLoads = false;
     let holdLazyTabLoads = false;
     let holdStaffUpdates = false;
@@ -280,7 +281,6 @@ const HARNESS_CODE = String.raw`
             window.__hrTeamBrowserModalMarkup,
             '<button id="outsideButton">outside</button>'
         ].join('');
-        initModals();
     }
 
     canManage = true;
@@ -728,9 +728,14 @@ const HARNESS_CODE = String.raw`
             pendingProfiles.clear();
         },
         startRapidOpen() {
-            openStaffEdit(1).catch(err => { window.__rapidError = err.message; });
-            openStaffEdit(2).catch(err => { window.__rapidError = err.message; });
-            openStaffEdit(3).catch(err => { window.__rapidError = err.message; });
+            rapidProfileOpens = Promise.all([1, 2, 3].map(id => openStaffEdit(id)));
+            rapidProfileOpens.catch(err => { window.__rapidError = err.message; });
+        },
+        hasPendingProfiles(ids) {
+            return ids.every(id => pendingProfiles.has(id));
+        },
+        waitForRapidOpens() {
+            return rapidProfileOpens;
         },
         resolveProfile(id) {
             const pending = pendingProfiles.get(Number(id));
@@ -965,14 +970,15 @@ async function assertCardLayoutAndOverflow(page, options = {}) {
     assert.equal(await trigger.evaluate(el => document.activeElement === el), true, 'Escape returns focus to the overflow trigger');
 }
 
-async function waitForCleanHydration(page) {
-    await page.waitForFunction(() => {
+async function waitForCleanHydration(page, staffId = null) {
+    await page.waitForFunction(expectedId => {
         const modal = document.getElementById('staffEditModal');
         return modal
             && modal.style.display !== 'none'
             && modal.getAttribute('aria-hidden') === 'false'
-            && modal.dataset.staffProfileHydrating !== 'true';
-    }, null, { timeout: 10000 });
+            && modal.dataset.staffProfileHydrating !== 'true'
+            && (expectedId === null || document.getElementById('editStaffId')?.value === String(expectedId));
+    }, staffId, { timeout: 10000 });
 }
 
 async function openProfile(page, staffId = 1) {
@@ -1272,6 +1278,7 @@ async function assertScopedSavesAndActionStates(page) {
     assert.match(payrollProfilePanel, /Профіль має пріоритет/, 'staff payroll tab makes profile-only base explicit');
     assert.equal(await page.locator('#editPayrollProfileSimulator').isVisible(), true, 'staff payroll tab exposes the payroll profile simulator');
     await page.fill('#editHourlyRate', '145');
+    assert.equal(await page.evaluate(() => staffProfileDirtyScopes().includes('roles')), false, 'editing fallback pay does not dirty role assignments');
     const payrollSave = page.locator('#editPayrollSchemeSave');
     assert.equal(await payrollSave.textContent(), 'Зберегти резервні ставки', 'payroll action is limited to the visible fallback fields');
     assert.ok(await payrollSave.evaluate(el => el.getBoundingClientRect().height >= 44), 'payroll save has a 44px target');
@@ -1304,18 +1311,19 @@ async function assertRapidProfileSwitching(page) {
         window.__hrTeamBrowserSmoke.enableProfileHold();
         window.__hrTeamBrowserSmoke.startRapidOpen();
     });
-    await page.waitForFunction(() => Boolean(window.__hrTeamBrowserSmoke), null, { timeout: 10000 });
+    await page.waitForFunction(() => window.__hrTeamBrowserSmoke.hasPendingProfiles([1, 2, 3]), null, { timeout: 10000 });
     await page.evaluate(() => window.__hrTeamBrowserSmoke.resolveProfile(3));
-    await waitForCleanHydration(page);
+    await waitForCleanHydration(page, 3);
     assert.equal(await page.inputValue('#editStaffId'), '3', 'latest rapid-open profile wins');
     assert.match(await page.locator('#editStaffHeaderName').textContent(), /Fresh QA Intern Gamma/, 'latest profile name is shown');
     await page.evaluate(() => {
         window.__hrTeamBrowserSmoke.resolveProfile(1);
         window.__hrTeamBrowserSmoke.resolveProfile(2);
         window.__hrTeamBrowserSmoke.releaseProfileHold();
+        return window.__hrTeamBrowserSmoke.waitForRapidOpens();
     });
-    await page.waitForTimeout(50);
     assert.equal(await page.inputValue('#editStaffId'), '3', 'stale profile responses do not overwrite current profile');
+    assert.match(await page.locator('#editStaffHeaderName').textContent(), /Fresh QA Intern Gamma/, 'stale profile responses preserve the latest name');
 }
 
 async function assertHistoryRaceAndLazyTabs(page) {
@@ -1707,7 +1715,6 @@ async function assertResourcesWorkspaceStatesAndActions(page) {
 
     await page.evaluate(() => window.__hrTeamBrowserSmoke.failNextWorkspaceRequest('/resource-options'));
     await page.selectOption('#editResourceKind', 'warehouse_stock');
-    await page.evaluate(() => loadStaffResourceOptions('warehouse_stock'));
     await page.waitForFunction(() => document.getElementById('editResourceOptionsState')?.dataset.state === 'error');
     assert.equal(await page.locator('#editResourceOptionsState button').count(), 1, 'resource-picker failure exposes a local retry action');
     await page.locator('#editResourceOptionsState button').click();

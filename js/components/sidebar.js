@@ -4,6 +4,7 @@
  */
 const Sidebar = (() => {
     const _state = {
+        deferredInitialRenderSelector: null,
         transitionsBound: false,
         navigationRecoveryTimer: null,
         navigationAttempt: 0,
@@ -672,6 +673,7 @@ const Sidebar = (() => {
 
     function _getSelectableExtraMenuItems(role) {
         const user = _getCurrentSidebarUser();
+        const businessContext = window.CrmBusinessContext?.current?.(user);
         const seen = new Set();
         return NAV_ITEMS.concat(INTERNAL_SHORTCUT_ITEMS, PRODUCTIVITY_QUICK_ITEMS)
             .filter(item => item.href && item.type !== 'group' && String(item.href).startsWith('/'))
@@ -679,7 +681,7 @@ const Sidebar = (() => {
                 const href = _normalizeExtraHref(item.href);
                 if (!href || seen.has(href)) return false;
                 if (role && (item.access || !PRODUCTIVITY_QUICK_ITEMS.includes(item)) && !hasAccess(item, role)) return false;
-                if (!_businessAllowsSidebarItem(item, user)) return false;
+                if (!_businessAllowsSidebarItem(item, user, businessContext)) return false;
                 if (!_isNavItemVisible(item, user, role)) return false;
                 if (!_sidebarItemHasAvailableTimelineMode(item, user)) return false;
                 seen.add(href);
@@ -741,28 +743,27 @@ const Sidebar = (() => {
         } catch {}
     }
 
-    function _getSelectedExtraMenuHrefs(role) {
+    function _getSelectedExtraMenuHrefs(role, selectable) {
         const defaults = _getRoleQuickAccessHrefs(role);
         if (!_useRoleQuickAccessDefaults()) _mergeLegacyProductivityFavorites(defaults);
         const saved = !_useRoleQuickAccessDefaults() && _hasSavedExtraMenuSelection()
             ? _getSavedExtraMenuHrefs()
             : defaults;
-        const available = new Set(_getSelectableExtraMenuItems(role).map(item => item.href));
+        const available = new Set(selectable.map(item => item.href));
         // Working sections remain discoverable after importing older favorites.
         // Availability still comes from the effective page and business policy.
         const required = [MY_DAY_FAVORITE_HREF, '/tasks', '/staff', '/chat', '/afisha', '/training'];
         return [...new Set([...required, ...saved])].filter(href => available.has(href));
     }
 
-    function _getExtraMenuItems(role, includeHidden = false) {
-        const byHref = new Map(_getSelectableExtraMenuItems(role).map(item => [item.href, item]));
-        const selected = _getSelectedExtraMenuHrefs(role)
-            .map(href => byHref.get(href))
-            .filter(item => item && (includeHidden || !item.hidden));
-        const educationItem = [...byHref.values()].find(item => item.educationWorkspace);
-        return educationItem
-            ? [educationItem, ...selected.filter(item => !item.educationWorkspace)]
-            : selected;
+    function _getExtraMenuModel(role) {
+        const selectable = _getSelectableExtraMenuItems(role);
+        const byHref = new Map(selectable.map(item => [item.href, item]));
+        const selectedHrefs = _getSelectedExtraMenuHrefs(role, selectable);
+        const selected = selectedHrefs.map(href => byHref.get(href)).filter(item => item && !item.hidden);
+        const educationItem = selectable.find(item => item.educationWorkspace);
+        const items = educationItem ? [educationItem, ...selected.filter(item => !item.educationWorkspace)] : selected;
+        return { selectable, selectedHrefs, items };
     }
 
     function _getSavedProductivityHrefs() {
@@ -830,19 +831,20 @@ const Sidebar = (() => {
     }
 
     function _railPrimaryItems(role, user = _getCurrentSidebarUser()) {
+        const businessContext = window.CrmBusinessContext?.current?.(user);
         return UTILITY_RAIL_PRIMARY_HREFS
             .map(_findNavItemByHref)
             .filter(Boolean)
             .filter(item => (!role || hasAccess(item, role))
-                && _businessAllowsSidebarItem(item, user)
+                && _businessAllowsSidebarItem(item, user, businessContext)
                 && _isNavItemVisible(item, user, role)
                 && _sidebarItemHasAvailableTimelineMode(item, user));
     }
 
-    function _railFavoriteItems(role, usedKeys = new Set()) {
+    function _railFavoriteItems(items, usedKeys) {
         const seen = new Set(usedKeys);
         const favorites = [];
-        _getExtraMenuItems(role).forEach(item => {
+        items.forEach(item => {
             const key = _railKeyForItem(item);
             if (!key || seen.has(key)) return;
             if (item.href && !String(item.href).startsWith('/')) return;
@@ -854,6 +856,7 @@ const Sidebar = (() => {
 
     function _railFlyoutGroups(role, currentPath, currentHash, usedKeys = new Set()) {
         const user = _getCurrentSidebarUser();
+        const businessContext = window.CrmBusinessContext?.current?.(user);
         return UTILITY_RAIL_CONTEXT_GROUPS.map(groupKey => {
             const group = NAV_ITEMS.find(item => item.type === 'group' && item.key === groupKey);
             if (!group) return null;
@@ -861,7 +864,7 @@ const Sidebar = (() => {
                 .filter(item => item.href && item.group === groupKey)
                 .filter(item => {
                     if (role && !hasAccess(item, role)) return false;
-                    if (!_businessAllowsSidebarItem(item, user)) return false;
+                    if (!_businessAllowsSidebarItem(item, user, businessContext)) return false;
                     if (!_isNavItemVisible(item, user, role)) return false;
                     if (!_sidebarItemHasAvailableTimelineMode(item, user)) return false;
                     const href = String(item.href || '');
@@ -878,10 +881,10 @@ const Sidebar = (() => {
         }).filter(Boolean);
     }
 
-    function _buildUtilityRailModel(role, currentPath, currentHash) {
+    function _buildUtilityRailModel(role, currentPath, currentHash, extraItems = _getExtraMenuModel(role).items) {
         const primary = _railPrimaryItems(role);
         const used = new Set(primary.map(_railKeyForItem));
-        const favorites = _railFavoriteItems(role, used);
+        const favorites = _railFavoriteItems(extraItems, used);
         favorites.forEach(item => used.add(_railKeyForItem(item)));
         const groups = _railFlyoutGroups(role, currentPath, currentHash, used);
         return { favorites, primary, groups };
@@ -931,12 +934,6 @@ const Sidebar = (() => {
         _state.identityMetaDetails.currency = null;
     }
 
-    function _insertSidebarSectionAfter(sidebar, section, anchor) {
-        if (!sidebar || !section || !anchor || anchor.parentElement !== sidebar) return;
-        if (section.previousElementSibling === anchor) return;
-        sidebar.insertBefore(section, anchor.nextSibling);
-    }
-
     function _removeSidebarTodayDock() {
         document.getElementById('sidebarTodayDock')?.remove();
     }
@@ -947,14 +944,9 @@ const Sidebar = (() => {
         const extras = document.getElementById('sidebarDesignExtras');
         _removeSidebarTodayDock();
 
-        if (deck && deck.parentElement !== sidebar) sidebar.insertBefore(deck, links);
-        if (extras && extras.parentElement !== sidebar) sidebar.insertBefore(extras, links);
-
-        if (deck) sidebar.insertBefore(deck, links);
-        if (extras) {
-            if (deck) _insertSidebarSectionAfter(sidebar, extras, deck);
-            else sidebar.insertBefore(extras, links);
-        }
+        if (extras && extras.nextElementSibling !== links) sidebar.insertBefore(extras, links);
+        const anchor = extras || links;
+        if (deck && deck.nextElementSibling !== anchor) sidebar.insertBefore(deck, anchor);
     }
 
     function _getExtraIconOptions() {
@@ -1190,6 +1182,17 @@ const Sidebar = (() => {
     }
 
     // ═══ RENDER ═══════════════════════════════════════════════════
+    const sidebarMarkup = new WeakMap();
+
+    function renderSidebarMarkup(root, html, scopeKey) {
+        const previous = sidebarMarkup.get(root);
+        // Availability annotations are applied after rendering and may need to be cleared by a new profile.
+        if (scopeKey !== undefined && previous?.scopeKey === scopeKey && previous.html === html
+            && !root.querySelector('[data-sidebar-work-unavailable]')) return;
+        root.innerHTML = html;
+        sidebarMarkup.set(root, { html, scopeKey });
+    }
+
     function render(containerSelector, options = {}) {
         const container = document.querySelector(containerSelector || '#sidebarNav .sidebar-links');
         if (!container) return;
@@ -1293,12 +1296,14 @@ const Sidebar = (() => {
             html += '</div></div></div>';
         }
 
-        container.innerHTML = html;
+        const scopeKey = _sidebarRequestScopeKey();
+        renderSidebarMarkup(container, html, scopeKey);
         container.classList.add('rendered');
 
         _ensureAuroraLayer();
-        _ensureCommandDeck();
-        _ensureSidebarMiniRail(role, currentPath, currentHash);
+        const extraMenu = _getExtraMenuModel(role);
+        _ensureCommandDeck(extraMenu, scopeKey);
+        _ensureSidebarMiniRail(role, currentPath, currentHash, extraMenu.items, scopeKey);
         _ensureDashboardShortcut(role, currentPath, savedUser);
         _removeSidebarTodayDock();
         _syncGroupSignals();
@@ -1356,6 +1361,14 @@ const Sidebar = (() => {
         document.body.classList.add('shell-ready');
         document.body.removeAttribute('aria-busy');
         document.documentElement.classList.add('shell-ready');
+        const selector = _state.deferredInitialRenderSelector;
+        if (selector) {
+            _state.deferredInitialRenderSelector = null;
+            // Scope hydration normally renders the sidebar during this same turn.
+            queueMicrotask(() => {
+                if (!document.querySelector(selector)?.classList.contains('rendered')) render(selector);
+            });
+        }
     }
 
     function _clearShellReady() {
@@ -3083,7 +3096,7 @@ const Sidebar = (() => {
         return label || _sidebarRoleBadgeKey(user).replace(/_/g, ' ');
     }
 
-    function _ensureCommandDeck() {
+    function _ensureCommandDeck(extraMenu, scopeKey) {
         const sidebar = document.getElementById('sidebarNav');
         if (!sidebar) return;
         sidebar.querySelector('.sidebar-pills')?.remove();
@@ -3170,12 +3183,11 @@ const Sidebar = (() => {
 
         const savedUser = _getCurrentSidebarUser();
         const role = _getSidebarActiveRole(savedUser);
-        const selectedExtraItems = _getExtraMenuItems(role);
-        const selectableExtraItems = _getSelectableExtraMenuItems(role);
+        const { items: selectedExtraItems, selectable: selectableExtraItems, selectedHrefs: selectedExtraHrefs }
+            = extraMenu || _getExtraMenuModel(role);
         const timelineExtraItem = selectableExtraItems.find(item => _isSidebarTimelineItem(item)) || null;
         const extraItems = selectedExtraItems.filter(item => !_isSidebarTimelineItem(item));
         const editableExtraItems = selectableExtraItems.filter(item => !_isSidebarTimelineItem(item) && !item.educationWorkspace);
-        const selectedExtraHrefs = _getSelectedExtraMenuHrefs(role);
         const extraEditorOpen = _isExtraMenuEditorOpen();
         const extraCollapsed = _isExtraMenuCollapsed();
         const extraListHidden = extraEditorOpen || extraCollapsed;
@@ -3187,7 +3199,7 @@ const Sidebar = (() => {
             extras.id = 'sidebarDesignExtras';
         }
         extras.className = `sidebar-design-extras${extraEditorOpen ? ' is-editing' : ''}${extraCollapsed && !extraEditorOpen ? ' is-collapsed' : ''}`;
-        extras.innerHTML = `
+        renderSidebarMarkup(extras, `
                 <div class="sidebar-design-extras-head-row">
                 <button type="button" class="sidebar-design-extras-head" data-sidebar-extra-toggle-section aria-expanded="${extraListHidden ? 'false' : 'true'}">
                     <span class="sidebar-design-extras-dot" aria-hidden="true"></span>
@@ -3205,7 +3217,7 @@ const Sidebar = (() => {
                     ${timelineExtraItem ? `<div class="sidebar-design-timeline-slot">${_renderExtraMenuLink(timelineExtraItem, currentPath, currentHash)}</div>` : ''}
                     ${timelineExtraItem || extraItems.length ? extraItems.map(item => _renderExtraMenuLink(item, currentPath, currentHash, { editMode: extraEditorOpen })).join('') : '<div class="sidebar-design-extra-empty">Нічого не вибрано. Натисни шестерню і постав галочки.</div>'}
                 </div>
-                ${extraEditorOpen ? _renderExtraMenuEditor(editableExtraItems, selectedExtraHrefs) : ''}`;
+                ${extraEditorOpen ? _renderExtraMenuEditor(editableExtraItems, selectedExtraHrefs) : ''}`, scopeKey);
         if (extras.parentElement !== sidebar) sidebar.insertBefore(extras, links);
 
         _syncSidebarSectionOrder(sidebar, links);
@@ -4216,7 +4228,7 @@ const Sidebar = (() => {
         deck.dataset.visibleCount = String(1 + (canSeeTasks ? 1 : 0) + (canSeeFunnel ? 1 : 0));
     }
 
-    function initUserCard() {
+    function initUserCard({ commandDeckCurrent = false } = {}) {
         let user = _getCurrentSidebarUser();
         if (!user) return;
         const avatarEl = document.getElementById('sidebarUserAvatar');
@@ -4230,9 +4242,11 @@ const Sidebar = (() => {
         if (roleEl) roleEl.textContent = _sidebarRoleLine(user);
         _bindProfileEntry(cardEl);
         _bindProfileEntry(nameEl);
-        _hydrateCommandDeckUser();
-        _syncFocusDeckAccess();
-        _updateSidebarCommandDeck();
+        if (!commandDeckCurrent) {
+            _hydrateCommandDeckUser();
+            _syncFocusDeckAccess();
+            _updateSidebarCommandDeck();
+        }
         if (!_state.roleRenderApplied && Object.keys(_getGroupState()).length === 0) {
             _state.roleRenderApplied = true;
             const links = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');
@@ -4495,7 +4509,7 @@ const Sidebar = (() => {
         </button>`;
     }
 
-    function _ensureSidebarMiniRail(role, currentPath, currentHash) {
+    function _ensureSidebarMiniRail(role, currentPath, currentHash, extraItems, scopeKey) {
         const sidebar = document.getElementById('sidebarNav');
         if (!sidebar) return;
         let rail = document.getElementById('sidebarMiniRail');
@@ -4505,15 +4519,15 @@ const Sidebar = (() => {
             rail.className = 'sidebar-mini-rail';
             rail.setAttribute('aria-label', 'Згорнуте меню сторінок');
         }
-        const model = _buildUtilityRailModel(role, currentPath, currentHash);
+        const model = _buildUtilityRailModel(role, currentPath, currentHash, extraItems);
         const favorites = model.favorites.map(item => _renderSidebarMiniLink(item, currentPath, currentHash, { kind: 'favorite', cue: 'Обране' })).join('');
         const primary = model.primary.map(item => _renderSidebarMiniLink(item, currentPath, currentHash, { kind: 'primary' })).join('');
         const utility = _renderSidebarRailFlyoutButton(model.groups);
-        rail.innerHTML = [
+        renderSidebarMarkup(rail, [
             _renderSidebarRailSection('favorites', 'Обране', favorites),
             _renderSidebarRailSection('primary', 'Основні маршрути', primary),
             _renderSidebarRailSection('utility', 'Контекстні розділи', utility)
-        ].join('');
+        ].join(''), scopeKey);
         const anchor = document.getElementById('sidebarCommandDeck') || sidebar.querySelector('.sidebar-links');
         if (anchor && rail.parentElement !== sidebar) sidebar.insertBefore(rail, anchor);
         else if (!rail.parentElement) sidebar.appendChild(rail);
@@ -4660,10 +4674,11 @@ const Sidebar = (() => {
         }
     }
 
-    function init(containerSelector) {
+    function init(containerSelector, { deferInitialRender = false } = {}) {
         document.body.classList.add('shell-baseline');
         _ensureCollapsedGroupsBaseline();
-        render(containerSelector);
+        if (deferInitialRender) _state.deferredInitialRenderSelector = containerSelector || '#sidebarNav .sidebar-links';
+        else render(containerSelector);
         void _ensureSidebarBusinessProfile();
         initToggle();
         _initPageTransitions();
@@ -4852,7 +4867,7 @@ const Sidebar = (() => {
     window.addEventListener('crmBusinessProfileChanged', () => {
         const c = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');
         if (c?.id) render('#' + c.id, { refreshTimelineSummary: false });
-        initUserCard();
+        initUserCard({ commandDeckCurrent: Boolean(c?.id) });
         _queueSidebarTimelineScopeRefresh();
     });
     window.addEventListener('timeline:view-changed', event => {

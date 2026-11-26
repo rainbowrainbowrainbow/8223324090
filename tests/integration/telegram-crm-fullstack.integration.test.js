@@ -1107,35 +1107,35 @@ test('mobile CRM creates co-assignees and cancels from My Day', {
         const page = await context.newPage();
         const createResponse = () => page.waitForResponse(response => new URL(response.url()).pathname === '/api/tasks'
             && response.request().method() === 'POST');
-        await page.goto(BASE_URL + '/tasks');
-        await page.locator('#taskTitle').fill('Synthetic browser task with co-assignee');
-        await page.locator('#taskDetailsToggle').click();
-        await page.locator(`#taskCreateCoAssignee${peer.id}`).check();
-        if (process.env.CRM_PILOT_SCREENSHOTS) {
-            await page.screenshot({ path: join(process.env.CRM_PILOT_SCREENSHOTS, 'task-create-co-assignee-390.png') });
+        async function createWithPeer(title) {
+            await page.locator('#cabinetTaskTitle').fill(title);
+            const picker = page.locator('[data-cabinet-assignment]');
+            await picker.locator('summary').click();
+            const self = picker.locator(`[data-assignment-user="${login.data.user.id}"]`);
+            // Confirm self explicitly so the first colleague becomes a co-assignee.
+            if (await self.getAttribute('aria-pressed') === 'true') await self.click();
+            await self.click();
+            await picker.getByRole('searchbox').fill(peer.name);
+            await picker.locator(`[data-assignment-user="${peer.id}"]`).click();
+            if (process.env.CRM_PILOT_SCREENSHOTS) {
+                await picker.screenshot({ path: join(process.env.CRM_PILOT_SCREENSHOTS, 'task-create-co-assignee-390.png') });
+            }
+            const created = createResponse();
+            await page.locator('[data-cabinet-create-action="plain"]').click();
+            const response = await created;
+            assert.ok(response.ok(), await response.text());
+            const body = await response.json();
+            assert.deepEqual(body.postCreateWarnings, []);
+            assert.deepEqual(response.request().postDataJSON().coAssigneeUserIds, [peer.id]);
+            return body.task.id;
         }
-        const taskCenterCreate = createResponse();
-        await page.locator('#addTaskBtn').click();
-        const centerResponse = await taskCenterCreate;
-        assert.ok(centerResponse.ok(), await centerResponse.text());
-        assert.deepEqual((await centerResponse.json()).postCreateWarnings, []);
-        assert.deepEqual(centerResponse.request().postDataJSON().coAssigneeUserIds, [peer.id]);
-
-        await page.goto(BASE_URL + '/profile?tab=myday');
-        await page.locator('.park-composer > summary').click();
-        await page.locator('#cabinetTaskTitle').fill('Synthetic My Day with co-assignee');
-        const disclosure = page.locator('.park-composer-options > summary');
-        if (await disclosure.count()) await disclosure.click();
-        else await page.locator('[data-cabinet-composer-toggle]').first().click();
-        await page.locator(`#cabinetCreateCoAssignee${peer.id}`).check();
-        const cabinetCreate = createResponse();
-        await page.locator('[data-cabinet-create-action="plain"]').click();
-        const cabinetResponse = await cabinetCreate;
-        assert.ok(cabinetResponse.ok(), await cabinetResponse.text());
-        assert.deepEqual((await cabinetResponse.json()).postCreateWarnings, []);
-        assert.deepEqual(cabinetResponse.request().postDataJSON().coAssigneeUserIds, [peer.id]);
-        const taskId = (await cabinetResponse.json()).task.id;
+        await page.goto(BASE_URL + '/tasks');
+        await page.getByRole('link', { name: '+ Нова задача', exact: true }).click();
+        await createWithPeer('Synthetic browser task with co-assignee');
+        await page.goto(BASE_URL + '/profile?tab=myday&create=1');
+        const taskId = await createWithPeer('Synthetic My Day with co-assignee');
         await page.getByRole('button', { name: 'Synthetic My Day with co-assignee', exact: true }).click();
+        await page.getByRole('dialog').getByText('Ще', { exact: true }).click();
         await page.locator('[data-dialog-cancel-task]').click();
         await page.locator('.confirm-overlay[data-confirm-kind="confirm"]')
             .getByRole('button', { name: 'Скасувати задачу', exact: true }).click();

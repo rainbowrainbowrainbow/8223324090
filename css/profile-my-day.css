@@ -620,8 +620,8 @@ html:has(.park-my-day.is-completing-task)::view-transition-new(root) { animation
     border: 1px solid var(--gray-300, currentColor);
     border-radius: 1rem;
     padding: clamp(1rem, 4vw, 1.5rem);
-    color: CanvasText;
-    background: Canvas;
+    color: var(--gray-900);
+    background: var(--white);
     box-shadow: 0 20px 60px rgb(0 0 0 / 30%);
     overflow-wrap: anywhere;
 }
@@ -637,7 +637,8 @@ html:has(.park-my-day.is-completing-task)::view-transition-new(root) { animation
 .park-task-dialog-head form { flex-shrink: 0; }
 .park-task-dialog-head button { white-space: nowrap; }
 .park-task-dialog-head button, .park-task-dialog-actions { min-block-size: 44px; }
-.park-task-dialog-head button { padding-inline: .75rem; font: inherit; }
+.park-task-dialog-head button { inline-size: 44px; border: 1px solid var(--gray-300); border-radius: .75rem;
+    background: var(--gray-50); color: inherit; font: inherit; font-size: 1.5rem; cursor: pointer; }
 .park-task-dialog-actions {
     display: inline-flex;
     align-items: center;
@@ -659,7 +660,7 @@ html:has(.park-my-day.is-completing-task)::view-transition-new(root) { animation
 .park-task-dialog-content button, .park-task-dialog-discard {
     min-block-size: 44px; padding: .5rem .75rem; font: inherit; max-inline-size: 100%;
     border: 1px solid var(--gray-300, currentColor); border-radius: .55rem;
-    color: CanvasText; background: Canvas; cursor: pointer;
+    color: var(--gray-900); background: var(--white); cursor: pointer;
 }
 .park-task-dialog-guard { min-block-size: 1.5em; margin-block: .5rem; }
 .park-task-dialog-content [hidden] { display: none; }
@@ -672,8 +673,34 @@ html:has(.park-my-day.is-completing-task)::view-transition-new(root) { animation
     border: 1px solid var(--gray-300, currentColor);
     border-radius: .65rem;
 }
-.park-task-dialog-facts dt { font-size: .85rem; }
+.park-task-dialog-facts dt { color: var(--gray-600); font-size: .85rem; }
 .park-task-dialog-facts dd { margin: .2rem 0 0; font-weight: 650; }
+
+.park-task-dialog [hidden] { display: none !important; }
+.park-task-dialog-content h3 { margin: 0 0 .4rem; font-size: 1rem; }
+.park-task-dialog-content form label { font-weight: 600; }
+.park-task-dialog-content textarea { resize: vertical; }
+.park-task-dialog-content form :is(input, textarea, select) { margin-bottom: .4rem; }
+.park-task-dialog-buttons { align-items: start; margin-top: 1rem; }
+.park-task-dialog-buttons button, .park-dialog-more > summary { font-weight: 650; }
+.park-task-dialog-content .park-dialog-primary {
+    background: var(--primary); color: #06271c; border-color: var(--primary);
+}
+.park-task-dialog :is(button, summary):hover { border-color: var(--primary); }
+.park-task-dialog :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.park-dialog-more > summary {
+    box-sizing: border-box; min-height: 44px; border: 1px solid var(--gray-300);
+    border-radius: .55rem; padding-inline: .75rem; align-content: center;
+}
+.park-dialog-more[open] { flex-basis: 100%; }
+.park-dialog-more[open] > summary { width: fit-content; }
+.park-dialog-more > div { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .5rem; }
+.park-task-dialog [data-dialog-cancel-task] { color: var(--danger); }
+.park-task-dialog-facts { margin: 0; background: var(--gray-50); }
+@media (max-width: 480px) {
+    .park-task-dialog-content form .park-task-dialog-buttons { display: grid; }
+    .park-task-dialog-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 .park-my-day-role-group { display: grid; gap: .65rem; }
 .park-my-day-role-group h4 { margin-block: .25rem 0; font-size: .95rem; }
 

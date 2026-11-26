@@ -139,6 +139,13 @@ async function verifyTaskEntry({ origin, session, evidence }) {
             await page.locator('#password').fill(process.env.TEST_PASS);
             await page.locator('#loginForm button[type=submit]').click();
             const dialog = page.locator('.park-task-dialog[open]');
+            async function openSchedule() {
+                const back = dialog.getByRole('button', { name: 'Назад до перегляду', exact: true });
+                if (await back.isVisible()) await back.click();
+                await dialog.getByText('Ще', { exact: true }).click();
+                await dialog.getByRole('button', { name: 'Перенести', exact: true }).click();
+                await dialog.locator('[data-dialog-schedule] [name=date]').waitFor();
+            }
             await dialog.getByRole('heading', { name: `Task entry ${engine}` }).waitFor();
             assert.equal(new URL(page.url()).pathname, '/profile');
             assert.equal(new URL(page.url()).searchParams.get('open'), String(id));
@@ -161,6 +168,7 @@ async function verifyTaskEntry({ origin, session, evidence }) {
             const editor = dialog.locator('[data-dialog-editor]');
             await editor.waitFor();
             const scheduleDate = dialog.locator('[data-dialog-schedule] [name=date]');
+            await openSchedule();
             await scheduleDate.fill('2099-11-22');
             assert.equal(await page.evaluate(() => !window.dispatchEvent(new Event('beforeunload', { cancelable: true }))), true,
                 'document navigation must warn about the schedule draft');
@@ -183,6 +191,8 @@ async function verifyTaskEntry({ origin, session, evidence }) {
             assert.equal(await scheduleDate.inputValue(), '2099-11-22', 'cross-tab history retains the schedule draft');
             assert.deepEqual(await editor.locator('[name=priority] option').evaluateAll(options => options.map(option => option.value)),
                 ['urgent', 'high', 'normal', 'low'], 'dialog uses the canonical CRM task priorities');
+            await dialog.getByRole('button', { name: 'Назад до перегляду' }).click();
+            await dialog.locator('[data-dialog-edit]').click();
             await editor.locator('[name=priority]').selectOption('high');
             await editor.locator('[name=title]').fill(`Task entry saved ${engine}`);
             await page.keyboard.press('Escape');
@@ -198,11 +208,11 @@ async function verifyTaskEntry({ origin, session, evidence }) {
                 await pendingSave;
                 return route.continue();
             });
-            await editor.getByRole('button', { name: 'Зберегти', exact: true }).click();
+            await editor.getByRole('button', { name: 'Зберегти зміни', exact: true }).click();
             try {
                 assert.equal(await editor.locator('[name=title]').isDisabled(), true, 'pending save cannot silently overwrite typing');
                 assert.equal(await scheduleDate.isDisabled(), true, 'pending editor save also locks the schedule draft');
-                assert.equal(await editor.getByRole('button', { name: 'Зберегти', exact: true }).isDisabled(), true);
+                assert.equal(await editor.getByRole('button', { name: 'Зберегти зміни', exact: true }).isDisabled(), true);
                 await dialog.getByRole('button', { name: 'Закрити', exact: true }).click();
                 assert.equal(await dialog.count(), 1, 'pending save cannot be dismissed');
             } finally { releaseSave(); }
@@ -225,11 +235,12 @@ async function verifyTaskEntry({ origin, session, evidence }) {
                 committedSchedule = await route.fetch({ maxRetries: 0 });
                 return route.abort('failed');
             }, { times: 2 });
+            await openSchedule();
             await dialog.locator('[data-dialog-schedule] [name=date]').fill('2099-11-21');
-            await dialog.getByRole('button', { name: 'Перенести', exact: true }).click();
+            await dialog.getByRole('button', { name: 'Перенести на обрану дату', exact: true }).click();
             const checkOutcome = dialog.getByRole('button', { name: 'Перевірити результат', exact: true });
             await checkOutcome.waitFor();
-            assert.equal(await dialog.getByRole('button', { name: 'Перенести', exact: true }).isDisabled(), true);
+            assert.equal(await dialog.getByRole('button', { name: 'Перенести на обрану дату', exact: true }).isDisabled(), true);
             assert.equal((await api('/api/tasks/' + id)).version, initialSchedule.version, 'aborted before dispatch leaves the version unchanged');
             assert.equal(await scheduleDate.inputValue(), '2099-11-21', 'unknown schedule retains the date');
             assert.equal(await editor.locator('[name=description]').inputValue(), 'Independent editor draft');
@@ -249,8 +260,10 @@ async function verifyTaskEntry({ origin, session, evidence }) {
             assert.equal(history.filter(event => event.meta?.idempotencyKey?.endsWith(':' + scheduleAttempts[0].myDayOperationId)).length, 1);
             assert.equal((await api('/api/tasks/' + id)).version, initialSchedule.version + 1, 'readback must not cause a second mutation');
             assert.equal(await editor.locator('[name=description]').inputValue(), 'Independent editor draft', 'rescheduling preserves editor draft');
+            await dialog.locator('[data-dialog-edit]').click();
             await editor.locator('[name=description]').fill('Local navigation fixture');
             assert.equal(await dialog.getAttribute('data-dirty'), 'false', 'restoring original inputs clears dirty state');
+            await openSchedule();
             await scheduleDate.fill('2099-11-23');
             await page.setViewportSize({ width: 390, height: 900 });
             await page.screenshot({ path: path.join(evidence, `task-entry-dirty-${engine}-390.png`), animations: 'disabled' });
@@ -279,9 +292,9 @@ async function verifyTaskEntry({ origin, session, evidence }) {
             page.on('request', recoveryRequest);
             await page.route(recoveryDetailUrl, route => route.request().method() === 'GET'
                 ? route.fulfill({ status: 503, json: { error: 'Local reload failure' } }) : route.fallback());
-            await editor.getByRole('button', { name: 'Зберегти', exact: true }).click();
+            await editor.getByRole('button', { name: 'Зберегти зміни', exact: true }).click();
             await dialog.getByRole('button', { name: 'Повторити завантаження' }).waitFor();
-            assert.equal(await editor.getByRole('button', { name: 'Зберегти', exact: true }).isDisabled(), true);
+            assert.equal(await editor.getByRole('button', { name: 'Зберегти зміни', exact: true }).isDisabled(), true);
             await page.unroute(recoveryDetailUrl);
             await dialog.getByRole('button', { name: 'Повторити завантаження' }).click();
             await dialog.locator('.park-task-dialog-description').filter({ hasText: 'Saved before reload failure' }).waitFor();
@@ -297,7 +310,7 @@ async function verifyTaskEntry({ origin, session, evidence }) {
             });
             await dialog.locator('[data-dialog-edit]').click();
             await editor.locator('[name=description]').fill('Committed edit before response loss');
-            await editor.getByRole('button', { name: 'Зберегти', exact: true }).click();
+            await editor.getByRole('button', { name: 'Зберегти зміни', exact: true }).click();
             await checkOutcome.waitFor();
             assert.equal(committedEdit.status(), 200);
             await page.unroute(saveUrl);
@@ -319,7 +332,7 @@ async function verifyTaskEntry({ origin, session, evidence }) {
                 status: 'in_progress', version: snapshot.version }, { method: 'PUT', token: peer.token });
             const [staleResponse] = await Promise.all([
                 page.waitForResponse(response => saveUrl(new URL(response.url())) && response.request().method() === 'PUT'),
-                editor.getByRole('button', { name: 'Зберегти', exact: true }).click()
+                editor.getByRole('button', { name: 'Зберегти зміни', exact: true }).click()
             ]);
             assert.equal(staleResponse.status(), 409);
             const stalePayload = staleResponse.request().postDataJSON();
@@ -330,7 +343,7 @@ async function verifyTaskEntry({ origin, session, evidence }) {
             await dialog.getByRole('button', { name: 'Переглянути актуальну версію' }).click();
             await editor.getByText('Опис: Concurrent change from another user', { exact: true }).waitFor();
             assert.equal(await editor.locator('[name=description]').inputValue(), 'Reconciled local description');
-            await editor.getByRole('button', { name: 'Зберегти', exact: true }).click();
+            await editor.getByRole('button', { name: 'Зберегти зміни', exact: true }).click();
             await dialog.locator('.park-task-dialog-description').filter({ hasText: 'Reconciled local description' }).waitFor();
             const resolved = await api('/api/tasks/' + id);
             assert.equal(resolved.description, 'Reconciled local description');
@@ -431,6 +444,7 @@ async function verifyTaskEntry({ origin, session, evidence }) {
             const dirtyDate = '2099-11-25';
             await dialog.locator('[data-dialog-edit]').click();
             await dialog.locator('[name=title]').fill(dirtyTitle);
+            await openSchedule();
             await dialog.locator('[data-dialog-schedule] [name=date]').fill(dirtyDate);
             const otherTab = await context.newPage();
             try {
@@ -448,7 +462,7 @@ async function verifyTaskEntry({ origin, session, evidence }) {
                 });
                 const recovery = page.getByRole('dialog', { name: 'Активний бізнес змінився' });
                 await recovery.waitFor();
-                assert.equal(await recovery.getByRole('button', { name: 'Зберегти', exact: true }).count(), 0);
+                assert.equal(await recovery.getByRole('button', { name: 'Зберегти зміни', exact: true }).count(), 0);
                 assert.equal(await page.locator('#mainApp').isVisible(), true);
                 await page.bringToFront();
                 await page.keyboard.press('Tab');
@@ -500,6 +514,7 @@ async function verifyTaskEntry({ origin, session, evidence }) {
             await dialog.waitFor({ state: 'hidden' });
             await navigate(origin + href);
             await dialog.getByRole('heading', { name: parkTitle }).waitFor();
+            await openSchedule();
             await dialog.locator('[data-dialog-schedule] [name=date]').fill(dirtyDate);
             const dateTransitionTab = await context.newPage();
             try {
@@ -553,6 +568,7 @@ async function verifyTaskEntry({ origin, session, evidence }) {
             await page.goto(origin + href, { waitUntil: 'domcontentloaded' });
             await dialog.getByRole('heading', { name: parkTitle }).waitFor();
             await verifyBackgroundReadback(page);
+            await openSchedule();
             await dialog.locator('[data-dialog-schedule] [name=date]').fill(dirtyDate);
             const logoutTab = await context.newPage();
             try {

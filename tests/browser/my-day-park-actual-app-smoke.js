@@ -421,6 +421,42 @@ async function run() {
                 if (theme === 'light') await overdue.screenshot({ path: path.join(evidence, 'my-day-quick-today-390.png') });
             }
         }
+        const sample = page.getByRole('region', { name: 'Майбутні', exact: true })
+            .getByRole('button', { name: 'Перевірити план монтажу', exact: true });
+        const sampleDialog = page.getByRole('dialog', { name: 'Перевірити план монтажу' });
+        for (const width of [360, 1440]) {
+            await page.setViewportSize({ width, height: width === 360 ? 800 : 900 });
+            for (const panel of ['view', 'edit', 'schedule']) {
+                await sample.click();
+                const edit = sampleDialog.getByRole('button', { name: 'Редагувати', exact: true });
+                await edit.waitFor();
+                if (panel === 'edit') await edit.click();
+                if (panel === 'schedule') {
+                    await sampleDialog.getByText('Ще', { exact: true }).click();
+                    await sampleDialog.getByRole('button', { name: 'Перенести', exact: true }).click();
+                }
+                assert.equal(await edit.isVisible(), panel === 'view');
+                assert.equal(await sampleDialog.locator('[data-dialog-editor]').isVisible(), panel === 'edit');
+                assert.equal(await sampleDialog.locator('[data-dialog-schedule]').isVisible(), panel === 'schedule');
+                assert.ok(await sampleDialog.evaluate(node => node.scrollWidth <= node.clientWidth + 1));
+                await page.screenshot({ path: path.join(evidence, `task-card-${panel}-${width}.png`), animations: 'disabled' });
+                if (panel !== 'view') {
+                    const input = panel === 'edit' ? sampleDialog.getByLabel('Опис', { exact: true })
+                        : sampleDialog.getByLabel('Нова дата', { exact: true });
+                    const original = await input.inputValue();
+                    const draft = panel === 'edit' ? 'Чернетка опису' : '2099-11-26';
+                    await input.fill(draft);
+                    await page.keyboard.press('Escape');
+                    await sampleDialog.getByRole('button', { name: 'Відкинути зміни та закрити' }).waitFor();
+                    assert.equal(await input.inputValue(), draft);
+                    await input.fill(original);
+                }
+                await page.keyboard.press('Escape');
+                await sampleDialog.waitFor({ state: 'hidden' });
+                await page.waitForURL(url => !url.searchParams.has('open'));
+                await sample.waitFor();
+            }
+        }
         await page.setViewportSize({ width: 390, height: 844 });
         await completion.locator('[data-cabinet-completion-tab=today]').press('ArrowRight');
         const historyTab = completion.locator('[data-cabinet-completion-tab=history]');

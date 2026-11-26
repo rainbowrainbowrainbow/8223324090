@@ -75,9 +75,9 @@
         dialog.setAttribute('aria-labelledby', 'park-task-dialog-title');
         dialog.innerHTML = `<header class="park-task-dialog-head">
             <h2 id="park-task-dialog-title">Задача #${taskId}</h2>
-            <form method="dialog"><button type="submit" autofocus>Закрити</button></form>
-        </header><p id="my-day-task-guard" class="park-task-dialog-guard" aria-live="polite" style="visibility:hidden">Є незбережені зміни. Збережіть їх або відкиньте.</p>
-        <button type="button" class="park-task-dialog-discard" aria-describedby="my-day-task-guard" style="visibility:hidden" disabled>Відкинути зміни та закрити</button>
+            <form method="dialog"><button type="submit" aria-label="Закрити" autofocus><span aria-hidden="true">×</span></button></form>
+        </header><p id="my-day-task-guard" class="park-task-dialog-guard" aria-live="polite" hidden>Є незбережені зміни. Збережіть їх або відкиньте.</p>
+        <button type="button" class="park-task-dialog-discard" aria-describedby="my-day-task-guard" hidden disabled>Відкинути зміни та закрити</button>
         <div class="park-task-dialog-content"><p role="status">Завантаження задачі…</p></div>`;
         const controller = new AbortController();
         const title = dialog.querySelector('h2');
@@ -86,7 +86,7 @@
         const discard = dialog.querySelector('.park-task-dialog-discard');
         const escape = global.escapeHtml;
         let task, busy = false, needsRefresh = false;
-        let editorDraft = null, scheduleDraft = null, editorVisible = mode === 'edit';
+        let editorDraft = null, scheduleDraft = null, panel = mode === 'edit' ? 'edit' : 'view';
         let editorConflict = null;
         let unknownOperation = null;
         let awaitingSessionChange = false;
@@ -116,11 +116,11 @@
             dialog.setAttribute('closedby', busy || isDirty() ? 'none' : 'closerequest');
             guard.textContent = busy ? 'Дочекайтеся завершення збереження.'
                 : 'Є незбережені зміни. Збережіть їх або відкиньте.';
-            guard.style.visibility = busy || isDirty() ? 'visible' : 'hidden';
-            discard.style.visibility = !busy && isDirty() ? 'visible' : 'hidden';
+            guard.hidden = !busy && !isDirty();
+            discard.hidden = busy || !isDirty();
             discard.disabled = busy || !isDirty();
         }
-        function hideDiscard() { discard.style.visibility = 'hidden'; discard.disabled = true; }
+        function hideDiscard() { discard.hidden = true; discard.disabled = true; }
         const beforeUnload = event => {
             if (!isDirty() && !busy && !awaitingSessionChange) return;
             event.preventDefault(); event.returnValue = '';
@@ -130,8 +130,8 @@
             if (!busy && !isDirty()) return;
             event.preventDefault();
             guard.textContent = busy ? 'Дочекайтеся завершення збереження.' : 'Є незбережені зміни. Збережіть їх або відкиньте.';
-            guard.style.visibility = 'visible';
-            discard.style.visibility = busy ? 'hidden' : 'visible';
+            guard.hidden = false;
+            discard.hidden = busy;
             discard.disabled = busy;
             if (!busy) discard.focus();
         }
@@ -151,7 +151,7 @@
             controller.abort();
             dialog.querySelector('.park-task-dialog-head form').hidden = true;
             title.textContent = 'Активний бізнес змінився';
-            guard.style.visibility = 'hidden';
+            guard.hidden = true;
             hideDiscard();
             content.removeAttribute('aria-busy');
             content.replaceChildren();
@@ -220,8 +220,8 @@
         }
         function settleOperation(operation) {
             unknownOperation = null;
-            if (operation.kind === 'editor') { editorDraft = null; editorConflict = null; editorVisible = false; }
-            if (operation.kind === 'schedule') scheduleDraft = null;
+            if (operation.kind === 'editor') { editorDraft = null; editorConflict = null; panel = 'view'; }
+            if (operation.kind === 'schedule') { scheduleDraft = null; panel = 'view'; }
         }
         function showOperationRecovery(canRetry = false) {
             const operation = unknownOperation;
@@ -344,10 +344,10 @@
             const editorLabels = { title: 'Назва', description: 'Опис', priority: 'Пріоритет' };
             title.textContent = task.title || `Задача #${taskId}`;
             const description = typeof task.description === 'string' ? task.description.trim() : '';
-            content.innerHTML = `<dl class="park-task-dialog-facts">
-                <div><dt>Моя роль</dt><dd>${escape(viewerLabel || 'Перегляд')}</dd></div>
+            content.innerHTML = `<section data-dialog-view><dl class="park-task-dialog-facts">
                 <div><dt>Стан</dt><dd>${escape(statusLabel(task))}</dd></div>
                 <div><dt>${global.TaskUiShared?.taskDateLabel?.(task) || 'Дата'}</dt><dd>${due ? `<time datetime="${escape(due)}">${escape(due.split('-').reverse().join('.'))}</time>` : 'Без дати'}</dd></div>
+                <div><dt>Моя роль</dt><dd>${escape(viewerLabel || 'Перегляд')}</dd></div>
                 ${executor ? `<div><dt>Відповідальний</dt><dd>${escape(labels.get(ownerId))}</dd></div>` : ''}
                 ${coAssigneeLabels.length ? `<div><dt>Співвиконавці</dt><dd>${escape(coAssigneeLabels.join(', '))}</dd></div>` : ''}
             </dl>
@@ -358,24 +358,47 @@
             </details>` : ''}
             ${actions.readHistory && loadHistory ? '<details data-task-dialog-history><summary>Історія</summary><div data-task-history-content aria-live="polite"></div></details>' : ''}
             <div class="park-task-dialog-buttons">
+                ${actions.complete && complete ? '<button type="button" class="park-dialog-primary" data-dialog-complete>Виконати</button>' : ''}
                 ${actions.edit && save ? '<button type="button" data-dialog-edit>Редагувати</button>' : ''}
-                ${actions.complete && complete ? '<button type="button" data-dialog-complete>Виконати</button>' : ''}
-                ${actions.cancel && cancel ? '<button type="button" data-dialog-cancel-task>Скасувати задачу</button>' : ''}
-            </div>
-            ${actions.edit && save ? `<form data-dialog-editor ${editorVisible ? '' : 'hidden'}>
+                ${(actions.reschedule && reschedule) || (actions.cancel && cancel) ? `<details class="park-dialog-more"><summary>Ще</summary><div>
+                    ${actions.reschedule && reschedule ? '<button type="button" data-open-schedule>Перенести</button>' : ''}
+                    ${actions.cancel && cancel ? '<button type="button" data-dialog-cancel-task>Скасувати задачу</button>' : ''}
+                </div></details>` : ''}
+            </div></section>
+            ${actions.edit && save ? `<form data-dialog-editor hidden>
+                <h3>Редагування задачі</h3>
                 <label for="my-day-edit-title">Назва</label><input id="my-day-edit-title" name="title" required value="${escape(editorValue.title)}">
                 <label for="my-day-edit-description">Опис</label><textarea id="my-day-edit-description" name="description" rows="4">${escape(editorValue.description)}</textarea>
                 ${editorConflict?.current ? `<div role="status"><p>Перевірте актуальні значення перед збереженням чернетки.</p><ul>${Object.keys(editorConflict.patch).map(field => `<li>${editorLabels[field]}: ${escape(field === 'priority' ? priorities.find(item => item.value === editorConflict.current[field])?.label || editorConflict.current[field] : editorConflict.current[field] || '—')}</li>`).join('')}</ul></div>` : ''}
                 <label for="my-day-edit-priority">Пріоритет</label><select id="my-day-edit-priority" name="priority">${priorities.map(item => `<option value="${escape(item.value)}" ${item.value === editorValue.priority ? 'selected' : ''}>${escape(item.label)}</option>`).join('')}</select>
-                <button type="submit">Зберегти</button>
+                <div class="park-task-dialog-buttons"><button type="submit" class="park-dialog-primary">Зберегти зміни</button><button type="button" data-dialog-back>Назад до перегляду</button></div>
             </form>` : ''}
-            ${actions.reschedule && reschedule ? `<form data-dialog-schedule>
+            ${actions.reschedule && reschedule ? `<form data-dialog-schedule hidden><h3>Перенесення задачі</h3>
                 <label for="my-day-reschedule-date">Нова дата</label><input id="my-day-reschedule-date" name="date" type="date" required value="${escape(scheduleDraft ?? due ?? '')}">
-                <button type="submit">Перенести</button>
+                <div class="park-task-dialog-buttons"><button type="submit" class="park-dialog-primary">Перенести на обрану дату</button><button type="button" data-dialog-back>Назад до перегляду</button></div>
             </form>` : ''}`;
             bindTaskHistory(content.querySelector('[data-task-dialog-history]'), loadHistory, controller.signal);
             const editor = content.querySelector('[data-dialog-editor]');
-            content.querySelector('[data-dialog-edit]')?.addEventListener('click', () => { editorVisible = true; editor.hidden = false; editor.elements.title.focus(); });
+            const schedule = content.querySelector('[data-dialog-schedule]');
+            const view = content.querySelector('[data-dialog-view]');
+            function showPanel(next, focus = true) {
+                const previous = panel;
+                panel = (next === 'edit' && editor) || (next === 'schedule' && schedule) ? next : 'view';
+                view.hidden = panel !== 'view';
+                if (editor) editor.hidden = panel !== 'edit';
+                if (schedule) schedule.hidden = panel !== 'schedule';
+                const more = view.querySelector('details.park-dialog-more');
+                if (more) more.open = false;
+                if (focus) {
+                    const target = panel === 'edit' ? editor.elements.title : panel === 'schedule' ? schedule.elements.date
+                        : previous === 'schedule' ? more?.querySelector('summary') : view.querySelector('[data-dialog-edit]');
+                    target?.focus();
+                }
+            }
+            showPanel(panel, false);
+            content.querySelector('[data-dialog-edit]')?.addEventListener('click', () => showPanel('edit'));
+            content.querySelector('[data-open-schedule]')?.addEventListener('click', () => showPanel('schedule'));
+            content.querySelectorAll('[data-dialog-back]').forEach(button => button.addEventListener('click', () => showPanel('view')));
             editor?.addEventListener('input', () => {
                 const value = Object.fromEntries(new FormData(editor));
                 editorDraft = Object.keys(editorPatch(editorBase, value)).length ? value : null;
@@ -401,7 +424,6 @@
                 });
                 if (confirmed && dialog.open) submitOperation('cancel', cancel);
             });
-            const schedule = content.querySelector('[data-dialog-schedule]');
             schedule?.addEventListener('input', () => {
                 scheduleDraft = schedule.elements.date.value === (due || '') ? null : schedule.elements.date.value;
                 syncDraftState();
@@ -432,12 +454,13 @@
                         const current = editorSnapshot(task);
                         const patch = editorPatch(current, stored.fields);
                         if (task.drawer?.actions?.edit && Object.keys(patch).length) {
-                            editorVisible = true;
+                            panel = 'edit';
                             editorDraft = { ...current, ...patch };
                             if (Number(stored.version) !== Number(task.version)) editorConflict = { patch, current };
                         }
                         if (task.drawer?.actions?.reschedule && /^\d{4}-\d{2}-\d{2}$/.test(stored.scheduleDate || '')) {
                             scheduleDraft = stored.scheduleDate;
+                            if (!editorDraft) panel = 'schedule';
                         }
                         syncDraftState();
                     }

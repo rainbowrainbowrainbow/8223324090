@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.84.43",
+  "version": "0.84.44",
   "eventGenix": {
-    "releaseLabel": "Таймер у Park та сумісність Education"
+    "releaseLabel": "Виправлення мобільного профілю"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

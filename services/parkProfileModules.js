@@ -26,12 +26,11 @@ function moduleUnavailable(_req, res) {
 function mountParkProfileBoundaries(app) {
     if (PARK_PROFILE_MODULES.gamification !== 'active') app.use(LEGACY_GAME_API, moduleUnavailable);
     app.use('/api/my-day', (req, res, next) => {
-        // Keep the read/stop path so an existing session is never left running invisibly.
+        // Preserve read compatibility for older Park clients.
         const recoveryRead = req.method === 'GET' && req.path === '/timer';
-        const recoveryStop = req.method === 'POST' && req.path === '/timer/stop';
         const fullTracking = PARK_PROFILE_MODULES.timeTracking === 'active';
         const legacyPath = /^\/(timer|time-entries)(\/|$)/i.test(req.path);
-        if (legacyPath) return fullTracking || recoveryRead || recoveryStop ? next() : moduleUnavailable(req, res);
+        if (legacyPath) return fullTracking || recoveryRead ? next() : moduleUnavailable(req, res);
         if (req.path.startsWith('/habits') && PARK_PROFILE_MODULES.habits === 'active') return next();
         if (PARK_PROFILE_MODULES.impacts === 'active' && PARK_PROFILE_MODULES.contribution === 'active') return next();
         return moduleUnavailable(req, res);

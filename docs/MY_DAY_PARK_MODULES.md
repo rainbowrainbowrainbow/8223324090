@@ -7,7 +7,7 @@
 | disabled-for-park | Shop, inventory, leaderboard, achievements and game rewards (`js/profile-game-legacy.js`, `js/shop-page.js`, `js/game-page.js`, `routes/shop.js`, `routes/gamification.js`, `routes/wallet.js`, `routes/achievements.js`, `routes/quests.js`, `routes/streaks.js`); profile and daily-login callbacks; task completion/review rewards; scheduled monthly points reset and streak update | Product edition must explicitly reconnect surfaces, jobs and tested reward rules together |
 | disabled-for-park | Habits, contribution, impacts and legacy timer controls (`js/my-day-*.js`, `routes/my-day-habits.js`, legacy branches of `routes/my-day.js`) | Approve the full edition entrypoints and revalidate historical data access |
 | disabled-for-park | My Day dependency editor (`js/my-day-dependencies.js`); dependency records and existing completion constraints stay in use | Reintroduce a dependency editor without bypassing completion policy |
-| disabled-for-park | Global task timer widget and polling | Full-edition pages can opt in with `data-full-edition-task-timer` on the HTML root. The existing read/stop API remains available. |
+| disabled-for-park | Global task timer widget and polling | Full-edition pages can opt in with `data-full-edition-task-timer` on the HTML root. Park keeps `GET /api/my-day/timer` for compatibility and returns `410 MODULE_UNAVAILABLE` for `POST /api/my-day/timer/stop`. |
 
 The registered park boundary is in `services/parkProfileModules.js`. The module switches apply to the deployment across business contexts. Disabled API calls return `410 MODULE_UNAVAILABLE` and never run a legacy handler. Old shop and game page URLs lead to the matching profile placeholder. Historical records are kept. The task module still validates access and reports; preserving a completion blocker does not restore dependency editing in My Day. Planning, bucket totals and pagination apply the same hold until an existing snooze expires, including for date-focused Telegram lists.
 
@@ -17,9 +17,9 @@ Existing quizzes, the room and the standalone mini-game have separate entrypoint
 
 ## Local verification and eventual rollout
 
-- `npm run test:integration:my-day-park:isolated`: disposable PostgreSQL, real HTTP, fixtures larger than the list limits, explicit unavailable responses, active timer recovery.
+- `npm run test:integration:my-day-park:isolated`: disposable PostgreSQL, real HTTP, fixtures larger than the list limits, explicit unavailable responses, timer read compatibility and historical time reports.
 - `npm run test:browser:my-day-park:isolated`: browser against the disposable local app.
 - `node tests/browser/profile-employee-cabinet-browser-smoke.js`: scoped results and salary fixture; verifies month races, retry, amounts and original detail fields in disclosures.
 - The existing isolated My Day gate selects the park API and browser scenarios; its Telegram CRM integration remains selected. The older full-edition harnesses are retained under `my-day-full-edition` and `my-day-full-edition-browser`: they expect starter kit, impacts and reward endpoints to be available and need the full-edition build. The park unit suite continues testing the underlying legacy modules without registering their frontend or HTTP entrypoints.
 
-Keep legacy timer recovery available in this release. Before removing it in a separate release, use the approved production read path to count timer sessions with no end timestamp. Read only the count and keep the stop path while sessions remain active.
+Before releasing the Park stop change, use the approved production read path to confirm that no timer session has a missing end timestamp. Keep the stop path while any sessions remain active.

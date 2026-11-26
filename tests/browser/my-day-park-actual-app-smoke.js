@@ -473,7 +473,26 @@ async function run() {
         assert.ok((await rescheduled).ok());
         await work.waitFor();
         await page.setViewportSize({ width: 1280, height: 800 });
-        await page.goto(origin + `/profile?tab=myday&period=future&open=${workId}&date=${futureDate}`);
+        // Exercise a cold deep link: the dated board arrives after dismissal.
+        await page.addInitScript(id => {
+            if (new URL(location.href).searchParams.get('open') !== id) return;
+            const fetchBoard = window.fetch.bind(window);
+            const started = Promise.withResolvers();
+            const dismissed = Promise.withResolvers();
+            window.releaseDatedBoard = dismissed.resolve;
+            window.fetch = async (...args) => {
+                const response = fetchBoard(...args);
+                const url = new URL(args[0] instanceof Request ? args[0].url : args[0], location.href);
+                if (url.pathname === '/api/tasks/my-cabinet' && url.searchParams.get('planningView') === 'my-day') {
+                    if (url.searchParams.has('focusDate')) {
+                        started.resolve();
+                        await dismissed.promise;
+                    } else await started.promise;
+                }
+                return response;
+            };
+        }, workId);
+        await page.goto(origin + `/profile?tab=myday&period=future&open=${workId}&date=${futureDate}`, { waitUntil: 'domcontentloaded' });
         await taskDialog.getByText('Виконую', { exact: true }).waitFor();
         await taskDialog.locator(`time[datetime="${futureDate}"]`).waitFor();
         assert.ok(await taskDialog.evaluate(dialog => {
@@ -483,8 +502,10 @@ async function run() {
         }), 'The desktop deep link opens a centered task dialog');
         await page.keyboard.press('Escape');
         await page.waitForURL(url => url.pathname === '/profile' && !url.searchParams.has('open'));
+        await page.waitForFunction(() => myDayLinkedDate === null);
+        await page.evaluate(() => window.releaseDatedBoard());
         await page.setViewportSize({ width: 390, height: 844 });
-        await work.waitFor();
+        await page.locator('[data-park-task-group="future"]').locator(work).waitFor();
         await work.getByLabel('Більше дій', { exact: true }).click();
         await work.getByRole('button', { name: 'Редагувати' }).click();
         await page.waitForURL(url => url.pathname === '/profile' && url.searchParams.get('mode') === 'edit');

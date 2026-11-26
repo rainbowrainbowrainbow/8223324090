@@ -6886,7 +6886,9 @@ function focusMyDayTaskDate(due) {
     const today = cabinetDateKeyOffset(0);
     if (activeTab === 'myday') rerenderCabinetMyDaySegmentPanel();
     if (due && due !== today) {
-        void refreshMyCabinetTab({ silent: true, keepExistingOnError: true, focusDate: due });
+        // A deep link can supersede the initial board request. Paint its result
+        // even if the dialog has closed while the projection was loading.
+        void refreshMyCabinetTab({ keepExistingOnError: true, focusDate: due });
     }
 }
 

@@ -1196,6 +1196,8 @@ const Sidebar = (() => {
         const currentPath = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
         const savedUser = _getCurrentSidebarUser();
         const role = _getSidebarActiveRole(savedUser);
+        const businessContext = window.CrmBusinessContext?.current?.(savedUser);
+        const currentHash = location.hash.replace('#', '');
 
         let currentGroupKey = null;
         let html = '';
@@ -1215,15 +1217,18 @@ const Sidebar = (() => {
 
                 // Check if group has accessible children
                 const hasChildren = NAV_ITEMS.some(c =>
-                    c.group === item.key && !c.quickAccessOnly && (!role || hasAccess(c, role)) && _businessAllowsSidebarItem(c, savedUser) && _isNavItemVisible(c, savedUser, role)
+                    c.group === item.key && !c.quickAccessOnly && (!role || hasAccess(c, role))
+                        && _businessAllowsSidebarItem(c, savedUser, businessContext) && _isNavItemVisible(c, savedUser, role)
                 );
                 if (!hasChildren) { currentGroupKey = '__skip__'; continue; }
 
                 // Mark group that contains the current page without forcing it open.
                 const hasActive = NAV_ITEMS.some(c => {
-                    if (c.group !== item.key || c.noActive || c.isHashLink || c.quickAccessOnly || !_businessAllowsSidebarItem(c, savedUser) || !_isNavItemVisible(c, savedUser, role)) return false;
+                    if (c.group !== item.key || c.noActive || c.isHashLink || c.quickAccessOnly) return false;
                     const cBase = c.href.split('#')[0];
-                    return currentPath === cBase || (cBase !== '/' && currentPath.startsWith(cBase));
+                    const matchesPath = currentPath === cBase || (cBase !== '/' && currentPath.startsWith(cBase));
+                    return matchesPath && _businessAllowsSidebarItem(c, savedUser, businessContext)
+                        && _isNavItemVisible(c, savedUser, role);
                 });
                 const finalOpen = _isGroupOpen(item.key, item.defaultOpen, role, hasActive);
 
@@ -1247,7 +1252,7 @@ const Sidebar = (() => {
             // Skip if group is blocked
             if (currentGroupKey === '__skip__' || currentGroupKey === '__skip_today__') continue;
             if (item.quickAccessOnly) continue;
-            if (!_businessAllowsSidebarItem(item, savedUser)) continue;
+            if (!_businessAllowsSidebarItem(item, savedUser, businessContext)) continue;
             if (!_isNavItemVisible(item, savedUser, role)) continue;
             if (!_sidebarItemHasAvailableTimelineMode(item, savedUser)) continue;
 
@@ -1255,7 +1260,6 @@ const Sidebar = (() => {
             if (role && !hasAccess(item, role)) continue;
 
             // ── Render nav-link ───────────────────────────────────
-            const currentHash = location.hash.replace('#', '');
             const isActive = _isSidebarItemActive(item, currentPath, currentHash);
 
             // E9 FIX: simplified onclick
@@ -1294,7 +1298,7 @@ const Sidebar = (() => {
 
         _ensureAuroraLayer();
         _ensureCommandDeck();
-        _ensureSidebarMiniRail(role, currentPath, location.hash.replace('#', ''));
+        _ensureSidebarMiniRail(role, currentPath, currentHash);
         _ensureDashboardShortcut(role, currentPath, savedUser);
         _removeSidebarTodayDock();
         _syncGroupSignals();
@@ -1482,9 +1486,9 @@ const Sidebar = (() => {
 
     function hasAccess(item, role) {
         const user = _getCurrentSidebarUser();
-        if (!window.RolePreview?.getPreviewRole?.()
-            && _isMaysternyaSidebarContext(user)
-            && MAYSTERNYA_ACCESS_OVERRIDES.has(item?.access)) return true;
+        if (MAYSTERNYA_ACCESS_OVERRIDES.has(item?.access)
+            && !window.RolePreview?.getPreviewRole?.()
+            && _isMaysternyaSidebarContext(user)) return true;
         if (item?.href === '#settings' && window.canOpenOrganizationSettings?.(user)) return true;
         if (item?.href === '/certificates') return Boolean(_certificateSidebarLanding());
         const capability = _sidebarPageCapability(item);
@@ -1565,18 +1569,18 @@ const Sidebar = (() => {
         return !user?.accessContext?.status || user.accessContext.status === 'ready';
     }
 
-    function _businessAllowsSidebarItem(item = {}, user = _getCurrentSidebarUser()) {
+    function _businessAllowsSidebarItem(item = {}, user = _getCurrentSidebarUser(),
+        current = window.CrmBusinessContext?.current?.(user)) {
         const moduleId = _businessModuleForItem(item);
         const api = window.CrmBusinessContext;
         if (item.educationWorkspace) {
-            const context = api?.current?.(user);
-            const profile = context ? _sidebarBusinessProfileForContext(context) : null;
-            return Boolean(context && api?.canAccess?.(user, context) !== false
+            const profile = current ? _sidebarBusinessProfileForContext(current) : null;
+            return Boolean(current && api?.canAccess?.(user, current) !== false
                 && profile?.timeline?.mode === 'education' && profile?.timeline?.timelineEnabled !== false);
         }
-        if (_isMaysternyaSidebarContext(user) && !_isMaysternyaSidebarHrefAllowed(item)) return false;
+        const isMaysternya = api?.current ? current === 'maysternya_doli' : _isMaysternyaSidebarContext(user);
+        if (isMaysternya && !_isMaysternyaSidebarHrefAllowed(item)) return false;
         if (!moduleId || !api?.current || !api?.hasModule) return true;
-        const current = api.current(user);
         if (current === 'event_genix' && REQUIRED_WORK_HREFS.has(item.href)) return true;
         const creatorSurface = _sidebarUserHasCreator(user) && !window.RolePreview?.getPreviewRole?.();
         if (moduleId === 'timeline') {
@@ -2167,7 +2171,8 @@ const Sidebar = (() => {
     }
 
     function _sidebarTimelineSummaryCacheKey(model = {}, mode = '') {
-        return `${model.businessContext || _sidebarTimelineContextValue()}|${model.date || _sidebarTimelineCurrentDate()}|${_sidebarNormalizeTimelineMode(mode || model.timelineView) || 'all'}`;
+        const url = _sidebarTimelineSummaryModeUrl(model, mode || model.timelineView);
+        return JSON.stringify([model.businessContext || _sidebarTimelineContextValue(), _sidebarRequestScopeKey(url)]);
     }
 
     function _sidebarTimelineDateLabel(dateKey) {
@@ -2303,6 +2308,7 @@ const Sidebar = (() => {
             businessContext: _sidebarTimelineContextValue()
         };
         if (current
+            && current.requestScope === _sidebarRequestScopeKey()
             && current.date === requested.date
             && current.viewMode === requested.viewMode
             && current.businessContext === requested.businessContext) {
@@ -2355,11 +2361,13 @@ const Sidebar = (() => {
         });
     }
 
-    function _setSidebarTimelineSummary(model = {}) {
+    function _setSidebarTimelineSummary(model = {}, { cache = true } = {}) {
         const incomingModes = _sidebarTimelineInputModeKeys(model);
         const next = _sidebarTimelineBuildSummary(model);
+        next.requestScope = _sidebarRequestScopeKey();
         const current = _state.timelineSummaryCurrent;
         const matchesCurrent = current
+            && current.requestScope === next.requestScope
             && current.date === next.date
             && current.viewMode === next.viewMode
             && current.businessContext === next.businessContext;
@@ -2373,7 +2381,7 @@ const Sidebar = (() => {
         _state.timelineSummaryCurrent = next;
         SIDEBAR_TIMELINE_MODES.forEach(mode => {
             const entry = next.modes?.[mode.key];
-            if (entry?.status === 'ready') {
+            if (cache && incomingModes.includes(mode.key) && entry?.status === 'ready') {
                 _state.timelineSummaryCache.set(_sidebarTimelineSummaryCacheKey(next, mode.key), {
                     mode: mode.key,
                     model: {
@@ -2414,50 +2422,55 @@ const Sidebar = (() => {
         if (!mode) return null;
         const model = _sidebarTimelineBuildSummary({ ...requested, timelineView: mode, status: 'loading' });
         const key = _sidebarTimelineSummaryCacheKey(model, mode);
-        const pending = _state.timelineSummaryPromises.get(key);
-        if (pending && !options.force) return pending;
         const seq = Number.isFinite(Number(options.seq)) ? Number(options.seq) : ++_state.timelineSummaryRequestSeq;
-        if (!options.force) {
+        const url = _sidebarTimelineSummaryModeUrl(model, mode);
+        const requestScope = _sidebarRequestScopeKey(url);
+        const isCurrentRead = () => typeof document !== 'undefined'
+            && !document.body?.classList.contains('page-exiting')
+            && seq === _state.timelineSummaryRequestSeq
+            && requestScope === _sidebarRequestScopeKey(url);
+
+        let request = _state.timelineSummaryPromises.get(key);
+        if (!request && !options.force) {
             const cached = _state.timelineSummaryCache.get(key);
             if (cached && Date.now() - cached.cachedAt < SIDEBAR_TIMELINE_SUMMARY_CACHE_TTL) {
                 if (seq !== _state.timelineSummaryRequestSeq) return null;
-                return _setSidebarTimelineSummary(cached.model);
+                return _setSidebarTimelineSummary({
+                    date: model.date, viewMode: model.viewMode, businessContext: model.businessContext,
+                    timelineView: mode, count: cached.model.count, status: 'ready'
+                }, { cache: false });
             }
         }
+
         _setSidebarTimelineSummary({ date: model.date, viewMode: model.viewMode, businessContext: model.businessContext, timelineView: mode, status: 'loading' });
-        const url = _sidebarTimelineSummaryModeUrl(model, mode);
-        const requestScope = _sidebarRequestScopeKey(url);
-        const isCurrentRead = () => seq === _state.timelineSummaryRequestSeq
-            && requestScope === _sidebarRequestScopeKey(url)
-            && !document.body?.classList.contains('page-exiting');
-        const request = fetch(url, { headers: _sidebarAuthHeaders(), keepalive: true })
-            .then(response => {
-                if (!response.ok) throw new Error(`bookings summary ${response.status}`);
-                return response.json();
-            })
-            .then(payload => {
-                if (!isCurrentRead()) return null;
-                return _setSidebarTimelineSummary({
-                    date: model.date,
-                    viewMode: model.viewMode,
-                    businessContext: model.businessContext,
-                    timelineView: mode,
-                    count: _sidebarTimelineCountBookings(payload),
-                    status: 'ready'
+        if (!request || options.force) {
+            request = fetch(url, { headers: _sidebarAuthHeaders(), keepalive: true })
+                .then(response => {
+                    if (!response.ok) throw new Error(`bookings summary ${response.status}`);
+                    return response.json();
+                })
+                .finally(() => {
+                    if (_state.timelineSummaryPromises.get(key) === request) _state.timelineSummaryPromises.delete(key);
                 });
-            })
-            .catch(error => {
-                if (!isCurrentRead()) return null;
-                console.warn('[Sidebar] Timeline summary failed', error);
-                return _setSidebarTimelineSummary({ date: model.date, viewMode: model.viewMode, businessContext: model.businessContext, timelineView: mode, status: 'error' });
-            })
-            .finally(() => {
-                if (_state.timelineSummaryPromises.get(key) === request) {
-                    _state.timelineSummaryPromises.delete(key);
-                }
+            _state.timelineSummaryPromises.set(key, request);
+        }
+
+        try {
+            const payload = await request;
+            if (!isCurrentRead()) return null;
+            return _setSidebarTimelineSummary({
+                date: model.date,
+                viewMode: model.viewMode,
+                businessContext: model.businessContext,
+                timelineView: mode,
+                count: _sidebarTimelineCountBookings(payload),
+                status: 'ready'
             });
-        _state.timelineSummaryPromises.set(key, request);
-        return request;
+        } catch (error) {
+            if (!isCurrentRead()) return null;
+            console.warn('[Sidebar] Timeline summary failed', error);
+            return _setSidebarTimelineSummary({ date: model.date, viewMode: model.viewMode, businessContext: model.businessContext, timelineView: mode, status: 'error' });
+        }
     }
 
     async function _fetchSidebarTimelineSummary(requested, options = {}) {
@@ -2478,6 +2491,7 @@ const Sidebar = (() => {
         if (_sidebarTimelineIsTimelineSurface() && !options.allowTimelinePageFetch) {
             const current = _state.timelineSummaryCurrent;
             const matchesCurrent = current
+                && current.requestScope === _sidebarRequestScopeKey()
                 && current.date === requested.date
                 && current.viewMode === requested.viewMode
                 && current.businessContext === requested.businessContext;
@@ -2499,7 +2513,7 @@ const Sidebar = (() => {
         // Read the resulting scope once, while allowing later updates to invalidate it.
         queueMicrotask(() => {
             _state.timelineScopeRefreshQueued = false;
-            _refreshSidebarTimelineSummary({ clearCache: true, force: true });
+            _refreshSidebarTimelineSummary();
         });
     }
 
@@ -4849,6 +4863,14 @@ const Sidebar = (() => {
         if (_state.timelineSummaryCurrent?.viewMode !== expectedViewMode) _refreshSidebarTimelineSummary({ force: true });
     });
     window.addEventListener('timeline:summary-changed', _handleTimelineSummaryChanged);
+    window.addEventListener('ws:booking', event => {
+        if (_sidebarTimelineIsTimelineSurface()) return;
+        const payload = event.detail?.payload || {};
+        const date = _sidebarTimelineCurrentDate();
+        const dates = [payload.date, payload.oldDate, payload.newDate, payload.booking?.date].filter(Boolean);
+        if (dates.length && !dates.some(value => _sidebarDateKey(value) === date)) return;
+        _refreshSidebarTimelineSummary({ clearCache: true, force: true });
+    });
 
     // ─── Sidebar action helpers ──────────────────────────────────
     // On timeline (index.html) — open modal directly
@@ -4882,6 +4904,7 @@ const Sidebar = (() => {
         openAlerts,
         refreshTaskMiniWidget: _refreshTaskMiniWidget,
         initUserCard,
+        pendingBusinessProfile: () => _state.businessProfileHydrationPromise,
         markShellReady: _markShellReady,
         clearShellReady: _clearShellReady,
         NAV_ITEMS,

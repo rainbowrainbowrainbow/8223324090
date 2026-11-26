@@ -1,14 +1,8 @@
 (function () {
     'use strict';
 
-    function staffScheduleModuleSrc() {
-        const loaderSrc = document.currentScript?.src || '';
-        const versionMatch = loaderSrc.match(/[?&]v=([^&#]+)/);
-        const versionSuffix = versionMatch ? `?v=${versionMatch[1]}` : '';
-        return `js/staff-page.js${versionSuffix}`;
-    }
-
-    const STAFF_SCHEDULE_MODULE_SRC = staffScheduleModuleSrc();
+    const versionMatch = document.currentScript?.src?.match(/[?&]v=([^&#]+)/);
+    const versionSuffix = versionMatch ? `?v=${versionMatch[1]}` : '';
     let staffSchedulePageLoadPromise = null;
 
     function loadedStaffSchedulePage() {
@@ -18,12 +12,27 @@
         return page;
     }
 
-    function createStaffScheduleScript() {
-        const script = document.createElement('script');
-        script.src = STAFF_SCHEDULE_MODULE_SRC;
-        script.async = true;
-        script.dataset.staffScheduleModule = 'lazy';
-        return script;
+    function loadScheduleScript(src, readExport) {
+        return new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = src + versionSuffix;
+            script.async = true;
+            script.dataset.staffScheduleModule = 'lazy';
+            script.onload = () => {
+                const exported = readExport();
+                if (exported) {
+                    resolve(exported);
+                } else {
+                    script.remove();
+                    reject(new Error(`Staff schedule script loaded without its export: ${src}`));
+                }
+            };
+            script.onerror = () => {
+                script.remove();
+                reject(new Error(`Failed to load staff schedule script: ${src}`));
+            };
+            document.head.appendChild(script);
+        });
     }
 
     function loadStaffSchedulePageModule() {
@@ -31,24 +40,15 @@
         if (loaded) return Promise.resolve(loaded);
         if (staffSchedulePageLoadPromise) return staffSchedulePageLoadPromise;
 
-        staffSchedulePageLoadPromise = new Promise((resolve, reject) => {
-            const script = createStaffScheduleScript();
-            script.onload = () => {
-                const page = loadedStaffSchedulePage();
-                if (!page) {
-                    staffSchedulePageLoadPromise = null;
-                    reject(new Error('Staff schedule module loaded without StaffSchedulePage export'));
-                    return;
-                }
-                resolve(page);
-            };
-            script.onerror = () => {
-                staffSchedulePageLoadPromise = null;
-                reject(new Error('Failed to load staff schedule module'));
-            };
-            document.head.appendChild(script);
+        const loadPage = () => loadScheduleScript('js/staff-page.js', loadedStaffSchedulePage);
+        const readShell = () => window.StaffScheduleShell?.ensure;
+        const request = readShell()
+            ? loadPage()
+            : loadScheduleScript('js/staff-schedule-shell.js', readShell).then(loadPage);
+        staffSchedulePageLoadPromise = request.catch(error => {
+            staffSchedulePageLoadPromise = null;
+            throw error;
         });
-
         return staffSchedulePageLoadPromise;
     }
 

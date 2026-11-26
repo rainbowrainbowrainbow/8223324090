@@ -22,7 +22,7 @@ function fixture(kind, { timelineAccess = true } = {}) {
         _isAuthenticatedSidebarRuntimeReady:()=>true,_sidebarRequestScopeKey:()=>scope,
         hasAccess:({href})=>href==='/' && timelineAccess,
         _sidebarNormalizeTimelineMode:mode=>mode,_sidebarTimelineBuildSummary:record=>record,
-        _sidebarTimelineSummaryCacheKey:()=> 'summary',SIDEBAR_TIMELINE_SUMMARY_CACHE_TTL:60000,SIDEBAR_OPERATIONAL_POLL_MS:300000,
+        _sidebarTimelineSummaryCacheKey:()=> scope,SIDEBAR_TIMELINE_SUMMARY_CACHE_TTL:60000,SIDEBAR_OPERATIONAL_POLL_MS:300000,
         _setSidebarTimelineSummary:record=>{writes.push(record);return record;},_sidebarTimelineSummaryModeUrl:()=>'/api/bookings/2026-10-03',_sidebarAuthHeaders:()=>({}),_sidebarTimelineCountBookings:rows=>rows.length,
         _canSeeSidebarTaskSurface:()=>true,getAuthHeaders:()=>({}),_coalesceSidebarRequest:(_kind,_url,request)=>request(),
         _getCurrentSidebarUser:()=>({id:1,username:'synthetic'}),_sidebarTaskQuickCountsFromCabinet:()=>({completed:1,open:2,overdue:0}),
@@ -40,7 +40,7 @@ function fixture(kind, { timelineAccess = true } = {}) {
     }
     vm.runInContext(source.slice(start,end),context);
     return {context,state,document,reads,writes,timers,warnings,setScope:value=>{scope=value;},exit:()=>{exiting=true;},
-        start:()=>kind==='summary'?context._fetchSidebarTimelineSummaryMode({date:'2026-10-03',businessContext:'dar'},'rooms'):context._refreshTaskMiniWidget(),
+        start:(options)=>kind==='summary'?context._fetchSidebarTimelineSummaryMode({date:'2026-10-03',businessContext:'dar'},'rooms',options):context._refreshTaskMiniWidget(),
         answer:(index,value)=>reads[index].resolve({ok:true,json:async()=>value})};
 }
 async function reachFallback(f) {
@@ -61,6 +61,30 @@ test('sidebar summary optional GET survives navigation and completes current sta
     const f=fixture('summary'),pending=f.start();assert.equal(f.reads[0].options.keepalive,true);f.answer(0,[{}]);await pending;
     assert.equal(f.writes.at(-1).status,'ready');assert.equal(f.writes.at(-1).count,1);assert.equal(f.state.timelineSummaryPromises.size,0);
 });
+test('equivalent sidebar reads share one request and the newest caller can paint it', async () => {
+    const f = fixture('summary');
+    const first = f.start();
+    const second = f.start();
+    assert.equal(f.reads.length, 1);
+    f.answer(0, [{}]);
+    assert.equal(await first, null);
+    assert.equal((await second).count, 1);
+});
+
+test('sidebar reads can retry after failure and a forced refresh supersedes a stale response', async () => {
+    const f = fixture('summary');
+    const initial = f.start();
+    f.reads[0].reject(new Error('controlled failure'));
+    assert.equal((await initial).status, 'error');
+    const retry = f.start();
+    const refreshed = f.start({ force: true });
+    assert.equal(f.reads.length, 3);
+    f.answer(2, [{}, {}]);
+    f.answer(1, [{}]);
+    assert.equal((await refreshed).count, 2);
+    assert.equal(await retry, null);
+});
+
 for(const transition of ['business','operator','session','unload']){
     test(`sidebar optional summaries ignore ${transition} completion`,async()=>{
         const f=fixture('summary'),pending=f.start(),initial=f.writes.length;
@@ -73,6 +97,16 @@ for(const transition of ['business','operator','session','unload']){
         f.answer(1,[{owner_user_id:1}]);await pending;assert.equal(f.writes.length,0);assert.equal(f.timers.length,0);
     });
 }
+test('sidebar ignores a summary response when the page has been torn down', async () => {
+    const f = fixture('summary');
+    const pending = f.start();
+    const initial = f.writes.length;
+    f.context.document = undefined;
+    f.answer(0, [{}]);
+    assert.equal(await pending, null);
+    assert.equal(f.writes.length, initial);
+});
+
 test('sidebar stale failed summary neither warns nor renders an error for a new scope',async()=>{
     const f=fixture('summary'),pending=f.start(),initial=f.writes.length;f.setScope('other-business');f.reads[0].reject(new Error('controlled failure'));
     assert.equal(await pending,null);assert.equal(f.warnings.length,0);assert.equal(f.writes.length,initial);
@@ -113,18 +147,18 @@ test('sidebar refreshes timeline counts once for each turn of authenticated busi
     listeners.get('crmBusinessContextHydrated')();
     assert.deepEqual(refreshes, []);
     await Promise.resolve();
-    assert.deepEqual(refreshes, [{ clearCache: true, force: true, scope: 'dar' }]);
+    assert.deepEqual(refreshes, [{ scope: 'dar' }]);
     assert.equal(sandbox._state.businessSwitching, false);
 
     scope = 'event_genix';
     listeners.get('crmBusinessContextChanged')();
     listeners.get('crmBusinessProfileChanged')();
     await Promise.resolve();
-    assert.deepEqual(refreshes.slice(1), [{ clearCache: true, force: true, scope: 'event_genix' }]);
+    assert.deepEqual(refreshes.slice(1), [{ scope: 'event_genix' }]);
 
     listeners.get('crmBusinessProfileChanged')();
     await Promise.resolve();
-    assert.deepEqual(refreshes.slice(2), [{ clearCache: true, force: true, scope: 'event_genix' }]);
+    assert.deepEqual(refreshes.slice(2), [{ scope: 'event_genix' }]);
 });
 test('sidebar current task fallback retains normal counts and refresh timer',async()=>{
     const f=fixture('tasks'),{pending}=await reachFallback(f);f.answer(1,[{owner_user_id:1}]);await pending;

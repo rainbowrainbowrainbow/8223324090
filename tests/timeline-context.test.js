@@ -1293,7 +1293,8 @@ test('Maysternya sidebar keeps sales tools visible without Park-only clutter', (
     assert.match(sidebarCode, /'\/customers'/);
     assert.match(sidebarCode, /'\/omni#accounts'/);
     assert.match(sidebarCode, /function _isMaysternyaSidebarContext/);
-    assert.match(sidebarCode, /if \(_isMaysternyaSidebarContext\(user\) && !_isMaysternyaSidebarHrefAllowed\(item\)\) return false/);
+    assert.match(sidebarCode, /const isMaysternya = api\?\.current \? current === 'maysternya_doli' : _isMaysternyaSidebarContext\(user\)/);
+    assert.match(sidebarCode, /if \(isMaysternya && !_isMaysternyaSidebarHrefAllowed\(item\)\) return false/);
     assert.match(sidebarCode, /item\.href === '\/' && current === 'maysternya_doli'\) return false/);
     assert.match(sidebarCode, /item\.href === '\/maysternya-doli' && current !== 'maysternya_doli'\) return creatorSurface/);
     assert.match(sidebarCode, /if \(creatorSurface && current !== 'maysternya_doli'\) return true/);

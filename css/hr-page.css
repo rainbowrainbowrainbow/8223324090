@@ -8637,6 +8637,18 @@ body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
 }
 
 @media (max-width: 768px) {
+    @supports (transition-behavior: allow-discrete) {
+        #sidebarNav {
+            /* Keep the shared slide animation while skipping the closed menu's layout. */
+            transition-property: transform, box-shadow, content-visibility !important;
+            transition-behavior: normal, normal, allow-discrete !important;
+        }
+
+        #sidebarNav:not(.open) {
+            content-visibility: hidden;
+        }
+    }
+
     #tab-salary .hr-payroll-salary-summary,
     #tab-kpi .hr-payroll-kpi-summary,
     #tab-salary .hr-payroll-detail-grid,

@@ -2159,7 +2159,6 @@ function renderHrNav(activeTarget = requestedHrTarget()) {
             </div>
         </section>
     `).join('') : '<div class="hr-nav-empty">Немає доступних HR-розділів</div>';
-    scrollActiveHrPulseCardIntoView();
 }
 
 function hashForHrTarget(target, bucket = null) {
@@ -2179,6 +2178,7 @@ function cssEscapeValue(value) {
 }
 
 function syncHrNavActive(target, bucket = null) {
+    if (target === 'team' && !document.getElementById('hrNav')?.classList.contains('hr-nav--people')) return;
     document.querySelectorAll('.hr-tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.hr-nav--pulse .hr-tab[aria-current]').forEach(t => t.removeAttribute('aria-current'));
     document.querySelectorAll('.hr-tab[data-bucket]').forEach(t => t.setAttribute('aria-pressed', 'false'));
@@ -2192,24 +2192,34 @@ function syncHrNavActive(target, bucket = null) {
     tab?.classList.add('active');
     if (tab?.classList.contains('hr-pulse-card')) tab.setAttribute('aria-current', 'page');
     if (target === 'team' && tab?.dataset.bucket) tab.setAttribute('aria-pressed', 'true');
-    scrollActiveHrPulseCardIntoView();
+    scrollActiveHrPulseCardIntoView(tab);
 }
 
-function scrollActiveHrPulseCardIntoView() {
-    const nav = document.getElementById('hrNav');
-    if (!nav?.classList.contains('hr-nav--pulse')) return;
-    const activeCard = nav.querySelector('.hr-pulse-card.active');
-    const scroller = activeCard?.closest('.hr-nav-items');
-    if (!activeCard || !scroller || scroller.scrollWidth <= scroller.clientWidth + 4) return;
-    const reduceMotion = typeof window.matchMedia === 'function'
-        && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    window.requestAnimationFrame(() => {
+let hrPulseScrollObserver = null;
+
+function scrollActiveHrPulseCardIntoView(activeCard) {
+    hrPulseScrollObserver?.disconnect();
+    hrPulseScrollObserver = null;
+    const scroller = activeCard?.closest('#hrNav.hr-nav--pulse .hr-nav-items');
+    if (!scroller || typeof window.IntersectionObserver !== 'function') return;
+
+    // Use the browser's rendered bounds after the tab and shell DOM updates.
+    hrPulseScrollObserver = new window.IntersectionObserver(([entry], observer) => {
+        if (hrPulseScrollObserver !== observer) return;
+        observer.disconnect();
+        hrPulseScrollObserver = null;
+        const { boundingClientRect: card, rootBounds: strip } = entry;
+        if (!activeCard.isConnected || !activeCard.classList.contains('active') || !strip?.width) return;
+        if (card.left >= strip.left - 4 && card.right <= strip.right + 4) return;
+
+        const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
         activeCard.scrollIntoView({
             block: 'nearest',
             inline: 'center',
             behavior: reduceMotion ? 'auto' : 'smooth'
         });
-    });
+    }, { root: scroller });
+    hrPulseScrollObserver.observe(activeCard);
 }
 
 function setHrNavTeamMode(target) {
@@ -2332,8 +2342,9 @@ async function activateHrTab(target, options = {}) {
         reports: loadReports, salary: loadSalary, profiles: loadPayrollProfilesCatalog, zrs: loadZrs, kpi: loadKpi, onboarding: loadOnboarding,
         vacancies: loadVacancies, accounts: loadAccountCenter
     };
-    await loaders[target]?.(target === 'schedule' ? options : undefined);
+    const result = await loaders[target]?.(target === 'schedule' ? options : undefined);
     removeLegacyAnimatorShiftSummary();
+    return result;
 }
 
 // ==========================================
@@ -2826,13 +2837,12 @@ async function openTodayStaffSchedule(staffId, freelanceDate = '') {
     if ((isTodayRecoveryReadOnly() || isTodayParkScoped()) && !canUseHrCapability('hr.schedule.view')) return;
     const id = Number(staffId);
     if (!Number.isInteger(id) || id <= 0) return;
-    await activateHrTab('schedule', { updateHash: true, skipDraftRestore: Boolean(freelanceDate) });
+    const opened = await activateHrTab('schedule', { updateHash: true, skipDraftRestore: Boolean(freelanceDate) });
+    if (!opened || !document.getElementById('tab-schedule')?.classList.contains('active')) return;
     if (freelanceDate) {
-        if (document.getElementById('tab-schedule')?.classList.contains('active')) {
-            await window.StaffSchedulePage?.focusFreelance(id, freelanceDate);
-        }
-    } else if (window.StaffSchedulePage && typeof window.StaffSchedulePage.focusStaff === 'function') {
-        window.StaffSchedulePage.focusStaff(id);
+        await window.StaffSchedulePage?.focusFreelance(id, freelanceDate);
+    } else {
+        await window.StaffSchedulePage?.focusStaff?.(id);
     }
 }
 
@@ -2863,6 +2873,12 @@ function renderTodayStaffLinksState(message = '', { error = false } = {}) {
 
 async function loadToday({ keepOnError = false } = {}) {
     const requestSeq = ++todayRequestSeq;
+    const pendingProfile = typeof Sidebar !== 'undefined' ? Sidebar.pendingBusinessProfile?.() : null;
+    if (pendingProfile) {
+        // Today uses the same business profile as the rest of the HR workspace.
+        await pendingProfile;
+        if (requestSeq !== todayRequestSeq || !getHrCurrentUser() || !canViewHrTab('today')) return;
+    }
     const context = teamAccessContext();
     renderTodayStaffLinksState();
     let data;
@@ -3664,15 +3680,38 @@ function hasHrStaffScheduleModule() {
 async function loadHrScheduleModule({ skipDraftRestore = false } = {}) {
     const shell = hrStaffScheduleShell();
     if (!shell) return loadSchedule();
-    if (!window.StaffSchedulePage || typeof window.StaffSchedulePage.init !== 'function') {
-        throw new Error('Staff schedule module is not available');
+    const panel = shell.closest('#tab-schedule');
+    const isActive = () => panel?.classList.contains('active') && canViewHrTab('schedule');
+    let context = null;
+    const isCurrent = () => isActive() && (context === null || context === teamAccessContext());
+    panel?.querySelector('[data-hr-schedule-load-error]')?.remove();
+    try {
+        if (typeof window.loadStaffSchedulePageModule === 'function') await window.loadStaffSchedulePageModule();
+        if (!isActive()) return false;
+        context = teamAccessContext();
+        await window.StaffSchedulePage.init({
+            mode: 'hr',
+            host: shell,
+            user: AppState.currentUser,
+            skipDraftRestore
+        });
+        return isCurrent();
+    } catch (error) {
+        if (!isCurrent() || panel.querySelector('[data-hr-schedule-load-error]')) return false;
+        console.warn('HR schedule could not load', error);
+        const state = document.createElement('div');
+        state.dataset.hrScheduleLoadError = '';
+        state.setAttribute('role', 'alert');
+        state.textContent = 'Не вдалося завантажити графік. ';
+        const retry = document.createElement('button');
+        retry.type = 'button';
+        retry.className = 'btn-page-secondary';
+        retry.textContent = 'Повторити';
+        retry.addEventListener('click', () => loadHrScheduleModule({ skipDraftRestore }));
+        state.appendChild(retry);
+        shell.before(state);
+        return false;
     }
-    await window.StaffSchedulePage.init({
-        mode: 'hr',
-        host: shell,
-        user: AppState.currentUser,
-        skipDraftRestore
-    });
 }
 
 async function refreshHrStaffScheduleAfterWorkSave(staffId) {
@@ -3816,7 +3855,8 @@ async function openCanonicalShiftDayPlan() {
     const context = editingShift ? { staffId: editingShift.staffId, date: editingShift.date } : null;
     if (!context) return;
     await closeHrEditableModal('shiftModal', true);
-    await activateHrTab('schedule', { updateHash: true });
+    const scheduleReady = await activateHrTab('schedule', { updateHash: true });
+    if (!scheduleReady || !document.getElementById('tab-schedule')?.classList.contains('active')) return;
     const opened = await window.StaffSchedulePage?.openDayPlan?.(context.staffId, context.date);
     if (!opened) showNotification('Не вдалося відкрити план дня у «Графіку команди».', 'error');
 }

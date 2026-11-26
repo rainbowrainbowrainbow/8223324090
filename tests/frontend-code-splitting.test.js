@@ -11,10 +11,10 @@ function readRepoFile(...parts) {
     return fs.readFileSync(path.join(ROOT, ...parts), 'utf8');
 }
 
-function createLoaderContext({ version = APP_VERSION } = {}) {
+function createLoaderContext({ version = APP_VERSION, shellLoaded = true } = {}) {
     const appendedScripts = [];
     const context = {
-        window: {},
+        window: shellLoaded ? { StaffScheduleShell: { ensure() {} } } : {},
         document: {
             currentScript: {
                 src: `https://example.test/js/staff-schedule-loader.js?v=${version}`
@@ -25,6 +25,7 @@ function createLoaderContext({ version = APP_VERSION } = {}) {
                     dataset: {},
                     async: false,
                     src: '',
+                    remove() { this.removed = true; },
                     onload: null,
                     onerror: null
                 };
@@ -49,11 +50,34 @@ test('HR uses lazy staff schedule loader while standalone staff page keeps direc
     const loaderCode = readRepoFile('js', 'staff-schedule-loader.js');
 
     assert.ok(hrHtml.includes(`js/staff-schedule-loader.js?v=${APP_VERSION}`));
+    assert.doesNotMatch(hrHtml, /<script[^>]+src="js\/staff-schedule-shell\.js/);
+    assert.ok(staffHtml.includes(`js/staff-schedule-shell.js?v=${APP_VERSION}`));
     assert.doesNotMatch(hrHtml, /<script[^>]+src="js\/staff-page\.js/);
     assert.ok(staffHtml.includes(`js/staff-page.js?v=${APP_VERSION}`));
     assert.match(loaderCode, /let staffSchedulePageLoadPromise = null/);
     assert.match(loaderCode, /window\.StaffSchedulePage = lazyStaffSchedulePage/);
     assert.match(loaderCode, /window\.loadStaffSchedulePageModule = loadStaffSchedulePageModule/);
+});
+
+test('HR lazy schedule loads the shell before the page, and an unsuccessful shell can be retried', async () => {
+    const { context, appendedScripts } = createLoaderContext({ shellLoaded: false });
+    const first = context.window.StaffSchedulePage.init();
+    assert.equal(appendedScripts[0].src, `js/staff-schedule-shell.js?v=${APP_VERSION}`);
+    appendedScripts[0].onerror();
+    await assert.rejects(first, /staff-schedule-shell/);
+    assert.equal(appendedScripts[0].removed, true);
+
+    const retry = context.window.StaffSchedulePage.init();
+    const secondCaller = context.window.StaffSchedulePage.init();
+    assert.equal(appendedScripts.length, 2);
+    context.window.StaffScheduleShell = { ensure() {} };
+    appendedScripts[1].onload();
+    await Promise.resolve();
+    assert.equal(appendedScripts[2].src, `js/staff-page.js?v=${APP_VERSION}`);
+    context.window.StaffSchedulePage = { init: () => 'ready' };
+    appendedScripts[2].onload();
+    assert.deepEqual(await Promise.all([retry, secondCaller]), ['ready', 'ready']);
+    assert.equal(appendedScripts.length, 3);
 });
 
 test('staff schedule lazy loader propagates the current release cache key', () => {
@@ -98,10 +122,11 @@ test('staff schedule lazy loader clears failed in-flight load so user action can
     const failedRefresh = context.window.StaffSchedulePage.refresh();
     assert.equal(appendedScripts.length, 1);
     appendedScripts[0].onerror();
-    await assert.rejects(failedRefresh, /Failed to load staff schedule module/);
+    await assert.rejects(failedRefresh, /Failed to load staff schedule script/);
 
     const retriedRefresh = context.window.StaffSchedulePage.refresh({ staffId: 42 });
     assert.equal(appendedScripts.length, 2);
+    assert.equal(appendedScripts[0].removed, true);
     context.window.StaffSchedulePage = {
         init() {
             return Promise.resolve();

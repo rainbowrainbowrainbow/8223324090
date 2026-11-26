@@ -66,6 +66,54 @@ function harness(options = {}) {
     return { dom, win, calls };
 }
 
+test('background team state preserves the active Today navigation', () => {
+    const { dom, win } = harness();
+    try {
+        win.document.body.insertAdjacentHTML('afterbegin', `
+            <nav id="hrNav" class="hr-nav--pulse">
+                <button class="hr-tab hr-pulse-card active" data-tab="today" aria-current="page">Today</button>
+            </nav>
+        `);
+        const nav = win.document.getElementById('hrNav');
+        win.syncHrNavActive('team', 'workers');
+        assert.ok(nav.querySelector('[data-tab="today"].active[aria-current="page"]'));
+
+        nav.classList.add('hr-nav--people');
+        nav.innerHTML = '<button class="hr-tab hr-pulse-card" data-tab="team" data-bucket="workers">Workers</button>';
+        win.syncHrNavActive('team', 'workers');
+        assert.ok(nav.querySelector('[data-bucket="workers"].active[aria-pressed="true"]'));
+    } finally { dom.window.close(); }
+});
+
+test('Today waits for the in-flight business profile and reads the settled context once', async () => {
+    const { dom, win, calls } = harness();
+    try {
+        let finish;
+        const pending = new Promise(resolve => { finish = resolve; });
+        win.Sidebar = { pendingBusinessProfile: () => pending };
+        const load = win.loadToday();
+        assert.equal(calls.length, 0);
+        finish();
+        await load;
+        assert.deepEqual(calls.map(call => call.url), ['/api/hr/today']);
+        assert.equal(win.document.querySelectorAll('#todayList .hr-staff-row').length, 4);
+    } finally { dom.window.close(); }
+});
+
+test('Today rechecks access before reading when the business profile settles', async () => {
+    const { dom, win, calls } = harness();
+    try {
+        let finish;
+        const pending = new Promise(resolve => { finish = resolve; });
+        win.Sidebar = { pendingBusinessProfile: () => pending };
+        const load = win.loadToday();
+        win.canAccess = () => false;
+        finish();
+        await load;
+        assert.equal(calls.length, 0);
+    } finally { dom.window.close(); }
+});
+
 test('Today recovery sends only its business-scoped read and keeps counters, filters and global capabilities intact', async () => {
     const { dom, win, calls } = harness();
     try {

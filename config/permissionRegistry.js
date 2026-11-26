@@ -858,7 +858,7 @@ const ACTION_PERMISSIONS = Object.freeze([
             source('js/auth.js', "canAccess('view_revenue')", { enforces: true }),
             source('js/app.js', "canAccess('view_revenue')", { enforces: true }),
             source('js/booking.js', "canAccess('view_revenue')", { enforces: true }),
-            source('js/tasks-page.js', "canAccess('view_revenue')", { enforces: true }),
+            source('js/profile-page.js', "canAccess('view_revenue')", { enforces: true }),
             source('js/booking-summary-page.js', "canAccess('view_revenue')", { enforces: true }),
             source('js/center-page.js', "canAccess('view_revenue')", { enforces: true }),
             source('js/customers-page.js', "canAccess('view_revenue')", { enforces: true }),
@@ -1020,7 +1020,7 @@ const ACTION_PERMISSIONS = Object.freeze([
             source('services/taskPolicy.js', "review: 'tasks.review'", { enforces: true })
         ],
         frontendConsumers: [
-            source('js/tasks-page.js', "data-task-drawer-action=\"review\"", { enforces: true }),
+            source('js/profile-my-day.js', 'review: actions.review && detailActions?.review', { enforces: true }),
             source('services/taskDetailContract.js', "taskRouteCapabilityDecision(user, 'review')", { enforces: true })
         ],
         apiConsumers: [

@@ -567,6 +567,7 @@ const professionCatalogFilters = {
 };
 let professionChecklistDashboardRequestSeq = 0;
 let professionChecklistDashboardContext = null;
+let professionChecklistDashboardScope = null;
 let professionChecklistDashboardSearchTimer = null;
 let professionChecklistDashboardState = {
     loadState: 'idle',
@@ -4635,6 +4636,14 @@ function professionChecklistDashboardQuery(offset = 0) {
     return params.toString();
 }
 
+function professionChecklistScope() {
+    const user = getHrCurrentUser();
+    if (!user) return null;
+    const scope = typeof getCrmBusinessScope === 'function' ? getCrmBusinessScope(user) : null;
+    return JSON.stringify([user.id || user.username || null, scope?.mode,
+        scope?.activeContext || user.activeBusinessContext, scope?.selectedContexts || []]);
+}
+
 async function loadProfessionChecklists(options = {}) {
     clearTimeout(professionChecklistDashboardSearchTimer);
     professionChecklistDashboardSearchTimer = null;
@@ -4660,7 +4669,10 @@ async function loadProfessionChecklists(options = {}) {
     // Account/business profile hydration may finish while the catalog loads.
     // Bind the dashboard request to the context that actually issues it.
     const context = salaryAccessContext();
-    professionChecklistDashboardState = { loadState: 'loading', data: professionChecklistDashboardState.data, error: '' };
+    professionChecklistDashboardScope = professionChecklistScope();
+    professionChecklistDashboardContext = context;
+    const currentData = catalogContext === context ? previousData : null;
+    professionChecklistDashboardState = { loadState: 'loading', data: currentData, error: '' };
     renderProfessionChecklists();
     let response;
     for (let recovery = 0; recovery <= 2; recovery += 1) {
@@ -4681,20 +4693,19 @@ async function loadProfessionChecklists(options = {}) {
     if (!response?.success) {
         professionChecklistDashboardState = {
             loadState: 'error',
-            data: response?.status === 403 ? null : previousData,
+            data: response?.status === 403 ? null : currentData,
             retry: { feed, offset },
             error: response?.error || 'Не вдалося завантажити dashboard чеклістів'
         };
         renderProfessionChecklists();
         return;
     }
-    const data = feed && previousData ? {
-        ...previousData,
+    const data = feed && currentData ? {
+        ...currentData,
         summary: response.data?.summary || {},
         [feed]: response.data?.[feed] || [],
-        pagination: { ...previousData.pagination, [feed]: response.data?.pagination?.[feed] }
+        pagination: { ...currentData.pagination, [feed]: response.data?.pagination?.[feed] }
     } : response.data || {};
-    professionChecklistDashboardContext = context;
     professionChecklistDashboardState = { loadState: 'ready', data, error: '' };
     renderProfessionChecklistDashboardFilterOptions();
     renderProfessionChecklists();
@@ -4746,6 +4757,7 @@ function renderProfessionChecklists() {
             stateRoot.setAttribute('role', 'status');
         }
         root.innerHTML = '<div class="hr-checklist-dashboard-skeleton" aria-hidden="true"></div><div class="hr-checklist-dashboard-skeleton" aria-hidden="true"></div>';
+        if (summaryRoot && !professionChecklistDashboardState.data) summaryRoot.innerHTML = '';
         return;
     }
     if (professionChecklistDashboardState.loadState === 'error') {
@@ -4799,26 +4811,31 @@ function renderProfessionChecklists() {
 for (const eventName of ['crmBusinessContextChanged', 'crmBusinessScopeChanged', 'crmBusinessProfileChanged', 'roleSwitched', 'permissions:lifecycle', 'crm:auth-cleared']) {
     window.addEventListener(eventName, () => {
         const context = salaryAccessContext();
-        if (professionReadContext === context) return;
-        professionReadContext = context;
-        professionCatalogRequestSeq += 1;
-        hrProfessions = [];
-        professionCatalogAccess = null;
-        professionCatalogStructureNodes = [];
-        professionCatalogInventory = null;
-        professionCatalogLoadState = 'error';
-        professionCatalogLoadError = 'Бізнес або доступ змінився. Оновіть професії.';
-        if (document.getElementById('professionCatalogList')) renderProfessions();
-        if (professionWorkspaceState.open) closeProfessionWorkspaceUi();
-        if (staffOnboardingDialogState || document.getElementById('staffOnboardingScopeOverlay')) closeStaffOnboardingDialog();
+        if (professionReadContext !== context) {
+            professionReadContext = context;
+            professionCatalogRequestSeq += 1;
+            hrProfessions = [];
+            professionCatalogAccess = null;
+            professionCatalogStructureNodes = [];
+            professionCatalogInventory = null;
+            professionCatalogLoadState = 'error';
+            professionCatalogLoadError = 'Бізнес або доступ змінився. Оновіть професії.';
+            if (document.getElementById('professionCatalogList')) renderProfessions();
+            if (professionWorkspaceState.open) closeProfessionWorkspaceUi();
+            if (staffOnboardingDialogState || document.getElementById('staffOnboardingScopeOverlay')) closeStaffOnboardingDialog();
+        }
         if (professionChecklistDashboardState.loadState === 'idle'
-            || (professionChecklistDashboardState.loadState === 'ready' && professionChecklistDashboardContext === context)) return;
+            || professionChecklistDashboardContext === context) return;
+        const reload = eventName === 'crmBusinessProfileChanged' && professionChecklistDashboardScope !== null
+            && professionChecklistDashboardScope === professionChecklistScope()
+            && activeHrTabId() === 'checklists' && canViewHrTab('checklists');
         professionChecklistDashboardContext = null;
         professionChecklistDashboardRequestSeq += 1;
-        professionChecklistDashboardState = {
+        professionChecklistDashboardState = reload ? { loadState: 'loading', data: null, error: '' } : {
             loadState: 'error', data: null, error: 'Бізнес або доступ змінився. Оновіть чеклісти.'
         };
         renderProfessionChecklists();
+        if (reload) void loadProfessionChecklists();
     });
 }
 

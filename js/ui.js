@@ -4352,9 +4352,7 @@ async function initFormerTabLinks() {
         if (redirecting) return true;
         const requested = new URLSearchParams(location.search).get('tab') || location.hash.slice(1);
         for (const link of links) {
-            const item = Sidebar.NAV_ITEMS.find(entry => entry.href === link.pathname);
-            const allowed = getPermissionLifecycle().status === 'ready' && item
-                && canAccessPage(link.pathname) && Sidebar.allowsBusinessNavigation(item);
+            const allowed = canOpenWorkspacePage(link.pathname);
             link.classList.toggle('hidden', !allowed);
             if (allowed && requested === link.dataset.formerTab) {
                 redirecting = true;

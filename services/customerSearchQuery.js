@@ -7,7 +7,7 @@ const {
 } = require('./customerBookingMetrics');
 const {
     DEFAULT_BUSINESS_CONTEXT,
-    pushBusinessContextCondition
+    pushBusinessScopeCondition
 } = require('./businessContext');
 
 function customerChildrenSearchSql(patternRef, alias = 'c') {
@@ -55,7 +55,7 @@ function buildCustomerSearchQuery({
         ? ' OR c.social_identities::text ILIKE $1'
         : '';
     const childrenSearch = ` OR ${customerChildrenSearchSql('$1', 'c')}`;
-    const contextSql = pushBusinessContextCondition(params, businessContext, 'c');
+    const contextSql = pushBusinessScopeCondition(params, businessContext, 'c');
     const boundedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
     const asOf = customerMetricsDate();
     // Batch the matching IDs so broad queries can visit each booking heap page once.

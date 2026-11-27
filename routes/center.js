@@ -23,7 +23,9 @@ const { buildCustomerSearchQuery } = require('../services/customerSearchQuery');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
 const { businessBookingSql } = require('../services/financeQaReadScope');
 const {
-    pushBusinessContextCondition,
+    resolveBusinessScope,
+    requireBusinessScope,
+    pushBusinessScopeCondition,
     businessContextFromRequest,
     requireBusinessContext
 } = require('../services/businessContext');
@@ -844,12 +846,12 @@ router.get('/tasks', async (req, res) => {
 
 router.get('/clients', async (req, res) => {
     try {
-        const businessContext = businessContextFromRequest(req);
-        if (!requireBusinessContext(req, res, businessContext)) return;
+        const scope = resolveBusinessScope(req);
+        if (!requireBusinessScope(req, res, scope)) return;
         const query = buildCustomerSearchQuery({
             query: req.query.search,
             user: req.user,
-            businessContext,
+            businessContext: scope,
             limit: Math.min(Number.parseInt(req.query.limit, 10) || 20, 50),
             includeSocialIdentities: false,
             allowShortSearch: true,
@@ -870,11 +872,11 @@ router.get('/clients', async (req, res) => {
 
 router.get('/clients/:id/bookings', async (req, res) => {
     try {
-        const businessContext = businessContextFromRequest(req);
-        if (!requireBusinessContext(req, res, businessContext)) return;
+        const scope = resolveBusinessScope(req);
+        if (!requireBusinessScope(req, res, scope)) return;
         const scoped = scopedBookingParams(req.user, [req.params.id]);
-        const bookingContext = pushBusinessContextCondition(scoped.params, businessContext, 'b');
-        const customerContext = pushBusinessContextCondition(scoped.params, businessContext, 'c');
+        const bookingContext = pushBusinessScopeCondition(scoped.params, scope, 'b');
+        const customerContext = pushBusinessScopeCondition(scoped.params, scope, 'c');
         const result = await pool.query(`
             SELECT b.id, b.date, b.time, b.program_name, b.category, b.duration, b.price, b.status, b.room, b.kids_count,
                    b.banquet_guests, b.banquet_adults, b.banquet_tables, b.banquet_menu

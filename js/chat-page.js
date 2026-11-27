@@ -1407,6 +1407,8 @@
         _chatBootStep('shell:ready');
         _chatBoundScope = _chatScopeKey();
         _chatScopeReady = true;
+        if (getPermissionLifecycle().status !== 'ready') await hydrateActionPermissions(verified);
+        if (!_chatScopeReady || _chatBoundScope !== _chatScopeKey()) return;
         _applyOmniLaunchParams({ force: true });
         _initAssistantReturnBridge();
 

@@ -22,7 +22,7 @@ async function setup(page, { mobile=false, disabled=false, connected=false, botU
     await page.route('https://fixture.example/**', async route => {
         const url = new URL(route.request().url());
         if (!url.pathname.startsWith('/api/')) return route.fulfill({contentType:'text/html',body:'<!doctype html><html lang="uk"><head><title>Telegram CRM profile fixture</title></head><body><main><section id="panel" data-telegram-crm-profile></section></main></body></html>'});
-        const body = route.request().postDataJSON(); calls.push({path:url.pathname,body});
+        const body = route.request().postDataJSON(); calls.push({path:url.pathname,method:route.request().method(),body});
         const result = {success:true};
         if (url.pathname.endsWith('/link')) {
             if (status === 'connected' && body.password !== 'fixture-password') return route.fulfill({status:401,json:{success:false,code:'TELEGRAM_REAUTH_REQUIRED',error:'Підтвердьте поточний пароль CRM.'}});
@@ -81,7 +81,8 @@ test('connected mobile account opens the current bot without another binding or 
     const calls=await setup(page,{mobile:true,connected:true});
     const open=page.getByRole('link',{name:'Мої задачі в Telegram',exact:true});
     await expect(open).toHaveAttribute('href','https://t.me/d1wdd_bot?start=crm_tasks');
-    await expect(page.getByText(/повторна прив’язка не потрібна/)).toBeVisible();
+    await expect(page.getByText('Підтверджено',{exact:true})).toBeVisible();
+    await expect(page.locator('input[type="password"]')).toHaveCount(0);
     await open.focus();
     await expect(open).toBeFocused();
     expect(await open.evaluate(el=>getComputedStyle(el).outlineStyle)).not.toBe('none');
@@ -91,7 +92,8 @@ test('connected mobile account opens the current bot without another binding or 
     const popup=await popupPromise;
     await popup.waitForLoadState();
     expect(popup.url()).toBe('https://t.me/d1wdd_bot?start=crm_tasks');
-    expect(calls.every(call=>call.body===null)).toBe(true);
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.every(call=>call.method==='GET' && call.body===null)).toBe(true);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
     await page.screenshot({path:'../telegram-easy-connected-mobile.png',fullPage:true});
 });

@@ -266,6 +266,5 @@ module.exports = {
     loadStaffDocumentDownload,
     restoreStaffDocument,
     safeStaffDocumentDownloadFilename,
-    staffDocumentPreviewMimeType,
-    validateStaffDocumentUploadFile
+    staffDocumentPreviewMimeType
 };

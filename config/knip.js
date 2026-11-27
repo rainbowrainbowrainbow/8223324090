@@ -87,7 +87,9 @@ module.exports = {
         'tests/browser/{business-membership-editor,business-profile-access}.spec.js',
         // Standalone browser checks verified with local synthetic fixtures.
         'tests/browser/baseline-access-navigation-browser-smoke.js',
+        'tests/browser/business-cabinet-manager.spec.js',
         'tests/browser/legacy-containment.spec.js',
+        'tests/browser/telegram-crm-profile.spec.js',
         'tests/browser/login-signal.browser.cjs',
         'db/seeds/training_knowledge_base.js'
     ])]

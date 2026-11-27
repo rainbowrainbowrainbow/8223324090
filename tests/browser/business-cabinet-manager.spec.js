@@ -25,7 +25,9 @@ async function fixture(page, options = {}) {
     const requests = [];
     let failWrite = options.failWrite;
     let pendingRead = null;
-    const business = { id: 11, organizationId: 7, contextKey: 'event_genix', label: 'Тестовий парк', shortLabel: 'Парк', status: 'active', modules: ['timeline', 'catalogs'], moduleCatalog: businessModuleCatalog('event_genix').map(module => ({ ...module, enabled: module.canEnable && ['timeline', 'catalogs'].includes(module.key) })), canInitializeResources: true };
+    const modules = ['timeline', 'catalogs'];
+    if (options.historicalModule) modules.push(options.historicalModule);
+    const business = { id: 11, organizationId: 7, contextKey: 'event_genix', label: 'Тестовий парк', shortLabel: 'Парк', status: 'active', modules, moduleCatalog: businessModuleCatalog('event_genix').map(module => ({ ...module, enabled: module.canEnable && modules.includes(module.key) })), canInitializeResources: true };
     const organizations = [
         { id: 7, name: 'Тестова організація A', role: options.admin ? 'admin' : 'owner', canCreateBusiness: !options.admin, canEditBusinesses: !options.admin, businesses: [business] },
         { id: 8, name: 'Тестова організація B', role: 'owner', canCreateBusiness: true, canEditBusinesses: true, businesses: [] }
@@ -86,10 +88,13 @@ test('owner creates explicitly empty business in selected organization without o
 });
 
 test('configuration retry preserves draft and label-only patch retains historical blocked modules', async ({ page }) => {
-    const { requests } = await fixture(page, { failWrite: true });
+    const { requests } = await fixture(page, { failWrite: true, historicalModule: 'reports' });
     await page.locator('[data-cabinet-action="edit"]').click();
-    await expect(page.locator('[data-cabinet-module="catalogs"]')).toBeChecked();
-    await expect(page.locator('[data-cabinet-module="catalogs"]')).toBeDisabled();
+    await page.locator('[data-cabinet-unavailable] summary').click();
+    const historicalModule = page.locator('[data-cabinet-module="reports"]');
+    await expect(historicalModule).toBeVisible();
+    await expect(historicalModule).toBeChecked();
+    await expect(historicalModule).toBeDisabled();
     await page.locator('[name="label"]').fill('Оновлений парк');
     await page.getByRole('button', { name: 'Зберегти бізнес' }).click();
     await expect(page.locator('[data-cabinet-status]')).toContainText('Спробуйте ще раз');

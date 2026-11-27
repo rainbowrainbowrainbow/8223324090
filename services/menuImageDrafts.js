@@ -473,13 +473,8 @@ async function persistMenuImageDraft(db, { productId, businessContext, username,
 
 
 module.exports = {
-    DEFAULT_TARGET_USAGE,
-    ALLOWED_EXTERNAL_IMAGE_EXTENSIONS,
-    MAX_EXTERNAL_IMAGE_BYTES,
     MAX_EXTERNAL_IMAGE_BASE64_LENGTH,
     MAX_EXTERNAL_IMAGE_URL_LENGTH,
-    EXTERNAL_MENU_IMAGE_DRAFT_FIELDS,
-    normalizeMenuImageStudio,
     buildMenuImageContext,
     assertExternalDraftPayloadFields,
     normalizeExternalImageSource,

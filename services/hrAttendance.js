@@ -2055,7 +2055,6 @@ module.exports = {
     actualWorkedMinutes,
     attendanceDayType,
     attendanceAllocationFields,
-    attendanceCsvCell,
     attendanceCsvRow,
     attendanceFactMinutes,
     attendanceTimezoneTransitionIssue,

@@ -261,7 +261,6 @@ async function uploadProfileAvatarWithFallback(file, options = {}) {
 
 module.exports = {
     MAX_AVATAR_BYTES,
-    PROFILE_AVATAR_STORAGE_PROVIDER,
     PROFILE_AVATAR_TYPES,
     buildProfileAvatarBlobFallbackHandler,
     checksumSha256,

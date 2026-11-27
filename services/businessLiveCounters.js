@@ -333,5 +333,4 @@ async function buildBusinessLiveCounters(pool, user, scope) {
 
 module.exports = {
     buildBusinessLiveCounters,
-    businessScopeMeta,
 };

@@ -542,6 +542,5 @@ module.exports = {
     listStaffResourceOptions,
     listStaffResources,
     returnStaffResource,
-    staffResourceAssignmentMeta,
     transitionStaffResource
 };

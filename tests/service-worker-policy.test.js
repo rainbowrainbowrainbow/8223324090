@@ -299,7 +299,7 @@ describe('Service Worker cache safety policy', () => {
             assert.equal(response.status, 503, path);
             assert.doesNotMatch(await response.text(), /stale module/);
         }
-        for (const path of ['/copilot.html', '/js/copilot-page.js?v=0.84.46', '/css/' + 'copilot.css']) {
+        for (const path of ['/copilot.html', '/js/copilot-page.js?v=old-release', '/css/' + 'copilot.css']) {
             let responsePromise;
             runtimePolicy.__listeners.fetch({
                 request: get(path),

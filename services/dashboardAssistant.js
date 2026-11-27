@@ -21,7 +21,6 @@ const {
 const log = createLogger('DashboardAssistant');
 const OPENAI_API_BASE = process.env.OPENAI_API_BASE || 'https://api.openai.com/v1';
 const SYSTEM_PROMPT_PATH = path.join(process.cwd(), 'prompts', 'crm-assistant-system.md');
-const ASSISTANT_PROVIDER_SCOPE = 'crm_assistant_rail_openai';
 
 function dashboardAssistantError(code, status = 500, message = code) {
     const err = new Error(message);
@@ -52,16 +51,6 @@ function loadDashboardAssistantInstructions() {
     }
 }
 
-function getAssistantProviderBoundary() {
-    return {
-        scope: ASSISTANT_PROVIDER_SCOPE,
-        provider: 'openai',
-        keyEnv: 'OPENAI_API_KEY',
-        apiBase: OPENAI_API_BASE,
-        replyModel: process.env.OPENAI_ASSISTANT_MODEL || 'gpt-4.1-mini',
-        note: 'Rail assistant provider path is intentionally separate from the Kleshnya surface.'
-    };
-}
 
 function compactString(value, limit = 1600) {
     return String(value || '').trim().slice(0, limit);
@@ -794,14 +783,11 @@ async function getDashboardAssistantReply(input = {}) {
 
 module.exports = {
     getDashboardAssistantReply,
-    loadDashboardAssistantInstructions,
     buildAssistantContext,
     buildPageKnowledgePrompt,
     buildPageKnowledgeDebug,
     buildDirectFeatureLocatorReply,
     normalizeAssistantReply,
-    getAssistantProviderBoundary,
     selectAIProductContext,
-    buildAIProductContextPrompt,
     dashboardAssistantError
 };

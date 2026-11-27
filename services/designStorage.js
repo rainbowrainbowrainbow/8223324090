@@ -127,7 +127,6 @@ async function deleteDesignBlob(query, designId) {
 
 module.exports = {
     DESIGN_STORAGE_PROVIDER,
-    PUBLIC_PREFIX,
     buildDesignBlobFallbackHandler,
     checksumSha256,
     designStorageKey,
@@ -135,7 +134,6 @@ module.exports = {
     markDesignStored,
     publicDesignUrl,
     readDesignBlob,
-    readDesignBlobByFilename,
     safeFilename,
     storeDesignBlob
 };

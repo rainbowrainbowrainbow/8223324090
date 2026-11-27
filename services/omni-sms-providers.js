@@ -285,22 +285,6 @@ async function sendFlySms(runtime = {}, phone, text) {
   };
 }
 
-async function sendBulkSmsViaProvider(runtime = {}, phones = [], text) {
-  if (!Array.isArray(phones) || phones.length === 0) {
-    return { success: false, error: 'phones array is required and must not be empty' };
-  }
-  if (!text) return { success: false, error: 'text is required' };
-  const results = [];
-  for (const phone of phones) {
-    try {
-      const result = await sendSmsViaProvider(runtime, phone, text);
-      results.push({ phone: normalizePhone(phone), messageId: result.messageId || null, error: result.success ? null : result.error || 'send failed' });
-    } catch (err) {
-      results.push({ phone: String(phone || ''), error: err.message });
-    }
-  }
-  return { success: true, results };
-}
 
 module.exports = {
   FLYSMS_DEFAULT_API_URL,
@@ -315,5 +299,4 @@ module.exports = {
   normalizePhone,
   sendSmsViaProvider,
   getTurboSmsDeliveryStatus,
-  sendBulkSmsViaProvider,
 };

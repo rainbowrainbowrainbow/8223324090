@@ -12,7 +12,6 @@ const { createLogger } = require('../utils/logger');
 const { resolveOmniRuntimeConfig } = require('./omni-accounts');
 const {
     sendSmsViaProvider,
-    sendBulkSmsViaProvider,
     normalizeSmsProvider,
 } = require('./omni-sms-providers');
 
@@ -39,22 +38,5 @@ async function sendSMS(phone, text, options = {}) {
     }
 }
 
-async function sendBulkSMS(phones, text, options = {}) {
-    if (!phones || !Array.isArray(phones) || phones.length === 0) {
-        return { success: false, error: 'phones array is required and must not be empty' };
-    }
-    if (!text) {
-        return { success: false, error: 'text is required' };
-    }
 
-    try {
-        const runtime = await smsRuntime(options);
-        log.debug('Sending bulk SMS', { provider: runtime.provider, count: phones.length });
-        return await sendBulkSmsViaProvider(runtime, phones, text);
-    } catch (err) {
-        log.error('sendBulkSMS failed', err);
-        return { success: false, error: err.message };
-    }
-}
-
-module.exports = { sendSMS, sendBulkSMS };
+module.exports = { sendSMS };

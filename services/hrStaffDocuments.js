@@ -92,10 +92,6 @@ function normalizeStaffDocumentType(value) {
     return STAFF_DOCUMENT_TYPES.has(type) ? type : 'other';
 }
 
-function normalizeStaffDocumentStatus(value) {
-    const status = cleanStaffDocumentText(value, 32) || 'active';
-    return STAFF_DOCUMENT_STATUSES.has(status) ? status : 'active';
-}
 
 function safeStaffDocumentDownloadFilename(value, fallback = 'staff-document') {
     const raw = cleanStaffDocumentText(value, 180) || fallback;
@@ -268,11 +264,8 @@ module.exports = {
     isStaffDocumentPreviewable,
     listStaffDocuments,
     loadStaffDocumentDownload,
-    normalizeStaffDocumentStatus,
-    normalizeStaffDocumentType,
     restoreStaffDocument,
     safeStaffDocumentDownloadFilename,
     staffDocumentPreviewMimeType,
-    staffDocumentMeta,
     validateStaffDocumentUploadFile
 };

@@ -386,7 +386,5 @@ module.exports = {
     getCustomerCommunicationContext,
     getCustomerOmniSummaries,
     buildCustomerOmniNavigation,
-    normalizeDigits,
     buildTimelineLink,
-    INBOUND_ONLY_CHANNELS
 };

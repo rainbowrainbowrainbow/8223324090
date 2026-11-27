@@ -228,6 +228,8 @@ Request-budget evidence:
 
 ## DASH-04: локальний результат
 
+Браузерний smoke нижче належить історичному DASH-04. Для його відтворення використайте коміт `7a6b3d71ff08e6169e632b547c518e927435f753`. Поточний Dashboard відкривається без старих інструментів малювання.
+
 Статус: виконано локально після DASH-03 у гілці `codex/dashboard-visibility-20260912`; push/deploy залишено для DASH-05.
 
 Коміт фіксу mobile/fallback: `46f08b183a415d9e0ab8e9e73591ae82e11c158e` (`fix: improve dashboard mobile fallback`).

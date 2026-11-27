@@ -2901,7 +2901,6 @@ module.exports = {
   createLeadFromConversation,
   createLeadAssistantFollowUpTask,
   extractFallbackLead,
-  normalizeLeadDraft,
   normalizeAnalysis,
   normalizeRecommendedMaterials,
   buildLeadInsertDraft,

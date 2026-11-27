@@ -278,7 +278,6 @@ module.exports = {
     formatAfishaBlock,
     formatCertificateNotification,
     formatBatchCertificateNotification,
-    taskTemplates,
     formatTaskNotification,
     truncate
 };

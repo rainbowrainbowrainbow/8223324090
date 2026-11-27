@@ -221,5 +221,4 @@ module.exports = {
     getReplyActionSnapshot,
     listReplyActionHistory,
     logReplyActionEvent,
-    summaryForAction,
 };

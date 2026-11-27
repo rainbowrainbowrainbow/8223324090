@@ -415,16 +415,6 @@ function normalizePageContext(input = {}) {
     };
 }
 
-function listAssistantPages() {
-    return Object.values(PAGE_KNOWLEDGE)
-        .filter(entry => !entry.aliasOf)
-        .map(entry => ({
-            pageKey: entry.pageKey,
-            label: entry.label,
-            pathnames: entry.pathnames || [],
-            aliases: entry.aliases || []
-        }));
-}
 
 function formatList(label, items = []) {
     const list = compactList(items, 8, 150);
@@ -532,15 +522,8 @@ function buildPageKnowledgeAnswer(message = '', input = {}) {
 }
 
 module.exports = {
-    PAGE_KNOWLEDGE,
-    listAssistantPages,
-    normalizePathname,
-    normalizePageKey,
-    resolvePageKey,
     normalizePageContext,
-    getAssistantPageKnowledge,
     buildPageKnowledgePrompt,
     buildPageKnowledgeDebug,
     buildPageKnowledgeAnswer,
-    detectPageKnowledgeTopic
 };

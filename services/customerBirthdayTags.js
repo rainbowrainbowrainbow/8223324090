@@ -244,12 +244,9 @@ async function syncBirthdayTagsForAllCustomers(options = {}) {
 
 module.exports = {
     BIRTHDAY_TAG_KEY,
-    BIRTHDAY_TAG_LABEL,
-    BIRTHDAY_TAG_COLOR,
     BIRTHDAY_MONTH_KEYS,
     BIRTHDAY_SYSTEM_TAG_KEYS,
     BIRTHDAY_TAG_LABELS,
-    BIRTHDAY_TAG_COLORS,
     birthdayMonthKey,
     birthdayMonthLabel,
     birthdaySystemTagsForDate,

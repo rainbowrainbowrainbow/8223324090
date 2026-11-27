@@ -50,12 +50,7 @@
 
 ## Повторення локального QA
 
-Із цього worktree запустити `node tests/browser/dashboard-presentation-fixture.js`. В іншому терміналі:
-
-```powershell
-npx --yes --package @playwright/cli playwright-cli -s=dash05 open http://127.0.0.1:4315/dashboard --headed
-npx --yes --package @playwright/cli playwright-cli -s=dash05 run-code --filename tests/browser/dashboard-presentation-browser-qa.js
-```
+Історичний сценарій DASH-05 і стенд збережені в коміті `7a6b3d71ff08e6169e632b547c518e927435f753`. Для відтворення команд і візуальних доказів використайте цю версію.
 
 Стенд слухає тільки loopback, зберігає тестові зміни лише в пам’яті та не потребує CRM secrets. Дані стенда не вбудовані в робочий Dashboard. Весь каталог `output/` містить локальні артефакти та не призначений для коміту.
 

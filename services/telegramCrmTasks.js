@@ -545,4 +545,4 @@ function createTelegramCrmTasks(options) {
     return { cancel, commit, list, me, operation, owners, preview, previewChange, undoCreate };
 }
 
-module.exports = { createTelegramCrmTasks, dateOnly, defaultActorContext, normalizeDraft, resolveTelegramCreationCoAssignees };
+module.exports = { createTelegramCrmTasks, dateOnly, defaultActorContext, normalizeDraft };

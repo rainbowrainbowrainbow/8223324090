@@ -374,9 +374,7 @@ function _download(url, options = {}) {
 
 module.exports = {
     AUDIO_CONTENT_TYPES,
-    DEFAULT_LOCAL_DIR,
     MAX_SOUND_UPLOAD_BYTES,
-    PUBLIC_PREFIX,
     SOUND_STORAGE_BUCKET,
     buildSoundUploadBlobFallbackHandler,
     checksumSha256,
@@ -387,7 +385,6 @@ module.exports = {
     publicSoundUploadUrl,
     removeAudioObject,
     storeSoundUploadBlob,
-    transliterate,
     uploadAudioBufferWithMetadata,
     uploadAudioFromUrlWithMetadata
 };

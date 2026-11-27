@@ -495,5 +495,4 @@ module.exports = {
     classifyStaleMachineTask,
     buildStaleMachineReport,
     summaryForStdout,
-    protectionFlags,
 };

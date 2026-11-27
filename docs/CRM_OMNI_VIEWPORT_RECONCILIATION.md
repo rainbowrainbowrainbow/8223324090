@@ -20,9 +20,8 @@ responsive breakpoints, composer sizing and message-position behavior.
   645 on a 640px viewport. Three cycles after the fix produce height 545 and
   bottom 640. The original maximum-bottom tolerance remains two pixels.
 - The fixture is included in both the responsive browser suite and the
-  PostgreSQL-backed actual-app navigation suite. It is also directly runnable
-  with `node tests/browser/omni-viewport-browser-smoke.js` using the existing
-  ephemeral Playwright setup.
+  PostgreSQL-backed actual-app navigation suite. Use `npm run test:browser:omni`
+  to run the responsive checks, including the viewport animation regression.
 - Focused Omni behavior/completion/history tests passed: 93 tests.
 - Actual-app navigation passed at 1366x768, 390x844, 320x640 and 390x420, including
   drafts, reading position, mode navigation, keyboard reopen, stale responses and

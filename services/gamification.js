@@ -855,22 +855,6 @@ async function onTaskComplete(username, task) {
 /**
  * Hook: called when a booking is created.
  */
-async function onBookingCreate(username) {
-    if (PARK_PROFILE_MODULES.gamification !== 'active') return undefined;
-    try {
-        await ensureProfile(username);
-        await ensureCurrency(username);
-
-        await awardCoins(username, 5, 'Нове бронювання', 'task');
-        await awardXP(username, XP_REWARDS.booking_create);
-        const unlocked = await checkAchievements(username);
-
-        return { coins: 5, xp: XP_REWARDS.booking_create, achievements: unlocked };
-    } catch (err) {
-        log.error('onBookingCreate error', err);
-        return null;
-    }
-}
 
 // ============================================================
 // MONTHLY LEADERBOARD (v30.8.0)
@@ -1592,15 +1576,10 @@ async function purchaseStreakFreeze(username) {
 }
 
 module.exports = {
-    ensureProfile,
-    ensureCurrency,
     getProfile,
-    getCurrentLevel,
     awardCoins,
     spendCoins,
-    awardXP,
     checkAchievements,
-    unlockAchievement,
     purchaseShopItem,
     equipItem,
     unequipSlot,
@@ -1611,8 +1590,6 @@ module.exports = {
     updateProfile,
     giftCoins,
     shouldAwardTaskCompletion,
-    onTaskComplete,
-    onBookingCreate,
     // v30.8.0 — Gamification v3
     getMonthlyLeaderboard,
     recalculateMonthlyLeaderboard,
@@ -1625,7 +1602,6 @@ module.exports = {
     leaveTeam,
     getTeamChallenges,
     recalculateTeamChallenges,
-    getReferralCode,
     applyReferralCode,
     checkReferralReward,
     getReferralStats,

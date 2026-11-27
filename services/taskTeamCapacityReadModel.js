@@ -98,5 +98,4 @@ module.exports = {
     MAX_PLANNING_DAYS,
     loadTaskOwnerCapacity,
     normalizeTaskPlanningRange,
-    ownerUserIds
 };

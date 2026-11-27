@@ -355,9 +355,6 @@ async function buildMyDayContribution({ pool, queryable, user, businessScope, qu
 }
 
 module.exports = {
-    KYIV_TIMEZONE,
-    MAX_RANGE_DAYS,
-    addDays,
     buildMyDayContribution,
     normalizeRange,
     summarizeContribution

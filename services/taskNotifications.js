@@ -106,5 +106,4 @@ async function refreshTaskAuthorAlerts(task = {}) {
 module.exports = {
     refreshTaskAuthorAlerts,
     emitTaskAssignedToOwner,
-    taskOwnerUserId,
 };

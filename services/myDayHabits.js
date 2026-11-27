@@ -400,7 +400,6 @@ async function deleteCheckin(queryable, userId, habitId, localDate) {
 }
 
 module.exports = {
-    KYIV_TIMEZONE,
     createHabit,
     deleteCheckin,
     isHabitDue,

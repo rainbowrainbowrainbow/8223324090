@@ -358,5 +358,4 @@ module.exports = {
     setLeadPrimaryConversation,
     listLeadConversationLinks,
     listConversationLeadLinks,
-    mapLink,
 };

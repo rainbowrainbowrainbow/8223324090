@@ -489,6 +489,5 @@ module.exports = {
     startProgramIconGeneration,
     pollProgramIconJob,
     persistProgramIconImage,
-    parseKieImageUrl,
     parseOpenRouterImageUrl
 };

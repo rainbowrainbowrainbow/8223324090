@@ -296,7 +296,6 @@ async function loadTaskTimeTotalsForDate(queryable, userId, taskIds = [], localD
 }
 
 module.exports = {
-    MAX_MANUAL_DURATION_MINUTES,
     activeTimer,
     createManualEntry,
     deleteTimeEntry,

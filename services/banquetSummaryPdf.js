@@ -1428,7 +1428,6 @@ async function buildBanquetSummaryPdfBuffer(summary = {}, options = {}) {
 }
 
 module.exports = {
-    MODE_LABELS,
     normalizeBanquetSummaryMode,
     validateBanquetSummaryPdf,
     banquetSummaryPdfFilename,

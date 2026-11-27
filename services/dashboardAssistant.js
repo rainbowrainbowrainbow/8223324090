@@ -784,8 +784,6 @@ async function getDashboardAssistantReply(input = {}) {
 module.exports = {
     getDashboardAssistantReply,
     buildAssistantContext,
-    buildPageKnowledgePrompt,
-    buildPageKnowledgeDebug,
     buildDirectFeatureLocatorReply,
     normalizeAssistantReply,
     selectAIProductContext,

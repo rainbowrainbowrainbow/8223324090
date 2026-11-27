@@ -48,6 +48,7 @@ module.exports = {
         ...manualEducationBrowserEntries,
         // Spawned evidence verifiers and the Education report-clock preload.
         'tests/tools/verify-education-close-{attempt,pack}.js',
+        'tests/tools/verify-education-close-device.js',
         'tests/helpers/education-ready-report-clock.js',
         // Spawned by the production block controller and timeline browser smoke, respectively.
         'scripts/trusted-qa-finance-run.js',

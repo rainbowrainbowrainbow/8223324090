@@ -143,7 +143,6 @@ function evaluateLegacyLeadConversation({ lead = {}, conversations = [], busines
 
 module.exports = {
   EXTERNAL_ID_PATTERN,
-  parseJsonObject,
   conversationIdFromExternalId,
   conversationIdsFromRawPayload,
   leadIdsFromConversationMeta,

@@ -550,7 +550,6 @@ module.exports = {
     MENU_IMAGE_STUDIO_SIZES,
     MENU_IMAGE_STUDIO_STYLES,
     MENU_IMAGE_STUDIO_LEGACY_SIZE_MAP,
-    MENU_IMAGE_DEFAULT_OPENAI_MODEL,
     normalizeMenuImageSize,
     normalizeMenuImageStyle,
     buildMenuImagePrompt,

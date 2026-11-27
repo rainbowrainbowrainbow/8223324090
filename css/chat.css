@@ -1,7 +1,7 @@
 /* chat.css - aggregate entrypoint for Team messenger styles. */
 
 @import url("./chat-core.css");
-@import url("./chat-guardian.css");
+@import url("./chat-guardian.css?layout=2");
 @import url("./chat-effects.css");
 @import url("./chat-modern.css");
 @import url("./chat-polish.css");

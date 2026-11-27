@@ -946,6 +946,7 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-title-row,
   grid-area: identity-title !important;
   grid-column: 1 / -1 !important;
   display: flex !important;
+  flex-wrap: wrap;
   grid-template-columns: minmax(0, 1fr) max-content !important;
   justify-content: flex-start;
   align-items: center !important;
@@ -959,7 +960,7 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-title-row,
 body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-title-line,
 body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-title-line,
 .sidebar-nav:not(.collapsed) .sidebar-identity-title-line {
-  flex: 0 1 auto;
+  flex: 1 1 min-content;
   width: max-content;
   min-width: 0 !important;
   max-width: 100% !important;

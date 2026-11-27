@@ -959,7 +959,7 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-title-row,
 body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-title-line,
 body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-title-line,
 .sidebar-nav:not(.collapsed) .sidebar-identity-title-line {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
   width: max-content;
   min-width: 0 !important;
   max-width: 100% !important;
@@ -991,6 +991,7 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
   place-items: center !important;
   flex: 0 0 auto;
   justify-self: start !important;
+  width: max-content !important;
   min-width: 0 !important;
   max-width: 72px !important;
   padding: 2px 0 2px 9px !important;

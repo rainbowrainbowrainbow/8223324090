@@ -930,6 +930,18 @@ body.dark-mode .guardian-log-entry-text,
     background: rgba(99, 102, 241, 0.1);
 }
 
+@media (max-width: 480px) {
+    .guardian-watch-bar {
+        flex-wrap: wrap;
+        gap: 6px;
+        padding-inline: 8px;
+    }
+
+    .guardian-health-indicator {
+        margin-left: 0;
+    }
+}
+
 /* ==========================================
    GUARDIAN ANALYTICS PANEL
    ========================================== */

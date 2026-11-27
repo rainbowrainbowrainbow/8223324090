@@ -4698,6 +4698,68 @@ function cabinetTaskCreateSignature(draft = {}) {
 }
 
 const cabinetAssignmentPickers = new WeakMap();
+const cabinetComposerDraftKeys = new WeakMap();
+const cabinetComposerDraftFields = [
+    'cabinetTaskMode', 'cabinetTaskTitle', 'cabinetTaskDetails', 'cabinetTaskDate', 'cabinetDueMode',
+    'cabinetTaskCategory', 'cabinetTaskKind', 'cabinetTaskTime', 'cabinetTaskPriority',
+    'cabinetTaskVisibility', 'cabinetTaskAllowReschedule'
+];
+
+function bindCabinetComposerDraft(form) {
+    if (!form || activeTab !== 'myday' || !isOwnProfile || cabinetComposerDraftKeys.has(form)
+        || cabinetCreateContext || cabinetCreateAssignment || cabinetLeadCollaboration) return;
+    const user = AppState.currentUser;
+    const api = window.ProfileMyDay;
+    const key = api?.sessionDraftKey?.({ actor: user?.id, business: user?.activeBusinessContext }, 'composer');
+    if (!key) return;
+    cabinetComposerDraftKeys.set(form, key);
+    const assignment = cabinetAssignmentPickers.get(form);
+    const controls = cabinetComposerDraftFields.map(id => form.querySelector('#' + id)).filter(Boolean);
+    const valueOf = control => control.type === 'checkbox' ? control.checked : control.value;
+    const defaults = Object.fromEntries(controls.map(control => [control.id, valueOf(control)]));
+    const stored = api.readSessionDraft(key);
+    if (stored) {
+        for (const control of controls) {
+            const value = stored.fields?.[control.id];
+            if (control.type === 'checkbox') {
+                if (typeof value === 'boolean') control.checked = value;
+            } else if (typeof value === 'string'
+                && (!control.options || [...control.options].some(option => !option.disabled && option.value === value))) {
+                control.value = value;
+            }
+            if (control.id === 'cabinetTaskMode' && typeof value === 'string') syncCabinetTaskCreateMode();
+        }
+        if (Object.hasOwn(stored.fields || {}, 'cabinetTaskDate')) {
+            setCabinetDuePreset(cabinetManualDueDateValue() ? 'custom' : 'no_date');
+        }
+        if (stored.fields?.cabinetTaskPriority) setCabinetCreatePriority(stored.fields.cabinetTaskPriority);
+        syncCabinetTaskVisibilityHint();
+        autoGrowCabinetTaskInput(form.querySelector('#cabinetTaskTitle'));
+        if (stored.confirmAssignees && form.querySelector('#cabinetTaskMode')?.value === 'work'
+            && form.querySelector('#cabinetTaskVisibility')?.value === 'team') {
+            assignment?.requireSelection();
+            setCabinetTaskComposerStatus('Чернетку відновлено. Оберіть виконавців перед створенням задачі.', 'warning');
+        }
+        if (controls.some(control => Object.hasOwn(stored.fields || {}, control.id)
+            && control.closest('[data-cabinet-composer-advanced]'))) {
+            const options = form.querySelector('.park-composer-options');
+            if (options) options.open = true;
+            else setCabinetTaskComposerExpanded(true);
+        }
+    }
+    const persist = event => {
+        if (cabinetCreateContext || cabinetCreateAssignment || cabinetLeadCollaboration
+            || api.sessionDraftKey({ actor: AppState.currentUser?.id, business: AppState.currentUser?.activeBusinessContext }, 'composer') !== key
+            || (!controls.includes(event.target) && event.type !== 'cabinet-assignment-change')) return;
+        const fields = Object.fromEntries(controls.map(control => [control.id, valueOf(control)])
+            .filter(([id, value]) => value !== defaults[id]));
+        const confirmAssignees = Boolean(assignment && form.querySelector('#cabinetTaskVisibility')?.value === 'team'
+            && (assignment.ownerId !== Number(user.id) || assignment.selected.size > 1
+                || assignment.shiftAssignment || assignment.needsShiftConfirmation));
+        api.writeSessionDraft(key, Object.keys(fields).length || confirmAssignees ? { fields, confirmAssignees } : null);
+    };
+    for (const event of ['input', 'change', 'cabinet-assignment-change']) form.addEventListener(event, persist);
+}
 
 function readCabinetOwner(form = document.getElementById('cabinetTaskComposer')) {
     const user = AppState.currentUser || {};
@@ -4730,6 +4792,12 @@ function bindCabinetAssignmentPicker(form) {
     const morePeople = picker.querySelector('[data-assignment-more]');
     const self = readCabinetOwner(form);
     const state = { selected: new Map([[self, 'Я']]), ownerId: self, implicitSelf: true };
+    state.requireSelection = () => {
+        state.selected.clear();
+        state.ownerId = null;
+        state.implicitSelf = false;
+        renderSelection();
+    };
     cabinetAssignmentPickers.set(form, state);
     let canAssign = false;
     let accessRequest = null;
@@ -4771,6 +4839,7 @@ function bindCabinetAssignmentPicker(form) {
     }
 
     function renderSelection() {
+        form.dispatchEvent(new Event('cabinet-assignment-change'));
         if (state.needsShiftConfirmation) {
             summary.textContent = 'Кому · Підтвердьте склад зміни';
             return;
@@ -7942,6 +8011,7 @@ async function createCabinetTask(event) {
     const modeSelect = document.getElementById('cabinetTaskMode');
     if (modeSelect) modeSelect.value = 'work';
     syncCabinetTaskCreateMode();
+    window.ProfileMyDay?.writeSessionDraft?.(cabinetComposerDraftKeys.get(composer), null);
     if (typeof showNotification === 'function') {
         showCabinetTaskCreateSuccessToast(result, draft, verification, postCreateWarningCount);
     }
@@ -8411,8 +8481,10 @@ function attachProfileListeners() {
     bindCabinetTaskDragDrop();
 
     const composer = document.getElementById('cabinetTaskComposer');
+    const hasTaskHandoff = composer && new URLSearchParams(window.location.search).has('create');
     bindMyDayTaskNavigation(composer);
     bindCabinetAssignmentPicker(composer);
+    if (!hasTaskHandoff) bindCabinetComposerDraft(composer);
     // Inventory slot click — equip/unequip
     document.querySelectorAll('.inventory-slot[data-item-id]').forEach(slot => {
         slot.addEventListener('click', async () => {

@@ -39,6 +39,8 @@ async function verifyPinnedTaskTabs({ origin, session }, context, engine) {
     const expectContext = (page, scope) => page.locator('body[data-crm-business-context="' + scope + '"]').waitFor();
     const open = (page, url) => page.goto(origin + url, { waitUntil: 'domcontentloaded' });
     const pin = async page => {
+        await page.waitForFunction(() => AppState.currentUser?.accessContext?.status === 'ready'
+            && document.body.dataset.crmBusinessContext === AppState.currentUser.activeBusinessContext);
         await page.locator('[data-sidebar-business-tab-pin][aria-pressed="false"]').click();
         await page.locator('[data-sidebar-business-tab-pin][aria-pressed="true"]').waitFor();
     };
@@ -51,6 +53,13 @@ async function verifyPinnedTaskTabs({ origin, session }, context, engine) {
         await park.keyboard.press('Escape');
         await card(park).waitFor({ state: 'hidden' });
         await pin(park);
+        await park.locator('#cabinetTaskTitle').fill('Unsaved new Park task');
+        await park.locator('#cabinetTaskDate').fill('2099-11-26');
+        const assignment = park.locator('[data-cabinet-assignment] summary');
+        await assignment.click();
+        await park.locator('[data-assignment-user="' + session.user.id + '"]').click();
+        assert.match(await assignment.textContent(), /Оберіть виконавця/);
+        await assignment.click();
         await open(park, '/profile?tab=myday&open=' + parkId);
         await card(park).getByRole('heading', { name: parkTitle, exact: true }).waitFor();
         await card(park).locator('[data-dialog-edit]').click();
@@ -82,6 +91,32 @@ async function verifyPinnedTaskTabs({ origin, session }, context, engine) {
         await card(park).getByRole('button', { name: 'Назад до перегляду', exact: true }).click();
         await card(park).locator('[data-dialog-edit]').click();
         assert.equal(await titleInput.inputValue(), 'Unsaved Park title');
+        const darLocation = dar.url();
+        let darNavigations = 0;
+        dar.on('framenavigated', frame => { if (frame === dar.mainFrame()) darNavigations++; });
+        await park.bringToFront();
+        let confirmedReload = false;
+        const acceptReload = prompt => {
+            assert.equal(prompt.type(), 'beforeunload');
+            confirmedReload = true;
+            return prompt.accept();
+        };
+        park.once('dialog', acceptReload);
+        await park.reload({ waitUntil: 'domcontentloaded' });
+        park.off('dialog', acceptReload);
+        await card(park).getByRole('heading', { name: parkTitle, exact: true }).waitFor();
+        if (!(await titleInput.isVisible())) await card(park).locator('[data-dialog-edit]').click();
+        assert.equal(await titleInput.inputValue(), 'Unsaved Park title', 'Park editor draft survives reload');
+        await card(park).getByRole('button', { name: 'Назад до перегляду', exact: true }).click();
+        await card(park).getByText('Ще', { exact: true }).click();
+        await card(park).getByRole('button', { name: 'Перенести', exact: true }).click();
+        assert.equal(await dateInput.inputValue(), '2099-11-25', 'Park reschedule draft survives reload');
+        assert.equal(await park.locator('#cabinetTaskTitle').inputValue(), 'Unsaved new Park task', 'Park composer draft survives reload');
+        assert.equal(await park.locator('#cabinetTaskDate').inputValue(), '2099-11-26');
+        assert.match(await assignment.textContent(), /Оберіть виконавця/, 'Reload keeps assignment unresolved');
+        assert.equal(confirmedReload, true, 'The existing task reload warning remains active');
+        assert.equal(dar.url(), darLocation);
+        assert.equal(darNavigations, 0);
         await card(dar).waitFor();
         await dar.keyboard.press('Escape');
         await card(dar).waitFor({ state: 'hidden' });
@@ -89,7 +124,8 @@ async function verifyPinnedTaskTabs({ origin, session }, context, engine) {
         await park.locator('#loginForm').waitFor();
         await card(park).waitFor({ state: 'hidden' });
         assert.equal(await park.evaluate(() => AppState.currentUser), null);
-        console.log('Pinned task tabs ' + engine + ': Park and Dar, title/date drafts, legacy redirects, reload and shared logout verified.');
+        assert.equal(await park.evaluate(() => Object.keys(sessionStorage).some(key => key.startsWith('crm:my-day:draft:'))), false);
+        console.log('Pinned task tabs ' + engine + ': Park composer, editor and reschedule drafts restored; Dar legacy card stayed open; shared logout verified.');
     } finally {
         await Promise.all([park.close(), dar.close()]);
     }

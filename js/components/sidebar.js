@@ -3333,8 +3333,10 @@ const Sidebar = (() => {
                 <span class="sidebar-business-chip" title="${_escAttr(businessFullLabelFor(currentContext))}" aria-label="${_escAttr(businessFullLabelFor(currentContext))}">${_escAttr(businessLabelFor(currentContext))}</span>`;
             return;
         }
-        const aggregateAllowed = Boolean(
-            businessState?.canUseAggregateBusinessScope
+        const tabPinned = Boolean(api.isTabPinned?.(user));
+        const showTabPin = Boolean(api.canPinTab?.() && (tabPinned || scope.mode === 'single'));
+        const aggregateAllowed = Boolean(!tabPinned
+            && businessState?.canUseAggregateBusinessScope
             && typeof api.switchScope === 'function'
             && (typeof api.allowsAggregate !== 'function' || api.allowsAggregate(api.currentPage?.()))
         );
@@ -3378,6 +3380,10 @@ const Sidebar = (() => {
                     <span class="sidebar-business-name-viewport" aria-hidden="true"><span class="sidebar-business-name-text">${_escAttr(businessFullLabelFor(currentContext))}</span></span>
                 </span>
             </span>
+            ${showTabPin ? `
+                <button type="button" class="sidebar-business-overview-toggle${tabPinned ? ' active' : ''}" data-sidebar-business-tab-pin aria-pressed="${tabPinned}"${_state.businessSwitching ? ' disabled' : ''}>
+                    Закріпити бізнес у вкладці
+                </button>` : ''}
             ${aggregateAllowed ? `
                 <button type="button" class="sidebar-business-overview-toggle${settingsOpen ? ' active' : ''}" data-sidebar-business-settings-toggle aria-expanded="${settingsOpen ? 'true' : 'false'}" aria-controls="sidebarBusinessSettingsPanel"${_state.businessSwitching ? ' disabled' : ''}>
                     <span>Огляд: ${_escAttr(scopeSummary)}</span><span class="sidebar-business-overview-caret" aria-hidden="true">⌄</span>
@@ -3387,6 +3393,13 @@ const Sidebar = (() => {
                 </span>` : ''}`;
         const select = host.querySelector('#sidebarBusinessContextSelect');
         if (!select) return;
+        host.querySelector('[data-sidebar-business-tab-pin]')?.addEventListener('click', event => {
+            event.stopPropagation();
+            if (!api.setTabPinned(!tabPinned, user, current)) return;
+            if (!tabPinned) api.setScope(scope, { user, emit: false, updateUrl: true });
+            _syncSidebarBusinessSwitcher(user);
+            host.querySelector('[data-sidebar-business-tab-pin]')?.focus();
+        });
         select.title = businessFullLabelFor(currentContext);
         select.setAttribute('aria-label', `Поточний бізнес CRM: ${businessFullLabelFor(currentContext)}`);
         const nameShell = host.querySelector('.sidebar-business-select-shell');
@@ -4180,7 +4193,9 @@ const Sidebar = (() => {
             AppState.currentUser = target;
         }
         try {
-            localStorage.setItem('pzp_current_user', JSON.stringify(target));
+            if (typeof window === 'undefined' || !window.CrmBusinessContext?.isTabPinned?.(target)) {
+                localStorage.setItem('pzp_current_user', JSON.stringify(target));
+            }
         } catch {}
         return target;
     }

@@ -1329,6 +1329,7 @@ function clearImpersonationBackup(options = {}) {
 }
 
 function clearAuthStorage(options = {}) {
+    if (typeof window !== 'undefined') window.CrmBusinessContext?.clearTabPin?.();
     recordRedirectDiagnostic('auth-storage-clear', { storageClearReason: options.reason || 'auth-storage-clear' });
     const runtimeUser = typeof AppState !== 'undefined' && AppState ? AppState.currentUser : null;
     if (typeof clearRuntimePermissionCatalog === 'function') clearRuntimePermissionCatalog(runtimeUser);
@@ -1396,7 +1397,9 @@ async function hydrateBusinessOperatingProfile(user = AppState.currentUser, opti
     if (profile && user) {
         user.businessProfile = profile;
         try {
-            localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(user));
+            if (!window.CrmBusinessContext?.isTabPinned?.(user)) {
+                localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(user));
+            }
         } catch {}
     }
     return profile;
@@ -2229,7 +2232,9 @@ async function hydrateActionPermissions(user = AppState.currentUser, options = {
             applyActionPermissions(user, permissions);
             setPermissionLifecycle('ready', { attempt });
             try {
-                localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(user));
+                if (!window.CrmBusinessContext?.isTabPinned?.(user)) {
+                    localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(user));
+                }
             } catch {}
             return permissions;
         } catch (cause) {
@@ -2289,6 +2294,7 @@ function synchronizeSharedBusinessRoute() {
     const incoming = readAuthBootstrapStoredUser();
     const current = typeof AppState !== 'undefined' ? AppState.currentUser : null;
     if (!incoming?.businessContextPolicy || !current || !authBootstrapUsersShareIdentity(current, incoming)) return;
+    if (window.CrmBusinessContext?.isTabPinned?.(current)) return;
     if (current.activeBusinessContext === incoming.activeBusinessContext) return;
     const url = new URL(window.location.href);
     const active = incoming.activeBusinessContext;
@@ -2341,6 +2347,7 @@ function handleCrossTabAuthStorageChange(event) {
         const incoming = readAuthBootstrapStoredUser();
         const runtimeUser = typeof AppState !== 'undefined' ? AppState.currentUser : null;
         const sameActor = authBootstrapUsersShareIdentity(runtimeUser, incoming);
+        if (!sameActor) window.CrmBusinessContext?.clearTabPin?.();
         const generation = localStorage.getItem(AUTH_SESSION_GENERATION_KEY);
         const previousRecovery = window.crmSharedSessionRecovery;
         if (previousRecovery && previousRecovery.generation === generation
@@ -3186,14 +3193,17 @@ function getRoleShellStateFingerprint(state, user = AppState.currentUser) {
 
 function syncWorkingRoleToCurrentUser(state = getWorkingRoleState()) {
     const user = AppState.currentUser;
+    const pinned = window.CrmBusinessContext?.isTabPinned?.(user);
     // A peer can publish the new business before this tab handles its storage event.
-    if (!user || hasNewerSharedBusinessContext(user, readAuthBootstrapStoredUser())) return;
+    if (!user || (!pinned && hasNewerSharedBusinessContext(user, readAuthBootstrapStoredUser()))) return;
     user.activeRole = state.activeRole || null;
     user.workingRole = state.activeRole || null;
     user.effectiveRole = state.effectiveRole || null;
     user.previewRole = state.previewRole || null;
     try {
-        localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(user));
+        if (!pinned) {
+            localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(user));
+        }
     } catch {}
 }
 
@@ -5159,10 +5169,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     return;
                 }
-                if (hasNewerSharedBusinessContext(user, saved)) return;
-                user = { ...saved, ...user };
-                AppState.currentUser = user;
-                localStorage.setItem('pzp_current_user', JSON.stringify(user));
+                if (!window.CrmBusinessContext?.isTabPinned?.(user)) {
+                    if (hasNewerSharedBusinessContext(user, saved)) return;
+                    user = { ...saved, ...user };
+                    AppState.currentUser = user;
+                    localStorage.setItem('pzp_current_user', JSON.stringify(user));
+                }
             }
 
             // Priority 2: localStorage (set by login() in auth.js)

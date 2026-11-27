@@ -71,6 +71,7 @@ function sharedStorage(user) {
 
 function loadTab(hub, id, url, user = JSON.parse(hub.store.get(USER_KEY))) {
     const calls = [];
+    const session = new Map();
     const location = new URL(url);
     location.reload = () => calls.push({ type: 'reload', url: location.href });
     let timerId = 0;
@@ -79,6 +80,8 @@ function loadTab(hub, id, url, user = JSON.parse(hub.store.get(USER_KEY))) {
         CONFIG: { STORAGE: { CURRENT_USER: USER_KEY, SESSION: 'pzp_session' } },
         AppState: { currentUser: clone(user), authPermissions: { allowed: true } },
         localStorage: hub.forTab(id),
+        sessionStorage: { getItem: key => session.get(key) ?? null,
+            setItem: (key, value) => session.set(key, String(value)), removeItem: key => session.delete(key) },
         window: { location, history: { state: {}, replaceState(state, title, next) {
             location.href = String(next); calls.push({ type: 'route', url: location.href });
         } }, addEventListener() {}, dispatchEvent() {}, setTimeout: () => ++timerId, clearTimeout() {} },
@@ -161,6 +164,40 @@ test('same-business role revocation still clears the peer grants and reloads exa
     assert.equal(peer.calls.filter(call => call.type === 'route').length, 0);
     assert.equal(JSON.parse(hub.store.get(USER_KEY)).role, 'animator');
     assert.equal(Object.hasOwn(JSON.parse(hub.store.get(USER_KEY)), 'permissions'), false);
+});
+
+test('pinned task tabs keep scoped grants local, and a replacement account clears the pin', () => {
+    const park = businessUser('event_genix');
+    const dar = businessUser('dar');
+    const hub = sharedStorage(park);
+    const parkTab = loadTab(hub, 'park', 'http://localhost/profile?tab=myday', park);
+    const darTab = loadTab(hub, 'dar', 'http://localhost/tasks?businessContext=dar', dar);
+    const parkApi = parkTab.context.window.CrmBusinessContext;
+    const darApi = darTab.context.window.CrmBusinessContext;
+    assert.equal(parkApi.setTabPinned(true, park, 'event_genix'), true);
+    assert.equal(darApi.setTabPinned(true, dar, 'dar'), true);
+    darTab.location.search = '';
+    assert.equal(darTab.context.apiAuthBusinessContextHeaders()['X-Business-Context'], 'dar');
+    const snapshot = darTab.context.captureApiAuthSessionSnapshot();
+    const verifiedDar = darTab.context.mergeApiCurrentUser(businessUser('dar', 'animator'));
+    assert.equal(verifiedDar.role, 'animator');
+    assert.equal(darTab.context.isApiAuthSessionSnapshotCurrent(snapshot), false);
+    assert.deepEqual(hub.writes, [], 'scoped verification never publishes grants or rotates the shared session');
+    assert.equal(parkTab.context.AppState.currentUser.role, 'manager');
+    const removed = businessUser('dar', 'animator');
+    removed.accessContext = { status: 'unavailable' };
+    removed.permissions = { allowed: true };
+    assert.equal(Object.hasOwn(darTab.context.mergeApiCurrentUser(removed), 'permissions'), false);
+    assert.equal(darApi.current(), null);
+
+    const replacement = businessUser('event_genix', 'manager', 99);
+    assert.equal(darApi.isTabPinned(replacement), false);
+    parkTab.context.mergeApiCurrentUser(replacement, { allowIdentityChange: true });
+    hub.flush();
+    assert.equal(darApi.isTabPinned(dar), false);
+    assert.equal(darTab.context.AppState.currentUser, null);
+    assert.equal(darTab.context.AppState.authPermissions, null);
+    assert.equal(darTab.calls.filter(call => call.type === 'reload').length, 1);
 });
 
 test('account replacement keeps identity isolation and never adopts the foreign account route', () => {

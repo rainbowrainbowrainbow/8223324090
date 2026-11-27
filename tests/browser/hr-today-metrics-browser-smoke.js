@@ -898,7 +898,9 @@ async function run() {
         await page.close();
         page = await browser.newPage({ viewport: { width: 390, height: 844 } });
         page.setDefaultTimeout(15000);
+        await page.clock.setFixedTime(new Date('2026-07-17T09:00:00.000Z'));
         await installHarness(page);
+        await page.addScriptTag({ content: UI_CODE });
         await page.evaluate(() => {
             const canAccess = window.canAccess;
             window.canAccess = action => action === 'hr.schedule.manage' || canAccess(action);
@@ -910,13 +912,16 @@ async function run() {
         await row.getByRole('button', { name: 'Звірити зміну' }).click();
         assert.equal(await row.locator('.hr-clock-btn').count(), 0);
         const review = page.getByRole('dialog', { name: /Звірити зміну/ });
+        await review.getByLabel('Початок зміни').and(page.locator(':focus')).waitFor();
         await review.getByLabel('Завершення зміни').fill('18:42');
-        await review.getByLabel('Причина зміни').fill('Підтверджено адміністратором');
+        const reason = review.getByLabel('Причина зміни');
+        await reason.fill('Підтверджено адміністратором');
+        assert.equal(await reason.inputValue(), 'Підтверджено адміністратором');
         await page.screenshot({ path: path.join(OUTPUT_DIR, 'historical-review-mobile.png'), fullPage: true });
         await review.getByRole('button', { name: 'Зберегти' }).click();
-        await review.waitFor({ state: 'hidden' });
         assert.deepEqual(await page.evaluate(() => window.__hrTodayBrowserSmoke.requests().find(call => call.method === 'PUT')?.body),
             { notes: 'Підтверджено адміністратором', record_version: 'review-v1', clock_out_time: '18:42' });
+        await review.waitFor({ state: 'hidden' });
         await row.waitFor({ state: 'hidden' });
         await page.close();
         page = await browser.newPage({ viewport: { width: 390, height: 844 } });

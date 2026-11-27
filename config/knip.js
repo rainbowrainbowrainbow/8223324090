@@ -70,6 +70,21 @@ module.exports = {
         'scripts/trusted-qa-{certificate,hr}-run.js',
         'scripts/prepare-margarita-menu-image-payload.js',
         'scripts/sync-kitchen-menu-images.js',
+        // Documented operator commands and booking reconciliation loaded by the VM contract test.
+        'docs/workstreams/sys-multibusiness/asset-close-01/tools/catalog-asset-repair-controller.cjs',
+        'scripts/{audit-hr-hiring-ownership,game-zone-classification,reconcile-banquet-groups}.js',
+        'scripts/audit-park-hr-monthly-ownership.cjs',
+        // The Education handoffs name these standalone runners and evidence verifiers.
+        'scripts/{prepare-education-device-checklist,start-education-device-preview}.js',
+        'tests/browser/{education-device-preview-preflight,education-ready-async-preview-readonly,education-ready-live-readonly,education-ready-report-directory-readonly}.js',
+        'tests/tools/{audit-education-test-coverage,run-education-ready-final,verify-education-device-evidence,verify-education-device-preparation}.js',
+        'tests/tools/verify-education-ready-{evidence,final}.js',
+        'tests/tools/verify-education-ready-{async,dataset,date,design,groups,lifecycle,mobile,teachers}-evidence.js',
+        // Explicit standalone browser QA commands in the Finance, Checkbox, Profile and redirect handoffs.
+        'tests/browser/finance-customization-local-smoke.js',
+        'tests/browser/{cashier-catalog-layout,cashier-next-customer,shared-test-day}-browser-smoke.js',
+        'tests/browser/{profile-employee-cabinet,r10a-recovery-login-ui,redirect-regression-gate,timeline-afisha-dual}-browser-smoke.js',
+        'tests/browser/{business-membership-editor,business-profile-access}.spec.js',
         'db/seeds/training_knowledge_base.js'
     ])]
 };

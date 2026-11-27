@@ -101,7 +101,6 @@ function referenceSnapshot(templateId, overrides = {}, rows = {}) {
 
 module.exports = {
     REFERENCE_COUNTS,
-    anonymizedReferenceRows,
     referenceRequest,
     referenceSnapshot
 };

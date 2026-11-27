@@ -83,4 +83,4 @@ if (require.main === module) main().catch(() => {
     process.exitCode = 1;
 });
 
-module.exports = { collectChatScopeInventory, runInventory };
+module.exports = { runInventory };

@@ -5016,8 +5016,6 @@ function bindCabinetAssignmentPicker(form) {
             if (!access?.permissions) throw new Error('Task permissions unavailable');
             const permissions = access.permissions;
             const canCreate = access?.capabilities?.create?.allowed ?? permissions?.canCreateTasks;
-            const pack = document.querySelector('[data-cabinet-operation-pack]');
-            if (pack) pack.hidden = !canCreate || Boolean(cabinetLeadCollaboration?.composer.contains(form));
             if (canCreate === false) form.querySelectorAll('[data-cabinet-create-action]').forEach(button => { button.disabled = true; });
             canAssign = Boolean(permissions?.canAssignAnyone || ['all', 'department'].includes(permissions?.taskVisibility));
             shiftButton.hidden = !canAssign || Boolean(cabinetLeadCollaboration?.composer.contains(form));
@@ -6216,7 +6214,6 @@ function bindMyDayTaskNavigation(composer) {
     if (composer.dataset.creationBound) return;
     composer.dataset.creationBound = 'true';
     composer.dataset.creationScope = cabinetHrReminderScope();
-    workspace.querySelector('[data-cabinet-operation-pack] button')?.addEventListener('click', createCabinetOperationPack);
     const url = new URL(window.location.href);
     const token = url.searchParams.get('create');
     if (!token || !isOwnProfile) return;
@@ -6287,8 +6284,6 @@ function configureCabinetLeadCollaboration(form, workspace, leadId, handoff) {
         const label = form.querySelector('#' + id)?.closest('label');
         if (label) label.hidden = true;
     });
-    const pack = workspace.querySelector('[data-cabinet-operation-pack]');
-    if (pack) pack.hidden = true;
 }
 
 async function submitCabinetLeadCollaboration(form) {
@@ -6356,73 +6351,6 @@ async function submitCabinetLeadCollaboration(form) {
     } finally {
         cabinetTaskCreatePending = false;
         setCabinetTaskCreateBusy(false, form);
-    }
-}
-
-function renderCabinetOperationPack() {
-    return `<details class="park-composer-options" data-cabinet-operation-pack hidden>
-        <summary>Операційний пакет</summary>
-        <div class="cabinet-task-composer-main-advanced">
-            <label>Пакет <select name="preset">
-                <option value="kitchen_basic">Кухня</option>
-                <option value="cake_basic">Торт</option>
-                <option value="cake_with_decor">Торт і прикраси</option>
-                <option value="hall_prep_basic">Підготовка залу</option>
-                <option value="purchase_basic">Закупка</option>
-            </select></label>
-            <label>Назва пакета <input name="title"></label>
-            <label>Джерело <select name="sourceType">
-                <option value="">Без джерела</option>
-                <option value="booking">Бронювання</option>
-                <option value="order">Замовлення</option>
-                <option value="lead">Лід</option>
-                <option value="customer">Клієнт</option>
-            </select></label>
-            <label>ID джерела <input name="sourceId"></label>
-            <button type="button" class="cabinet-task-create-submit">Створити пакет</button>
-            <p role="status" data-operation-pack-status></p>
-        </div>
-    </details>`;
-}
-
-async function createCabinetOperationPack(event) {
-    const button = event.currentTarget;
-    if (button.disabled) return;
-    const pack = button.closest('[data-cabinet-operation-pack]');
-    const status = pack.querySelector('[data-operation-pack-status]');
-    const sourceType = pack.querySelector('[name="sourceType"]').value || cabinetCreateContext?.sourceEntityType;
-    const sourceId = pack.querySelector('[name="sourceId"]').value.trim() || cabinetCreateContext?.sourceEntityId;
-    const data = {
-        preset: pack.querySelector('[name="preset"]').value,
-        title: pack.querySelector('[name="title"]').value.trim(),
-        source_entity_type: sourceType,
-        source_entity_id: sourceId,
-        date: cabinetSelectedDueDate(),
-        priority: readCabinetCreatePriority()
-    };
-    const signature = cabinetTaskCreateSignature({ title: JSON.stringify(data), kind: 'operation_pack' });
-    const key = cabinetTaskCreateIdempotencyKeyForSignature(signature);
-    button.disabled = true;
-    button.setAttribute('aria-busy', 'true');
-    try {
-        // The pack ID is also its duplicate signature on the existing endpoint.
-        // A stable ID lets a lost response be retried safely.
-        const hex = (await crypto.subtle.digest('SHA-256', new TextEncoder().encode(key)));
-        const id = Array.from(new Uint8Array(hex).slice(0, 16), value => value.toString(16).padStart(2, '0')).join('');
-        const packId = `${id.slice(0, 8)}-${id.slice(8, 12)}-4${id.slice(13, 16)}-a${id.slice(17, 20)}-${id.slice(20)}`;
-        const result = await apiPost('/tasks/operation-pack', { ...data, packId });
-        if (!result?.success) {
-            status.textContent = result?.error || 'Не вдалося створити пакет. Спробуйте ще раз.';
-            return;
-        }
-        clearCabinetTaskCreateAttempt(signature, key);
-        pack.querySelector('[name="title"]').value = '';
-        status.textContent = `Задач у пакеті: ${result.tasks?.length || 0}`;
-        notifyTaskWidgetsChanged({ action: 'create', taskId: result.tasks?.[0]?.id });
-        await refreshMyCabinetTab({ force: true });
-    } finally {
-        button.disabled = false;
-        button.removeAttribute('aria-busy');
     }
 }
 
@@ -6532,8 +6460,7 @@ function renderCabinetTaskComposer(options = {}) {
                 </div>
             </div>
             ${simple ? '</details>' : ''}
-        </form>
-        ${simple ? renderCabinetOperationPack() : ''}`;
+        </form>`;
 }
 
 function cabinetTaskDateKeyFromValue(value) {

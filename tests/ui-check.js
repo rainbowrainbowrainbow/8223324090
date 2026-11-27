@@ -2677,8 +2677,9 @@ checkPage('tasks.html', (doc, html) => {
     check('Tasks category filters exist', !!doc.getElementById('catFilters'));
     check('Tasks subcategory filters host exists', !!doc.getElementById('subcatFilters'));
     const myDayComposerCode = fs.readFileSync(path.join(ROOT, 'js/profile-page.js'), 'utf8');
-    check('Operation packs are available from the My Day composer', !doc.getElementById('operationPackBar') && myDayComposerCode.includes('data-cabinet-operation-pack'));
-    check('My Day operation pack keeps its source fields', myDayComposerCode.includes('name="sourceType"') && myDayComposerCode.includes('name="sourceId"') && myDayComposerCode.includes("apiPost('/tasks/operation-pack'"));
+    check('Task Center and My Day have no operation pack form', !doc.getElementById('operationPackBar')
+        && !tasksCode.includes('/tasks/operation-pack') && !myDayComposerCode.includes('data-cabinet-operation-pack')
+        && !myDayComposerCode.includes('/tasks/operation-pack'));
     check('Tasks board content exists', !!doc.getElementById('boardContent'));
     check('Tasks top area does not render points strip', !doc.getElementById('pointsBar') && !doc.getElementById('pointsPermanent') && !doc.getElementById('pointsMonthly'));
     check('Tasks page has no Focus tab button', !doc.querySelector('[data-view="focus"]'));
@@ -2694,7 +2695,8 @@ checkPage('tasks.html', (doc, html) => {
     check('My Day uses the shared success toast after verified creation', myDayComposerCode.includes('function showCabinetTaskCreateSuccessToast') && myDayComposerCode.includes('window.TaskCreate.buildCreateNotification') && myDayComposerCode.includes('verifyCabinetCreatedTask') && taskCreateCodeForTasks.includes('function buildCreateNotification'));
     check('Tasks row actions use delegated stable contract', tasksCode.includes('function setupTaskActionDelegation') && tasksCode.includes('data-task-action="status"') && tasksCode.includes('data-task-action="schedule"') && tasksCode.includes('data-task-open="true"') && !tasksCode.includes('onclick="openTaskDetail'));
     check('Tasks overdue due badge opens canonical reschedule choices', tasksCode.includes('data-task-action="reschedule-overdue-menu"') && tasksCode.includes('data-task-action="reschedule-overdue"') && tasksCode.includes("['day_after', 'Післязавтра']") && tasksCode.includes("sourceSurface: 'task_page_overdue_badge'") && html.includes('.task-reschedule-menu'));
-    check('My Day operation pack is gated by the existing task creation capability', myDayComposerCode.includes('access?.capabilities?.create?.allowed ?? permissions?.canCreateTasks') && myDayComposerCode.includes('if (pack) pack.hidden = !canCreate'));
+    check('My Day task creation still uses the existing create capability', myDayComposerCode.includes('access?.capabilities?.create?.allowed ?? permissions?.canCreateTasks')
+        && myDayComposerCode.includes("if (canCreate === false) form.querySelectorAll('[data-cabinet-create-action]').forEach(button => { button.disabled = true; });"));
     check('My Day detail has observer materials access controls', htmlContains('js/profile-my-day.js', 'actions.manageObservers') && htmlContains('js/profile-my-day.js', 'Спостерігачі і матеріали') && htmlContains('js/profile-page.js', "apiPut(taskPath + '/observers'"));
     check('Tasks task-kind and governance labels avoid visible English drift', htmlContains('js/task-ui-shared.js', "followup: 'Дотиск'") && htmlContains('js/task-ui-shared.js', "deep_work: 'Глибока робота'") && htmlContains('js/task-ui-shared.js', "checklist: 'Чеклист'") && tasksCode.includes('Звичайний список показує основні рядки') && !tasksCode.includes('Звичайний список показує canonical-рядки') && !tasksCode.includes("followup:'Follow-up'") && !tasksCode.includes("deep_work:'Deep work'"));
 });

@@ -321,38 +321,24 @@ async function run() {
             source_entity_id: bookingId, owner_user_id: primary.user.id, date: today, business_context: 'event_genix' }]);
 
         const packId = '83944057-542c-48fd-8762-2f65ba25f7a4';
-        const packBody = { preset: 'cake_with_decor', title: 'Тестовий пакет', packId };
+        const packBody = {
+            preset: 'cake_with_decor',
+            title: 'Тестовий пакет',
+            packId,
+            source_entity_type: 'booking',
+            source_entity_id: bookingId
+        };
         const createPack = () => api('/api/tasks/operation-pack', { token: manager.token, body: packBody });
         const packs = await Promise.all([createPack(), createPack()]);
         assert.ok(packs[0].tasks.length > 1);
         assert.deepEqual(packs[0].tasks.map(task => task.id).sort(), packs[1].tasks.map(task => task.id).sort());
+        const { rows: [packRows] } = await db.query(`SELECT COUNT(*)::int AS count,
+            BOOL_AND(source_entity_type = 'booking' AND source_entity_id = $2) AS linked
+            FROM tasks WHERE pack_id = $1`, [packId, bookingId]);
+        assert.deepEqual(packRows, { count: packs[0].tasks.length, linked: true });
         await goto(page, '/profile?tab=myday&create=1&businessContext=event_genix');
-        const pack = page.locator('[data-cabinet-operation-pack]');
-        await pack.locator('summary').click();
-        await pack.locator('[name="preset"]').selectOption('cake_with_decor');
-        await pack.locator('[name="title"]').fill('Тестовий пакет із форми');
-        await pack.locator('[name="sourceType"]').selectOption('booking');
-        await pack.locator('[name="sourceId"]').fill(bookingId);
-        const packPattern = /\/api\/tasks\/operation-pack(?:\?|$)/;
-        const packRequests = [];
-        await page.route(packPattern, async route => {
-            packRequests.push(route.request().postDataJSON());
-            if (packRequests.length > 1) return route.continue();
-            assert.ok((await route.fetch()).ok());
-            await route.abort('connectionreset');
-        });
-        await pack.getByRole('button', { name: 'Створити пакет' }).click();
-        await pack.locator('[data-operation-pack-status]').filter({ hasText: /.+/ }).waitFor();
-        const packRetry = page.waitForResponse(packPattern);
-        await pack.getByRole('button', { name: 'Створити пакет' }).click();
-        const packResponse = await packRetry;
-        assert.ok(packResponse.ok());
-        assert.deepEqual(packRequests[0], packRequests[1]);
-        const retriedPack = await packResponse.json();
-        const { rows: [packRows] } = await db.query(`SELECT COUNT(*)::int AS count, BOOL_AND(source_entity_id = $2) AS linked
-            FROM tasks WHERE pack_id = $1`, [retriedPack.packId, bookingId]);
-        assert.deepEqual(packRows, { count: retriedPack.tasks.length, linked: true });
-        await page.unroute(packPattern);
+        await page.locator('#cabinetTaskTitle').waitFor();
+        assert.equal(await page.locator('[data-cabinet-operation-pack]').count(), 0);
         await page.locator('#cabinetTaskTitle').fill('Тестова основна задача');
         assert.equal(await page.getByRole('button', { name: '+ Ще задача', exact: true }).count(), 0);
         await page.locator('#cabinetTaskDate').fill('');

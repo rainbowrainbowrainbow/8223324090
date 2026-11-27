@@ -1042,7 +1042,6 @@ async function applyHermesAttendanceImport(db = defaultPool, input = {}, options
 
 module.exports = {
     HERMES_ATTENDANCE_CLASSIFICATIONS,
-    HERMES_ATTENDANCE_PREVIEW_MAX_ROWS,
     HERMES_ATTENDANCE_PREVIEW_TTL_MINUTES,
     applyHermesAttendanceImport,
     buildAttendancePlan,
@@ -1050,10 +1049,7 @@ module.exports = {
     buildPreviewRows,
     emptyAttendanceSummary,
     matchStaffCandidate,
-    normalizeArrivalTime,
-    normalizeDocumentDate,
     normalizeHermesAttendanceApplyBody,
     normalizeHermesAttendancePreviewPayload,
-    normalizeMatchName,
     previewHermesAttendanceImport
 };

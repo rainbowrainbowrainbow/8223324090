@@ -252,7 +252,6 @@ async function resolveLeadConversationContext(input = {}, options = {}) {
 }
 
 module.exports = {
-  findLegacyConfirmedLink,
   resolveLeadConversationTarget,
   resolveLeadConversationContext,
 };

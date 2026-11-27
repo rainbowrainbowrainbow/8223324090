@@ -79,6 +79,8 @@ module.exports = {
         'scripts/{prepare-education-device-checklist,start-education-device-preview}.js',
         'tests/browser/{education-device-preview-preflight,education-ready-async-preview-readonly,education-ready-live-readonly,education-ready-report-directory-readonly}.js',
         'tests/tools/{audit-education-test-coverage,run-education-ready-final,verify-education-device-evidence,verify-education-device-preparation}.js',
+        // Optional Playwright module selected through EDU_QA_PLAYWRIGHT in the final Education runner.
+        'tests/helpers/education-ready-final-browser-driver.js',
         'tests/tools/verify-education-ready-{evidence,final}.js',
         'tests/tools/verify-education-ready-{async,dataset,date,design,groups,lifecycle,mobile,teachers}-evidence.js',
         // Explicit standalone browser QA commands in the Finance, Checkbox, Profile and redirect handoffs.

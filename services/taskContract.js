@@ -141,6 +141,5 @@ function normalizeTaskPayload(row = {}, options = {}) {
 }
 
 module.exports = {
-    normalizeTaskPayload,
-    workflowFromStatus
+    normalizeTaskPayload
 };

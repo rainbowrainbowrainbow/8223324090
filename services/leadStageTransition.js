@@ -240,9 +240,7 @@ async function transitionLeadStage(queryable, options = {}) {
 }
 
 module.exports = {
-  LEAD_STAGE_TO_STATUS,
   LEAD_PIPELINE_STAGE_ORDER,
-  VALID_LEAD_PIPELINE_STAGES,
   LeadStageTransitionError,
   transitionLeadStage
 };

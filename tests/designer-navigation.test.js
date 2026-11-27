@@ -7,6 +7,8 @@ const { JSDOM } = require('jsdom');
 
 const ROOT = path.resolve(__dirname, '..');
 const DESIGNER_HTML = fs.readFileSync(path.join(ROOT, 'designer.html'), 'utf8');
+const MATERIALS_JS = fs.readFileSync(path.join(ROOT, 'js/guidebook-materials.js'), 'utf8');
+const ART_HTML = fs.readFileSync(path.join(ROOT, 'art-director.html'), 'utf8');
 const DESIGNS_HTML = fs.readFileSync(path.join(ROOT, 'designs.html'), 'utf8');
 const DESIGNS_CSS = fs.readFileSync(path.join(ROOT, 'css', 'designs.css'), 'utf8');
 const DESIGNER_CSS = fs.readFileSync(path.join(ROOT, 'css', 'designer-guidebook.css'), 'utf8');
@@ -101,12 +103,21 @@ test('Guidebook exposes real downloadable demo templates and copy actions', () =
         'images/brand/guidebook/templates/event-genix-stories-template.svg',
         'images/brand/guidebook/templates/event-genix-cover-template.svg'
     ];
-    for (const source of templateSources) {
-        assert.match(DESIGNER_HTML, new RegExp(source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-        assert.ok(fs.existsSync(path.join(ROOT, source)), `${source} must exist`);
+    for (const html of [DESIGNER_HTML, ART_HTML]) {
+        const dom = new JSDOM(html, { runScripts: 'outside-only' });
+        const document = dom.window.document;
+        dom.window.eval(MATERIALS_JS + '\nGuidebookMaterials.render(true);');
+        assert.equal(document.querySelectorAll('[data-guide-material] .template-download').length, 3);
+        assert.ok(document.querySelector('[data-guide-material="brand"] [data-guide-copy]'));
+        for (const source of templateSources) {
+            assert.ok(document.querySelector('a[download][href="/' + source + '"]'));
+            assert.ok(fs.existsSync(path.join(ROOT, source)), source + ' must exist');
+        }
+        dom.window.eval(MATERIALS_JS + '\nGuidebookMaterials.render(false);');
+        assert.equal(document.querySelector('[data-guide-material] .template-download'), null);
+        dom.window.close();
     }
-    assert.equal((DESIGNER_HTML.match(/class="template-download"/g) || []).length, 3);
     assert.match(DESIGNER_HTML, /data-guide-copy="#17324D"/);
-    assert.match(DESIGNER_HTML, /async function copyGuideText/);
-    assert.match(DESIGNER_HTML, /Копіювання недоступне/);
+    assert.match(MATERIALS_JS, /async function copyGuideText/);
+    assert.match(MATERIALS_JS, /Копіювання недоступне/);
 });

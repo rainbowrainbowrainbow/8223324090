@@ -42,7 +42,15 @@ async function harness(route = '/certificates/new', options = {}) {
         calls.push({ url, ...request });
         return options.fetch ? options.fetch(url, request) : response(200, { items: [], total: 0, stats: {}, success: true, templates: [] });
     };
-    w.eval(read(art ? 'js/art-director-page.js' : 'js/certificates-page.js'));
+    if (art) {
+        w.getPermissionLifecycle = () => ({ status: 'ready' });
+        w.canAccessPage = () => true;
+        w.Sidebar = { NAV_ITEMS: [], allowsBusinessNavigation: () => true };
+        w.eval(ui.slice(ui.indexOf('async function initFormerTabLinks(')));
+        w.eval(read('js/guidebook-materials.js') + '\n' + read('js/art-director-page.js'));
+    } else {
+        w.eval(read('js/certificates-page.js'));
+    }
     await settle();
     return { w, calls, notices, close: () => w.close(),
         submit(id = 'certificatePageForm') { w.document.getElementById(id).dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true })); },

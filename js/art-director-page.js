@@ -75,6 +75,7 @@ function syncArtBusinessAvailability() {
         notice.textContent = availability.message || '';
     }
     page?.classList.toggle('hidden', !availability.available);
+    GuidebookMaterials.render(availability.available && canAccessPage('/designer'));
     if (!availability.available) {
         overviewData = null;
         contentItems = []; templates = []; brandGuidelines = []; costumes = [];
@@ -938,9 +939,8 @@ async function initAuth() {
     if (typeof enforceCurrentPageAccess === 'function' && !enforceCurrentPageAccess(user)) return false;
     if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
     else if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
-    const ART_WORKSPACE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'art_director', 'marketer'];
     const ART_ADMIN_ACTION_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
-    canAccessArtWorkspace = ART_WORKSPACE_ROLES.includes(user.role);
+    canAccessArtWorkspace = GuidebookMaterials.artRole(user.role);
     isAdminUser = ART_ADMIN_ACTION_ROLES.includes(user.role);
 
     const userEl = document.getElementById('currentUser');
@@ -1077,6 +1077,8 @@ async function initArtDirectorPage() {
         return;
     }
 
+    window.addEventListener('permissions:lifecycle', syncArtBusinessAvailability);
+    window.addEventListener('roleSwitched', syncArtBusinessAvailability);
     window.addEventListener('crmBusinessContextChanged', syncArtBusinessAvailability);
     window.addEventListener('crmBusinessProfileChanged', syncArtBusinessAvailability);
     window.addEventListener('legacyBusinessSurfaceUnavailable', event => {

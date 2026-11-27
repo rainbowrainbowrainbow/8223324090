@@ -169,6 +169,12 @@
             border: 2px solid transparent; position: relative;
         }
         .template-card:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+        .art-guide-materials .designer-section { margin-top: 16px; }
+        .art-guide-materials .designer-grid, .art-guide-materials .brand-example-grid,
+        .art-guide-materials .template-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px,100%),1fr)); gap: 12px; }
+        .art-guide-materials .template-card { cursor: default; }
+        .art-guide-materials .template-card img { width: 100%; height: 140px; object-fit: contain; }
+        .art-guide-materials .guide-copy-btn, .art-guide-materials .template-download { display: inline-block; margin-top: 6px; }
         .template-card-icon { font-size: 28px; margin-bottom: 8px; }
         .template-card-name { font-weight: 800; font-size: 14px; margin-bottom: 4px; }
         .template-card-desc { font-size: 12px; color: var(--gray-500); margin-bottom: 6px; line-height: 1.4; }
@@ -445,6 +451,7 @@
                     <div class="templates-grid" id="templatesGrid">
                         <div class="artdir-loading">Завантаження...</div>
                     </div>
+                    <div class="art-guide-materials" data-guide-material="templates"></div>
                 </div>
 
                 <!-- Tab: Brand Book -->
@@ -458,6 +465,7 @@
                             <div class="artdir-loading">Завантаження...</div>
                         </div>
                     </div>
+                    <div class="art-guide-materials" data-guide-material="brand"></div>
                 </div>
             </div>
         </main>
@@ -593,6 +601,7 @@
     <script src="js/auth.js?v=0.84.52"></script>
     <script src="js/components/sidebar.js?v=0.84.52"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
+    <script src="js/guidebook-materials.js?v=0.84.52"></script>
     <script src="js/art-director-page.js?v=0.84.52"></script>
 <script src="js/alerts.js?v=0.84.52"></script>
 </body>

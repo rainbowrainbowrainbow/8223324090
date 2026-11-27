@@ -97,6 +97,10 @@
                     </div>
                 </div>
 
+                <nav id="artMaterialLinks" class="hidden" aria-label="Матеріали в Арті">
+                    <a class="designer-breadcrumb" href="/art?tab=brand">Brand Book</a>
+                    <a class="designer-breadcrumb" href="/art?tab=templates">Шаблони</a>
+                </nav>
                 <div class="designer-tabs">
                     <button type="button" class="designer-tab active" data-tab="catalogs" id="tabButtonCatalogs" aria-controls="tabCatalogs">📂 Каталоги</button>
                     <button type="button" class="designer-tab" data-tab="guideline" id="tabButtonGuideline" aria-controls="tabGuideline">📖 Гайдлайн</button>
@@ -182,48 +186,7 @@
 
                 <!-- Brand Book -->
                 <div id="tabBrand" class="designer-tab-content" role="tabpanel" aria-labelledby="tabButtonBrand">
-                    <div class="designer-section">
-                        <h2>Brand Book Event Genix</h2>
-                        <p class="designer-section-lead">Event Genix звучить як робочий інструмент для команди: ясно, спокійно, без зайвої магії в тексті. Візуально бренд може бути яскравим, але інтерфейс має лишатися зручним для щоденної роботи.</p>
-                        <div id="brandContent" class="designer-grid">
-                            <div class="designer-card">
-                                <h3>Призначення</h3>
-                                <p>CRM збирає операційні матеріали, бронювання, каталоги, задачі та рекламні assets в одному місці для команд подій і сервісних бізнесів.</p>
-                            </div>
-                            <div class="designer-card">
-                                <h3>Голос</h3>
-                                <p>Тексти короткі, конкретні й корисні. Пояснюємо результат дії, не продаємо через тиск і не обіцяємо те, що система не підтверджує даними.</p>
-                            </div>
-                            <div class="designer-card">
-                                <h3>Візуальний принцип</h3>
-                                <p>Одна сильна фотографія або ілюстрація, чиста зона для тексту, мозаїчна палітра як акцент і зрозумілий CTA.</p>
-                            </div>
-                            <div class="designer-card">
-                                <h3>Для клієнтських брендів</h3>
-                                <p>ДАР, Майстерня долі й Парк мають окремий голос і палітри. У CRM вони мають бути позначені як матеріали конкретної компанії.</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="designer-section">
-                        <h2>Приклади голосу</h2>
-                        <div class="brand-example-grid">
-                            <div class="brand-example">
-                                <h3>Event Genix</h3>
-                                <p>Готовий макет для афіші збережено в Design Board. Перевірте текст, дату й компанію перед публікацією.</p>
-                                <button type="button" class="guide-copy-btn" data-guide-copy="Готовий макет для афіші збережено в Design Board. Перевірте текст, дату й компанію перед публікацією.">Копіювати текст</button>
-                            </div>
-                            <div class="brand-example">
-                                <h3>Дитячий Активний Розвиток</h3>
-                                <p>Теплий освітній тон: прості формулювання, багато повітря, біле тло, зелений як основний акцент.</p>
-                                <button type="button" class="guide-copy-btn" data-guide-copy="Теплий освітній тон: прості формулювання, багато повітря, біле тло, зелений як основний акцент.">Копіювати текст</button>
-                            </div>
-                            <div class="brand-example">
-                                <h3>Майстерня долі</h3>
-                                <p>Спокійний рефлексивний тон: без гарантій результату, без тиску, з м'яким запрошенням до діалогу.</p>
-                                <button type="button" class="guide-copy-btn" data-guide-copy="Спокійний рефлексивний тон: без гарантій результату, без тиску, з м'яким запрошенням до діалогу.">Копіювати текст</button>
-                            </div>
-                        </div>
-                    </div>
+                    <div data-guide-material="brand"></div>
                 </div>
 
                 <!-- Стайлгайд -->
@@ -267,36 +230,7 @@
 
                 <!-- Шаблони -->
                 <div id="tabTemplates" class="designer-tab-content" role="tabpanel" aria-labelledby="tabButtonTemplates">
-                    <div class="designer-section">
-                        <h2>Шаблони дизайнів</h2>
-                        <p class="designer-section-lead">Це реальні demo-шаблони у SVG: їх можна завантажити, відкрити в редакторі та використати як стартову композицію для рекламного матеріалу.</p>
-                        <div id="templatesContent" class="template-grid">
-                            <div class="template-card">
-                                <img loading="lazy" src="images/brand/guidebook/templates/event-genix-post-template.svg" alt="Instagram post template preview">
-                                <div class="template-card-content">
-                                    <h3>Instagram post 1080×1080</h3>
-                                    <p>Квадратний формат, один заголовок, логотип у верхній зоні, CTA внизу.</p>
-                                    <a class="template-download" href="images/brand/guidebook/templates/event-genix-post-template.svg" download>Завантажити SVG</a>
-                                </div>
-                            </div>
-                            <div class="template-card">
-                                <img loading="lazy" src="images/brand/guidebook/templates/event-genix-stories-template.svg" alt="Stories template preview">
-                                <div class="template-card-content">
-                                    <h3>Stories 1080×1920</h3>
-                                    <p>Вертикальний макет із чистим центром, датою події та одним коротким CTA.</p>
-                                    <a class="template-download" href="images/brand/guidebook/templates/event-genix-stories-template.svg" download>Завантажити SVG</a>
-                                </div>
-                            </div>
-                            <div class="template-card">
-                                <img loading="lazy" src="images/brand/guidebook/templates/event-genix-cover-template.svg" alt="Catalog cover template preview">
-                                <div class="template-card-content">
-                                    <h3>Каталог A4</h3>
-                                    <p>Обкладинка з одним hero-зображенням, назвою добірки та службовою датою версії.</p>
-                                    <a class="template-download" href="images/brand/guidebook/templates/event-genix-cover-template.svg" download>Завантажити SVG</a>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                    <div data-guide-material="templates"></div>
                 </div>
             </div>
         </main>
@@ -322,6 +256,7 @@
     <script src="js/auth.js?v=0.84.52"></script>
     <script src="js/components/sidebar.js?v=0.84.52"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
+    <script src="js/guidebook-materials.js?v=0.84.52"></script>
     <script>
     // Auth check — unhide mainApp
     (async function() {
@@ -332,6 +267,9 @@
             var ue = document.getElementById('currentUser'); if (ue) ue.textContent = user.name;
             if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
             else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
+            if (getPermissionLifecycle().status !== 'ready') await hydrateActionPermissions(user);
+            await hydrateBusinessOperatingProfile(user);
+            syncDesignerMaterialLinks();
             return;
         }
         if (typeof handleTransientAuthSessionBootstrap === 'function'
@@ -346,8 +284,38 @@
     </script>
     <script>
     const DESIGNER_TABS = ['catalogs', 'guideline', 'brand', 'styleguide', 'templates'];
+    let openingArtMaterial = false;
+    function openArtMaterial(name) {
+        if (openingArtMaterial) return;
+        openingArtMaterial = true;
+        window.location.replace('/art?tab=' + name);
+    }
+    function syncDesignerMaterialLinks() {
+        const user = AppState.currentUser;
+        GuidebookMaterials.render(Boolean(user && canAccessPage('/designer')));
+        const artAvailable = Boolean(user && GuidebookMaterials.artRole(user.role)
+            && canAccessPage('/art') && getLegacyBusinessSurfaceAvailability('art').available);
+        const links = document.getElementById('artMaterialLinks');
+        links.classList.toggle('hidden', !artAvailable);
+        for (const name of ['brand', 'templates']) {
+            const button = document.querySelector('.designer-tab[data-tab="' + name + '"]');
+            button.classList.toggle('hidden', artAvailable);
+            if (artAvailable && location.hash === '#' + name) {
+                openArtMaterial(name);
+                return;
+            }
+        }
+    }
+    window.addEventListener('crmBusinessContextChanged', syncDesignerMaterialLinks);
+    window.addEventListener('crmBusinessProfileChanged', syncDesignerMaterialLinks);
+    window.addEventListener('permissions:lifecycle', syncDesignerMaterialLinks);
+    window.addEventListener('roleSwitched', syncDesignerMaterialLinks);
     function showDesignerTab(tabName, options) {
         var target = DESIGNER_TABS.includes(tabName) ? tabName : 'catalogs';
+        if (['brand', 'templates'].includes(target) && !document.getElementById('artMaterialLinks').classList.contains('hidden')) {
+            openArtMaterial(target);
+            return;
+        }
         document.querySelectorAll('.designer-tab').forEach(function(tab) {
             var active = tab.dataset.tab === target;
             tab.classList.toggle('active', active);
@@ -375,15 +343,16 @@
         tab.setAttribute('role', 'tab');
         tab.addEventListener('click', function() { showDesignerTab(tab.dataset.tab); });
         tab.addEventListener('keydown', function(event) {
-            var currentIndex = DESIGNER_TABS.indexOf(tab.dataset.tab);
+            const visibleTabs = [...document.querySelectorAll('.designer-tab:not(.hidden)')].map(button => button.dataset.tab);
+            var currentIndex = visibleTabs.indexOf(tab.dataset.tab);
             var nextIndex = currentIndex;
-            if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % DESIGNER_TABS.length;
-            else if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + DESIGNER_TABS.length) % DESIGNER_TABS.length;
+            if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % visibleTabs.length;
+            else if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + visibleTabs.length) % visibleTabs.length;
             else if (event.key === 'Home') nextIndex = 0;
-            else if (event.key === 'End') nextIndex = DESIGNER_TABS.length - 1;
+            else if (event.key === 'End') nextIndex = visibleTabs.length - 1;
             else return;
             event.preventDefault();
-            var nextTab = document.querySelector('[data-tab="' + DESIGNER_TABS[nextIndex] + '"]');
+            var nextTab = document.querySelector('[data-tab="' + visibleTabs[nextIndex] + '"]');
             if (nextTab) {
                 nextTab.focus();
                 showDesignerTab(nextTab.dataset.tab);
@@ -397,23 +366,6 @@
     showDesignerTab(window.location.hash.replace('#', ''), { updateHash: false });
     window.addEventListener('hashchange', function() {
         showDesignerTab(window.location.hash.replace('#', ''), { updateHash: false });
-    });
-    async function copyGuideText(text) {
-        if (!text) return;
-        try {
-            if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
-                throw new Error('clipboard_unavailable');
-            }
-            await navigator.clipboard.writeText(text);
-            if (typeof showNotification === 'function') showNotification('Скопійовано', 'success');
-        } catch {
-            if (typeof showNotification === 'function') showNotification('Копіювання недоступне в цьому браузері', 'warning');
-        }
-    }
-    document.addEventListener('click', function(event) {
-        var button = event.target.closest('[data-guide-copy]');
-        if (!button) return;
-        copyGuideText(button.dataset.guideCopy || '');
     });
     </script>
 <script src="js/ui.js?v=0.84.52"></script>

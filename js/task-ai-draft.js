@@ -130,16 +130,6 @@
         return ['urgent', 'high', 'normal', 'low'].includes(priority) ? priority : '';
     }
 
-    function modeLabel(value) {
-        return {
-            simple: 'Проста задача',
-            checklist: 'Чекліст',
-            work: 'Робоча',
-            personal: 'Особиста',
-            private: 'Приватна'
-        }[String(value || '')] || String(value || '—');
-    }
-
     function impactCatalog(preview = {}) {
         const records = Array.isArray(preview.impactCatalog) ? preview.impactCatalog : [];
         const fromMyDay = Array.isArray(window.MyDayClassification?.state?.impacts)
@@ -160,12 +150,6 @@
             const impact = catalog.get(id) || { id, name: `Impact #${id}`, icon: '•', color: '#64748b' };
             return `<span class="my-day-task-chip my-day-task-chip--impact task-ai-draft-impact-chip" style="--my-day-chip-color:${escapeHtml(impact.color || '#64748b')}" title="${escapeHtml(impact.name || `Impact #${id}`)}">${impactIcon(impact, true)}<span>${escapeHtml(impact.name || `Impact #${id}`)}</span></span>`;
         }).join('')}</span>`;
-    }
-
-    function renderSubtasks(items = []) {
-        const rows = Array.isArray(items) ? items : [];
-        if (!rows.length) return '<span class="task-ai-draft-muted">Без чекліста</span>';
-        return `<ol class="task-ai-draft-subtasks">${rows.map(item => `<li>${escapeHtml(compactText(item?.title || item?.name || '', 120))}</li>`).join('')}</ol>`;
     }
 
     function normalizeScheduleDate(value) {
@@ -437,8 +421,6 @@
 
     function renderValue(field, value, preview = {}) {
         if (field === 'impactIds') return renderImpacts(value, preview);
-        if (field === 'subtasks') return renderSubtasks(value);
-        if (field === 'mode') return escapeHtml(modeLabel(value));
         if (field === 'scheduleDate') return escapeHtml(normalizeScheduleDate(value) || 'Без дати');
         if (field === 'priority') {
             const priority = normalizePriorityValue(value);
@@ -460,24 +442,11 @@
     }
 
     function safeAutoAcceptFields(preview = {}) {
-        const safe = new Set(['title', 'description', 'mode', 'impactIds', 'subtasks']);
+        const safe = new Set(['title', 'description', 'impactIds']);
         return changedFields(preview).filter(field => {
             if (!safe.has(field)) return false;
             return field !== 'impactIds' || (Array.isArray(fieldAfterValue(preview, field)) && fieldAfterValue(preview, field).length > 0);
         });
-    }
-
-    function hasExistingChecklistItems(state) {
-        const items = fieldBeforeValue(state, 'subtasks');
-        return Array.isArray(items) && items.some(item => String(item?.title || item?.name || item || '').trim());
-    }
-
-    function canAutoAcceptField(state, field) {
-        if (field === 'impactIds') {
-            const ids = fieldAfterValue(state.preview, field);
-            return Array.isArray(ids) && ids.length > 0;
-        }
-        return !(field === 'subtasks' && hasExistingChecklistItems(state));
     }
 
     function proposalDecision(preview = {}) {
@@ -600,7 +569,7 @@
             : 'AI пропонує зміни';
         const proposal = preview.proposal || {};
         const reviewedCount = fields.filter(field => state.accepted.has(field) || state.rejected.has(field) || state.userEdited.has(field)).length;
-        const secondaryFields = fields.filter(field => ['description', 'subtasks'].includes(field));
+        const secondaryFields = fields.filter(field => field === 'description');
         const primaryFields = fields.filter(field => !secondaryFields.includes(field));
         const renderField = field => {
             const accepted = state.accepted.has(field);
@@ -946,7 +915,7 @@
         }
         state.editingField = field;
         const value = editableFieldValue(root, state, field);
-        if (field === 'description' || field === 'subtasks') state.secondaryExpanded = true;
+        if (field === 'description') state.secondaryExpanded = true;
         state.editingOriginalValue = field === 'impactIds'
             ? (Array.isArray(value) ? [...value] : [])
             : String(value ?? '');
@@ -1152,7 +1121,7 @@
                 event.preventDefault();
                 const state = rootState(root);
                 safeAutoAcceptFields(state.preview || {}).forEach(field => {
-                    if ((field === 'impactIds' && state.config?.hideImpactReview) || !canAutoAcceptField(state, field)) return;
+                    if (field === 'impactIds' && state.config?.hideImpactReview) return;
                     if (state.rejected.has(field)) return;
                     if (state.userEdited.has(field)) {
                         state.accepted.add(field);

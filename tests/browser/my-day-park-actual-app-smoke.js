@@ -9,6 +9,54 @@ const { requirePlaywright } = require('./timeline-room-summary-browser-smoke');
 const { verifyLocales, verifySalary, verifySettings } = require('./profile-cleanup-checks');
 const { benchmark } = require('./my-day-cleanup-benchmark');
 
+async function verifyParkTaskDraftEntry(page, origin) {
+    const path = '**/api/tasks/ai-draft/**';
+    const calls = [];
+    let enabled = false;
+    await page.route(path, async route => {
+        const req = route.request();
+        const action = new URL(req.url()).pathname.slice('/api/tasks/ai-draft/'.length);
+        calls.push({ action, method: req.method(), key: req.headers()['idempotency-key'] });
+        if (action === 'status') return route.fulfill({ json: { success: true, feature: { enabled } } });
+        if (!enabled) return route.fulfill({ status: 403, json: { success: false, code: 'TASK_AI_DRAFT_DISABLED' } });
+        return route.fulfill({ json: { success: true } });
+    });
+    try {
+        await page.goto(origin + '/tasks', { waitUntil: 'domcontentloaded' });
+        const create = page.locator('#taskCenterCreateLink');
+        await create.waitFor({ state: 'visible' });
+        assert.equal(await page.locator('[data-task-ai-draft-preview]').count(), 0);
+        await create.click();
+        await page.waitForURL(url => url.pathname === '/profile' && url.searchParams.get('tab') === 'myday');
+        await page.locator('#cabinetTaskTitle').waitFor({ state: 'visible' });
+        assert.equal(await page.locator('[data-task-ai-draft-preview]').count(), 0);
+        assert.equal(await page.evaluate(() => typeof window.TaskAiDraft), 'undefined');
+        assert.deepEqual(calls, [], 'opening manual creation does not contact AI');
+
+        const disabled = await page.evaluate(async () => ({
+            status: await window.TaskCreate.requestAiDraftStatus(),
+            preview: await window.TaskCreate.requestAiDraftPreview({ title: 'Local fixture' })
+        }));
+        assert.equal(disabled.status.feature.enabled, false);
+        assert.equal(disabled.preview.success, false);
+        enabled = true;
+        const active = await page.evaluate(async () => ({
+            status: await window.TaskCreate.requestAiDraftStatus(),
+            preview: await window.TaskCreate.requestAiDraftPreview({ title: 'Local fixture' }),
+            single: await window.TaskCreate.commitAiDraft({ idempotencyKey: 'fixture-single' }),
+            bundle: await window.TaskCreate.commitAiDraftBundle({ idempotencyKey: 'fixture-bundle' })
+        }));
+        assert.equal(active.status.feature.enabled, true);
+        assert.ok(active.preview.success && active.single.success && active.bundle.success);
+        assert.deepEqual(calls.map(({ method, action }) => method + ' ' + action),
+            ['GET status', 'POST preview', 'GET status', 'POST preview', 'POST commit', 'POST bundle/commit']);
+        assert.equal(calls[4].key, 'fixture-single');
+        assert.equal(calls[5].key, 'fixture-bundle');
+    } finally {
+        await page.unroute(path);
+    }
+}
+
 async function verifyTaskKpi(page, origin, session, staffId, evidence) {
     const db = new Pool({ connectionString: process.env.DATABASE_URL, ssl: false });
     let creditedId;
@@ -407,6 +455,7 @@ async function run() {
         assert.ok(searchLinks.includes('/omni'));
         assert.ok(!searchLinks.includes('/game') && !searchLinks.includes('/copilot'));
         await page.setViewportSize({ width: 390, height: 844 });
+        await verifyParkTaskDraftEntry(page, origin);
         const pageErrors = [];
         const taskBoot = [];
         const timerRequests = [];

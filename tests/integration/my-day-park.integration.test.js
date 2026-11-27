@@ -15,6 +15,30 @@ const { inventory } = require('../../scripts/my-day-legacy-task-inventory');
 const { cancelledBookingAutoArchivePredicateSql } = require('../../services/taskLifecycle');
 const { buildMachineTaskControlMetaPatch, MACHINE_AUTO_ARCHIVE_POLICY_CANCELLED_BOOKING } = require('../../services/taskAutomationPolicy');
 
+test('Park keeps retired checklist links behind login and returns the retirement code for signed-in staff', {
+    skip: process.env.RUN_MY_DAY_PARK_INTEGRATION !== 'true'
+}, async () => {
+    assert.equal(process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER, 'true');
+    assertSafeIsolatedTestUrl(process.env.TEST_URL);
+    const token = await getToken();
+    const routes = [
+        ['POST', 'decompose-draft'], ['POST', 'decomposition-draft'], ['GET', 'decomposition-templates'],
+        ['GET', 'decomposition-saved-templates'], ['POST', 'decomposition-saved-templates'],
+        ['PUT', 'decomposition-saved-templates/1'], ['DELETE', 'decomposition-saved-templates/1'],
+        ['POST', 'decomposition-saved-templates/1/apply'], ['POST', 'decomposition-suggestions'],
+        ['GET', '1/subtasks'], ['POST', '1/subtasks'], ['POST', '1/subtasks/reorder'],
+        ['PATCH', '1/subtasks/1'], ['DELETE', '1/subtasks/1']
+    ];
+    for (const [method, suffix] of routes) {
+        const url = '/api/tasks/' + suffix;
+        const anonymous = await request(method, url);
+        assert.equal(anonymous.status, 401, method + ' ' + url);
+        const response = await request(method, url, undefined, token);
+        assert.equal(response.status, 410, method + ' ' + url);
+        assert.equal(response.data.code, 'TASK_CHECKLIST_RETIRED');
+    }
+});
+
 test('Park retires gamification and Sales Copilot entry points over HTTP', {
     skip: process.env.RUN_MY_DAY_PARK_INTEGRATION !== 'true'
 }, async () => {

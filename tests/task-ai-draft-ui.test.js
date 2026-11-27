@@ -115,33 +115,14 @@ function createSingleTaskDraftDom(options = {}) {
     };
 }
 
-test('manual task forms omit AI fill while the shared draft API remains available', () => {
-    const profileHtml = read('profile.html');
-    const tasksHtml = read('tasks.html');
+test('full-edition review assets and historical AI markers retain their contracts', () => {
+    for (const page of ['profile.html', 'tasks.html']) {
+        assert.doesNotMatch(read(page), /(?:src|href)="(?:js|css)\/task-ai-draft\.(?:js|css)\b/);
+    }
     const profileCode = read('js/profile-page.js');
     const tasksCode = read('js/tasks-page.js');
     const aiCode = read('js/task-ai-draft.js');
-    const taskCreateCode = read('js/task-create.js');
     const css = read('css/task-ai-draft.css');
-
-    assert.doesNotMatch(profileHtml, /css\/task-ai-draft\.css\?v=/);
-    assert.doesNotMatch(tasksHtml, /css\/task-ai-draft\.css\?v=/);
-    assert.doesNotMatch(profileHtml, /js\/task-ai-draft\.js\?v=/);
-    assert.doesNotMatch(tasksHtml, /js\/task-ai-draft\.js\?v=/);
-    assert.doesNotMatch(profileCode, /data-task-ai-draft-preview/);
-    assert.doesNotMatch(profileCode, /id="cabinetTaskAiFillBtn"[^>]*data-task-ai-draft-preview/);
-    assert.doesNotMatch(tasksHtml, /data-task-ai-draft-preview/);
-    assert.match(tasksHtml, /id="taskCenterCreateLink"/);
-    assert.doesNotMatch(profileCode, /Опиши результат або деталі/);
-    assert.doesNotMatch(profileCode, /Підготувати з AI/);
-    assert.match(profileCode, /id="cabinetTaskComposerAdvanced"[\s\S]*?<textarea id="cabinetTaskDetails"/);
-
-    assert.match(taskCreateCode, /requestAiDraftPreview/);
-    assert.match(taskCreateCode, /\/tasks\/ai-draft\/preview/);
-    assert.match(taskCreateCode, /commitAiDraft/);
-    assert.match(taskCreateCode, /\/tasks\/ai-draft\/commit/);
-    assert.match(taskCreateCode, /Idempotency-Key/);
-    assert.match(taskCreateCode, /description:/);
 
     assert.match(aiCode, /setLoading\(root, true\)/);
     assert.match(aiCode, /button\.disabled = Boolean\(loading\)/);
@@ -182,17 +163,6 @@ test('manual task forms omit AI fill while the shared draft API remains availabl
     assert.match(aiCode, /commitType: 'bundle'/);
     assert.doesNotMatch(aiCode, /state\.preview\?\.proposal\?\.decision === 'task_bundle'\) return null/);
     assert.match(aiCode, /sourceType: 'ai_draft'/);
-    assert.doesNotMatch(tasksHtml, /id="taskSubtaskDraftBtn"/);
-    assert.doesNotMatch(profileCode, /id="cabinetSubtaskDraftBtn"/);
-
-    assert.doesNotMatch(profileCode, /window\.TaskAiDraft\.bindComposer/);
-    assert.doesNotMatch(tasksCode, /window\.TaskAiDraft\.bindComposer/);
-    assert.doesNotMatch(profileCode, /commitPayloadFor/);
-    assert.doesNotMatch(tasksCode, /commitPayloadFor/);
-    assert.doesNotMatch(profileCode, /commitAiDraft/);
-    assert.doesNotMatch(tasksCode, /commitAiDraft/);
-    assert.doesNotMatch(profileCode, /markCommittedTaskId/);
-    assert.doesNotMatch(tasksCode, /markCommittedTaskId/);
     assert.match(profileCode, /data-ai-created="true"/);
     assert.match(tasksCode, /data-ai-created="true"/);
 

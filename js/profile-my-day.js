@@ -18,6 +18,29 @@
     }
 
     const sessionDraftPrefix = 'crm:my-day:draft:';
+    const sessionDraftTtl = 2 * 60 * 60 * 1000;
+    function sessionDraftKey(scope, subject) {
+        return scope?.actor && scope?.business
+            ? sessionDraftPrefix + JSON.stringify([scope.actor, scope.business, subject]) : null;
+    }
+    function writeSessionDraft(key, draft) {
+        if (!key) return false;
+        try {
+            if (draft) sessionStorage.setItem(key, JSON.stringify({ ...draft, savedAt: Date.now() }));
+            else sessionStorage.removeItem(key);
+            return true;
+        } catch { return false; }
+    }
+    function readSessionDraft(key) {
+        if (!key) return null;
+        try {
+            const draft = JSON.parse(sessionStorage.getItem(key) || 'null');
+            if (draft && Number.isFinite(draft.savedAt) && draft.savedAt <= Date.now()
+                && Date.now() - draft.savedAt < sessionDraftTtl) return draft;
+        } catch {}
+        writeSessionDraft(key, null);
+        return null;
+    }
     function clearSessionDrafts() {
         try {
             for (let i = sessionStorage.length - 1; i >= 0; --i) {
@@ -326,8 +349,7 @@
     }
 
     function openTaskDialog({ taskId, load, loadHistory, selectDate, statusLabel, opener, onClose, mode, save, complete, cancel, reschedule, detailActions, draftScope, onReconciled }) {
-        const draftKey = draftScope?.actor && draftScope?.business && Number.isSafeInteger(taskId)
-            ? sessionDraftPrefix + JSON.stringify([draftScope.actor, draftScope.business, taskId]) : null;
+        const draftKey = Number.isSafeInteger(taskId) ? sessionDraftKey(draftScope, taskId) : null;
         const dialog = document.createElement('dialog');
         dialog.className = 'park-task-dialog';
         dialog.dataset.myDayTask = taskId;
@@ -360,6 +382,13 @@
         const editorPatch = (baseline, values) => Object.fromEntries(Object.entries(values || {})
             .filter(([field, value]) => Object.hasOwn(baseline, field) && value !== baseline[field]));
         const editorSubmitBlocked = () => editorConflict && !editorConflict.current;
+        function persistDraft() {
+            return writeSessionDraft(draftKey, editorDraft || scheduleDraft ? {
+                version: editorConflict?.version ?? task.version,
+                fields: editorPatch(editorSnapshot(task), editorDraft),
+                scheduleDate: scheduleDraft
+            } : null);
+        }
         function showEditorConflict() {
             showError(new Error('Задачу змінили після відкриття. Завантажте актуальну версію, щоб порівняти її з чернеткою.'), true);
             if (content.querySelector('[data-dialog-review-version]')) return;
@@ -439,13 +468,13 @@
                 return button;
             }
             const finish = () => { dialog.endForSessionChange(); proceed(); };
-            const discardDraft = action(isDirty() ? 'Відкинути чернетку та перейти' : 'Перейти та перевірити результат', finish);
+            const discardDraft = action(isDirty() ? 'Відкинути чернетку та перейти' : 'Перейти та перевірити результат', () => {
+                writeSessionDraft(draftKey, null);
+                finish();
+            });
             if (editorDraft || scheduleDraft) {
                 action('Зберегти чернетку в цій вкладці та перейти', () => {
-                    try {
-                        sessionStorage.setItem(draftKey, JSON.stringify({ savedAt: Date.now(), version: task.version,
-                            fields: editorPatch(editorSnapshot(task), editorDraft), scheduleDate: scheduleDraft }));
-                    } catch {
+                    if (!persistDraft()) {
                         status.textContent = 'Чернетку не вдалося зберегти. Спробуйте ще раз або відкиньте її.';
                         return;
                     }
@@ -458,6 +487,7 @@
         discard.addEventListener('click', () => {
             if (busy) return;
             editorDraft = scheduleDraft = null;
+            persistDraft();
             syncDraftState();
             dialog.close();
         });
@@ -494,6 +524,7 @@
             if (operation.kind === 'editor') { editorDraft = null; editorConflict = null; panel = 'view'; }
             if (operation.kind === 'schedule') { scheduleDraft = null; panel = 'view'; }
             if (operation.kind === 'detail') { detailDirty = false; panel = 'view'; }
+            if (operation.kind === 'editor' || operation.kind === 'schedule') persistDraft();
         }
         function showOperationRecovery(canRetry = false) {
             const operation = unknownOperation;
@@ -557,7 +588,7 @@
                 }
                 if (operation) {
                     await operation.execute();
-                    if (awaitingSessionChange) return;
+                    if (!dialog.open || awaitingSessionChange) return;
                     settleOperation(operation);
                     // Once the server accepted a mutation, recovery must reload, not repeat it.
                     needsRefresh = true;
@@ -724,6 +755,7 @@
             editor?.addEventListener('input', () => {
                 const value = Object.fromEntries(new FormData(editor));
                 editorDraft = Object.keys(editorPatch(editorBase, value)).length ? value : null;
+                persistDraft();
                 syncDraftState();
             });
             editor?.addEventListener('submit', event => {
@@ -760,6 +792,7 @@
             });
             schedule?.addEventListener('input', () => {
                 scheduleDraft = schedule.elements.date.value === (due || '') ? null : schedule.elements.date.value;
+                persistDraft();
                 syncDraftState();
             });
             schedule?.addEventListener('submit', event => {
@@ -779,26 +812,22 @@
             }
             if (!checkedSessionDraft && draftKey) {
                 checkedSessionDraft = true;
-                try {
-                    const stored = JSON.parse(sessionStorage.getItem(draftKey) || 'null');
-                    if (stored) sessionStorage.removeItem(draftKey);
-                    if (stored && Number.isFinite(stored.savedAt) && stored.savedAt <= Date.now()
-                        && Date.now() - stored.savedAt < 2 * 60 * 60 * 1000
-                        && (task.business_context || task.businessContext) === draftScope.business) {
-                        const current = editorSnapshot(task);
-                        const patch = editorPatch(current, stored.fields);
-                        if (task.drawer?.actions?.edit && Object.keys(patch).length) {
-                            panel = 'edit';
-                            editorDraft = { ...current, ...patch };
-                            if (Number(stored.version) !== Number(task.version)) editorConflict = { patch, current };
-                        }
-                        if (task.drawer?.actions?.reschedule && /^\d{4}-\d{2}-\d{2}$/.test(stored.scheduleDate || '')) {
-                            scheduleDraft = stored.scheduleDate;
-                            if (!editorDraft) panel = 'schedule';
-                        }
-                        syncDraftState();
+                const stored = readSessionDraft(draftKey);
+                if (stored && (task.business_context || task.businessContext) === draftScope.business) {
+                    const current = editorSnapshot(task);
+                    const patch = editorPatch(current, stored.fields);
+                    if (task.drawer?.actions?.edit && Object.keys(patch).length) {
+                        panel = 'edit';
+                        editorDraft = { ...current, ...patch };
+                        if (Number(stored.version) !== Number(task.version)) editorConflict = { patch, current, version: stored.version };
                     }
-                } catch {}
+                    if (task.drawer?.actions?.reschedule && /^\d{4}-\d{2}-\d{2}$/.test(stored.scheduleDate || '')) {
+                        scheduleDraft = stored.scheduleDate;
+                        if (!editorDraft) panel = 'schedule';
+                    }
+                    syncDraftState();
+                }
+                if (stored && !editorDraft && !scheduleDraft) writeSessionDraft(draftKey, null);
             }
             render();
         }
@@ -932,5 +961,6 @@
         return true;
     }
 
-    global.ProfileMyDay = Object.freeze({ preservePosition, renderCard, taskRole, roleLabel, openTaskDialog, transitionCompletion, clearSessionDrafts });
+    global.ProfileMyDay = Object.freeze({ preservePosition, renderCard, taskRole, roleLabel, openTaskDialog, transitionCompletion,
+        clearSessionDrafts, sessionDraftKey, readSessionDraft, writeSessionDraft });
 }(window));

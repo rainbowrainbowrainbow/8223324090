@@ -956,6 +956,14 @@ async function runSuite(testDb, testFile, suiteMode) {
 async function main() {
     const mode = String(process.argv[2] || '').toLowerCase();
     if (mode !== 'all' && !Object.prototype.hasOwnProperty.call(MODES, mode)) throw new Error(usage());
+    if (mode === 'my-day-full-edition' || mode === 'my-day-full-edition-browser') {
+        const { PARK_PROFILE_MODULES } = require('../services/parkProfileModules');
+        const missing = ['gamification', 'habits', 'impacts', 'contribution', 'timeTracking']
+            .filter(module => PARK_PROFILE_MODULES[module] !== 'active');
+        if (missing.length) {
+            throw new Error(`${mode} requires a full-edition checkout with active modules: ${missing.join(', ')}. Use my-day-park or my-day-park-browser for this checkout.`);
+        }
+    }
     const testDb = assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env);
     if (MANUAL_MONEY_MODES.has(mode)) assertLocalManualMoneyDatabase(testDb);
     const checkboxTestMode = mode === 'checkbox-ui-testmode-preflight'

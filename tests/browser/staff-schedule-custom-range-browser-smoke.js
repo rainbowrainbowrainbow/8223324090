@@ -4009,7 +4009,6 @@ async function runStickyScheduleDatesFlow(browser, base) {
                 }
                 await waitForDayColumns(page, days);
                 await wrapper.scrollIntoViewIfNeeded();
-                await wrapper.evaluate(element => element.scrollTo(0, 0));
                 const label = `${viewport.width}px ${range}`;
                 const scrollRange = await wrapper.evaluate(element => ({
                     x: element.scrollWidth - element.clientWidth,
@@ -4018,19 +4017,21 @@ async function runStickyScheduleDatesFlow(browser, base) {
                 assert.ok(scrollRange.y > 0, `${label}: fixture has rows to scroll`);
                 const horizontal = range === 'month';
                 if (horizontal) assert.ok(scrollRange.x > 0, `${label}: fixture has dates to scroll`);
-                await wrapper.focus();
-                await page.keyboard.press('PageDown');
-                if (horizontal) await page.keyboard.press('ArrowRight');
-                await page.waitForFunction(horizontal => {
-                    const element = document.getElementById('scheduleWrapper');
-                    return element.scrollTop > 0 && (!horizontal || element.scrollLeft > 0);
-                }, horizontal);
+                // Set both offsets together so native keyboard scroll animations cannot interrupt each other.
+                const scrollTarget = {
+                    left: horizontal ? Math.min(scrollRange.x, 120) : 0,
+                    top: Math.min(scrollRange.y, 160),
+                    behavior: 'instant'
+                };
+                await wrapper.evaluate((element, target) => element.scrollTo(target), scrollTarget);
 
                 const metrics = await wrapper.evaluate(element => {
                     const days = element.querySelectorAll('thead th');
                     const cells = element.querySelector('tr[data-schedule-staff-row]').cells;
                     const firstDay = days[1].getBoundingClientRect();
                     return {
+                        scrollLeft: element.scrollLeft,
+                        scrollTop: element.scrollTop,
                         headerOffset: firstDay.top - element.getBoundingClientRect().top - element.clientTop,
                         dateShiftOffset: firstDay.left - cells[1].getBoundingClientRect().left,
                         staffHeaderOffset: days[0].getBoundingClientRect().left - element.getBoundingClientRect().left - element.clientLeft,
@@ -4038,6 +4039,8 @@ async function runStickyScheduleDatesFlow(browser, base) {
                         focusClearance: parseFloat(getComputedStyle(element).scrollPaddingBlockStart) - firstDay.height
                     };
                 });
+                assert.equal(metrics.scrollTop, scrollTarget.top, `${label}: schedule scrolled vertically`);
+                assert.equal(metrics.scrollLeft, scrollTarget.left, `${label}: schedule horizontal offset`);
                 assert.ok(Math.abs(metrics.headerOffset) <= 2, `${label}: dates remain at the top during vertical scrolling`);
                 assert.ok(Math.abs(metrics.dateShiftOffset) <= 2, `${label}: dates and shift columns align`);
                 assert.ok(Math.abs(metrics.staffHeaderOffset) <= 2, `${label}: employee header stays pinned to the left`);

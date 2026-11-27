@@ -4,6 +4,7 @@
  */
 const router = require('express').Router();
 const { pool } = require('../db');
+const { PARK_PROFILE_MODULES } = require('../services/parkProfileModules');
 const { authenticateToken, canUseAction } = require('../middleware/auth');
 const { requireParkWorkModule, loadParkWorkParticipantIds } = require('../services/parkWorkModuleAccess');
 const { createLogger } = require('../utils/logger');
@@ -598,6 +599,9 @@ router.get('/progress', async (req, res) => {
 
 // GET /api/training/leaderboard — top staff by training
 router.get('/leaderboard', async (req, res) => {
+    if (PARK_PROFILE_MODULES.gamification !== 'active') {
+        return res.status(410).json({ code: 'MODULE_UNAVAILABLE', error: 'Training leaderboard is unavailable in the park build' });
+    }
     try {
         const result = await pool.query(
             `SELECT s.id, s.name, s.department, s.role_type,

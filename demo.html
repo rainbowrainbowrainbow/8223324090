@@ -73,40 +73,6 @@
         .toggle-switch input:checked + .toggle-slider { background: var(--primary); }
         .toggle-switch input:checked + .toggle-slider::before { transform: translateX(22px); }
 
-        /* Overview stats */
-        .demo-stats {
-            display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-            gap: 10px; margin-bottom: 16px;
-        }
-        .demo-stat {
-            background: rgba(255,255,255,0.4); border-radius: 12px;
-            padding: 12px; text-align: center;
-        }
-        .demo-stat-value { font-size: 22px; font-weight: 900; }
-        .demo-stat-label { font-size: 11px; color: var(--gray-500); font-weight: 600; margin-top: 2px; }
-
-        /* Scenarios grid */
-        .scenarios-grid {
-            display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 14px;
-        }
-        .scenario-card {
-            background: rgba(255,255,255,0.5); border-radius: 14px;
-            padding: 16px 18px; cursor: pointer; transition: all 0.2s;
-            border: 2px solid transparent;
-        }
-        .scenario-card:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
-        .scenario-card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-        .scenario-card-icon { font-size: 28px; }
-        .scenario-card-title { font-weight: 800; font-size: 15px; }
-        .scenario-card-desc { font-size: 12px; color: var(--gray-500); line-height: 1.5; margin-bottom: 8px; }
-        .scenario-card-meta { display: flex; gap: 10px; font-size: 11px; color: var(--gray-400); }
-        .scenario-card-badge {
-            display: inline-block; padding: 2px 8px; border-radius: 6px;
-            font-size: 10px; font-weight: 700; background: var(--gray-100); color: var(--gray-500);
-        }
-        .scenario-card-runs { font-size: 11px; color: var(--gray-400); margin-top: 6px; }
-
         /* Packages grid */
         .packages-grid {
             display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -156,36 +122,6 @@
         .flag-status.on { color: #2E7D32; }
         .flag-status.off { color: var(--gray-400); }
 
-        /* Scenario player modal */
-        .player-steps { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
-        .player-step {
-            display: flex; gap: 10px; padding: 10px 14px; border-radius: 12px;
-            background: rgba(255,255,255,0.3); font-size: 13px; transition: all 0.2s;
-        }
-        .player-step.active { background: rgba(16,185,129,0.1); border: 1.5px solid var(--primary); }
-        .player-step.done { opacity: 0.5; }
-        .player-step-num {
-            width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 11px; font-weight: 800; background: var(--gray-100); color: var(--gray-500);
-        }
-        .player-step.active .player-step-num { background: var(--primary); color: #fff; }
-        .player-step.done .player-step-num { background: #E8F5E9; color: #2E7D32; }
-        .player-step-content { flex: 1; }
-        .player-step-title { font-weight: 700; margin-bottom: 2px; }
-        .player-step-desc { font-size: 12px; color: var(--gray-500); }
-        .player-controls {
-            display: flex; gap: 8px; margin-top: 14px; justify-content: center;
-        }
-        .player-controls button {
-            padding: 8px 20px; border: none; border-radius: 10px;
-            font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
-        }
-        .btn-player-next { background: var(--primary); color: #fff; }
-        .btn-player-next:hover { background: var(--primary-dark); }
-        .btn-player-back { background: var(--gray-100); color: var(--gray-600); }
-        .btn-player-open { background: #E3F2FD; color: #1565C0; }
-
         /* Empty/Loading */
         .demo-empty { text-align: center; padding: 30px; color: var(--gray-400); font-size: 13px; }
         .demo-empty span { font-size: 32px; display: block; margin-bottom: 8px; }
@@ -194,8 +130,6 @@
         /* Responsive */
         @media (max-width: 768px) {
             .demo-page { padding: 12px; }
-            .demo-stats { grid-template-columns: repeat(2, 1fr); }
-            .scenarios-grid { grid-template-columns: 1fr; }
             .packages-grid { grid-template-columns: 1fr; }
             .flag-row { flex-direction: column; align-items: flex-start; gap: 6px; }
         }
@@ -203,11 +137,8 @@
         /* Dark mode */
         .dark-mode .demo-section { background: rgba(30,30,30,0.5); }
         .dark-mode .demo-toggle-bar { background: rgba(40,40,40,0.5); }
-        .dark-mode .demo-stat { background: rgba(40,40,40,0.5); }
-        .dark-mode .scenario-card { background: rgba(40,40,40,0.6); }
         .dark-mode .package-card { background: rgba(40,40,40,0.6); }
         .dark-mode .flag-row { background: rgba(40,40,40,0.4); }
-        .dark-mode .player-step { background: rgba(40,40,40,0.3); }
     </style>
 </head>
 <body data-page-group="system">
@@ -263,13 +194,12 @@
                 <h1>Demo & Packages</h1>
 
                 <div class="demo-tabs" id="demoTabs">
-                    <button type="button" class="demo-tab active" data-tab="scenarios">Демо-сценарії</button>
-                    <button type="button" class="demo-tab" data-tab="packages">Пакети</button>
+                    <button type="button" class="demo-tab active" data-tab="packages">Пакети</button>
                     <button type="button" class="demo-tab" data-tab="flags">Feature Flags</button>
                 </div>
 
-                <!-- Tab: Scenarios -->
-                <div class="demo-tab-content active" id="tab-scenarios">
+                <!-- Tab: Packages -->
+                <div class="demo-tab-content active" id="tab-packages">
                     <div class="demo-toggle-bar hidden" id="demoToggleBar" aria-hidden="true">
                         <span class="demo-toggle-label">Demo-режим (гостьовий вхід)</span>
                         <span class="demo-toggle-status off" id="demoStatusText">Вимкнено</span>
@@ -279,23 +209,6 @@
                         </label>
                     </div>
 
-                    <div class="demo-section">
-                        <div class="demo-section-title"><span class="section-icon"></span> Статистика</div>
-                        <div class="demo-stats" id="demoStats">
-                            <div class="demo-loading">Завантаження...</div>
-                        </div>
-                    </div>
-
-                    <div class="demo-section">
-                        <div class="demo-section-title"><span class="section-icon"></span> Сценарії</div>
-                        <div class="scenarios-grid" id="scenariosGrid">
-                            <div class="demo-loading">Завантаження...</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Tab: Packages -->
-                <div class="demo-tab-content" id="tab-packages">
                     <div class="demo-section">
                         <div class="demo-section-title"><span class="section-icon"></span> Тарифні пакети</div>
                         <div class="packages-grid" id="packagesGrid">
@@ -315,15 +228,6 @@
                 </div>
             </div>
         </main>
-    </div>
-
-    <!-- Scenario Player Modal -->
-    <div id="playerModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Сценарій">
-        <div class="modal-content modal-medium" role="dialog" aria-modal="true">
-            <span class="modal-close" id="playerModalClose">&times;</span>
-            <h3 id="playerTitle">Сценарій</h3>
-            <div id="playerContent"></div>
-        </div>
     </div>
 
     <div id="profileModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Особистий кабінет">

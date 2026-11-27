@@ -1,10 +1,8 @@
 /**
- * demo-page.js — Demo mode, scenarios, packages, feature flags
+ * demo-page.js — Demo mode, packages, feature flags
  * v18.3.0
  */
 
-let overviewData = null;
-let scenarios = [];
 let packages = [];
 let flags = [];
 let isAdminUser = false;
@@ -16,20 +14,8 @@ function resolveManageSettingsAccess() {
         && canAccess('manage_settings') === true;
 }
 
-let activeTab = 'scenarios';
-let currentSession = null;
-let currentStep = 0;
-
-const CATEGORY_LABELS = {
-    booking: '📅 Бронювання', print: '🎓 Друк',
-    hr: '👥 HR', boss: '🧠 Boss', 'art-director': '🎬 Art Director',
-    finance: '💰 Фінанси', gamification: '🎮 Гейміфікація'
-};
-
-// ==========================================
-// NOTIFICATIONS
-// ==========================================
-
+let activeTab = 'packages';
+let demoModeLoaded = false;
 
 // ==========================================
 // API
@@ -78,13 +64,6 @@ function escapeHtml(str) {
     return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 }
 
-function openDemoTarget(stepIndex = currentStep) {
-    const url = currentSession?.steps?.[stepIndex]?.target_url;
-    if (!url) return;
-    if (typeof openSafeNewTab === 'function') openSafeNewTab(url);
-    else window.open(String(url), '_blank', 'noopener,noreferrer');
-}
-
 // ==========================================
 // TABS
 // ==========================================
@@ -114,7 +93,7 @@ function syncDemoSettingsUi() {
         toggleBar.setAttribute('aria-hidden', canManageSettings ? 'false' : 'true');
     }
     const toggle = document.getElementById('demoToggle');
-    if (toggle) toggle.disabled = !canManageSettings;
+    if (toggle) toggle.disabled = !canManageSettings || !demoModeLoaded;
     const flagsTab = document.querySelector('.demo-tab[data-tab="flags"]');
     if (flagsTab) {
         flagsTab.hidden = !canManageSettings;
@@ -124,189 +103,36 @@ function syncDemoSettingsUi() {
     const flagsContent = document.getElementById('tab-flags');
     if (flagsContent) flagsContent.hidden = !canManageSettings;
     if (!canManageSettings && activeTab === 'flags') {
-        activeTab = 'scenarios';
-        document.querySelectorAll('.demo-tab').forEach(tab => tab.classList.toggle('active', tab.dataset.tab === 'scenarios'));
-        document.querySelectorAll('.demo-tab-content').forEach(content => content.classList.toggle('active', content.id === 'tab-scenarios'));
+        activeTab = 'packages';
+        document.querySelectorAll('.demo-tab').forEach(tab => tab.classList.toggle('active', tab.dataset.tab === 'packages'));
+        document.querySelectorAll('.demo-tab-content').forEach(content => content.classList.toggle('active', content.id === 'tab-packages'));
     }
 }
 
 // ==========================================
-// OVERVIEW + SCENARIOS TAB
+// DEMO MODE
 // ==========================================
 
 async function loadOverview() {
     const data = await apiGet('/demo/overview');
     if (!data?.success) {
-        document.getElementById('demoStats').innerHTML = '<div class="demo-empty">Помилка</div>';
+        const status = document.getElementById('demoStatusText');
+        if (status) status.textContent = 'Не вдалося завантажити стан';
+        const toggle = document.getElementById('demoToggle');
+        if (toggle) toggle.disabled = true;
         return;
     }
-    overviewData = data;
 
-    // Set toggle state
+    demoModeLoaded = true;
     const toggle = document.getElementById('demoToggle');
     const statusText = document.getElementById('demoStatusText');
-    if (canManageSettings && toggle) toggle.checked = data.demoEnabled;
-    if (canManageSettings && statusText) {
+    if (toggle) {
+        toggle.checked = data.demoEnabled;
+        toggle.disabled = !canManageSettings;
+    }
+    if (statusText) {
         statusText.textContent = data.demoEnabled ? 'Увімкнено' : 'Вимкнено';
         statusText.className = 'demo-toggle-status ' + (data.demoEnabled ? 'on' : 'off');
-    }
-
-    renderStats(data);
-}
-
-function renderStats(data) {
-    const container = document.getElementById('demoStats');
-    if (!container) return;
-
-    container.innerHTML = `
-        <div class="demo-stat">
-            <div class="demo-stat-value">${data.scenarioCount || 0}</div>
-            <div class="demo-stat-label">Сценаріїв</div>
-        </div>
-        <div class="demo-stat">
-            <div class="demo-stat-value">${data.sessionCount || 0}</div>
-            <div class="demo-stat-label">Сесій</div>
-        </div>
-        <div class="demo-stat">
-            <div class="demo-stat-value">${data.completedCount || 0}</div>
-            <div class="demo-stat-label">Завершено</div>
-        </div>
-        <div class="demo-stat">
-            <div class="demo-stat-value">${data.completionRate || 0}%</div>
-            <div class="demo-stat-label">Completion</div>
-        </div>
-        <div class="demo-stat">
-            <div class="demo-stat-value">${data.avgRating || '—'}</div>
-            <div class="demo-stat-label">Рейтинг</div>
-        </div>
-    `;
-}
-
-async function loadScenarios() {
-    const data = await apiGet('/demo/scenarios');
-    if (!data?.success) {
-        document.getElementById('scenariosGrid').innerHTML = '<div class="demo-empty">Помилка</div>';
-        return;
-    }
-    scenarios = data.scenarios || [];
-    renderScenarios(scenarios);
-}
-
-function renderScenarios(items) {
-    const container = document.getElementById('scenariosGrid');
-    if (!container) return;
-
-    if (!items.length) {
-        container.innerHTML = '<div class="demo-empty"><span>🎬</span>Сценаріїв поки немає</div>';
-        return;
-    }
-
-    container.innerHTML = items.map(s => {
-        const steps = typeof s.steps === 'string' ? JSON.parse(s.steps) : (s.steps || []);
-        return `
-        <div class="scenario-card" onclick="startScenario(${s.id})">
-            <div class="scenario-card-header">
-                <span class="scenario-card-icon">${s.icon || '🎯'}</span>
-                <span class="scenario-card-title">${escapeHtml(s.title)}</span>
-            </div>
-            <div class="scenario-card-desc">${escapeHtml(s.description || '')}</div>
-            <div class="scenario-card-meta">
-                <span class="scenario-card-badge">${CATEGORY_LABELS[s.category] || s.category}</span>
-                <span>⏱ ${s.duration_minutes} хв</span>
-                <span>📋 ${steps.length} кроків</span>
-            </div>
-            <div class="scenario-card-runs">Запусків: ${s.run_count || 0}</div>
-        </div>`;
-    }).join('');
-}
-
-// ==========================================
-// SCENARIO PLAYER
-// ==========================================
-
-async function startScenario(scenarioId) {
-    const scenario = scenarios.find(s => s.id === scenarioId);
-    if (!scenario) return;
-
-    // Create session
-    const result = await apiPost('/demo/sessions', { scenario_id: scenarioId });
-    currentSession = result?.session || null;
-    currentStep = 0;
-
-    const steps = typeof scenario.steps === 'string' ? JSON.parse(scenario.steps) : (scenario.steps || []);
-
-    document.getElementById('playerTitle').textContent = `${scenario.icon} ${scenario.title}`;
-    renderPlayer(steps);
-    document.getElementById('playerModal')?.classList.remove('hidden');
-}
-
-function renderPlayer(steps) {
-    const container = document.getElementById('playerContent');
-    if (!container) return;
-
-    container.innerHTML = `
-        <div class="player-steps">
-            ${steps.map((s, i) => `
-                <div class="player-step ${i === currentStep ? 'active' : ''} ${i < currentStep ? 'done' : ''}" data-step="${i}">
-                    <div class="player-step-num">${i < currentStep ? '✓' : i + 1}</div>
-                    <div class="player-step-content">
-                        <div class="player-step-title">${escapeHtml(s.title)}</div>
-                        <div class="player-step-desc">${escapeHtml(s.description)}</div>
-                    </div>
-                </div>
-            `).join('')}
-        </div>
-        <div class="player-controls">
-            ${currentStep > 0 ? '<button class="btn-player-back" onclick="playerPrev()">← Назад</button>' : ''}
-            ${steps[currentStep]?.target_url ? '<button class="btn-player-open" onclick="openDemoTarget()">Відкрити сторінку ↗</button>' : ''}
-            ${currentStep < steps.length - 1
-                ? '<button class="btn-player-next" onclick="playerNext()">Далі →</button>'
-                : '<button class="btn-player-next" onclick="playerComplete()" style="background:#2E7D32">✓ Завершити</button>'}
-        </div>
-        <div style="text-align:center; margin-top:8px; font-size:11px; color:var(--gray-400)">
-            Крок ${currentStep + 1} з ${steps.length}
-        </div>
-    `;
-}
-
-function playerNext() {
-    const scenario = scenarios.find(s => s.id === currentSession?.scenario_id);
-    if (!scenario) return;
-    const steps = typeof scenario.steps === 'string' ? JSON.parse(scenario.steps) : (scenario.steps || []);
-    if (currentStep < steps.length - 1) {
-        currentStep++;
-        updateSessionStep();
-        renderPlayer(steps);
-    }
-}
-
-function playerPrev() {
-    const scenario = scenarios.find(s => s.id === currentSession?.scenario_id);
-    if (!scenario) return;
-    const steps = typeof scenario.steps === 'string' ? JSON.parse(scenario.steps) : (scenario.steps || []);
-    if (currentStep > 0) {
-        currentStep--;
-        renderPlayer(steps);
-    }
-}
-
-async function playerComplete() {
-    if (currentSession) {
-        await apiPut(`/demo/sessions/${currentSession.id}`, {
-            status: 'completed', current_step: currentStep
-        });
-    }
-    document.getElementById('playerModal')?.classList.add('hidden');
-    showNotification('Сценарій завершено!', 'success');
-    loadOverview();
-    loadScenarios();
-}
-
-async function updateSessionStep() {
-    if (currentSession) {
-        await apiPut(`/demo/sessions/${currentSession.id}`, {
-            current_step: currentStep, status: 'in_progress'
-        });
     }
 }
 
@@ -493,6 +319,7 @@ async function initAuth() {
     else if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
     const ADMIN_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
     isAdminUser = ADMIN_ROLES.includes(user.role);
+    if (isAdminUser && typeof hydrateActionPermissions === 'function') await hydrateActionPermissions(user);
     canManageSettings = resolveManageSettingsAccess();
     const userEl = document.getElementById('currentUser');
     if (userEl) userEl.textContent = user.name;
@@ -536,17 +363,8 @@ async function initDemoPage() {
         syncDemoSettingsUi();
     });
 
-
-    // Player modal close
-    document.getElementById('playerModalClose')?.addEventListener('click', () => {
-        document.getElementById('playerModal')?.classList.add('hidden');
-    });
-    document.getElementById('playerModal')?.addEventListener('click', (e) => {
-        if (e.target.id === 'playerModal') e.target.classList.add('hidden');
-    });
-
     // Load initial data
-    await Promise.all([loadOverview(), loadScenarios()]);
+    await Promise.all([loadOverview(), loadPackages()]);
 }
 
 document.addEventListener('DOMContentLoaded', initDemoPage);

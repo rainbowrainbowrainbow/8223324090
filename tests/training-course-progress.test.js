@@ -8,6 +8,7 @@ const MOCKED_MODULES = [
     '../middleware/auth',
     '../utils/logger',
     '../services/professionChecklists',
+    '../services/parkProfileModules',
     '../services/hrOnboarding',
     '../routes/training'
 ];
@@ -49,6 +50,9 @@ function normalizeProgress(row = {}) {
 
 async function withTrainingApp(options, run) {
     clearModules();
+    if (options.gamification) {
+        installMock('../services/parkProfileModules', { PARK_PROFILE_MODULES: { gamification: options.gamification } });
+    }
     const calls = {
         poolQueries: [],
         clientQueries: [],
@@ -159,6 +163,21 @@ async function withTrainingApp(options, run) {
         clearModules();
     }
 }
+
+test('training leaderboard follows the edition and never reads ranks in Park', async () => {
+    await withTrainingApp({ gamification: 'disabled-for-park' }, async ({ request, calls }) => {
+        const response = await request('GET', '/api/training/leaderboard');
+        assert.equal(response.status, 410);
+        assert.equal(response.data.code, 'MODULE_UNAVAILABLE');
+        assert.equal(calls.poolQueries.length, 0);
+    });
+    await withTrainingApp({ gamification: 'active' }, async ({ request, calls }) => {
+        const response = await request('GET', '/api/training/leaderboard');
+        assert.equal(response.status, 200);
+        assert.deepEqual(response.data.leaderboard, []);
+        assert.equal(calls.poolQueries.length, 1);
+    });
+});
 
 test('ordinary learners never receive staff notes or completion-author metadata from seeded courses', async () => {
     await withTrainingApp({ canManageStaff: false, poolQuery: async sql => {

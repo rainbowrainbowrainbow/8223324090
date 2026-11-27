@@ -1,6 +1,5 @@
 /**
  * js/training-page.js — Training Knowledge Base (v25.0.0)
- * 4 tabs: Materials, Tests, Progress, Leaderboard
  */
 (function() {
     'use strict';
@@ -24,6 +23,15 @@
         const permissionsReady = await initTrainingShell();
         if (!permissionsReady || trainingPageInitialized) return;
         trainingPageInitialized = true;
+        const context = window.CrmBusinessContext;
+        if (context && !context.profileFor?.()) {
+            try {
+                await context.hydrateProfile?.({ user: currentUser });
+            } catch (error) {
+                console.warn('Could not determine training leaderboard availability', error);
+            }
+        }
+        syncLeaderboardTab();
         initTabs();
         initRoleFilter();
         initOnboarding();
@@ -151,6 +159,22 @@
     setTimeout(restoreTrainingShellVisibility, 1000);
 
     // ═══ Tabs ═══
+    function hasLeaderboard() {
+        return window.CrmBusinessContext?.profileFor?.()?.gamificationAvailable === true;
+    }
+
+    function syncLeaderboardTab() {
+        const button = document.querySelector('.training-tab[data-tab="leaderboard"]');
+        if (button) button.hidden = !hasLeaderboard();
+    }
+
+    window.addEventListener('crmBusinessProfileChanged', () => {
+        syncLeaderboardTab();
+        if (trainingPageInitialized && document.getElementById('tabLeaderboard')?.classList.contains('active') && !hasLeaderboard()) {
+            activateTrainingTab('materials', { updateHash: true });
+        }
+    });
+
     function initTabs() {
         document.getElementById('trainingTabs')?.addEventListener('click', e => {
             const tab = e.target.closest('.training-tab');
@@ -161,6 +185,7 @@
 
     function normalizeTrainingTab(value) {
         const tab = String(value || '').replace(/^#/, '').trim();
+        if (tab === 'leaderboard' && !hasLeaderboard()) return 'materials';
         return TRAINING_TABS.has(tab) ? tab : 'materials';
     }
 

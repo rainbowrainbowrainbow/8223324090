@@ -2032,6 +2032,34 @@ function renderHeatmap(data) {
 // RENDER: CLIENTS + HISTORY (v19.9)
 // ==========================================
 
+let centerClientLookupEnabled = false;
+let centerClientRequest = 0;
+let centerClientRows = [];
+
+function initCenterClientLookup() {
+    const sync = event => {
+        centerClientRequest++;
+        centerClientRows = [];
+        const input = document.getElementById('clientSearchInput');
+        if (input) input.value = '';
+        document.getElementById('clientsContent')?.replaceChildren();
+        const profile = document.getElementById('clientBookingsContent');
+        profile?.replaceChildren();
+        profile?.classList.add('hidden');
+
+        const ready = event?.type !== 'crm:auth-cleared' && getPermissionLifecycle().status === 'ready';
+        const useDirectory = ready && canOpenWorkspacePage('/customers');
+        centerClientLookupEnabled = ready && !useDirectory && canOpenWorkspacePage('/center');
+        document.getElementById('centerCustomersLink')?.classList.toggle('hidden', !useDirectory);
+        document.getElementById('centerClientLookup')?.classList.toggle('hidden', !centerClientLookupEnabled);
+    };
+    for (const event of ['permissions:lifecycle', 'roleSwitched', 'crmBusinessProfileChanged',
+        'crmBusinessContextChanged', 'crmBusinessScopeChanged', 'crm:auth-cleared']) {
+        window.addEventListener(event, sync);
+    }
+    sync();
+}
+
 function renderClients(clients) {
     const el = document.getElementById('clientsContent');
     if (!el) return;
@@ -2046,13 +2074,13 @@ function renderClients(clients) {
         const lastVisit = c.last_visit ? new Date(c.last_visit).toLocaleDateString('uk-UA') : '—';
         return `
         <div class="client-card" onclick="showClientProfile(${c.id})">
-            <div class="client-card-avatar">${initials}</div>
+            <div class="client-card-avatar">${escapeHtml(initials)}</div>
             <div class="client-card-info">
                 <div class="client-card-name">${escapeHtml(c.name || '—')}</div>
                 <div class="client-card-meta">${escapeHtml(c.phone || '')} ${c.child_name ? '| Дитина: ' + escapeHtml(c.child_name) : ''}</div>
             </div>
             <div class="client-card-stats">
-                <div class="revenue">${formatPrice(c.total_spent)}</div>
+                ${canAccess('view_revenue') ? `<div class="revenue">${formatPrice(c.total_spent)}</div>` : ''}
                 <div>${c.total_bookings || 0} бронювань</div>
                 <div style="font-size:10px;color:var(--gray-400)">Останній: ${lastVisit}</div>
             </div>
@@ -2061,31 +2089,31 @@ function renderClients(clients) {
 }
 
 async function searchClients() {
-    const input = document.getElementById('clientSearchInput');
-    const query = input ? input.value.trim() : '';
+    if (!centerClientLookupEnabled) return;
+    const request = ++centerClientRequest;
+    centerClientRows = [];
+    document.getElementById('clientsContent')?.replaceChildren();
+    const profile = document.getElementById('clientBookingsContent');
+    profile?.replaceChildren();
+    profile?.classList.add('hidden');
+    const query = document.getElementById('clientSearchInput')?.value.trim() || '';
     const data = await apiSearchClients(query);
-    renderClients(data.clients || []);
-    document.getElementById('clientBookingsContent')?.classList.add('hidden');
+    if (request !== centerClientRequest) return;
+    centerClientRows = data.clients || [];
+    renderClients(centerClientRows);
 }
 
 async function showClientProfile(clientId) {
+    const client = centerClientRows.find(row => row.id === clientId);
     const el = document.getElementById('clientBookingsContent');
-    if (!el) return;
+    if (!centerClientLookupEnabled || !client || !el) return;
+    const request = ++centerClientRequest;
     el.classList.remove('hidden');
     el.innerHTML = '<div class="center-loading">Завантаження...</div>';
-
-    const [clientsData, bookingsData] = await Promise.all([
-        apiSearchClients(document.getElementById('clientSearchInput')?.value.trim() || ''),
-        apiClientBookings(clientId)
-    ]);
-
-    const client = (clientsData.clients || []).find(c => c.id === clientId);
+    const bookingsData = await apiClientBookings(clientId);
+    if (request !== centerClientRequest) return;
     const bookings = bookingsData.bookings || [];
-
-    if (!client) {
-        el.innerHTML = '<div class="center-empty">Клієнта не знайдено</div>';
-        return;
-    }
+    const viewRevenue = canAccess('view_revenue');
 
     const tierColor = { 'VIP': '#8B5CF6', 'Premium': '#F59E0B', 'Standard': '#3B82F6' };
     const tc = tierColor[client.loyalty_tier] || '#6B7280';
@@ -2109,10 +2137,10 @@ async function showClientProfile(clientId) {
                 <div class="client-profile-stat-label">Бронювань</div>
                 <div class="client-profile-stat-value">${client.total_bookings || 0}</div>
             </div>
-            <div class="client-profile-stat">
+            ${viewRevenue ? `<div class="client-profile-stat">
                 <div class="client-profile-stat-label">Витрачено</div>
                 <div class="client-profile-stat-value" style="color:#2E7D32">${formatPrice(client.total_spent)}</div>
-            </div>
+            </div>` : ''}
             <div class="client-profile-stat">
                 <div class="client-profile-stat-label">Перший візит</div>
                 <div class="client-profile-stat-value">${client.first_visit ? new Date(client.first_visit).toLocaleDateString('uk-UA') : '—'}</div>
@@ -2132,7 +2160,7 @@ async function showClientProfile(clientId) {
             <div class="client-booking-row">
                 <span class="client-booking-date">${escapeHtml(dateTimeText)}</span>
                 <span class="client-booking-program">${escapeHtml(b.program_name)}</span>
-                <span class="client-booking-price">${formatPrice(b.price)}</span>
+                ${viewRevenue ? `<span class="client-booking-price">${formatPrice(b.price)}</span>` : ''}
                 <span class="client-booking-status ${b.status}">${b.status === 'confirmed' ? '✓' : '~'}</span>
             </div>`;
         }).join('');
@@ -3060,15 +3088,7 @@ async function initAuth() {
     }
 
     AppState.currentUser = user;
-    const syncClientLookup = () => {
-        const useDirectory = canOpenWorkspacePage('/customers');
-        document.getElementById('centerCustomersLink')?.classList.toggle('hidden', !useDirectory);
-        document.getElementById('centerClientLookup')?.classList.toggle('hidden', useDirectory);
-    };
-    for (const event of ['permissions:lifecycle', 'roleSwitched', 'crmBusinessProfileChanged', 'crmBusinessContextChanged']) {
-        window.addEventListener(event, syncClientLookup);
-    }
-    syncClientLookup();
+    initCenterClientLookup();
     if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
     else if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
     const ADMIN_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];

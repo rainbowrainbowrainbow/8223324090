@@ -62,7 +62,6 @@ module.exports = {
     LIVE_MULTI_SEGMENT_QA_VERSION,
     assertLiveQaConfirmation,
     assertLiveQaStaff,
-    liveQaError,
     liveQaMarker,
     normalizeLiveQaRunId,
     normalizeLiveQaTime

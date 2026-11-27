@@ -301,5 +301,4 @@ module.exports = {
     processStaleMessages,
     BRIDGE_ENABLED,
     KLESHNYA_WEBHOOK_SECRET,
-    MEDIA_CHANNEL_ID
 };

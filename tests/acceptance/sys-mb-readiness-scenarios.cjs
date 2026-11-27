@@ -352,4 +352,4 @@ async function run({ baseUrl, fixture, request, db, record }) {
     return output;
 }
 
-module.exports = { seed, run, collectOwnershipReadiness, collectionDefinition };
+module.exports = { seed, run, collectOwnershipReadiness };

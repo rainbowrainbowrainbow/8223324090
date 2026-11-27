@@ -264,9 +264,7 @@ async function reconcileHrShiftsFromStaffSchedule(db, options = {}) {
 }
 
 module.exports = {
-    HR_SHIFT_RECONCILIATION_ACTION,
     classifyHrShiftReconciliationRows,
     reconcileHrShiftsFromStaffSchedule,
-    scanHrShiftReconciliation,
     validateReconciliationRange
 };

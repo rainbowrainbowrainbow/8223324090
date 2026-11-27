@@ -642,11 +642,7 @@ async function repairLeadCustomerChildren(queryable, options = {}) {
 module.exports = {
     CARD_REPAIR_ACTIONS,
     CHILDREN_REPAIR_ACTIONS,
-    appendUniqueLeadCustomerNote,
-    leadCustomerChildren,
     planLeadCustomerCardRepairs,
-    planLeadCustomerChildrenRepairs,
     repairLeadCustomerCards,
     repairLeadCustomerChildren,
-    syncLeadCelebrantsToCustomerChildren
 };

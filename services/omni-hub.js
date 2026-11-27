@@ -2266,6 +2266,4 @@ module.exports = {
   mapMessageRow,
   buildSendTruth,
   normalizeProviderResult,
-  isActiveWaitingReply,
-  INBOUND_ONLY_CHANNELS,
 };

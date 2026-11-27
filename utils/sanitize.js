@@ -10,20 +10,9 @@ function stripTags(str) {
     return str.replace(/<[^>]*>/g, '');
 }
 
-function sanitizeObject(obj, fields) {
-    if (!obj || typeof obj !== 'object') return obj;
-    const result = { ...obj };
-    for (const field of fields) {
-        if (result[field] && typeof result[field] === 'string') {
-            result[field] = stripTags(result[field]);
-        }
-    }
-    return result;
-}
-
 function sanitizeArray(arr) {
     if (!Array.isArray(arr)) return arr;
     return arr.map(item => typeof item === 'string' ? stripTags(item) : item);
 }
 
-module.exports = { stripTags, sanitizeObject, sanitizeArray };
+module.exports = { stripTags, sanitizeArray };

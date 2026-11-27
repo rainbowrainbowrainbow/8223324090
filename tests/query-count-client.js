@@ -88,6 +88,4 @@ class QueryCountClient {
 
 module.exports = {
     QueryCountClient,
-    classifyQuery,
-    compactSql
 };

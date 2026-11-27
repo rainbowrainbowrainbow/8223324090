@@ -173,4 +173,4 @@ function createBinotelJournal(options = {}) {
   return Object.freeze({ calls, summary, live, queues });
 }
 
-module.exports = { BinotelJournalValidationError, createBinotelJournal, normalizeJournalQuery, summarize };
+module.exports = { BinotelJournalValidationError, createBinotelJournal, normalizeJournalQuery };

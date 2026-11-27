@@ -170,4 +170,4 @@ function createScheduleOcr(options = {}) {
     };
 }
 
-module.exports = { MAX_IMAGE_BYTES, validateScheduleImage, recognizeSchedule, reviewedOcrRows, createScheduleOcr };
+module.exports = { validateScheduleImage, recognizeSchedule, reviewedOcrRows, createScheduleOcr };

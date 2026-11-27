@@ -518,5 +518,4 @@ module.exports = {
     normalizeSourceSurface,
     rescheduleTask,
     undoQuickTodayReschedule,
-    withTransaction
 };

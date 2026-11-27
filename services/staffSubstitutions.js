@@ -283,4 +283,4 @@ function createSubstitutionService(dependencies = {}) {
     return { list, history, preview, mutate, completionOptions, darAccruals, correct, previewWorkCorrection, correctWork };
 }
 
-module.exports = { createSubstitutionService, mapRow };
+module.exports = { createSubstitutionService };

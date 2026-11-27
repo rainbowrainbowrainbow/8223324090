@@ -161,5 +161,4 @@ function buildTaskOverview(tasks = [], options = {}) {
 module.exports = {
     buildTaskOverview,
     classifyTaskExceptions,
-    taskDueDate
 };

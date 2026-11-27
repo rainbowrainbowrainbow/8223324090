@@ -31,17 +31,6 @@ function invalidate(key) {
 }
 
 /**
- * Invalidate all keys matching a prefix.
- */
-
-/**
- * Clear entire cache.
- */
-function clearAll() {
-    _cache.clear();
-}
-
-/**
  * Get cache stats.
  */
 function stats() {
@@ -69,4 +58,4 @@ setInterval(() => {
     }
 }, CLEANUP_INTERVAL).unref();
 
-module.exports = { getCached, invalidate, clearAll, stats };
+module.exports = { getCached, invalidate, stats };

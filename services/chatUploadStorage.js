@@ -341,9 +341,7 @@ function removeLegacyLocalChatFile(fileUrl, localDir = DEFAULT_LOCAL_DIR) {
 
 module.exports = {
     CHAT_UPLOAD_TYPES,
-    DEFAULT_LOCAL_DIR,
     MAX_CHAT_UPLOAD_BYTES,
-    PUBLIC_PREFIX,
     buildChatUploadBlobFallbackHandler,
     checksumSha256,
     normalizeChatUploadRequestPath,

@@ -20,6 +20,11 @@ const wrappedEntries = [...wrappedCommands.matchAll(/\bnode\s+((?:scripts|tests)
 const isolatedTestEntries = [...read('scripts/run-isolated-postgres-tests.js').matchAll(/['"](?:--require=)?(?:\.\/)?(tests\/(?:browser|integration|helpers)\/[\w./-]+\.[cm]?js)['"]/g)]
     .map(([, file]) => file);
 
+// The manual Education launcher passes these paths to child processes.
+const manualEducation = read('tests/integration/education-manual-runner.js');
+const manualEducationBrowserEntries = [...manualEducation.matchAll(/\bbrowser\('([\w-]+)'\)/g)]
+    .map(([, name]) => 'tests/browser/' + name + '.js');
+
 module.exports = {
     entry: [...new Set([
         ...browserEntries,
@@ -37,6 +42,16 @@ module.exports = {
         'tests/integration/run-education-close-ci.js',
         ...Object.values(educationContracts).map(contract => contract.file),
         'scripts/lib/education-ready-loopback.js',
+        'tests/integration/run-education-close-{attendance,teachers,ux,visual}.js',
+        'tests/integration/run-education-ready-{async,baseline,dataset,date,design,groups,lifecycle,mobile,teachers}.js',
+        'tests/browser/education-ready-baseline.js',
+        ...manualEducationBrowserEntries,
+        // Spawned evidence verifiers and the Education report-clock preload.
+        'tests/tools/verify-education-close-{attempt,pack}.js',
+        'tests/helpers/education-ready-report-clock.js',
+        // Spawned by the production block controller and timeline browser smoke, respectively.
+        'scripts/trusted-qa-finance-run.js',
+        'scripts/timeline-smoke-cleanup-preflight.js',
         // The SYS-MB runner passes these paths through spawn and NODE_OPTIONS.
         'tests/acceptance/sys-mb-browser-worker.cjs',
         'tests/acceptance/sys-mb-local-preload.cjs',

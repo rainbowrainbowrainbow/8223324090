@@ -309,7 +309,7 @@ async function cleanupHrFixtureQa(client, inventory) {
 }
 
 module.exports = {
-    SOURCE, TYPES, ENDPOINTS, describeHrFixtureQaPlan, preflightHrFixtureQaPlan, createHrFixtureQaRun, finishHrFixtureQaRun,
+    SOURCE, TYPES, preflightHrFixtureQaPlan, createHrFixtureQaRun, finishHrFixtureQaRun,
     prepareHrFixtureQa, claimHrFixtureQa, assertHrFixtureCreate,
     assertHrQaOnboarding, requireHrQaEntity, registerHrQaEntity, prepareHrQaMembership, prepareHrQaRevocation, cleanupHrFixtureQa
 };

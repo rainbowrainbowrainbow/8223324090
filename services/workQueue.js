@@ -1123,5 +1123,4 @@ async function buildWorkQueue({
 
 module.exports = {
     buildWorkQueue,
-    addDays,
 };

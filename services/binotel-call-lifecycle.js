@@ -105,4 +105,4 @@ function mergeBinotelCallLifecycle(current, incoming) {
   };
 }
 
-module.exports = { mergeBinotelCallLifecycle, sameIdentity };
+module.exports = { mergeBinotelCallLifecycle };

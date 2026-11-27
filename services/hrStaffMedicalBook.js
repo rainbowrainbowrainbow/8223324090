@@ -252,10 +252,7 @@ async function updateStaffMedicalBook(staffId, certificationId, payload = {}, ac
 
 module.exports = {
     createStaffMedicalBook,
-    findActiveMedicalBookDuplicate,
     listStaffMedicalBooks,
-    loadStaffMedicalBook,
     medicalBookStatusForExpiry,
-    normalizeMedicalBookDate,
     updateStaffMedicalBook
 };

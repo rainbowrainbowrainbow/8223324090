@@ -49,4 +49,4 @@ function loadLocalEnv(rootDir = process.cwd()) {
     }
 }
 
-module.exports = { loadLocalEnv, parseEnvLine };
+module.exports = { loadLocalEnv };

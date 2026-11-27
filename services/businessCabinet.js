@@ -393,18 +393,12 @@ function businessCabinetCatalog() {
 }
 
 module.exports = {
-  BUSINESS_CABINET_VERSION,
-  BUSINESS_START_PAGES,
-  BUSINESS_TYPES,
   businessCabinetCatalog,
   businessCabinetForUser,
   businessCabinetSettingsKey,
-  defaultBusinessTypeForContext,
   getBusinessCabinetSettings,
   isTimelineContext,
   normalizeBusinessCabinetSettings,
-  normalizeBusinessModules,
   saveBusinessCabinetSettings,
   timelineDisplayFromBusinessCabinet,
-  timelineModeForBusinessType,
 };

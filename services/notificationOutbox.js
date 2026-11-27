@@ -990,6 +990,5 @@ module.exports = {
     listNotificationOutboxDebugEvents,
     listNotificationOutboxEvents,
     skipNotificationOutboxEvent,
-    stableJsonStringify,
     toNotificationOutboxApiEvent,
 };

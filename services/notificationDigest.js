@@ -161,17 +161,7 @@ async function flushDigest() {
 /**
  * Stop the flush timer (for graceful shutdown)
  */
-function stopDigestTimer() {
-    if (_flushTimer) {
-        clearInterval(_flushTimer);
-        _flushTimer = null;
-    }
-}
 
 module.exports = {
     queueNotification,
-    flushDigest,
-    getDigestMode,
-    stopDigestTimer,
-    ensureFlushTimer
 };

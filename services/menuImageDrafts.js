@@ -471,39 +471,18 @@ async function persistMenuImageDraft(db, { productId, businessContext, username,
     return result.rows?.[0] || null;
 }
 
-async function createAndPersistExternalMenuImageDraft({ db, product = {}, payload = {}, actor = {}, uploadOptions = {}, now, businessContext, defaultBusinessContext } = {}) {
-    const result = await createExternalMenuImageDraft({ product, payload, actor, uploadOptions, now });
-    const persisted = await persistMenuImageDraft(db, {
-        productId: pickProductField(product, 'id', 'id'),
-        businessContext: businessContext || pickProductField(product, 'business_context', 'businessContext'),
-        username: actor.username || actor.name || 'system',
-        draft: result.draft,
-        defaultBusinessContext
-    });
-    return {
-        ...result,
-        product: persisted
-    };
-}
 
 module.exports = {
-    DEFAULT_IMAGE_RULES,
-    DEFAULT_MENU_IMAGE_SIZE,
-    DEFAULT_MENU_IMAGE_STYLE,
     DEFAULT_TARGET_USAGE,
-    ALLOWED_EXTERNAL_IMAGE_MIMES,
     ALLOWED_EXTERNAL_IMAGE_EXTENSIONS,
     MAX_EXTERNAL_IMAGE_BYTES,
     MAX_EXTERNAL_IMAGE_BASE64_LENGTH,
     MAX_EXTERNAL_IMAGE_URL_LENGTH,
     EXTERNAL_MENU_IMAGE_DRAFT_FIELDS,
     normalizeMenuImageStudio,
-    buildMenuImageDraft,
     buildMenuImageContext,
     assertExternalDraftPayloadFields,
     normalizeExternalImageSource,
-    normalizeExternalDraftPayload,
     createExternalMenuImageDraft,
     persistMenuImageDraft,
-    createAndPersistExternalMenuImageDraft
 };

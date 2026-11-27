@@ -164,12 +164,6 @@ function publicTaskAiDraftBundleFeatureStatus(user = {}, options = {}) {
     };
 }
 
-function publicTaskAiDraftFeaturesStatus(user = {}, options = {}) {
-    return {
-        composer: publicTaskAiDraftFeatureStatus(user, options),
-        bundle: publicTaskAiDraftBundleFeatureStatus(user, options)
-    };
-}
 
 function assertTaskAiDraftFeatureEnabled(user = {}, options = {}) {
     const status = taskAiDraftFeatureStatus(user, options);
@@ -196,8 +190,4 @@ module.exports = {
     assertTaskAiDraftFeatureEnabled,
     publicTaskAiDraftBundleFeatureStatus,
     publicTaskAiDraftFeatureStatus,
-    publicTaskAiDraftFeaturesStatus,
-    taskAiDraftBundleFeatureStatus,
-    stableBucket,
-    taskAiDraftFeatureStatus
 };

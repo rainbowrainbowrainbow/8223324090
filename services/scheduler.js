@@ -40,9 +40,6 @@ const {
 const { trustedQaRegisteredBookingExclusionSql } = require('./trustedQaSchedulerGuard');
 
 // Lazy require to avoid circular dependency at load time
-function getRecurringService() {
-    return require('./recurring');
-}
 
 function getKleshnya() {
     return require('./kleshnya');
@@ -96,7 +93,6 @@ let digestSentToday = null;
 let reminderSentToday = null;
 let backupSentToday = null;
 let recurringCreatedToday = null;
-let recurringBookingsCreatedToday = null;
 
 // DB-persistent sent-today helpers (survive restarts)
 async function getLastSent(key) {
@@ -775,34 +771,6 @@ async function checkRecurringAfisha() {
     }
 }
 
-// v11: Auto-generate recurring bookings from templates
-// Runs at 00:07 Kyiv time (after recurring tasks at 00:05, recurring afisha at 00:06)
-async function checkRecurringBookings() {
-    try {
-        const todayStr = getKyivDateStr();
-        if (recurringBookingsCreatedToday === todayStr) return;
-
-        const nowTime = getKyivTimeStr();
-        if (nowTime !== '00:07') return;
-
-        const dbLast = await getLastSent('recurring_bookings');
-        if (dbLast === todayStr) { recurringBookingsCreatedToday = todayStr; return; }
-
-        recurringBookingsCreatedToday = todayStr;
-        await setLastSent('recurring_bookings', todayStr);
-
-        const { generateAllRecurringBookings } = getRecurringService();
-        const result = await generateAllRecurringBookings();
-
-        if (result.totalCreated > 0 || result.totalSkipped > 0) {
-            log.info(`Recurring bookings: created=${result.totalCreated}, skipped=${result.totalSkipped}`);
-        }
-    } catch (err) {
-        if (!err.message.includes('does not exist')) {
-            log.error('RecurringBookings error', err);
-        }
-    }
-}
 
 // v8.4: Auto-expire certificates past valid_until
 let certExpireCheckedToday = '';
@@ -1392,71 +1360,9 @@ async function checkUpcomingBookings() {
     }
 }
 
-// v30.6: Debt notification — weekly reminder about unpaid bookings
-let debtSentThisWeek = null;
 let pushRemindersSentToday = null;
 let certExpirySentToday = null;
 
-async function checkDebtNotifications() {
-    try {
-        const todayStr = getKyivDateStr();
-        const weekId = todayStr.substring(0, 7) + '-W' + Math.ceil(new Date().getDate() / 7);
-        if (debtSentThisWeek === weekId) return;
-
-        // Only send on Mondays at 09:00
-        const now = new Date();
-        if (now.getDay() !== 1) return;
-        const nowTime = getKyivTimeStr();
-        if (nowTime !== '09:00') return;
-
-        const dbLast = await getLastSent('debt_notifications');
-        if (dbLast === weekId) { debtSentThisWeek = weekId; return; }
-
-        debtSentThisWeek = weekId;
-        await setLastSent('debt_notifications', weekId);
-
-        const bookingParams = [];
-        const bookingVisibility = getVisibleBookingScope(SYSTEM_BOOKING_NOTIFICATION_ACTOR, bookingParams, 'b');
-        const bookingBusinessScope = pushDefaultTimelineBusinessContext(bookingParams, 'b');
-        const result = await pool.query(`
-            SELECT b.id, b.date, b.label, b.program_name, b.price, b.paid_amount,
-                   c.name AS customer_name, c.phone AS customer_phone,
-                   (COALESCE(b.price, 0) - COALESCE(b.paid_amount, 0)) AS debt
-            FROM bookings b
-            LEFT JOIN customers c ON b.customer_id = c.id
-            WHERE b.status = 'confirmed' AND b.linked_to IS NULL AND b.price > 0
-              AND (b.payment_status IS NULL OR b.payment_status != 'paid')
-              AND COALESCE(b.paid_amount, 0) < COALESCE(b.price, 0)
-              AND b.date::date <= CURRENT_DATE
-              AND ${TRUSTED_QA_BOOKING_EXCLUSION}
-              AND ${bookingBusinessScope}
-              ${bookingVisibility.sql}
-            ORDER BY debt DESC LIMIT 20
-        `, bookingParams);
-
-        if (result.rows.length === 0) return;
-
-        const chatId = await getConfiguredChatId();
-        if (!chatId) return;
-
-        const totalDebt = result.rows.reduce((s, r) => s + r.debt, 0);
-        let text = `💸 <b>БОРГИ: ${result.rows.length} неоплачених</b>\n`;
-        text += `💰 Загалом: ${totalDebt.toLocaleString('uk-UA')} ₴\n\n`;
-        for (const b of result.rows.slice(0, 10)) {
-            text += `• ${b.label || b.program_name || b.id} — ${b.debt.toLocaleString('uk-UA')} ₴`;
-            if (b.customer_name) text += ` (${b.customer_name})`;
-            text += `\n`;
-        }
-        if (result.rows.length > 10) text += `\n...та ще ${result.rows.length - 10}`;
-
-        await sendTelegramMessage(chatId, text, { silent: true });
-        log.info(`Debt notification sent: ${result.rows.length} debts, ${totalDebt} UAH`);
-    } catch (err) {
-        if (!err.message?.includes('does not exist')) {
-            log.error('DebtNotifications error', err);
-        }
-    }
-}
 
 // v19.1: Event Queue processor — retry failed events + move to DLQ
 async function checkEventQueue() {
@@ -2390,10 +2296,10 @@ module.exports = {
     buildAndSendDigest, sendTomorrowReminder,
     checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks,
     checkScheduledDeletions, checkRecurringAfisha, ensureRecurringAfishaForDate,
-    checkRecurringBookings, checkCertificateExpiry,
+    checkCertificateExpiry,
     checkTaskReminders, checkReplyAutoEscalations, checkWorkDayTriggers, checkMonthlyPointsReset,
     checkStreakUpdates, checkBirthdayGreetings,
-    checkBirthdayReminders, checkDormantCustomers, checkUpcomingBookings, checkDebtNotifications,
+    checkBirthdayReminders, checkDormantCustomers, checkUpcomingBookings,
     checkEventQueue, checkSLABreach, checkScheduledAnnouncements,
     checkTaskOverdue, checkCustomerRetention, checkAutoReport,
     checkHotLeads,
@@ -2412,7 +2318,6 @@ module.exports = {
     checkGraduationOpsAutomation,
     checkAttendanceReviewTasks,
     checkBirthdayTagSync,
-    DIGEST_SEND_MESSAGES,
     classifyDigestSendFailure,
     buildDigestSendResult
 };

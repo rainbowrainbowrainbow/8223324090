@@ -870,10 +870,6 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
 }
 
 module.exports = {
-    AI_DRAFT_BUNDLE_COMMIT_SOURCE_SURFACE,
-    AI_DRAFT_BUNDLE_SOURCE_TYPE,
-    MAX_BUNDLE_COMMIT_TASKS,
-    MIN_BUNDLE_COMMIT_TASKS,
     commitTaskAiDraftBundle,
     readTaskBundleForUser,
     normalizeBundleTask,

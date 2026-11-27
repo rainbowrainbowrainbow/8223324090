@@ -835,14 +835,11 @@ async function processMissedSlots(options = {}) {
 }
 
 module.exports = {
-    DAY_SLOTS,
-    DEFAULT_DURATION_MINUTES,
     KYIV_TIME_ZONE,
     addDays,
     attachTaskSchedule,
     canonicalTaskOrderSql,
     dateOnly,
-    durationFromInput,
     getAvailability,
     getSchedulePolicy,
     hasSchedulePayload,

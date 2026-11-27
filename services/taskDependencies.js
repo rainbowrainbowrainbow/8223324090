@@ -167,14 +167,11 @@ async function removeTaskDependency(queryable, input = {}) {
 }
 
 module.exports = {
-    OPEN_STATUS_SQL,
     addTaskDependency,
-    assertNoDependencyCycle,
     dependencyError,
     emptyDependencyState,
     listTaskDependencies,
     loadTaskDependencyStates,
     removeTaskDependency,
-    synchronizeLegacyDependencyIds,
     taskId
 };

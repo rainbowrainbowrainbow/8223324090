@@ -212,7 +212,5 @@ async function ensureBotMemberships() {
 
 module.exports = {
     processMessage,
-    isBotMention,
     ensureBotMemberships,
-    BOT_USERNAME
 };

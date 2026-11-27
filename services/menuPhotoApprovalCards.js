@@ -502,22 +502,13 @@ function createMenuPhotoApprovalCallbackDryRunHandler() {
 
 module.exports = {
     ACTION,
-    ACTION_BUTTONS,
-    CALLBACK_PREFIX,
-    MAX_CALLBACK_DATA_BYTES,
-    REVIEW_ONLY_SAFETY,
     STATUS,
     TERMINAL_STATUSES,
     TRANSITIONS,
     buildCallbackData,
-    buildIdempotencyKey,
-    buildMenuPhotoApprovalKeyboard,
     buildMenuPhotoApprovalPreview,
-    buildMenuPhotoApprovalTokens,
     createMenuPhotoApprovalCallbackDryRunHandler,
-    createMenuPhotoApprovalCard,
     createMenuPhotoApprovalCardPreviewHandler,
     parseMenuPhotoApprovalCallbackData,
-    renderMenuPhotoApprovalCard,
     runMenuPhotoApprovalCallbackDryRun
 };

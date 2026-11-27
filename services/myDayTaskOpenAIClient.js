@@ -253,8 +253,6 @@ async function callMyDayTaskOpenAIResponses(request = {}, options = {}) {
 }
 
 module.exports = {
-    DEFAULT_OPENAI_API_BASE,
-    DEFAULT_REASONING_EFFORT,
     DEFAULT_TIMEOUT_MS,
     MY_DAY_TASK_AI_MODEL,
     OPENAI_OFFICIAL_ORIGIN,
@@ -264,10 +262,8 @@ module.exports = {
     extractOpenAIResponseText,
     getOpenAIKey,
     hmacSafetyIdentifier,
-    isLoopbackOpenAIBase,
     isTestRuntime,
     parseAiJson,
-    resolveMyDayTaskAiModel,
     resolveOpenAIResponsesBase,
     resolveTimeoutMs,
     shouldBlockRealOpenAIInTests,

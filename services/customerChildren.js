@@ -609,7 +609,6 @@ module.exports = {
     CUSTOMER_CHILD_DISPLAY_POLICY,
     validateChildBirthday,
     normalizeChildInput,
-    normalizeDietaryTags,
     listCustomerChildren,
     replaceCustomerChildren,
     buildCustomerChildrenProjection,
@@ -617,7 +616,6 @@ module.exports = {
     customerChildrenNameDisplay,
     customerChildrenBirthdayDisplay,
     customerChildrenFullDisplay,
-    customerChildLineDisplay,
     firstCustomerChild,
     mapCustomerChildRow,
     isCustomerChildrenStorageMissing

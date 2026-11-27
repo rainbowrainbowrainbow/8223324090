@@ -305,7 +305,6 @@ module.exports = {
     loadTaskTimeTotals,
     loadTaskTimeTotalsForDate,
     manualInterval,
-    publicTimerEntry,
     sanitizeTimerForBusinessAccess,
     startTimer,
     stopActiveTimerForUser,

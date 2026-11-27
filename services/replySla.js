@@ -58,7 +58,6 @@ function deriveReplySlaState(row, options = {}) {
 
 module.exports = {
     REPLY_SLA_STATES,
-    DEFAULT_DUE_SOON_MS,
     booleanValue,
     isDeliveryFailed,
     isActiveWaitingReply,

@@ -44,7 +44,6 @@ const MIN_BUNDLE_TASKS = 2;
 const MAX_BUNDLE_TASKS = 6;
 const MAX_ACTIVE_IMPACTS_FOR_PROMPT = MAX_ACTIVE_IMPACTS_FOR_NORMALIZATION;
 const PREVIEW_DECISIONS = Object.freeze(['single_task', 'checklist', 'task_bundle', 'needs_clarification', 'no_change']);
-const PREVIEW_ACTIONS = Object.freeze(['apply', 'needs_clarification', 'needs_project', 'no_change']);
 const PREVIEW_MODES = Object.freeze(['simple', 'checklist', null]);
 const PREVIEW_PRIORITIES = Object.freeze(['urgent', 'high', 'normal', 'low', null]);
 const TASK_AI_DRAFT_SINGLE_COMMIT_AUDIENCE = 'task_ai_draft_commit';
@@ -1010,13 +1009,6 @@ async function generateTaskAiDraftPreview(input = {}, options = {}) {
 }
 
 module.exports = {
-    MAX_SUBTASKS,
-    MAX_BUNDLE_TASKS,
-    MIN_BUNDLE_TASKS,
-    PREVIEW_ACTIONS,
-    PREVIEW_DECISIONS,
-    PREVIEW_MODES,
-    PREVIEW_PRIORITIES,
     TASK_AI_DRAFT_CONTRACT_VERSION,
     TASK_AI_DRAFT_MAX_OUTPUT_TOKENS,
     TASK_AI_DRAFT_PREVIEW_SCHEMA,
@@ -1025,8 +1017,6 @@ module.exports = {
     TASK_AI_DRAFT_SCHEMA_NAME,
     TASK_AI_DRAFT_BUNDLE_COMMIT_AUDIENCE,
     TASK_AI_DRAFT_SINGLE_COMMIT_AUDIENCE,
-    TASK_AI_DRAFT_TIMEOUT_MS,
-    TASK_AI_DRAFT_TOKEN_TTL_MS,
     activeImpactCatalogVersion,
     activeImpactPayload,
     buildDraftDiff,
@@ -1036,7 +1026,6 @@ module.exports = {
     createProposalToken,
     draftFingerprint,
     generateTaskAiDraftPreview,
-    hasActionableDraftContext,
     filterKnownActiveImpactIds,
     mergeServerExplicitImpacts,
     normalizeTaskDraftDescription,

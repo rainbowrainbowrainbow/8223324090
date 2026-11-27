@@ -108,10 +108,6 @@ function savedViewsPatchFromBody(body = {}) {
 }
 
 module.exports = {
-    MAX_SAVED_TASK_VIEWS,
-    SAVED_VIEW_MODES,
-    SAVED_VIEW_QUEUES,
-    normalizeSavedTaskView,
     normalizeSavedTaskViews,
     savedViewsPatchFromBody,
     taskSavedViewsFromPreferences

@@ -274,10 +274,8 @@ function formatTaskNotification(type, task, extra = {}) {
 }
 
 module.exports = {
-    notificationTemplates,
     formatBookingNotification,
     formatAfishaBlock,
-    certificateTemplates,
     formatCertificateNotification,
     formatBatchCertificateNotification,
     taskTemplates,

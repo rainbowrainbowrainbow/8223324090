@@ -107,5 +107,4 @@ module.exports = {
     refreshTaskAuthorAlerts,
     emitTaskAssignedToOwner,
     taskOwnerUserId,
-    taskNotificationId
 };

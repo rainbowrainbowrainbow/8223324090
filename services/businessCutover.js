@@ -479,7 +479,6 @@ function recordCompatibilityTelemetrySafe(db, input, logger = null) {
 }
 
 module.exports = {
-    RESERVED_CONTEXTS,
     applyReservedCutover,
     cleanTelemetry,
     descriptor,

@@ -403,10 +403,5 @@ function enrichQueueBuckets(buckets, options = {}) {
 }
 
 module.exports = {
-    INTELLIGENCE_MODEL,
-    PRIORITY_BANDS,
-    deriveItemIntelligence,
-    enrichItem,
     enrichQueueBuckets,
-    buildSummary
 };

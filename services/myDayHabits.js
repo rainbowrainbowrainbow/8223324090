@@ -400,13 +400,9 @@ async function deleteCheckin(queryable, userId, habitId, localDate) {
 }
 
 module.exports = {
-    HABIT_CADENCES,
-    HABIT_METRICS,
     KYIV_TIMEZONE,
     createHabit,
     deleteCheckin,
-    ensureTaxonomyOwnership,
-    getHabit,
     isHabitDue,
     isoWeekday,
     kyivToday,
@@ -414,7 +410,6 @@ module.exports = {
     normalizeHabitPayload,
     normalizeLocalDate,
     positiveInteger,
-    serializeHabit,
     updateHabit,
     upsertCheckin,
     weekRange

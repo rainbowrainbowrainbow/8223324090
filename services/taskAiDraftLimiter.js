@@ -143,10 +143,7 @@ function resetTaskAiDraftRateLimiter() {
 }
 
 module.exports = {
-    DEFAULT_LIMIT,
-    DEFAULT_WINDOW_MS,
     checkTaskAiDraftRateLimit,
     checkMemoryTaskAiDraftRateLimit,
-    rateLimitKey,
     resetTaskAiDraftRateLimiter
 };

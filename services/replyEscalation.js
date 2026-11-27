@@ -431,14 +431,10 @@ async function runReplyAutoEscalation(options = {}) {
 
 module.exports = {
     REPLY_ESCALATION_SOURCE_TYPE,
-    REPLY_ESCALATION_CREATED_BY,
-    taskAnchor,
-    findOverdueReplyExpectations,
     findActiveReplyExpectationByConversation,
     createOrReuseReplyEscalationTask,
     escalateReplyExpectationForConversation,
     closeReplyEscalationForMessage,
     updateActiveReplyEscalationTaskForMessage,
-    closeStaleReplyEscalationTasks,
     runReplyAutoEscalation
 };

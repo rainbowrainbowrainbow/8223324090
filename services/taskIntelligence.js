@@ -201,8 +201,6 @@ function buildTaskOperationsSummary(tasks = []) {
 }
 
 module.exports = {
-    TASK_INTELLIGENCE_MODEL,
-    TASK_PRIORITY_BANDS,
     buildTaskOperationsSummary,
     deriveTaskIntelligence
 };

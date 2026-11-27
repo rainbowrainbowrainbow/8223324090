@@ -246,10 +246,6 @@ async function formatVacancyForPlatform(input = {}) {
 }
 
 module.exports = {
-    VACANCY_PLATFORM_RULES,
     listVacancyPlatformTemplates,
-    buildVacancyPlatformPrompt,
-    deterministicVacancyPlatformFormat,
     formatVacancyForPlatform,
-    normalizePlatform
 };

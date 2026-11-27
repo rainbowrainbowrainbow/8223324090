@@ -614,10 +614,7 @@ async function getChatSettingsBundle() {
 }
 
 module.exports = {
-    SETTINGS_KEYS,
-    KEY_SOURCE,
     DEFAULT_MODELS,
-    BASE_MODEL_OPTIONS,
     getAIModelOptions,
     normalizeModelForProvider,
     getAvailableProviders,
@@ -628,7 +625,6 @@ module.exports = {
     callUnifiedChatCompletion,
     testUnifiedAIConfig,
     getChatSettingsBundle,
-    getStoredChatAISettings,
     saveChatAISettings,
     getStoredGuardianSettings,
     saveGuardianSettings,

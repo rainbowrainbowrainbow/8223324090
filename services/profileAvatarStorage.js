@@ -262,18 +262,14 @@ async function uploadProfileAvatarWithFallback(file, options = {}) {
 module.exports = {
     DEFAULT_LOCAL_DIR,
     MAX_AVATAR_BYTES,
-    PROFILE_AVATAR_STORAGE_BUCKET,
     PROFILE_AVATAR_STORAGE_PROVIDER,
     PROFILE_AVATAR_TYPES,
     PUBLIC_PREFIX,
     buildProfileAvatarBlobFallbackHandler,
     checksumSha256,
     normalizeAvatarRequestPath,
-    profileAvatarStorageKey,
     publicProfileAvatarUrl,
-    readProfileAvatarBlobByPath,
     safeFilename,
-    saveProfileAvatarLocally,
     storeProfileAvatarBlob,
     uploadProfileAvatarWithFallback,
     validateProfileAvatarFile

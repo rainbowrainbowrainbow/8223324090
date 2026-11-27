@@ -378,16 +378,9 @@ function aggregateTaskAiDraftTelemetry(events = []) {
 }
 
 module.exports = {
-    ALLOWED_FALLBACK_REASONS,
-    ALLOWED_OUTCOMES,
-    SAFE_FIELD_MASK,
     aggregateTaskAiDraftTelemetry,
     aggregateLegacyAiDraftDeprecationUsage,
-    assertNoSensitiveTelemetryFields,
-    hourlyTimestampBucket,
-    isKnownLegacyAiDraftQaClient,
     recordTaskAiDraftTelemetry,
-    runtimeTelemetryMetadata,
     sanitizeTelemetryEvent,
     taskAiHistoryTelemetryMetadata
 };

@@ -167,7 +167,5 @@ function _decodeHtml(html) {
 }
 
 module.exports = {
-    extractUrl,
-    fetchOgData,
     processMessageLinks
 };

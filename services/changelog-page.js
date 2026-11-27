@@ -178,4 +178,4 @@ function createChangelogRouter(list = createCatalog()) {
     return router;
 }
 
-module.exports = { createCatalog, createChangelogRouter, parseLegacyArchive, fetchPublishedEntries };
+module.exports = { createCatalog, createChangelogRouter, parseLegacyArchive };

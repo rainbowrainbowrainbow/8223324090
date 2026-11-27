@@ -310,15 +310,7 @@ async function uploadAudioFromUrlWithMetadata(sourceUrl, filename, options = {})
     } catch (err) { log.error('uploadAudioFromUrlWithMetadata error:', err.message); return null; }
 }
 
-async function uploadAudioFromUrl(sourceUrl, filename, options = {}) {
-    const uploaded = await uploadAudioFromUrlWithMetadata(sourceUrl, filename, options);
-    return uploaded?.publicUrl || null;
-}
 
-async function uploadAudioBuffer(buffer, filename) {
-    const uploaded = await _uploadAudioBufferToStorage(buffer, filename);
-    return uploaded?.publicUrl || null;
-}
 
 async function uploadAudioBufferWithMetadata(buffer, filename, options = {}) {
     return _uploadAudioBufferToStorage(buffer, filename, options);
@@ -386,7 +378,6 @@ module.exports = {
     MAX_SOUND_UPLOAD_BYTES,
     PUBLIC_PREFIX,
     SOUND_STORAGE_BUCKET,
-    SOUND_STORAGE_PROVIDER,
     buildSoundUploadBlobFallbackHandler,
     checksumSha256,
     downloadAudioFromUrlWithMetadata,
@@ -394,13 +385,9 @@ module.exports = {
     normalizeSoundUploadRequestPath,
     prepareSoundUploadBlob,
     publicSoundUploadUrl,
-    readSoundUploadBlobByPath,
     removeAudioObject,
-    saveAudioBufferLocally,
     storeSoundUploadBlob,
     transliterate,
-    uploadAudioBuffer,
     uploadAudioBufferWithMetadata,
-    uploadAudioFromUrl,
     uploadAudioFromUrlWithMetadata
 };

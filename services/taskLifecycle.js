@@ -386,13 +386,8 @@ async function runTaskLifecycle(deps = {}) {
 
 module.exports = {
     runTaskLifecycle,
-    calculateHealthScore,
-    hasExplicitMachineProvenance,
-    taskLifecycleProtectionReason,
     healthScoreMatches,
     runCancelledBookingAutoArchive,
     cancelledBookingAutoArchivePredicateSql,
-    machineLifecycleMarkerSql,
     CANCELLED_BOOKING_AUTO_ARCHIVE_REASON,
-    CANCELLED_BOOKING_AUTO_ARCHIVE_LOCK_KEY
 };

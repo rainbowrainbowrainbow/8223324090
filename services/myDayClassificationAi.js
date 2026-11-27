@@ -439,28 +439,22 @@ async function classifyMyDayTask(input = {}, options = {}) {
 }
 
 module.exports = {
-    ALLOWED_MY_DAY_CLASSIFICATION_MODELS,
     DEFAULT_MY_DAY_CLASSIFICATION_MODEL,
-    MIN_CLASSIFICATION_CONFIDENCE,
     MY_DAY_CLASSIFICATION_REASONING_EFFORT,
-    MY_DAY_CLASSIFICATION_JSON_SCHEMA,
     MY_DAY_CLASSIFICATION_MAX_OUTPUT_TOKENS,
     MY_DAY_CLASSIFICATION_TIMEOUT_MS,
     activeImpactPayload,
     buildOpenAIResponsesInput,
     buildSystemPrompt,
     buildUserMessage,
-    callOpenAIResponsesForClassification,
     classifyMyDayTask,
     extractOpenAIResponseObject,
     extractOpenAIResponseText,
     findExplicitImpactIds,
     mergeExplicitImpactIds,
     myDayClassificationDiagnostics,
-    normalizeAiClassification,
     parseAiJson,
     resolveMyDayClassificationTimeoutMs,
     resolveMyDayClassificationModel,
     taskFingerprint,
-    taskSnapshot
 };

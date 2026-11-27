@@ -4183,7 +4183,7 @@ const visibleAssistantNamingText = [
     'js/assistant-rail.js',
     'js/dashboard-page.js',
     'js/components/sidebar.js',
-    'js/kleshnya-page.js',
+    'js/chat-page.js',
     'js/kleshnya-widget.js',
     'chat.html',
     'landing/script.js'

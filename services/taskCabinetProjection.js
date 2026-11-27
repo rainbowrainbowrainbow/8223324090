@@ -970,13 +970,11 @@ async function buildTaskCabinetProjection(options = {}) {
 module.exports = {
     buildTaskCabinetBucketPage,
     buildTaskCabinetProjection,
-    defaultTaskPreferences,
     ensureTaskPreferences,
     normalizeTaskCabinetBucket,
     normalizeTaskCabinetFocusDate,
     normalizeTaskCabinetBucketLimit,
     normalizeTaskCabinetBucketOffset,
     normalizeTaskPayload,
-    readTaskPreferences,
     taskWorkloadDateSql
 };

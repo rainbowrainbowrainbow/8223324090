@@ -174,6 +174,5 @@ module.exports = {
     TASK_ACTION_TYPES,
     listLatestTaskPostponementEvents,
     listTaskActionHistory,
-    logTaskActionEvent,
-    summaryForAction
+    logTaskActionEvent
 };

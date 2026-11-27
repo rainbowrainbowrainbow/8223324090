@@ -1556,22 +1556,6 @@ async function persistTaskWatchdogEvent(pool, event = {}, options = {}) {
     return { ok: true, idempotent: result.rowCount === 0, idempotencyKey, liveSideEffects: false };
 }
 
-async function loadTaskWatchdogState(pool, options = {}) {
-    if (!pool || typeof pool.query !== 'function') throw new Error('pool.query is required');
-    const ownerIds = Array.isArray(options.ownerIds) ? options.ownerIds.map(normalizePositiveInt).filter(Boolean) : [];
-    const query = {
-        text: `
-            SELECT idempotency_key, task_id, owner_user_id, actor_user_id, action_type, notification_mode, dry_run, created_at
-            FROM task_watchdog_events
-            WHERE ($1::int[] IS NULL OR owner_user_id = ANY($1::int[]))
-            ORDER BY created_at DESC
-            LIMIT $2
-        `,
-        values: [ownerIds.length ? ownerIds : null, normalizeLimit(options.limit, 100)]
-    };
-    const result = await pool.query(query.text, query.values);
-    return { ok: true, rows: result.rows || [], liveSideEffects: false };
-}
 
 function buildTaskWatchdogAckTaskQuery(taskIdValue) {
     const normalizedTaskId = normalizePositiveIntegerString(taskIdValue);
@@ -1836,36 +1820,27 @@ async function runTaskWatchdogScheduler(pool, options = {}) {
 
 module.exports = {
     DEFAULT_OWNER_SCOPE,
-    DEFAULT_POLICY,
     REASON_CODES,
     acknowledgeTaskSeen,
     applyTaskWatchdogAutoRescheduleMutationPlan,
     buildDryRunReport,
     buildNewTaskAlarmCandidate,
     buildTaskWatchdogAckCallbackData,
-    buildTaskWatchdogAckTaskQuery,
     buildTaskWatchdogAutoRescheduleBatch,
     buildTaskWatchdogAutoRescheduleCandidate,
     buildTaskWatchdogAutoRescheduleMutationPlan,
-    buildTaskWatchdogDryRunFromDb,
     buildTaskWatchdogOwnerDigest,
     buildTaskWatchdogOwnerDigests,
     buildTaskWatchdogStateSchemaSql,
-    buildWatchdogNotificationTargetsQuery,
-    buildWatchdogTaskQuery,
     classifyTask,
     ensureTaskWatchdogStateSchema,
     formatTaskTitleForTelegram,
     handleTaskWatchdogAck,
-    loadTaskWatchdogState,
-    normalizeNotificationTargets,
     normalizeOwnerScope,
     normalizePositiveInt,
-    ownerUsesTaskManager,
     parseTaskWatchdogCallbackData,
     persistTaskWatchdogEvent,
     runTaskWatchdogCycle,
     runTaskWatchdogScheduler,
-    sanitizeTelegramText,
     validateTaskWatchdogAutoRescheduleApproval
 };

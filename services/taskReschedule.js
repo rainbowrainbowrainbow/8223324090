@@ -515,8 +515,6 @@ module.exports = {
     canonicalTaskDue,
     classifyTaskActor,
     evaluateTaskPostponement,
-    kyivDateOnly,
-    loadVisibleTaskForReschedule,
     normalizeSourceSurface,
     rescheduleTask,
     undoQuickTodayReschedule,

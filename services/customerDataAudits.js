@@ -777,7 +777,6 @@ module.exports = {
     buildBusinessContextIsolationAuditQuery,
     buildCustomerDuplicateRiskQuery,
     buildLeadCustomerChildrenSyncAuditQuery,
-    buildCustomerSearchabilityTargetQuery,
     buildSearchabilityTerms,
     customerNamePrefix
 };

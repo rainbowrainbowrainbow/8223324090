@@ -46,6 +46,5 @@ async function insertHistory(queryable, { businessContext, action, username, dat
 module.exports = {
     historyActorFromRequest,
     insertHistory,
-    normalizeHistoryAction,
-    normalizeHistoryData
+    normalizeHistoryAction
 };

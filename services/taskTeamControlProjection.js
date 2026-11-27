@@ -194,9 +194,5 @@ function buildTaskTeamControlProjection(tasks = [], options = {}) {
 }
 
 module.exports = {
-    DUE_SOON_DAYS,
     buildTaskTeamControlProjection,
-    capacityByOwnerDate,
-    taskFacts,
-    workloadDate
 };

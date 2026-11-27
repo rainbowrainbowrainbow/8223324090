@@ -496,5 +496,4 @@ module.exports = {
     buildStaleMachineReport,
     summaryForStdout,
     protectionFlags,
-    safeEvidence
 };

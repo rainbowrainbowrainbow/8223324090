@@ -243,14 +243,10 @@ async function listTaskCompletionHistory(queryable, options = {}) {
 }
 
 module.exports = {
-    DEFAULT_COMPLETION_HISTORY_LIMIT,
-    MAX_COMPLETION_HISTORY_LIMIT,
-    completedTaskOrderExpression,
     decodeCompletionHistoryCursor,
     encodeCompletionHistoryCursor,
     listTaskCompletionHistory,
     normalizeCompletionHistoryLimit,
     normalizeTaskCabinetRows,
     queryTaskCompletionHistoryPage,
-    taskCabinetRowSelectSql
 };

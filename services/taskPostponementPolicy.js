@@ -135,10 +135,7 @@ module.exports = {
     buildPostponementExplanation,
     derivePostponementPriority,
     isPenaltyPostponementEvent,
-    minimumPriorityForPostponement,
-    normalizePostponementActorType,
     normalizePostponementCount,
-    normalizePostponementSourceSurface,
     normalizeTaskPriority,
     postponementAttentionLevel
 };

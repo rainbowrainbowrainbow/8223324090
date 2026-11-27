@@ -159,13 +159,7 @@ function buildTaskOverview(tasks = [], options = {}) {
 }
 
 module.exports = {
-    QUEUE_LIMIT,
-    REASON_DEFINITIONS,
-    REPEATED_POSTPONEMENT_COUNT,
-    STALE_DAYS,
-    WAITING_STALE_DAYS,
     buildTaskOverview,
     classifyTaskExceptions,
-    compareOverviewItems,
     taskDueDate
 };

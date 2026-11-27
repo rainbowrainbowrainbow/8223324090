@@ -104,9 +104,6 @@ function taskDrawerActionContract(task = {}, user = {}) {
     };
 }
 
-function taskDrawerActions(task = {}, user = {}) {
-    return taskDrawerActionContract(task, user).actions;
-}
 
 function taskControlMeta(task = {}) {
     const value = task.controlMeta || task.control_meta || {};
@@ -146,10 +143,8 @@ function withTaskDrawerContract(task = {}, user = {}, { authorReadOnly = false }
 
 module.exports = {
     SOURCE_LABELS,
-    safeSourceHref,
     taskControlMeta,
     taskDrawerActionContract,
-    taskDrawerActions,
     taskSourceSummary,
     withTaskDrawerContract
 };

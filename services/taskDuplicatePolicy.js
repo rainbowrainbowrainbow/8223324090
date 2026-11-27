@@ -147,9 +147,6 @@ module.exports = {
     TaskDuplicateError,
     activeDuplicateCanonicalFilterSql,
     canForceTaskDuplicate,
-    duplicateSourceAnchorSql,
     duplicateSignatureSql,
     findActiveDuplicateTask,
-    normalizeTaskDuplicatePayload,
-    normalizeTaskTitle
 };

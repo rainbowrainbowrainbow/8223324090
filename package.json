@@ -259,12 +259,11 @@
     "audit:checkbox:park-dar-production-config": "node scripts/plan-park-dar-production-config.js",
     "test:cashier-payment-state": "node tests/cashier-next-customer.test.js",
     "audit:hr-pay-readiness": "node scripts/audit-hr-pay-readiness.js",
-    "test:integration:customer-birthdays:isolated": "node scripts/run-isolated-postgres-tests.js customer-birthdays"
+    "test:integration:customer-birthdays:isolated": "node scripts/run-isolated-postgres-tests.js customer-birthdays",
+    "knip": "knip --config config/knip.js"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.75.0",
     "bcryptjs": "^3.0.3",
-    "chart.js": "^4.5.1",
     "compression": "^1.8.1",
     "cors": "^2.8.5",
     "exceljs": "^4.4.0",
@@ -286,7 +285,8 @@
   },
   "devDependencies": {
     "jsdom": "^29.1.1",
-    "jsqr": "^1.4.0"
+    "jsqr": "^1.4.0",
+    "knip": "6.48.0"
   },
   "overrides": {
     "exceljs": {

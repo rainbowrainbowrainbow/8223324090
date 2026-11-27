@@ -344,4 +344,4 @@ async function cleanupExpired() {
     }
 }
 
-module.exports = { getGreeting, getChatHistory, addChatMessage, cleanupExpired, gatherContext };
+module.exports = { getGreeting, getChatHistory, addChatMessage, cleanupExpired };

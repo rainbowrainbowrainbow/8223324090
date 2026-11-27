@@ -170,8 +170,6 @@ module.exports = {
     VALID_TASK_SUBCATEGORIES,
     CATEGORY_SUBCATEGORIES,
     PACK_STATUSES,
-    SOURCE_ENTITY_TYPES,
-    OPERATION_TASK_TEMPLATES,
     ORDER_OPERATION_PRESETS,
     normalizeTaskCategory,
     normalizeTaskSubcategory,

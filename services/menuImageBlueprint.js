@@ -76,7 +76,6 @@ function publicBurgerBlueprintUrl(blueprint) {
 module.exports = {
     BURGER_BLUEPRINT_INSTRUCTIONS,
     isBurgerMenuProduct,
-    normalizeBurgerBlueprint,
     readBurgerBlueprint,
     saveBurgerBlueprint,
     publicBurgerBlueprintUrl

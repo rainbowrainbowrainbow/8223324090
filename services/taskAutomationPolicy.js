@@ -198,12 +198,6 @@ function hasHumanCreatedSignal(row = {}) {
         );
 }
 
-function hasProtectedKpiSignal(row = {}) {
-    return isPrivateOrPersonal(row)
-        || isAiAssisted(row)
-        || isIntegration(row)
-        || isAttendance(row);
-}
 
 function hasAutomationMarkerScope(row = {}) {
     const sourceType = normalize(row.source_type);
@@ -298,23 +292,6 @@ function taskProtectedKpiSignalSql(taskAlias = 't') {
     )`;
 }
 
-function taskStrictMachineSignalSql(taskAlias = 't') {
-    return `(
-        COALESCE(${taskAlias}.created_by_user_id, 0) = 0
-        AND (
-            (
-                LOWER(COALESCE(${taskAlias}.source_type, '')) = 'booking'
-                AND LOWER(COALESCE(${taskAlias}.created_by, '')) = 'rule_engine'
-                AND LOWER(COALESCE(${taskAlias}.type, '')) IN ('auto', 'auto_complete')
-            )
-            OR (
-                LOWER(COALESCE(${taskAlias}.source_type, '')) = 'recurring'
-                AND LOWER(COALESCE(${taskAlias}.created_by, '')) = 'system'
-                AND LOWER(COALESCE(${taskAlias}.type, '')) = 'recurring'
-            )
-        )
-    )`;
-}
 
 function taskHumanCreatedSql(taskAlias = 't') {
     return `(
@@ -454,13 +431,7 @@ function historicalTaskWorkSql(taskAlias = 't') {
 
 module.exports = {
     historicalTaskWorkSql,
-    AI_SOURCE_TYPES,
-    AUTOMATION_MARKER_CREATORS,
-    AUTOMATION_MARKER_SOURCE_TYPES,
-    AUTOMATION_MARKER_TASK_TYPES,
     BOOKING_TERMINAL_STATUSES,
-    INTEGRATION_SOURCE_TYPES,
-    KPI_EXCLUDED_STATUSES,
     MACHINE_CREATORS,
     MACHINE_AUTO_ARCHIVE_POLICY_CANCELLED_BOOKING,
     MACHINE_LIFECYCLE_MARKER_VERSION,
@@ -468,7 +439,6 @@ module.exports = {
     MACHINE_TASK_TYPES,
     OWNER_ACCEPTANCE_ACTIONS,
     PRIVATE_OR_PERSONAL,
-    PROTECTED_SOURCE_TYPES,
     SYSTEM_ACTORS,
     TASK_AUTOMATION_POLICY_VERSION,
     TASK_AUTOMATION_MARKER_SCOPE_VERSION,
@@ -478,7 +448,6 @@ module.exports = {
     classifyTaskAutomation,
     classifyTaskKpiEligibility,
     hasAutomationMarkerScope,
-    hasProtectedKpiSignal,
     hasStrictMachineProvenance,
     isAiAssisted,
     isAttendance,
@@ -500,7 +469,6 @@ module.exports = {
     taskMachineSignalSql,
     taskOwnerAcceptedSql,
     taskProtectedKpiSignalSql,
-    taskStrictMachineSignalSql,
     taskTerminalExclusionSql,
     taskWorkloadDateSql
 };

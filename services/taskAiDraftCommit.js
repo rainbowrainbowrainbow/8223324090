@@ -590,14 +590,8 @@ async function commitTaskAiDraft(input = {}, options = {}) {
 }
 
 module.exports = {
-    ACCEPTED_FIELD_ALLOWLIST,
-    AI_DRAFT_COMMIT_SOURCE_SURFACE,
-    AI_DRAFT_COMMIT_SOURCE_TYPE,
     commitTaskAiDraft,
     hashCommitRequest,
     legacyTaskTextRef,
-    normalizeAcceptedFieldMask,
-    normalizeEditedFieldMask,
-    normalizeFinalDraft,
     normalizeIdempotencyKey
 };

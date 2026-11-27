@@ -43,4 +43,4 @@ async function assertAfishaLinesFree(client, { date, time, duration, lineIds, ex
     }
 }
 
-module.exports = { assertAfishaLinesFree, overlaps };
+module.exports = { assertAfishaLinesFree };

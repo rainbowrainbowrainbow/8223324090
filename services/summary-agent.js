@@ -252,5 +252,4 @@ module.exports = {
     summarizeAll,
     getUsageStats,
     getRecentSummaries,
-    trackUsage
 };

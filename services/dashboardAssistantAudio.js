@@ -153,6 +153,4 @@ module.exports = {
     synthesizeDashboardSpeech,
     normalizeVoice,
     normalizeSpeechText,
-    uniqueSpeechModels,
-    speechModelSupportsInstructions
 };

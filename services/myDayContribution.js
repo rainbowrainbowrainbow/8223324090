@@ -359,7 +359,6 @@ module.exports = {
     MAX_RANGE_DAYS,
     addDays,
     buildMyDayContribution,
-    habitCompleted,
     normalizeRange,
     summarizeContribution
 };

@@ -263,10 +263,7 @@ async function runAttendanceReviewTasks(options = {}) {
 }
 
 module.exports = {
-    ART_DIRECTOR_DEPARTMENTS,
-    ATTENDANCE_REVIEW_CUTOFF_MINUTES,
     ATTENDANCE_REVIEW_SOURCE_TYPE,
-    attendanceReviewRecipients,
     attendanceReviewWindow,
     formatAttendanceReviewDescription,
     mergeAttendanceArrivals,

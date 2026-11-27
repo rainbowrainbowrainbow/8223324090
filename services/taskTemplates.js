@@ -85,4 +85,4 @@ function generateTasksForEvent(event, createdBy) {
     return tasks;
 }
 
-module.exports = { TASK_TEMPLATES, KEYWORD_TASKS, generateTasksForEvent };
+module.exports = { generateTasksForEvent };

@@ -451,9 +451,7 @@ module.exports = {
     auditGraduationBusinessSeedFiles,
     businessSpecificServiceFields,
     buildGraduationBusinessSeedSql,
-    detectGraduationSeedSourceDrift,
     formatGraduationBusinessSeedSql,
     formatGraduationBusinessReadinessMarkdown,
-    loadGraduationSeedFiles,
     missingPackageServices
 };

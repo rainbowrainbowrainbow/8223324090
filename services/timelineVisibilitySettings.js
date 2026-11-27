@@ -252,10 +252,8 @@ function timelineVisibilityResponse(value = {}, context, options = {}) {
 
 module.exports = {
   TIMELINE_VISUAL_BLOCKS,
-  TIMELINE_VISUAL_VARIABLES,
   mergeTimelineVisibilityPayload,
   normalizeTimelineVisibilityView,
   sanitizeTimelineVisibilityPayload,
-  timelineVisibilityId,
   timelineVisibilityResponse,
 };

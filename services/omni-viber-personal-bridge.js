@@ -544,5 +544,5 @@ function createService(deps = {}) {
   return { heartbeat, ingest, enqueue, assertSendCapable, pull, commandResult, status };
 }
 
-module.exports = { PROTOCOL_VERSION, BridgeError, bridgeScope, scopeFromRuntime, authenticate, validateEvent,
+module.exports = { BridgeError, bridgeScope, scopeFromRuntime, authenticate, validateEvent,
   payloadHash, conversationExternalId, sanitizeCapabilities, bridgeRuntimeHealth, createService };

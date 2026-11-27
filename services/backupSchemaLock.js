@@ -89,7 +89,6 @@ async function unlockSchemaMigrations(client) {
 }
 
 module.exports = {
-    DEFAULT_SCHEMA_LOCK_TIMEOUT_MS,
     lockBackupSchemaSnapshot,
     lockBackupSchemaSnapshotSession,
     lockSchemaMigrations,

@@ -2050,7 +2050,6 @@ async function recordAttendanceClockOut(db, input = {}) {
 module.exports = {
     HR_ATTENDANCE_GRACE_MINUTES,
     HR_ATTENDANCE_BREAK_POLICY,
-    HR_ATTENDANCE_COMPENSATION_SNAPSHOT_VERSION,
     HR_ATTENDANCE_PLAN_SOURCES,
     allocateAttendanceToSegments,
     actualWorkedMinutes,
@@ -2071,7 +2070,6 @@ module.exports = {
     finalizeAttendanceCompensationSnapshot,
     hydrateAttendanceRecords,
     isAttendanceRecordOpen,
-    normalizeHrSettlementMode,
     parseAttendanceCompensationSnapshot,
     paidMinutesAfterSegmentBreak,
     plannedShiftWorkedMinutes,

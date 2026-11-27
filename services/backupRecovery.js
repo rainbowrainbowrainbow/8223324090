@@ -911,7 +911,6 @@ function decryptBackupArtifact(envelope, passphrase) {
 }
 
 module.exports = {
-    BackupRecoveryError,
     assertRestoreConfirmation,
     configureRestoreTimeouts,
     createRestorePlan,

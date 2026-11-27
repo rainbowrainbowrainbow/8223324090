@@ -41,4 +41,4 @@ const settingsCache = new QueryCache(120000); // 2 min TTL
 const linesCache = new QueryCache(30000);     // 30s TTL
 const productsCache = new QueryCache(300000); // 5 min TTL
 
-module.exports = { QueryCache, settingsCache, linesCache };
+module.exports = { settingsCache };

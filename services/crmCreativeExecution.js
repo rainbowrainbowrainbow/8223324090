@@ -88,4 +88,4 @@ function createCreativeExecutor(options = {}) {
     };
 }
 
-module.exports = { createCreativeExecutor, creativePrompt, requireCreativeImageModel };
+module.exports = { createCreativeExecutor, requireCreativeImageModel };

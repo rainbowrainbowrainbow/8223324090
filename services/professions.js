@@ -1009,7 +1009,6 @@ module.exports = {
     staffProfessionKeys,
     loadAssignedStaffProfessionKeys,
     staffHasProfession,
-    validateStaffProfessionAssignments,
     resolveStaffProfessionAssignments,
     resolveStaffProfessionAssignment,
     normalizeProfessionCatalogRow,

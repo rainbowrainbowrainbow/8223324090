@@ -872,6 +872,4 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
 module.exports = {
     commitTaskAiDraftBundle,
     readTaskBundleForUser,
-    normalizeBundleTask,
-    normalizeBundleTasks
 };

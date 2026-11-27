@@ -142,7 +142,6 @@ function withTaskDrawerContract(task = {}, user = {}, { authorReadOnly = false }
 }
 
 module.exports = {
-    SOURCE_LABELS,
     taskControlMeta,
     taskDrawerActionContract,
     taskSourceSummary,

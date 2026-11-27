@@ -33,13 +33,6 @@ function invalidate(key) {
 /**
  * Invalidate all keys matching a prefix.
  */
-function invalidatePrefix(prefix) {
-    for (const key of _cache.keys()) {
-        if (key.startsWith(prefix)) {
-            _cache.delete(key);
-        }
-    }
-}
 
 /**
  * Clear entire cache.
@@ -76,4 +69,4 @@ setInterval(() => {
     }
 }, CLEANUP_INTERVAL).unref();
 
-module.exports = { getCached, invalidate, invalidatePrefix, clearAll, stats };
+module.exports = { getCached, invalidate, clearAll, stats };

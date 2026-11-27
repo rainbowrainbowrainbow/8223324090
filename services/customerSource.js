@@ -64,10 +64,6 @@ function getCustomerSourceLabel(value) {
     return CUSTOMER_SOURCE_LABELS[source] || CUSTOMER_SOURCE_LABELS.other;
 }
 
-function getCustomerSourceAliases(value) {
-    const source = normalizeCustomerSource(value, { unknownAsNull: false }) || 'unknown';
-    return CUSTOMER_SOURCE_ALIASES[source] || [source];
-}
 
 function quoteSql(value) {
     return `'${String(value).replace(/'/g, "''")}'`;
@@ -81,10 +77,7 @@ function customerSourceSqlExpression(column = 'source') {
 }
 
 module.exports = {
-    CUSTOMER_SOURCE_LABELS,
-    CUSTOMER_SOURCE_ALIASES,
     normalizeCustomerSource,
     getCustomerSourceLabel,
-    getCustomerSourceAliases,
     customerSourceSqlExpression
 };

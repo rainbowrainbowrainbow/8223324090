@@ -975,12 +975,6 @@ async function emitTaskCreatedNotificationOutboxEvent(task = {}, options = {}) {
 }
 
 module.exports = {
-    DEFAULT_NOTIFICATION_OUTBOX_LIMIT,
-    FUTURE_TASK_NOTIFICATION_EVENT_TYPES,
-    INITIAL_TASK_NOTIFICATION_EVENT_TYPES,
-    MAX_NOTIFICATION_OUTBOX_LIMIT,
-    NOTIFICATION_OUTBOX_STATUSES,
-    TASK_NOTIFICATION_EVENT_TYPES,
     ackNotificationOutboxEvent,
     buildTaskNotificationPayload,
     claimNotificationOutboxEvent,
@@ -998,5 +992,4 @@ module.exports = {
     skipNotificationOutboxEvent,
     stableJsonStringify,
     toNotificationOutboxApiEvent,
-    toNotificationOutboxDebugItem
 };

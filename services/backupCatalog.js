@@ -603,7 +603,6 @@ async function readMigrationState(client) {
 }
 
 module.exports = {
-    BackupCatalogError,
     buildRestoreOrder,
     compareBackupRows,
     configureBackupSession,
@@ -615,5 +614,4 @@ module.exports = {
     readTableBackupFootprint,
     readTableRows,
     sha256,
-    stableJson
 };

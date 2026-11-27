@@ -269,10 +269,7 @@ async function buildStaffScheduleWorkbookBuffer(payload = {}) {
 
 module.exports = {
     MAX_DATES,
-    MAX_SHEETS,
     MAX_STAFF_ROWS,
     safeWorksheetName,
-    normalizeStaffScheduleWorkbookPayload,
-    buildStaffScheduleWorkbook,
     buildStaffScheduleWorkbookBuffer
 };

@@ -156,4 +156,4 @@ function calculatePlan(versionInput, input = {}) {
     return { version, inputs, ...result, breakEvenParticipants };
 }
 
-module.exports = { CostingInputError, normalizeVersion, normalizeInputs, calculatePlan };
+module.exports = { CostingInputError, normalizeVersion, calculatePlan };

@@ -541,8 +541,6 @@ module.exports = {
     issueStaffResource,
     listStaffResourceOptions,
     listStaffResources,
-    normalizeStaffResourceKind,
-    normalizeStaffResourceListFilter,
     returnStaffResource,
     staffResourceAssignmentMeta,
     transitionStaffResource

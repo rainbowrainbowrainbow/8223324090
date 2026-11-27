@@ -287,7 +287,6 @@ async function sendFlySms(runtime = {}, phone, text) {
 
 
 module.exports = {
-  FLYSMS_DEFAULT_API_URL,
   listSmsProviderDefinitions,
   getSmsProviderDefinition,
   normalizeSmsProvider,
@@ -296,7 +295,6 @@ module.exports = {
   smsEnvConfig,
   validateSmsRuntime,
   verifySmsRuntime,
-  normalizePhone,
   sendSmsViaProvider,
   getTurboSmsDeliveryStatus,
 };

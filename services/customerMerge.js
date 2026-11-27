@@ -278,5 +278,5 @@ async function previewCustomerMerge(pool, primaryId, duplicateId, businessContex
     } finally { client.release(); }
 }
 
-module.exports = { CustomerMergeError, CUSTOMER_MERGE_RELATIONS, validateMergeInput, mergeIdentities,
-    customerProfileConflicts, readMergeSchema, buildCustomerMergePlan, publicCustomerMergePlan, previewCustomerMerge };
+module.exports = { CustomerMergeError, validateMergeInput, mergeIdentities,
+    customerProfileConflicts, readMergeSchema, publicCustomerMergePlan, previewCustomerMerge };

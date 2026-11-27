@@ -93,4 +93,4 @@ async function previewCanonicalSource(db, businessContext, raw) {
         postingAllowed: false, blockers };
 }
 
-module.exports = { SourceLinkInputError, normalizeRequest, previewCanonicalSource };
+module.exports = { SourceLinkInputError, previewCanonicalSource };

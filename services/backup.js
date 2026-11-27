@@ -288,9 +288,6 @@ async function generateBackupArtifact() {
     }
 }
 
-async function generateBackupBundleText() {
-    return JSON.stringify(await generateBackupArtifact());
-}
 
 function sendTelegramDocument({ bodyBuffer, boundary }) {
     return new Promise((resolve, reject) => {
@@ -385,7 +382,6 @@ async function sendBackupToTelegram({ passphrase = process.env.BACKUP_ENCRYPTION
 module.exports = {
     BACKUP_GENERATION_ERROR_CODES,
     generateBackupArtifact,
-    generateBackupBundleText,
     preflightBackupPayload,
     sendBackupToTelegram
 };

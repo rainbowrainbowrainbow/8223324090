@@ -1362,45 +1362,6 @@ async function updateReplyExpectationSla(conversationId, replySlaAt) {
 // 3. saveOutboundMessage
 // ---------------------------------------------------------------------------
 
-async function saveOutboundMessage(conversationId, content, contentType, meta) {
-  let client;
-  try {
-    client = await pool.connect();
-    await client.query('BEGIN');
-
-    const msg = await client.query(
-      `INSERT INTO conversation_messages
-         (conversation_id, direction, sender_name, content, content_type, ai_generated, meta, created_at)
-       VALUES ($1, 'outbound', 'system', $2, $3, $4, $5, NOW())
-       RETURNING *`,
-      [
-        conversationId,
-        content,
-        contentType || 'text',
-        meta && meta.aiGenerated ? true : false,
-        meta ? JSON.stringify(meta) : '{}',
-      ]
-    );
-
-    await client.query(
-      `UPDATE conversations
-         SET last_message_at = NOW(),
-             last_outbound_at = NOW(),
-             updated_at = NOW()
-       WHERE id = $1`,
-      [conversationId]
-    );
-
-    await client.query('COMMIT');
-    return mapMessageRow(msg.rows[0]);
-  } catch (e) {
-    if (client) await client.query('ROLLBACK').catch(() => {});
-    logger.error('saveOutboundMessage error', e);
-    throw e;
-  } finally {
-    if (client) client.release();
-  }
-}
 
 function durableSendTruthValues(sendTruth, options = {}) {
   const deliveryStatus = options.deliveryStatus || deliveryStatusFromSendTruth(sendTruth);
@@ -2283,10 +2244,8 @@ module.exports = {
   findOrCreateConversation,
   saveInboundMessage,
   saveBotMilestoneMessage,
-  saveOutboundMessage,
   processInboundMessage,
   processBotMilestone,
-  sendToChannel,
   getConversations,
   getMessages,
   sendManualMessage,
@@ -2294,8 +2253,6 @@ module.exports = {
   sendWhatsAppTemplateMessage,
   saveMessageSendTruth,
   applyProviderLifecycleReceipt,
-  setReplyExpectation,
-  clearReplyExpectationForMessage,
   reassignReplyExpectationOwner,
   findActiveReplyOwnerUser,
   listReplyOwnerCandidates,
@@ -2306,14 +2263,9 @@ module.exports = {
   getQuickReplies,
   resolveConversationContext,
   notifyCRM,
-  mapConversationRow,
   mapMessageRow,
   buildSendTruth,
   normalizeProviderResult,
-  isSendCapableChannel,
   isActiveWaitingReply,
-  REPLY_OWNER_ASSIGNABLE_ROLES,
   INBOUND_ONLY_CHANNELS,
-  DELIVERY_STATUS,
-  ChannelUnavailableError,
 };

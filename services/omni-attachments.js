@@ -169,5 +169,5 @@ async function preserveInbound(message, normalized, businessContext) {
   return { ...message, ...require('./omni-hub').mapMessageRow(result.rows[0]) };
 }
 
-module.exports = { MAX_BYTES, capabilities, validateFile, conversation, metadata, storeFile, getFile,
-  fileForMessage, providerUrl, grantedFile, sendAttachment, publicAddress, downloadRemote, preserveInbound };
+module.exports = { capabilities, validateFile, conversation, metadata, storeFile, getFile,
+  fileForMessage, grantedFile, sendAttachment, publicAddress, downloadRemote, preserveInbound };

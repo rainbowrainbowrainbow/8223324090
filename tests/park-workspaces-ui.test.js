@@ -46,7 +46,7 @@ async function harness(route = '/certificates/new', options = {}) {
         w.getPermissionLifecycle = () => ({ status: 'ready' });
         w.canAccessPage = () => true;
         w.Sidebar = { NAV_ITEMS: [], allowsBusinessNavigation: () => true };
-        w.eval(ui.slice(ui.indexOf('async function initFormerTabLinks(')));
+        w.eval(ui.slice(ui.indexOf('function canOpenWorkspacePage(')));
         w.eval(read('js/guidebook-materials.js') + '\n' + read('js/art-director-page.js'));
     } else {
         w.eval(read('js/certificates-page.js'));

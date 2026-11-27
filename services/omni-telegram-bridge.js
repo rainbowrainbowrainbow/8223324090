@@ -59,6 +59,5 @@ async function sendTelegramBridgeMessage(externalId, text, options = {}) {
 }
 
 module.exports = {
-  bridgeConfigured,
   sendTelegramBridgeMessage,
 };

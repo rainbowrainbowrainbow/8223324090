@@ -676,14 +676,9 @@ function mapSkipRow(row) {
 
 module.exports = {
     assertRecurringTemplateTicketSafe,
-    shouldRunOnDate,
-    isCorrectWeekInterval,
-    matchesMonthlyRule,
-    resolveLineByName,
     generateBookingsForTemplate,
     generateAllRecurringBookings,
     mapTemplateRow,
     mapSkipRow,
     logSkip,
-    formatTime
 };

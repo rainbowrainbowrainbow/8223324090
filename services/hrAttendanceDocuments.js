@@ -188,17 +188,6 @@ function normalizedCategoryIds(input) {
     return ids;
 }
 
-function mapLegacyDocumentDefaultTexts(templateId, texts = {}) {
-    if (!texts || typeof texts !== 'object' || Array.isArray(texts)) return texts;
-    const defaults = DOCUMENT_TEXT_DEFAULTS[templateId];
-    const legacyDefaults = LEGACY_DOCUMENT_TEXT_DEFAULTS[templateId];
-    if (!defaults || !legacyDefaults) return { ...texts };
-    const mapped = { ...texts };
-    for (const key of ['monthlyInstruction', 'footerNote']) {
-        if (mapped[key] === legacyDefaults[key]) mapped[key] = defaults[key];
-    }
-    return mapped;
-}
 
 function normalizeDocumentRequest(payload = {}) {
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
@@ -582,16 +571,6 @@ async function buildHrAttendanceDocumentSnapshot(db, payload, options = {}) {
     }, options);
 }
 
-function listHrAttendanceDocumentCategories() {
-    return PRINT_CATEGORY_DEFINITIONS.map(item => ({
-        id: item.id,
-        label: item.label,
-        professionKeys: [...item.professionKeys],
-        dailyOrder: item.dailyOrder,
-        monthlyPage: item.monthlyPage,
-        monthlyOrder: item.monthlyOrder
-    }));
-}
 
 function deepFreeze(value) {
     if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
@@ -602,19 +581,12 @@ function deepFreeze(value) {
 
 module.exports = {
     CONTRACT_VERSION,
-    DAILY_MODES,
     DOCUMENT_TEXT_DEFAULTS,
-    DOCUMENT_TEMPLATES,
     FONT_PRESET,
     LEGACY_DOCUMENT_TEXT_DEFAULTS,
     MONTH_GRID_NUMERIC_LEGEND,
     PRINT_CATEGORY_DEFINITIONS,
-    ROSTER_MODES,
     buildHrAttendanceDocumentSnapshot,
     buildHrAttendanceDocumentSnapshotFromRows,
-    documentInputError,
-    isStaffRowEligibleForAttendanceDocument,
-    listHrAttendanceDocumentCategories,
-    mapLegacyDocumentDefaultTexts,
     normalizeDocumentRequest
 };

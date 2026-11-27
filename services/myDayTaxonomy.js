@@ -280,7 +280,6 @@ async function loadTaskClassifications(queryable, userId, taskIds = []) {
 
 module.exports = {
     MAX_IMPACTS_PER_TASK,
-    assertNoDeprecatedTaskTags,
     classificationFingerprint,
     classificationImpactIds,
     createTaxonomy,

@@ -332,8 +332,6 @@ async function buildBusinessLiveCounters(pool, user, scope) {
 }
 
 module.exports = {
-    URGENT_TASK_MOVEMENT_ACTION_TYPES,
     buildBusinessLiveCounters,
     businessScopeMeta,
-    selectedBusinessContexts
 };

@@ -449,7 +449,6 @@ module.exports = {
     buildUserMessage,
     classifyMyDayTask,
     extractOpenAIResponseObject,
-    extractOpenAIResponseText,
     findExplicitImpactIds,
     mergeExplicitImpactIds,
     myDayClassificationDiagnostics,

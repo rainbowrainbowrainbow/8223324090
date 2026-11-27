@@ -166,5 +166,4 @@ function buildAIProductContextPrompt(productContext = {}) {
 module.exports = {
     selectAIProductContext,
     buildAIProductContextPrompt,
-    normalizePageKey
 };

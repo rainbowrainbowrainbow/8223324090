@@ -745,9 +745,7 @@ function buildRosterCsv(children) {
 module.exports = {
     DEFAULT_DIPLOMA_TEMPLATE,
     WISH_POOLS,
-    escHtml,
     toCamelTemplate,
-    splitName,
     suggestGenderFromName,
     normalizeChildInput,
     mapChildRow,

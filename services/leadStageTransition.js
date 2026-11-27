@@ -244,7 +244,5 @@ module.exports = {
   LEAD_PIPELINE_STAGE_ORDER,
   VALID_LEAD_PIPELINE_STAGES,
   LeadStageTransitionError,
-  normalizeLeadStage,
-  leadStatusForStage,
   transitionLeadStage
 };

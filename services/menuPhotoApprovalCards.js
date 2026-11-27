@@ -503,8 +503,6 @@ function createMenuPhotoApprovalCallbackDryRunHandler() {
 module.exports = {
     ACTION,
     STATUS,
-    TERMINAL_STATUSES,
-    TRANSITIONS,
     buildCallbackData,
     buildMenuPhotoApprovalPreview,
     createMenuPhotoApprovalCallbackDryRunHandler,

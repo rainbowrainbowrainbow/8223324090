@@ -835,7 +835,6 @@ async function processMissedSlots(options = {}) {
 }
 
 module.exports = {
-    KYIV_TIME_ZONE,
     addDays,
     attachTaskSchedule,
     canonicalTaskOrderSql,

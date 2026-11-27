@@ -623,11 +623,9 @@ async function buildHrAttendanceDocumentPdfBuffer(snapshot) {
 }
 
 module.exports = {
-    COLORS,
     DAILY_LAYOUT,
     MONTH_LAYOUT,
     buildHrAttendanceDocumentPdfBuffer,
     hrAttendanceDocumentPdfFilename,
     paginateHrAttendanceDocument,
-    resolveFonts
 };

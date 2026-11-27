@@ -253,7 +253,6 @@ async function callMyDayTaskOpenAIResponses(request = {}, options = {}) {
 }
 
 module.exports = {
-    DEFAULT_TIMEOUT_MS,
     MY_DAY_TASK_AI_MODEL,
     OPENAI_OFFICIAL_ORIGIN,
     callMyDayTaskOpenAIResponses,

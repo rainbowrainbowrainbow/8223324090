@@ -507,7 +507,6 @@ module.exports = {
     listStaffScheduleCategoryContract,
     loadStaffDisplayGroupContext,
     normalizeStaffCompanyStructurePayload,
-    normalizeStaffDisplayGroupKey,
     professionSchedulePlacement,
     resolveStaffDisplayGroup,
     staffProfessionCategoryRule,

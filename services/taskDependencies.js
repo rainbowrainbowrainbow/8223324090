@@ -172,6 +172,5 @@ module.exports = {
     emptyDependencyState,
     listTaskDependencies,
     loadTaskDependencyStates,
-    removeTaskDependency,
-    taskId
+    removeTaskDependency
 };

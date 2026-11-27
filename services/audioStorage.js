@@ -377,7 +377,6 @@ module.exports = {
     MAX_SOUND_UPLOAD_BYTES,
     SOUND_STORAGE_BUCKET,
     buildSoundUploadBlobFallbackHandler,
-    checksumSha256,
     downloadAudioFromUrlWithMetadata,
     makeAudioFilename,
     normalizeSoundUploadRequestPath,

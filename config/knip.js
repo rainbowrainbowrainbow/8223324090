@@ -85,6 +85,10 @@ module.exports = {
         'tests/browser/{cashier-catalog-layout,cashier-next-customer,shared-test-day}-browser-smoke.js',
         'tests/browser/{profile-employee-cabinet,r10a-recovery-login-ui,redirect-regression-gate,timeline-afisha-dual}-browser-smoke.js',
         'tests/browser/{business-membership-editor,business-profile-access}.spec.js',
+        // Standalone browser checks verified with local synthetic fixtures.
+        'tests/browser/baseline-access-navigation-browser-smoke.js',
+        'tests/browser/legacy-containment.spec.js',
+        'tests/browser/login-signal.browser.cjs',
         'db/seeds/training_knowledge_base.js'
     ])]
 };

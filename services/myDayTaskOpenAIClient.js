@@ -265,6 +265,5 @@ module.exports = {
     parseAiJson,
     resolveOpenAIResponsesBase,
     resolveTimeoutMs,
-    shouldBlockRealOpenAIInTests,
-    stripJsonFence
+    shouldBlockRealOpenAIInTests
 };

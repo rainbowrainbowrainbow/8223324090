@@ -343,7 +343,6 @@ module.exports = {
     CHAT_UPLOAD_TYPES,
     MAX_CHAT_UPLOAD_BYTES,
     buildChatUploadBlobFallbackHandler,
-    checksumSha256,
     normalizeChatUploadRequestPath,
     prepareChatUploadBlob,
     publicChatUploadUrl,

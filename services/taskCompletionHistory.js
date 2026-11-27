@@ -247,6 +247,5 @@ module.exports = {
     encodeCompletionHistoryCursor,
     listTaskCompletionHistory,
     normalizeCompletionHistoryLimit,
-    normalizeTaskCabinetRows,
     queryTaskCompletionHistoryPage,
 };

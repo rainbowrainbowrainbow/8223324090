@@ -1484,6 +1484,12 @@ function authBootstrapUsersShareIdentity(left, right) {
     return Boolean(leftUsername && rightUsername && leftUsername === rightUsername);
 }
 
+function hasNewerSharedBusinessContext(runtimeUser, storedUser) {
+    return Boolean(storedUser?.activeBusinessContext
+        && storedUser.activeBusinessContext !== runtimeUser?.activeBusinessContext
+        && authBootstrapUsersShareIdentity(storedUser, runtimeUser));
+}
+
 function captureAuthBootstrapSession(user = null) {
     if (typeof captureApiAuthSessionSnapshot === 'function') {
         return captureApiAuthSessionSnapshot(user);
@@ -3180,7 +3186,8 @@ function getRoleShellStateFingerprint(state, user = AppState.currentUser) {
 
 function syncWorkingRoleToCurrentUser(state = getWorkingRoleState()) {
     const user = AppState.currentUser;
-    if (!user) return;
+    // A peer can publish the new business before this tab handles its storage event.
+    if (!user || hasNewerSharedBusinessContext(user, readAuthBootstrapStoredUser())) return;
     user.activeRole = state.activeRole || null;
     user.workingRole = state.activeRole || null;
     user.effectiveRole = state.effectiveRole || null;
@@ -5152,6 +5159,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     return;
                 }
+                if (hasNewerSharedBusinessContext(user, saved)) return;
                 user = { ...saved, ...user };
                 AppState.currentUser = user;
                 localStorage.setItem('pzp_current_user', JSON.stringify(user));

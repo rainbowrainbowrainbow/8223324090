@@ -13,10 +13,13 @@ const SIDEBAR_SOURCE = fs.readFileSync(path.join(ROOT, 'js', 'components', 'side
 const DASHBOARD_SOURCE = fs.readFileSync(path.join(ROOT, 'js', 'dashboard-page.js'), 'utf8');
 
 function roleHydrationSource() {
+    const storageStart = AUTH_SOURCE.indexOf('function readAuthBootstrapStoredUser(');
+    const storageEnd = AUTH_SOURCE.indexOf('function captureAuthBootstrapSession(', storageStart);
     const start = AUTH_SOURCE.indexOf('function getWorkingRoleState(');
     const end = AUTH_SOURCE.indexOf('const RolePreview =', start);
+    assert.ok(storageStart >= 0 && storageEnd > storageStart, 'business context storage helpers must exist');
     assert.ok(start >= 0 && end > start, 'working-role hydration source block must exist');
-    return AUTH_SOURCE.slice(start, end);
+    return AUTH_SOURCE.slice(storageStart, storageEnd) + AUTH_SOURCE.slice(start, end);
 }
 
 function loadWorkingRoleHarness() {
@@ -35,7 +38,7 @@ function loadWorkingRoleHarness() {
         ROLE_PREVIEW_STORAGE_KEY: 'role-preview-storage',
         ROLE_WORKING_STORAGE_KEY: 'working-role',
         ROLE_WORKING_OWNER_KEY: 'working-role-owner',
-        localStorage: { setItem() {}, removeItem() {} },
+        localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
         sessionStorage: { removeItem() {} },
         document: {
             body,

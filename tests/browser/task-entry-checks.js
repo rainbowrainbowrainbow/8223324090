@@ -524,14 +524,31 @@ async function verifyTaskEntry({ origin, session, evidence }) {
             console.log(`Task entry ${engine}: native reload canceled and both drafts recovered.`);
             await dialog.getByRole('button', { name: 'Відкинути зміни та закрити' }).click();
             await dialog.waitFor({ state: 'hidden' });
+            // Closing the dialog and leaving its history entry are separate events.
+            await page.waitForURL(url => url.pathname === '/profile' && url.searchParams.get('tab') === 'myday'
+                && url.searchParams.get('businessContext') === 'event_genix' && !url.searchParams.has('open'));
             await navigate(origin + href);
             await dialog.getByRole('heading', { name: parkTitle }).waitFor();
+            await dialog.locator('[data-dialog-edit]').waitFor();
+            assert.notEqual(await dialog.getAttribute('data-dirty'), 'true', 'discarded drafts must not reopen');
             await openSchedule();
             await dialog.locator('[data-dialog-schedule] [name=date]').fill(dirtyDate);
+            assert.equal(await dialog.getAttribute('data-dirty'), 'true', 'the second transition starts with a date-only draft');
+            await settleBootstrapReads(page);
             const dateTransitionTab = await context.newPage();
             try {
                 await dateTransitionTab.goto(origin + darLink, { waitUntil: 'domcontentloaded' });
-                await dateTransitionTab.locator('.park-task-dialog[open]').getByRole('heading', { name: darTitle, exact: true }).waitFor();
+                await dateTransitionTab.locator('.park-task-dialog[open]').getByRole('heading', { name: darTitle, exact: true }).waitFor().catch(async error => {
+                    console.log('Date-only draft transition:', await dateTransitionTab.evaluate(() => ({
+                        path: location.pathname + location.search,
+                        activeBusiness: window.AppState?.currentUser?.activeBusinessContext,
+                        dialogTitle: document.querySelector('.park-task-dialog[open] h2')?.textContent,
+                        bootstrapFailure: typeof getApiAuthSessionFailure === 'function' ? getApiAuthSessionFailure()?.reason : null
+                    })).catch(() => null));
+                    await dateTransitionTab.screenshot({ path: path.join(evidence, `task-entry-date-transition-failure-${engine}.png`),
+                        animations: 'disabled', timeout: 5000 }).catch(() => {});
+                    throw error;
+                });
                 const recovery = page.getByRole('dialog', { name: 'Активний бізнес змінився' });
                 await recovery.waitFor();
                 await recovery.getByRole('button', { name: 'Відкинути чернетку та перейти' }).waitFor();

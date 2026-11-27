@@ -346,7 +346,10 @@ function loadAutoFillHarness(options = {}) {
         renderAuthSessionBootstrapError: options => calls.push(['renderAuthSessionBootstrapError', options])
     };
     vm.createContext(context);
-    vm.runInContext(extractAuthFunction('_autoFillUser'), context, { filename: 'js/auth.js' });
+    vm.runInContext([
+        'readAuthBootstrapStoredUser', 'authBootstrapUsersShareIdentity', 'hasNewerSharedBusinessContext',
+        'syncWorkingRoleToCurrentUser', '_autoFillUser'
+    ].map(extractAuthFunction).join('\n'), context, { filename: 'js/auth.js' });
     return {
         context,
         calls,
@@ -2441,6 +2444,26 @@ test('auto-fill never overwrites a newer account stored by another tab', () => {
     assert.equal(harness.calls.some(call => call[0] === 'setApiAuthSessionFailure'), true);
     assert.equal(harness.calls.some(call => call[0] === 'showAuthenticatedPageShell'), true);
     assert.equal(harness.calls.some(call => call[0] === 'renderAuthSessionBootstrapError'), true);
+});
+
+test('role and avatar refreshes cannot republish a shared business switch before its storage event', () => {
+    for (const [previous, next] of [['event_genix', 'dar'], ['dar', 'event_genix']]) {
+        const user = { id: 23, username: 'shared.actor', role: 'manager', activeBusinessContext: previous };
+        const incoming = { ...user, activeBusinessContext: next };
+        const { context, calls, store } = loadAutoFillHarness({
+            appUser: user, cachedUser: incoming, permissionStatus: 'ready', runtimeReady: true
+        });
+        store.set('pzp_auth_session_generation', 'peer-generation');
+        store.set('pzp_access_token', 'fixture-access');
+        const sharedSnapshot = Array.from(store);
+
+        context.syncWorkingRoleToCurrentUser({ activeRole: 'manager' });
+        assert.deepEqual(Array.from(store), sharedSnapshot);
+        context._autoFillUser();
+        assert.deepEqual(Array.from(store), sharedSnapshot);
+        assert.equal(context.AppState.currentUser, user);
+        assert.deepEqual(calls, []);
+    }
 });
 
 test('business profile hydration cannot publish after the auth session changes', async () => {

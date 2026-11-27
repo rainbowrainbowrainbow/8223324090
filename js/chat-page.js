@@ -599,6 +599,14 @@
     function _setOmniMode(mode, options) {
         options = options || {};
         mode = ['inbox', 'channels', 'health'].includes(mode) ? mode : 'inbox';
+        if (mode !== 'inbox' && _chatScopeReady && canOpenWorkspacePage('/omni')) {
+            var target = new URL('/omni', window.location.origin);
+            target.searchParams.set('panel', mode === 'channels' ? 'accounts' : 'health');
+            if (options.focusChannel) target.searchParams.set('channel', options.focusChannel);
+            if (options.fromChatLink) window.location.replace(target.href);
+            else window.location.assign(target.href);
+            return;
+        }
         _omniWorkspace.mode = mode;
         var layout = document.querySelector('.chat-layout');
         if (layout) layout.setAttribute('data-omni-mode', mode);
@@ -655,6 +663,7 @@
         var mode = launch.panel === 'health' ? 'health' : 'channels';
         _setOmniMode(mode, {
             force: options.force === true,
+            fromChatLink: true,
             focusChannel: launch.channel
         });
         return true;
@@ -1094,9 +1103,6 @@
             });
         }
         _setOmniMode('inbox', { skipRender: true });
-        if (!_applyOmniLaunchParams({ force: true })) {
-            _setOmniMode('inbox', { skipRender: true });
-        }
         window.addEventListener('crm:alert-navigate', function () {
             _applyOmniLaunchParams({ force: false });
         });
@@ -1401,6 +1407,7 @@
         _chatBootStep('shell:ready');
         _chatBoundScope = _chatScopeKey();
         _chatScopeReady = true;
+        _applyOmniLaunchParams({ force: true });
         _initAssistantReturnBridge();
 
         // Connect WebSocket

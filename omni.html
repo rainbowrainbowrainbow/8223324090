@@ -6483,6 +6483,7 @@
             syncOmniViewportSize();
             await loadOmniAccounts();
             if (openAccountPanel || accountPanelChannel) setOmniMode('channels');
+            else if (new URLSearchParams(window.location.search).get('panel') === 'health') setOmniMode('health');
             else if (new URLSearchParams(window.location.search).has('telView')) setOmniMode('telephony');
             await Promise.all([loadConversations(), loadQuickReplies(), loadStats()]);
             setupWS();

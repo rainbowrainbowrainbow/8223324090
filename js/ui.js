@@ -4324,6 +4324,12 @@ function initKeyboardShortcuts() {
     });
 }
 
+function canOpenWorkspacePage(pathname) {
+    if (typeof Sidebar === 'undefined' || getPermissionLifecycle().status !== 'ready') return false;
+    const item = Sidebar.NAV_ITEMS.find(entry => entry.href === pathname);
+    return Boolean(item && canAccessPage(pathname) && Sidebar.allowsBusinessNavigation(item));
+}
+
 async function openManualTaskComposer(draft = {}) {
     try {
         if (!window.TaskLinks?.createUrl) await import('./task-links.js');

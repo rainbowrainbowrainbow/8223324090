@@ -2075,7 +2075,7 @@ async function showClientProfile(clientId) {
     el.innerHTML = '<div class="center-loading">Завантаження...</div>';
 
     const [clientsData, bookingsData] = await Promise.all([
-        apiSearchClients(''),
+        apiSearchClients(document.getElementById('clientSearchInput')?.value.trim() || ''),
         apiClientBookings(clientId)
     ]);
 
@@ -3060,6 +3060,15 @@ async function initAuth() {
     }
 
     AppState.currentUser = user;
+    const syncClientLookup = () => {
+        const useDirectory = canOpenWorkspacePage('/customers');
+        document.getElementById('centerCustomersLink')?.classList.toggle('hidden', !useDirectory);
+        document.getElementById('centerClientLookup')?.classList.toggle('hidden', useDirectory);
+    };
+    for (const event of ['permissions:lifecycle', 'roleSwitched', 'crmBusinessProfileChanged', 'crmBusinessContextChanged']) {
+        window.addEventListener(event, syncClientLookup);
+    }
+    syncClientLookup();
     if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
     else if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
     const ADMIN_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];

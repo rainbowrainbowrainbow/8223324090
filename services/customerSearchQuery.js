@@ -25,10 +25,12 @@ function buildCustomerSearchQuery({
     businessContext = DEFAULT_BUSINESS_CONTEXT,
     user = null,
     includeSocialIdentities = true,
+    allowShortSearch = false,
+    includeLoyaltyTier = false,
     limit = 20
 } = {}) {
     const q = String(query || '').trim();
-    if (q.length < 2) {
+    if (!allowShortSearch && q.length < 2) {
         return null;
     }
 
@@ -79,7 +81,7 @@ function buildCustomerSearchQuery({
                  LIMIT ${boundedLimit}
              )
              SELECT c.id, c.name, c.phone, c.instagram, c.child_name, c.child_birthday, c.business_context,
-                    c.source, c.notes, ${customerMetricsProjectionSql()}
+                    c.source, c.notes, ${includeLoyaltyTier ? 'c.loyalty_tier_id,' : ''} ${customerMetricsProjectionSql()}
              FROM ranked r
              JOIN customers c ON c.id = r.id
              LEFT JOIN LATERAL (${bookingAgg.sql}) b_agg ON TRUE

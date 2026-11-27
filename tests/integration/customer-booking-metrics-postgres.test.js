@@ -133,7 +133,7 @@ test('current booking metrics preserve arithmetic, dates, package ownership and 
             ALTER TABLE customers
                 ADD COLUMN name TEXT, ADD COLUMN phone TEXT, ADD COLUMN instagram TEXT,
                 ADD COLUMN child_name TEXT, ADD COLUMN child_birthday DATE, ADD COLUMN source TEXT,
-                ADD COLUMN notes TEXT, ADD COLUMN social_identities JSONB;
+                ADD COLUMN notes TEXT, ADD COLUMN social_identities JSONB, ADD COLUMN loyalty_tier_id INT;
             ALTER TABLE bookings ADD COLUMN created_by TEXT, ADD COLUMN second_animator TEXT;
             CREATE TABLE customer_children (customer_id INT, business_context TEXT, name TEXT);
             INSERT INTO customers (id, business_context, name, notes) VALUES
@@ -159,6 +159,18 @@ test('current booking metrics preserve arithmetic, dates, package ownership and 
             return (await pool.query(sql, params)).rows;
         }
 
+        // The limited Center lookup also supports recent customers and one-character searches.
+        for (const query of ['', 'S']) {
+            const lookup = buildCustomerSearchQuery({
+                query, user: { role: 'animator', username: 'fixture_actor' },
+                businessContext: 'event_genix', allowShortSearch: true,
+                includeSocialIdentities: false, includeLoyaltyTier: true
+            });
+            const { rows } = await pool.query(lookup.sql, lookup.params);
+            assert.ok(rows.some(row => row.id === 102));
+            assert.ok(rows.every(row => row.business_context === 'event_genix'));
+            assert.ok(rows.every(row => Number(row.real_total_spent) === 0));
+        }
         const all = await search({ role: 'creator' }, 3);
         assert.deepEqual(all.map(row => [row.id, row.real_last_visit]), [
             [103, '2025-03-01'], [102, '2025-02-01'], [101, null]

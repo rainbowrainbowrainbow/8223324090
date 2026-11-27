@@ -19,9 +19,11 @@ const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { canUseAction, requireAction, requireMinRole, authenticateToken } = require('../middleware/auth');
 const { allowAccountantPageRead } = require('../middleware/accountant-page-read');
+const { buildCustomerSearchQuery } = require('../services/customerSearchQuery');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
 const { businessBookingSql } = require('../services/financeQaReadScope');
 const {
+    pushBusinessContextCondition,
     businessContextFromRequest,
     requireBusinessContext
 } = require('../services/businessContext');
@@ -842,30 +844,24 @@ router.get('/tasks', async (req, res) => {
 
 router.get('/clients', async (req, res) => {
     try {
-        const { search } = req.query;
-        const lim = Math.min(parseInt(req.query.limit) || 20, 50);
-
-        let query, params;
-        if (search && search.trim()) {
-            query = `SELECT c.id, c.name, c.phone, c.instagram, c.child_name,
-                c.total_bookings, c.total_spent, c.first_visit, c.last_visit,
-                c.loyalty_tier_id
-                FROM customers c
-                WHERE c.name ILIKE $1 OR c.phone ILIKE $1 OR c.child_name ILIKE $1 OR c.instagram ILIKE $1
-                ORDER BY c.last_visit DESC NULLS LAST
-                LIMIT $2`;
-            params = [`%${search.trim()}%`, lim];
-        } else {
-            query = `SELECT c.id, c.name, c.phone, c.instagram, c.child_name,
-                c.total_bookings, c.total_spent, c.first_visit, c.last_visit,
-                c.loyalty_tier_id
-                FROM customers c
-                ORDER BY c.last_visit DESC NULLS LAST
-                LIMIT $1`;
-            params = [lim];
-        }
-        const result = await pool.query(query, params);
-        res.json({ success: true, clients: result.rows });
+        const businessContext = businessContextFromRequest(req);
+        if (!requireBusinessContext(req, res, businessContext)) return;
+        const query = buildCustomerSearchQuery({
+            query: req.query.search,
+            user: req.user,
+            businessContext,
+            limit: Math.min(Number.parseInt(req.query.limit, 10) || 20, 50),
+            includeSocialIdentities: false,
+            allowShortSearch: true,
+            includeLoyaltyTier: true
+        });
+        const { rows } = await pool.query(query.sql, query.params);
+        res.json({ success: true, clients: rows.map(row => ({
+            id: row.id, name: row.name, phone: row.phone, instagram: row.instagram,
+            child_name: row.child_name, loyalty_tier_id: row.loyalty_tier_id,
+            total_bookings: row.real_total_bookings, total_spent: row.real_total_spent,
+            first_visit: row.real_first_visit, last_visit: row.real_last_visit
+        })) });
     } catch (err) {
         log.error('GET /center/clients error', err);
         res.status(500).json({ success: false, error: 'Помилка завантаження клієнтів' });
@@ -874,12 +870,17 @@ router.get('/clients', async (req, res) => {
 
 router.get('/clients/:id/bookings', async (req, res) => {
     try {
+        const businessContext = businessContextFromRequest(req);
+        if (!requireBusinessContext(req, res, businessContext)) return;
         const scoped = scopedBookingParams(req.user, [req.params.id]);
+        const bookingContext = pushBusinessContextCondition(scoped.params, businessContext, 'b');
+        const customerContext = pushBusinessContextCondition(scoped.params, businessContext, 'c');
         const result = await pool.query(`
             SELECT b.id, b.date, b.time, b.program_name, b.category, b.duration, b.price, b.status, b.room, b.kids_count,
                    b.banquet_guests, b.banquet_adults, b.banquet_tables, b.banquet_menu
             FROM bookings b
-            WHERE b.customer_id = $1 AND b.status != 'cancelled'
+            JOIN customers c ON c.id = b.customer_id
+            WHERE b.customer_id = $1 AND b.status != 'cancelled' AND ${bookingContext} AND ${customerContext}
             ${scoped.sql}
             ORDER BY b.date DESC, b.time DESC
             LIMIT 50

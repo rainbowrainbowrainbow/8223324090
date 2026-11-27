@@ -233,6 +233,7 @@ app.get([
 ], (req, res) => res.sendFile(path.join(__dirname, 'images', 'event-cards', path.basename(req.path))));
 app.get('/images/kitchen-menu/fallback-burger.jpg', (_req, res) =>
     res.sendFile(path.join(__dirname, 'images', 'kitchen-menu', 'fallback-burger-square.jpg')));
+require('./services/guidebookTemplates').mountGuidebookTemplates(app);
 app.use(express.static(path.join(__dirname)));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 

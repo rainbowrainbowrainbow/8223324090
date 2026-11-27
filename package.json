@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.84.66",
+  "version": "0.84.67",
   "eventGenix": {
-    "releaseLabel": "Park і Dar у різних вкладках"
+    "releaseLabel": "Уточнено аналіз коду CRM"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

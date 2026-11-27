@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.84.59",
+  "version": "0.84.60",
   "eventGenix": {
-    "releaseLabel": "Мій день і Guardian на телефоні"
+    "releaseLabel": "Уточнено перевірку коду CRM"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.84.46",
+  "version": "0.84.47",
   "eventGenix": {
-    "releaseLabel": "HR: швидший старт і перемикання карток"
+    "releaseLabel": "Спостерігачі у задачах із Telegram"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

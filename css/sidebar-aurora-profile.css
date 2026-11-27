@@ -990,7 +990,6 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
   display: inline-grid !important;
   place-items: center !important;
   flex: 0 0 auto;
-  justify-self: start !important;
   width: max-content !important;
   min-width: 0 !important;
   max-width: 72px !important;

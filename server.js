@@ -223,6 +223,16 @@ mountParkGamificationPageBoundary(app);
 app.use(require('./services/changelog-page').createChangelogRouter());
 // Old messages/bookmarks must reach My Day before static tasks.html is served.
 app.use(require('./middleware/taskLinkRedirect'));
+// Preserve image URLs in saved materials and previously downloaded templates.
+app.get([
+    '/images/brand/guidebook/event-card-family-event.png',
+    '/images/brand/guidebook/event-card-private-party.png',
+    '/images/brand/guidebook/event-card-quest.png',
+    '/images/brand/guidebook/event-card-show-program.png',
+    '/images/brand/guidebook/event-card-workshop.png'
+], (req, res) => res.sendFile(path.join(__dirname, 'images', 'event-cards', path.basename(req.path))));
+app.get('/images/kitchen-menu/fallback-burger.jpg', (_req, res) =>
+    res.sendFile(path.join(__dirname, 'images', 'kitchen-menu', 'fallback-burger-square.jpg')));
 app.use(express.static(path.join(__dirname)));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 

@@ -8,7 +8,7 @@
       <stop offset="1" stop-color="#E73783" stop-opacity="0.32"/>
     </linearGradient>
   </defs>
-  <image href="../event-card-family-event.png" x="-335" y="0" width="1728" height="1080" preserveAspectRatio="xMidYMid slice"/>
+  <image href="../../../event-cards/event-card-family-event.png" x="-335" y="0" width="1728" height="1080" preserveAspectRatio="xMidYMid slice"/>
   <rect width="1080" height="1080" fill="url(#shade)"/>
   <rect x="64" y="64" width="140" height="140" rx="34" fill="#FFFFFF" opacity="0.92"/>
   <image href="../../event-genix-logo.png" x="84" y="84" width="100" height="100" preserveAspectRatio="xMidYMid meet"/>

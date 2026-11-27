@@ -62,6 +62,11 @@ function createTelegramCrmNotifications({ pool, identity, actorContext = default
                 t.deadline AT TIME ZONE 'UTC' AS assignment_deadline,
                 COALESCE(NULLIF(creator.name, ''), NULLIF(creator.username, '')) AS creator_name,
                 ARRAY(SELECT ca.user_id FROM task_co_assignees ca WHERE ca.task_id=t.id) AS co_assignee_user_ids,
+                (SELECT json_agg(json_build_object('id', u.id, 'label', COALESCE(NULLIF(u.name, ''), u.username)) ORDER BY u.id)
+                 FROM task_co_assignees ca JOIN users u ON u.id=ca.user_id WHERE ca.task_id=t.id) AS co_assignees,
+                (SELECT json_agg(json_build_object('id', u.id, 'label', COALESCE(NULLIF(u.name, ''), u.username)) ORDER BY u.id)
+                 FROM task_observers tob JOIN users u ON u.id=tob.user_id WHERE tob.task_id=t.id) AS observers,
+                (SELECT COALESCE(NULLIF(u.name, ''), u.username) FROM users u WHERE u.id=t.owner_user_id) AS owner_label,
                 (SELECT NULLIF(h.actor_name_snapshot, '') FROM task_action_history h
                     WHERE event.event_kind='completion' AND h.task_id=t.id AND h.action_type='task_completed'
                       AND h.created_at=event.created_at ORDER BY h.id DESC LIMIT 1) AS executor_name,
@@ -130,6 +135,9 @@ function createTelegramCrmNotifications({ pool, identity, actorContext = default
                     id: task.id, title: task.title, description: task.description || null,
                     date: task.date || null, deadline: due.instant && due.source !== 'date' ? due.instant : null,
                     businessContext: task.business_context,
+                    ownerLabel: task.owner_label || null,
+                    coAssignees: task.co_assignees || [],
+                    observers: task.observers || [],
                     creatorName: task.creator_name || null, assignerName: task.assigner_name || null,
                     executorName: task.executor_name || null
                 }

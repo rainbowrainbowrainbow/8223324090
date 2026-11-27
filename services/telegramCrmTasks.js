@@ -5,12 +5,14 @@ const { taskUrl } = require('../js/task-links');
 const crypto = require('node:crypto');
 const { audit, failure, transaction } = require('./telegramCrmIdentity');
 const { buildTaskPersonalQuery, taskViewerRoles } = require('./taskPersonalScope');
-const { canUseTaskRouteCapability, canChangeTaskStatus, canReassignTask, canRescheduleTask } = require('./taskPolicy');
+const { canUseTaskRouteCapability, canChangeTaskStatus, canReassignTask, canRescheduleTask,
+    canManageTaskObservers } = require('./taskPolicy');
 const { getAssignableTaskOwner, listTaskOwnerCandidates, completeTask, reassignTaskOwner,
     rescheduleTask, cancelTask, assertPrivateTaskHandoffConfirmed } = require('./taskExecution');
 const { taskKpiWorkloadDateSql } = require('./taskPerformancePolicy');
 const { pushTaskBusinessScopeCondition } = require('./taskBusinessScope');
 const { normalizeCreationCoAssignees, validateCreationCoAssignees, saveCreationCoAssignees } = require('./taskCreationCoAssignees');
+const { TASK_ACTION_TYPES, logTaskActionEvent } = require('./taskActionHistory');
 
 function dateOnly(value, field) {
     if (value == null || value === '') return null;
@@ -30,6 +32,15 @@ function normalizeDraft(input = {}) {
     const ownerUserId = Number(input.ownerUserId);
     if (!Number.isSafeInteger(ownerUserId) || ownerUserId <= 0) throw failure(400, 'TELEGRAM_TASK_OWNER_REQUIRED', 'Оберіть виконавця задачі.');
     const coAssigneeUserIds = normalizeCreationCoAssignees(input.coAssigneeUserIds, ownerUserId);
+    const observers = input.observerUserIds === undefined ? [] : input.observerUserIds;
+    if (!Array.isArray(observers) || observers.length > 100
+        || observers.some(id => !Number.isInteger(id) || id < 1 || id > 2147483647)) {
+        throw failure(400, 'TASK_OBSERVERS_INVALID', 'Оберіть коректних спостерігачів.');
+    }
+    const observerUserIds = [...new Set(observers)].sort((a, b) => a - b);
+    if (observerUserIds.some(id => id === ownerUserId || coAssigneeUserIds.includes(id))) {
+        throw failure(400, 'TASK_OBSERVER_ROLE_CONFLICT', 'Виконавець і співвиконавці вже мають доступ до задачі.');
+    }
     const businessContext = input.businessContext;
     if (typeof businessContext !== 'string' || !/^[a-z][a-z0-9_]{0,79}$/.test(businessContext)) {
         throw failure(400, 'TELEGRAM_TASK_BUSINESS_REQUIRED', 'Оберіть бізнес для задачі.');
@@ -51,11 +62,13 @@ function normalizeDraft(input = {}) {
     }
     return { title, description: input.description?.trim() || null, ownerUserId, businessContext,
         ...(coAssigneeUserIds.length && { coAssigneeUserIds }),
+        ...(observerUserIds.length && { observerUserIds }),
         date: dateOnly(input.date, 'date'), deadline, priority, taskMode };
 }
 
 function assertPersonalOwner(payload, actor) {
-    if (payload.taskMode === 'personal' && (payload.ownerUserId !== Number(actor.id) || payload.coAssigneeUserIds?.length)) {
+    if (payload.taskMode === 'personal' && (payload.ownerUserId !== Number(actor.id)
+        || payload.coAssigneeUserIds?.length || payload.observerUserIds?.length)) {
         throw failure(400, 'TELEGRAM_PERSONAL_TASK_SELF_ONLY', 'Особисту задачу можна створити лише для себе.');
     }
 }
@@ -164,6 +177,24 @@ function createTelegramCrmTasks(options) {
             businessContext: row.business_context || scope.activeContext, url: taskUrl(row.id, { businessContext: row.business_context || scope.activeContext }) };
     }
 
+    async function resolveObservers(client, payload, actor, scope) {
+        const ids = payload.observerUserIds || [];
+        if (ids.length && !canManageTaskObservers(actor, {
+            owner_user_id: payload.ownerUserId, visibility: 'team'
+        })) {
+            throw failure(403, 'TASK_OBSERVERS_FORBIDDEN', 'Ваші права CRM не дозволяють додати спостерігачів.');
+        }
+        const observers = [];
+        for (const id of ids) {
+            const binding = await pilotOwnerBinding(client, id);
+            const verifiedPeer = scope.activeContext === 'event_genix' && Boolean(binding.verified_at);
+            const person = await assignableOwner(id, { pool: client, actor, businessScope: scope,
+                telegramCrmPeerAssignment: verifiedPeer, telegramCrmRequireVerifiedPeer: verifiedPeer });
+            observers.push({ id: Number(person.id), label: person.label });
+        }
+        return observers;
+    }
+
     async function assertReceiptVisible(client, actor, scope, taskId) {
         const params = [];
         const personal = buildTaskPersonalQuery(actor, params);
@@ -178,7 +209,7 @@ function createTelegramCrmTasks(options) {
         return { user: { id: actor.id, name: actor.name || actor.username }, bindingVersion: String(binding.version),
             businessContext: scope.activeContext, businessContexts: actor.businessContexts || actor.business_contexts || [],
             canCreateTasks: canUseTaskRouteCapability(actor, 'create'),
-            taskViews: { undated: true, notificationStatus: true, undoCreate: true, coAssignees: true } };
+            taskViews: { undated: true, notificationStatus: true, undoCreate: true, coAssignees: true, observers: true } };
     }
 
     async function list(senderId, query = {}) {
@@ -286,7 +317,9 @@ function createTelegramCrmTasks(options) {
             assertPersonalOwner(payload, actor);
             const assignee = await owner(client, payload.ownerUserId, actor, scope);
             const coAssignees = await resolveTelegramCreationCoAssignees(client, payload.coAssigneeUserIds || [], actor, scope, assignableOwner);
-            const draft = { ...payload, ownerLabel: assignee.label, ...(coAssignees.length && { coAssignees }) };
+            const observers = await resolveObservers(client, payload, actor, scope);
+            const draft = { ...payload, ownerLabel: assignee.label, ...(coAssignees.length && { coAssignees }),
+                ...(observers.length && { observers }) };
             const prior = (await client.query(
                 'SELECT *,expires_at>NOW() AS fresh FROM telegram_crm_task_operations WHERE user_id=$1 AND binding_version=$2 AND source_update_id=$3',
                 [actor.id, binding.version, sourceUpdateId]
@@ -476,6 +509,7 @@ function createTelegramCrmTasks(options) {
             const personal = payload.taskMode === 'personal';
             const assignee = await owner(client, payload.ownerUserId, actor, scope);
             const coAssignees = await resolveTelegramCreationCoAssignees(client, payload.coAssigneeUserIds || [], actor, scope, assignableOwner);
+            const observers = await resolveObservers(client, payload, actor, scope);
             const task = await createTask({ ...payload, owner_user_id: assignee.id, owner: assignee.label, assigned_to: assignee.label,
                 created_by: actor.username, created_by_user_id: actor.id, task_type: 'human', task_mode: payload.taskMode, task_kind: 'action',
                 visibility: personal ? 'me_only' : 'team', workflow_state: 'todo',
@@ -484,7 +518,16 @@ function createTelegramCrmTasks(options) {
             }, { pool: client, afterCommit: callbacks, skipHermesOutbox: personal,
                 skipNotifications: personal || options.skipNotifications === true });
             await saveCreationCoAssignees(client, task, payload.coAssigneeUserIds || [], actor, 'hermes');
-            const proof = { task: { ...taskReceipt(task, actor, scope), ...(coAssignees.length && { coAssignees }) },
+            if (observers.length) {
+                await client.query(`INSERT INTO task_observers (task_id, user_id, access_level, added_by)
+                    SELECT $1, user_id, 'materials', $3 FROM unnest($2::int[]) AS observer(user_id)`,
+                [task.id, payload.observerUserIds, actor.id]);
+                await logTaskActionEvent({ taskId: task.id, actionType: TASK_ACTION_TYPES.OBSERVERS_UPDATED,
+                    actor, sourceSurface: 'hermes', oldValue: { observerUserIds: [] },
+                    newValue: { observerUserIds: payload.observerUserIds } }, { pool: client });
+            }
+            const proof = { task: { ...taskReceipt(task, actor, scope), ...(coAssignees.length && { coAssignees }),
+                ...(observers.length && { observers, observerUserIds: payload.observerUserIds }) },
                 integration: 'second-brain-crm', actorUserId: actor.id };
             const { rows: [{ receipt }] } = await client.query(`UPDATE telegram_crm_task_operations
                 SET state='committed',task_id=$2,committed_at=NOW(),receipt=$3::jsonb ||

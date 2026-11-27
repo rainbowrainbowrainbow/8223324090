@@ -409,6 +409,59 @@ check('all five verified pilot authors can add one another as co-assignees only 
     }
 });
 
+check('Telegram preview and commit preserve separate observer and co-assignee roles', async () => {
+    const title = 'Disposable Telegram observer roles ' + randomUUID();
+    const creation = {
+        title, businessContext: 'event_genix', ownerUserId: voiceCreator.user.id,
+        coAssigneeUserIds: [secondCo.user.id], observerUserIds: [peer.id],
+        sourceUpdateId: String(nextUpdate++)
+    };
+    const preview = await bot('/tasks/preview', creation, voiceCreator.telegram);
+    assert.equal(preview.status, 201, JSON.stringify(preview.data));
+    assert.deepEqual(preview.data.draft.observers.map(({ id }) => id), [peer.id]);
+    assert.deepEqual(preview.data.draft.coAssignees.map(({ id }) => id), [secondCo.user.id]);
+    assert.equal((await pool.query('SELECT id FROM tasks WHERE title=$1', [title])).rowCount, 0);
+    const confirm = () => bot(`/operations/${preview.data.operationId}/confirm`, { confirmed: true }, voiceCreator.telegram);
+    await pool.query('ALTER TABLE task_observers ADD CONSTRAINT fixture_reject_observer CHECK (false) NOT VALID');
+    try {
+        const failed = await confirm();
+        assert.equal(failed.status, 503);
+        assert.equal((await pool.query('SELECT id FROM tasks WHERE title=$1', [title])).rowCount, 0);
+        const { rows: [operation] } = await pool.query(
+            'SELECT state, task_id FROM telegram_crm_task_operations WHERE id=$1', [preview.data.operationId]);
+        assert.deepEqual(operation, { state: 'draft', task_id: null });
+    } finally {
+        await pool.query('ALTER TABLE task_observers DROP CONSTRAINT fixture_reject_observer');
+    }
+    const attempts = await Promise.all([confirm(), confirm()]);
+    for (const { status, data } of attempts) {
+        assert.equal(status, 200, JSON.stringify(data));
+        assert.deepEqual(data.receipt.task.observerUserIds, [peer.id]);
+        assert.deepEqual(data.receipt.task.coAssignees.map(({ id }) => id), [secondCo.user.id]);
+    }
+    const { rows: [task], rowCount } = await pool.query('SELECT id FROM tasks WHERE title=$1', [title]);
+    assert.equal(rowCount, 1);
+    assert.deepEqual((await pool.query('SELECT user_id, access_level FROM task_observers WHERE task_id=$1', [task.id])).rows,
+        [{ user_id: peer.id, access_level: 'materials' }]);
+    const { rows: deliveries } = await pool.query(
+        "SELECT owner_user_id FROM telegram_crm_delivery_outbox WHERE task_id=$1 AND event_kind='assignment'", [task.id]);
+    assert.ok(deliveries.some(row => row.owner_user_id === secondCo.user.id));
+    assert.ok(!deliveries.some(row => row.owner_user_id === peer.id));
+    for (const _ of deliveries) {
+        const event = (await notifications('/claim', { leaseId: randomUUID() })).data.event;
+        assert.equal(event.taskId, task.id);
+        assert.deepEqual(event.task.observers.map(({ id }) => id), [peer.id]);
+        assert.deepEqual(event.task.coAssignees.map(({ id }) => id), [secondCo.user.id]);
+        assert.equal((await notifications(`/${event.id}/result`, {
+            leaseId: event.leaseId, status: 'sent', messageId: 200000 + nextUpdate++
+        })).data.status, 'sent');
+    }
+    const duplicateRole = await bot('/tasks/preview', {
+        ...creation, sourceUpdateId: String(nextUpdate++), observerUserIds: [secondCo.user.id]
+    }, voiceCreator.telegram);
+    assert.equal(duplicateRole.data.code, 'TASK_OBSERVER_ROLE_CONFLICT');
+});
+
 check('co-assignees receive assignments and the author sees the person who completed the task', async () => {
     const creation = {
         title: 'Disposable co-assignee notification', businessContext: 'event_genix', ownerUserId: peer.id,

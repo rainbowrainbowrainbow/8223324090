@@ -416,11 +416,21 @@ async function verifyTaskEntry({ origin, session, evidence }) {
                 }
             }
             const operations = await api('/api/center/operations/today?businessContext=event_genix');
+            const linkedModules = ['/finance', '/reports', '/finance?mode=insights'];
+            const backgroundDocuments = [];
+            const observeModuleLoad = request => {
+                const url = new URL(request.url());
+                if (request.resourceType() === 'document' && ['/finance', '/reports', '/analytics'].includes(url.pathname)) {
+                    backgroundDocuments.push(url.pathname);
+                }
+            };
+            page.on('request', observeModuleLoad);
             await navigate(origin + '/center?businessContext=event_genix');
             await page.getByRole('tab', { name: 'Зміна', exact: true }).click();
-            assert.equal(await page.locator('.center-embed-frame').count(), 3);
-            assert.equal(await page.locator('.center-embed-frame[src]').count(), 0,
-                'Hidden modules must not start loading when opening Operations');
+            assert.equal(await page.locator('.center-embed-frame').count(), 0);
+            for (const destination of linkedModules) {
+                await page.locator('a[data-former-tab][href="' + destination + '"]').waitFor({ state: 'visible' });
+            }
             for (const [taskId, businessContext] of scopes.at(-1)[1]) {
                 const row = operations.openTasks.find(task => Number(task.id) === taskId);
                 assert.equal(row?.businessContext, businessContext);
@@ -431,6 +441,8 @@ async function verifyTaskEntry({ origin, session, evidence }) {
                 assert.equal(url.searchParams.get('open'), String(taskId));
                 assert.equal(url.searchParams.get('businessContext'), businessContext);
             }
+            page.off('request', observeModuleLoad);
+            assert.deepEqual(backgroundDocuments, [], 'Operations waits for a click before loading a linked module');
             console.log(`Task entry ${engine}: dashboard, search and Operations Center scopes verified.`);
             // Park is the active context before opening the Dar task in a second tab.
             await settleBootstrapReads(page);

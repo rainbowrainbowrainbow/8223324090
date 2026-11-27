@@ -59,7 +59,7 @@ function getAssistantProviderBoundary() {
         keyEnv: 'OPENAI_API_KEY',
         apiBase: OPENAI_API_BASE,
         replyModel: process.env.OPENAI_ASSISTANT_MODEL || 'gpt-4.1-mini',
-        note: 'Rail assistant provider path is intentionally separate from Kleshnya and Copilot surfaces.'
+        note: 'Rail assistant provider path is intentionally separate from the Kleshnya surface.'
     };
 }
 

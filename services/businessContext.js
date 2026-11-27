@@ -9,7 +9,7 @@ const BUSINESS_CONTEXTS = Object.freeze({
     pageAllowlist: null,
     modules: [
       'dashboard', 'timeline', 'tasks', 'chat', 'customers', 'leads', 'omni',
-      'reports', 'finance', 'copilot', 'staff', 'hr', 'training', 'checkin',
+      'reports', 'finance', 'staff', 'hr', 'training', 'checkin',
       'programs', 'kitchen', 'catalogs', 'content', 'art', 'graduation',
       'sound', 'afisha', 'certificates', 'kleshnya', 'guardian', 'center',
       'warehouse', 'game', 'demo', 'settings'
@@ -22,7 +22,7 @@ const BUSINESS_CONTEXTS = Object.freeze({
     pageAllowlist: null,
     modules: [
       'dashboard', 'timeline', 'tasks', 'chat', 'customers', 'leads', 'omni', 'reports',
-      'finance', 'copilot', 'staff', 'hr', 'content', 'art',
+      'finance', 'staff', 'hr', 'content', 'art',
       'warehouse', 'kleshnya', 'center', 'settings'
     ]
   },
@@ -43,7 +43,7 @@ const BUSINESS_CONTEXTS = Object.freeze({
     pageAllowlist: null,
     modules: [
       'dashboard', 'tasks', 'chat', 'customers', 'leads', 'omni', 'reports',
-      'finance', 'copilot', 'staff', 'hr', 'content', 'kleshnya', 'center',
+      'finance', 'staff', 'hr', 'content', 'kleshnya', 'center',
       'settings'
     ]
   }

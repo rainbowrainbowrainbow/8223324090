@@ -4,7 +4,7 @@
 const https = require('https');
 const crypto = require('crypto');
 const { uploadFromUrl, makeFilename } = require('./imageStorage');
-const { openRouterChat } = require('./copilot');
+const { callUnifiedChatCompletion } = require('./ai-config');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('ProgramIconGeneration');
@@ -212,14 +212,17 @@ async function refineProgramIconPrompt(product = {}, settings = DEFAULT_PROGRAM_
     ].filter(Boolean).join('\n');
 
     try {
-        const raw = await openRouterChat({
+        const result = await callUnifiedChatCompletion({
+            scope: 'chat_ai',
+            title: 'Event Genix Program Icons',
             model: runtime.promptModel,
-            system: safeSettings.systemInstructions,
-            messages: [{ role: 'user', content: userPrompt }],
+            systemPrompt: safeSettings.systemInstructions,
+            userMessage: `User: ${userPrompt}`,
             temperature: 0.25,
-            max_tokens: 650
+            maxTokens: 650
         });
-        const refined = clampPrompt(raw);
+        if (!result.ok) throw new Error(result.error || result.reason || 'OPENROUTER_API_KEY not configured');
+        const refined = clampPrompt(result.text);
         if (!isUsablePrompt(refined)) {
             return {
                 finalPrompt: fallbackPrompt,

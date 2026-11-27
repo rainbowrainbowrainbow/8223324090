@@ -384,6 +384,29 @@ async function run() {
             }
             return;
         }
+        for (const width of [390, 1440]) {
+            await page.setViewportSize({ width, height: 844 });
+            await page.goto(origin + '/room.html', { waitUntil: 'domcontentloaded' });
+            assert.equal(new URL(page.url()).pathname, '/profile');
+            await page.locator('[data-park-period=today]').waitFor();
+            await page.locator('#sidebarLinks a[href]').first().waitFor({ state: 'attached' });
+            if (width === 390) {
+                const toggle = page.locator('#sidebarToggle');
+                if (await toggle.isVisible()) await toggle.click();
+            }
+            assert.equal(await page.locator('#sidebarNav a:is([href="/game"], [href="/copilot"], [href="/profile?tab=achievements"])').count(), 0);
+            await page.screenshot({ path: path.join(evidence, `release-cleanup-navigation-${width}.png`), animations: 'disabled' });
+            const copilot = await page.goto(origin + '/copilot.html');
+            assert.equal(copilot.status(), 410);
+            assert.match(await page.locator('body').innerText(), /більше недоступний/);
+        }
+        await page.goto(origin + '/', { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => typeof getNavigationIndex === 'function'
+            && getNavigationIndex().some(item => item.href === '/sales-funnel'));
+        const searchLinks = await page.evaluate(() => getNavigationIndex().map(item => item.href));
+        assert.ok(searchLinks.includes('/omni'));
+        assert.ok(!searchLinks.includes('/game') && !searchLinks.includes('/copilot'));
+        await page.setViewportSize({ width: 390, height: 844 });
         const pageErrors = [];
         const taskBoot = [];
         const timerRequests = [];
@@ -399,7 +422,7 @@ async function run() {
             if (/(?:^|[.-])hermes(?:[.-]|$)/i.test(url.hostname) || /(?:^|\/)hermes(?:[/-]|$)/i.test(url.pathname)) {
                 hermesRequests.push(url.pathname);
             }
-            if (/^\/api\/(?:wallet|achievements|quests|gamification)(?:\/|$)/.test(url.pathname)) {
+            if (/^\/api\/(?:wallet|achievements|quests|gamification|minigame|quiz|room)(?:\/|$)/.test(url.pathname)) {
                 gameRequests.push(url.pathname);
             }
         });

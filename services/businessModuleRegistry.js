@@ -8,7 +8,7 @@ const CORE_MODULES = Object.freeze({
     programs: 'Продукти', warehouse: 'Склад', settings: 'Налаштування'
 });
 const UNMIGRATED_MODULES = Object.freeze({
-    reports: 'Звіти', copilot: 'Copilot', staff: 'Працівники (legacy)',
+    reports: 'Звіти', staff: 'Працівники (legacy)',
     checkin: 'Check-in', kitchen: 'Кухня',
     content: 'Контент', art: 'Art', sound: 'Звук',
     certificates: 'Сертифікати', kleshnya: 'Клешня',

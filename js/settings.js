@@ -948,7 +948,6 @@ const BUSINESS_CABINET_MODULE_LABELS = {
     omni: 'Omni',
     reports: 'Звіти',
     finance: 'Фінанси',
-    copilot: 'Copilot',
     staff: 'Персонал',
     hr: 'HR',
     training: 'Навчання',

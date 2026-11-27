@@ -1,5 +1,7 @@
 'use strict';
 
+const { posix } = require('node:path');
+
 const PARK_PROFILE_MODULES = Object.freeze({
     taskPlanning: 'active',
     results: 'active',
@@ -16,8 +18,25 @@ const PARK_PROFILE_MODULES = Object.freeze({
 const LEGACY_GAME_API = Object.freeze([
     '/api/gamification', '/api/wallet', '/api/achievements', '/api/shop',
     '/api/inventory', '/api/profile/equip', '/api/profile/unequip', '/api/profile/:id',
-    '/api/quests', '/api/streaks'
+    '/api/quests', '/api/streaks', '/api/minigame', '/api/quiz', '/api/room'
 ]);
+
+const GAMIFICATION_PAGE_PATH = /^\/(?:game|quiz|room|shop)(?:\.html)?\/?$/i;
+
+function mountParkGamificationPageBoundary(app, gamification = PARK_PROFILE_MODULES.gamification) {
+    if (gamification === 'active') return;
+    app.use((req, res, next) => {
+        if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+        let pathname;
+        try {
+            pathname = posix.normalize(decodeURIComponent(req.path).replace(/\\/g, '/'));
+        } catch {
+            return next();
+        }
+        if (!GAMIFICATION_PAGE_PATH.test(pathname)) return next();
+        return res.set('Cache-Control', 'no-store').redirect(302, '/profile?tab=myday');
+    });
+}
 
 function moduleUnavailable(_req, res) {
     return res.status(410).json({ error: 'This module is unavailable in the park build', code: 'MODULE_UNAVAILABLE' });
@@ -37,4 +56,4 @@ function mountParkProfileBoundaries(app) {
     });
 }
 
-module.exports = { PARK_PROFILE_MODULES, mountParkProfileBoundaries };
+module.exports = { PARK_PROFILE_MODULES, mountParkGamificationPageBoundary, mountParkProfileBoundaries };

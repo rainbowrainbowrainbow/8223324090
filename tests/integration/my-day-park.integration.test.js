@@ -15,6 +15,51 @@ const { inventory } = require('../../scripts/my-day-legacy-task-inventory');
 const { cancelledBookingAutoArchivePredicateSql } = require('../../services/taskLifecycle');
 const { buildMachineTaskControlMetaPatch, MACHINE_AUTO_ARCHIVE_POLICY_CANCELLED_BOOKING } = require('../../services/taskAutomationPolicy');
 
+test('Park retires gamification and Sales Copilot entry points over HTTP', {
+    skip: process.env.RUN_MY_DAY_PARK_INTEGRATION !== 'true'
+}, async () => {
+    assert.equal(process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER, 'true');
+    const { origin } = assertSafeIsolatedTestUrl(process.env.TEST_URL);
+    const token = await getToken();
+
+    for (const page of ['/game', '/quiz', '/room', '/shop']) {
+        for (const url of [page, `${page}.html`, `/%${page.charCodeAt(1).toString(16)}${page.slice(2)}.html`]) {
+            const result = await fetch(origin + url, { redirect: 'manual' });
+            assert.equal(result.status, 302, url);
+            assert.equal(result.headers.get('location'), '/profile?tab=myday', url);
+            assert.equal(result.headers.get('cache-control'), 'no-store', url);
+        }
+    }
+    for (const url of ['/copilot', '/copilot.html', '/%63opilot.html', '/js/copilot-page.js', '/css/' + 'copilot.css']) {
+        const result = await fetch(origin + url, { redirect: 'manual' });
+        assert.equal(result.status, 410, url);
+        assert.equal(result.headers.get('cache-control'), 'no-store', url);
+    }
+    for (const [method, url] of [
+        ['GET', '/api/minigame/status'],
+        ['POST', '/api/minigame/complete'],
+        ['GET', '/api/quiz/status'],
+        ['POST', '/api/quiz/start'],
+        ['GET', '/api/room'],
+        ['GET', '/api/v1/room'],
+        ['GET', '/api/copilot/interactions'],
+        ['PATCH', '/api/copilot/interactions/1/followup'],
+        ['POST', '/api/v1/copilot/coach']
+    ]) {
+        const result = await request(method, url, undefined, token);
+        assert.equal(result.status, 410, url);
+        assert.equal(result.data.code, 'MODULE_UNAVAILABLE', url);
+    }
+    for (const url of ['/api/auth/profile', '/api/leads/pipeline', '/api/omni/conversations']) {
+        assert.equal((await request('GET', url, undefined, token)).status, 200, url);
+    }
+    const profile = await request('GET', '/api/auth/business-profile', undefined, token);
+    assert.equal(profile.status, 200);
+    assert.equal(profile.data.businessProfile.activeProfile.gamificationAvailable, false);
+    const phone = await request('GET', '/api/omni/telephony/calls?startDate=2026-11-27&endDate=2026-11-27', undefined, token);
+    assert.ok(phone.status === 200 || (phone.status === 503 && /^BINOTEL_/.test(phone.data?.code)), JSON.stringify(phone.data));
+});
+
 test('monthly task KPI credits the historical primary owner once and hides inaccessible details', {
     skip: process.env.RUN_MY_DAY_PARK_INTEGRATION !== 'true'
 }, async () => {

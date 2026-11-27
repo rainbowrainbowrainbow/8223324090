@@ -12,6 +12,7 @@ const { getOmniAccountStatusesAsync } = require('./omni-accounts');
 const { authAccessContext } = require('./authBusinessProfile');
 const { businessModuleCatalog, configuredBusinessModuleEnabled } = require('./businessModuleRegistry');
 const { parkLegacySurfaceAvailability } = require('./parkLegacyModuleAccess');
+const { PARK_PROFILE_MODULES } = require('./parkProfileModules');
 
 const START_PAGE_PATHS = Object.freeze({
   dashboard: '/dashboard',
@@ -195,6 +196,7 @@ async function buildBusinessEntry(db, context, options = {}) {
     timeline: timelineDisplay,
     cabinet: effectiveCabinet,
     modules,
+    gamificationAvailable: PARK_PROFILE_MODULES.gamification === 'active',
     legacySurfaces: parkLegacySurfaceAvailability(options.user, key),
     shell: {
       startPage,

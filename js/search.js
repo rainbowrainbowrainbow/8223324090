@@ -64,7 +64,6 @@ const SEARCH_NAV_ALIASES = {
     '/reports': ['звіти', 'звіт', 'reports', 'report', 'ручний звіт', 'шаблони звітів', 'excel звіт', 'табличний звіт'],
     '/analytics': ['аналітика', 'analytics', 'метрики', 'дашборд аналітики'],
     '/finance': ['фінанси', 'finance', 'гроші', 'борги', 'оплати', 'платежі', 'p&l', 'pnl', 'каса'],
-    '/copilot': ['ai менеджер', 'копілот', 'copilot', 'продажі ai'],
     '/staff': ['графік', 'staff', 'schedule', 'зміни', 'персонал', 'команда'],
     '/hr': ['кадри', 'hr', 'персонал', 'люди', 'співробітники'],
     '/hr#team': ['команда hr', 'hr team', 'список команди'],
@@ -179,6 +178,8 @@ function getSearchPageId() {
 
 function canAccessSearchNavItem(item) {
     const role = getSearchRole();
+    const sidebar = typeof Sidebar !== 'undefined' ? Sidebar : window.Sidebar;
+    if (item.href === '/game' && sidebar?.allowsBusinessNavigation?.(item) === false) return false;
     if (role === 'creator') return true;
     if (window.Sidebar?.hasAccess && item.access) return window.Sidebar.hasAccess(item, role);
     const href = normalizeSearchHref(item.href);

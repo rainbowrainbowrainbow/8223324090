@@ -81,7 +81,6 @@ const PAGE_PERMISSION_TEST_CONTRACTS = Object.freeze({
     '/status': pageContract('/status'),
     '/guardian-ops': pageContract('/guardian-ops'),
     '/omni': pageContract('/omni'),
-    '/copilot': pageContract('/copilot'),
     '/sound': pageContract('/sound'),
     '/afisha': pageContract('/afisha'),
     '/certificates': pageContract('/certificates'),

@@ -47,7 +47,6 @@ focused route tests in the same pack.
 | `/api/chat` | `routes/chat.js` | chat |
 | `/api/content` | `routes/content.js` | content |
 | `/api/contractors` | `routes/contractors.js` | contractors |
-| `/api/copilot` | `routes/copilot.js` | copilot |
 | `/api/crm-assistant` | `routes/crm-assistant.js` | CRM assistant AI/voice |
 | `/api/customers` | `routes/customers.js` | customers |
 | `/api/education/groups` | `routes/education-groups.js` | education groups and memberships |

@@ -97,7 +97,8 @@ test('registry describes the current page catalog and active action contract', (
     const pageKeys = registry.PAGE_PERMISSIONS.map(entry => entry.key);
     const actionKeys = registry.ACTION_PERMISSIONS.filter(entry => entry.deprecated !== true).map(entry => entry.key);
 
-    assert.equal(pageKeys.length, 44);
+    assert.equal(pageKeys.length, 43);
+    assert.equal(pageKeys.includes('/copilot'), false);
     assert.equal(registry.ACTION_PERMISSIONS.length, 62);
     assert.equal(actionKeys.length, 58);
     assertUnique(pageKeys, 'page permission keys');
@@ -156,7 +157,8 @@ test('sidebar links are fully represented by page permission entries', () => {
     assert.ok(start >= 0 && end > start, 'unable to locate NAV_ITEMS block');
     const navBlock = source.slice(start, end);
     const navHrefs = Array.from(navBlock.matchAll(/href:\s*'([^']+)'/g), match => match[1]);
-    assert.equal(navHrefs.length, 51, 'sidebar link count drift');
+    assert.equal(navHrefs.length, 50, 'sidebar link count drift');
+    assert.equal(navHrefs.includes('/copilot'), false);
     assert.equal(navHrefs[navHrefs.indexOf('/omni') + 1], '/omni?telView=all', 'Telephony must remain next to Communications');
     assert.equal(navHrefs.includes('/designer'), false, 'Style Guide must stay out of the default sidebar navigation');
     assert.ok(registry.PAGE_PERMISSION_BY_KEY['/designer'], 'Style Guide route must keep a page permission entry');

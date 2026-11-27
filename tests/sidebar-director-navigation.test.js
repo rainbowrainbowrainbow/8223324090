@@ -26,6 +26,7 @@ function renderSidebar(t, role, options = {}) {
     };
     const profile = context && status === 'ready' ? {
         key: context, accessMode: 'membership',
+        gamificationAvailable: options.gamificationAvailable === true,
         modules: { source: 'business_registry', enabled: Object.fromEntries(
             businessModuleCatalog(context).map(({ key }) => [key,
                 configuredBusinessModuleEnabled({ contextKey: context, modules }, key)])
@@ -183,7 +184,7 @@ test('primary director renders the same complete business menu as creator after 
     assert.deepEqual(director.groups, creator.groups);
     assert.deepEqual(director.system, creator.system);
     assert.deepEqual(director.hr, creator.hr);
-    for (const href of ['/chat', '/guardian-ops', '/center', '/center?tab=tickets', '/timeline-settings', '/warehouse', '/game', '/demo']) {
+    for (const href of ['/chat', '/guardian-ops', '/center', '/center?tab=tickets', '/timeline-settings', '/warehouse', '/demo']) {
         assert.ok(director.system.includes(href), `System restores ${href}`);
     }
     for (const href of ['/hr', '/hr#team', '/hr#structure', '/hr#payroll', '/hr#other', '/checkin', '/training']) {
@@ -191,6 +192,26 @@ test('primary director renders the same complete business menu as creator after 
     }
     assert.equal(director.user.role, 'director');
     assert.deepEqual(director.user.extraRoles, []);
+});
+
+test('game navigation follows the edition even for directors and saved favorites', t => {
+    const savedExtras = [
+        { href: '/game', label: 'Гра' },
+        { href: '/profile?tab=achievements', label: 'Досягнення' },
+        { href: '/copilot', label: 'AI менеджер' }
+    ];
+    for (const role of ['creator', 'director']) {
+        const options = { savedExtras, withShell: true };
+        const park = renderSidebar(t, role, options);
+        const full = renderSidebar(t, role, { ...options, gamificationAvailable: true });
+        assert.equal(park.system.includes('/game'), false);
+        assert.equal(full.system.includes('/game'), true);
+        for (const { href } of savedExtras) {
+            const selector = `#sidebarDesignExtras a[href="${href}"]`;
+            assert.equal(Boolean(park.document.querySelector(selector)), false, href);
+            assert.equal(Boolean(full.document.querySelector(selector)), href !== '/copilot', href);
+        }
+    }
 });
 
 test('canonical explicit page denies still remove a director page and all its hash links', t => {

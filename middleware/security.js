@@ -32,7 +32,6 @@ const STATIC_HTML_ROUTE_PATHS = new Set([
     '/tasks',
     '/programs',
     '/staff',
-    '/copilot',
     '/designs',
     '/warehouse',
     '/hr',

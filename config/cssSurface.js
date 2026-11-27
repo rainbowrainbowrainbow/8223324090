@@ -231,13 +231,6 @@ const CSS_SURFACE = [
         reason: 'Shared form controls, buttons, and toolbar patterns.'
     },
     {
-        file: 'css/copilot.css',
-        owner: 'copilot',
-        category: 'page-scoped',
-        status: 'active',
-        reason: 'Sales/copilot workspace styles.'
-    },
-    {
         file: 'css/dark-mode.css',
         owner: 'shared-ui',
         category: 'shared-large',

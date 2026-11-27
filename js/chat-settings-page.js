@@ -231,7 +231,6 @@
             chat_ai: 'Chat AI',
             guardian_ai: 'Guardian AI',
             chat_translate: 'Chat translate',
-            manager_copilot: 'Manager Copilot',
             kleshnya_chat: 'Kleshnya chat',
             agent_tracker_summary: 'Agent tracker summary',
             catalog_trend_analysis: 'Catalog trend analysis',

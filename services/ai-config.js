@@ -314,7 +314,7 @@ async function getAIProviderDiagnostics() {
             crmAssistantRail: 'openai_direct',
             sharedTextRails: 'openrouter',
             mediaGeneration: 'kie',
-            note: 'Chat/Guardian/Copilot/summary token rails use OpenRouter. CRM assistant, menu AI review, Omni lead draft preview, and My Day classification remain direct OpenAI by product decision.'
+            note: 'Chat/Guardian/summary token rails use OpenRouter. CRM assistant, menu AI review, Omni lead draft preview, and My Day classification remain direct OpenAI by product decision.'
         },
         providers: {
             openrouter: secretState(['OPENROUTER_API_KEY', 'OPENROUTER_KEY'], openRouterConfigured, {
@@ -373,13 +373,6 @@ async function getAIProviderDiagnostics() {
                 provider: 'openrouter',
                 status: openRouterConfigured ? 'ready' : 'missing_key',
                 model: chatConfig.model || DEFAULT_MODELS.openrouter,
-                keyEnv: 'OPENROUTER_API_KEY'
-            },
-            {
-                id: 'manager_copilot',
-                provider: 'openrouter',
-                status: openRouterConfigured ? 'ready' : 'missing_key',
-                model: process.env.COPILOT_MODEL || chatConfig.model || DEFAULT_MODELS.openrouter,
                 keyEnv: 'OPENROUTER_API_KEY'
             },
             {

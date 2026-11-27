@@ -30,7 +30,6 @@ and focused tests in the same pack.
 | `timeline-settings.html` | `/timeline-settings` | timeline | canonical-page | Dedicated timeline settings center for visibility, visual presets, and display modes. |
 | `checkin.html` | `/checkin` | checkin | canonical-page | Staff check-in page. |
 | `content.html` | `/content` | content | canonical-page | Content matrix page. |
-| `copilot.html` | `/copilot` | copilot | canonical-page | Sales/copilot workspace. |
 | `customers.html` | `/customers` | customers | canonical-page | Customer CRM page. |
 | `data-deletion.html` | `/data-deletion.html` | legal | public-page | User-data deletion instructions for Meta integrations. |
 | `dashboard.html` | `/dashboard` | dashboard | canonical-page | Authenticated dashboard page. |

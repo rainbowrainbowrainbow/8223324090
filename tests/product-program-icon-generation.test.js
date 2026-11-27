@@ -42,7 +42,7 @@ test('program icon service keeps prompt fallback, Kie media default, OpenRouter 
     assert.match(service, /modalities:\s*\['image', 'text'\]/);
     assert.match(service, /parseOpenRouterImageUrl/);
     assert.match(service, /resolveProgramIconRuntime/);
-    assert.match(service, /openRouterChat/);
+    assert.match(service, /callUnifiedChatCompletion\(\{[\s\S]*?scope: 'chat_ai'/);
     assert.match(service, /buildDeterministicProgramIconPrompt/);
     assert.match(service, /fallbackTemplate/);
     assert.match(service, /KIE_API_KEY not configured/);

@@ -49,7 +49,7 @@ const Sidebar = (() => {
         { href: '/tasks?view=my', icon: 'task', label: 'Мої задачі', description: 'повний список', access: 'tasks', businessModule: 'tasks' },
         { href: '/tasks?view=today', icon: 'calendar', label: 'Сьогодні', description: 'план на день', access: 'tasks', businessModule: 'tasks' },
         { href: '/tasks?view=waiting', icon: 'alert', label: 'Очікування', description: 'завислі задачі', access: 'tasks', businessModule: 'tasks' },
-        { href: '/profile?tab=achievements', icon: 'analytics', label: 'Досягнення', description: 'прогрес і нагороди' }
+        { href: '/profile?tab=achievements', icon: 'analytics', label: 'Досягнення', description: 'прогрес і нагороди', businessModule: 'game' }
     ]);
     const UTILITY_RAIL_PRIMARY_HREFS = ['/dashboard', '/', '/tasks', '/chat', '/finance'];
     const UTILITY_RAIL_CONTEXT_GROUPS = ['sales', 'product', 'team', 'system'];
@@ -68,7 +68,6 @@ const Sidebar = (() => {
         ['/reports', 'Звіти'],
         ['/finance', 'Фін'],
         ['/cashier-payments', '\u041e\u043f\u043b\u0430\u0442\u0430 \u0442\u0430 \u0447\u0435\u043a'],
-        ['/copilot', 'AI'],
         ['/staff', 'Графік'],
         ['/hr', 'Пульс'],
         ['/hr#team', 'Команда'],
@@ -185,7 +184,6 @@ const Sidebar = (() => {
         { href: '/finance',      icon: '📊', label: 'Фінанси та аналітика', access: 'finance', group: 'sales' },
         { href: '/cashier-payments', icon: 'finance', label: '\u041e\u043f\u043b\u0430\u0442\u0430 \u0442\u0430 \u0447\u0435\u043a', access: '/cashier-payments', group: 'sales', businessModule: 'center' },
         { href: '/accounting-deposits', icon: 'finance', label: 'Перевірка завдатків', access: 'accounting_deposits', group: 'sales' },
-        { href: '/copilot',      icon: '🤖', label: 'AI менеджер',   access: 'copilot',        group: 'sales' },
 
         { type: 'group', key: 'team', label: 'HR', icon: '🤝', priority: 3, defaultOpen: false },
         { href: '/hr',           icon: '🤝', label: 'Пульс компанії', access: 'hr_page',        group: 'team', description: 'сьогодні, графік, звіти', activeHashes: ['today', 'schedule', 'reports'] },
@@ -1526,7 +1524,6 @@ const Sidebar = (() => {
         reports: 'reports',
         finance: 'finance',
         analytics: 'finance',
-        copilot: 'copilot',
         staff: 'staff',
         hr: 'hr',
         hr_page: 'hr',
@@ -1550,7 +1547,7 @@ const Sidebar = (() => {
     function _businessModuleForItem(item = {}) {
         if (item.businessModule) return item.businessModule;
         if (item.href === '/dashboard') return 'dashboard';
-        if (item.href === '/game' || item.href === '/shop' || item.href === '/quiz') return 'game';
+        if (['/game', '/shop', '/quiz', '/room'].includes(item.href)) return 'game';
         if (item.href === '/kleshnya') return 'kleshnya';
         return BUSINESS_MODULE_ACCESS_MAP[item.access] || null;
     }
@@ -1586,6 +1583,7 @@ const Sidebar = (() => {
         current = window.CrmBusinessContext?.current?.(user)) {
         const moduleId = _businessModuleForItem(item);
         const api = window.CrmBusinessContext;
+        if (moduleId === 'game' && _sidebarBusinessProfileForContext(current)?.gamificationAvailable !== true) return false;
         if (item.educationWorkspace) {
             const profile = current ? _sidebarBusinessProfileForContext(current) : null;
             return Boolean(current && api?.canAccess?.(user, current) !== false
@@ -4927,6 +4925,7 @@ const Sidebar = (() => {
         HR_TEAM_BUCKET_VISIBILITY,
         HR_TEAM_BUCKET_VISIBILITY_MANAGERS,
         hasAccess,
+        allowsBusinessNavigation: _businessAllowsSidebarItem,
         canSeeHrTeamBucket: _canSeeHrTeamBucket,
         canManageHrTeamBucketVisibility: _canManageHrTeamBucketVisibility,
         getMetricTone,

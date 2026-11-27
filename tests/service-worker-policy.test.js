@@ -289,6 +289,26 @@ describe('Service Worker cache safety policy', () => {
         assert.equal(response.headers.get('Cache-Control'), 'no-store');
     });
 
+    it('does not replay an old cached game page or retired Copilot page or script offline', async () => {
+        const runtimePolicy = loadPolicy({
+            fetch: async () => { throw new Error('offline'); },
+            cacheMatch: () => new Response('stale module', { status: 200 })
+        });
+        for (const path of ['/game', '/quiz.html', '/%72oom.html', '/shop.html']) {
+            const response = await runtimePolicy.networkFirstPage(get(path));
+            assert.equal(response.status, 503, path);
+            assert.doesNotMatch(await response.text(), /stale module/);
+        }
+        for (const path of ['/copilot.html', '/js/copilot-page.js?v=0.84.46', '/css/' + 'copilot.css']) {
+            let responsePromise;
+            runtimePolicy.__listeners.fetch({
+                request: get(path),
+                respondWith(promise) { responsePromise = promise; }
+            });
+            assert.equal((await responsePromise).status, 503, path);
+        }
+    });
+
     it('clears API and runtime caches, restores the public shell, and deletes the legacy offline DB', async () => {
         const runtimePolicy = loadPolicy({
             cacheKeys: [

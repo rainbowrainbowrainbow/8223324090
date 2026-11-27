@@ -219,17 +219,14 @@ const PAGE_KNOWLEDGE = {
     kleshnya: {
         pageKey: 'kleshnya',
         label: 'Помічник / AI чат',
-        pathnames: ['/kleshnya', '/kleshnya.html', '/copilot', '/copilot.html'],
-        aliases: ['assistant', 'помічник', 'клішня', 'kleshnya', 'copilot', 'ai менеджер'],
+        pathnames: ['/kleshnya', '/kleshnya.html'],
+        aliases: ['assistant', 'помічник', 'клішня', 'kleshnya'],
         businessPurpose: 'AI surface для питань по CRM, продажах і операціях; має пояснювати межі live data та сторінковий контекст.',
         owns: ['assistant sessions', 'chat history', 'AI guidance', 'safe suggestions'],
         primaryQuestions: ['що ти вмієш', 'як працювати зі сторінкою', 'де знайти функцію CRM'],
         relatedModules: ['dashboard', 'chat', 'sales-funnel', 'tasks'],
         apiHints: ['/api/kleshnya/chat', '/api/crm-assistant/reply'],
         guardrails: ['Чесно розрізняй знання про модуль і наявність live даних.']
-    },
-    copilot: {
-        aliasOf: 'kleshnya'
     },
     warehouse: {
         pageKey: 'warehouse',

@@ -59,6 +59,11 @@ function staticDocGuard(req, res, next) {
     const normalizedPath = requestPath.replace(/\\/g, '/');
     const ext = path.extname(normalizedPath).toLowerCase();
 
+    const canonicalPath = path.posix.normalize(normalizedPath).replace(/\/$/, '').toLowerCase();
+    if (['/copilot', '/copilot.html', '/js/copilot-page.js', '/css/copilot.css'].includes(canonicalPath)) {
+        return res.set('Cache-Control', 'no-store').status(410).send('Модуль «AI менеджер» більше недоступний.');
+    }
+
     if (isBlockedRepoRootFile(normalizedPath) || isBlockedRepoStaticPath(normalizedPath)) {
         return res.status(404).send('Not found');
     }

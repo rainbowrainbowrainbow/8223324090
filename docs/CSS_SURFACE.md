@@ -50,7 +50,6 @@ this document, and `npm run test:ui` coverage in the same pack.
 | `css/timeline-settings.css` | timeline | `page-scoped` | active | Standalone timeline settings center shell, block registry, preset, inspector, and responsive layout styles. |
 | `css/content.css` | content | `page-scoped` | active | Content matrix page styles. |
 | `css/controls.css` | shared-ui | `shared` | active | Shared form controls, buttons, and toolbar patterns. |
-| `css/copilot.css` | copilot | `page-scoped` | active | Sales/copilot workspace styles. |
 | `css/dark-mode.css` | shared-ui | `shared-large` | active-large | Shared dark-mode overrides across authenticated CRM pages. |
 | `css/dashboard.css` | dashboard | `page-scoped` | active | Aggregate entrypoint for Dashboard page styles. |
 | `css/dashboard-board.css` | dashboard | `page-scoped-large` | active-large | Dashboard whiteboard canvas, planner, geometry, connector, dark-mode, and compact tool dock styles imported by `dashboard.css`. |

@@ -620,7 +620,7 @@ const CRM_BUSINESS_CONTEXTS = Object.freeze({
         pageAllowlist: null,
         modules: [
             'dashboard', 'timeline', 'tasks', 'chat', 'customers', 'leads', 'omni',
-            'reports', 'finance', 'copilot', 'staff', 'hr', 'training', 'checkin',
+            'reports', 'finance', 'staff', 'hr', 'training', 'checkin',
             'programs', 'kitchen', 'catalogs', 'content', 'art', 'graduation',
             'sound', 'afisha', 'certificates', 'kleshnya', 'guardian', 'center',
             'warehouse', 'game', 'demo', 'settings'
@@ -633,7 +633,7 @@ const CRM_BUSINESS_CONTEXTS = Object.freeze({
         pageAllowlist: null,
         modules: [
             'dashboard', 'timeline', 'tasks', 'chat', 'customers', 'leads', 'omni', 'reports',
-            'finance', 'copilot', 'staff', 'hr', 'content', 'art',
+            'finance', 'staff', 'hr', 'content', 'art',
             'warehouse', 'kleshnya', 'center', 'settings'
         ]
     },
@@ -654,7 +654,7 @@ const CRM_BUSINESS_CONTEXTS = Object.freeze({
         pageAllowlist: null,
         modules: [
             'dashboard', 'tasks', 'chat', 'customers', 'leads', 'omni', 'reports',
-            'finance', 'copilot', 'staff', 'hr', 'content', 'kleshnya', 'center',
+            'finance', 'staff', 'hr', 'content', 'kleshnya', 'center',
             'settings'
         ]
     }
@@ -683,7 +683,7 @@ const CRM_BUSINESS_SCOPED_PAGES = Object.freeze({
     hr: { id: 'hr', label: 'HR', paths: ['/hr', '/staff'] },
     reports: { id: 'reports', label: 'Reports', paths: ['/reports', '/finance', '/analytics'] },
     content: { id: 'content', label: 'Content', paths: ['/content', '/art', '/designer', '/designs'] },
-    system: { id: 'system', label: 'System', paths: ['/tasks', '/chat', '/omni', '/copilot', '/center'] }
+    system: { id: 'system', label: 'System', paths: ['/tasks', '/chat', '/omni', '/center'] }
 });
 const CRM_BUSINESS_AGGREGATE_PAGE_IDS = new Set(['dashboard', 'products', 'leads', 'customers', 'reports']);
 const crmBusinessPageBindings = new Map();

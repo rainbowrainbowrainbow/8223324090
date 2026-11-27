@@ -27,7 +27,6 @@ const PAGE_DOCS = {
     reports: 'pages/reports.md',
     finance: 'pages/finance.md',
     analytics: 'pages/analytics.md',
-    copilot: 'pages/copilot.md',
     staff: 'pages/staff.md',
     hr: 'pages/hr.md',
     training: 'pages/training.md',

@@ -23,14 +23,13 @@ Source evidence: `services/customerCommunicationHub.js`, `routes/leads.js`.
 - Lead may link to Client.
 - Lead may link to Booking.
 - Lead may create Tasks/follow-ups.
-- Lead may be referenced by Copilot interactions.
+- Leads may have historical sales interactions and follow-up dates.
 
 ## Where It Appears
 
 - Sales Funnel page.
 - Client communication context.
 - Timeline booking linkage.
-- Copilot sales workspace.
 
 ## Assistant Interpretation
 

@@ -86,6 +86,8 @@ const STATIC_RUNTIME_CACHE_ALLOWLIST = [
 ];
 
 const PRIVATE_RUNTIME_PATH_PREFIXES = ['/uploads'];
+const LEGACY_GAME_NAVIGATION_PATH = /^\/(?:game|quiz|room|shop)(?:\.html)?\/?$/i;
+const RETIRED_COPILOT_PATH = /^\/(?:copilot(?:\.html)?\/?|js\/copilot-page\.js|css\/copilot\.css)$/i;
 
 function matchesPathPolicy(pathname, policies) {
     return policies.some((policy) => {
@@ -205,7 +207,6 @@ function offlineNavigationResponse(request) {
                     'timeline': true,
                     'maysternya-doli': true,
                     'kleshnya': true,
-                    'copilot': true,
                     'guardian-ops': true,
                     'hermes-studio': true,
                     'status': true
@@ -386,6 +387,13 @@ self.addEventListener('fetch', (event) => {
     const isApiRequest = url.pathname.startsWith('/api/');
     const method = event.request.method;
 
+    let pathname = url.pathname;
+    try { pathname = decodeURIComponent(pathname); } catch {}
+    if (RETIRED_COPILOT_PATH.test(pathname)) {
+        event.respondWith(networkOnlyAsset(event.request));
+        return;
+    }
+
     // --- Mutations (POST/PUT/DELETE/PATCH to /api/*) ---
     if (isApiRequest && method !== 'GET') {
         event.respondWith(handleMutation(event.request));
@@ -497,10 +505,14 @@ async function networkFirstPage(request) {
         }
         return networkResponse;
     } catch (err) {
+        const pathname = new URL(request.url).pathname;
+        let navigationPath = pathname;
+        try { navigationPath = decodeURIComponent(pathname); } catch {}
+        if (LEGACY_GAME_NAVIGATION_PATH.test(navigationPath)) return offlineNavigationResponse(request);
+
         const cachedResponse = await caches.match(request);
         if (cachedResponse) return cachedResponse;
 
-        const pathname = new URL(request.url).pathname;
         if (pathname === '/' || pathname === OFFLINE_FALLBACK_URL) {
             const shell = await caches.match(OFFLINE_FALLBACK_URL);
             if (shell) return shell;

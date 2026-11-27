@@ -103,7 +103,6 @@ function installRedirectDiagnosticsRuntime(global = window) {
         'timeline',
         'maysternya-doli',
         'kleshnya',
-        'copilot',
         'guardian-ops',
         'hermes-studio',
         'status'
@@ -1682,7 +1681,6 @@ const AUTH_SAFE_RETURN_ROUTE_MODULES = new Set([
     'timeline',
     'maysternya-doli',
     'kleshnya',
-    'copilot',
     'guardian-ops',
     'hermes-studio',
     'status'

@@ -105,7 +105,7 @@ async function telegramInboxOwnsGlobalBotToken() {
 }
 
 // --- Express app setup ---
-const { PARK_PROFILE_MODULES, mountParkProfileBoundaries } = require('./services/parkProfileModules');
+const { PARK_PROFILE_MODULES, mountParkGamificationPageBoundary, mountParkProfileBoundaries } = require('./services/parkProfileModules');
 const app = express();
 app.disable('x-powered-by'); // v20.9.9: Don't expose Express version
 app.set('trust proxy', 1);   // v20.9.27: Trust first proxy (Railway) — req.ip returns real client IP
@@ -219,14 +219,7 @@ app.use('/uploads/sounds', (req, res, next) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') return next();
     return res.status(404).json({ error: 'sound_upload_not_found' });
 });
-app.get(['/shop', '/shop.html'], (_req, res) => {
-    if (PARK_PROFILE_MODULES.gamification !== 'active') return res.redirect(302, '/profile?tab=shop');
-    return res.sendFile(path.join(__dirname, 'shop.html'));
-});
-app.get(['/game', '/game.html'], (_req, res) => {
-    if (PARK_PROFILE_MODULES.gamification !== 'active') return res.redirect(302, '/profile?tab=achievements');
-    return res.sendFile(path.join(__dirname, 'game.html'));
-});
+mountParkGamificationPageBoundary(app);
 app.use(require('./services/changelog-page').createChangelogRouter());
 // Old messages/bookmarks must reach My Day before static tasks.html is served.
 app.use(require('./middleware/taskLinkRedirect'));
@@ -376,7 +369,12 @@ app.use('/api/training', require('./routes/training'));
 app.use('/api/sales', require('./routes/sales'));
 app.use('/api/page-statuses', require('./routes/page-statuses'));
 app.use('/api/leads', require('./routes/leads'));
-app.use('/api/copilot', require('./routes/copilot'));
+app.use('/api/copilot', (_req, res) => {
+    res.set('Cache-Control', 'no-store').status(410).json({
+        error: 'Sales Copilot has been retired',
+        code: 'MODULE_UNAVAILABLE'
+    });
+});
 app.use('/api/decisions', require('./routes/decisions'));
 app.use('/api/sound-library', require('./routes/sound-library'));
 app.use('/api/landing', require('./routes/landing'));
@@ -402,15 +400,11 @@ if (PARK_PROFILE_MODULES.gamification === 'active') {
     app.use('/api', require('./routes/shop')); // /api/inventory, /api/profile/:id, /api/profile/equip
     app.use('/api/quests', require('./routes/quests'));
     app.use('/api/streaks', require('./routes/streaks'));
+    app.use('/api/minigame', require('./routes/minigame'));
+    app.use('/api/room', require('./routes/room'));
+    app.use('/api/quiz', require('./routes/quiz'));
 }
 app.use('/api/notes', require('./routes/notes'));
-app.use('/api/minigame', require('./routes/minigame'));
-
-// v22.5.0: Gamification v2 — Room, Quests, Titles
-app.use('/api/room', require('./routes/room'));
-
-// v22.10.0: Gamification v3 — Quiz, Streaks
-app.use('/api/quiz', require('./routes/quiz'));
 
 // Content Matrix — social media content planning
 app.use('/api/content', require('./routes/content'));
@@ -505,9 +499,6 @@ app.get('/programs', (req, res) => {
 });
 app.get('/staff', (req, res) => {
     res.sendFile(path.join(__dirname, 'staff.html'));
-});
-app.get('/copilot', (req, res) => {
-    res.sendFile(path.join(__dirname, 'copilot.html'));
 });
 app.get('/kleshnya', (req, res) => {
     res.redirect('/chat');
@@ -638,14 +629,10 @@ app.get(['/sales-deck', '/sales-deck.html'], (req, res) => {
 app.get('/landing/sales-deck', (req, res) => {
     res.sendFile(path.join(__dirname, 'landing', 'sales-deck.html'));
 });
-// v22.4.0: shop, game pages
-// v22.10.0: Quiz + Room pages
-app.get('/quiz', (req, res) => {
-    res.sendFile(path.join(__dirname, 'quiz.html'));
-});
-app.get('/room', (req, res) => {
-    res.sendFile(path.join(__dirname, 'room.html'));
-});
+app.get('/shop', (_req, res) => res.sendFile(path.join(__dirname, 'shop.html')));
+app.get('/game', (_req, res) => res.sendFile(path.join(__dirname, 'game.html')));
+app.get('/quiz', (_req, res) => res.sendFile(path.join(__dirname, 'quiz.html')));
+app.get('/room', (_req, res) => res.sendFile(path.join(__dirname, 'room.html')));
 
 // v23.2.0: OmniClaw — omnichannel inbox
 app.get('/omni', (req, res) => {

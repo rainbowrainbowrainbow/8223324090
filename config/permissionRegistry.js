@@ -406,12 +406,6 @@ const PAGE_PERMISSIONS = Object.freeze([
         apiConsumers: [api('routes/omnichannel.js', '/api/omni', null, 'CRM UI access is role/JWT based; public provider webhooks use the independent machine-auth contract in config/authBoundary.js.')]
     }),
     page({
-        key: '/copilot', label: 'AI менеджер', group: 'sales', canonicalPath: '/copilot',
-        defaultRoles: MANAGER_UP, risk: 'high', sidebarLinks: ['/copilot'],
-        frontendConsumers: [source('copilot.html', 'js/auth.js')],
-        apiConsumers: [api('routes/copilot.js', '/api/copilot', null)]
-    }),
-    page({
         key: '/sound', label: 'Звук', group: 'product', canonicalPath: '/sound',
         defaultRoles: [...MANAGER_UP, 'art_director'], risk: 'medium',
         sidebarLinks: ['/sound#projects', '/sound#library', '/sound#announcements'],

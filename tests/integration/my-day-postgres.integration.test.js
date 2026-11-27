@@ -410,6 +410,29 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
         await openAiMock.start();
     });
 
+    it('full edition still serves gamification pages and APIs', async () => {
+        const { origin } = require('../../scripts/test-db-safety').assertSafeIsolatedTestUrl(process.env.TEST_URL);
+        const profile = await request('GET', '/api/auth/business-profile', undefined, creatorToken);
+        assert.equal(profile.status, 200);
+        assert.equal(profile.data.businessProfile.activeProfile.gamificationAvailable, true);
+        for (const page of ['/game', '/quiz', '/room', '/shop']) {
+            for (const url of [page, `${page}.html`]) {
+                const result = await fetch(origin + url, { redirect: 'manual' });
+                assert.equal(result.status, 200, url);
+                assert.match(result.headers.get('content-type'), /^text\/html/, url);
+            }
+        }
+        for (const [url, field] of [
+            ['/api/minigame/status', 'canPlay'],
+            ['/api/quiz/status', 'canPlay'],
+            ['/api/room', 'userId']
+        ]) {
+            const result = await request('GET', url, undefined, creatorToken);
+            assert.equal(result.status, 200, url);
+            assert.ok(Object.hasOwn(result.data, field), url);
+        }
+    });
+
     after(async () => {
         await openAiMock?.close().catch(() => {});
         if (pool && suffix) {

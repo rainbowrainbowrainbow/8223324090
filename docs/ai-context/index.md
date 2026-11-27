@@ -39,7 +39,6 @@ Status: first-pass knowledge base from current source code. A small read-only ru
 - [Report Agent](./pages/report-agent.md)
 - [Finance](./pages/finance.md)
 - [Analytics](./pages/analytics.md)
-- [Copilot](./pages/copilot.md)
 - [Staff Schedule](./pages/staff.md)
 - [HR](./pages/hr.md)
 - [Training](./pages/training.md)

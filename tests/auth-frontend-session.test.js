@@ -3002,7 +3002,6 @@ test('protected page bootstrap inventory delegates refresh-only sessions to apiV
         ['shop', 'js/shop-page.js', 'async function initShopPage()'],
         ['certificates', 'js/certificates-page.js', 'async function bootstrapAuthenticatedShell()'],
         ['customers', 'js/customers-page.js', 'async function initPage()'],
-        ['copilot', 'js/copilot-page.js', 'async function waitForAuth()'],
         ['omni', 'omni.html', '// Auth check (standalone page pattern'],
         ['chat', 'js/chat-page.js', 'async function _checkAuthAndInit()'],
         ['guardian ops', 'js/guardian-ops-page.js', 'async function initSession()'],
@@ -3050,7 +3049,7 @@ test('every production apiVerifyToken page bootstrap distinguishes transient fai
         return /\bapiVerifyToken\s*\(/.test(code);
     });
 
-    assert.ok(pageCallsites.length >= 37, 'expected the complete protected-page bootstrap inventory');
+    assert.ok(pageCallsites.length >= 36, 'expected the complete protected-page bootstrap inventory');
     for (const relativePath of pageCallsites) {
         const code = fs.readFileSync(path.join(ROOT, relativePath), 'utf8');
         if (harmlessCallsites.has(relativePath)) {

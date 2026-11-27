@@ -116,14 +116,6 @@ const ROOT_HTML_SURFACE = [
         purpose: 'Content matrix page.'
     },
     {
-        file: 'copilot.html',
-        canonicalPath: '/copilot',
-        owner: 'copilot',
-        status: 'canonical-page',
-        aliases: [],
-        purpose: 'Sales/copilot workspace.'
-    },
-    {
         file: 'customers.html',
         canonicalPath: '/customers',
         owner: 'customers',

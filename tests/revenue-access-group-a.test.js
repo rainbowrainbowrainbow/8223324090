@@ -86,61 +86,6 @@ function loadEventQueueRouter(pool, publish) {
     };
 }
 
-function loadCopilotRouter(pool) {
-    const routeId = require.resolve('../routes/copilot');
-    const dbId = require.resolve('../db');
-    const authId = require.resolve('../middleware/auth');
-    const serviceId = require.resolve('../services/copilot');
-    const previous = new Map([
-        [routeId, require.cache[routeId]],
-        [dbId, require.cache[dbId]],
-        [authId, require.cache[authId]],
-        [serviceId, require.cache[serviceId]]
-    ]);
-
-    delete require.cache[routeId];
-    require.cache[dbId] = {
-        id: dbId,
-        filename: dbId,
-        loaded: true,
-        exports: { pool }
-    };
-    require.cache[authId] = {
-        id: authId,
-        filename: authId,
-        loaded: true,
-        exports: {
-            requireRole: () => (_req, _res, next) => next()
-        }
-    };
-    require.cache[serviceId] = {
-        id: serviceId,
-        filename: serviceId,
-        loaded: true,
-        exports: {
-            openRouterChat: async () => '',
-            buildCoachPrompt: () => '',
-            buildDebriefPrompt: () => '',
-            buildMeetingPrepPrompt: () => '',
-            buildMessageWriterPrompt: () => '',
-            buildSalesQAPrompt: () => '',
-            buildObjectionPrompt: () => ''
-        }
-    };
-
-    const router = require('../routes/copilot');
-    return {
-        router,
-        restore() {
-            delete require.cache[routeId];
-            for (const [id, entry] of previous) {
-                if (entry) require.cache[id] = entry;
-                else delete require.cache[id];
-            }
-        }
-    };
-}
-
 test('explicit view_revenue deny redacts nested money while preserving operational fields', async () => {
     const router = express.Router();
     router.use((req, res, next) => installRevenueResponseShaper(
@@ -204,7 +149,6 @@ test('Group A route wiring derives revenue visibility from capability decisions'
     const boardRoute = routeSource('board.js');
     const historyRoute = routeSource('history.js');
     const eventQueueRoute = routeSource('event-queue.js');
-    const copilotRoute = routeSource('copilot.js');
 
     assert.match(authRoute, /const canViewRevenue = canUseAction\(req\.user, 'view_revenue'\);/);
     assert.match(authRoute, /showRevenue: canViewRevenue/);
@@ -232,67 +176,6 @@ test('Group A route wiring derives revenue visibility from capability decisions'
     assert.match(eventQueueRoute, /function requirePlainEventPayload/);
     assert.match(eventQueueRoute, /router\.delete\('\/rules\/:id', requireSettingsManagement, requireStoredRuleRevenueAccess/);
 
-    assert.match(copilotRoute, /const manageCopilot = requireRole\(\.\.\.MANAGER_ROLES\);[\s\S]*?allowAccountantPageRead\('\/copilot', manageCopilot\)/);
-    assert.doesNotMatch(copilotRoute, /installRevenueResponseShaper|canUseAction\(req\.user, 'view_revenue'\)/);
-});
-
-test('Copilot case round-trip preserves user-authored currency text without view_revenue', async () => {
-    const originalMessage = 'Клієнт назвав бюджет 2 000 ₴ і просить порівняти пакети.';
-    const storedCase = {
-        id: 17,
-        title: 'Customer package comparison',
-        status: 'active',
-        created_by: 'copilot-roundtrip',
-        messages: [{ role: 'user', content: originalMessage, ts: 1 }],
-        last_summary: null
-    };
-    const queries = [];
-    const loaded = loadCopilotRouter({
-        async query(sql, params = []) {
-            const statement = String(sql);
-            queries.push({ sql: statement, params });
-            if (statement.includes('SELECT * FROM ai_cases')) {
-                return { rows: [structuredClone(storedCase)] };
-            }
-            if (statement.includes('UPDATE ai_cases SET title')) {
-                storedCase.messages = JSON.parse(params[3]);
-                storedCase.last_summary = params[4];
-                return { rows: [structuredClone(storedCase)] };
-            }
-            throw new Error('Unexpected Copilot case SQL: ' + statement);
-        }
-    });
-
-    try {
-        await withRouter(
-            loaded.router,
-            '/api/copilot',
-            { role: 'creator', username: 'copilot-roundtrip', action_denylist: ['view_revenue'] },
-            async baseUrl => {
-                const getResponse = await fetch(baseUrl + '/api/copilot/cases/17');
-                assert.equal(getResponse.status, 200);
-                const loadedCase = await getResponse.json();
-                assert.equal(loadedCase.data.messages[0].content, originalMessage);
-
-                const messages = loadedCase.data.messages;
-                messages.push({ role: 'assistant', content: 'Порівняння готове.', ts: 2 });
-                const putResponse = await fetch(baseUrl + '/api/copilot/cases/17', {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ messages, last_summary: 'Порівняння готове.' })
-                });
-                assert.equal(putResponse.status, 200);
-                const updatedCase = await putResponse.json();
-                assert.equal(updatedCase.data.messages[0].content, originalMessage);
-            }
-        );
-    } finally {
-        loaded.restore();
-    }
-
-    assert.equal(queries.length, 2);
-    assert.equal(storedCase.messages[0].content, originalMessage);
-    assert.doesNotMatch(JSON.stringify(storedCase.messages), /\[сума прихована\]/);
 });
 
 test('action-log GET shapes financial meta without blocking operational logging', () => {

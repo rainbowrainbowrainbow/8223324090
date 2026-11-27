@@ -1472,17 +1472,6 @@ checkPage('center.html', (doc, html) => {
         && !bookingSummaryHardcode.test(bookingSummaryPageCode));
 });
 
-checkPage('copilot.html', (doc) => {
-    const copilotCss = fs.readFileSync(path.join(ROOT, 'css', 'copilot.css'), 'utf8');
-    const copilotPageCode = fs.readFileSync(path.join(ROOT, 'js', 'copilot-page.js'), 'utf8');
-    check('copilotApp exists', !!doc.getElementById('copilotApp'));
-    check('nav items exist', doc.querySelectorAll('.copilot-nav-item').length > 0);
-    check('Copilot form rows use shrink-safe grid', copilotCss.includes('grid-template-columns: minmax(0, 1fr) minmax(0, 1fr)'));
-    check('Copilot form controls are bounded inside grid rows', copilotCss.includes('.form-row .copilot-input'));
-    check('Copilot new case uses CRM prompt modal without native fallback', copilotPageCode.includes("await promptModal('Назва кейсу:'") && !copilotPageCode.includes('window.prompt'));
-    check('Copilot follow-up copy is localized for visible CRM operators', copilotPageCode.includes('Дата дотиску') && copilotPageCode.includes('Дотиск після мовчання') && copilotPageCode.includes('Дотиск виконано') && !copilotPageCode.includes('Follow-up дата') && !copilotPageCode.includes('Follow-up виконано') && !copilotPageCode.includes('follow-up через 3 дні'));
-});
-
 checkPage('designer.html', (doc) => {
     check('5 tabs exist', doc.querySelectorAll('.designer-tab').length === 5);
     check('sidebar exists', !!doc.getElementById('sidebarNav'));
@@ -2975,7 +2964,7 @@ const criticalJS = [
     'js/assistant-rail.js',
     'js/components/sidebar.js',
     'js/art-director-page.js', 'js/center-page.js', 'js/demo-page.js',
-    'js/designs-page.js', 'js/copilot-page.js',
+    'js/designs-page.js',
     'js/dashboard-page.js', 'js/finance-page.js', 'js/analytics-page.js',
     'js/hr-pulse-switcher.js', 'js/hr-page.js', 'js/staff-page.js', 'js/customers-page.js',
     'js/tasks-page.js', 'js/leads-page.js', 'js/chat-page.js', 'js/chat-settings-page.js', 'js/timeline-settings-page.js',
@@ -2991,12 +2980,7 @@ for (const f of criticalJS) {
     checkJSFile(f);
 }
 
-// Check copilot exports
-const copilotCode = fs.readFileSync(path.join(ROOT, 'js/copilot-page.js'), 'utf8');
-check('CopilotPage has selectScript', copilotCode.includes('selectScript'));
-check('CopilotPage has showAddInteractionForm', copilotCode.includes('showAddInteractionForm'));
-check('CopilotPage has loadTrackerAlerts', copilotCode.includes('loadTrackerAlerts'));
-check('Copilot workflow and cases calls use mounted /api/copilot contract', copilotCode.includes('function copilotApiUrl') && copilotCode.includes("return '/api/copilot'") && copilotCode.includes("await apiPut('/cases/' + caseId") && !copilotCode.includes("await apiPost('/cases/' + caseId"));
+
 
 // Check shared logout binding ownership
 console.log('\nshared logout binding');
@@ -3098,7 +3082,7 @@ check('Legacy header logout outliers use shared logoutBtn binding', legacyHeader
 
 // Check shared layout shell guardrails
 console.log('\nlayout shell guardrails');
-const fullAppShellPages = new Set(['chat.html', 'chat-settings.html', 'copilot.html', 'designer.html', 'index.html', 'omni.html', 'timeline-settings.html', 'training.html']);
+const fullAppShellPages = new Set(['chat.html', 'chat-settings.html', 'designer.html', 'index.html', 'omni.html', 'timeline-settings.html', 'training.html']);
 const shellPages = htmlFiles
     .map(file => {
         const html = fs.readFileSync(path.join(ROOT, file), 'utf8');
@@ -3134,7 +3118,7 @@ const sidebarLinkedPagesWithoutShell = sidebarLinkedPages.filter(page => (
 const sharedHeaderContractExceptions = new Set(['analytics.html', 'booking-summary.html', 'checkin.html', 'invite.html']);
 const STANDARD_AUTH_SHELL_PAGES = [
     'accounting-deposits.html', 'afisha.html', 'art-director.html', 'center.html', 'certificates.html',
-    'chat.html', 'chat-settings.html', 'content.html', 'copilot.html', 'customers.html',
+    'chat.html', 'chat-settings.html', 'content.html', 'customers.html',
     'dashboard.html', 'demo.html', 'designer.html', 'designs.html', 'finance.html',
     'game.html', 'graduation.html', 'guardian-ops.html', 'hermes-studio.html', 'hr.html',
     'index.html', 'leads.html', 'omni.html', 'profile.html', 'programs.html',
@@ -3225,11 +3209,11 @@ check('Every page that loads shared sidebar assets has sidebarNav/sidebarLinks s
 check('Shared header shell pages keep direct user-panel contract with explicit exceptions',
     ['analytics.html', 'booking-summary.html', 'checkin.html', 'invite.html'].every(file => sharedHeaderContractExceptions.has(file))
     && headerShellPagesMissingUserPanel.length === 0);
-check('All 37 standard CRM shell pages keep shared header action prerequisites',
-    STANDARD_AUTH_SHELL_PAGES.length === 37
+check('All 36 standard CRM shell pages keep shared header action prerequisites',
+    STANDARD_AUTH_SHELL_PAGES.length === 36
     && missingStandardHeaderShellContract.length === 0
     && STANDARD_AUTH_SHELL_PAGES.every(file => !sharedHeaderContractExceptions.has(file)));
-check('All 37 standard CRM shell pages keep one static logout and runtime-owned settings/theme',
+check('Standard CRM shell pages keep one static logout and runtime-owned settings/theme',
     standardHeaderShellActionDrift.length === 0
     && pagesWithStaticHeaderThemeToggle.length === 0
     && pagesWithStaticHeaderSettingsButton.length === 0

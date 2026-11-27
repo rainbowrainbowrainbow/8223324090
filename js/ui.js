@@ -4336,3 +4336,31 @@ async function openManualTaskComposer(draft = {}) {
         return false;
     }
 }
+
+// Resolve former embedded tabs after the host page has loaded its access context.
+async function initFormerTabLinks() {
+    if (getPermissionLifecycle().status !== 'ready') await hydrateActionPermissions();
+    const links = document.querySelectorAll('a[data-former-tab]');
+    let redirecting = false;
+    const sync = () => {
+        if (redirecting) return true;
+        const requested = new URLSearchParams(location.search).get('tab') || location.hash.slice(1);
+        for (const link of links) {
+            const item = Sidebar.NAV_ITEMS.find(entry => entry.href === link.pathname);
+            const allowed = getPermissionLifecycle().status === 'ready' && item
+                && canAccessPage(link.pathname) && Sidebar.allowsBusinessNavigation(item);
+            link.classList.toggle('hidden', !allowed);
+            if (allowed && requested === link.dataset.formerTab) {
+                redirecting = true;
+                location.replace(link.href);
+                return true;
+            }
+        }
+        return false;
+    };
+    window.addEventListener('permissions:lifecycle', sync);
+    window.addEventListener('roleSwitched', sync);
+    window.addEventListener('crmBusinessProfileChanged', sync);
+    window.addEventListener('crmBusinessContextChanged', sync);
+    return sync();
+}

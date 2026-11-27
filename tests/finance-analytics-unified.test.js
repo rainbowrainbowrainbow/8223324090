@@ -57,7 +57,7 @@ test('finance is the canonical unified finance and analytics surface', () => {
     assert.match(financeJs, /renderInsightsWorkspace/);
 
     assert.match(analyticsJs, /window\.CrmAnalyticsWidgets/);
-    assert.match(analyticsJs, /initStandaloneAnalyticsPage/);
+    assert.doesNotMatch(analyticsJs, /DOMContentLoaded|apiFetchWithAuthRetry|initStandaloneAnalyticsPage/);
     assert.match(analyticsJs, /document\.getElementById\('kpiGrid'\)/);
     assert.match(analyticsJs, /function renderChartReadout/);
     assert.match(financeJs, /function renderFinanceChartReadout/);

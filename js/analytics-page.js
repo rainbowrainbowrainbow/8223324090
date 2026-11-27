@@ -1,48 +1,9 @@
-/**
- * js/analytics-page.js — Unified Analytics dashboard (v16.1)
- *
- * Cross-module KPIs, charts, comparisons: bookings + finance + HR + CRM.
- */
-
-/* global apiVerifyToken, initDarkMode */
+/** Shared financial analytics chart renderers. */
 
 function escapeHtml(str) {
     if (!str) return '';
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
-
-// ==========================================
-// HELPERS — apiRequest & showNotification
-// ==========================================
-
-async function apiRequest(method, url, body) {
-    const res = await apiFetchWithAuthRetry(url, {
-        method,
-        headers: getAuthHeaders(Boolean(body)),
-        body: body ? JSON.stringify(body) : undefined
-    });
-    if (!res || handleAuthError(res)) return;
-    if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || `HTTP ${res.status}`);
-    }
-    return await res.json();
-}
-
-
-// ==========================================
-// STATE
-// ==========================================
-
-const AnState = {
-    period: 'month',
-    customFrom: null,
-    customTo: null,
-    overview: null,
-    charts: null,
-    comparison: null,
-    dealsLifecycle: null
-};
 
 // ==========================================
 // FORMATTING
@@ -100,57 +61,6 @@ function growthBadge(pct) {
     if (pct > 0) return `<span class="an-growth up">▲ ${pct}%</span>`;
     if (pct < 0) return `<span class="an-growth down">▼ ${Math.abs(pct)}%</span>`;
     return `<span class="an-growth flat">— 0%</span>`;
-}
-
-// ==========================================
-// API
-// ==========================================
-
-function getParams() {
-    if (AnState.period === 'custom' && AnState.customFrom && AnState.customTo) {
-        return `from=${AnState.customFrom}&to=${AnState.customTo}`;
-    }
-    return `period=${AnState.period}`;
-}
-
-async function fetchOverview() {
-    try {
-        const res = await apiRequest('GET', `/api/analytics/overview?${getParams()}`);
-        AnState.overview = res;
-        renderKPIs(res);
-    } catch (err) {
-        console.error('Failed to fetch overview', err);
-    }
-}
-
-async function fetchCharts() {
-    try {
-        const res = await apiRequest('GET', `/api/analytics/charts?${getParams()}`);
-        AnState.charts = res;
-        renderCharts(res);
-    } catch (err) {
-        console.error('Failed to fetch charts', err);
-    }
-}
-
-async function fetchComparison() {
-    try {
-        const res = await apiRequest('GET', `/api/analytics/comparison?${getParams()}`);
-        AnState.comparison = res;
-        renderComparison(res);
-    } catch (err) {
-        console.error('Failed to fetch comparison', err);
-    }
-}
-
-async function fetchDealsLifecycle() {
-    try {
-        const res = await apiRequest('GET', `/api/analytics/deals-lifecycle?${getParams()}`);
-        AnState.dealsLifecycle = res;
-        renderDealsLifecycle(res);
-    } catch (err) {
-        console.error('Failed to fetch deals lifecycle', err);
-    }
 }
 
 // ==========================================
@@ -556,38 +466,6 @@ function renderComparison(data) {
     `;
 }
 
-// ==========================================
-// PERIOD SWITCHING
-// ==========================================
-
-function switchPeriod(period) {
-    AnState.period = period;
-    document.querySelectorAll('.an-period-tab').forEach(t => {
-        t.classList.toggle('active', t.dataset.period === period);
-    });
-    document.getElementById('customRange')?.classList.toggle('visible', period === 'custom');
-    if (period !== 'custom') refreshAll();
-}
-
-function applyCustomRange() {
-    const from = document.getElementById('customFrom')?.value;
-    const to = document.getElementById('customTo')?.value;
-    if (!from || !to) {
-        showNotification('Оберіть обидві дати', 'error');
-        return;
-    }
-    AnState.customFrom = from;
-    AnState.customTo = to;
-    refreshAll();
-}
-
-function refreshAll() {
-    fetchOverview();
-    fetchCharts();
-    fetchDealsLifecycle();
-    fetchComparison();
-}
-
 window.CrmAnalyticsWidgets = {
     renderKPIs,
     renderCharts,
@@ -605,72 +483,3 @@ window.CrmAnalyticsWidgets = {
     fmtNum,
     safeCssAccent
 };
-
-// ==========================================
-// INIT
-// ==========================================
-
-async function initStandaloneAnalyticsPage() {
-    if (typeof initDarkMode === 'function') initDarkMode();
-
-
-    try {
-        const user = await apiVerifyToken();
-        if (!user) throw new Error('Invalid token');
-        AppState.currentUser = user;
-        const _userEl = document.getElementById('currentUser'); if (_userEl) _userEl.textContent = user.name || user.username;
-        if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
-        else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
-    } catch (err) {
-        if (err?.message === 'Invalid token') {
-            if (typeof handleTransientAuthSessionBootstrap === 'function'
-                && handleTransientAuthSessionBootstrap({ retry: () => window.location.reload(), containerId: 'main-content' })) {
-                return;
-            }
-            window.location.href = '/';
-            document.getElementById('mainApp')?.classList.add('hidden');
-            if (typeof clearAuthenticatedPageShell === 'function') clearAuthenticatedPageShell();
-            return;
-        }
-        if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
-        if (typeof handleStandaloneInitError === 'function') {
-            handleStandaloneInitError('analytics', err, (failure) => {
-                renderStandaloneFatalError({
-                    moduleName: 'analytics',
-                    containerId: 'kpiGrid',
-                    title: 'Не вдалося відкрити аналітику',
-                    message: 'Авторизація пройшла, але ініціалізація аналітики впала.',
-                    error: failure
-                });
-            });
-        } else {
-            console.error('[analytics:init] runtime failure', err);
-        }
-        return;
-    }
-
-    if (typeof bindLogoutButton === 'function') bindLogoutButton();
-
-    // Period tabs
-    document.querySelectorAll('.an-period-tab').forEach(btn => {
-        btn.addEventListener('click', () => switchPeriod(btn.dataset.period));
-    });
-
-    // Custom range apply
-    document.getElementById('applyCustomBtn')?.addEventListener('click', applyCustomRange);
-
-    // Modal close
-    document.querySelectorAll('.modal-close').forEach(btn => {
-        btn.addEventListener('click', () => btn.closest('.modal').classList.add('hidden'));
-    });
-    document.querySelectorAll('.modal').forEach(modal => {
-        modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.add('hidden'); });
-    });
-
-    // Initial load
-    refreshAll();
-}
-
-if (document.getElementById('kpiGrid') && document.getElementById('chartsContent')) {
-    document.addEventListener('DOMContentLoaded', initStandaloneAnalyticsPage);
-}

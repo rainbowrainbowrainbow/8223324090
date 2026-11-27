@@ -42,7 +42,6 @@
         .artdir-tab--legacy-hidden { display: none !important; }
         .artdir-tab-content { display: none; }
         .artdir-tab-content.active { display: block; }
-        .artdir-embed-frame { width: 100%; min-height: calc(100vh - 160px); border: none; border-radius: 12px; background: rgba(255,255,255,0.2); }
 
         /* Section blocks (reuse center pattern) */
         .artdir-section {
@@ -352,6 +351,8 @@
                     </div>
                     <div class="art-page-actions" aria-label="Швидкі дії арт-модуля">
                         <button type="button" class="btn-page-primary" data-art-tab-target="pipeline">Конвеєр</button>
+                        <a class="btn-page-secondary hidden" data-former-tab="designs" href="/designs">Дизайни</a>
+                        <a class="btn-page-secondary hidden" data-former-tab="graduation" href="/graduation">Випускний</a>
                         <a class="btn-page-secondary" href="/afisha">Афіша подій</a>
                     </div>
                 </section>
@@ -363,19 +364,7 @@
                     <button type="button" class="artdir-tab" id="art-tab-templates" data-tab="templates" role="tab" aria-selected="false" aria-controls="tab-templates">Шаблони</button>
                     <button type="button" class="artdir-tab" id="art-tab-brand" data-tab="brand" role="tab" aria-selected="false" aria-controls="tab-brand">Brand Book</button>
                     <button type="button" class="artdir-tab artdir-tab--legacy-hidden" id="art-tab-costumes" data-tab="costumes" data-legacy-tab="costumes" role="tab" aria-selected="false" aria-controls="tab-costumes">Костюмерна</button>
-                    <button type="button" class="artdir-tab" id="art-tab-designs" data-tab="designs" role="tab" aria-selected="false" aria-controls="tab-designs">Дизайни</button>
-                    <button type="button" class="artdir-tab" id="art-tab-graduation" data-tab="graduation" role="tab" aria-selected="false" aria-controls="tab-graduation">Випускний</button>
                 </nav>
-
-                <!-- Tab: Designs (full functionality) -->
-                <div class="artdir-tab-content" id="tab-designs" role="tabpanel" aria-labelledby="art-tab-designs" tabindex="0">
-                    <iframe data-src="/designs?embedded=1" class="artdir-embed-frame" title="Дизайни"></iframe>
-                </div>
-
-                <!-- Tab: Graduation (v30.0.0) -->
-                <div class="artdir-tab-content" id="tab-graduation" role="tabpanel" aria-labelledby="art-tab-graduation" tabindex="0">
-                    <iframe data-src="/graduation?embedded=1" class="artdir-embed-frame" title="Конструктор випускного"></iframe>
-                </div>
 
                 <!-- Tab: Costumes -->
                 <div class="artdir-tab-content" id="tab-costumes" data-legacy-surface="costumes" role="tabpanel" aria-labelledby="art-tab-costumes" tabindex="0">

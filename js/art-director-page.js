@@ -158,9 +158,6 @@ function activateArtTab(tabName, options = {}) {
         history.replaceState(null, '', url);
     }
 
-    // Lazy-load iframe tabs (designs, graduation)
-    lazyLoadIframe(tabName);
-
     // Lazy-load tab data
     if (tabName === 'pipeline') loadPipeline();
     if (tabName === 'templates') loadTemplates();
@@ -182,23 +179,6 @@ function setupTabs() {
         });
     });
     document.getElementById('btnArtAddCostume')?.addEventListener('click', showAddCostume);
-}
-
-// Lazy-load iframes: set src from data-src only when tab is activated
-function lazyLoadIframe(tabName) {
-    const tabEl = document.getElementById(`tab-${tabName}`);
-    if (!tabEl) return;
-    const iframe = tabEl.querySelector('iframe[data-src]');
-    if (iframe && !iframe.src.includes(iframe.dataset.src)) {
-        let src = iframe.dataset.src;
-        // Pass auth token via URL for embedded pages that may not access parent localStorage
-        const token = localStorage.getItem('pzp_token');
-        if (token) {
-            const sep = src.includes('?') ? '&' : '?';
-            src += sep + 'token=' + encodeURIComponent(token);
-        }
-        iframe.src = src;
-    }
 }
 
 // ==========================================
@@ -1104,12 +1084,13 @@ async function initArtDirectorPage() {
     });
     if (!syncArtBusinessAvailability().available) return;
 
+    if (await initFormerTabLinks()) return;
     setupTabs();
     setupModals();
 
-    // v20.8.0: Handle ?tab= URL parameter (for embedded/deep-link tabs)
+    // Select a local tab from a bookmark.
     const urlTab = new URLSearchParams(window.location.search).get('tab');
-    if (urlTab) {
+    if (Array.from(document.querySelectorAll('.artdir-tab[data-tab]')).some(tab => tab.dataset.tab === urlTab)) {
         activateArtTab(urlTab) || activateArtTab('overview', { updateUrl: false });
     }
 

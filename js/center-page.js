@@ -3438,6 +3438,7 @@ async function initCenterPage() {
         return;
     }
 
+    if (await initFormerTabLinks()) return;
     bindAdmissionTicketCatalogUi();
     syncCenterRevenueUi();
     if (new URLSearchParams(window.location.search).get('tab') === 'tickets') {

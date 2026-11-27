@@ -28,6 +28,7 @@
         .center-page h1 { font-size: 22px; font-weight: 900; margin-bottom: 12px; }
 
         /* v20.3.0: Center tabs */
+        .center-page-links { display: flex; gap: 8px; flex-wrap: wrap; }
         .center-tabs { display: flex; gap: 4px; margin-bottom: 16px; overflow-x: auto; }
         .center-tab-btn {
             padding: 8px 16px; border: none; background: rgba(0,0,0,0.05);
@@ -38,7 +39,6 @@
         .center-tab-btn:hover:not(.active) { background: rgba(0,0,0,0.08); }
         .center-tab-panel { margin-top: 0; }
         .center-tab-panel.hidden { display: none; }
-        .center-embed-frame { width: 100%; height: calc(100vh - 200px); border: none; border-radius: 12px; }
         .dark-mode .center-tab-btn { background: rgba(255,255,255,0.06); color: #a0aec0; }
         .dark-mode .center-tab-btn.active { background: var(--primary, #C9A84C); color: #1a202c; }
 
@@ -1124,12 +1124,6 @@
             border-color: rgba(248, 113, 113, 0.36);
             color: #FCA5A5;
         }
-        .center-embed-frame {
-            height: calc(100vh - 238px);
-            border: 1px solid rgba(148, 163, 184, 0.16);
-            border-radius: 18px;
-            background: rgba(15, 23, 42, 0.72);
-        }
         .conversion-table th,
         .conversion-table td,
         .prices-table th,
@@ -1292,13 +1286,15 @@
                     </div>
                 </section>
 
-                <!-- v20.3.0: Center tabs -->
+                <nav class="center-page-links" aria-label="Фінанси та звіти">
+                    <a class="btn-page-secondary hidden" data-former-tab="finance" href="/finance">Фінанси</a>
+                    <a class="btn-page-secondary hidden" data-former-tab="reports" href="/reports">Звіти</a>
+                    <a class="btn-page-secondary hidden" data-former-tab="analytics" href="/finance?mode=insights">Аналітика</a>
+                </nav>
+
                 <div class="center-tabs" id="centerTabs" role="tablist" aria-label="Розділи центру керування">
                     <button type="button" class="center-tab-btn active" data-tab="overview" role="tab" aria-selected="true">Огляд</button>
                     <button type="button" class="center-tab-btn" data-tab="operations" role="tab" aria-selected="false">Зміна</button>
-                    <button type="button" class="center-tab-btn" data-tab="finance" role="tab" aria-selected="false">Фінанси</button>
-                    <button type="button" class="center-tab-btn" data-tab="reports" role="tab" aria-selected="false">Звіти</button>
-                    <button type="button" class="center-tab-btn" data-tab="analytics" role="tab" aria-selected="false">Аналітика</button>
                     <button type="button" class="center-tab-btn" data-tab="tickets" role="tab" aria-selected="false">Квитки</button>
                 </div>
 
@@ -1309,18 +1305,6 @@
                     </div>
                 </div>
 
-                <!-- Tab: Finance (embedded iframe) -->
-                <div class="center-tab-panel hidden" id="tabFinance" role="tabpanel" aria-label="Фінанси">
-                    <iframe data-embed-src="/finance?embed=1" class="center-embed-frame" title="Фінанси"></iframe>
-                </div>
-                <!-- Tab: Reports (embedded iframe) -->
-                <div class="center-tab-panel hidden" id="tabReports" role="tabpanel" aria-label="Звіти">
-                    <iframe data-embed-src="/reports?embed=1" class="center-embed-frame" title="Звіти"></iframe>
-                </div>
-                <!-- Tab: Analytics (embedded iframe) -->
-                <div class="center-tab-panel hidden" id="tabAnalytics" role="tabpanel" aria-label="Аналітика">
-                    <iframe data-embed-src="/analytics?embed=1" class="center-embed-frame" title="Аналітика"></iframe>
-                </div>
                 <div class="center-tab-panel hidden" id="tabTickets" role="tabpanel" aria-label="Квитки">
                     <div class="ticket-catalog-toolbar">
                         <div>
@@ -1701,24 +1685,15 @@
             // Show/hide sections
             const overviewSections = document.querySelectorAll('.center-section');
             const operationsPanel = document.getElementById('tabOperations');
-            const financePanel = document.getElementById('tabFinance');
-            const reportsPanel = document.getElementById('tabReports');
-            const analyticsPanel = document.getElementById('tabAnalytics');
             const ticketsPanel = document.getElementById('tabTickets');
 
             overviewSections.forEach(s => s.style.display = tab === 'overview' ? '' : 'none');
             if (operationsPanel) operationsPanel.classList.toggle('hidden', tab !== 'operations');
-            if (financePanel) financePanel.classList.toggle('hidden', tab !== 'finance');
-            if (reportsPanel) reportsPanel.classList.toggle('hidden', tab !== 'reports');
-            if (analyticsPanel) analyticsPanel.classList.toggle('hidden', tab !== 'analytics');
             if (ticketsPanel) ticketsPanel.classList.toggle('hidden', tab !== 'tickets');
-            const embeddedPanel = { finance: financePanel, reports: reportsPanel, analytics: analyticsPanel }[tab];
-            const frame = embeddedPanel?.querySelector('iframe[data-embed-src]:not([src])');
-            if (frame) frame.src = frame.dataset.embedSrc;
             window.dispatchEvent(new CustomEvent('center:tab-change', { detail: { tab } }));
         }
 
-        if (urlTab && ['operations', 'finance', 'analytics', 'reports', 'tickets'].includes(urlTab)) {
+        if (urlTab && ['operations', 'tickets'].includes(urlTab)) {
             switchCenterTab(urlTab);
         }
     })();

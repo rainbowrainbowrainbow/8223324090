@@ -2993,7 +2993,6 @@ test('protected page bootstrap inventory delegates refresh-only sessions to apiV
         ['training', 'js/training-page.js', 'async function initTrainingShell()'],
         ['accounting deposits', 'js/accounting-deposits.js', 'async function bootstrapAccountingDepositsShell()'],
         ['afisha', 'js/afisha-page.js', 'async function bootstrapAfishaShell()'],
-        ['analytics', 'js/analytics-page.js', 'async function initStandaloneAnalyticsPage()'],
         ['warehouse', 'js/warehouse-page.js', 'async function initPage()'],
         ['dashboard', 'js/dashboard-page.js', 'async function bootstrapDashboardSession()'],
         ['designer', 'designer.html', '// Auth check — unhide mainApp'],
@@ -3049,7 +3048,7 @@ test('every production apiVerifyToken page bootstrap distinguishes transient fai
         return /\bapiVerifyToken\s*\(/.test(code);
     });
 
-    assert.ok(pageCallsites.length >= 36, 'expected the complete protected-page bootstrap inventory');
+    assert.ok(pageCallsites.length >= 35, 'expected the complete protected-page bootstrap inventory');
     for (const relativePath of pageCallsites) {
         const code = fs.readFileSync(path.join(ROOT, relativePath), 'utf8');
         if (harmlessCallsites.has(relativePath)) {
@@ -3097,7 +3096,6 @@ test('Task 4 protected request surfaces use shared refresh retry and preserve 40
         ['finance', 'js/finance-page.js'],
         ['training', 'js/training-page.js'],
         ['afisha', 'js/afisha-page.js'],
-        ['analytics', 'js/analytics-page.js'],
         ['warehouse', 'js/warehouse-page.js'],
         ['shop', 'js/shop-page.js'],
         ['room', 'room.html'],
@@ -3108,17 +3106,15 @@ test('Task 4 protected request surfaces use shared refresh retry and preserve 40
         assert.match(code, /apiFetchWithAuthRetry\(/, `${name} must use shared refresh retry`);
     }
 
-    for (const relativePath of ['js/finance-page.js', 'js/analytics-page.js']) {
-        const code = fs.readFileSync(path.join(ROOT, relativePath), 'utf8');
-        const requestStart = code.indexOf('async function apiRequest(');
-        const closingMatch = code.slice(requestStart).match(/\r?\n}\r?\n/);
-        const requestEnd = closingMatch
-            ? requestStart + closingMatch.index + closingMatch[0].length
-            : requestStart;
-        const requestCode = code.slice(requestStart, requestEnd);
-        assert.doesNotMatch(requestCode, /res\.status === 401 \|\| res\.status === 403/);
-        assert.match(requestCode, /handleAuthError\(res\)/);
-    }
+    const code = fs.readFileSync(path.join(ROOT, 'js/finance-page.js'), 'utf8');
+    const requestStart = code.indexOf('async function apiRequest(');
+    const closingMatch = code.slice(requestStart).match(/\r?\n}\r?\n/);
+    const requestEnd = closingMatch
+        ? requestStart + closingMatch.index + closingMatch[0].length
+        : requestStart;
+    const requestCode = code.slice(requestStart, requestEnd);
+    assert.doesNotMatch(requestCode, /res\.status === 401 \|\| res\.status === 403/);
+    assert.match(requestCode, /handleAuthError\(res\)/);
 });
 
 

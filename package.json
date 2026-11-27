@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.84.53",
+  "version": "0.84.54",
   "eventGenix": {
-    "releaseLabel": "Стабільне відкриття чеклістів HR"
+    "releaseLabel": "Очищення Центру, Арту та деморежиму"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

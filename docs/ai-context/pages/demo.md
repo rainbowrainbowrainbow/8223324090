@@ -10,34 +10,24 @@
 
 ## Purpose
 
-Demo is the guided demo/scenario page for CRM demos, demo login, sessions, and scenario management.
+The Demo page displays CRM packages and provides controls for demo mode and feature flags.
 
 ## Primary Entities
 
-- Demo scenario
-- Demo session
-- Guest/demo user
+- Package and included features
+- Feature flag
+- Guest demo mode
 
 ## Visible UI
 
-- Scenario/session demo controls.
-- Guided tour surfaces.
-
-## Available User Actions
-
-- Start or manage demo sessions.
-- View demo overview/scenarios.
+- The Packages tab shows package details.
+- Users with the required settings access can view and update feature flags and switch guest demo mode.
 
 ## Data Sources
 
-- `routes/demo.js`
-
-## Related Files
-
-- `demo.html`
-- `js/demo-page.js`
-- `routes/demo.js`
+- `routes/packages.js` supplies package and feature flag data.
+- `routes/demo.js` supplies the demo overview and handles guest mode changes. It also serves the separate guest login, scenario metadata and session history APIs.
 
 ## Assistant Context
 
-On Demo, interpret user questions as demo/training/sales presentation flow unless they reference live CRM operations.
+For questions about available packages, open the Packages tab. For guest access or feature flags, check the user's settings access before describing controls.

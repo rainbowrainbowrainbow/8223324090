@@ -332,6 +332,7 @@ function captureApiAuthSessionSnapshot(user = null) {
     const identityUsername = String(identitySource?.username || '').trim();
     return {
         generation: ensureApiAuthSessionGeneration(),
+        ...(isCrmBusinessTabPinned(identitySource) && { tabBusinessRevision: crmBusinessTabRevision }),
         accessToken: getStoredAuthToken() || '',
         refreshToken: localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY) || '',
         identity: identitySource && typeof identitySource === 'object' && (identityId !== null || identityUsername)
@@ -347,6 +348,7 @@ function captureApiAuthSessionSnapshot(user = null) {
 function isApiAuthSessionSnapshotCurrent(snapshot, user = null) {
     if (!snapshot || typeof snapshot !== 'object') return false;
     if (ensureApiAuthSessionGeneration() !== String(snapshot.generation || '')) return false;
+    if (snapshot.tabBusinessRevision !== undefined && snapshot.tabBusinessRevision !== crmBusinessTabRevision) return false;
 
     const expectedUser = user && typeof user === 'object' ? user : snapshot.identity;
     if (snapshot.identity && expectedUser && !apiAuthUsersShareIdentity(snapshot.identity, expectedUser)) return false;
@@ -603,6 +605,45 @@ function timelineApiPayload(payload) {
 }
 
 const CRM_BUSINESS_STORAGE_KEY = 'pzp_crm_business_context';
+const CRM_BUSINESS_TAB_KEY = 'crm:task-tab-business';
+let crmBusinessTabRevision = 0;
+
+function canPinCrmBusinessTab() {
+    if (typeof window === 'undefined' || !window.location) return false;
+    const path = normalizedCrmPath();
+    if (path === '/tasks') return true;
+    const params = new URLSearchParams(window.location.search || '');
+    return path === '/profile' && !params.has('id') && (!params.has('tab') || params.get('tab') === 'myday');
+}
+
+function readCrmBusinessTabPin(user = readApiAuthStoredUser()) {
+    if (!canPinCrmBusinessTab() || !user) return null;
+    try {
+        const pin = JSON.parse(sessionStorage.getItem(CRM_BUSINESS_TAB_KEY) || 'null');
+        return pin?.actor === apiAuthRefreshIdentityKey(user) && normalizeCrmBusinessContext(pin.context) ? pin : null;
+    } catch { return null; }
+}
+
+function isCrmBusinessTabPinned(user = readApiAuthStoredUser()) {
+    return Boolean(readCrmBusinessTabPin(user));
+}
+
+function clearCrmBusinessTabPin() {
+    try { sessionStorage.removeItem(CRM_BUSINESS_TAB_KEY); } catch {}
+}
+
+function setCrmBusinessTabPinned(enabled, user = AppState.currentUser, context = getCrmBusinessContext(user)) {
+    if (!canPinCrmBusinessTab() || !user) return false;
+    if (!enabled) {
+        clearCrmBusinessTabPin();
+        return true;
+    }
+    const actor = apiAuthRefreshIdentityKey(user);
+    if (!actor || user.accessContext?.status !== 'ready' || !userCanAccessCrmBusinessContext(user, context)) return false;
+    try { sessionStorage.setItem(CRM_BUSINESS_TAB_KEY, JSON.stringify({ actor, context })); }
+    catch { return false; }
+    return true;
+}
 const CRM_BUSINESS_STORAGE_USER_KEY = 'pzp_crm_business_context_user';
 const CRM_BUSINESS_SCOPE_STORAGE_KEY = 'pzp_crm_business_scope_mode';
 const CRM_BUSINESS_SCOPE_CONTEXTS_STORAGE_KEY = 'pzp_crm_business_scope_contexts';
@@ -1044,7 +1085,7 @@ function applyCrmBusinessProfile(profileInput = {}, options = {}) {
     if (profileUser) {
         profileUser.businessProfile = profile;
         const storedUser = readApiAuthStoredUser();
-        if (storedUser && apiAuthUsersShareIdentity(storedUser, profileUser)) {
+        if (storedUser && apiAuthUsersShareIdentity(storedUser, profileUser) && !isCrmBusinessTabPinned(profileUser)) {
             localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify({ ...storedUser, businessProfile: profile }));
         }
     }
@@ -1219,14 +1260,15 @@ function resolveCrmBusinessContextState(user) {
         ? accountDefault
         : (crmBusinessContextSupportsTimeline(accountDefault) ? accountDefault : CRM_BUSINESS_DEFAULT_CONTEXT);
     const preferAccountDefaultOnTimelineRoot = normalizedCrmPath() === '/' && !fromUrl;
+    const pin = readCrmBusinessTabPin(activeUser);
     const source = fromRoute
         ? 'route'
         : (fromUrl
             ? 'url'
-            : (preferAccountDefaultOnTimelineRoot
+            : (pin ? 'tab' : preferAccountDefaultOnTimelineRoot
                 ? 'account_default'
                 : (stored ? 'storage' : 'account_default')));
-    const requested = fromRoute || fromUrl || (activeUser?.businessContextPolicy && activeUser.activeBusinessContext)
+    const requested = fromRoute || fromUrl || pin?.context || (activeUser?.businessContextPolicy && activeUser.activeBusinessContext)
         || (preferAccountDefaultOnTimelineRoot ? timelineEntryDefault : (stored || accountDefault));
     const activeBusinessId = activeUser?.accessContext && activeUser.accessContext.status !== 'ready'
         ? null : sanitizeCrmBusinessContextForUser(requested, activeUser);
@@ -1327,7 +1369,7 @@ function resolveCrmBusinessScopeState(user, options = {}) {
     const activeUser = user || (typeof AppState !== 'undefined' ? AppState.currentUser : null);
     const page = options.page || currentCrmBusinessScopedPage();
     const current = getCrmBusinessContext(activeUser);
-    const requested = crmBusinessPageAllowsAggregate(page)
+    const requested = crmBusinessPageAllowsAggregate(page) && !isCrmBusinessTabPinned(activeUser)
         ? (crmBusinessScopeFromUrl() || crmBusinessScopeFromStorage(activeUser) || {
             mode: CRM_BUSINESS_SCOPE_SINGLE,
             activeContext: current,
@@ -1463,26 +1505,31 @@ function setCrmBusinessContext(context, options = {}) {
 
 function setCrmBusinessScope(scopeInput = {}, options = {}) {
     const user = options.user || (typeof AppState !== 'undefined' ? AppState.currentUser : null);
+    const pinned = isCrmBusinessTabPinned(user);
     const previousScope = getCrmBusinessScope(user);
     const scope = sanitizeCrmBusinessScopeForUser(scopeInput, user, {
         page: currentCrmBusinessScopedPage(),
-        allowAggregate: options.allowAggregate !== false
+        allowAggregate: !pinned && options.allowAggregate !== false
     });
     const previousContext = previousScope.activeContext;
-    try {
-        if (scope.activeContext) localStorage.setItem(CRM_BUSINESS_STORAGE_KEY, scope.activeContext);
-        else localStorage.removeItem(CRM_BUSINESS_STORAGE_KEY);
-        const userKey = crmBusinessStorageUserKey(user);
-        if (userKey) localStorage.setItem(CRM_BUSINESS_STORAGE_USER_KEY, userKey);
-        localStorage.removeItem(CRM_BUSINESS_LEGACY_PRODUCT_STORAGE_KEY);
-        if (scope.mode === CRM_BUSINESS_SCOPE_SINGLE) {
-            localStorage.removeItem(CRM_BUSINESS_SCOPE_STORAGE_KEY);
-            localStorage.removeItem(CRM_BUSINESS_SCOPE_CONTEXTS_STORAGE_KEY);
-        } else {
-            localStorage.setItem(CRM_BUSINESS_SCOPE_STORAGE_KEY, scope.mode);
-            localStorage.setItem(CRM_BUSINESS_SCOPE_CONTEXTS_STORAGE_KEY, JSON.stringify(scope.selectedContexts));
-        }
-    } catch {}
+    if (pinned) {
+        if (scope.activeContext) setCrmBusinessTabPinned(true, user, scope.activeContext);
+    } else {
+        try {
+            if (scope.activeContext) localStorage.setItem(CRM_BUSINESS_STORAGE_KEY, scope.activeContext);
+            else localStorage.removeItem(CRM_BUSINESS_STORAGE_KEY);
+            const userKey = crmBusinessStorageUserKey(user);
+            if (userKey) localStorage.setItem(CRM_BUSINESS_STORAGE_USER_KEY, userKey);
+            localStorage.removeItem(CRM_BUSINESS_LEGACY_PRODUCT_STORAGE_KEY);
+            if (scope.mode === CRM_BUSINESS_SCOPE_SINGLE) {
+                localStorage.removeItem(CRM_BUSINESS_SCOPE_STORAGE_KEY);
+                localStorage.removeItem(CRM_BUSINESS_SCOPE_CONTEXTS_STORAGE_KEY);
+            } else {
+                localStorage.setItem(CRM_BUSINESS_SCOPE_STORAGE_KEY, scope.mode);
+                localStorage.setItem(CRM_BUSINESS_SCOPE_CONTEXTS_STORAGE_KEY, JSON.stringify(scope.selectedContexts));
+            }
+        } catch {}
+    }
     if (options.updateUrl !== false && typeof window !== 'undefined') {
         const url = new URL(window.location.href);
         const routeContext = crmBusinessContextFromRoute(url.pathname);
@@ -1491,7 +1538,9 @@ function setCrmBusinessScope(scopeInput = {}, options = {}) {
             url.searchParams.delete('business_scope');
             url.searchParams.delete('businessContexts');
             url.searchParams.delete('business_contexts');
-            if (!scope.activeContext || (scope.activeContext === CRM_BUSINESS_DEFAULT_CONTEXT && resolveCrmBusinessPolicy(user).defaultContext === scope.activeContext) || routeContext === scope.activeContext) url.searchParams.delete('businessContext');
+            const implicit = (scope.activeContext === CRM_BUSINESS_DEFAULT_CONTEXT
+                && resolveCrmBusinessPolicy(user).defaultContext === scope.activeContext) || routeContext === scope.activeContext;
+            if (!scope.activeContext || (!pinned && implicit)) url.searchParams.delete('businessContext');
             else url.searchParams.set('businessContext', scope.activeContext);
         } else {
             url.searchParams.set('businessScope', scope.mode);
@@ -1726,13 +1775,24 @@ async function switchCrmBusinessContext(context, options = {}) {
 
 async function switchCrmBusinessScope(scopeInput = {}, options = {}) {
     const user = options.user || (typeof AppState !== 'undefined' ? AppState.currentUser : null);
+    const pinned = isCrmBusinessTabPinned(user);
     const nextScope = sanitizeCrmBusinessScopeForUser(scopeInput, user, {
         page: currentCrmBusinessScopedPage(),
-        allowAggregate: options.allowAggregate !== false
+        allowAggregate: !pinned && options.allowAggregate !== false
     });
     const previousScope = getCrmBusinessScope(user);
     const next = nextScope.activeContext;
     const previous = previousScope.activeContext;
+    if (pinned && next && next !== previous) {
+        const dialog = document.querySelector('.park-task-dialog[open]');
+        if (dialog?.canLeave && !dialog.canLeave()) return previousScope;
+        const target = new URL(window.location.href);
+        for (const key of ['open', 'mode', 'date', 'create', 'returnTo', 'business_context']) target.searchParams.delete(key);
+        target.searchParams.set('businessContext', next);
+        window.__crmBusinessNavigationPending = true;
+        window.location.assign(target);
+        return nextScope;
+    }
     const unchanged = previousScope.mode === nextScope.mode
         && previous === next
         && previousScope.selectedContexts.join(',') === nextScope.selectedContexts.join(',');
@@ -1889,6 +1949,10 @@ if (typeof window !== 'undefined') {
         setScope: setCrmBusinessScope,
         switchTo: switchCrmBusinessContext,
         switchScope: switchCrmBusinessScope,
+        canPinTab: canPinCrmBusinessTab,
+        isTabPinned: isCrmBusinessTabPinned,
+        setTabPinned: setCrmBusinessTabPinned,
+        clearTabPin: clearCrmBusinessTabPin,
         canAccess: userCanAccessCrmBusinessContext,
         hasModule: crmBusinessContextHasModule,
         isReadOnly: isCrmBusinessScopeReadOnly,
@@ -4181,6 +4245,7 @@ function revokeUnclaimedApiRefreshToken(refreshToken) {
 }
 
 function clearApiAuthSessionStorage(reason = 'api-auth-session-clear') {
+    clearCrmBusinessTabPin();
     clearCrmBusinessProfile();
     recordApiRedirectDiagnostic('auth-storage-clear', { storageClearReason: reason });
     const runtimeUser = typeof AppState !== 'undefined' && AppState ? AppState.currentUser : null;
@@ -4247,6 +4312,26 @@ function mergeApiCurrentUser(user = null, options = {}) {
         if (identityChanged && options.allowIdentityChange !== true) {
             setApiAuthSessionFailure('transient', { stage: 'user-merge', reason: 'session-changed' });
             return null;
+        }
+        // Scoped grants belong to the verified tab, while login identity and
+        // token rotation continue to use the existing shared session.
+        if (!identityChanged && apiAuthUsersShareIdentity(saved, user) && isCrmBusinessTabPinned(user)) {
+            const runtime = typeof AppState !== 'undefined' ? AppState.currentUser : null;
+            const previous = apiAuthUsersShareIdentity(runtime, user) ? runtime : null;
+            const changed = !previous || apiAuthAuthorizationFingerprint(previous) !== apiAuthAuthorizationFingerprint(user);
+            const next = { ...user };
+            syncApiAuthUserAliases(next, user);
+            if (changed) {
+                crmBusinessTabRevision += 1;
+                clearCrmBusinessProfile();
+                if (typeof clearRuntimePermissionCatalog === 'function') clearRuntimePermissionCatalog(next);
+                if (typeof setPermissionLifecycle === 'function') setPermissionLifecycle('loading');
+            } else if (!Object.hasOwn(next, 'permissions') && previous.permissions) {
+                next.permissions = previous.permissions;
+            }
+            if (user.accessContext && user.accessContext.status !== 'ready') delete next.permissions;
+            if (typeof AppState !== 'undefined') AppState.currentUser = next;
+            return next;
         }
         const next = identityChanged ? { ...user } : { ...saved, ...user };
         syncApiAuthUserAliases(next, user);
@@ -4372,7 +4457,7 @@ function canApplyApiAuthRefreshResponse(refreshToken, expectedUser, sessionGener
 function apiAuthBusinessContextHeaders() {
     const user = readApiAuthStoredUser();
     if (!user?.businessContextPolicy) return {};
-    const context = crmBusinessContextFromRoute() || crmBusinessContextFromUrl()
+    const context = crmBusinessContextFromRoute() || crmBusinessContextFromUrl() || readCrmBusinessTabPin(user)?.context
         || getCrmBusinessContext(user) || user.activeBusinessContext;
     return context ? { 'X-Business-Context': context } : {};
 }

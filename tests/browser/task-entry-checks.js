@@ -14,6 +14,87 @@ function isNavigationInterruption(error, failedRequests, navigations, readbacks)
         && readbacks.some(readback => readback.page === error.page && readback.path === path && readback.ok && readback.at > error.at));
 }
 
+async function verifyPinnedTaskTabs({ origin, session }, context, engine) {
+    const fixture = async (scope, title) => {
+        const response = await fetch(origin + '/api/tasks?businessContext=' + scope, {
+            method: 'POST',
+            headers: { authorization: 'Bearer ' + session.token, 'content-type': 'application/json' },
+            body: JSON.stringify({ title, task_mode: 'work', visibility: 'team', assigned_to: session.user.username,
+                owner_user_id: session.user.id, date: '2099-11-20', priority: 'high' })
+        });
+        assert.ok(response.ok, 'Create scoped fixture ' + scope);
+        return (await response.json()).task.id;
+    };
+    const parkTitle = 'Pinned Park ' + engine;
+    const darTitle = 'Pinned Dar ' + engine;
+    const parkId = await fixture('event_genix', parkTitle);
+    const darId = await fixture('dar', darTitle);
+    const park = await context.newPage();
+    const dar = await context.newPage();
+    for (const page of [park, dar]) {
+        await page.setViewportSize({ width: 1440, height: 900 });
+        page.setDefaultTimeout(20000);
+    }
+    const card = page => page.locator('.park-task-dialog[open]');
+    const expectContext = (page, scope) => page.locator('body[data-crm-business-context="' + scope + '"]').waitFor();
+    const open = (page, url) => page.goto(origin + url, { waitUntil: 'domcontentloaded' });
+    const pin = async page => {
+        await page.locator('[data-sidebar-business-tab-pin][aria-pressed="false"]').click();
+        await page.locator('[data-sidebar-business-tab-pin][aria-pressed="true"]').waitFor();
+    };
+    try {
+        await open(park, '/tasks.html?highlight=' + parkId + '&businessContext=event_genix');
+        await park.locator('#username').fill(process.env.TEST_USER);
+        await park.locator('#password').fill(process.env.TEST_PASS);
+        await park.locator('#loginForm button[type=submit]').click();
+        await card(park).getByRole('heading', { name: parkTitle, exact: true }).waitFor();
+        await park.keyboard.press('Escape');
+        await card(park).waitFor({ state: 'hidden' });
+        await pin(park);
+        await open(park, '/profile?tab=myday&open=' + parkId);
+        await card(park).getByRole('heading', { name: parkTitle, exact: true }).waitFor();
+        await card(park).locator('[data-dialog-edit]').click();
+        const titleInput = card(park).locator('[name=title]');
+        await titleInput.fill('Unsaved Park title');
+        await card(park).getByRole('button', { name: 'Назад до перегляду', exact: true }).click();
+        await card(park).getByText('Ще', { exact: true }).click();
+        await card(park).getByRole('button', { name: 'Перенести', exact: true }).click();
+        const dateInput = card(park).locator('[data-dialog-schedule] [name=date]');
+        await dateInput.fill('2099-11-25');
+
+        await open(dar, '/tasks?businessContext=event_genix');
+        await pin(dar);
+        await dar.locator('#sidebarBusinessContextSelect').selectOption('dar');
+        await expectContext(dar, 'dar');
+        const row = dar.locator('.task-team-row[data-task-id="' + darId + '"]');
+        await row.getByRole('button', { name: darTitle, exact: true }).click();
+        await card(dar).getByRole('heading', { name: darTitle, exact: true }).waitFor();
+        assert.equal(new URL(dar.url()).pathname, '/profile');
+        assert.equal(new URL(dar.url()).searchParams.get('businessContext'), 'dar');
+        await expectContext(dar, 'dar');
+        await open(dar, '/tasks.html?highlight=' + darId);
+        await card(dar).getByRole('heading', { name: darTitle, exact: true }).waitFor();
+        await dar.reload({ waitUntil: 'domcontentloaded' });
+        await card(dar).getByRole('heading', { name: darTitle, exact: true }).waitFor();
+        await expectContext(dar, 'dar');
+        await expectContext(park, 'event_genix');
+        assert.equal(await dateInput.inputValue(), '2099-11-25');
+        await card(park).getByRole('button', { name: 'Назад до перегляду', exact: true }).click();
+        await card(park).locator('[data-dialog-edit]').click();
+        assert.equal(await titleInput.inputValue(), 'Unsaved Park title');
+        await card(dar).waitFor();
+        await dar.keyboard.press('Escape');
+        await card(dar).waitFor({ state: 'hidden' });
+        await dar.locator('#logoutBtn').click();
+        await park.locator('#loginForm').waitFor();
+        await card(park).waitFor({ state: 'hidden' });
+        assert.equal(await park.evaluate(() => AppState.currentUser), null);
+        console.log('Pinned task tabs ' + engine + ': Park and Dar, title/date drafts, legacy redirects, reload and shared logout verified.');
+    } finally {
+        await Promise.all([park.close(), dar.close()]);
+    }
+}
+
 async function verifyTaskEntry({ origin, session, evidence }) {
     const engines = (process.env.TASK_ENTRY_BROWSER_ENGINES || 'chromium').split(',');
     for (const engine of engines) {
@@ -34,6 +115,16 @@ async function verifyTaskEntry({ origin, session, evidence }) {
             };
         });
         await context.route('https://**/*', route => route.abort());
+        const pinContext = await browser.newContext({ timezoneId: 'Europe/Kyiv', serviceWorkers: 'block' });
+        await pinContext.route('https://**/*', route => route.abort());
+        try {
+            await verifyPinnedTaskTabs({ origin, session }, pinContext, engine);
+        } catch (error) {
+            await browser.close();
+            throw error;
+        } finally {
+            await pinContext.close();
+        }
         const errors = [], hermes = [], failedRequests = [], navigations = [], readbacks = [], bootstrapReads = new Map();
         context.on('page', page => {
             if (traceSession) {

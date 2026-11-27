@@ -6842,13 +6842,13 @@ function renderParkMyDayWorkspace() {
             ${group('noDate', 'Без дати', 'Задач без дати немає.')}
         </details>`;
         const periods = [
-            ['today', group('today', 'Сьогодні', 'На сьогодні задач немає.')],
+            ['today', group('today', 'Сьогодні', 'На сьогодні задач немає.') + noDate],
             ['overdue', group('overdue', 'Прострочені', 'Немає прострочених задач.')],
             ['future', group('future', 'Майбутні', 'Немає майбутніх задач.')]
         ];
         content = periods.map(([key, sections]) => `<div class="park-period-column" data-park-period="${key}">${
             key === linkedPeriod ? group('focusDate', `Задачі на ${profileEmployeeDateText(myDayLinkedDate)}`, 'На цю дату немає активних задач.') : sections
-        }</div>`).join('') + noDate;
+        }</div>`).join('');
     }
     return `
         <section id="cabinetMyDaySegmentPanel" class="park-my-day-workspace" aria-label="Список задач">

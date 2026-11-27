@@ -736,7 +736,6 @@ html:has(.park-my-day.is-completing-task)::view-transition-new(root) { animation
     box-shadow: inset 0 0 0 1px var(--primary);
     font-weight: 700;
 }
-.park-undated { margin-block: .75rem; }
 .park-undated > summary { display: list-item; padding-block: .55rem; }
 .park-task-menu { position: relative; }
 .park-task-menu > summary { justify-content: center; min-inline-size: 44px; padding: 0; }

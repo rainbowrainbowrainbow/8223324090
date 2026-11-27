@@ -301,6 +301,16 @@ async function assertLargeListsStayAccessible(page, state) {
     const periods = page.locator('[data-park-period]');
     await periods.last().waitFor();
     assert.deepEqual(await periods.evaluateAll(columns => columns.map(column => column.dataset.parkPeriod)), ['today', 'overdue', 'future']);
+    const originalViewport = page.viewportSize();
+    const undated = page.locator('[data-park-period="today"] > [data-park-task-group="today"] + .park-undated');
+    for (const width of [1440, originalViewport.width]) {
+        await page.setViewportSize({ ...originalViewport, width });
+        const summary = undated.locator('summary');
+        await summary.waitFor();
+        await summary.press('Enter');
+        assert.equal(await undated.locator('[data-park-task-group="noDate"]').isVisible(), true);
+        await summary.press('Enter');
+    }
     assert.equal(await page.locator('[data-park-my-day-view], [data-cabinet-my-day-view-mode]').count(), 0);
     await page.locator('.park-composer > summary').press('Enter');
     const title = page.locator('#cabinetTaskTitle');

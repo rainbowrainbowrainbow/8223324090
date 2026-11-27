@@ -620,9 +620,8 @@ async function sendTelegramPhoto(chatId, photoBuffer, caption, options = {}) {
         throw err;
     }
 
-    const threadId = await getConfiguredThreadId();
-    const runtime = await resolveOmniRuntimeConfig('telegram');
-    const token = runtime.botToken || TELEGRAM_BOT_TOKEN;
+    const threadId = Object.hasOwn(options, 'threadId') ? options.threadId : await getConfiguredThreadId();
+    const token = options.ownedToken || (await resolveOmniRuntimeConfig('telegram')).botToken || TELEGRAM_BOT_TOKEN;
     if (!token) {
         return { ok: false, description: 'No bot token configured' };
     }
@@ -640,7 +639,8 @@ async function sendTelegramPhoto(chatId, photoBuffer, caption, options = {}) {
     parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="disable_notification"\r\n\r\n${options.silent !== false}`);
 
     const head = Buffer.from(parts.join('\r\n') + '\r\n');
-    const fileHeader = Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="photo"; filename="certificate.png"\r\nContent-Type: image/png\r\n\r\n`);
+    const jpeg = options.contentType === 'image/jpeg';
+    const fileHeader = Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="photo"; filename="${jpeg ? 'afisha.jpg' : 'certificate.png'}"\r\nContent-Type: ${jpeg ? 'image/jpeg' : 'image/png'}\r\n\r\n`);
     const tail = Buffer.from(`\r\n--${boundary}--\r\n`);
     const body = Buffer.concat([head, fileHeader, photoBuffer, tail]);
 

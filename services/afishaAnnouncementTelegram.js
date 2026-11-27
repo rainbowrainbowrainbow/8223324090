@@ -4,7 +4,8 @@ const { animatorTelegramRequest: operationalTelegramRequest } = require('./anima
 
 const CONNECT_FAILURES = new Set(['ECIRCUITOPEN', 'ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN']);
 
-async function deliverTelegramAnnouncement(recipient, text, request = operationalTelegramRequest) {
+async function deliverTelegramAnnouncement(recipient, text, options = {}) {
+    const request = typeof options === 'function' ? options : options.request || operationalTelegramRequest;
     const payload = {
         chat_id: recipient.chatId,
         text,
@@ -13,7 +14,9 @@ async function deliverTelegramAnnouncement(recipient, text, request = operationa
     if (recipient.threadId != null) payload.message_thread_id = recipient.threadId;
 
     try {
-        const response = await request('sendMessage', payload, { businessContext: recipient.businessContext });
+        const response = options.isPhoto
+            ? await (options.sendPhoto || sendOperationalPhoto)(recipient, options.layout)
+            : await request('sendMessage', payload, { businessContext: recipient.businessContext });
         if (response?.ok === true) {
             return { status: 'sent', messageId: response.result?.message_id ?? null };
         }
@@ -32,6 +35,15 @@ async function deliverTelegramAnnouncement(recipient, text, request = operationa
         }
         return { status: 'uncertain', code: 'telegram_unconfirmed' };
     }
+}
+
+function sendOperationalPhoto(recipient, layout) {
+    const { TELEGRAM_BOT_TOKEN, sendTelegramPhoto } = require('./telegram');
+    if (!TELEGRAM_BOT_TOKEN) return { ok: false, description: 'No bot token configured' };
+    return sendTelegramPhoto(recipient.chatId, layout.content, null, {
+        ownedToken: TELEGRAM_BOT_TOKEN, threadId: recipient.threadId,
+        contentType: layout.content_type, silent: false
+    });
 }
 
 module.exports = { deliverTelegramAnnouncement };

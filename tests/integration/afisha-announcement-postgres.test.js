@@ -20,6 +20,10 @@ test('Afisha API, durable scheduling and both transports on disposable PostgreSQ
     };
     const fakeWebhook = 'https://chat.googleapis.com/v1/spaces/fixture/messages?key=test&token=test';
     const target = path => prefix + path + '?businessContext=event_genix';
+    await pool.query(`INSERT INTO telegram_known_chats VALUES
+        (-100111, 'General', 'group'), (-100222, 'Topic group', 'supergroup'), (123, 'Private', 'private'),
+        (-100333, 'Daily', 'group'), (-100444, 'Monthly', 'group'), (-100555, 'Promotions', 'group')`);
+    await pool.query("INSERT INTO telegram_known_threads VALUES (-100222, 22, 'Planning')");
     const add = async input => {
         const result = await request('POST', target('/recipients'), input);
         assert.equal(result.status, 201, JSON.stringify(result.body));
@@ -39,7 +43,7 @@ test('Afisha API, durable scheduling and both transports on disposable PostgreSQ
     const saved = await pool.query('SELECT webhook_ciphertext FROM afisha_announcement_recipients WHERE id = $1', [three.id]);
     assert.ok(saved.rows[0].webhook_ciphertext.startsWith('egx:v1:'));
     assert.ok(!saved.rows[0].webhook_ciphertext.includes('chat.googleapis.com'));
-    assert.equal((await request('POST', target('/recipients'), { ...base, chatId: '-100111' })).status, 409);
+    assert.equal((await request('POST', target('/recipients'), { ...base, chatId: '-100111' })).body.recipient.id, one.id);
     assert.equal((await request('GET', prefix + '/recipients?businessContext=dar')).body.recipients.length, 0);
     assert.equal((await request('GET', target('/recipients'), null, { 'x-fixture-role': 'denied' })).status, 403);
 
@@ -47,8 +51,6 @@ test('Afisha API, durable scheduling and both transports on disposable PostgreSQ
         ('telegram_animator_chat_id', '-100222'), ('telegram_animator_thread_id', '22'),
         ('telegram_chat_id', '-100111'), ('telegram_thread_id', '33'),
         ('digest_time', '09:00'), ('digest_time_weekend', '10:00'), ('reminder_time', '20:00')`);
-    await pool.query("INSERT INTO telegram_known_chats VALUES (-100111, 'General', 'group'), (-100222, 'Topic group', 'supergroup'), (123, 'Private', 'private')");
-    await pool.query("INSERT INTO telegram_known_threads VALUES (-100222, 22, 'Planning')");
     const routes = await request('GET', target('/recipients'));
     assert.equal(routes.status, 200);
     assert.deepEqual(routes.body.routingPreview, [
@@ -58,7 +60,7 @@ test('Afisha API, durable scheduling and both transports on disposable PostgreSQ
     ]);
     assert.equal((await request('GET', prefix + '/recipients?businessContext=dar')).body.routingPreview.length, 0);
 
-    assert.deepEqual(routes.body.telegramDirectory.map(item => item.key), ['-100111:', '-100222:', '-100222:22']);
+    assert.deepEqual(routes.body.telegramDirectory.map(item => item.key).sort(), ['-100111:', '-100222:', '-100222:22', '-100333:', '-100444:', '-100555:']);
     const configure = (feature, address) => request('PUT', target('/telegram-routes/' + feature), { target: address });
     assert.equal((await configure('digest', '-100111:22')).status, 400);
     assert.equal((await configure('digest', '-100222:22')).status, 200);

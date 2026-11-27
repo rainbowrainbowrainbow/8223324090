@@ -50,7 +50,7 @@ async function runAfishaDeliveryBatch({
         let outcome = { status: 'failed', code: 'transport_unavailable' };
         if (transport) {
             try {
-                outcome = await transport(part.recipient, part.text);
+                outcome = await transport(part.recipient, part.text, part);
             } catch {
                 outcome = { status: 'uncertain', code: 'delivery_unconfirmed' };
             }

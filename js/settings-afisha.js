@@ -116,16 +116,16 @@ window.SettingsAfisha = {
     const routingList = routing.querySelector('[data-telegram-routing-list]');
     const directoryList = section.querySelector('[data-telegram-directory-list]');
     let directory = [];
-    let approvalTarget = null;
+    let crmChannels = [];
     let loadSequence = 0;
     let digestDestination = null;
 
-    const modeLabels = { off: 'Афіша вимкнена', monthly: 'Афіша 1-го числа', publication: 'При публікації' };
+    const modeLabels = { off: 'Афіша вимкнена', monthly: 'Афіша 1-го числа', publication: 'У день публікації' };
     const stateLabels = {
         pending: 'У черзі', sent: 'Доставлено', retry: 'Очікує повтору', partial: 'Доставлено частково',
         failed: 'Помилка доставки', uncertain: 'Потрібна перевірка', skipped: 'Пропущено'
     };
-    const platformLabel = platform => platform === 'telegram' ? 'Telegram' : 'Google Chat';
+    const platformLabel = platform => ({ telegram: 'Telegram', crm_chat: 'Чат CRM', google_chat: 'Google Chat' })[platform] || '';
 
     function deliveryDate(value) {
         if (value == null) return '';
@@ -201,15 +201,16 @@ window.SettingsAfisha = {
         list.replaceChildren();
         renderRouting([]);
         directory = [];
+        crmChannels = [];
         directoryList.replaceChildren();
         functions.hidden = true;
         status.textContent = 'Завантажуємо групи…';
         try {
-            const { recipients, dailyDigest, telegramFeatures, approvalTarget: currentApprovalTarget, routingPreview, telegramDirectory, routeSelections } = await M.request(path, 'GET', null, business);
+            const { recipients, dailyDigest, telegramFeatures, routingPreview, telegramDirectory, routeSelections, crmChannels: channels } = await M.request(path, 'GET', null, business);
             if (sequence !== loadSequence || business !== M.context()) return;
             digestDestination = dailyDigest || null;
-            approvalTarget = currentApprovalTarget || null;
             directory = telegramDirectory || [];
+            crmChannels = channels || [];
             for (const item of directory) {
                 const row = document.createElement('li');
                 row.textContent = optionText(item);
@@ -233,17 +234,18 @@ window.SettingsAfisha = {
                     recipient.promotionsToday && 'Старт акцій',
                     (recipient.eventsToday || recipient.promotionsToday) && recipient.dailyTime
                 ].filter(Boolean).join(' · ');
-                const next = deliveryDate(recipient.nextAt);
+                const next = recipient.unavailable ? '' : deliveryDate(recipient.nextAt);
                 const last = recipient.lastDelivery;
                 row.innerHTML = `<strong>${M.esc(recipient.name)}</strong>
                     <p>${platformLabel(recipient.platform)} · ${M.esc(schedule)}</p>
                     ${next ? `<p>Наступна доставка · ${M.esc(next)}</p>` : ''}
                     ${last ? `<p>Остання доставка · ${M.esc(stateLabels[last.status] || 'Оновлюється')}</p>` : ''}
                     ${recipient.digestOverlap ? '<p>Ця група вже отримує афішу в щоденному зведенні.</p>' : ''}
-                    <div class="tg-btn-row"><button type="button" class="btn-secondary" data-edit>Редагувати</button>
+                    ${recipient.unavailable ? '<p>Група недоступна для публікації.</p>' : ''}
+                    <div class="tg-btn-row">${recipient.unavailable ? '' : '<button type="button" class="btn-secondary" data-edit>Редагувати</button>'}
                     <button type="button" class="btn-secondary" data-history>Історія доставки</button>
                     ${next ? '<button type="button" class="btn-secondary" data-next-preview>Переглянути допис</button>' : ''}</div>`;
-                row.querySelector('[data-edit]').addEventListener('click', event => editRecipient(recipient, event.currentTarget, business));
+                row.querySelector('[data-edit]')?.addEventListener('click', event => editRecipient(recipient, event.currentTarget, business));
                 row.querySelector('[data-next-preview]')?.addEventListener('click', event => showNextPreview(recipient, event.currentTarget, business));
                 row.querySelector('[data-history]').addEventListener('click', event => showHistory(recipient, event.currentTarget, business));
                 list.append(row);
@@ -256,15 +258,20 @@ window.SettingsAfisha = {
 
     function editRecipient(recipient, trigger, business) {
         const M = window.TimelineMarketing;
-        const modal = M.dialog(recipient.id ? 'Редагувати групу' : 'Додати групу', `
+        const modal = M.dialog(recipient.id ? 'Редагувати отримувача' : 'Додати отримувача', `
             <form class="timeline-marketing-form" data-recipient-form>
                 <label>Назва <input name="name" required maxlength="100" value="${M.esc(recipient.name)}"></label>
                 <label>Платформа <select name="platform" ${recipient.id ? 'disabled' : ''}>
-                    <option value="telegram">Telegram</option><option value="google_chat">Google Chat</option></select></label>
+                    <option value="telegram">Telegram</option><option value="crm_chat">Чат CRM</option>
+                    ${recipient.platform === 'google_chat' ? '<option value="google_chat">Google Chat</option>' : ''}</select></label>
                 <div data-telegram class="timeline-marketing-form">
                     <label>Група або тема Telegram <select name="telegramTarget" required></select></label>
-                    ${approvalTarget?.chatId ? '<button type="button" class="btn-secondary" data-use-approval-chat>Вибрати групу погоджень</button>' : ''}
+                    <small>Для нової групи додайте чинного службового бота CRM та надішліть команду, адресовану йому, у загальний чат або потрібну тему. Потім знову відкрийте список отримувачів.</small>
                     <p data-chat-status role="status"></p>
+                </div>
+                <div data-crm-chat class="timeline-marketing-form" hidden>
+                    <label>Група співробітників <select name="crmTarget" ${recipient.id ? 'disabled' : ''}></select></label>
+                    ${crmChannels.length ? '' : '<small>Немає доступних групових чатів CRM.</small>'}
                 </div>
                 <div data-google-chat class="timeline-marketing-form" hidden>
                     <label>Вхідний вебхук Google Chat <input type="password" name="webhook" autocomplete="new-password"></label>
@@ -272,7 +279,7 @@ window.SettingsAfisha = {
                 </div>
                 <label>Місячна афіша <select name="afishaMode">
                     <option value="off">Вимкнено</option><option value="monthly">1-го числа</option>
-                    <option value="publication">При публікації</option></select></label>
+                    <option value="publication">У день публікації</option></select></label>
                 <label data-monthly-time>Час місячної афіші за Києвом <input type="time" name="monthlyTime" value="${M.esc(recipient.monthlyTime || '09:00')}"></label>
                 <label><span><input type="checkbox" name="eventsToday" ${recipient.eventsToday ? 'checked' : ''}> Події дня</span></label>
                 <label><span><input type="checkbox" name="promotionsToday" ${recipient.promotionsToday ? 'checked' : ''}> Старт акцій</span></label>
@@ -280,7 +287,7 @@ window.SettingsAfisha = {
                 <label ${recipient.id ? '' : 'hidden'}><span><input type="checkbox" name="active" ${recipient.active ? 'checked' : ''}> Увімкнути розсилку для групи</span></label>
                 <p data-digest-warning role="status" hidden>Ця група вже отримує афішу в щоденному зведенні.</p>
                 <div data-save-status role="status" aria-live="polite"></div>
-                <button type="submit" class="btn-primary">Зберегти групу</button>
+                <button type="submit" class="btn-primary">Зберегти отримувача</button>
             </form>`, trigger);
         const form = modal.querySelector('[data-recipient-form]');
         const fields = form.elements;
@@ -291,23 +298,32 @@ window.SettingsAfisha = {
         fields.platform.value = recipient.platform || 'telegram';
         fields.afishaMode.value = recipient.afishaMode || 'off';
         fillTelegramOptions(fields.telegramTarget, 'Оберіть групу або тему', addressKey(recipient.chatId, recipient.threadId));
+        fields.crmTarget.add(new Option('Оберіть групу CRM', ''));
+        for (const channel of crmChannels) fields.crmTarget.add(new Option(channel.name, channel.id));
+        fields.crmTarget.value = recipient.channelId || '';
         if (!directory.length && !recipient.chatId) chatStatus.textContent = 'У довіднику поки немає груп Telegram.';
 
         function refreshFields() {
             const telegram = fields.platform.value === 'telegram';
+            const crm = fields.platform.value === 'crm_chat';
+            const google = fields.platform.value === 'google_chat';
             form.querySelector('[data-telegram]').hidden = !telegram;
-            form.querySelector('[data-google-chat]').hidden = telegram;
+            form.querySelector('[data-crm-chat]').hidden = !crm;
+            form.querySelector('[data-google-chat]').hidden = !google;
             fields.telegramTarget.required = telegram;
-            fields.webhook.required = !telegram && !recipient.webhookConfigured;
+            fields.crmTarget.required = crm;
+            fields.name.required = !crm;
+            fields.name.closest('label').hidden = crm;
+            fields.webhook.required = google && !recipient.webhookConfigured;
             digestWarning.hidden = !(telegram && digestDestination &&
                 fields.telegramTarget.value === addressKey(digestDestination.chatId, digestDestination.threadId));
             form.querySelector('[data-monthly-time]').hidden = fields.afishaMode.value !== 'monthly';
             form.querySelector('[data-daily-time]').hidden = !fields.eventsToday.checked && !fields.promotionsToday.checked;
         }
 
-        form.querySelector('[data-use-approval-chat]')?.addEventListener('click', () => {
-            fillTelegramOptions(fields.telegramTarget, 'Оберіть групу або тему', addressKey(approvalTarget.chatId, approvalTarget.threadId));
-            refreshFields();
+        fields.telegramTarget.addEventListener('change', () => {
+            const selected = directory.find(item => item.key === fields.telegramTarget.value);
+            if (!recipient.id) fields.name.value = selected ? optionText(selected).slice(0, 100) : '';
         });
         form.addEventListener('change', refreshFields);
         form.addEventListener('submit', async event => {
@@ -323,6 +339,9 @@ window.SettingsAfisha = {
                 const [chatId, threadId] = fields.telegramTarget.value.split(':');
                 config.chatId = chatId;
                 config.threadId = threadId || null;
+            } else if (config.platform === 'crm_chat') {
+                config.channelId = fields.crmTarget.value;
+                config.name = fields.crmTarget.selectedOptions[0].textContent;
             } else if (fields.webhook.value) {
                 config.webhook = fields.webhook.value;
             }
@@ -349,12 +368,19 @@ window.SettingsAfisha = {
         const modal = M.dialog('Наступний допис · ' + recipient.name, '<div data-next-preview-results role="status">Готуємо перегляд…</div>', trigger);
         const result = modal.querySelector('[data-next-preview-results]');
         try {
-            const { parts, scheduledAt } = await M.request(path + '/' + encodeURIComponent(recipient.id) + '/preview', 'GET', null, business);
+            const { parts, scheduledAt, layout } = await M.request(path + '/' + encodeURIComponent(recipient.id) + '/preview', 'GET', null, business);
             if (!modal.isConnected) return;
             result.innerHTML = parts.length
                 ? '<p>' + M.esc(deliveryDate(scheduledAt)) + '</p>' + parts.map(part =>
                     '<pre class="timeline-afisha-publication-text">' + M.esc(part) + '</pre>').join('')
                 : 'На цей час немає записів для анонсу.';
+            if (parts.length && layout) {
+                const image = document.createElement('img');
+                image.alt = 'Макет афіші';
+                image.style.maxWidth = '100%';
+                result.prepend(image);
+                await M.loadAnnouncementImage(image, layout, business);
+            }
         } catch (error) {
             if (modal.isConnected) result.textContent = error.message;
         }
@@ -365,13 +391,26 @@ window.SettingsAfisha = {
         const modal = M.dialog('Історія доставки · ' + recipient.name, '<div data-history-results role="status">Завантажуємо…</div>', trigger);
         const result = modal.querySelector('[data-history-results]');
         try {
-            const { deliveries } = await M.request(path + '/' + encodeURIComponent(recipient.id) + '/history', 'GET', null, business);
+            const { journal = [] } = await M.request(path + '/' + encodeURIComponent(recipient.id) + '/history', 'GET', null, business);
             if (!modal.isConnected) return;
-            result.innerHTML = deliveries.length ? deliveries.map(delivery => `<details>
-                <summary>${M.esc(deliveryDate(delivery.at))} · ${M.esc(stateLabels[delivery.status] || 'Оновлюється')}</summary>
-                ${delivery.text ? `<pre class="timeline-afisha-publication-text">${M.esc(delivery.text)}</pre>` : ''}
-                ${delivery.detail === 'publication_changed' ? '<p>Афішу змінено після підтвердження. Перегляньте й опублікуйте допис знову.</p>'
-                    : delivery.detail ? `<p>${M.esc(delivery.detail)}</p>` : ''}</details>`).join('') : 'Історія доставки порожня.';
+            const details = {
+                crm_channel_unavailable: 'Групу архівовано або втрачено доступ до публікації.',
+                telegram_unconfirmed: 'Telegram не підтвердив результат.',
+                telegram_rejected: 'Telegram відхилив повідомлення.',
+                publication_changed: 'Афішу змінено після підтвердження.',
+                delivery_unavailable: 'Доставку скасовано або час доставки минув.',
+                lease_expired: 'Обробник втратив підтвердження доставки.'
+            };
+            result.innerHTML = journal.length ? journal.map(delivery => {
+                const [slot, from, end] = delivery.slot_key.split(':');
+                let period = end && end !== 'revision' ? from + ' — ' + end : from;
+                if (slot === 'monthly') period = from.slice(0, 7);
+                return `<details><summary>${M.esc(period)} · ${delivery.kind === 'publication' ? 'Вручну' : 'Автоматично'}
+                    · ${M.esc(stateLabels[delivery.status])} · ${M.esc(deliveryDate(delivery.at))}</summary>
+                    ${delivery.parts.map(part => `<p>${part.is_photo ? 'Зображення' : 'Текст'} · ${M.esc(stateLabels[part.status] || 'У черзі')}
+                        ${part.detail ? ' · ' + M.esc(details[part.detail] || part.detail) : ''}</p>
+                        ${part.text ? `<pre class="timeline-afisha-publication-text">${M.esc(part.text)}</pre>` : ''}`).join('')}</details>`;
+            }).join('') : 'Історія доставки порожня.';
         } catch (error) {
             if (modal.isConnected) result.textContent = error.message;
         }

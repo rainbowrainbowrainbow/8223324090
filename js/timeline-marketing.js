@@ -21,13 +21,31 @@
     async function request(path, method = 'GET', body, business = context()) {
         const url = new URL(`/api${path}`, root.location.origin);
         url.searchParams.set('businessContext', business);
+        const multipart = typeof FormData !== 'undefined' && body instanceof FormData;
         const response = await apiFetchWithAuthRetry(url.pathname + url.search, {
-            method, headers: getAuthHeaders(method !== 'GET'), ...(body ? { body: JSON.stringify(body) } : {})
+            method, headers: getAuthHeaders(method !== 'GET' && !multipart),
+            ...(body ? { body: multipart ? body : JSON.stringify(body) } : {})
         });
         if (!response) throw new Error('Сесію завершено. Увійдіть повторно.');
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw Object.assign(new Error(data.error || 'Помилка запиту'), { status: response.status });
         return data;
+    }
+    async function loadAnnouncementImage(img, layout, business) {
+        const url = '/api/afisha/announcements/layout/' + encodeURIComponent(layout.id)
+            + '?businessContext=' + encodeURIComponent(business);
+        const response = await apiFetchWithAuthRetry(url, { headers: getAuthHeaders(false) });
+        if (!response?.ok) throw new Error('Не вдалося відкрити макет.');
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        try {
+            if (img.isConnected) {
+                img.src = objectUrl;
+                await img.decode();
+            }
+        } finally {
+            URL.revokeObjectURL(objectUrl);
+        }
     }
     function dialog(title, content, trigger) {
         const modal = document.createElement('div');
@@ -41,7 +59,7 @@
         openModal(modal, trigger, { hide: el => el.remove() });
         return modal;
     }
-    const api = { esc, addDays, daysBetween, weekOf, context, writable, request, dialog };
+    const api = { esc, addDays, daysBetween, weekOf, context, writable, request, dialog, loadAnnouncementImage };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else root.TimelineMarketing = api;
 })(typeof window !== 'undefined' ? window : globalThis);

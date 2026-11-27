@@ -1,6 +1,7 @@
 'use strict';
 
 const { Router } = require('express');
+const multer = require('multer');
 const { createLogger } = require('../utils/logger');
 const { BUSINESS_SCOPE_SINGLE, businessScopeModeFromRequest } = require('../services/businessContext');
 const { businessScopeWriteGuard } = require('../middleware/businessScopeGuard');
@@ -13,9 +14,25 @@ const { getConfiguredChatId, getConfiguredThreadId } = require('../services/tele
 const { automaticAnnouncementSlots } = require('../services/afishaAnnouncementSchedule');
 const { prepareAfishaPublication } = require('../services/afishaAnnouncementPublication');
 const { renderAutomaticAnnouncement } = require('../services/afishaAnnouncementDelivery');
-const { listRecipients, getRecipient, publicRecipient, saveRecipient, history, publishAnnouncement } = require('../services/afishaAnnouncementStore');
+const { listRecipients, getRecipient, publicRecipient, saveRecipient, history, publishAnnouncement,
+    manualRecipients, publicationState, publicationJournal, DELIVERY_STATUS_SQL } = require('../services/afishaAnnouncementStore');
+const { listCrmAnnouncementChannels } = require('../services/afishaAnnouncementCrmChat');
+const { MAX_LAYOUT_BYTES, currentLayout, readLayout, saveLayout } = require('../services/afishaPublicationLayout');
 
 const log = createLogger('AfishaAnnouncements');
+const uploadLayout = multer({ storage: multer.memoryStorage(), limits: {
+    fileSize: MAX_LAYOUT_BYTES, files: 1, fields: 2, parts: 4, fieldSize: 64
+} }).single('layout');
+
+function selectedRecipients(body) {
+    const ids = body?.recipientIds;
+    if (!Array.isArray(ids) || ids.length > 100 || ids.some(id => typeof id !== 'string' || !/^[1-9]\d{0,17}$/.test(id))) {
+        throw Object.assign(new Error('Оберіть отримувачів афіші.'), { statusCode: 400 });
+    }
+    return [...new Set(ids)];
+}
+
+const layoutInfo = layout => layout ? { id: layout.id, contentType: layout.content_type } : null;
 
 function createAnnouncementRouter(pool, {
     now = () => new Date(),
@@ -72,13 +89,14 @@ function createAnnouncementRouter(pool, {
 
     router.get('/recipients', handle(async (req, res, business) => {
         const isPark = business === DEFAULT_TIMELINE_CONTEXT;
-        const [recipients, notificationRoute, telegramFeatures, legacyApproval, telegramDirectory, routeEntries] = await Promise.all([
+        const [recipients, notificationRoute, telegramFeatures, legacyApproval, telegramDirectory, routeEntries, crmChannels] = await Promise.all([
             listRecipients(pool, business),
             business === DEFAULT_TIMELINE_CONTEXT ? readNotificationRoute() : null,
             readOperationalTelegramFeatures(pool),
             isPark ? resolveAnimatorAskTelegramTarget() : null,
             isPark ? listTelegramDirectory(pool) : [],
-            isPark ? Promise.all(['approval', 'digest', 'reminder'].map(async feature => [feature, await getTelegramRoute(pool, feature)])) : []
+            isPark ? Promise.all(['approval', 'digest', 'reminder'].map(async feature => [feature, await getTelegramRoute(pool, feature)])) : [],
+            listCrmAnnouncementChannels(pool, business, req.user)
         ]);
         const overrides = Object.fromEntries(routeEntries);
         const approvalTarget = overrides.approval || legacyApproval;
@@ -93,19 +111,17 @@ function createAnnouncementRouter(pool, {
             SELECT DISTINCT ON (recipient_id) recipient_id, destination_key, slot_key
             FROM afisha_announcement_parts WHERE business_context = $1 ORDER BY recipient_id, id DESC
         )
-        SELECT latest.recipient_id, latest.slot_key,
-            CASE WHEN bool_and(p.status = 'sent') THEN 'sent'
-                WHEN bool_or(p.status = 'sent') THEN 'partial'
-                WHEN bool_or(p.status = 'uncertain') THEN 'uncertain'
-                WHEN bool_or(p.status = 'retry') THEN 'retry'
-                WHEN bool_or(p.status IN ('pending', 'claimed')) THEN 'pending'
-                WHEN bool_or(p.status = 'failed') THEN 'failed' ELSE 'skipped' END AS status
+        SELECT latest.recipient_id, latest.slot_key, ${DELIVERY_STATUS_SQL} AS status
         FROM latest JOIN afisha_announcement_parts p
             ON p.business_context = $1 AND p.destination_key = latest.destination_key AND p.slot_key = latest.slot_key
         GROUP BY latest.recipient_id, latest.slot_key`, [business]);
         const byRecipient = new Map(deliveries.rows.map(row => [String(row.recipient_id), row]));
-        res.json({ dailyDigest, telegramFeatures, approvalTarget, routingPreview, telegramDirectory, routeSelections, recipients: recipients.map(recipient => ({
+        const accessible = new Set(crmChannels.map(channel => channel.id));
+        res.json({ dailyDigest, telegramFeatures, approvalTarget, routingPreview, telegramDirectory, routeSelections, crmChannels,
+            recipients: recipients.filter(recipient => recipient.platform !== 'crm_chat'
+                || accessible.has(recipient.channelId) || recipient.connectedBy === req.user.id).map(recipient => ({
             ...publicRecipient(telegramAnnouncementRecipient(recipient, telegramFeatures), now()),
+            unavailable: recipient.platform === 'crm_chat' && !accessible.has(recipient.channelId),
             active: recipient.active,
             lastDelivery: byRecipient.get(String(recipient.id)) || null,
             digestOverlap: recipient.platform === 'telegram' && dailyDigest != null
@@ -124,34 +140,74 @@ function createAnnouncementRouter(pool, {
     }));
 
     router.post('/recipients', businessScopeWriteGuard, handle(async (req, res, business) => {
-        res.status(201).json({ recipient: await saveRecipient(pool, business, null, req.body, now()) });
+        res.status(201).json({ recipient: await saveRecipient(pool, business, null, req.body, now(), req.user) });
     }));
     router.put('/recipients/:id', businessScopeWriteGuard, handle(async (req, res, business) => {
-        res.json({ recipient: await saveRecipient(pool, business, req.params.id, req.body, now()) });
+        res.json({ recipient: await saveRecipient(pool, business, req.params.id, req.body, now(), req.user) });
     }));
     router.get('/recipients/:id/history', handle(async (req, res, business) => {
-        await getRecipient(pool, business, req.params.id);
-        res.json({ deliveries: await history(pool, business, req.params.id) });
+        const recipient = await getRecipient(pool, business, req.params.id);
+        if (recipient.platform === 'crm_chat' && recipient.connectedBy !== req.user.id
+            && !(await listCrmAnnouncementChannels(pool, business, req.user, recipient.channelId)).length)
+            return res.status(404).json({ error: 'Групу не знайдено' });
+        const [deliveries, journal] = await Promise.all([
+            history(pool, business, req.params.id), publicationJournal(pool, business, req.params.id)
+        ]);
+        res.json({ deliveries, journal });
     }));
     router.get('/recipients/:id/preview', handle(async (req, res, business) => {
         const recipient = await getRecipient(pool, business, req.params.id);
+        if (recipient.platform === 'crm_chat' && !(await listCrmAnnouncementChannels(pool, business, req.user, recipient.channelId)).length)
+            return res.status(404).json({ error: 'Групу не знайдено' });
         const features = await readOperationalTelegramFeatures(pool);
         const slot = automaticAnnouncementSlots(telegramAnnouncementRecipient(recipient, features), now()).upcoming[0];
         res.json(slot
-            ? { parts: await renderAutomaticAnnouncement(pool, recipient, slot), scheduledAt: slot.scheduledAt }
+            ? { parts: await renderAutomaticAnnouncement(pool, recipient, slot), scheduledAt: slot.scheduledAt,
+                layout: slot.kind === 'monthly' && recipient.platform !== 'google_chat'
+                    ? layoutInfo(await currentLayout(pool, business, slot.from, slot.to)) : null }
             : { parts: [], scheduledAt: null });
+    }));
+    router.get('/publication-options', handle(async (req, res, business) => {
+        const [recipients, features, layout] = await Promise.all([
+            listRecipients(pool, business), readOperationalTelegramFeatures(pool),
+            currentLayout(pool, business, req.query.from, req.query.to)
+        ]);
+        const eligible = await manualRecipients(pool, business, req.user, recipients, features);
+        res.json({ layout: layoutInfo(layout), recipients: eligible.map(({ id, name, platform, active, afishaMode }) =>
+            ({ id: String(id), name, platform, selected: active && afishaMode === 'publication' })) });
+    }));
+    router.put('/layout', businessScopeWriteGuard, (req, res, next) => {
+        uploadLayout(req, res, error => error ? res.status(400).json({ error: 'Виберіть один файл PNG або JPG до 5 МБ.' }) : next());
+    }, handle(async (req, res, business) => {
+        const layout = await saveLayout(pool, business, req.body.from, req.body.to, req.file);
+        res.json({ layout: layoutInfo(layout) });
+    }));
+    router.get('/layout/:id', handle(async (req, res, business) => {
+        const layout = /^[1-9]\d{0,17}$/.test(req.params.id) && await readLayout(pool, business, req.params.id);
+        if (!layout) return res.status(404).json({ error: 'Макет не знайдено' });
+        res.set({ 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff',
+            'Cross-Origin-Resource-Policy': 'same-origin' }).type(layout.content_type).send(layout.content);
     }));
     router.post('/preview', businessScopeWriteGuard, handle(async (req, res, business) => {
         const recipients = await listRecipients(pool, business);
         const { from, to } = req.body || {};
         const features = await readOperationalTelegramFeatures(pool);
-        const { previewToken, recipients: groups, parts } = await prepareAfishaPublication(pool, {
-            business, from, to, recipients: recipients.map(recipient => telegramAnnouncementRecipient(recipient, features))
+        const legacy = req.body?.recipientIds === undefined;
+        const recipientIds = legacy ? undefined : selectedRecipients(req.body);
+        const eligible = legacy ? recipients.map(recipient => telegramAnnouncementRecipient(recipient, features))
+            : await manualRecipients(pool, business, req.user, recipients, features);
+        const preview = await prepareAfishaPublication(pool, {
+            business, from, to, recipients: eligible, recipientIds, publisherId: legacy ? undefined : req.user.id, resend: req.body?.resend === true
         });
-        res.json({ previewToken, recipients: groups, parts });
+        const deliveryState = legacy ? [] : await publicationState(pool, business,
+            eligible.filter(item => recipientIds.includes(String(item.id))), preview);
+        res.json({ previewToken: preview.previewToken, recipients: preview.recipients, parts: preview.parts, deliveryState,
+            layout: layoutInfo(preview.layout) });
     }));
     router.post('/publish', businessScopeWriteGuard, handle(async (req, res, business) => {
-        const result = await publishAnnouncement(pool, business, req.body?.previewToken, now());
+        const result = await publishAnnouncement(pool, business, req.body?.previewToken, now(), req.body?.recipientIds === undefined ? {} : {
+            recipientIds: selectedRecipients(req.body), actor: req.user, resend: req.body?.resend === true
+        });
         res.status(202).json(result);
     }));
 

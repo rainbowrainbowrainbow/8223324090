@@ -79,7 +79,8 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, createStaticS
                         assert.equal(input.chatId, '-1002');
                         assert.equal(input.threadId, '22');
                     } else {
-                        assert.equal(input.webhook, 'https://chat.googleapis.com/v1/spaces/test/messages?key=test&token=test');
+                        assert.equal(input.platform, 'crm_chat');
+                        assert.equal(input.channelId, '77');
                     }
                     const { webhook, ...publicConfig } = input;
                     const recipient = { ...publicConfig, id: String(recipients.length + 1), webhookConfigured: Boolean(webhook) };
@@ -87,7 +88,7 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, createStaticS
                     recipients.push(recipient);
                     return route.fulfill({ status: 201, json: { recipient } });
                 }
-                return route.fulfill({ json: { recipients, dailyDigest: { chatId: '-1002', threadId: '22' },
+                return route.fulfill({ json: { recipients, crmChannels: [{ id: 77, name: '#Керівники' }], dailyDigest: { chatId: '-1002', threadId: '22' },
                     approvalTarget: { chatId: '-1002', threadId: '22' }, telegramFeatures: features, telegramDirectory, routeSelections,
                     routingPreview: [
                         { feature: 'approval', botProfile: 'operational', chatId: '-1002', threadId: '22' },
@@ -102,22 +103,28 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, createStaticS
                 return route.fulfill({ json: { scheduledAt: '2026-10-20T05:00:00Z', parts: ['Наступна афіша'] } });
             }
             if (pathname === '/api/afisha/announcements/recipients/1/history') {
-                return route.fulfill({ json: { deliveries: [{ at: '2026-10-19T07:00:00Z', status: 'sent', text: 'Ранкова афіша' }] } });
+                return route.fulfill({ json: { journal: [{ slot_key: 'daily:2026-10-19', kind: 'daily',
+                    at: '2026-10-19T07:00:00Z', status: 'sent', parts: [{ status: 'sent', text: 'Ранкова афіша' }] }] } });
+            }
+            const publicationRecipients = [{ id: '70', name: 'Команда парку', platform: 'telegram', selected: true },
+                { id: '77', name: '#Керівники', platform: 'crm_chat', selected: true }];
+            if (pathname === '/api/afisha/announcements/publication-options') {
+                return route.fulfill({ json: { recipients: publicationRecipients, layout: null } });
             }
             if (pathname === '/api/afisha/announcements/preview') {
                 assert.equal(new URL(request.url()).searchParams.get('businessContext'), 'event_genix');
                 const input = request.postDataJSON();
                 assert.equal(input.from, '2026-10-01');
                 return route.fulfill({ json: {
-                    recipients: [{ name: 'Команда парку', platform: 'telegram' }, { name: 'Керівники', platform: 'google_chat' }],
+                    recipients: publicationRecipients, deliveryState: publicationRecipients.map(({ id }) => ({ id })),
                     parts: ['Космічна афіша <test>', 'Осіння акція'],
                     previewToken: input.to
                 } });
             }
             if (pathname === '/api/afisha/announcements/publish') {
                 publishRequests++;
-                assert.deepEqual(request.postDataJSON(), { previewToken: '2026-10-30' });
-                return route.fulfill({ status: 202, json: { success: true } });
+                assert.deepEqual(request.postDataJSON(), { previewToken: '2026-10-30', recipientIds: ['70', '77'], resend: false });
+                return route.fulfill({ status: 202, json: { queued: 2 } });
             }
             if (pathname === '/api/afisha/timeline' && request.method() === 'POST') {
                 const input = request.postDataJSON();
@@ -153,14 +160,15 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, createStaticS
         assert.equal(await publication.locator('[name=from]').inputValue(), '2026-10-01');
         assert.equal(await publication.locator('[name=to]').inputValue(), '2026-10-31');
         assert.equal(await publication.locator('[data-publish]').isDisabled(), true);
+        await publication.getByText('Текстова афіша без зображення.').waitFor();
         await publication.locator('[data-preview]').click();
-        await publication.getByText('Команда парку · Telegram').waitFor();
-        await publication.getByText('Керівники · Google Chat').waitFor();
+        await publication.locator('[data-publication-preview]').getByText('Команда парку · Telegram').waitFor();
+        await publication.locator('[data-publication-preview]').getByText('#Керівники · Чат CRM').waitFor();
         assert.equal(await publication.locator('pre').first().textContent(), 'Космічна афіша <test>');
         await publication.locator('[name=to]').fill('2026-10-30');
         assert.equal(await publication.locator('[data-publish]').isDisabled(), true);
         await publication.locator('[data-preview]').click();
-        await publication.getByText('Керівники · Google Chat').waitFor();
+        await publication.locator('[data-publication-preview]').getByText('#Керівники · Чат CRM').waitFor();
         await page.setViewportSize({ width: 390, height: 844 });
         const publishBox = await publication.locator('.timeline-marketing-dialog').boundingBox();
         assert.ok(publishBox && publishBox.x >= 0 && publishBox.x + publishBox.width <= 390);
@@ -221,16 +229,15 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, createStaticS
         await settings.getByRole('button', { name: 'Зберегти функції' }).click();
         await settings.getByText('Функції збережено.').waitFor();
         await settings.locator('[data-add-announcement-recipient]').click();
-        const edit = page.getByRole('dialog', { name: 'Додати групу' });
+        const edit = page.getByRole('dialog', { name: 'Додати отримувача' });
+        await edit.locator('[name=telegramTarget]').selectOption('-1002:22');
         await edit.locator('[name=name]').fill('Команда парку');
-        await edit.locator('[name=telegramTarget]').selectOption('-1001:11');
-        await edit.getByRole('button', { name: 'Вибрати групу погоджень' }).click();
         await edit.locator('[name=telegramTarget] option:checked[value="-1002:22"]').waitFor({ state: 'attached' });
         await edit.locator('[data-digest-warning]').waitFor();
         await page.setViewportSize({ width: 390, height: 844 });
         const editBox = await edit.locator('.timeline-marketing-dialog').boundingBox();
         assert.ok(editBox && editBox.x >= 0 && editBox.x + editBox.width <= 390);
-        await edit.getByRole('button', { name: 'Зберегти групу' }).click();
+        await edit.getByRole('button', { name: 'Зберегти отримувача' }).click();
         await settings.getByText('Команда парку').waitFor();
         await settings.getByRole('button', { name: 'Переглянути допис' }).click();
         const next = page.getByRole('dialog', { name: 'Наступний допис · Команда парку' });
@@ -238,16 +245,15 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, createStaticS
         await next.getByRole('button', { name: 'Закрити' }).click();
         await settings.getByRole('button', { name: 'Історія доставки' }).click();
         const history = page.getByRole('dialog', { name: 'Історія доставки · Команда парку' });
-        await history.getByText('Доставлено').click();
+        await history.locator('summary').click();
         await history.getByText('Ранкова афіша').waitFor();
         await history.getByRole('button', { name: 'Закрити' }).click();
         await settings.locator('[data-add-announcement-recipient]').click();
-        await edit.locator('[name=name]').fill('Керівники Google Chat');
-        await edit.locator('[name=platform]').selectOption('google_chat');
+        await edit.locator('[name=platform]').selectOption('crm_chat');
         assert.equal(await edit.locator('[name=telegramTarget]').isVisible(), false);
-        await edit.locator('[name=webhook]').fill('https://chat.googleapis.com/v1/spaces/test/messages?key=test&token=test');
-        await edit.getByRole('button', { name: 'Зберегти групу' }).click();
-        await settings.getByText('Керівники Google Chat').waitFor();
+        await edit.locator('[name=crmTarget]').selectOption('77');
+        await edit.getByRole('button', { name: 'Зберегти отримувача' }).click();
+        await settings.getByText('#Керівники').waitFor();
         assert.equal((await settings.textContent()).includes('token='), false);
         assert.equal(legacyDiscoveryCalls, 0);
         assert.deepEqual(errors, []);

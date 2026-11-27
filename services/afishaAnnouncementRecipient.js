@@ -2,7 +2,7 @@
 
 const { validateTime } = require('./booking');
 
-const PLATFORMS = new Set(['telegram', 'google_chat']);
+const PLATFORMS = new Set(['telegram', 'google_chat', 'crm_chat']);
 const AFISHA_MODES = new Set(['off', 'monthly', 'publication']);
 const fail = message => Object.assign(new Error(message), { statusCode: 400 });
 
@@ -39,6 +39,11 @@ function validateAnnouncementRecipient(input) {
         }
         fields.chatId = input.chatId;
         fields.threadId = thread;
+    }
+    if (input.platform === 'crm_chat') {
+        const channelId = Number(input.channelId);
+        if (!/^[1-9]\d*$/.test(String(input.channelId)) || channelId > 2147483647) throw fail('Оберіть групу CRM');
+        fields.channelId = channelId;
     }
     return fields;
 }

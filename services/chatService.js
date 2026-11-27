@@ -324,11 +324,14 @@ async function sendFileMessage(channelId, userId, content, contentType, metadata
 /**
  * Send a file message and persist the upload blob in the same transaction.
  */
-async function sendFileMessageWithUpload(channelId, userId, content, contentType, metadata, upload = {}) {
-    const client = await pool.connect();
+async function sendFileMessageWithUpload(channelId, userId, content, contentType, metadata, upload = {}, {
+    database = pool, authorize
+} = {}) {
+    const client = await database.connect();
     try {
         await client.query('BEGIN');
 
+        if (authorize) await authorize(client);
         const seqResult = await client.query('SELECT next_chat_seq($1) AS seq', [channelId]);
         const seq = seqResult.rows[0].seq;
 
@@ -372,7 +375,7 @@ async function sendFileMessageWithUpload(channelId, userId, content, contentType
 
         await client.query('COMMIT');
 
-        const fullMsg = await pool.query(`
+        const fullMsg = await client.query(`
             SELECT cm.*, u.username, u.name AS display_name
             FROM chat_messages cm
             JOIN users u ON u.id = cm.user_id
@@ -388,7 +391,7 @@ async function sendFileMessageWithUpload(channelId, userId, content, contentType
     } catch (err) {
         await client.query('ROLLBACK');
         if (err.code === '23505' && err.constraint === 'chat_messages_channel_id_seq_key') {
-            return sendFileMessageWithUpload(channelId, userId, content, contentType, metadata, upload);
+            return sendFileMessageWithUpload(channelId, userId, content, contentType, metadata, upload, { database, authorize });
         }
         throw err;
     } finally {

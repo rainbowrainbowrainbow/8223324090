@@ -57,11 +57,16 @@
             <form class="timeline-marketing-form" data-publication-form>
                 <label>Від <input type="date" name="from" required value="${M.esc(monthStart)}"></label>
                 <label>До <input type="date" name="to" required value="${M.esc(monthEnd)}"></label>
+                <label>Готовий макет PNG або JPG до 5 МБ <input type="file" name="layout" accept="image/png,image/jpeg"></label>
+                <button type="button" class="btn-secondary" data-save-layout disabled>Зберегти макет</button>
+                <div data-publication-layout></div>
+                <fieldset><legend>Отримувачі</legend><div data-publication-recipients></div></fieldset>
+                <label><span><input type="checkbox" name="resend"> Надіслати оновлену версію повторно</span></label>
                 <section data-publication-preview hidden aria-label="Допис і отримувачі"></section>
                 <div data-publication-status role="status" aria-live="polite"></div>
                 <div class="timeline-marketing-actions">
                     <button type="submit" class="btn-secondary" data-preview>Переглянути</button>
-                    <button type="button" class="btn-primary" data-publish disabled>Поставити в чергу</button>
+                    <button type="button" class="btn-primary" data-publish disabled>Надіслати зараз</button>
                 </div>
             </form>`, trigger);
         const form = modal.querySelector('[data-publication-form]');
@@ -69,14 +74,25 @@
         const status = form.querySelector('[data-publication-status]');
         const previewButton = form.querySelector('[data-preview]');
         const publishButton = form.querySelector('[data-publish]');
+        const saveButton = form.querySelector('[data-save-layout]');
+        const layoutPanel = form.querySelector('[data-publication-layout]');
+        const groupPanel = form.querySelector('[data-publication-recipients]');
+        const path = '/afisha/announcements';
+        const file = form.elements.layout;
+        const selectedIds = () => [...groupPanel.querySelectorAll('input:checked')].map(input => input.value);
+        const period = () => ({ from: form.elements.from.value, to: form.elements.to.value });
+        const platformLabel = platform => platform === 'telegram' ? 'Telegram' : 'Чат CRM';
         let previewToken = null;
         let busy = false;
+        let layoutSequence = 0;
+        let choicesLoaded = false;
+        let displayedLayoutId = null;
 
         function setBusy(value) {
             busy = value;
-            form.elements.from.disabled = value;
-            form.elements.to.disabled = value;
-            previewButton.disabled = value;
+            for (const input of form.querySelectorAll('input')) input.disabled = value;
+            previewButton.disabled = value || !!file.files.length;
+            saveButton.disabled = value || !file.files.length;
             publishButton.disabled = value || !previewToken;
             form.setAttribute('aria-busy', String(value));
         }
@@ -89,10 +105,92 @@
             status.textContent = '';
         }
 
-        form.addEventListener('input', clearPreview);
+        async function showLayout(layout) {
+            displayedLayoutId = null;
+            layoutPanel.replaceChildren();
+            if (!layout) {
+                layoutPanel.textContent = 'Текстова афіша без зображення.';
+                return;
+            }
+            const image = document.createElement('img');
+            image.alt = 'Макет афіші';
+            image.style.maxWidth = '100%';
+            image.style.maxHeight = '24rem';
+            layoutPanel.append(image);
+            await M.loadAnnouncementImage(image, layout, business);
+            if (image.isConnected) displayedLayoutId = layout.id;
+        }
+
+        async function loadOptions() {
+            const sequence = ++layoutSequence;
+            const dates = period();
+            const valid = dates.from && dates.to && M.daysBetween(dates.from, dates.to) >= 0 && M.daysBetween(dates.from, dates.to) <= 30;
+            if (!valid) {
+                layoutPanel.replaceChildren();
+                return;
+            }
+            const { layout, recipients } = await M.request(path + '/publication-options?' + new URLSearchParams(dates), 'GET', null, business);
+            if (!modal.isConnected || sequence !== layoutSequence) return;
+            const previous = new Set(selectedIds());
+            groupPanel.innerHTML = recipients.length ? recipients.map(group =>
+                `<label><span><input type="checkbox" value="${M.esc(group.id)}" ${(choicesLoaded ? previous.has(group.id) : group.selected) ? 'checked' : ''} ${busy ? 'disabled' : ''}>
+                ${M.esc(group.name)} · ${platformLabel(group.platform)}</span></label>`).join('') : 'Підключіть отримувачів у налаштуваннях розсилки.';
+            choicesLoaded = true;
+            if (!file.files.length) await showLayout(layout);
+        }
+
+        form.addEventListener('input', event => {
+            clearPreview();
+            if (event.target === file) {
+                displayedLayoutId = null;
+                const chosen = file.files[0];
+                if (chosen) {
+                    const objectUrl = URL.createObjectURL(chosen);
+                    const image = document.createElement('img');
+                    image.alt = 'Вибраний макет';
+                    image.style.maxWidth = '100%';
+                    image.style.maxHeight = '24rem';
+                    image.src = objectUrl;
+                    image.decode().catch(() => {}).finally(() => URL.revokeObjectURL(objectUrl));
+                    layoutPanel.replaceChildren(image);
+                    status.textContent = 'Збережіть вибраний макет, щоб включити його в перегляд допису.';
+                } else {
+                    loadOptions().catch(error => { status.textContent = error.message; });
+                }
+                setBusy(false);
+            }
+        });
+        form.addEventListener('change', event => {
+            if (event.target !== form.elements.from && event.target !== form.elements.to) return;
+            file.value = '';
+            displayedLayoutId = null;
+            layoutPanel.replaceChildren();
+            setBusy(false);
+            loadOptions().catch(error => { status.textContent = error.message; });
+        });
+        saveButton.addEventListener('click', async () => {
+            if (busy || !file.files.length || !form.reportValidity()) return;
+            const body = new FormData();
+            for (const [name, value] of Object.entries(period())) body.append(name, value);
+            body.append('layout', file.files[0]);
+            clearPreview();
+            setBusy(true);
+            try {
+                const { layout } = await M.request(path + '/layout', 'PUT', body, business);
+                if (!modal.isConnected) return;
+                file.value = '';
+                await showLayout(layout);
+                status.textContent = 'Макет збережено.';
+            } catch (error) {
+                if (modal.isConnected) status.textContent = error.message;
+            } finally {
+                if (modal.isConnected) setBusy(false);
+            }
+        });
+
         form.addEventListener('submit', async event => {
             event.preventDefault();
-            if (busy) return;
+            if (busy || file.files.length) return;
             clearPreview();
             const from = form.elements.from.value;
             const to = form.elements.to.value;
@@ -103,21 +201,36 @@
             setBusy(true);
             status.textContent = 'Готуємо допис…';
             try {
-                const result = await M.request('/afisha/announcements/preview', 'POST', { from, to }, business);
+                const resend = form.elements.resend.checked;
+                const result = await M.request(path + '/preview', 'POST', { from, to, recipientIds: selectedIds(), resend }, business);
                 if (!modal.isConnected) return;
+                if (!result.layout || displayedLayoutId !== result.layout.id) {
+                    await showLayout(result.layout);
+                }
                 const groups = result.recipients || [];
                 const parts = result.parts || [];
-                if (!parts.length || !groups.length) {
-                    status.textContent = parts.length ? 'Для публікації немає активних груп.' : 'У цьому періоді немає записів для анонсу.';
+                if (!parts.length) {
+                    status.textContent = 'У цьому періоді немає записів для анонсу.';
                     return;
                 }
-                preview.innerHTML = `<h4>Отримувачі</h4><ul>${groups.map(group =>
-                    `<li>${M.esc(group.name)} · ${group.platform === 'telegram' ? 'Telegram' : 'Google Chat'}</li>`).join('')}</ul>
+                const states = new Map(result.deliveryState.map(item => [item.id, item]));
+                const hasTarget = groups.some(group => {
+                    const state = states.get(group.id);
+                    return !state.blocked && (!state.sent || (resend && state.updated));
+                });
+                preview.innerHTML = `<h4>Отримувачі</h4><ul>${groups.map(group => {
+                    const state = states.get(group.id);
+                    const detail = state.blocked ? ' · Перевірте попередню спробу в журналі'
+                        : state.updated ? ' · Афішу змінено після доставки'
+                            : state.sent ? ' · Уже доставлено' : '';
+                    return `<li>${M.esc(group.name)} · ${platformLabel(group.platform)}${detail}</li>`;
+                }).join('')}</ul>
                     <h4>Текст допису</h4>${parts.map((part, index) =>
                         `<div>${parts.length > 1 ? `<strong>Частина ${index + 1} з ${parts.length}</strong>` : ''}<pre class="timeline-afisha-publication-text">${M.esc(part)}</pre></div>`).join('')}`;
                 preview.hidden = false;
-                previewToken = result.previewToken || null;
-                status.textContent = previewToken ? '' : 'Оновіть перегляд перед публікацією.';
+                previewToken = hasTarget ? result.previewToken : null;
+                status.textContent = !groups.length ? 'Оберіть принаймні одного отримувача.'
+                    : previewToken ? '' : 'Для вибраних отримувачів немає нової доставки.';
             } catch (error) {
                 if (modal.isConnected) status.textContent = error.message;
             } finally {
@@ -130,11 +243,14 @@
             setBusy(true);
             status.textContent = 'Ставимо допис у чергу…';
             try {
-                await M.request('/afisha/announcements/publish', 'POST', { previewToken }, business);
+                const { queued } = await M.request(path + '/publish', 'POST', {
+                    previewToken, recipientIds: selectedIds(), resend: form.elements.resend.checked
+                }, business);
                 if (!modal.isConnected) return;
                 previewToken = null;
                 modal.querySelector('[data-close]').focus();
-                status.textContent = 'Допис поставлено в чергу. Результати з’являться в налаштуваннях розсилки.';
+                status.textContent = queued ? 'Допис поставлено в чергу. Результати з’являться в журналі розсилки.'
+                    : 'Допис уже є в черзі або журналі.';
             } catch (error) {
                 if (!modal.isConnected) return;
                 if (error.status === 409) clearPreview();
@@ -143,6 +259,7 @@
                 if (modal.isConnected) setBusy(false);
             }
         });
+        loadOptions().catch(error => { status.textContent = error.message; });
     }
 
 

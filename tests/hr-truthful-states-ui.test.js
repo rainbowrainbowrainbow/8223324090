@@ -632,6 +632,51 @@ test('checklist dashboard loads after business profile settles during catalog hy
     } finally { dom.window.close(); }
 });
 
+test('late same-scope profile hydration reloads the open checklist dashboard with its selected profession', async () => {
+    let context = 'profile-pending';
+    let resolveFresh;
+    const fresh = new Promise(resolve => { resolveFresh = resolve; });
+    const requests = [];
+    const { dom, win } = harness(elementOuterHtml('tab-checklists'), {
+        fetch: async url => {
+            if (url.includes('/professions')) return response(200, { success: true, data: [{ id: 1, key: 'host', title: 'Host' }] });
+            requests.push(new URL(url, win.location.href).searchParams.get('professionKey'));
+            return context === 'profile-ready' ? fresh
+                : response(200, { success: true, data: { assignments: [{ staffId: 1, staffName: 'Previous Staff', professionKey: 'host' }] } });
+        }
+    });
+    try {
+        win.document.getElementById('tab-checklists').classList.add('active');
+        win.getLegacyBusinessSurfaceContextKey = () => context;
+        await win.loadProfessionChecklists();
+        const filter = win.document.getElementById('professionChecklistDashboardProfession');
+        filter.value = 'host';
+        filter.dispatchEvent(new win.Event('change'));
+        await new Promise(resolve => setImmediate(resolve));
+        const list = win.document.getElementById('professionChecklistList');
+        assert.match(list.textContent, /Previous Staff/);
+
+        context = 'profile-ready';
+        win.dispatchEvent(new win.Event('crmBusinessProfileChanged'));
+        assert.doesNotMatch(list.textContent, /Previous Staff/);
+        await new Promise(resolve => setImmediate(resolve));
+        assert.deepEqual(requests, [null, 'host', 'host']);
+        resolveFresh(response(200, { success: true, data: { assignments: [{ staffId: 2, staffName: 'Current Staff', professionKey: 'host' }] } }));
+        await new Promise(resolve => setImmediate(resolve));
+        assert.match(list.textContent, /Current Staff/);
+
+        context = 'other-business-profile';
+        win.AppState.currentUser.activeBusinessContext = 'dar';
+        win.dispatchEvent(new win.Event('crmBusinessProfileChanged'));
+        assert.doesNotMatch(list.textContent, /Current Staff/);
+        await new Promise(resolve => setImmediate(resolve));
+        assert.deepEqual(requests, [null, 'host', 'host']);
+        assert.equal(win.document.getElementById('professionChecklistDashboardState').dataset.state, 'error');
+    } finally {
+        dom.window.close();
+    }
+});
+
 test('checklist 403 clears rendered people and survives another render', async () => {
     let denied = false;
     const { dom, win } = harness(elementOuterHtml('tab-checklists'), {

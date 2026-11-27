@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.84.52",
+  "version": "0.84.53",
   "eventGenix": {
-    "releaseLabel": "Прибрано застарілі QA-сценарії"
+    "releaseLabel": "Стабільне відкриття чеклістів HR"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

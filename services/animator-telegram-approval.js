@@ -1,5 +1,6 @@
 'use strict';
 
+const { createHmac, timingSafeEqual } = require('node:crypto');
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 
@@ -88,9 +89,17 @@ async function resolveAnimatorAskTelegramTarget() {
   };
 }
 
+function animatorCallbackData(action, requestId, chatId) {
+  const token = require('./telegram').TELEGRAM_BOT_TOKEN;
+  if (!token) throw Error('Operational Telegram bot is not configured');
+  const payload = action + ':' + requestId;
+  const tag = createHmac('sha256', token).update('animator-approval:' + payload + ':' + chatId).digest('base64url').slice(0, 22);
+  return payload + ':' + tag;
+}
+
 function safeRequestId(value) {
   const id = parseInt(value, 10);
-  return Number.isInteger(id) && id > 0 ? id : null;
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 
 function callbackMessageTarget(message) {
@@ -148,7 +157,7 @@ async function handleAnimatorApprovalCallback(update, options = {}) {
   if (!data.startsWith('add_anim:') && !data.startsWith('no_anim:')) return false;
   const request = options.telegramRequest || telegramRequest;
 
-  const [, action, rawId] = data.match(/^(add_anim|no_anim):(.*)$/) || [];
+  const [, action, rawId, tag] = data.match(/^(add_anim|no_anim):([1-9]\d*)(?::([A-Za-z0-9_-]{22}))?$/) || [];
   const requestId = safeRequestId(rawId);
   if (!requestId) {
     await answerCallback(request, callback.id, 'Невалідний запит');
@@ -157,9 +166,15 @@ async function handleAnimatorApprovalCallback(update, options = {}) {
 
   const message = callback.message;
   const chatId = message?.chat?.id;
-  const target = await resolveAnimatorAskTelegramTarget();
-  if (!target.chatId || String(chatId) !== String(target.chatId)) {
-    await answerCallback(request, callback.id, 'Ця кнопка доступна лише в групі ParkRozvag', { show_alert: true });
+  // Legacy buttons remain associated with the legacy group. New buttons carry
+  // a signed group binding and remain valid even if the directory route changes.
+  const target = tag ? null : await resolveAnimatorAskTelegramTarget();
+  const allowed = tag
+    ? Boolean(chatId && require('./telegram').TELEGRAM_BOT_TOKEN) &&
+      timingSafeEqual(Buffer.from(data), Buffer.from(animatorCallbackData(action, requestId, chatId)))
+    : Boolean(target?.chatId && String(chatId) === String(target.chatId));
+  if (!allowed) {
+    await answerCallback(request, callback.id, tag ? 'Ця кнопка доступна лише в групі, куди надіслано запит' : 'Ця кнопка доступна лише в групі ParkRozvag', { show_alert: true });
     await clearInlineKeyboard(request, message, action);
     return true;
   }
@@ -217,6 +232,7 @@ async function handleAnimatorApprovalCallback(update, options = {}) {
 }
 
 module.exports = {
+  animatorCallbackData,
   animatorTelegramRequest,
   handleAnimatorApprovalCallback,
   resolveAnimatorAskTelegramTarget,

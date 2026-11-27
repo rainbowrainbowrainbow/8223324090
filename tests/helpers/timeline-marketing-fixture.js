@@ -8,7 +8,7 @@ const { Pool } = require('pg');
 
 // This fixture exercises real routes, permission/context guards and SQL, with a test-only
 // authenticated principal. It does not replace production authentication in application code.
-async function createFixture() {
+async function createFixture({ announcements = false } = {}) {
     const url = new URL(process.env.TIMELINE_MARKETING_TEST_DATABASE_URL);
     assert.ok(['127.0.0.1', 'localhost'].includes(url.hostname));
     assert.notEqual(process.env.NODE_ENV, 'production');
@@ -59,6 +59,13 @@ async function createFixture() {
         const afishaMigration = fs.readFileSync(path.join(__dirname, '../../db/migrations/384_afisha_promotion_and_second_line.sql'), 'utf8');
         await pool.query(afishaMigration);
         await pool.query(afishaMigration);
+        if (announcements) {
+            const sql = fs.readFileSync(path.join(__dirname, '../../db/migrations/432_afisha_announcements.sql'), 'utf8');
+            await pool.query(sql);
+            await pool.query(sql);
+            await pool.query('CREATE TABLE telegram_known_chats (chat_id bigint PRIMARY KEY, title text, type text)');
+            await pool.query('CREATE TABLE telegram_known_threads (chat_id bigint, thread_id bigint, title text, PRIMARY KEY(chat_id, thread_id))');
+        }
         const birthdayMigration = fs.readFileSync(path.join(__dirname, '../../db/migrations/385_afisha_birthday_slots.sql'), 'utf8');
         await pool.query(birthdayMigration);
         await pool.query(birthdayMigration);

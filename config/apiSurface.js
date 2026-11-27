@@ -15,6 +15,13 @@ const GENERIC_API_ROUTE_MOUNTS = [
 
 const NESTED_API_ROUTE_MOUNTS = [
     {
+        mount: '/api/afisha/announcements',
+        routeFile: 'routes/afisha-announcements.js',
+        parentRouteFile: 'routes/afisha.js',
+        owner: 'afisha',
+        reason: 'Group announcements inherit authenticated Afisha access and check the selected business and settings capability.'
+    },
+    {
         mount: '/api/finance/costing/management',
         routeFile: 'routes/finance-costing-management.js',
         parentRouteFile: 'routes/finance-costing.js',

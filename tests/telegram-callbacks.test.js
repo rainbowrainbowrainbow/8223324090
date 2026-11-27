@@ -93,6 +93,12 @@ function installDbMock() {
         }
 
         if (/SELECT value FROM settings WHERE key/i.test(text)) {
+            if (params[0] === 'operational_telegram_features' && state.telegramFeatures) {
+                return { rows: [{ value: JSON.stringify(state.telegramFeatures) }], rowCount: 1 };
+            }
+            if (params[0] === 'telegram_directory_approval' && state.approvalRoute) {
+                return { rows: [{ value: state.approvalRoute }], rowCount: 1 };
+            }
             if (params[0] === 'telegram_animator_chat_id') return { rows: [{ value: '-1001805304620' }], rowCount: 1 };
             if (params[0] === 'telegram_animator_thread_id') return { rows: [{ value: '1' }], rowCount: 1 };
             return { rows: [], rowCount: 0 };
@@ -405,6 +411,17 @@ describe('Telegram callback single-use hardening', () => {
         assert.equal(hasClearedKeyboard(telegram.calls), true);
     });
 
+    it('does not send or create an animator request when the operational checkbox is off', async () => {
+        dbMock.state.telegramFeatures = { animatorApprovals: false, afishaAnnouncements: true };
+        const res = await fetch(baseUrl + '/api/telegram/ask-animator', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ date: '2099-01-01', note: 'disabled function' })
+        });
+        assert.deepEqual(await res.json(), { success: false, reason: 'animator_approvals_disabled' });
+        assert.equal(callsByMethod(telegram.calls, 'sendMessage').length, 0);
+        assert.equal(dbMock.state.animators.has(2), false);
+    });
+
     it('does not send ask-animator buttons when the operational bot webhook targets another route', async () => {
         telegram.behavior.getConfiguredChatId = async () => '-1001805304620';
         telegram.behavior.getConfiguredThreadId = async () => 1;
@@ -464,6 +481,34 @@ describe('Telegram callback single-use hardening', () => {
         assert.equal(sendCall.body.message_thread_id, 1);
         assert.equal(dbMock.state.animators.get(data.requestId).status, 'pending');
         assert.equal(telegram.calls.some(call => ['setWebhook', 'deleteWebhook'].includes(call.method)), false);
+    });
+
+    it('keeps signed approval buttons tied to their original chat when the directory route changes', async () => {
+        dbMock.state.approvalRoute = '-100111:11';
+        const appUrl = process.env.APP_URL?.replace(/\/$/, '')
+            || (process.env.RAILWAY_PUBLIC_DOMAIN ? 'https://' + process.env.RAILWAY_PUBLIC_DOMAIN : baseUrl.replace(/^http:/, 'https:'));
+        telegram.behavior.telegramRequest = async (method, body, options) => {
+            telegram.calls.push({ method, body, options });
+            return { ok: true, result: method === 'getWebhookInfo' ? { url: appUrl + '/api/telegram/webhook' } : { message_id: 9003 } };
+        };
+        const response = await fetch(baseUrl + '/api/telegram/ask-animator', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Forwarded-Proto': 'https' },
+            body: JSON.stringify({ date: '2099-01-01' })
+        });
+        const data = await response.json();
+        assert.equal(data.success, true, JSON.stringify(data));
+        const send = callsByMethod(telegram.calls, 'sendMessage').at(-1);
+        assert.equal(send.body.chat_id, '-100111');
+        assert.equal(send.body.message_thread_id, 11);
+        const callback = send.body.reply_markup.inline_keyboard[0][0].callback_data;
+        assert.match(callback, /^add_anim:\d+:[A-Za-z0-9_-]{22}$/);
+        dbMock.state.approvalRoute = '-100222:22';
+        const message = id => ({ message_id: 9003, text: 'Approval', chat: { id, type: 'supergroup' } });
+        assert.equal((await postWebhook(baseUrl, callback, { id: 'wrong-group', message: message('-100222') })).status, 200);
+        assert.equal(dbMock.state.animators.get(data.requestId).status, 'pending');
+        assert.equal((await postWebhook(baseUrl, callback, { id: 'original-group', message: message('-100111') })).status, 200);
+        assert.equal(dbMock.state.animators.get(data.requestId).status, 'approved');
     });
 
     it('does not fall back to the inbox bot when the operational bot is missing', async () => {
@@ -551,6 +596,7 @@ describe('Telegram callback single-use hardening', () => {
     });
 
     it('processes animator approval once and clears stale animator buttons', async () => {
+        dbMock.state.approvalRoute = '-100222:22';
         const first = await postWebhook(baseUrl, 'add_anim:1', { id: 'anim-first' });
         assert.equal(first.status, 200);
         assert.equal(dbMock.state.lineInserts, 1);

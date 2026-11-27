@@ -7,6 +7,7 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { validateDate, validateTime, timeToMinutes, minutesToTime, getKyivDateStr, getKyivDate } = require('../services/booking');
 const { generateTasksForEvent } = require('../services/taskTemplates');
+const { shouldTemplateRunOnDate } = require('../services/afishaRecurrence');
 const { ensureRecurringAfishaForDate } = require('../services/scheduler');
 const { assertAfishaLinesFree } = require('../services/afishaConflicts');
 const { createLogger } = require('../utils/logger');
@@ -26,6 +27,7 @@ function getKleshnya() { return require('../services/kleshnya'); }
 
 // All afisha routes require authentication
 router.use(authenticateToken);
+router.use('/announcements', require('./afisha-announcements').createAnnouncementRouter(pool));
 
 function requireAfishaTimelineEdit(req, res) {
     const context = timelineContextFromRequest(req);
@@ -97,26 +99,6 @@ router.patch('/:id/schedule', businessScopeWriteGuard, async (req, res) => {
         res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Не вдалося зберегти розклад' });
     }
 });
-
-/**
- * Check if a recurring template should create an event for a given date.
- * Extracted from scheduler logic to reuse in eager-apply on template creation.
- */
-function shouldTemplateRunOnDate(tpl, dateStr, dateObj) {
-    if (tpl.date_from && dateStr < tpl.date_from) return false;
-    if (tpl.date_to && dateStr > tpl.date_to) return false;
-    const dayOfWeek = dateObj.getDay() || 7; // 1=Mon...7=Sun
-    switch (tpl.recurrence_pattern) {
-        case 'daily': return true;
-        case 'weekdays': return dayOfWeek <= 5;
-        case 'weekends': return dayOfWeek >= 6;
-        case 'weekly': return dayOfWeek === 6;
-        case 'custom':
-            if (!tpl.recurrence_days) return false;
-            return tpl.recurrence_days.split(',').map(d => parseInt(d.trim())).includes(dayOfWeek);
-        default: return false;
-    }
-}
 
 const log = createLogger('Afisha');
 
@@ -283,7 +265,7 @@ router.post('/templates', async (req, res) => {
         try {
             const todayStr = getKyivDateStr();
             const kyiv = getKyivDate();
-            if (shouldTemplateRunOnDate(tpl, todayStr, kyiv)) {
+            if (shouldTemplateRunOnDate(tpl, todayStr)) {
                 const exists = await pool.query(
                     'SELECT id FROM afisha WHERE template_id = $1 AND date = $2', [tpl.id, todayStr]
                 );

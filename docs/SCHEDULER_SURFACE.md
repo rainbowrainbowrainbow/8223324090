@@ -33,6 +33,7 @@ These jobs are wrapped with `guardScheduler` and are tracked in
 | `checkAutoReminder` | `checkAutoReminder` | `services/scheduler.js` | bookings | `60000` | `daily` |
 | `checkAutoBackup` | `checkAutoBackup` | `services/scheduler.js` | backup | `60000` | none |
 | `checkRecurringTasks` | `checkRecurringTasks` | `services/scheduler.js` | tasks | `60000` | `daily` |
+| `checkAfishaAnnouncements` | `checkAfishaAnnouncements` | `services/afishaAnnouncementWorker.js` | afisha | `30000` | none |
 | `checkRecurringAfisha` | `checkRecurringAfisha` | `services/scheduler.js` | afisha | `60000` | `daily` |
 | `checkScheduledDeletions` | `checkScheduledDeletions` | `services/scheduler.js` | telegram | `60000` | `daily` |
 | `checkCertificateExpiry` | `checkCertificateExpiry` | `services/scheduler.js` | certificates | `60000` | `hourly` |
@@ -95,6 +96,8 @@ Supported `guardScheduler` dedup modes:
   minute-level `YYYY-MM-DDTHH:MM` tracking key for observability.
 
 Unsupported dedup values are rejected before the scheduler function can run.
+
+The Afisha worker claims delivery parts with `FOR UPDATE SKIP LOCKED` and a lease. An expired lease leaves an uncertain result because the provider might already have accepted the message.
 
 `runCheckboxReadinessProbeScheduler` runs every minute without guard-level dedup because readiness freshness is scoped by `checkbox_readiness_snapshots.expires_at`. It records sanitized Checkbox readiness only; raw secrets, PINs, and tokens are not stored. Direct coverage lives in `tests/payment-readiness.test.js`.
 
@@ -246,6 +249,7 @@ The manifest records test files where direct coverage exists:
 - `tests/marketing-scheduler-hardening.test.js`
 - `tests/dashboard-alert-broadcaster-hardening.test.js`
 - `tests/task-lifecycle-scheduler-hardening.test.js`
+- `tests/afisha-announcement-delivery.test.js`
 - `tests/scheduler-static-jobs-behavior.test.js`
 - `tests/telegram-callbacks.test.js`
 - `tests/graduation-ops-automation.test.js`

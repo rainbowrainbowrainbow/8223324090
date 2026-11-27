@@ -1880,6 +1880,8 @@ function verificationErrorToStatus(label, err) {
 }
 
 module.exports = {
+  encryptSecret,
+  decryptSecret,
   CHANNELS,
   STATUS_COPY,
   getOmniAccountStatuses,

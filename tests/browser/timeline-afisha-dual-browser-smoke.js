@@ -25,6 +25,11 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, createStaticS
         const errors = [];
         page.on('pageerror', error => errors.push(error.message));
         await routeMockedApi(page);
+        let legacyDiscoveryCalls = 0;
+        await page.route('**/api/telegram/chats', route => {
+            legacyDiscoveryCalls++;
+            return route.fulfill({ json: { chats: [] } });
+        });
         await page.route('**/api/business/profile**', route => {
             const profile = businessProfilePayload();
             const timeline = profile.businessProfile.businesses[0].timeline;
@@ -42,9 +47,78 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, createStaticS
             type: 'event', description: '', original_time: '14:00', line_id: '1', second_line_id: '2', promotion_id: 7 }];
         const promotion = { id: 7, title: 'Осіння акція', description: '', color_key: 'amber',
             starts_on: '2026-10-19', ends_on: '2026-10-25', version: 1 };
+        let publishRequests = 0;
+        const recipients = [];
+        let features = { animatorApprovals: true, afishaAnnouncements: false };
+        const routeSelections = {};
+        const telegramDirectory = [
+            { key: '-1001:', chatId: '-1001', chatTitle: 'First group' },
+            { key: '-1001:11', chatId: '-1001', chatTitle: 'First group', threadId: '11', threadTitle: 'Test CRM' },
+            { key: '-1002:', chatId: '-1002', chatTitle: 'Second group' },
+            { key: '-1002:22', chatId: '-1002', chatTitle: 'Second group', threadId: '22', threadTitle: 'Planning' }
+        ];
         await page.route('**/api/afisha/**', async route => {
             const request = route.request();
             const pathname = new URL(request.url()).pathname;
+            if (pathname === '/api/afisha/announcements/telegram-routes/digest') {
+                assert.deepEqual(request.postDataJSON(), { target: '-1001:11' });
+                routeSelections.digest = '-1001:11';
+                return route.fulfill({ json: { success: true } });
+            }
+            if (pathname === '/api/afisha/announcements/telegram-features') {
+                const next = request.postDataJSON();
+                assert.deepEqual(next, { animatorApprovals: true, afishaAnnouncements: true });
+                features = next;
+                return route.fulfill({ json: { telegramFeatures: features } });
+            }
+            if (pathname === '/api/afisha/announcements/recipients') {
+                if (request.method() === 'POST') {
+                    const input = request.postDataJSON();
+                    assert.equal(input.active, false);
+                    if (input.platform === 'telegram') {
+                        assert.equal(input.chatId, '-1002');
+                        assert.equal(input.threadId, '22');
+                    } else {
+                        assert.equal(input.webhook, 'https://chat.googleapis.com/v1/spaces/test/messages?key=test&token=test');
+                    }
+                    const { webhook, ...publicConfig } = input;
+                    const recipient = { ...publicConfig, id: String(recipients.length + 1), webhookConfigured: Boolean(webhook) };
+                    if (input.platform === 'telegram') recipient.nextAt = '2026-10-20T05:00:00Z';
+                    recipients.push(recipient);
+                    return route.fulfill({ status: 201, json: { recipient } });
+                }
+                return route.fulfill({ json: { recipients, dailyDigest: { chatId: '-1002', threadId: '22' },
+                    approvalTarget: { chatId: '-1002', threadId: '22' }, telegramFeatures: features, telegramDirectory, routeSelections,
+                    routingPreview: [
+                        { feature: 'approval', botProfile: 'operational', chatId: '-1002', threadId: '22' },
+                        { feature: 'digest', botProfile: 'legacy_notifications', chatId: routeSelections.digest ? '-1001' : '-1003', threadId: routeSelections.digest ? '11' : '30', weekday: '12:32', weekend: '10:00' },
+                        { feature: 'reminder', botProfile: 'legacy_notifications', chatId: '-1003', threadId: '30', time: '20:00' }
+                    ] } });
+            }
+            if (pathname === '/api/afisha/announcements/telegram-chats') {
+                return route.fulfill({ json: { chats: [{ id: '-1001', title: 'Перша група' }, { id: '-1002', title: 'Друга група' }] } });
+            }
+            if (pathname === '/api/afisha/announcements/recipients/1/preview') {
+                return route.fulfill({ json: { scheduledAt: '2026-10-20T05:00:00Z', parts: ['Наступна афіша'] } });
+            }
+            if (pathname === '/api/afisha/announcements/recipients/1/history') {
+                return route.fulfill({ json: { deliveries: [{ at: '2026-10-19T07:00:00Z', status: 'sent', text: 'Ранкова афіша' }] } });
+            }
+            if (pathname === '/api/afisha/announcements/preview') {
+                assert.equal(new URL(request.url()).searchParams.get('businessContext'), 'event_genix');
+                const input = request.postDataJSON();
+                assert.equal(input.from, '2026-10-01');
+                return route.fulfill({ json: {
+                    recipients: [{ name: 'Команда парку', platform: 'telegram' }, { name: 'Керівники', platform: 'google_chat' }],
+                    parts: ['Космічна афіша <test>', 'Осіння акція'],
+                    previewToken: input.to
+                } });
+            }
+            if (pathname === '/api/afisha/announcements/publish') {
+                publishRequests++;
+                assert.deepEqual(request.postDataJSON(), { previewToken: '2026-10-30' });
+                return route.fulfill({ status: 202, json: { success: true } });
+            }
             if (pathname === '/api/afisha/timeline' && request.method() === 'POST') {
                 const input = request.postDataJSON();
                 const item = { ...input, id: 2, original_time: input.time, line_id: input.lineIds[0] || null,
@@ -74,6 +148,29 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, createStaticS
         assert.equal(await page.locator('.line-grid[data-line-id="1"] .afisha-flag[data-afisha-id="1"]').count(), 1);
         assert.equal(await page.locator('.line-grid[data-line-id="2"] .afisha-flag[data-afisha-id="1"]').count(), 1);
         assert.equal(await page.locator('[data-linked-afisha="1"]').count(), 1);
+        const publication = page.getByRole('dialog', { name: 'Опублікувати афішу' });
+        await page.locator('[data-publish-afisha]').click();
+        assert.equal(await publication.locator('[name=from]').inputValue(), '2026-10-01');
+        assert.equal(await publication.locator('[name=to]').inputValue(), '2026-10-31');
+        assert.equal(await publication.locator('[data-publish]').isDisabled(), true);
+        await publication.locator('[data-preview]').click();
+        await publication.getByText('Команда парку · Telegram').waitFor();
+        await publication.getByText('Керівники · Google Chat').waitFor();
+        assert.equal(await publication.locator('pre').first().textContent(), 'Космічна афіша <test>');
+        await publication.locator('[name=to]').fill('2026-10-30');
+        assert.equal(await publication.locator('[data-publish]').isDisabled(), true);
+        await publication.locator('[data-preview]').click();
+        await publication.getByText('Керівники · Google Chat').waitFor();
+        await page.setViewportSize({ width: 390, height: 844 });
+        const publishBox = await publication.locator('.timeline-marketing-dialog').boundingBox();
+        assert.ok(publishBox && publishBox.x >= 0 && publishBox.x + publishBox.width <= 390);
+        await publication.locator('[data-publish]').click();
+        await publication.getByText('Допис поставлено в чергу.', { exact: false }).waitFor();
+        assert.equal(publishRequests, 1);
+        assert.equal(await publication.locator('[data-publish]').isDisabled(), true);
+        await page.keyboard.press('Escape');
+        await publication.waitFor({ state: 'detached' });
+        await page.setViewportSize({ width: 1440, height: 960 });
         await page.locator('[data-add-afisha]').click();
         await page.locator('[data-create-form] input[name="title"]').fill('Нова афіша');
         await page.locator('[data-create-form] select[name="promotion"]').selectOption('7');
@@ -83,7 +180,8 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, createStaticS
         await page.locator('.line-grid[data-line-id="afisha"] .afisha-flag[data-afisha-id="2"]').waitFor();
         assert.equal(await page.locator('.line-grid[data-line-id="1"] .afisha-flag[data-afisha-id="2"]').count(), 1);
         assert.equal(await page.locator('.line-grid[data-line-id="2"] .afisha-flag[data-afisha-id="2"]').count(), 1);
-        await page.locator('[data-toggle-marketing]').click();
+        const marketingToggle = page.locator('[data-toggle-marketing]');
+        if (await marketingToggle.getAttribute('aria-expanded') !== 'true') await marketingToggle.click();
         const output = path.join(__dirname, '../../output/playwright');
         fs.mkdirSync(output, { recursive: true });
         await page.screenshot({ path: path.join(output, 'timeline-afisha-dual-desktop.png') });
@@ -99,10 +197,59 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, createStaticS
             AppState.daysToShow = 7;
             await renderTimeline();
         });
-        await page.locator('.day-section[data-date="2026-10-19"] .mini-line-grid[data-line-id="afisha"] .afisha-flag[data-afisha-id="2"]').waitFor();
-        assert.equal(await page.locator('.day-section[data-date="2026-10-19"] .mini-line-grid[data-line-id="1"] .afisha-flag[data-afisha-id="2"]').count(), 1);
-        assert.equal(await page.locator('.day-section[data-date="2026-10-19"] .mini-line-grid[data-line-id="2"] .afisha-flag[data-afisha-id="2"]').count(), 1);
+        await page.waitForFunction(() => ['afisha', '1', '2'].every(lineId =>
+            document.querySelectorAll('.day-section[data-date="2026-10-19"] .mini-line-grid[data-line-id="' + lineId +
+                '"] .afisha-flag[data-afisha-id="2"]').length === 1));
         await page.screenshot({ path: path.join(output, 'timeline-afisha-dual-week.png') });
+        await page.evaluate(async () => { await showSettings(); });
+        const settings = page.locator('#settingsAfishaAnnouncements');
+        await settings.locator(':scope > summary').click();
+        await settings.getByText('Додайте першу групу').waitFor();
+        const routing = settings.locator('[data-telegram-routing-list]');
+        await routing.locator('li > span').filter({ hasText: /Second group.*Planning/ }).waitFor();
+        await routing.getByText(/Щоденне зведення.*-1003.*будні 12:32, вихідні 10:00/).waitFor();
+        await routing.getByText(/Нагадування на завтра.*-1003.*20:00/).waitFor();
+        await settings.locator('details > summary').last().click();
+        await settings.locator('[data-telegram-directory-list]').getByText('First group · Test CRM').waitFor();
+        const digestRoute = routing.locator('li').nth(1).locator('select');
+        await digestRoute.selectOption('-1001:11');
+        await digestRoute.locator('..').locator('button').click();
+        await routing.getByText(/First group.*Test CRM.*12:32/).waitFor();
+        assert.equal(await settings.locator('[name=animatorApprovals]').isChecked(), true);
+        assert.equal(await settings.locator('[name=afishaAnnouncements]').isChecked(), false);
+        await settings.locator('[name=afishaAnnouncements]').check();
+        await settings.getByRole('button', { name: 'Зберегти функції' }).click();
+        await settings.getByText('Функції збережено.').waitFor();
+        await settings.locator('[data-add-announcement-recipient]').click();
+        const edit = page.getByRole('dialog', { name: 'Додати групу' });
+        await edit.locator('[name=name]').fill('Команда парку');
+        await edit.locator('[name=telegramTarget]').selectOption('-1001:11');
+        await edit.getByRole('button', { name: 'Вибрати групу погоджень' }).click();
+        await edit.locator('[name=telegramTarget] option:checked[value="-1002:22"]').waitFor({ state: 'attached' });
+        await edit.locator('[data-digest-warning]').waitFor();
+        await page.setViewportSize({ width: 390, height: 844 });
+        const editBox = await edit.locator('.timeline-marketing-dialog').boundingBox();
+        assert.ok(editBox && editBox.x >= 0 && editBox.x + editBox.width <= 390);
+        await edit.getByRole('button', { name: 'Зберегти групу' }).click();
+        await settings.getByText('Команда парку').waitFor();
+        await settings.getByRole('button', { name: 'Переглянути допис' }).click();
+        const next = page.getByRole('dialog', { name: 'Наступний допис · Команда парку' });
+        await next.getByText('Наступна афіша').waitFor();
+        await next.getByRole('button', { name: 'Закрити' }).click();
+        await settings.getByRole('button', { name: 'Історія доставки' }).click();
+        const history = page.getByRole('dialog', { name: 'Історія доставки · Команда парку' });
+        await history.getByText('Доставлено').click();
+        await history.getByText('Ранкова афіша').waitFor();
+        await history.getByRole('button', { name: 'Закрити' }).click();
+        await settings.locator('[data-add-announcement-recipient]').click();
+        await edit.locator('[name=name]').fill('Керівники Google Chat');
+        await edit.locator('[name=platform]').selectOption('google_chat');
+        assert.equal(await edit.locator('[name=telegramTarget]').isVisible(), false);
+        await edit.locator('[name=webhook]').fill('https://chat.googleapis.com/v1/spaces/test/messages?key=test&token=test');
+        await edit.getByRole('button', { name: 'Зберегти групу' }).click();
+        await settings.getByText('Керівники Google Chat').waitFor();
+        assert.equal((await settings.textContent()).includes('token='), false);
+        assert.equal(legacyDiscoveryCalls, 0);
         assert.deepEqual(errors, []);
         console.log('Timeline Afisha dual browser smoke passed: day, week and mobile screenshots captured.');
     } finally {

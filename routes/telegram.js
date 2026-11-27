@@ -17,6 +17,7 @@ const { notifyNewLead } = require('../services/leadNotifier');
 const { authenticateToken } = require('../middleware/auth');
 const warehousePhotoIntake = require('../services/warehousePhotoIntake');
 const {
+    animatorCallbackData,
     animatorTelegramRequest,
     handleAnimatorApprovalCallback,
     resolveAnimatorAskTelegramTarget
@@ -343,7 +344,13 @@ router.post('/ask-animator', authenticateToken, async (req, res) => {
             return res.status(400).json({ success: false, reason: 'invalid_date', error: 'Invalid date format' });
         }
 
-        const target = await resolveAnimatorAskTelegramTarget();
+        const { readOperationalTelegramFeatures } = require('../services/operationalTelegramFeatures');
+        if (!(await readOperationalTelegramFeatures(pool)).animatorApprovals) {
+            return res.json({ success: false, reason: 'animator_approvals_disabled' });
+        }
+
+        const { getTelegramRoute } = require('../services/telegramDirectory');
+        const target = await getTelegramRoute(pool, 'approval') || await resolveAnimatorAskTelegramTarget();
         const chatId = target.chatId;
         if (!chatId) {
             return res.json({ success: false, reason: 'no_chat_id' });
@@ -410,8 +417,8 @@ router.post('/ask-animator', authenticateToken, async (req, res) => {
             parse_mode: 'HTML',
             reply_markup: {
                 inline_keyboard: [[
-                    { text: '✅ Так', callback_data: `add_anim:${requestId}` },
-                    { text: '❌ Ні', callback_data: `no_anim:${requestId}` }
+                    { text: '✅ Так', callback_data: target.source === 'telegram_directory' ? animatorCallbackData('add_anim', requestId, chatId) : `add_anim:${requestId}` },
+                    { text: '❌ Ні', callback_data: target.source === 'telegram_directory' ? animatorCallbackData('no_anim', requestId, chatId) : `no_anim:${requestId}` }
                 ]]
             }
         };

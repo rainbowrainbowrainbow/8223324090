@@ -104,6 +104,7 @@
 .tg-subsection h4 { margin: 0 0 8px; }
 
 .tg-btn-row { display: flex; gap: 8px; }
+#settingsAfishaAnnouncements .tg-btn-row { flex-wrap: wrap; }
 
 .tg-inline-group {
     display: flex;

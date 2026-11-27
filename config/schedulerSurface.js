@@ -1,4 +1,5 @@
 const GUARDED_SCHEDULER_JOBS = [
+    { name: 'checkAfishaAnnouncements', functionName: 'checkAfishaAnnouncements', sourceFile: 'services/afishaAnnouncementWorker.js', owner: 'afisha', interval: '30000', dedup: null, sideEffects: ['telegram', 'google-chat', 'database'], tests: ['tests/afisha-announcement-delivery.test.js'] },
     { name: 'recheckActiveOmniConnections', functionName: 'recheckActiveOmniConnections', sourceFile: 'services/omni-health.js', owner: 'omni', interval: '5 * 60 * 1000', dedup: null, sideEffects: ['database', 'provider-read'], tests: ['tests/omni-completion.test.js'] },
     { name: 'checkAutoDigest', functionName: 'checkAutoDigest', sourceFile: 'services/scheduler.js', owner: 'bookings', interval: '60000', dedup: 'daily', sideEffects: ['telegram', 'settings', 'bookings'], tests: ['tests/scheduler-notification-jobs-hardening.test.js'] },
     { name: 'checkAutoReminder', functionName: 'checkAutoReminder', sourceFile: 'services/scheduler.js', owner: 'bookings', interval: '60000', dedup: 'daily', sideEffects: ['telegram', 'settings', 'bookings'], tests: ['tests/scheduler-notification-jobs-hardening.test.js'] },
@@ -57,6 +58,7 @@ const GUARDED_SCHEDULER_JOBS = [
 // outer guard must retain pause/error accounting without serializing the
 // owner's SKIP LOCKED, advisory-lock, or lease-based concurrency.
 const OWNER_MANAGED_SCHEDULER_CLAIMS = Object.freeze({
+    checkAfishaAnnouncements: 'for_update_skip_locked_and_lease',
     recheckActiveOmniConnections: 'session_advisory_lock',
     checkScheduledChatMessages: 'for_update_skip_locked',
     checkAttendanceReviewTasks: 'transaction_advisory_lock_and_source_key',

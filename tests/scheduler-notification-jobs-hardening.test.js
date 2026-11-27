@@ -87,6 +87,10 @@ function createFakePool() {
         async query(sql, params = []) {
             const text = compact(sql);
             state.queries.push({ text, params });
+            if (text === 'SELECT value FROM settings WHERE key = $1' && params[0]?.startsWith('telegram_directory_')) {
+                const value = state.directoryRoutes?.[params[0].slice('telegram_directory_'.length)];
+                return rows(value ? [{ value }] : []);
+            }
             const index = state.queryMocks.findIndex(mock => mock.matcher(text, params));
             if (index === -1) {
                 throw new Error(`Unexpected scheduler notification query: ${text}`);
@@ -295,6 +299,19 @@ describe('scheduler notification jobs hardening', () => {
             assert.deepEqual(state.scheduledDeletes, [{ chatId: 'ops-chat', messageId: 1 }]);
         });
 
+        it('sends the digest to the selected topic and deletes it in that group', async () => {
+            state.directoryRoutes = { digest: '-100111:11', reminder: '-100222:' };
+            mockDigestSettings([{ key: 'digest_time_weekday', value: '09:00' }]);
+            mockLastSent('digest');
+            mockSetLastSent('digest');
+            mockDigestBuildRows([bookingRow()]);
+            await loadScheduler().checkAutoDigest();
+            assert.equal(state.chatLookups, 0);
+            assert.equal(state.sends[0].chatId, '-100111');
+            assert.equal(state.sends[0].options.threadId, 11);
+            assert.deepEqual(state.scheduledDeletes, [{ chatId: '-100111', messageId: 1 }]);
+        });
+
         it('contains and logs digest Telegram send failures', async () => {
             resetState({ sendThrows: true });
             mockDigestSettings([{ key: 'digest_time_weekday', value: '09:00' }]);
@@ -346,6 +363,19 @@ describe('scheduler notification jobs hardening', () => {
             assert.equal(state.sends[0].chatId, 'ops-chat');
             assert.match(state.sends[0].text, /Birthday Quest/);
             assert.deepEqual(state.scheduledDeletes, [{ chatId: 'ops-chat', messageId: 1 }]);
+        });
+
+        it('sends the reminder to the selected general chat with no inherited topic', async () => {
+            state.directoryRoutes = { digest: '-100111:11', reminder: '-100222:' };
+            mockSingleSetting('reminder_time', '09:00');
+            mockLastSent('reminder');
+            mockSetLastSent('reminder');
+            mockReminderBuildRows([bookingRow({ date: '2026-06-30' })]);
+            await loadScheduler().checkAutoReminder();
+            assert.equal(state.chatLookups, 0);
+            assert.equal(state.sends[0].chatId, '-100222');
+            assert.equal(state.sends[0].options.threadId, null);
+            assert.deepEqual(state.scheduledDeletes, [{ chatId: '-100222', messageId: 1 }]);
         });
 
         it('contains and logs reminder Telegram send failures', async () => {

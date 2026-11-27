@@ -1427,33 +1427,41 @@
                 <!-- Telegram -->
                 <div class="settings-section" id="settingsTelegramSection">
                     <h4>🤖 Telegram</h4>
-                    <div class="telegram-setup">
+                    <details class="telegram-setup tg-subsection" id="settingsAfishaAnnouncements" hidden>
+                        <summary>Групи, теми й маршрути Telegram</summary>
+                        <form data-telegram-functions hidden>
+                            <h5>Службовий бот Telegram</h5>
+                            <label><input type="checkbox" name="animatorApprovals"> Погодження аніматорів на таймлайні</label><br>
+                            <label><input type="checkbox" name="afishaAnnouncements"> Розсилка афіші та акцій у Telegram</label>
+                            <div class="tg-btn-row"><button type="submit" class="btn-secondary">Зберегти функції</button></div>
+                            <p data-telegram-functions-status role="status"></p>
+                        </form>
+                        <div data-telegram-routing hidden>
+                            <h5>Маршрути Telegram</h5>
+                            <details><summary>Групи й теми Telegram</summary>
+                                <p class="digest-hint">Якщо групи або теми немає в списку, надішліть у неї команду для службового бота. Потім відкрийте цей розділ знову.</p>
+                                <ul data-telegram-directory-list></ul>
+                            </details>
+                            <ul data-telegram-routing-list></ul>
+                        </div>
+                        <h5>Отримувачі афіші та акцій</h5>
+                        <p data-announcement-settings-status role="status"></p>
+                        <div data-announcement-recipients></div>
+                        <button type="button" class="btn-secondary" data-add-announcement-recipient disabled>Додати групу</button>
+                    </details>
+                    <details class="telegram-setup tg-subsection">
+                        <summary>Адреса сповіщень за замовчуванням</summary>
                         <div class="form-group">
-                            <label>Chat ID групи:</label>
+                            <label for="settingsTelegramChatId">Chat ID групи</label>
                             <input type="text" id="settingsTelegramChatId" placeholder="-100xxxxxxxxxx">
                         </div>
-                        <div class="form-group">
-                            <label>Знайдені чати (натисніть щоб обрати):</label>
-                            <div id="settingsTelegramChats" class="telegram-chats"></div>
-                            <button type="button" class="btn-refresh-chats" onclick="fetchAndRenderTelegramChats('settingsTelegramChatId', 'settingsTelegramChats')" title="Оновити список чатів">Оновити список</button>
-                        </div>
                         <button type="button" id="settingsSaveTelegramBtn" class="btn-submit">Зберегти та протестувати</button>
-                    </div>
-                    <!-- v5.17: Thread/Topic ID -->
-                    <div class="telegram-setup tg-subsection">
-                        <h4>Гілка (Topic) для сповіщень</h4>
-                        <p class="digest-hint">Оберіть гілку/тему групи, куди будуть надходити сповіщення. Якщо список порожній — напишіть щось у потрібну тему групи, щоб бот її побачив.</p>
                         <div class="form-group">
-                            <label>Знайдені теми (натисніть щоб обрати):</label>
-                            <div id="settingsTelegramThreads" class="telegram-chats"></div>
-                            <button type="button" class="btn-refresh-chats" onclick="fetchAndRenderThreads()" title="Оновити список тем">Оновити теми</button>
+                            <label for="settingsTelegramThreadId">Thread ID теми</label>
+                            <input type="text" id="settingsTelegramThreadId">
                         </div>
-                        <div class="form-group">
-                            <label>Thread ID:</label>
-                            <input type="text" id="settingsTelegramThreadId" placeholder="Обрати зі списку або ввести вручну">
-                        </div>
-                        <button type="button" id="saveThreadIdBtn" class="btn-submit btn-purple">💾 Зберегти Thread ID</button>
-                    </div>
+                        <button type="button" id="saveThreadIdBtn" class="btn-submit btn-purple">Зберегти Thread ID</button>
+                    </details>
                     <!-- A4: Дайджест на сьогодні -->
                     <div class="telegram-setup digest-section tg-subsection-lg">
                         <h4>📅 Дайджест «Розклад на сьогодні»</h4>

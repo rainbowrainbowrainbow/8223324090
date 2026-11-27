@@ -26,7 +26,8 @@ focused route tests in the same pack.
 | `/api/auth/telegram-crm` | `routes/telegram-crm.js` | Authenticated own-account Telegram binding lifecycle |
 | `/api/telegram-crm/bot` | `routes/telegram-crm.js` | Service-authenticated private Telegram pilot |
 | `/api/achievements` | `routes/achievements.js` | achievements |
-| `/api/afisha` | `routes/afisha.js` | afisha, atomic schedule changes |
+| `/api/afisha/announcements` | `routes/afisha-announcements.js` | recipient settings, previews, publication and delivery history |
+| `/api/afisha` | `routes/afisha.js` | afisha, atomic schedule changes, group announcement settings and delivery history |
 | `/api/agents` | `routes/agents.js` | agents |
 | `/api/analytics` | `routes/analytics.js` | analytics |
 | `/api/art-director` | `routes/art-director.js` | art-director |

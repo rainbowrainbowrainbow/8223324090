@@ -318,6 +318,7 @@ function cleanupPendingPoll() {
 
 function getAnimatorTelegramFallbackMessage(result) {
     const reason = result?.reason || result?.error || 'telegram_send_failed';
+    if (reason === 'animator_approvals_disabled') return 'Погодження аніматорів вимкнено в налаштуваннях службового бота. Аніматора не додано.';
     if (reason === 'no_chat_id') return 'Групу Telegram не налаштовано. Запит не надіслано, аніматора не додано.';
     if (reason === 'no_bot_token') return 'Telegram-бот не налаштований. Запит не надіслано, аніматора не додано.';
     if (reason === 'telegram_circuit_open') return 'Telegram тимчасово заблокував відправку. Запит не надіслано, аніматора не додано.';
@@ -841,29 +842,6 @@ async function fetchAndRenderTelegramChats(chatIdInputId, chatsContainerId) {
             ).join('');
         } else {
             container.innerHTML = '<p class="no-chats">Бот ще не доданий до жодної групи або немає повідомлень. Додайте бота @MySuperReport_bot до групи і напишіть повідомлення.</p>';
-        }
-    } catch (err) {
-        container.innerHTML = '<p>Помилка завантаження</p>';
-    }
-}
-
-// v5.17: Fetch and render known threads/topics for thread picker
-async function fetchAndRenderThreads() {
-    const container = document.getElementById('settingsTelegramThreads');
-    if (!container) return;
-    container.innerHTML = '<div class="loading-spinner">Завантаження...</div>';
-
-    try {
-        const response = await fetch(`${API_BASE}/telegram/threads`, { headers: getAuthHeaders(false) });
-        const data = await response.json();
-        if (data.threads && data.threads.length > 0) {
-            container.innerHTML = data.threads.map(t =>
-                `<div class="telegram-chat-item" onclick="document.getElementById('settingsTelegramThreadId').value = '${t.thread_id}'">
-                    <strong>${escapeHtml(t.title || 'Тема #' + t.thread_id)}</strong> <span class="chat-id">ID: ${t.thread_id}</span>
-                </div>`
-            ).join('');
-        } else {
-            container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">💬</div><div class="empty-state-title">Тем не знайдено</div><div class="empty-state-text">Напишіть повідомлення в потрібну тему групи, щоб бот її побачив</div></div>';
         }
     } catch (err) {
         container.innerHTML = '<p>Помилка завантаження</p>';
@@ -1841,6 +1819,9 @@ async function showSettings() {
     if (timelineSection) timelineSection.style.display = canManageSettings ? '' : 'none';
     if (canManageSettings) await loadTimelineDisplaySettingsIntoModal();
 
+    const announcementSection = document.getElementById('settingsAfishaAnnouncements');
+    if (announcementSection) announcementSection.hidden = !canManageSettings;
+
     const tgSection = document.getElementById('settingsTelegramSection');
     if (tgSection) {
         tgSection.style.display = canManageSettings ? 'block' : 'none';
@@ -1919,10 +1900,6 @@ async function showSettings() {
     // v8.4: Certificates moved to timeline panel (see openCertificatesPanel)
 
     openModal(document.getElementById('settingsModal'));
-    if (canManageSettings) {
-        fetchAndRenderTelegramChats('settingsTelegramChatId', 'settingsTelegramChats');
-        fetchAndRenderThreads();
-    }
 }
 
 // v5.11: Save all notification settings (digest + reminder + auto-delete)

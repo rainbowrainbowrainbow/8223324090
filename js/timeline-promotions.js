@@ -46,6 +46,106 @@
         return slot.base_time !== slot.time ? `${slot.base_time} → ${slot.time} · Авто` : 'Авто';
     }
 
+    function openAfishaPublication(dates, trigger) {
+        const business = view.business;
+        const selected = dates[0];
+        const monthStart = selected.slice(0, 7) + '-01';
+        const following = new Date(monthStart + 'T12:00:00Z');
+        following.setUTCMonth(following.getUTCMonth() + 1);
+        const monthEnd = M.addDays(following.toISOString().slice(0, 10), -1);
+        const modal = M.dialog('Опублікувати афішу', `
+            <form class="timeline-marketing-form" data-publication-form>
+                <label>Від <input type="date" name="from" required value="${M.esc(monthStart)}"></label>
+                <label>До <input type="date" name="to" required value="${M.esc(monthEnd)}"></label>
+                <section data-publication-preview hidden aria-label="Допис і отримувачі"></section>
+                <div data-publication-status role="status" aria-live="polite"></div>
+                <div class="timeline-marketing-actions">
+                    <button type="submit" class="btn-secondary" data-preview>Переглянути</button>
+                    <button type="button" class="btn-primary" data-publish disabled>Поставити в чергу</button>
+                </div>
+            </form>`, trigger);
+        const form = modal.querySelector('[data-publication-form]');
+        const preview = form.querySelector('[data-publication-preview]');
+        const status = form.querySelector('[data-publication-status]');
+        const previewButton = form.querySelector('[data-preview]');
+        const publishButton = form.querySelector('[data-publish]');
+        let previewToken = null;
+        let busy = false;
+
+        function setBusy(value) {
+            busy = value;
+            form.elements.from.disabled = value;
+            form.elements.to.disabled = value;
+            previewButton.disabled = value;
+            publishButton.disabled = value || !previewToken;
+            form.setAttribute('aria-busy', String(value));
+        }
+
+        function clearPreview() {
+            previewToken = null;
+            preview.replaceChildren();
+            preview.hidden = true;
+            publishButton.disabled = true;
+            status.textContent = '';
+        }
+
+        form.addEventListener('input', clearPreview);
+        form.addEventListener('submit', async event => {
+            event.preventDefault();
+            if (busy) return;
+            clearPreview();
+            const from = form.elements.from.value;
+            const to = form.elements.to.value;
+            if (M.daysBetween(from, to) < 0 || M.daysBetween(from, to) > 30) {
+                status.textContent = 'Виберіть період від 1 до 31 дня.';
+                return;
+            }
+            setBusy(true);
+            status.textContent = 'Готуємо допис…';
+            try {
+                const result = await M.request('/afisha/announcements/preview', 'POST', { from, to }, business);
+                if (!modal.isConnected) return;
+                const groups = result.recipients || [];
+                const parts = result.parts || [];
+                if (!parts.length || !groups.length) {
+                    status.textContent = parts.length ? 'Для публікації немає активних груп.' : 'У цьому періоді немає записів для анонсу.';
+                    return;
+                }
+                preview.innerHTML = `<h4>Отримувачі</h4><ul>${groups.map(group =>
+                    `<li>${M.esc(group.name)} · ${group.platform === 'telegram' ? 'Telegram' : 'Google Chat'}</li>`).join('')}</ul>
+                    <h4>Текст допису</h4>${parts.map((part, index) =>
+                        `<div>${parts.length > 1 ? `<strong>Частина ${index + 1} з ${parts.length}</strong>` : ''}<pre class="timeline-afisha-publication-text">${M.esc(part)}</pre></div>`).join('')}`;
+                preview.hidden = false;
+                previewToken = result.previewToken || null;
+                status.textContent = previewToken ? '' : 'Оновіть перегляд перед публікацією.';
+            } catch (error) {
+                if (modal.isConnected) status.textContent = error.message;
+            } finally {
+                if (modal.isConnected) setBusy(false);
+            }
+        });
+
+        publishButton.addEventListener('click', async () => {
+            if (busy || !previewToken) return;
+            setBusy(true);
+            status.textContent = 'Ставимо допис у чергу…';
+            try {
+                await M.request('/afisha/announcements/publish', 'POST', { previewToken }, business);
+                if (!modal.isConnected) return;
+                previewToken = null;
+                modal.querySelector('[data-close]').focus();
+                status.textContent = 'Допис поставлено в чергу. Результати з’являться в налаштуваннях розсилки.';
+            } catch (error) {
+                if (!modal.isConnected) return;
+                if (error.status === 409) clearPreview();
+                status.textContent = error.message;
+            } finally {
+                if (modal.isConnected) setBusy(false);
+            }
+        });
+    }
+
+
     function renderAfishaSection() {
         if (!showAfisha() || !marketingOpen) return;
         panel.querySelector('.timeline-afisha-summary')?.remove();
@@ -60,6 +160,7 @@
         section.innerHTML = `<div class="timeline-promotions-toolbar"><strong>Афіша</strong><span class="timeline-promotions-status"></span>
             ${hiddenCount ? `<button type="button" class="btn-secondary" data-more-afisha aria-expanded="false">Ще ${hiddenCount}</button>` : ''}
             ${afishaExpanded && events.length > 3 ? '<button type="button" class="btn-secondary" data-less-afisha aria-expanded="true">Показати менше</button>' : ''}
+            ${canWrite() ? '<button type="button" class="btn-secondary" data-publish-afisha>Опублікувати афішу</button>' : ''}
             ${M.writable('edit_booking') ? '<button type="button" class="btn-secondary" data-add-afisha>Додати захід</button>' : ''}</div>
             <div class="timeline-afisha-summary-list" id="timelineAfishaSummaryList">${visible.map(item => `<button type="button" class="timeline-afisha-summary-event${item.birthday_slots?.[0]?.conflict ? ' timeline-afisha-summary-event--conflict' : ''}"
                 data-afisha-id="${Number(item.id)}" aria-label="${M.esc(`${item.title}, ${String(item.date).slice(0, 10)}, ${occurrence(item).time}${item.birthday_slots?.length ? `, ${item.birthday_slots[0].mode === 'manual' ? 'вручну' : 'автоматично'}, ${greetingStatus(item.birthday_slots[0])}` : ''}`)}">
@@ -70,6 +171,7 @@
         panel.querySelector('.timeline-marketing-body').appendChild(section);
         section.querySelector('[data-more-afisha]')?.addEventListener('click', () => { afishaExpanded = true; renderAfishaSection(); panel.querySelector('[data-less-afisha]')?.focus(); });
         section.querySelector('[data-less-afisha]')?.addEventListener('click', () => { afishaExpanded = false; renderAfishaSection(); panel.querySelector('[data-more-afisha]')?.focus(); });
+        section.querySelector('[data-publish-afisha]')?.addEventListener('click', e => openAfishaPublication(view.dates, e.currentTarget));
         section.querySelector('[data-add-afisha]')?.addEventListener('click', e => window.TimelineAfisha?.quickCreate(view.dates, e.currentTarget));
         section.querySelectorAll('[data-afisha-id]').forEach(button => button.addEventListener('click', () => {
             const item = events.find(event => Number(event.id) === Number(button.dataset.afishaId));

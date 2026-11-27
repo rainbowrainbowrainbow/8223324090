@@ -18,6 +18,8 @@ function skipNotDueIfEnabled(jobName) {
     const enabled = String(process.env.CRM_SCHEDULER_DUE_JOBS || '').split(',').map(value => value.trim());
     return enabled.includes(jobName) ? skipSchedulerTracking() : undefined;
 }
+const { getTelegramRoute } = require('./telegramDirectory');
+const { shouldTemplateRunOnDate } = require('./afishaRecurrence');
 const { formatAfishaBlock } = require('./templates');
 const { CLIENT_PINATA_FILLER_LABEL, isClientOwnedPinataFiller } = require('./pinataMode');
 const { createLogger } = require('../utils/logger');
@@ -168,7 +170,8 @@ function buildDigestSendResult(result, count = 0, meta = {}) {
 }
 
 async function buildAndSendDigest(date, actor = null) {
-    const chatId = await getConfiguredChatId();
+    const route = await getTelegramRoute(pool, 'digest');
+    const chatId = route?.chatId || await getConfiguredChatId();
     if (!chatId) {
         log.warn('No chat ID configured for digest');
         return {
@@ -210,7 +213,7 @@ async function buildAndSendDigest(date, actor = null) {
 
     if (bookings.length === 0 && afishaEvents.length === 0) {
         const text = `📅 <b>${date}</b>\n\nНемає бронювань на цей день.`;
-        const result = await sendTelegramMessage(chatId, text);
+        const result = await sendTelegramMessage(chatId, text, route ? { threadId: route.threadId } : undefined);
         return buildDigestSendResult(result, 0, {
             bookingVisibilityScope: bookingVisibility.scopeSource,
             privilegedSystemActor: !actor
@@ -301,7 +304,7 @@ async function buildAndSendDigest(date, actor = null) {
     }
     text += `━━━━━━━━━━━━━━━━━`;
 
-    const result = await sendTelegramMessage(chatId, text, { silent: false });
+    const result = await sendTelegramMessage(chatId, text, { silent: false, ...(route ? { threadId: route.threadId } : {}) });
     log.info(`Digest sent for ${date}: ${result?.ok ? 'OK' : 'FAIL'}`);
 
     if (result?.ok && result.result?.message_id) {
@@ -353,7 +356,8 @@ async function sendTomorrowReminder(todayStr, actor = null) {
             };
         }
 
-        const chatId = await getConfiguredChatId();
+        const route = await getTelegramRoute(pool, 'reminder');
+        const chatId = route?.chatId || await getConfiguredChatId();
         if (!chatId) return { success: false, reason: 'no_chat_id' };
 
         // v8.1: Ensure recurring afisha for tomorrow
@@ -442,7 +446,7 @@ async function sendTomorrowReminder(todayStr, actor = null) {
         }
         text += `━━━━━━━━━━━━━━━━━`;
 
-        const sendResult = await sendTelegramMessage(chatId, text, { silent: false });
+        const sendResult = await sendTelegramMessage(chatId, text, { silent: false, ...(route ? { threadId: route.threadId } : {}) });
         log.info(`Tomorrow reminder sent for ${tomorrowStr}`);
 
         if (sendResult?.ok && sendResult.result?.message_id) {
@@ -708,29 +712,11 @@ async function ensureRecurringAfishaForDate(dateStr) {
     const now = Date.now();
     if (_ensureCache[dateStr] && (now - _ensureCache[dateStr]) < ENSURE_CACHE_TTL) return 0;
     _ensureCache[dateStr] = now;
-    const dateObj = new Date(dateStr + 'T12:00:00');
-    const dayOfWeek = dateObj.getDay() || 7; // 1=Mon...7=Sun
-
     const templates = await pool.query('SELECT * FROM afisha_templates WHERE is_active = true');
     let created = 0;
 
     for (const tpl of templates.rows) {
-        if (tpl.date_from && dateStr < tpl.date_from) continue;
-        if (tpl.date_to && dateStr > tpl.date_to) continue;
-
-        let shouldCreate = false;
-        switch (tpl.recurrence_pattern) {
-            case 'daily': shouldCreate = true; break;
-            case 'weekdays': shouldCreate = dayOfWeek <= 5; break;
-            case 'weekends': shouldCreate = dayOfWeek >= 6; break;
-            case 'weekly': shouldCreate = dayOfWeek === 6; break;
-            case 'custom':
-                if (tpl.recurrence_days) {
-                    shouldCreate = tpl.recurrence_days.split(',').map(d => parseInt(d.trim())).includes(dayOfWeek);
-                }
-                break;
-        }
-        if (!shouldCreate) continue;
+        if (!shouldTemplateRunOnDate(tpl, dateStr)) continue;
 
         // Atomic dedup: INSERT ON CONFLICT prevents race conditions
         const insertResult = await pool.query(

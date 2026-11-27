@@ -34,6 +34,7 @@ const { requireParkChatUpload, rejectNoncanonicalChatUploadPaths, privateChatUpl
 const { requireParkWorkModule } = require('./services/parkWorkModuleAccess');
 const { buildSoundUploadBlobFallbackHandler } = require('./services/audioStorage');
 const { recordCompatibilityTelemetrySafe } = require('./services/businessCutover');
+const { checkAfishaAnnouncements } = require('./services/afishaAnnouncementWorker');
 const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkReplyAutoEscalations, checkWorkDayTriggers, checkMonthlyPointsReset, checkStreakUpdates, checkBirthdayGreetings, checkBirthdayReminders, checkDormantCustomers, checkUpcomingBookings, checkEventQueue, checkSLABreach, checkScheduledAnnouncements, checkTaskOverdue, checkCustomerRetention, checkAutoReport, checkHotLeads, checkScheduledChatMessages, checkExpiredChatMessages, checkAutoReviewRequests, checkTeamPulseReminder, checkAutoOrdering, checkBookingPushReminders, checkCertExpiryReminders, checkChatDailyDigest, checkRecurringAnnouncements, checkEventPipeline, checkNpsFollowUp, checkCleaningTasks, checkGraduationOpsAutomation, checkAttendanceReviewTasks, checkBirthdayTagSync } = require('./services/scheduler');
 const { checkHrAutoClose, checkHrNoShow } = require('./services/hr');
 const { sendWeeklyTrainingPrompts, sendWeeklySummaryToDirector } = require('./services/training');
@@ -868,6 +869,7 @@ initializeDatabaseWithSchemaFence().catch(err => {
         schedulerIntervals.push(setInterval(guardScheduler('checkAutoBackup', checkAutoBackup, { dedup: null }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('checkRecurringTasks', checkRecurringTasks, { dedup: 'daily' }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('checkRecurringAfisha', checkRecurringAfisha, { dedup: 'daily' }), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('checkAfishaAnnouncements', checkAfishaAnnouncements, { dedup: null }), 30000));
         schedulerIntervals.push(setInterval(guardScheduler('checkScheduledDeletions', checkScheduledDeletions, { dedup: 'daily' }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('checkCertificateExpiry', checkCertificateExpiry, { dedup: 'hourly' }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('checkTaskReminders', checkTaskReminders, { dedup: '5min' }), 60000));

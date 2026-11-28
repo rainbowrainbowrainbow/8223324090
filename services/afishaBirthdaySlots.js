@@ -230,5 +230,5 @@ async function setBirthdaySlot(pool, id, key, input, actor) {
     } finally { client.release(); }
 }
 
-module.exports = { isGreetingEvent, projectBirthdaySlots,
+module.exports = { DURATION, isGreetingEvent, projectBirthdaySlots,
     birthdaySlotsForEvents, eventLineIds, assertGreetingRestore, isAfishaSubstitutionConflict, setBirthdaySlot };

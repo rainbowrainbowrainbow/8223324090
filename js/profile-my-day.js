@@ -366,7 +366,7 @@
         <div class="park-task-dialog-content"><p role="status">Завантаження задачі…</p></div>`;
         const controller = new AbortController();
         const title = dialog.querySelector('h2');
-        const status = dialog.querySelector('.park-task-dialog-status');
+        const statusBadge = dialog.querySelector('.park-task-dialog-status');
         const content = dialog.querySelector('.park-task-dialog-content');
         const guard = dialog.querySelector('.park-task-dialog-guard');
         const discard = dialog.querySelector('.park-task-dialog-discard');
@@ -453,7 +453,7 @@
             awaitingSessionChange = true;
             controller.abort();
             dialog.querySelector('.park-task-dialog-head form').hidden = true;
-            status.hidden = true;
+            statusBadge.hidden = true;
             title.textContent = 'Активний бізнес змінився';
             guard.hidden = true;
             hideDiscard();
@@ -681,8 +681,8 @@
             const editorValue = editorDraft || editorBase;
             const editorLabels = { title: 'Назва', description: 'Опис', priority: 'Пріоритет' };
             title.textContent = task.title || `Задача #${taskId}`;
-            status.textContent = statusLabel(task);
-            status.classList.toggle('is-done', task.status === 'done');
+            statusBadge.textContent = statusLabel(task);
+            statusBadge.classList.toggle('is-done', task.status === 'done');
             const description = typeof task.description === 'string' ? task.description.trim() : '';
             const source = task.drawer?.source;
             const dependencyTitles = (task.dependencies || []).map(item => item?.title).filter(Boolean);
@@ -741,7 +741,7 @@
                 const previous = panel;
                 panel = (next === 'edit' && editor) || (next === 'schedule' && schedule) || next === 'detail' ? next : 'view';
                 view.hidden = panel !== 'view';
-                status.hidden = view.hidden;
+                statusBadge.hidden = view.hidden;
                 if (editor) editor.hidden = panel !== 'edit';
                 if (schedule) schedule.hidden = panel !== 'schedule';
                 detail.hidden = panel !== 'detail';

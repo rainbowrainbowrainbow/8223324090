@@ -4966,6 +4966,12 @@ function bindCabinetAssignmentPicker(form) {
         state.ownerId = state.selected.has(previousOwner) ? previousOwner : participants[0][0];
         state.implicitSelf = false;
         state.shiftAssignment = { group: group.key, date: shiftDate.value };
+        const taskDate = form.querySelector('#cabinetTaskDate');
+        if (!taskDate.value) {
+            taskDate.value = state.shiftAssignment.date;
+            form.querySelector('#cabinetDueMode').value = 'scheduled';
+            setCabinetDuePreset('custom');
+        }
         peopleButton.textContent = 'Склад зміни';
         state.needsShiftConfirmation = false;
         renderSelection();

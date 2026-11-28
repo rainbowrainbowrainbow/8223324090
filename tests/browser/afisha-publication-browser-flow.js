@@ -80,7 +80,7 @@ async function publishPosterInBrowser({ fixture, initialIds, importText, fixture
         await dialog.locator('img[alt="Макет афіші"]').waitFor();
         await page.waitForFunction(() => document.querySelector('img[alt="Макет афіші"]')?.naturalWidth === 6);
         for (const id of initialIds) await dialog.locator('[data-publication-recipients] input[value="' + id + '"]').check();
-        await dialog.getByRole('button', { name: 'Переглянути', exact: true }).click();
+        await dialog.getByRole('button', { name: 'Переглянути перед надсиланням', exact: true }).click();
         await dialog.locator('[data-publication-preview]').getByText('ParkRozvag · Загальний чат · Telegram', { exact: true }).waitFor();
         await dialog.locator('[data-publication-preview]').getByText('#Афіша команди · Чат CRM', { exact: true }).waitFor();
         assert.match(await dialog.locator('pre').first().textContent(), new RegExp('16:20 — ' + fixtureEvent));

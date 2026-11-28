@@ -55,21 +55,46 @@
         const monthEnd = M.addDays(following.toISOString().slice(0, 10), -1);
         const modal = M.dialog('Опублікувати афішу', `
             <form class="timeline-marketing-form" data-publication-form>
-                <label>Від <input type="date" name="from" required value="${M.esc(monthStart)}"></label>
-                <label>До <input type="date" name="to" required value="${M.esc(monthEnd)}"></label>
-                <label>Готовий макет PNG або JPG до 5 МБ <input type="file" name="layout" accept="image/png,image/jpeg"></label>
-                <button type="button" class="btn-secondary" data-save-layout disabled>Зберегти макет</button>
-                <div data-publication-layout></div>
-                <fieldset><legend>Отримувачі</legend><div data-publication-recipients></div></fieldset>
-                <label><span><input type="checkbox" name="resend"> Надіслати оновлену версію повторно</span></label>
-                <section data-publication-preview hidden aria-label="Допис і отримувачі"></section>
-                <div data-publication-status role="status" aria-live="polite"></div>
-                <div class="timeline-marketing-actions">
-                    <button type="submit" class="btn-secondary" data-preview>Переглянути</button>
-                    <button type="button" class="btn-primary" data-publish disabled>Надіслати зараз</button>
+                <div class="afisha-editor-grid">
+                    <div class="afisha-editor-fields">
+                        <fieldset><legend>Період публікації</legend>
+                            <div class="timeline-marketing-date-pair"><label>Від<input type="date" name="from" required value="${M.esc(monthStart)}"></label>
+                            <label>До<input type="date" name="to" required value="${M.esc(monthEnd)}"></label></div>
+                        </fieldset>
+                        <fieldset><legend>Зображення афіші</legend>
+                            <div class="afisha-file-row"><span><strong data-file-name>Файл не вибрано</strong><small>PNG або JPG · до 5 МБ</small></span>
+                                <button type="button" class="btn-secondary" data-choose>Обрати зображення</button>
+                                <input type="file" name="layout" accept="image/png,image/jpeg" hidden>
+                            </div>
+                            <button type="button" class="btn-secondary" data-save-layout hidden disabled>Зберегти макет</button>
+                        </fieldset>
+                        <fieldset><legend>Куди надіслати</legend><div data-publication-recipients></div></fieldset>
+                        <label class="afisha-choice"><input type="checkbox" name="resend"><span>Надіслати оновлену версію повторно</span></label>
+                    </div>
+                    <section class="afisha-message"><h4>Вигляд повідомлення</h4><div data-publication-layout></div>
+                        <div data-preview-hint class="timeline-afisha-publication-text"></div>
+                        <section data-publication-preview hidden aria-label="Допис і отримувачі"></section>
+                    </section>
+                </div>
+                <div class="afisha-editor-footer">
+                    <div><strong data-count></strong><div data-publication-status role="status" aria-live="polite"></div></div>
+                    <button type="submit" class="btn-primary" data-preview>Переглянути перед надсиланням</button>
+                    <button type="button" class="btn-primary" data-publish hidden disabled>Надіслати зараз</button>
                 </div>
             </form>`, trigger);
         const form = modal.querySelector('[data-publication-form]');
+        if (M.writable('edit_booking')) {
+            const navigation = document.createElement('nav');
+            navigation.className = 'afisha-editor-nav';
+            navigation.setAttribute('aria-label', 'Розділи афіші');
+            navigation.innerHTML = '<button type="button" class="btn-secondary">Розклад</button><span aria-current="page">Публікація</span>';
+            form.before(navigation);
+            navigation.querySelector('button').addEventListener('click', () => {
+                if (form.getAttribute('aria-busy') === 'true') return;
+                closeModal(modal);
+                window.TimelineAfisha.quickCreate(dates, trigger, { batch: true });
+            });
+        }
         const preview = form.querySelector('[data-publication-preview]');
         const status = form.querySelector('[data-publication-status]');
         const previewButton = form.querySelector('[data-preview]');
@@ -88,10 +113,25 @@
         let choicesLoaded = false;
         let displayedLayoutId = null;
 
+        const choose = form.querySelector('[data-choose]');
+        const filename = form.querySelector('[data-file-name]');
+        choose.addEventListener('click', () => file.click());
+
+        function updateActions() {
+            const count = selectedIds().length;
+            form.querySelector('[data-count]').textContent = count ? `Обрано чатів · ${count}` : 'Оберіть хоча б один чат';
+            form.querySelector('[data-preview-hint]').hidden = !preview.hidden;
+            previewButton.hidden = Boolean(previewToken);
+            publishButton.hidden = !previewToken;
+            previewButton.disabled = busy || !count || !!file.files.length;
+            choose.disabled = busy;
+            saveButton.hidden = !file.files.length;
+        }
+
         function setBusy(value) {
             busy = value;
             for (const input of form.querySelectorAll('input')) input.disabled = value;
-            previewButton.disabled = value || !!file.files.length;
+            updateActions();
             saveButton.disabled = value || !file.files.length;
             publishButton.disabled = value || !previewToken;
             form.setAttribute('aria-busy', String(value));
@@ -103,11 +143,14 @@
             preview.hidden = true;
             publishButton.disabled = true;
             status.textContent = '';
+            updateActions();
         }
 
         async function showLayout(layout) {
             displayedLayoutId = null;
             layoutPanel.replaceChildren();
+            filename.textContent = layout ? 'Збережений макет' : 'Файл не вибрано';
+            choose.textContent = layout ? 'Замінити' : 'Обрати зображення';
             if (!layout) {
                 layoutPanel.textContent = 'Текстова афіша без зображення.';
                 return;
@@ -125,6 +168,8 @@
             const sequence = ++layoutSequence;
             const dates = period();
             const valid = dates.from && dates.to && M.daysBetween(dates.from, dates.to) >= 0 && M.daysBetween(dates.from, dates.to) <= 30;
+            const draft = form.querySelector('[data-preview-hint]');
+            draft.textContent = '';
             if (!valid) {
                 layoutPanel.replaceChildren();
                 return;
@@ -133,10 +178,20 @@
             if (!modal.isConnected || sequence !== layoutSequence) return;
             const previous = new Set(selectedIds());
             groupPanel.innerHTML = recipients.length ? recipients.map(group =>
-                `<label><span><input type="checkbox" value="${M.esc(group.id)}" ${(choicesLoaded ? previous.has(group.id) : group.selected) ? 'checked' : ''} ${busy ? 'disabled' : ''}>
-                ${M.esc(group.name)} · ${platformLabel(group.platform)}</span></label>`).join('') : 'Підключіть отримувачів у налаштуваннях розсилки.';
+                `<label class="afisha-choice"><input type="checkbox" value="${M.esc(group.id)}" ${(choicesLoaded ? previous.has(group.id) : group.selected) ? 'checked' : ''} ${busy ? 'disabled' : ''}>
+                <span>${M.esc(group.name)}<small>${platformLabel(group.platform)}</small></span></label>`).join('') : 'Підключіть отримувачів у налаштуваннях розсилки.';
             choicesLoaded = true;
+            updateActions();
             if (!file.files.length) await showLayout(layout);
+            if (!modal.isConnected || sequence !== layoutSequence) return;
+            try {
+                const draftResult = await M.request(path + '/preview', 'POST', { ...dates, recipientIds: [], resend: false }, business);
+                if (modal.isConnected && sequence === layoutSequence) {
+                    draft.textContent = draftResult.parts.join('\n\n') || 'У цьому періоді немає записів для анонсу.';
+                }
+            } catch {
+                if (modal.isConnected && sequence === layoutSequence) draft.textContent = 'Натисніть «Переглянути перед надсиланням», щоб завантажити текст.';
+            }
         }
 
         form.addEventListener('input', event => {
@@ -145,6 +200,8 @@
                 displayedLayoutId = null;
                 const chosen = file.files[0];
                 if (chosen) {
+                    filename.textContent = chosen.name;
+                    choose.textContent = 'Замінити';
                     const objectUrl = URL.createObjectURL(chosen);
                     const image = document.createElement('img');
                     image.alt = 'Вибраний макет';
@@ -190,7 +247,7 @@
 
         form.addEventListener('submit', async event => {
             event.preventDefault();
-            if (busy || file.files.length) return;
+            if (busy || file.files.length || !selectedIds().length || previewToken) return;
             clearPreview();
             const from = form.elements.from.value;
             const to = form.elements.to.value;
@@ -259,6 +316,7 @@
                 if (modal.isConnected) setBusy(false);
             }
         });
+        updateActions();
         loadOptions().catch(error => { status.textContent = error.message; });
     }
 
@@ -607,5 +665,5 @@
         marketingOpen = false; expanded = false; afishaExpanded = false;
         beginRender();
     });
-    window.TimelinePromotions = { mount, cancel, beginRender, currentPromotions: () => view?.items || [], dragging: () => Boolean(gesture) };
+    window.TimelinePromotions = { mount, cancel, beginRender, openAfishaPublication, currentPromotions: () => view?.items || [], dragging: () => Boolean(gesture) };
 })();

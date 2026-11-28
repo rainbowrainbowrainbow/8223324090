@@ -412,6 +412,19 @@
                 }
             });
         }
+        if (bulk && options.batch) modal.querySelector('[data-afisha-mode="batch"]').click();
+        if (bulk && M.writable('manage_settings')) {
+            const navigation = document.createElement('nav');
+            navigation.className = 'afisha-editor-nav';
+            navigation.setAttribute('aria-label', 'Розділи афіші');
+            navigation.innerHTML = '<span aria-current="page">Розклад</span><button type="button" class="btn-secondary">Публікація</button>';
+            modal.querySelector('.afisha-create-modes').before(navigation);
+            navigation.querySelector('button').addEventListener('click', () => {
+                if (modes.some(button => button.disabled)) return;
+                closeModal(modal);
+                window.TimelinePromotions.openAfishaPublication(dates, trigger);
+            });
+        }
         form.elements.type.addEventListener('change', () => {
             const greeting = form.elements.type.value === 'greeting';
             form.elements.duration.disabled = greeting;

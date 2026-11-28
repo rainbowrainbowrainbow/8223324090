@@ -4,6 +4,7 @@
     const positionAttrs = ['data-cabinet-my-day-view-mode', 'data-cabinet-bucket-more',
         'data-cabinet-task-priority-select', 'data-cabinet-task-action', 'data-cabinet-completion-toggle',
         'data-cabinet-completion-all', 'data-cabinet-completion-tab', 'data-cabinet-refresh'];
+    const dialogDateFormat = new Intl.DateTimeFormat('uk-UA', { dateStyle: 'long', timeZone: 'UTC' });
 
     function taskRole(task) {
         if (!Array.isArray(task.viewerRoles)) return 'executor';
@@ -357,6 +358,7 @@
         dialog.taskLocation = global.location.href;
         dialog.setAttribute('aria-labelledby', 'park-task-dialog-title');
         dialog.innerHTML = `<header class="park-task-dialog-head">
+            <span class="park-task-dialog-status" aria-live="polite" hidden></span>
             <h2 id="park-task-dialog-title">Задача #${taskId}</h2>
             <form method="dialog"><button type="submit" aria-label="Закрити" autofocus><span aria-hidden="true">×</span></button></form>
         </header><p id="my-day-task-guard" class="park-task-dialog-guard" aria-live="polite" hidden>Є незбережені зміни. Збережіть їх або відкиньте.</p>
@@ -364,6 +366,7 @@
         <div class="park-task-dialog-content"><p role="status">Завантаження задачі…</p></div>`;
         const controller = new AbortController();
         const title = dialog.querySelector('h2');
+        const status = dialog.querySelector('.park-task-dialog-status');
         const content = dialog.querySelector('.park-task-dialog-content');
         const guard = dialog.querySelector('.park-task-dialog-guard');
         const discard = dialog.querySelector('.park-task-dialog-discard');
@@ -450,6 +453,7 @@
             awaitingSessionChange = true;
             controller.abort();
             dialog.querySelector('.park-task-dialog-head form').hidden = true;
+            status.hidden = true;
             title.textContent = 'Активний бізнес змінився';
             guard.hidden = true;
             hideDiscard();
@@ -545,6 +549,12 @@
             const id = global.crypto.randomUUID();
             void run({ id, kind, version: Number(previous.version), patch, execute: () => apply(previous, id) });
         }
+        function focusViewAction() {
+            const action = content.querySelector('[data-dialog-view]:not([hidden]) [data-dialog-complete]')
+                || content.querySelector('[data-dialog-view]:not([hidden]) [data-dialog-edit]')
+                || content.querySelector('[data-dialog-view]:not([hidden]) .park-dialog-more > summary');
+            (action || dialog.querySelector('.park-task-dialog-head button')).focus({ preventScroll: true });
+        }
         async function run(operation, reconcile = false) {
             if (awaitingSessionChange || busy || (needsRefresh && operation) || (unknownOperation && unknownOperation !== operation)) return;
             const draft = operation?.kind || '';
@@ -571,7 +581,7 @@
                         settleOperation(operation);
                         render();
                         onReconciled?.(operation.kind);
-                        content.querySelector('button')?.focus({ preventScroll: true });
+                        focusViewAction();
                     } else if (Number(task.version) === operation.version) {
                         showOperationRecovery(true);
                     } else {
@@ -595,7 +605,7 @@
                 }
                 await refresh();
                 needsRefresh = false;
-                content.querySelector('button')?.focus({ preventScroll: true });
+                focusViewAction();
             } catch (error) {
                 if (dialog.open && !awaitingSessionChange) {
                     if (reconcile || (operation && !needsRefresh && (error.outcomeUnknown || error.name === 'TypeError'))) {
@@ -648,6 +658,8 @@
                 : global.TaskUiShared?.taskPersonLabel?.(person) || person.name || person.username]));
             if (executor) people.set(ownerId, executor);
             const labels = global.TaskUiShared?.taskParticipantLabels?.(people) || people;
+            const executorLabel = executor ? labels.get(ownerId) : '';
+            const [executorInitial = ''] = executorLabel || '';
             const coAssigneeLabels = coAssignees.map(person => labels.get(Number(person.userId))).filter(Boolean);
             const actions = task.drawer?.actions || {};
             const depositRef = global.TaskUiShared?.taskBanquetDepositRef?.(task);
@@ -669,37 +681,40 @@
             const editorValue = editorDraft || editorBase;
             const editorLabels = { title: 'Назва', description: 'Опис', priority: 'Пріоритет' };
             title.textContent = task.title || `Задача #${taskId}`;
+            status.textContent = statusLabel(task);
+            status.classList.toggle('is-done', task.status === 'done');
             const description = typeof task.description === 'string' ? task.description.trim() : '';
             const source = task.drawer?.source;
             const dependencyTitles = (task.dependencies || []).map(item => item?.title).filter(Boolean);
             const expectedResult = task.expectedResult || task.expected_result || task.controlMeta?.expectedResult;
             const substitution = task.substitution;
             const substitutionState = { active: 'Погоджено', completed: 'Завершено' }[substitution?.state];
-            content.innerHTML = `<section data-dialog-view><dl class="park-task-dialog-facts">
-                <div><dt>Стан</dt><dd>${escape(statusLabel(task))}</dd></div>
-                <div><dt>${global.TaskUiShared?.taskDateLabel?.(task) || 'Дата'}</dt><dd>${due ? `<time datetime="${escape(due)}">${escape(due.split('-').reverse().join('.'))}</time>` : 'Без дати'}</dd></div>
+            const date = new Date(due ? `${due}T00:00:00Z` : NaN);
+            const dateLabel = Number.isNaN(date.getTime()) ? due : dialogDateFormat.format(date);
+            content.innerHTML = `<section data-dialog-view>
+            ${description && description !== title.textContent.trim() ? `<p class="park-task-dialog-description">${escape(description)}</p>` : ''}
+            <dl class="park-task-dialog-facts">
+                <div><dt>${global.TaskUiShared?.taskDateLabel?.(task) || 'Дата'}</dt><dd>${due ? `${icon('calendar')}<time datetime="${escape(due)}">${escape(dateLabel)}</time>` : 'Без дати'}</dd></div>
+                ${executor ? `<div><dt>Відповідальний</dt><dd><span class="park-task-dialog-avatar" aria-hidden="true">${escape(executorInitial.toLocaleUpperCase('uk-UA'))}</span><span>${escape(executorLabel)}</span></dd></div>` : ''}
                 <div><dt>Моя роль</dt><dd>${escape(viewerLabel || 'Перегляд')}</dd></div>
-                ${executor ? `<div><dt>Відповідальний</dt><dd>${escape(labels.get(ownerId))}</dd></div>` : ''}
                 ${coAssigneeLabels.length ? `<div><dt>Співвиконавці</dt><dd>${escape(coAssigneeLabels.join(', '))}</dd></div>` : ''}
                 ${task.review_score != null ? `<div><dt>Оцінка</dt><dd>${escape(task.review_score)} / 10</dd></div>` : ''}
             </dl>
-            ${description && description !== title.textContent.trim() ? `<p class="park-task-dialog-description">${escape(description)}</p>` : ''}
-            ${source ? `<p>${source.href ? `<a href="${escape(source.href)}">${escape(source.label)}</a>` : escape(source.label)}</p>` : ''}
             ${substitution?.id && substitutionState ? `<p data-task-substitution>Підміна №${escape(substitution.id)} · ${substitutionState}</p>` : ''}
             ${expectedResult ? `<p><strong>Очікуваний результат</strong> · ${escape(expectedResult)}</p>` : ''}
             ${dependencyTitles.length ? `<p><strong>Залежності</strong> · ${escape(dependencyTitles.join(', '))}</p>` : ''}
-            ${task.checklist?.length ? `<details class="park-task-dialog-checklist"><summary>Чекліст</summary>
-                <ul>${task.checklist.map(item => `<li>${escape(item.title)} · ${item.is_done ? 'Виконано' : 'До виконання'}</li>`).join('')}</ul>
-            </details>` : ''}
-            ${actions.readHistory && loadHistory ? '<details data-task-dialog-history><summary>Історія</summary><div data-task-history-content aria-live="polite"></div></details>' : ''}
-            <div class="park-task-dialog-buttons">
-                ${actions.complete && complete ? '<button type="button" class="park-dialog-primary" data-dialog-complete>Виконати</button>' : ''}
-                ${actions.edit && save ? '<button type="button" data-dialog-edit>Редагувати</button>' : ''}
-                ${(actions.reschedule && reschedule) || (actions.cancel && cancel) || Object.values(extra).some(Boolean) ? `<details class="park-dialog-more"><summary>Ще</summary><div>
+            ${(actions.readHistory && loadHistory) || source ? `<div class="park-task-dialog-context">
+                ${actions.readHistory && loadHistory ? `<details data-task-dialog-history><summary>${icon('history')}Історія<span aria-hidden="true"></span></summary><div data-task-history-content aria-live="polite"></div></details>` : ''}
+                ${source ? `<p class="park-task-dialog-source">${source.href ? `<a href="${escape(source.href)}">${escape(source.label)}</a>` : escape(source.label)}</p>` : ''}
+            </div>` : ''}
+            <div class="park-task-dialog-buttons park-task-dialog-footer">
+                ${(actions.reschedule && reschedule) || (actions.cancel && cancel) || Object.values(extra).some(Boolean) ? `<details class="park-dialog-more"><summary><span aria-hidden="true">···</span>Ще</summary><div>
                     ${actions.reschedule && reschedule ? '<button type="button" data-open-schedule>Перенести</button>' : ''}
                     ${Object.entries(extra).filter(([, label]) => label).map(([kind, label]) => `<button type="button" data-open-detail-action="${kind}">${label}</button>`).join('')}
                     ${actions.cancel && cancel ? '<button type="button" data-dialog-cancel-task>Скасувати задачу</button>' : ''}
                 </div></details>` : ''}
+                ${actions.edit && save ? `<button type="button" data-dialog-edit>${icon('edit')}Редагувати</button>` : ''}
+                ${actions.complete && complete ? `<button type="button" class="park-dialog-primary" data-dialog-complete>${icon('done')}Виконати</button>` : ''}
             </div></section>
             ${actions.edit && save ? `<form data-dialog-editor hidden>
                 <h3>Редагування задачі</h3>
@@ -723,6 +738,7 @@
                 const previous = panel;
                 panel = (next === 'edit' && editor) || (next === 'schedule' && schedule) || next === 'detail' ? next : 'view';
                 view.hidden = panel !== 'view';
+                status.hidden = view.hidden;
                 if (editor) editor.hidden = panel !== 'edit';
                 if (schedule) schedule.hidden = panel !== 'schedule';
                 detail.hidden = panel !== 'detail';
@@ -888,6 +904,7 @@
         calendar: 'M4 6h16v14H4z M4 10h16 M8 4v4 M16 4v4',
         done: 'm5 12 4 4L19 6',
         edit: 'm4 20 4-1L20 7l-3-3L5 16z M14 7l3 3',
+        history: 'M3 12a9 9 0 1 1 3 6.7 M3 6v6h6 M12 7v5l3 2',
         urgency: 'M12 4 2 21h20L12 4Z M12 10v4 M12 17h.01',
         overdue: 'M12 8v5 M12 16h.01 M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z'
     };

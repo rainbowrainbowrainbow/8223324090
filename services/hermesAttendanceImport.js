@@ -9,7 +9,6 @@ const { toPostgresDateOnly } = require('./postgresDateOnly');
 const { scheduleableStaffWhere } = require('./staffOperationalFilters');
 
 const HERMES_ATTENDANCE_PREVIEW_MAX_ROWS = 100;
-const HERMES_ATTENDANCE_PREVIEW_TTL_MINUTES = 30;
 const HERMES_ATTENDANCE_SOURCE_TYPE = 'arrival_sheet_photo';
 const HERMES_ATTENDANCE_CLASSIFICATIONS = Object.freeze([
     'ready_to_apply',
@@ -1042,7 +1041,6 @@ async function applyHermesAttendanceImport(db = defaultPool, input = {}, options
 
 module.exports = {
     HERMES_ATTENDANCE_CLASSIFICATIONS,
-    HERMES_ATTENDANCE_PREVIEW_TTL_MINUTES,
     applyHermesAttendanceImport,
     buildAttendancePlan,
     buildAttendancePreviewHash,

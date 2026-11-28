@@ -90,6 +90,5 @@ function buildCustomerSearchQuery({
 }
 
 module.exports = {
-    buildCustomerSearchQuery,
-    buildScopedBookingAggregateSql
+    buildCustomerSearchQuery
 };

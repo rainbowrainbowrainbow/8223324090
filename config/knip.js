@@ -88,6 +88,8 @@ module.exports = {
         'tests/browser/{cashier-catalog-layout,cashier-next-customer,shared-test-day}-browser-smoke.js',
         'tests/browser/{profile-employee-cabinet,r10a-recovery-login-ui,redirect-regression-gate,timeline-afisha-dual}-browser-smoke.js',
         'tests/browser/{business-membership-editor,business-profile-access}.spec.js',
+        // Offline generator for the baseline access matrix in docs/access-baseline.
+        'scripts/baseline-access-matrix.js',
         // Standalone browser checks verified with local synthetic fixtures.
         'tests/browser/baseline-access-navigation-browser-smoke.js',
         'tests/browser/business-cabinet-manager.spec.js',

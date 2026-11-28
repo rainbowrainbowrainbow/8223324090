@@ -125,4 +125,4 @@ async function isReportApprovalTask(db, task) {
     return (await db.query('SELECT 1 FROM reports WHERE approval_task_id=$1 LIMIT 1',[task.id])).rowCount > 0;
 }
 
-module.exports = { SOURCES, TASK_SOURCE, canRegister, registerWork, assertOperationalScope, isReportApprovalTask };
+module.exports = { SOURCES, canRegister, registerWork, assertOperationalScope, isReportApprovalTask };

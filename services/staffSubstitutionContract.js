@@ -208,5 +208,5 @@ function preview(input, context) {
     return { ...result, fingerprint: fingerprint(result) };
 }
 
-module.exports = { RULE_VERSION, SOURCE_TYPES, fail, integer, text, choice, decimalUnits, fingerprint,
+module.exports = { RULE_VERSION, fail, integer, text, choice, decimalUnits, fingerprint,
     kyivParts, normalizeInput, amountFor, overlap, preview };

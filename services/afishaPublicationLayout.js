@@ -59,4 +59,4 @@ async function saveLayout(db, business, from, to, file) {
     return rows[0];
 }
 
-module.exports = { MAX_LAYOUT_BYTES, validatePeriod, monthlySlotKey, currentLayout, readLayout, saveLayout };
+module.exports = { MAX_LAYOUT_BYTES, monthlySlotKey, currentLayout, readLayout, saveLayout };

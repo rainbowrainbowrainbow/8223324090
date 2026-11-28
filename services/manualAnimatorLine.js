@@ -70,4 +70,4 @@ async function appendManualAnimatorLine(pool, date, requestId, options = {}) {
     }
 }
 
-module.exports = { appendManualAnimatorLine, nextManualAnimatorName, REQUEST_ID_PATTERN, DIRECT_MANUAL_LINE_ID_PATTERN };
+module.exports = { appendManualAnimatorLine, nextManualAnimatorName, DIRECT_MANUAL_LINE_ID_PATTERN };

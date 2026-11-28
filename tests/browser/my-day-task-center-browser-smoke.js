@@ -495,6 +495,10 @@ async function run() {
         await goto(page, '/profile?tab=myday&create=1&businessContext=event_genix');
         await page.setViewportSize({ width, height: 900 });
         await page.locator('#cabinetTaskTitle').fill('Тестова задача адміністраторам зміни');
+        const taskDueDate = page.locator('#cabinetTaskDate');
+        const taskDueMode = page.locator('#cabinetDueMode');
+        await taskDueDate.fill('');
+        await taskDueMode.selectOption('deadline');
         const shiftPicker = page.locator('[data-cabinet-assignment]');
         await shiftPicker.locator('summary').click();
         const rosterStarted = Promise.withResolvers();
@@ -522,6 +526,8 @@ async function run() {
         await shiftPicker.locator('#cabinetShiftGroup').selectOption('admin.administrators');
         await shiftPicker.getByRole('button', { name: 'Підтвердити склад' }).click();
         await shiftPicker.getByText('Зміна підтверджена. За потреби позначте іншого відповідального.', { exact: true }).waitFor();
+        assert.equal(await taskDueDate.inputValue(), shiftDate, 'An empty task date defaults to the confirmed shift date');
+        assert.equal(await taskDueMode.inputValue(), 'scheduled', 'A shift date default is a scheduled date');
         assert.equal(await shiftPicker.locator('[data-assignment-user][aria-pressed="true"]').count(), 2);
         await shiftPicker.screenshot({ path: path.join(evidence, 'shift-assignment-360.png'), animations: 'disabled' });
         await shiftPicker.getByRole('button', { name: 'Склад зміни', exact: true }).click();
@@ -540,7 +546,12 @@ async function run() {
         await shiftPicker.getByRole('button', { name: 'Повторити' }).click();
         await shiftPicker.locator('option[value="admin.administrators"]').waitFor({ state: 'attached' });
         await shiftPicker.locator('#cabinetShiftGroup').selectOption('admin.administrators');
+        const explicitDeadline = '2099-11-27';
+        await taskDueDate.fill(explicitDeadline);
+        await taskDueMode.selectOption('deadline');
         await shiftPicker.getByRole('button', { name: 'Підтвердити склад' }).click();
+        assert.equal(await taskDueDate.inputValue(), explicitDeadline, 'Confirming a shift keeps the existing task date');
+        assert.equal(await taskDueMode.inputValue(), 'deadline', 'Confirming a shift keeps the existing deadline mode');
         await shiftPicker.locator('#cabinetShiftGroup').selectOption('reception');
         await shiftPicker.screenshot({ path: path.join(evidence, 'shift-assignment-reconfirm-360.png'), animations: 'disabled' });
         page.on('request', captureRejectedRequest);
@@ -589,6 +600,8 @@ async function run() {
         assert.equal((await rejectedResponse.json()).code, 'TASK_SHIFT_ROSTER_CHANGED');
         const rejectedBody = rejectedResponse.request().postDataJSON();
         assert.deepEqual(rejectedBody.shiftAssignment, { group: 'admin.administrators', date: shiftDate });
+        assert.equal(rejectedBody.deadline, explicitDeadline + 'T23:59:00');
+        assert.equal(Object.hasOwn(rejectedBody, 'date'), false);
         assert.equal((await db.query('SELECT id FROM tasks WHERE title = $1', [rejectedBody.title])).rowCount, 0);
         await shiftPicker.locator('summary').getByText('Кому · Підтвердьте склад зміни').waitFor();
         await shiftPicker.locator('#cabinetShiftGroup option[value="admin.administrators"]').waitFor({ state: 'attached' });

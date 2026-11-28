@@ -164,6 +164,16 @@
             if (image.isConnected) displayedLayoutId = layout.id;
         }
 
+        function renderDraft(parts) {
+            const months = ['січ', 'лют', 'бер', 'кві', 'тра', 'чер', 'лип', 'сер', 'вер', 'жов', 'лис', 'гру'];
+            return parts.flatMap(part => part.split('\n\n')).map(section => {
+                const event = /^(\d{4})-(\d{2})-(\d{2}) о (\d{2}:\d{2}) — ([^\n]+)(?:\n([\s\S]*))?$/.exec(section);
+                if (!event) return `<p>${M.esc(section)}</p>`;
+                const [, year, month, day, time, title, description] = event;
+                return `<div class="afisha-draft-event"><time datetime="${year}-${month}-${day}"><b>${day}</b>${months[Number(month) - 1] || month}</time>
+                    <div><strong>${M.esc(title)}</strong><small>${time}</small>${description ? `<p>${M.esc(description)}</p>` : ''}</div></div>`;
+            }).join('');
+        }
         async function loadOptions() {
             const sequence = ++layoutSequence;
             const dates = period();
@@ -187,7 +197,7 @@
             try {
                 const draftResult = await M.request(path + '/preview', 'POST', { ...dates, recipientIds: [], resend: false }, business);
                 if (modal.isConnected && sequence === layoutSequence) {
-                    draft.textContent = draftResult.parts.join('\n\n') || 'У цьому періоді немає записів для анонсу.';
+                    draft.innerHTML = renderDraft(draftResult.parts) || 'У цьому періоді немає записів для анонсу.';
                 }
             } catch {
                 if (modal.isConnected && sequence === layoutSequence) draft.textContent = 'Натисніть «Переглянути перед надсиланням», щоб завантажити текст.';

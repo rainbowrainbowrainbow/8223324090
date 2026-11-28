@@ -157,6 +157,8 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, createStaticS
         assert.equal(await page.locator('[data-linked-afisha="1"]').count(), 1);
         const publication = page.getByRole('dialog', { name: 'Опублікувати афішу' });
         await page.locator('[data-publish-afisha]').click();
+        assert.equal(await publication.locator('[data-publish]').isHidden(), true);
+        assert.equal(await publication.locator('.afisha-editor-grid').evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').length), 2);
         assert.equal(await publication.locator('[name=from]').inputValue(), '2026-10-01');
         assert.equal(await publication.locator('[name=to]').inputValue(), '2026-10-31');
         assert.equal(await publication.locator('[data-publish]').isDisabled(), true);
@@ -170,6 +172,7 @@ const { requirePlaywright, routeMockedApi, businessProfilePayload, createStaticS
         await publication.locator('[data-preview]').click();
         await publication.locator('[data-publication-preview]').getByText('#Керівники · Чат CRM').waitFor();
         await page.setViewportSize({ width: 390, height: 844 });
+        assert.equal(await publication.locator('.afisha-editor-grid').evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').length), 1);
         const publishBox = await publication.locator('.timeline-marketing-dialog').boundingBox();
         assert.ok(publishBox && publishBox.x >= 0 && publishBox.x + publishBox.width <= 390);
         await publication.locator('[data-publish]').click();

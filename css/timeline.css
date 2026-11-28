@@ -5725,3 +5725,13 @@ html[data-theme="dark"] .timeline-afisha-summary-event--conflict small { color: 
 [data-publication-recipients] { max-height: 13rem; overflow-y: auto; }
 .afisha-message { max-height: min(56dvh, 32rem); overflow: auto; }
 .afisha-message [data-preview-hint] { margin-top: 12px; }
+.afisha-draft-event { display: flex; gap: 12px; align-items: center; margin-block: 10px; white-space: normal; }
+.afisha-draft-event time { display: grid; place-items: center; flex: 0 0 44px; padding: 3px; border: 1px solid var(--gray-300); border-radius: 8px; font-size: 12px; }
+.afisha-draft-event time b { font-size: 17px; line-height: 1.2; }
+.afisha-draft-event small { display: block; color: var(--gray-600); }
+.afisha-message [data-preview-hint] p { margin: 6px 0; white-space: pre-wrap; }
+body.dark-mode .timeline-marketing-dialog:is(:has([data-publication-form]), :has([data-batch-form])) .btn-primary { background: #46dbab; color: #102d24; }
+@media (min-width: 370px) and (max-width: 650px) {
+    .afisha-editor-fields .timeline-marketing-date-pair { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .afisha-editor-fields input[type="date"] { width: 100%; min-width: 0; }
+}

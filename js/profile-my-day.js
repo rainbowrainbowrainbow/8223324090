@@ -708,7 +708,7 @@
                 ${source ? `<p class="park-task-dialog-source">${source.href ? `<a href="${escape(source.href)}">${escape(source.label)}</a>` : escape(source.label)}</p>` : ''}
             </div>` : ''}
             <div class="park-task-dialog-buttons park-task-dialog-footer">
-                ${(actions.reschedule && reschedule) || (actions.cancel && cancel) || Object.values(extra).some(Boolean) ? `<details class="park-dialog-more"><summary><span aria-hidden="true">···</span>Ще</summary><div>
+                ${(actions.reschedule && reschedule) || (actions.cancel && cancel) || Object.values(extra).some(Boolean) ? `<details class="park-dialog-more"><summary><span aria-hidden="true"></span>Ще</summary><div>
                     ${actions.reschedule && reschedule ? '<button type="button" data-open-schedule>Перенести</button>' : ''}
                     ${Object.entries(extra).filter(([, label]) => label).map(([kind, label]) => `<button type="button" data-open-detail-action="${kind}">${label}</button>`).join('')}
                     ${actions.cancel && cancel ? '<button type="button" data-dialog-cancel-task>Скасувати задачу</button>' : ''}

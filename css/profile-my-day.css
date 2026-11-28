@@ -778,7 +778,7 @@ html:has(.park-my-day.is-completing-task)::view-transition-new(root) { animation
     gap: .35rem;
 }
 .park-dialog-more > summary { cursor: pointer; }
-.park-dialog-more > summary span { color: var(--gray-600); font-size: 1.15em; line-height: 1; }
+.park-dialog-more > summary span::before { content: "···"; color: var(--gray-600); font-size: 1.15em; line-height: 1; }
 @media (max-width: 480px) {
     .park-task-dialog-content form .park-task-dialog-buttons { display: grid; }
     .park-task-dialog-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }

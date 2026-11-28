@@ -13,6 +13,8 @@ const {
     syncBanquetActualMenuTask
 } = require('../services/banquetMenuTaskSync');
 
+const TELEGRAM_ASSIGNMENT_LOOKUP = 'SELECT 1 FROM telegram_crm_assignment_outbox WHERE task_id=$1 AND owner_user_id=$2 LIMIT 1';
+
 function isActive(task) {
     return !['done', 'archived', 'cancelled'].includes(String(task.status || 'todo').toLowerCase());
 }
@@ -93,6 +95,7 @@ class FakeTaskDb {
                 source_module: params[42],
                 control_meta: JSON.parse(params[44] || '{}'),
                 created_by_user_id: params[45],
+                suppress_initial_telegram_assignment: params[46],
                 status: 'todo'
             };
             this.tasks.push(task);
@@ -101,6 +104,14 @@ class FakeTaskDb {
 
         if (normalizedSql.startsWith('INSERT INTO task_logs')) {
             return { rows: [{ id: 1 }] };
+        }
+
+        if (normalizedSql === TELEGRAM_ASSIGNMENT_LOOKUP) {
+            const [taskId, ownerUserId] = params;
+            const task = this.tasks.find(item => item.id === taskId && item.owner_user_id === ownerUserId);
+            assert.ok(task, 'outbox lookup targets the created task and owner');
+            assert.equal(task.suppress_initial_telegram_assignment, true);
+            return { rows: [], rowCount: 0 };
         }
 
         if (normalizedSql.startsWith('UPDATE tasks SET title = $2')) {
@@ -198,7 +209,9 @@ test('actual awaiting menu sync creates exactly one linked active task and skips
     assert.equal(task.deadline, bookingActualMenuTaskDeadline(booking));
     assert.equal(task.schedule_status, 'scheduled');
     assert.match(task.description, /Різниця до мінімуму|Minimum snapshot/);
-    assert.equal(db.queries.some(entry => /notification_outbox|telegram/i.test(entry.sql)), false);
+    assert.equal(task.suppress_initial_telegram_assignment, true);
+    const outboxQueries = db.queries.filter(entry => /notification_outbox|telegram_crm_assignment_outbox/i.test(entry.sql));
+    assert.deepEqual(outboxQueries, [{ sql: TELEGRAM_ASSIGNMENT_LOOKUP, params: [task.id, task.owner_user_id] }]);
 });
 
 test('actual awaiting menu sync is idempotent, closes duplicates, and reschedules on booking time change', async () => {

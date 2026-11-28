@@ -300,14 +300,9 @@ async function processGuardianDeliveryEvent(event, deps = {}) {
 }
 
 module.exports = {
-    GuardianDeliveryError,
-    GUARDIAN_DELIVERY_EVENT_TYPES,
     GUARDIAN_DIRECTOR_DM_REQUESTED,
     GUARDIAN_TELEGRAM_ALERT_REQUESTED,
     buildGuardianDeliveryIdempotencyKey,
     classifyGuardianDeliveryError,
-    deliverDirectorDm,
-    deliverTelegramAlert,
-    processGuardianDeliveryEvent,
-    withStableActionTokens
+    processGuardianDeliveryEvent
 };

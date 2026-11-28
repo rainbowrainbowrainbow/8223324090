@@ -214,7 +214,6 @@ module.exports = {
     HOURLY_BLOCK_THRESHOLD,
     REPEAT_OFFENDER_COUNTER,
     REPEAT_OFFENDER_THRESHOLD,
-    recordCounterInTransaction,
     recordGuardianMuteModerationStateInTransaction,
     utcHourKey,
     utcHourStart

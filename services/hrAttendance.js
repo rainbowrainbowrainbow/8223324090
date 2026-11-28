@@ -2052,7 +2052,6 @@ module.exports = {
     HR_ATTENDANCE_BREAK_POLICY,
     HR_ATTENDANCE_PLAN_SOURCES,
     allocateAttendanceToSegments,
-    actualWorkedMinutes,
     attendanceDayType,
     attendanceAllocationFields,
     attendanceCsvRow,

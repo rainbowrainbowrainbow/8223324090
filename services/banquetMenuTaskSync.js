@@ -317,10 +317,5 @@ module.exports = {
     MENU_ACTUAL_TASK_SOURCE_TYPE,
     MENU_ACTUAL_TASK_TITLE,
     bookingActualMenuTaskDeadline,
-    bookingActualMenuTaskDescription,
-    bookingActualMenuTaskOwnerInput,
-    findActualMenuTasks,
-    isActualAwaitingBooking,
-    isActualFinalizedBooking,
     syncBanquetActualMenuTask
 };

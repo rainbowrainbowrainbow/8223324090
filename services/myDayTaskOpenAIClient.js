@@ -258,7 +258,6 @@ module.exports = {
     callMyDayTaskOpenAIResponses,
     compactString,
     extractOpenAIResponseObject,
-    extractOpenAIResponseText,
     getOpenAIKey,
     hmacSafetyIdentifier,
     isTestRuntime,

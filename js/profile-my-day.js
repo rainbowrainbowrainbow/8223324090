@@ -349,7 +349,7 @@
         void loadDeposit();
     }
 
-    function openTaskDialog({ taskId, load, loadHistory, selectDate, statusLabel, opener, onClose, mode, save, complete, cancel, reschedule, detailActions, draftScope, onReconciled }) {
+    function openTaskDialog({ taskId, load, loadHistory, selectDate, statusLabel, opener, onClose, mode, save, complete, cancel, reschedule, detailActions, draftScope, onReconciled, showChecklist = false }) {
         const draftKey = Number.isSafeInteger(taskId) ? sessionDraftKey(draftScope, taskId) : null;
         const dialog = document.createElement('dialog');
         dialog.className = 'park-task-dialog';
@@ -703,6 +703,9 @@
             ${substitution?.id && substitutionState ? `<p data-task-substitution>Підміна №${escape(substitution.id)} · ${substitutionState}</p>` : ''}
             ${expectedResult ? `<p><strong>Очікуваний результат</strong> · ${escape(expectedResult)}</p>` : ''}
             ${dependencyTitles.length ? `<p><strong>Залежності</strong> · ${escape(dependencyTitles.join(', '))}</p>` : ''}
+            ${showChecklist && task.checklist?.length ? `<details class="park-task-dialog-checklist"><summary>Чекліст</summary>
+                <ul>${task.checklist.map(item => `<li>${escape(item.title)} · ${item.is_done ? 'Виконано' : 'До виконання'}`).join('')}</ul>
+            </details>` : ''}
             ${(actions.readHistory && loadHistory) || source ? `<div class="park-task-dialog-context">
                 ${actions.readHistory && loadHistory ? `<details data-task-dialog-history><summary>${icon('history')}Історія<span aria-hidden="true"></span></summary><div data-task-history-content aria-live="polite"></div></details>` : ''}
                 ${source ? `<p class="park-task-dialog-source">${source.href ? `<a href="${escape(source.href)}">${escape(source.label)}</a>` : escape(source.label)}</p>` : ''}

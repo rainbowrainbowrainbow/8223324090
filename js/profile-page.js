@@ -7000,6 +7000,7 @@ function syncMyDayTaskDialog(opener = null, { initialize = false } = {}) {
     else if (/^\d{4}-\d{2}-\d{2}$/.test(date || '')) focusMyDayTaskDate(date);
     window.ProfileMyDay.openTaskDialog({
         taskId, opener, mode: url.searchParams.get('mode'),
+        showChecklist: Boolean(returnTo),
         load: signal => apiGetScopedJson(`/tasks/${taskId}`, { signal, cache: 'no-store' }),
         loadHistory: signal => apiGetScopedJson(`/tasks/${taskId}/history`, { signal, cache: 'no-store' }),
         detailActions: myDayTaskDetailActions(taskId),

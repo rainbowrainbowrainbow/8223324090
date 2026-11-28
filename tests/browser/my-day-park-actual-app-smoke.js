@@ -256,7 +256,7 @@ async function verifyTaskDetailActions(browser, origin, session) {
             assert.equal(await dialog.getByRole('button', { name: 'Підтвердити завдаток', exact: true }).isDisabled(), true);
             await dialog.getByRole('button', { name: 'Назад до перегляду' }).click();
             await dialog.getByRole('button', { name: 'Виконати', exact: true }).click();
-            await dialog.locator('[data-dialog-view]').getByText('Виконано', { exact: true }).waitFor();
+            await dialog.locator('.park-task-dialog-status').getByText('Виконано', { exact: true }).waitFor();
             const { rows: [brokenDepositTask] } = await pool.query(`INSERT INTO tasks
                 (title, status, task_mode, visibility, owner_user_id, business_context, source_type, source_id)
                 VALUES ('Завдаток без посилання', 'todo', 'work', 'team', $1, 'event_genix', 'banquet_deposit', 'legacy-missing') RETURNING id`,

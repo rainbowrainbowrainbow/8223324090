@@ -1,6 +1,6 @@
 {
   "name": "event-genix",
-  "version": "0.84.72",
+  "version": "0.84.73",
   "eventGenix": {
     "releaseLabel": "Уточнено перевірку коду CRM"
   },

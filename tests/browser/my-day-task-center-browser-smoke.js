@@ -245,12 +245,18 @@ async function run() {
         await goto(page, `/tasks.html?highlight=${id}&businessContext=event_genix`);
         const dialog = page.locator('.park-task-dialog[open]');
         await dialog.getByRole('heading', { name: delegatedTitle }).waitFor();
-        await dialog.getByText('Чекліст', { exact: true }).click();
-        await dialog.getByText('Тестовий пункт · Виконано', { exact: true }).waitFor();
+        assert.equal(await dialog.getByText('Чекліст', { exact: true }).count(), 0, 'the legacy link opens the basic My Day dialog');
         await dialog.getByText('Історія', { exact: true }).click();
         await dialog.locator('[data-task-history-content] li').first().waitFor();
         await page.keyboard.press('Escape');
         await dialog.waitFor({ state: 'hidden' });
+
+        await goto(page, `/profile?tab=myday&open=${id}&businessContext=event_genix&returnTo=%2Ftasks`);
+        await dialog.getByRole('heading', { name: delegatedTitle }).waitFor();
+        await dialog.getByText('Чекліст', { exact: true }).click();
+        await dialog.getByText('Тестовий пункт · Виконано', { exact: true }).waitFor();
+        await dialog.getByRole('button', { name: 'Закрити', exact: true }).click();
+        await page.waitForURL(url => url.pathname === '/tasks');
 
         await goto(page, '/profile?tab=myday');
         await page.getByText(prefix + ' · Початок доби', { exact: true }).waitFor();
